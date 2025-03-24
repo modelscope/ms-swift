@@ -206,7 +206,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             assert device_count == local_world_size, (
                 f'Colocate mode requires device_count({device_count}) == local_world_size({local_world_size}). '
                 'Please check if your device count matches NPROC_PER_NODE setting.')
-            logger.log(
+            logger.info(
                 'You are using colocate mode because you have set num_infer_workers to be the same as NPROC_PER_NODE, '
                 'where model training and sampling will be performed on a single GPU. '
                 'If you encounter an Out-of-Memory (OOM) error, it is recommended to set the `sleep_level`, '
@@ -219,7 +219,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             assert device_count == (local_world_size + self.num_infer_workers), (
                 f'Async mode requires total GPUs({device_count}) = training GPUs({local_world_size}) + '
                 f'inference workers({self.num_infer_workers}). Please adjust your GPU allocation.')
-            logger.log(
+            logger.info(
                 'You are using async mode, where model training and sampling will be performed on different GPUs.')
             if self.sleep_level > 0:
                 logger.warning('You are using different GPUs for training and rollout, '
