@@ -110,19 +110,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.offload_modules = {}
         self.offload_states = {}
         _, _, _, local_world_size = get_dist_setting()
-        if self.args.tensor_parallel_size > 1:
-            assert (get_device_count() == local_world_size == self.args.num_infer_workers
-                    and local_world_size > 1), ('tensor_parallel_size>1 only supports num_infer_workers==your '
-                                                'available device count.')
-        if self.args.async_generate:
-            assert (local_world_size + self.args.num_infer_workers <=
-                    get_device_count()), ('async_generate requires training and rollout use '
-                                          'different GPUS.')
-
-        if self.args.sleep_level > 0:
-            if local_world_size + self.args.num_infer_workers <= get_device_count():
-                logger.warning('You are using different GPUs for training and rollout, '
-                               'so you do not need to use sleep_level > 0')
 
         if not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
