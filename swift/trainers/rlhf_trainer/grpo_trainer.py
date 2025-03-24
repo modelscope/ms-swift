@@ -866,8 +866,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     batched_inputs = [reward_template.encode(infer_request) for infer_request in inputs]
                     reward_inputs = to_device(reward_template.data_collator(batched_inputs), reward_func.device)
 
-                with torch.inference_mode():
-                    rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]
+                with torch.inference_mode(), unwrap_model_for_generation(reward_func,
+                                                                         self.accelerator) as unwrapped_reward_func:
+                    rewards_per_func[:, i] = unwrapped_reward_func(**reward_inputs).logits[:, 0]
             else:
                 # Repeat all input columns (but "messages" and "completion") to match the number of generations
                 reward_kwargs = RowPreprocessor.rows_to_batched(inputs)
