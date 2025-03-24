@@ -57,7 +57,7 @@ class Trainer(SwiftMixin, HfTrainer):
         loss, outputs = super().compute_loss(model, inputs, return_outputs=True)
         if inputs.get('labels') is not None:
             self._compute_acc(outputs, inputs['labels'])
-        if num_items_in_batch is not None:
+        if self.model_accepts_loss_kwargs and num_items_in_batch is not None:
             loss /= self.args.gradient_accumulation_steps
         return (loss, outputs) if return_outputs else loss
 
