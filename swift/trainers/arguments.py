@@ -157,6 +157,9 @@ class GRPOArgumentsMixin:
     gc_collect_after_offload: bool = False
     multi_turn_func: Optional[str] = None
 
+    # mini-batch
+    mini_batch_size: Optional[int] = None
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):

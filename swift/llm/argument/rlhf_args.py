@@ -226,3 +226,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                                'so you do not need to use sleep_level > 0')
 
             assert self.tensor_parallel_size == 1, ('async mode do not support tensor parallel right now')
+
+        if self.mini_batch_size:
+            assert self.per_device_train_batch_size % self.mini_batch_size == 0,\
+                'per_device_train_batch_size needs be divisible by mini_batch_size'
