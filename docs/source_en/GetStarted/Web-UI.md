@@ -3,7 +3,9 @@
 Currently, SWIFT supports interface-based training and inference, with parameter support similar to script training. After installing SWIFT, use the following command:
 
 ```shell
-swift web-ui --lang zh/en
+swift web-ui --lang zh
+# or en
+swift web-ui --lang en
 ```
 
 to start the interface for training and inference.

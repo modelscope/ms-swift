@@ -3,7 +3,9 @@
 目前SWIFT已经支持了界面化的训练和推理，参数支持和脚本训练相同。在安装SWIFT后，使用如下命令：
 
 ```shell
-swift web-ui --lang zh/en
+swift web-ui --lang zh
+# or en
+swift web-ui --lang en
 ```
 
 开启界面训练和推理。
