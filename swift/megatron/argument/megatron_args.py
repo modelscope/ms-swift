@@ -4,6 +4,8 @@ import sys
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import torch
+
 from swift.llm.argument.base_args import to_abspath
 
 
@@ -11,6 +13,7 @@ from swift.llm.argument.base_args import to_abspath
 class ExtraMegatronArguments:
     padded_vocab_size: Optional[int] = None
     rope_scaling: Optional[Union[dict, str]] = None
+    torch_dtype: Optional[torch.dtype] = None
 
 
 @dataclass
@@ -128,17 +131,28 @@ class MegatronArguments(ExtraMegatronArguments):
     num_workers: int = 4
     no_create_attention_mask_in_dataloader: bool = True
 
+    def _init_mixed_precision(self):
+        if self.torch_dtype == torch.bfloat16:
+            self.bf16 = True
+        elif self.torch_dtype == torch.float16:
+            self.fp16 = True
+        if self.apply_query_key_layer_scaling is None:
+            self.apply_query_key_layer_scaling = self.fp16
+
     def __post_init__(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self.group_query_attention = self.num_query_groups > 1
-        self.rope_scaling = ModelArguments.parse_to_dict(self.rope_scaling)
+        if self.rope_scaling is not None:
+            self.rope_scaling = ModelArguments.parse_to_dict(self.rope_scaling)
         if self.eval_interval is None:
             self.eval_interval = self.save_interval
         if self.seq_length is None:
             self.seq_length = self.max_position_embeddings
         if self.tensorboard_dir is None and self.save is not None:
             self.tensorboard_dir = f'{self.save}/runs'
+        self._init_mixed_precision()
+
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
 
     def _args_to_argv(self) -> Tuple[List[Any], Dict[str, Any]]:

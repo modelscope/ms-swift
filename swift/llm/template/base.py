@@ -243,6 +243,19 @@ class Template(ProcessorMixin):
             message['content'] = message['content'][:-len('<start-image>')]  # remove the <start-image>
         inputs.generate_mode = generate_mode
 
+    @staticmethod
+    def _extend_tokens(input_ids: List[int], labels: Optional[List[int]], replace_idx_list: List[int],
+                       get_new_tokens: Callable[[int], List[int]]) -> Tuple[List[int], Optional[List[int]]]:
+        added_tokens_len = 0
+        for i, idx in enumerate(replace_idx_list):
+            new_tokens = get_new_tokens(i)
+            token_len = len(new_tokens)
+            input_ids = input_ids[:idx + added_tokens_len] + new_tokens + input_ids[added_tokens_len + idx + 1:]
+            if labels:
+                labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx + 1:]
+            added_tokens_len += token_len - 1
+        return input_ids, labels
+
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
         assert chosen_inputs.rejected_response is not None, f'inputs: {inputs}'
@@ -319,7 +332,11 @@ class Template(ProcessorMixin):
         encoded = self._encode(inputs)
         encoded.pop('labels', None)
         if inputs.label is not None:
-            encoded['labels'] = int(inputs.label)
+            labels = inputs.label
+            problem_type = self._get_problem_type(self.config, labels=labels)
+            if problem_type == 'single_label_classification':
+                labels = int(labels)
+            encoded['labels'] = labels
         return encoded
 
     @torch.inference_mode()
@@ -364,8 +381,9 @@ class Template(ProcessorMixin):
         if return_template_inputs:
             encoded['template_inputs'] = inputs
 
-        if self.use_megatron and encoded.get('labels'):
+        if self.use_megatron:
             encoded['labels'] = encoded['labels'][1:] + [-100]
+            encoded['position_ids'] = list(range(len(encoded['labels'])))
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -383,28 +401,57 @@ class Template(ProcessorMixin):
         return generate_ids
 
     @staticmethod
-    def _get_seq_cls_logprobs(pred: int, logprobs: torch.Tensor):
-        idxs = logprobs.argsort(descending=True, dim=-1)
+    def _get_seq_cls_logprobs(pred: int, logprobs: torch.Tensor, top_logprobs: int):
+        idxs = logprobs.argsort(descending=True, dim=-1)[:top_logprobs].tolist()
+        logprobs = logprobs.tolist()
         return {
             'content': {
                 'index': pred,
-                'logprob': logprobs[pred].item(),
+                'logprobs': [logprobs[p] for p in pred] if isinstance(pred, (list, tuple)) else logprobs[pred],
                 'top_logprobs': [{
                     'index': idx,
-                    'logprob': logprobs[idx].item()
-                } for idx in idxs.tolist()]
+                    'logprob': logprobs[idx]
+                } for idx in idxs]
             }
         }
 
-    def decode_seq_cls(self, logits: torch.Tensor):
+    @staticmethod
+    def _get_problem_type(config, labels=None, logits=None) -> str:
+        problem_type = config.problem_type
+        if problem_type is not None:
+            return problem_type
+        if labels is not None:
+            if isinstance(labels, (list, tuple)):
+                if labels and isinstance(labels[0], float):
+                    problem_type = 'regression'
+                else:
+                    problem_type = 'multi_label_classification'
+            else:
+                problem_type = 'single_label_classification'
+                assert config.num_labels >= labels + 1
+        if logits is not None:
+            if logits.shape[-1] == 1:
+                problem_type = 'regression'
+            else:
+                problem_type = 'single_label_classification'  # compatible with older versions
+        assert problem_type is not None
+        config.problem_type = problem_type
+        return problem_type
+
+    def decode_seq_cls(self, logits: torch.Tensor, top_logprobs: int):
         assert isinstance(logits, torch.Tensor)
-        if logits.shape[-1] > 1:
-            preds = torch.argmax(logits, dim=-1).tolist()
-            logprobs = torch.log_softmax(logits, -1)
-            logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i]) for i, pred in enumerate(preds)]
-        else:
+        problem_type = self._get_problem_type(self.config, logits=logits)
+        if problem_type == 'regression':
             preds = logits.squeeze(dim=-1).tolist()
             logprobs = [None] * len(preds)
+        else:
+            if problem_type == 'single_label_classification':
+                preds = torch.argmax(logits, dim=-1).tolist()
+                logprobs = torch.log_softmax(logits, -1)
+            else:
+                preds = [(logprob >= 0.5).nonzero(as_tuple=True)[0].tolist() for logprob in torch.sigmoid(logits)]
+                logprobs = F.logsigmoid(logits)
+            logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
         return preds, logprobs
 
     def decode(self,
@@ -1102,7 +1149,16 @@ class Template(ProcessorMixin):
         labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
         res = self._data_collator(batch, padding_to=padding_to)
         if labels:
-            res['labels'] = torch.tensor(labels, dtype=torch.long)
+            problem_type = self._get_problem_type(self.config)
+            if problem_type == 'regression':
+                labels = torch.tensor(labels, dtype=torch.float32)
+            else:
+                labels = torch.tensor(labels, dtype=torch.long)
+                if problem_type == 'multi_label_classification':
+                    one_hot_labels = torch.zeros((labels.shape[0], self.config.num_labels), dtype=torch.float32)
+                    one_hot_labels[torch.arange(labels.shape[0])[:, None], labels] = 1
+                    labels = one_hot_labels
+            res['labels'] = labels
         return res
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -1115,22 +1171,28 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
+        packing_mode = self.use_megatron or self._packing and 'position_ids' in batch[0]
         res = {}
-        inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
-        input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
-        if inputs_embeds:
-            res['inputs_embeds'] = inputs_embeds
-        if input_ids:
-            res['input_ids'] = input_ids
-        for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
-            val = [b[key] for b in batch if b.get(key) is not None]
-            if val:
-                res[key] = val
+        if packing_mode:
+            # only support llm
+            for k in ['input_ids', 'labels', 'position_ids']:
+                res[k] = [self.gather_list(batch, k)]
+        else:
+            inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
+            input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
+            if inputs_embeds:
+                res['inputs_embeds'] = inputs_embeds
+            if input_ids:
+                res['input_ids'] = input_ids
+            for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
+                val = [b[key] for b in batch if b.get(key) is not None]
+                if val:
+                    res[key] = val
 
         keys = [
             'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'
         ]
-        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 1, 0]
+        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
@@ -1144,8 +1206,7 @@ class Template(ProcessorMixin):
                 res[key][i] = val
             if not seq_lens:
                 seq_lens = [seq.shape[0] for seq in res[key]]
-        packing_mode = self._packing and 'position_ids' in res
-        if not self.use_megatron and not packing_mode and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
+        if not packing_mode and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
             res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
             if self.is_training and self.padding_side == 'left':
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
@@ -1177,13 +1238,6 @@ class Template(ProcessorMixin):
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
-        if self.use_megatron:
-            labels = res['labels']
-            loss_mask = (labels != -100).float()
-            position_ids = torch.arange(
-                labels.shape[1], dtype=torch.long, device=labels.device).unsqueeze(0).expand_as(labels).contiguous()
-            res['tokens'] = res.pop('input_ids')
-            res.update({'loss_mask': loss_mask, 'position_ids': position_ids})
 
         return res
 
@@ -1237,6 +1291,8 @@ class Template(ProcessorMixin):
             if val is not None:
                 key_upper = key.upper()
                 logger.info(f'[{key_upper}_IDS] {val}')
+                if key == 'labels' and self.mode in {'seq_cls', 'embedding'}:
+                    continue
                 if isinstance(val, (list, tuple, torch.Tensor)):
                     val_str = self.safe_decode(val, **tokenizer_kwargs)
                     logger.info(f'[{key_upper}] {val_str}')

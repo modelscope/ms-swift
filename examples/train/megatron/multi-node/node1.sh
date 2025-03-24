@@ -1,6 +1,12 @@
-# 8 * 65GiB
-NPROC_PER_NODE=8 \
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+# For more information on multi-node training launch methods, refer to:
+# https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NNODES=2 \
+NODE_RANK=0 \
+MASTER_ADDR=127.0.0.1 \
+MASTER_PORT=29500 \
+NPROC_PER_NODE=4 \
 megatron sft \
     --load Qwen2.5-14B-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \

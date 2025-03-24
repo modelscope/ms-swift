@@ -1,24 +1,25 @@
-# 8 * 65GiB
-NPROC_PER_NODE=8 \
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-megatron sft \
-    --load Qwen2.5-14B-mcore \
-    --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+# 4 * 80GiB
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+megatron pt \
+    --load Qwen2.5-7B-mcore \
+    --dataset swift/chinese-c4 \
+    --streaming true \
+    --packing true \
     --tensor_model_parallel_size 4 \
     --micro_batch_size 1 \
     --global_batch_size 16 \
-    --packing true \
     --recompute_granularity selective \
-    --train_iters 2000 \
-    --eval_iters 50 \
+    --train_iters 10000 \
+    --eval_iters 100 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
-    --lr_warmup_iters 100 \
+    --lr_warmup_iters 300 \
     --min_lr 1e-6 \
-    --save megatron_output/Qwen2.5-14B \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --save megatron_output/Qwen2.5-7B \
+    --eval_interval 500 \
+    --save_interval 500 \
     --max_length 8192 \
     --num_workers 8 \
     --dataset_num_proc 8 \

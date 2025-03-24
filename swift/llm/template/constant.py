@@ -171,6 +171,7 @@ class MLLMTemplateType:
     megrez_omni = 'megrez_omni'
     valley = 'valley'
     gemma3_vision = 'gemma3_vision'
+    mistral_2503 = 'mistral_2503'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

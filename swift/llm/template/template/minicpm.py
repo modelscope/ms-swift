@@ -185,19 +185,13 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         image_inputs = image_processor([images], return_tensors='pt',
                                        max_slice_nums=max_slice_nums).to(self.config.torch_dtype)
 
-        n_new_tokens = 0
-        for i in range(len(idx_list)):
+        def _get_new_tokens(i):
             placeholder = image_processor.get_slice_image_placeholder(
                 image_inputs.image_sizes[0][i], image_idx=i, max_slice_nums=max_slice_nums, use_image_id=use_image_id)
             placeholder += '\n'
-            placeholder_id = self.processor.encode(placeholder, add_special_tokens=False)
-            input_ids = input_ids[:idx_list[i] + n_new_tokens] + placeholder_id + input_ids[idx_list[i] + n_new_tokens
-                                                                                            + 1:]
-            if labels is not None:
-                labels = labels[:idx_list[i]
-                                + n_new_tokens] + [-100] * len(placeholder_id) + labels[idx_list[i] + n_new_tokens + 1:]
-            n_new_tokens += len(placeholder_id) - 1
+            return self.processor.encode(placeholder, add_special_tokens=False)
 
+        input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
         if inputs.images:
             input_tensor_ids = torch.tensor(input_ids)
             unk_token = self.processor.encode('<unk>', add_special_tokens=False)[0]

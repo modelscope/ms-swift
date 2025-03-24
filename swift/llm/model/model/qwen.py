@@ -490,8 +490,7 @@ register_model(
         model_arch=ModelArch.llama))
 
 
-def patch_qwen_vl_utils():
-    from qwen_vl_utils import vision_process
+def patch_qwen_vl_utils(vision_process):
     if hasattr(vision_process, '_patch'):
         return
     for key in [
@@ -500,7 +499,6 @@ def patch_qwen_vl_utils():
     ]:
         type_func = float if key == 'fps' else int
         setattr(vision_process, key.upper(), get_env_args(key, type_func, getattr(vision_process, key.upper())))
-    from qwen_vl_utils import vision_process
     _read_video_decord = vision_process._read_video_decord
 
     def _new_read_video_decord(ele: dict):
@@ -520,7 +518,8 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
         patch_output_clone(model.model.embed_tokens)
         patch_output_to_input_device(model.model.embed_tokens)
 
-    patch_qwen_vl_utils()
+    from qwen_vl_utils import vision_process
+    patch_qwen_vl_utils(vision_process)
     return model, tokenizer
 
 

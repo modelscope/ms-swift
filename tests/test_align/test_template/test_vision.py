@@ -60,9 +60,10 @@ def test_qvq():
 
 def test_internvl2():
     pt_engine = PtEngine('OpenGVLab/InternVL2-2B')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_internvl2_phi3():
@@ -262,9 +263,10 @@ def test_mplug_owl2():
 def test_mplug_owl3():
     # pt_engine = PtEngine('iic/mPLUG-Owl3-7B-240728')
     pt_engine = PtEngine('iic/mPLUG-Owl3-7B-241101')
-    _infer_model(pt_engine, system='')
+    response = _infer_model(pt_engine, system='')
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine, system='')
+    response2 = _infer_model(pt_engine, system='')
+    assert response == response2
 
 
 def test_ovis1_6():
@@ -488,6 +490,16 @@ def test_gemma3_vision():
     assert response == response2
 
 
+def test_mistral_2503():
+    pt_engine = PtEngine('mistralai/Mistral-Small-3.1-24B-Instruct-2503')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'What is shown in this image?'}])
+    assert response == (
+        'The image shows a close-up of a Siamese kitten. The kitten has distinctive blue almond-shaped eyes, '
+        'a pink nose, and a light-colored coat with darker points on the ears, paws, tail, and face, '
+        'which are characteristic features of the Siamese breed. '
+        'The kitten appears to be looking directly at the viewer with a curious and endearing expression.')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -508,7 +520,7 @@ if __name__ == '__main__':
     # test_qwen_vl()
     # test_glm4v()
     # test_cogagent()
-    test_llava_onevision_hf()
+    # test_llava_onevision_hf()
     # test_minicpmv()
     # test_got_ocr()
     # test_got_ocr_hf()
@@ -535,3 +547,4 @@ if __name__ == '__main__':
     # test_valley()
     # test_ui_tars()
     # test_gemma3_vision()
+    test_mistral_2503()
