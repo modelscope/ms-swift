@@ -212,6 +212,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 'If you encounter an Out-of-Memory (OOM) error, it is recommended to set the `sleep_level`, '
                 '`offload_model`, and `offload_optimizer` parameters.')
             assert not self.async_generate, 'async_generate requires async mode, but you are under colocate mode'
+            if self.use_lmdeploy and self.tensor_parallel_size > 1:
+                raise ValueError('Currently LMDeploy do not support tensor parallel')
         else:
             # async mode
             assert device_count == (local_world_size + self.num_infer_workers), (
