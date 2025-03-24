@@ -171,7 +171,6 @@ def get_model_tokenizer_from_local(model_dir: str,
         model_config.keys_to_ignore_at_inference = []
     if 'past_key_values' not in model_config.keys_to_ignore_at_inference:
         model_config.keys_to_ignore_at_inference.append('past_key_values')
-    model_info.config = model_config
 
     torch_dtype = model_info.torch_dtype
     model_config.torch_dtype = torch_dtype
@@ -184,7 +183,7 @@ def get_model_tokenizer_from_local(model_dir: str,
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
     num_labels = model_info.num_labels or getattr(model_config, 'num_labels', None)
-    if num_labels and model_info.task_type != 'causal_lm':
+    if num_labels and model_info.task_type == 'seq_cls':
         model_info.num_labels = num_labels
         model_config.num_labels = num_labels
 
@@ -219,6 +218,7 @@ def get_model_tokenizer_from_local(model_dir: str,
             from swift.llm.model.patcher import patch_output_normalizer
             patch_output_normalizer(model, model_meta=kwargs['model_meta'])
 
+    model_info.config = model_config if model is None else model.config
     return model, tokenizer
 
 
@@ -535,6 +535,11 @@ def get_model_tokenizer(
         patch_getattr(processor.__class__, 'tokenizer')
     else:
         tokenizer = processor
+    problem_type = kwargs.get('problem_type')
+    if problem_type is None and model_info.num_labels == 1:
+        problem_type = 'regression'
+    if problem_type is not None:
+        model_info.config.problem_type = problem_type
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
 

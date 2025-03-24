@@ -78,6 +78,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🎁 2025.03.23: SWIFT supports multi round GRPO, this is used to construct multi turn conversations(use cases like agent tool calling), check script [here](examples/train/grpo/train_multi_round.sh).
 - 🎁 2025.03.16: SWIFT supports training with Megatron's parallel technology. Please refer to the [Megatron-SWIFT Training Documentation](https://swift.readthedocs.io/en/latest/Instruction/Megatron-SWIFT-Training.html).
 - 🎁 2025.03.15: SWIFT support the fine-tuning of gme(multi-modal) embedding models，please check the [training script](examples/train/embedding/train_gme.sh)。
 - 🎁 2025.03.13: We provide a script of GRPO to train a 72B model with only 4 GPUs(4*80G), please check [here](examples/train/grpo/train_72b_4gpu.sh)
@@ -119,13 +120,13 @@ Running Environment:
 | python       | >=3.9                | 3.10        |                                           |
 | cuda         |                      | cuda12      | No need to install if using CPU, NPU, MPS |
 | torch        | >=2.0                |             |                                           |
-| transformers | >=4.33               | 4.49      |                                           |
+| transformers | >=4.33               | 4.50      |                                           |
 | modelscope   | >=1.19               |             |                                           |
 | peft | >=0.11,<0.15 | ||
-| trl | >=0.13,<0.17 | 0.15 |RLHF|
+| trl | >=0.13,<0.17 | 0.16 |RLHF|
 | deepspeed    | >=0.14 | 0.14.5 | Training                                  |
-| vllm         | >=0.5.1              | 0.7.3       | Inference/Deployment/Evaluation           |
-| lmdeploy     | >=0.5 | 0.7.1       | Inference/Deployment/Evaluation           |
+| vllm         | >=0.5.1              | 0.8.1       | Inference/Deployment/Evaluation           |
+| lmdeploy     | >=0.5 | 0.7.2.post1       | Inference/Deployment/Evaluation           |
 | evalscope | >=0.11 |  | Evaluation |
 
 For more optional dependencies, you can refer to [here](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh).
