@@ -767,7 +767,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with torch.no_grad():
                 if self.old_policy:
                     mini_batch_encoded_inputs['old_per_token_logps'] = self._get_per_token_logps(
-                        self.model, mini_batch_inputs)
+                        self.model, mini_batch_encoded_inputs)
                 else:
                     mini_batch_encoded_inputs['old_per_token_logps'] = None
 
