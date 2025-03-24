@@ -110,6 +110,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         self._set_default()
         super().__post_init__()
         self._init_grpo_ds3()
+        self._check_rlhf()
+        self._check_grpo()
 
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
@@ -186,3 +188,41 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         if self.rlhf_type == 'grpo' and self.deepspeed:
             if 'zero_optimization' in self.deepspeed and self.deepspeed['zero_optimization']['stage'] == 3:
                 self.deepspeed['zero_optimization']['stage3_prefetch_bucket_size'] = 0
+
+    def _check_rlhf(self):
+        if self.sequence_parallel_size > 1:
+            raise ValueError('RLHF do not support sequence parallel')
+
+    def _check_grpo(self):
+        if self.rlhf_type != 'grpo':
+            return
+        from swift.utils import get_device_count, get_dist_setting
+        device_count = get_device_count()
+        _, _, _, local_world_size = get_dist_setting()
+
+        is_colocate_mode = (local_world_size == self.num_infer_workers)
+        if is_colocate_mode:
+            # colocate mode
+            assert device_count == local_world_size, (
+                f'Colocate mode requires device_count({device_count}) == local_world_size({local_world_size}). '
+                'Please check if your device count matches NPROC_PER_NODE setting.')
+            logger.info(
+                'You are using colocate mode because you have set num_infer_workers to be the same as NPROC_PER_NODE, '
+                'where model training and sampling will be performed on a single GPU. '
+                'If you encounter an Out-of-Memory (OOM) error, it is recommended to set the `sleep_level`, '
+                '`offload_model`, and `offload_optimizer` parameters.')
+            assert not self.async_generate, 'async_generate requires async mode, but you are under colocate mode'
+            if self.use_lmdeploy and self.tensor_parallel_size > 1:
+                raise ValueError('Currently LMDeploy do not support tensor parallel')
+        else:
+            # async mode
+            assert device_count == (local_world_size + self.num_infer_workers), (
+                f'Async mode requires total GPUs({device_count}) = training GPUs({local_world_size}) + '
+                f'inference workers({self.num_infer_workers}). Please adjust your GPU allocation.')
+            logger.info(
+                'You are using async mode, where model training and sampling will be performed on different GPUs.')
+            if self.sleep_level > 0:
+                logger.warning('You are using different GPUs for training and rollout, '
+                               'so you do not need to use sleep_level > 0')
+
+            assert self.tensor_parallel_size == 1, ('async mode do not support tensor parallel right now')
