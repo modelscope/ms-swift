@@ -10,8 +10,10 @@ import torch.utils.checkpoint
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
-from swift.utils import get_dist_setting, use_torchacc
+from swift.utils import get_dist_setting, get_logger, use_torchacc
 from .optimizers.galore import GaLoreConfig
+
+logger = get_logger()
 
 
 @dataclass
@@ -82,6 +84,7 @@ class TrainArgumentsMixin:
         if self.gradient_accumulation_steps is None:
             world_size = get_dist_setting()[2]
             self.gradient_accumulation_steps = max(1, math.ceil(16 / self.per_device_train_batch_size / world_size))
+            logger.info(f'Setting args.gradient_accumulation_steps: {self.gradient_accumulation_steps}')
         if self.lr_scheduler_kwargs:
             self.lr_scheduler_kwargs = ModelArguments.parse_to_dict(self.lr_scheduler_kwargs)
         if self.gradient_checkpointing_kwargs:

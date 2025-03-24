@@ -146,6 +146,7 @@ Other important parameters:
   - Note: `resume_from_checkpoint` will load the model weights, optimizer weights, and random seed, and continue training from the last trained steps. You can specify `--resume_only_model` to load only the model weights.
 - 🔥ddp_backend: Options include "nccl", "gloo", "mpi", "ccl", "hccl", "cncl", and "mccl". Default is None, which allows for automatic selection.
 - 🔥ddp_find_unused_parameters: Default is None.
+- ddp_timeout: The default value is 1800, with the unit being seconds.
 - 🔥dataloader_num_workers: Default is 0.
 - dataloader_pin_memory: Default is True.
 - dataloader_persistent_workers: Default is False.
