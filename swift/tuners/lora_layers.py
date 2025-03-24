@@ -1,20 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-import importlib
 import math
 import re
 import warnings
 from itertools import chain
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
-import importlib_metadata
-import packaging
-import peft
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from packaging import version
 from peft.import_utils import is_bnb_4bit_available, is_bnb_available
 from peft.tuners.lora import Conv2d as _Conv2d
 from peft.tuners.lora import Embedding as _Embedding
@@ -23,7 +18,7 @@ from peft.tuners.lora import LoraLayer
 from peft.tuners.lora import LoraModel as _LoraModel
 from peft.tuners.lora.tp_layer import LoraParallelLinear as _LoraParallelLinear
 from peft.tuners.tuners_utils import BaseTunerLayer
-from peft.utils import _get_submodules, get_auto_gptq_quant_linear, get_quantization_config
+from peft.utils import _get_submodules, get_quantization_config
 from transformers import Conv1D
 
 from swift import LoraConfig, get_logger
@@ -31,34 +26,6 @@ from .utils import ActivationMixin, ModulesToSaveWrapper, SwiftAdapter
 
 logger = get_logger()
 dispatchers = []
-
-
-def is_auto_awq_available():
-    return importlib.util.find_spec('awq') is not None
-
-
-def is_aqlm_available():
-    return importlib.util.find_spec('aqlm') is not None
-
-
-def is_eetq_available():
-    return importlib.util.find_spec('eetq') is not None
-
-
-def is_hqq_available():
-    return importlib.util.find_spec('hqq') is not None
-
-
-def is_auto_gptq_available():
-    try:
-        return peft.import_utils._is_auto_gptq_available()
-    except ImportError as e:
-        logger.warn(e)
-        return False
-
-
-peft.import_utils._is_auto_gptq_available = peft.import_utils.is_auto_gptq_available
-peft.import_utils.is_auto_gptq_available = is_auto_gptq_available
 
 
 class LoRAActivationMixin(ActivationMixin):
@@ -180,302 +147,6 @@ if is_bnb_4bit_available():
 
     dispatchers.append(dispatch_bnb_4bit)
 
-if is_aqlm_available():
-    from peft.tuners.lora.aqlm import AqlmLoraLinear as _AqlmLoraLinear
-    from aqlm import QuantizedLinear
-
-    class AqlmLoraLinear(LoRAActivationMixin, _AqlmLoraLinear):
-
-        def __init__(
-            self,
-            *args,
-            module_key: str,
-            **kwargs,
-        ):
-            super(AqlmLoraLinear, self).__init__(module_key)
-            self.set_activation(args[1], True)
-            super(ActivationMixin, self).__init__(*args, **kwargs)
-
-    def dispatch_aqlm(
-        target: torch.nn.Module,
-        adapter_name: str,
-        **kwargs: Any,
-    ) -> Optional[torch.nn.Module]:
-        new_module = None
-
-        if isinstance(target, BaseTunerLayer):
-            target_base_layer = target.get_base_layer()
-        else:
-            target_base_layer = target
-
-        if is_aqlm_available() and isinstance(target_base_layer, QuantizedLinear):
-            new_module = AqlmLoraLinear(target, adapter_name, **kwargs)
-            target.qweight = target_base_layer.codes
-
-        return new_module
-
-    dispatchers.append(dispatch_aqlm)
-
-if is_auto_awq_available():
-    from peft.tuners.lora.awq import AwqLoraLinear as _AwqLoraLinear
-    from awq.modules.linear import WQLinear_GEMM
-
-    class AwqLoraLinear(LoRAActivationMixin, _AwqLoraLinear):
-
-        def __init__(
-            self,
-            *args,
-            module_key: str,
-            **kwargs,
-        ):
-            super(AwqLoraLinear, self).__init__(module_key)
-            self.set_activation(args[1], True)
-            super(ActivationMixin, self).__init__(*args, **kwargs)
-
-    def dispatch_awq(
-        target: torch.nn.Module,
-        adapter_name: str,
-        module_key: str,
-        **kwargs: Any,
-    ) -> Optional[torch.nn.Module]:
-        new_module = None
-
-        if isinstance(target, BaseTunerLayer):
-            target_base_layer = target.get_base_layer()
-        else:
-            target_base_layer = target
-
-        if isinstance(target_base_layer, WQLinear_GEMM):
-            # Raise the error only at the dispatch level
-            AUTOAWQ_MINIMUM_VERSION = packaging.version.parse('0.2.0')
-            version_autoawq = packaging.version.parse(importlib_metadata.version('autoawq'))
-
-            if AUTOAWQ_MINIMUM_VERSION > version_autoawq:
-                raise ImportError(f'Found an incompatible version of auto-awq. Found version {version_autoawq}, '
-                                  f'but only versions above {AUTOAWQ_MINIMUM_VERSION} are supported for PEFT.')
-
-            new_module = AwqLoraLinear(target, adapter_name, module_key=module_key, **kwargs)
-            target.qweight = target_base_layer.qweight
-
-        return new_module
-
-    dispatchers.append(dispatch_awq)
-
-if is_auto_gptq_available():
-    from peft.tuners.lora import QuantLinear as _QuantLinear
-
-    class QuantLinear(LoRAActivationMixin, _QuantLinear):
-
-        def __init__(
-            self,
-            base_layer,
-            adapter_name: str,
-            module_key: str,
-            r: int = 0,
-            lora_alpha: int = 1,
-            lora_dropout: float = 0.0,
-            init_lora_weights: bool = True,
-            use_rslora: bool = False,
-            use_dora: bool = False,
-            use_qa_lora=False,
-            group_size=None,
-            **kwargs,
-        ):
-            super(QuantLinear, self).__init__(module_key)
-            self.set_activation(adapter_name, True)
-            nn.Module.__init__(self)
-            self.group_size = group_size
-            self.use_qa_lora = use_qa_lora
-            if self.use_qa_lora:
-                assert self.group_size is not None, 'To use qa_lora you need to pass in the `group_size` param.'
-                self.qa_pool = torch.nn.AvgPool1d(self.group_size)  # using pooling layer to conduct sum operation
-
-            LoraLayer.__init__(self, base_layer)
-            if use_dora:
-                raise ValueError(f'{_QuantLinear.__name__} does not support DoRA yet, please set it to False')
-            if self.use_qa_lora:
-                self.in_features = self.in_features // self.group_size
-            # self.base_layer and self.quant_linear_module are the same;
-            # we need the former for consistency and the latter
-            # for backwards compatibility
-            self.quant_linear_module = base_layer
-            self._active_adapter = adapter_name
-            self.update_layer(
-                adapter_name,
-                r,
-                lora_alpha=lora_alpha,
-                lora_dropout=lora_dropout,
-                init_lora_weights=init_lora_weights,
-                use_rslora=use_rslora,
-                use_dora=use_dora,
-            )
-
-        def forward(self, x: torch.Tensor):
-            # note: logic differs from default Linear because merging is not supported
-            result = self.quant_linear_module(x)
-
-            if self.disable_adapters:
-                return result
-
-            for active_adapter in self.active_adapters:
-                if active_adapter not in self.lora_A.keys():
-                    continue
-                lora_A = self.lora_A[active_adapter]
-                lora_B = self.lora_B[active_adapter]
-                dropout = self.lora_dropout[active_adapter]
-                scaling = self.scaling[active_adapter]
-
-                requires_conversion = not torch.is_autocast_enabled()
-                if requires_conversion:
-                    expected_dtype = result.dtype
-                    x = x.to(lora_A.weight.dtype)
-
-                if self.use_qa_lora:
-                    x = self.qa_pool(x) * self.group_size
-                output = lora_B(lora_A(dropout(x)))
-                if requires_conversion:
-                    output = output.to(expected_dtype)
-                output = output * scaling
-                result += output
-            return result
-
-    def dispatch_gptq(
-        target: torch.nn.Module,
-        adapter_name: str,
-        module_key: str,
-        **kwargs: Any,
-    ) -> Optional[torch.nn.Module]:
-        new_module = None
-
-        if isinstance(target, BaseTunerLayer):
-            target_base_layer = target.get_base_layer()
-        else:
-            target_base_layer = target
-
-        gptq_quantization_config = kwargs.get('gptq_quantization_config', None)
-        AutoGPTQQuantLinear = get_auto_gptq_quant_linear(gptq_quantization_config)
-
-        if AutoGPTQQuantLinear is not None and isinstance(target_base_layer, AutoGPTQQuantLinear):
-            new_module = QuantLinear(target, adapter_name, module_key=module_key, **kwargs)
-            target.qweight = target_base_layer.qweight
-
-        return new_module
-
-    dispatchers.append(dispatch_gptq)
-
-if is_eetq_available():
-    from peft.tuners.lora.eetq import EetqLoraLinear as _EetqLoraLinear
-    from eetq import EetqLinear
-
-    class EetqLoraLinear(LoRAActivationMixin, _EetqLoraLinear):
-
-        def __init__(
-            self,
-            *args,
-            module_key: str,
-            **kwargs,
-        ):
-            super(EetqLoraLinear, self).__init__(module_key)
-            self.set_activation(args[1], True)
-            super(ActivationMixin, self).__init__(*args, **kwargs)
-
-    def dispatch_eetq(
-        target: torch.nn.Module,
-        adapter_name: str,
-        **kwargs: Any,
-    ) -> Optional[torch.nn.Module]:
-        new_module = None
-
-        if isinstance(target, BaseTunerLayer):
-            target_base_layer = target.get_base_layer()
-        else:
-            target_base_layer = target
-
-        if is_eetq_available() and isinstance(target_base_layer, EetqLinear):
-            new_module = EetqLoraLinear(target, adapter_name, **kwargs)
-            target.weight = target_base_layer.weight
-
-            if hasattr(target, 'bias'):
-                target.bias = target_base_layer.bias
-
-        return new_module
-
-    dispatchers.append(dispatch_eetq)
-
-if is_hqq_available():
-    from peft.tuners.lora.hqq import HqqLoraLinear as _HqqLoraLinear
-    from hqq.core.quantize import HQQLinear
-
-    class HqqLoraLinear(LoRAActivationMixin, _HqqLoraLinear):
-
-        def __init__(
-            self,
-            *args,
-            module_key: str,
-            **kwargs,
-        ):
-            super(HqqLoraLinear, self).__init__(module_key)
-            self.set_activation(args[1], True)
-            super(ActivationMixin, self).__init__(*args, **kwargs)
-
-    def dispatch_hqq(target: torch.nn.Module, adapter_name: str, **kwargs):
-        new_module = None
-
-        if isinstance(target, BaseTunerLayer):
-            target_base_layer = target.get_base_layer()
-        else:
-            target_base_layer = target
-
-        if is_hqq_available() and isinstance(target_base_layer, HQQLinear):
-            new_module = HqqLoraLinear(target_base_layer, adapter_name, **kwargs)
-
-        return new_module
-
-    dispatchers.append(dispatch_hqq)
-
-
-def dispatch_megatron(
-    target: torch.nn.Module,
-    adapter_name: str,
-    lora_config,
-    module_key,
-    **kwargs: Any,
-) -> Optional[torch.nn.Module]:
-    new_module = None
-
-    if isinstance(target, BaseTunerLayer):
-        target_base_layer = target.get_base_layer()
-    else:
-        target_base_layer = target
-
-    if lora_config.megatron_config:
-        megatron_core = importlib.import_module(lora_config.megatron_core)
-    else:
-        megatron_core = None
-
-    if megatron_core and isinstance(
-            target_base_layer,
-        (megatron_core.tensor_parallel.ColumnParallelLinear, megatron_core.tensor_parallel.RowParallelLinear)):  # noqa
-        megatron_kwargs = kwargs.copy()
-        megatron_config = lora_config.megatron_config
-        if isinstance(megatron_config, dict):
-            transformer_config_class = megatron_core.transformer.transformer_config.TransformerConfig
-            megatron_config = transformer_config_class(**lora_config.megatron_config)
-        megatron_kwargs['megatron_config'] = megatron_config
-        if megatron_kwargs['fan_in_fan_out']:
-            warnings.warn('fan_in_fan_out is set to True but the target module is `ColumnParallelLinear` '
-                          'or `RowParallelLinear`. '
-                          'Setting fan_in_fan_out to False.')
-            megatron_kwargs['fan_in_fan_out'] = lora_config.fan_in_fan_out = False
-        new_module = LoraParallelLinear(
-            base_layer=target,
-            adapter_name=adapter_name,
-            module_key=module_key,
-            backend=megatron_core.tensor_parallel,
-            **megatron_kwargs)
-
-    return new_module
-
 
 def dispatch_default(
     target: torch.nn.Module,
@@ -520,7 +191,6 @@ def dispatch_default(
     return new_module
 
 
-dispatchers.append(dispatch_megatron)
 dispatchers.append(dispatch_default)
 
 
