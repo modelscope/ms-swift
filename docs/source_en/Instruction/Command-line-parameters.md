@@ -26,7 +26,7 @@ Hints:
 - 🔥model: Model ID or local path to the model. If it's a custom model, please use it with `model_type` and `template`. The specific details can be referred to in the [Custom Model](../Customization/Custom-model.md).
 - model_type: Model type. The same model architecture, template, and model loading process are defined as a model_type. The default is None, and it will be automatically selected based on the suffix of `--model` and the architectures attribute in config.json.
 - model_revision: Model revision, default is None.
-- task_type: Default is 'causal_lm' (if `--num_labels` is set, this parameter will be automatically set to 'seq_cls'). Options are 'causal_lm' and 'seq_cls'. Examples of seq_cls can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls).
+- task_type: The default value is 'causal_lm'. Optional values are 'causal_lm', 'seq_cls', and 'embedding'. Examples for seq_cls can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls), and examples for embedding can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/embedding).
 - 🔥torch_dtype: Data type of model weights, supports `float16`, `bfloat16`, `float32`. The default is None, and it is read from the 'config.json' file.
 - attn_impl: Type of attention, options are`flash_attn`, `sdpa`, `eager`. The default is sdpa; if not supported, eager is used.
   - Note: These three implementations may not all be supported, depending on the support of the corresponding model.
