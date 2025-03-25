@@ -318,7 +318,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         llm = llm[0]
                     if name.startswith('base_model'):
                         name = name.replace('base_model.', '')
-                    if name in llm:
+                    if llm in name:
                         layer_count = len(module)
                 else:
                     layer_count = len(module)
@@ -608,6 +608,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # This must be done after loading weights to ensure they correspond to the merged state.
                 if is_peft_model(unwrapped_model):
                     unwrapped_model.unmerge_adapter()
+
+        if self.infer_rank >= 0 and self.use_vllm:
+            self.engine.engine.reset_prefix_cache()
 
     def _wait_queue(self):
         while self._queue.empty():
