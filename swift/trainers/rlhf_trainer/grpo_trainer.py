@@ -627,7 +627,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
-    def _infer_multi_turn(self, inputs_slice, request_config):
+    def _infer_multi_turn(self, inputs_slice, request_config) -> List[List[Dict[str, Any]]]:
         from swift.llm.infer.protocol import ChatCompletionResponse
         rank, _, _, _ = get_dist_setting()
         request_config = copy(request_config)
@@ -700,6 +700,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs.append(_choices)
             assert len(outputs) == prompt_lens
             assert all([len(o) == self.args.tensor_parallel_size for o in outputs])
+            if isinstance(outputs[0][0], list):
+                outputs = [output[0] for output in outputs]
             return outputs
 
     def async_infer(self, inputs, inputs_slice, distributed_idx):
