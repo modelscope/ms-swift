@@ -698,10 +698,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
                     _choices.append(_input['messages'])
                 outputs.append(_choices)
-            if isinstance(outputs[0][0], list):
-                outputs = [output[0] for output in outputs]
             assert len(outputs) == prompt_lens
             assert all([len(o) == self.args.tensor_parallel_size for o in outputs])
+            if isinstance(outputs[0][0], list):
+                outputs = [output[0] for output in outputs]
             return outputs
 
     def async_infer(self, inputs, inputs_slice, distributed_idx):
