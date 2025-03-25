@@ -609,7 +609,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if is_peft_model(unwrapped_model):
                     unwrapped_model.unmerge_adapter()
 
-        if self.infer_rank >= 0 and self.use_vllm:
+        if self.infer_rank >= 0 and self.use_vllm and self.args.vllm_enable_prefix_caching:
             self.engine.engine.reset_prefix_cache()
 
     def _wait_queue(self):
@@ -980,7 +980,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             mean_kl = (per_token_kl * completion_mask).sum() / completion_mask.sum()
             metrics['kl'] = mean_kl
 
-        is_clipped = (per_token_loss1 < per_token_loss2).float()
+        is_clipped = (coef_1 < (1 - self.epsilon)) | (coef_1 > (1 + self.epsilon))
         clip_ratio = (is_clipped * completion_mask).sum() / completion_mask.sum()
         metrics['clip_ratio'] = clip_ratio
 
