@@ -30,14 +30,15 @@ Hints:
 - 🔥torch_dtype: Data type of model weights, supports `float16`, `bfloat16`, `float32`. The default is None, and it is read from the 'config.json' file.
 - attn_impl: Type of attention, options are`flash_attn`, `sdpa`, `eager`. The default is sdpa; if not supported, eager is used.
   - Note: These three implementations may not all be supported, depending on the support of the corresponding model.
-- num_labels: This parameter needs to be specified for classification models. It represents the number of labels and defaults to None.
+- num_labels: This parameter is required for classification models (i.e., `--task_type seq_cls`). It represents the number of labels, with a default value of None.
+- problem_type: This parameter is required for classification models (i.e., `--task_type seq_cls`). The options are 'regression', 'single_label_classification', and 'multi_label_classification'. The default value is None, and it will be automatically set based on the number of labels and the dataset type.
 - rope_scaling: Type of rope, supports `linear` and `dynamic`, should be used in conjunction with `max_length`. Default is None.
 - device_map: Device map configuration used by the model, such as 'auto', 'cpu', JSON string, or the path of a JSON file. The default is None, automatically set based on the device and distributed training conditions.
 - max_memory: When device_map is set to 'auto' or 'sequential', the model weights will be allocated to devices based on max_memory, for example: `--max_memory '{0: "20GB", 1: "20GB"}'`. The default value is None.
 - local_repo_path: Some models depend on a GitHub repo when loading. To avoid network issues during `git clone`, a local repo can be used directly. This parameter needs to be passed with the path to the local repo, with the default being `None`.
 
 ### Data Arguments
-- 🔥dataset: A list of dataset IDs or paths. Default is `[]`. The input format for each dataset is: `dataset ID or dataset path:sub-dataset#sampling size`, where sub-dataset and sampling data are optional. Local datasets support jsonl, csv, json, folders, etc. Open-source datasets can be cloned locally via git and used offline by passing the folder. For custom dataset formats, refer to [Custom Dataset](../Customization/Custom-dataset.md).
+- 🔥dataset: A list of dataset IDs or paths. Default is `[]`. The input format for each dataset is: `dataset ID or dataset path:sub-dataset#sampling size`, where sub-dataset and sampling data are optional. Local datasets support jsonl, csv, json, folders, etc. Open-source datasets can be cloned locally via git and used offline by passing the folder. For custom dataset formats, refer to [Custom Dataset](../Customization/Custom-dataset.md). You can pass in `--dataset <dataset1> <dataset2>` to use multiple datasets.
   - Sub-dataset: This parameter is effective only when the dataset is an ID or folder. If a subset was specified during registration, and only one sub-dataset exists, the registered sub-dataset is selected by default; otherwise, it defaults to 'default'. You can use `/` to select multiple sub-datasets, e.g., `<dataset_id>:subset1/subset2`. You can also use 'all' to select all sub-datasets, e.g., `<dataset_id>:all`.
   - Sampling Size: By default, the complete dataset is used. If the sampling size is less than the total number of data samples, samples are selected randomly without repetition. If the sampling size exceeds the total number of data samples, then `sampling size%total data samples` samples are randomly sampled additionally, and data samples are repetitively sampled `sampling size//total data samples` times.
 - 🔥val_dataset: A list of validation set IDs or paths. Default is `[]`.
@@ -116,6 +117,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - zero_hpz_partition_size: Default is `None`. This parameter is a feature of `ZeRO++`, which implements model sharding within nodes and data sharding between nodes. If you encounter grad_norm `NaN` issues, please try using `--torch_dtype float16`
 - 🔥per_device_train_batch_size: Default is 1.
 - 🔥per_device_eval_batch_size: Default is 1.
+- 🔥gradient_accumulation_steps: Gradient accumulation, default is None, meaning set gradient_accumulation_steps such that total_batch_size >= 16. The total_batch_size equals `per_device_train_batch_size * gradient_accumulation_steps * world_size`.
 - weight_decay: Weight decay coefficient, default value is 0.1.
 - adam_beta2: Default is 0.95.
 - 🔥learning_rate: Learning rate, defaults to 1e-5 for full parameters, and 1e-4 for LoRA and other tuners.
@@ -131,7 +133,6 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 
 Other important parameters:
 - 🔥num_train_epochs: Number of training epochs, default is 3.
-- 🔥gradient_accumulation_steps: Gradient accumulation, default is 1.
 - 🔥save_strategy: Strategy for saving the model, options include 'no', 'steps', 'epoch'. Default is 'steps'.
 - 🔥save_steps: Default is 500.
 - 🔥eval_strategy: Evaluation strategy. Default is None and follows the strategy of `save_strategy`.
@@ -143,8 +144,9 @@ Other important parameters:
 - save_only_model: Whether to save only the model weights without including optimizer state, random seed state, etc. Default is False.
 - 🔥resume_from_checkpoint: Parameter for resuming training from a checkpoint, pass the checkpoint path. Default is None.
   - Note: `resume_from_checkpoint` will load the model weights, optimizer weights, and random seed, and continue training from the last trained steps. You can specify `--resume_only_model` to load only the model weights.
-- 🔥ddp_backend: Default is None, options include "nccl", "gloo", "mpi", "ccl", "hccl", "cncl", "mccl".
+- 🔥ddp_backend: Options include "nccl", "gloo", "mpi", "ccl", "hccl", "cncl", and "mccl". Default is None, which allows for automatic selection.
 - 🔥ddp_find_unused_parameters: Default is None.
+- ddp_timeout: The default value is 1800, with the unit being seconds.
 - 🔥dataloader_num_workers: Default is 0.
 - dataloader_pin_memory: Default is True.
 - dataloader_persistent_workers: Default is False.
@@ -329,10 +331,11 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. If in an offline environment, please set to False.
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
 - loss_type: Type of loss. Defaults to None, which uses the model's built-in loss function.
-- packing: Whether to use sequence packing, defaults to False.
+- 🔥packing: Whether to use sequence packing to improve computational efficiency. The default value is False.
   - Note: When using packing, please combine it with --attn_impl flash_attn. For details, see [this PR](https://github.com/huggingface/transformers/pull/31629). Packing does not currently support multimodal models.
 - 🔥lazy_tokenize: Whether to use lazy tokenization. If set to False, all dataset samples are tokenized before training (for multimodal models, this includes reading images from disk). This parameter defaults to False for LLM training, and True for MLLM training, to save memory.
 - acc_strategy: Strategy for calculating accuracy during training and validation. Options are `seq`-level and `token`-level accuracy, with `token` as the default.
+- train_sampler_random: Whether the sampler for the training dataloader uses `RandomSampler`. If set to False, `SequentialSampler` will be used. The default value is True.
 - max_new_tokens: Generation parameter override. The maximum number of tokens to generate when `predict_with_generate=True`, defaulting to 64.
 - temperature: Generation parameter override. The temperature setting when `predict_with_generate=True`, defaulting to 0.
 - optimizer: Custom optimizer name for the plugin, defaults to None.
@@ -419,6 +422,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM/LMDeploy. The default is `False`.
 - offload_model: Whether to offload the model itself during inference with vLLM/LMDeploy. The default is `False`.
 - gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
+- mini_batch_size: Used to further split the batch size on each device (per_device_batch) into smaller sub-batches. To ensure the split is valid, per_device_train_batch_size needs be divisible by mini_batch_size.
 cosine reward function arguments
 - `cosine_min_len_value_wrong` (default: 0.0): Reward value corresponding to the minimum length when the answer is incorrect. Default is 0.0
 - `cosine_max_len_value_wrong` (default: -0.5): Reward value corresponding to the maximum length when the answer is incorrect. Default is -0.5
@@ -510,6 +514,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - 🔥to_mcore: Convert weights from HF format to Megatron format. Default is False.
 - to_hf: Convert weights from Megatron format to HF format. Default is False.
 - mcore_model: Path to the mcore format model. Default is None.
+- thread_count: The number of model slices when `--to_mcore true` is set. Defaults to None, and is automatically configured based on the model size, ensuring that the largest slice is less than 10GB.
 - test_convert_precision: Test the precision error when converting weights between HF and Megatron formats. Default is False.
 - 🔥push_to_hub: Whether to push to the hub, with the default being False. Examples can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/export/push_to_hub.sh).
 - hub_model_id: Model ID for pushing, default is None.

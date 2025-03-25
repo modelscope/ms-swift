@@ -47,6 +47,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     to_mcore: bool = False
     to_hf: bool = False
     mcore_model: Optional[str] = None
+    thread_count: Optional[int] = None
     test_convert_precision: bool = False
 
     # push to ms hub

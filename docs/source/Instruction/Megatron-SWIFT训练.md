@@ -94,8 +94,18 @@ swift infer \
 I am a language model developed by swift, you can call me swift-robot. How can I assist you?
 ```
 
-- 更多案例可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron)。
+- 更多案例：例如packing、多机，可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron)。
 - 若要进行预训练，你可以使用`megatron pt`替代`megatron sft`，这将会使用生成式的template进行训练。
+
+## Benchmark
+
+使用`megatron sft`和`swift sft`在单机八卡A800环境下进行14B模型全参数训练的速度对比如下，对应脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/benchmark)。
+
+|          | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
+| -------- | ----------- | ---------- | ---------- |
+| 训练速度 |      9.04s/it       |  10.32s/it   | 10.56s/it |
+| 显存占用 | 8\*64GB     |  8\*80GB   | 8\*58GB |
+
 
 ## 命令行参数
 
@@ -120,12 +130,12 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥cross_entropy_loss_fusion: 启动交叉熵损失计算融合。默认为False。
 - 🔥use_flash_attn: 使用 FlashAttention 注意力机制实现，默认为False。
 - optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
-- dataloader_type: 默认为'cyclic'，可选为'single', 'cyclic', 'external'。
+- dataloader_type: 默认为'cyclic'，可选为'single', 'cyclic', 'external'。若开启`--streaming`，则设置为`external`。
 - manual_gc: 禁用默认垃圾回收器，手动触发垃圾回收。默认为False。
 - manual_gc_interval: 触发垃圾回收的间隔。默认为0。
 - seed: python、numpy、pytorch和cuda的随机种子，默认为42。
 - 🔥num_workers: dataloder的workers数量，默认为4。
-- seq_length: 要处理的最大序列长度。默认为None，即设置为`max_position_embeddings`。Megatron-SWIFT采用训练中批次动态padding，因此通常无需修改该参数。对数据集长度进行限制请使用基本参数中的`--max_length`控制。
+- seq_length: 默认为None，即设置为`max_length`。对数据集长度进行限制请使用基本参数中的`--max_length`控制，无需设置此参数。
 - use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。
 - no_create_attention_mask_in_dataloader: 在dataloader中不创建attention mask，默认为True。
 
@@ -175,6 +185,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 **日志参数**
 - log_params_norm: 记录参数的norm。默认为True。
 - log_throughput: 记录每个GPU的吞吐量。默认为True。
+  - 注意：在非packing情况下，log_throughput并不准确，因为`seq_length`并不等于真实序列长度。
 - tensorboard_log_interval: 记录到tensorboard的间隔（steps），默认为1。
 - tensorboard_queue_size: 队列长度（与磁盘IO相关），类似于写入的间隔。默认为50。
 - log_timers_to_tensorboard: 记录timers到tensorboard。默认为True。
@@ -188,7 +199,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥eval_interval: 评估的间隔（steps），默认为None，即设置为save_interval。
 
 **混合精度参数**
-- fp16: fp16模式。默认为False。会根据模型的torch_dtype进行设置。
+- fp16: fp16模式。默认为False。会根据模型的torch_dtype进行设置。请使用`--torch_dtype`进行设置，默认读取config.json。
 - bf16: bf16模式。默认为False。会根据模型的torch_dtype进行设置。
 - apply_query_key_layer_scaling: 将`Q * K^T` 缩放为 `1 / 层数`（例如：第layer_num层则除以layer_num）。这对fp16训练很有帮助。默认为None，即若使用`--fp16`，则设置为True。
 - attention_softmax_in_fp32: 在attention_mask和softmax中使用fp32进行计算。默认为True。
@@ -221,4 +232,6 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 Megatron训练参数继承自Megatron参数和基本参数。基本参数的内容可以参考[这里](./命令行参数.md#基本参数)。此外还包括以下参数：
 
 - add_version: 在`save`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
-- 🔥lazy_tokenize: 默认为False。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（这可以避免在训练中出现报错）；设置为True，则在训练中对数据集进行tokenize（这可以节约内存）。
+- 🔥packing: 是否使用序列packing，默认为False。
+- 🔥streaming: 流式读取并处理数据集，默认False。通常在处理大型数据集时，设置为True。
+- lazy_tokenize: 默认为False。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（这可以避免在训练中出现报错）；设置为True，则在训练中对数据集进行tokenize（这可以节约内存）。

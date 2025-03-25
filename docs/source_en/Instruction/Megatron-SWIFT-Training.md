@@ -100,8 +100,15 @@ The inference results are as follows:
 I am a language model developed by swift, you can call me swift-robot. How can I assist you?
 ```
 
-- More cases can be viewed [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
+- More examples: such as packing and multi-machine, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
 - For pretraining, you can use `megatron pt` instead of `megatron sft`, which will use a generative template for training.
+
+## Benchmark
+
+|                  | Megatron-LM      | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
+| ---------------- | --------------- | --------------- | --------- |
+| Training Speed   | 9.04s/it        | 10.32s/it       | 10.56s/it |
+| GPU Memory Usage | 8\*64GB          | 8\*80GB          | 8\*58GB    |
 
 ## Command Line Arguments
 
@@ -126,12 +133,12 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥cross_entropy_loss_fusion: Enables cross-entropy loss calculation fusion. Default is False.
 - 🔥use_flash_attn: Uses FlashAttention mechanism implementation, default is False.
 - optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
-- dataloader_type: Default is 'cyclic', options are 'single', 'cyclic', 'external'.
+- dataloader_type: Default is 'cyclic', options are 'single', 'cyclic', 'external'. If `--streaming` is enabled, set it to external.
 - manual_gc: Disables the default garbage collector and manually triggers garbage collection. Default is False.
 - manual_gc_interval: Interval at which garbage collection is triggered. Default is 0.
 - seed: Random seed for python, numpy, pytorch, and cuda, default is 42.
 - 🔥num_workers: Number of workers for the dataloader, default is 4.
-- seq_length: Maximum sequence length to process. Default is None, meaning it will be set to `max_position_embeddings`. Megatron-SWIFT uses dynamic padding during training, so usually there is no need to modify this parameter. To limit dataset length, use the `--max_length` control in basic parameters.
+seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the dataset length, please use the `--max_length` parameter in the basic arguments; there is no need to set this parameter.
 - use_cpu_initialization: Initializes weights on the CPU, default is False. Used during HF and MCore weight conversion.
 - no_create_attention_mask_in_dataloader: Does not create an attention mask in the dataloader, default is True.
 
@@ -185,6 +192,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 - log_params_norm: Logs the norm of parameters. Default is True.
 - log_throughput: Logs throughput per GPU. Default is True.
+  - Note: In non-packing scenarios, log_throughput is not accurate because `seq_length` does not equal the actual sequence length.
 - tensorboard_log_interval: Interval (steps) for logging to TensorBoard, default is 1.
 - tensorboard_queue_size: Queue length (related to disk I/O), similar to write intervals. Default is 50.
 - log_timers_to_tensorboard: Logs timers to TensorBoard. Default is True.
@@ -200,7 +208,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 **Mixed Precision Parameters**
 
-- fp16: FP16 mode. Default is False. Set according to the model's torch_dtype.
+- fp16: FP16 mode. Default is False. Set according to the model's torch_dtype. Please use `--torch_dtype` to set it. By default, it reads from config.json.
 - bf16: BF16 mode. Default is False. Set according to the model's torch_dtype.
 - apply_query_key_layer_scaling: Scales `Q * K^T` by `1 / layer number` (e.g., divide by layer_num for layer_num-th layer). This is helpful for FP16 training. Default is None, meaning that if `--fp16` is used, it will be set to True.
 - attention_softmax_in_fp32: Uses FP32 for computations in attention_mask and softmax. Default is True.
@@ -234,4 +242,6 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 Megatron training parameters inherit from Megatron parameters and basic parameters. For information on basic parameters, see [here](./Command-line-parameters.md#base-arguments). Additionally, the following parameters are included:
 
 - add_version: Adds a directory `<version>-<timestamp>` to `save` to prevent overwriting weights, default is True.
-- 🔥lazy_tokenize: Default is False. If this parameter is set to False, all dataset samples are tokenized before training (this avoids errors during training); if set to True, tokenization occurs during training (this saves memory).
+- 🔥packing: Whether to use sequence packing, defaults to False.
+- 🔥streaming: Stream reading and processing of the dataset, default is False. It is typically set to True when handling large datasets.
+- lazy_tokenize: Default is False. If this parameter is set to False, all dataset samples are tokenized before training (this avoids errors during training); if set to True, tokenization occurs during training (this saves memory).

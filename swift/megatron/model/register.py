@@ -42,4 +42,6 @@ def get_megatron_model_meta(model_type: str) -> Optional[MegatronModelMeta]:
         for k, megatron_model_meta in MEGATRON_MODEL_MAPPING.items():
             for _model_type in megatron_model_meta.model_types:
                 _MODEL_META_MAPPING[_model_type] = k
+    if model_type not in _MODEL_META_MAPPING:
+        return
     return MEGATRON_MODEL_MAPPING[_MODEL_META_MAPPING[model_type]]

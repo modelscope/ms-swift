@@ -19,7 +19,7 @@ numpy<2.0
 openai
 oss2
 pandas
-peft>=0.11.0,<0.15.0
+peft>=0.11.0,<0.16.0
 pillow
 requests
 rouge

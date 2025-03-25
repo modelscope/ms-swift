@@ -96,19 +96,18 @@ class mPlugOwl3Template(Template):
         encoded = {}
         if images:
             image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
-            added_tokens_len = 0
             cut_shapes = image_inputs['cut_shape'] or [None] * 2 * len(idx_list)
             image_token_list = self.processor.encode('<|image|>', add_special_tokens=False)
-            for idx, cut_shape in zip(idx_list, cut_shapes[::2]):
+
+            def _get_new_tokens(i):
+                cut_shape = cut_shapes[2 * i]
                 if cut_shape:
                     token_list = self._get_image_token_list(cut_shape)
                 else:
                     token_list = image_token_list
-                input_ids = input_ids[:idx + added_tokens_len] + token_list + input_ids[added_tokens_len + idx + 1:]
-                if labels:
-                    labels = labels[:idx + added_tokens_len] + [-100] * len(token_list) + labels[added_tokens_len + idx
-                                                                                                 + 1:]
-                added_tokens_len += len(token_list) - 1
+                return token_list
+
+            input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
             image_token_idx = torch.tensor(findall(input_ids, image_token_list))
             if self.version == '241101':
                 media_offset = image_token_idx

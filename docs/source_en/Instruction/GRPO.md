@@ -72,8 +72,8 @@ The paper found that training with only the accuracy reward function could lead 
 A cosine function is used to smoothly adjust the reward value, ensuring that the changes are within a reasonable range. The parameters for the cosine function include the length of the generated text, the maximum length limit, and the minimum and maximum reward values.
 
 Parameters:
-- `cosine_min_len_value_wrong` (default: 0.0): Reward value corresponding to the minimum length when the answer is incorrect.
-- `cosine_max_len_value_wrong` (default: -0.5): Reward value corresponding to the maximum length when the answer is incorrect.
+- `cosine_min_len_value_wrong` (default: -0.5): Reward value corresponding to the minimum length when the answer is incorrect.
+- `cosine_max_len_value_wrong` (default: 0.0): Reward value corresponding to the maximum length when the answer is incorrect.
 - `cosine_min_len_value_correct` (default: 1.0): Reward value corresponding to the minimum length when the answer is correct.
 - `cosine_max_len_value_correct` (default: 0.5): Reward value corresponding to the maximum length when the answer is correct.
 - `cosine_max_len` (default value equal to the model's maximum generation capacity): Maximum length limit for generated text.
@@ -118,6 +118,8 @@ Hyperparameters
 - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM/LMDeploy. The default is `False`.
 - offload_model: Whether to offload the model itself during inference with vLLM/LMDeploy. The default is `False`.
 - gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
+- mini_batch_size: Used to further split the batch size on each device (per_device_batch) into smaller sub-batches. To ensure the split is valid, per_device_train_batch_size needs be divisible by mini_batch_size.
+
 
 The hyperparameters for the reward function can be found in the [Built-in Reward Functions section](#built-in-reward-functions).
 
