@@ -94,8 +94,9 @@ class SwiftMixin:
 
         self.compute_loss_func = compute_loss_func
         if get_function(model.__class__.forward) is not get_function(model.forward):
-            self.label_names = find_labels(model) or ['labels']
+            self.label_names = find_labels(model)
             self.can_return_loss = can_return_loss(model)
+        self.label_names = self.label_names or ['labels']
         self.start_time = time.time()
 
     def _save_initial_model(self, output_dir):

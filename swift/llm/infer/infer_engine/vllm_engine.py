@@ -22,6 +22,7 @@ from .utils import AdapterRequest, InferStreamer, patch_npu_vllm, patch_vllm
 
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
+    os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '0')
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '3600'
     import vllm

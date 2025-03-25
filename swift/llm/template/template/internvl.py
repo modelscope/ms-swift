@@ -120,7 +120,7 @@ class Internvl2Template(InternvlTemplate):
                 max_num = video_max_num
             pixel_values = [transform_image(image, input_size, max_num) for image in images]
             num_patches = [pv.shape[0] for pv in pixel_values]
-            pixel_values = torch.cat(pixel_values).to(self.config.torch_dtype)
+            pixel_values = torch.cat(pixel_values).to(self.model_info.torch_dtype)
         else:
             pixel_values = None
             num_patches = []

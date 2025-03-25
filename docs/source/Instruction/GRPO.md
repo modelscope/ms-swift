@@ -7,7 +7,7 @@
 环境安装
 ```bash
 pip install math_verify # reward function
-pip install git+https://github.com/huggingface/trl.git"
+pip install -U trl"
 ```
 
 **注意**：训练过程中 loss 接近0 是正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
@@ -69,8 +69,8 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 使用余弦函数平滑地调整奖励值，确保奖励变化在合理范围内。余弦函数的参数包括生成文本的长度、最大长度限制以及奖励的最小值和最大值。
 
 参数
-- cosine_min_len_value_wrong（默认值：0.0）：生成错误答案时，最小长度对应的奖励值。
-- cosine_max_len_value_wrong（默认值：-0.5）：生成错误答案时，最大长度对应的奖励值。
+- cosine_min_len_value_wrong（默认值：-0.5）：生成错误答案时，最小长度对应的奖励值。
+- cosine_max_len_value_wrong（默认值：0.0）：生成错误答案时，最大长度对应的奖励值。
 - cosine_min_len_value_correct（默认值：1.0）：生成正确答案时，最小长度对应的奖励值。
 - cosine_max_len_value_correct（默认值：0.5）：生成正确答案时，最大长度对应的奖励值。
 - cosine_max_len（默认值等于模型生成的最大程度）：生成文本的最大长度限制。
@@ -108,7 +108,8 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - vllm_max_model_len: vLLM透传参数
 - reward_model: 同model, 使用奖励模型作为奖励函数，与reward_funcs至少需要指定一个
 - num_iterations: 每个批次代更新次数，默认为1.
-- epsilon: clip 系数
+- epsilon: clip 系数，默认为0.2.
+- epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围.
 - async_generate: 异步rollout以提高训练速度，默认`false`.
 - sleep_level: vllm特有参数，在训练和rollout复用卡的时候，可以选择vllm进行offload.
 - move_model_batches: 在模型向vLLM/LMDeploy等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个
@@ -116,6 +117,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - offload_model: 是否在vLLM/LMDeploy推理时offload 模型本身，默认为False
 - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False
 - multi_turn_func: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现
+- mini_batch_size：用于将每个设备上的批次大小（per_device_batch）进一步切分为更小的子批次。为确保切分有效，per_device_batch 需要能够被 mini_batch_size 整除
 
 奖励函数超参，见[内置奖励函数](#内置奖励函数)
 

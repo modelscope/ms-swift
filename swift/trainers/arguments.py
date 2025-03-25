@@ -122,6 +122,8 @@ class SwiftArgumentsMixin(TrainArgumentsMixin):
 
 @dataclass
 class GRPOArgumentsMixin:
+    epsilon: float = 0.2
+    epsilon_high: Optional[float] = None
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
@@ -133,8 +135,8 @@ class GRPOArgumentsMixin:
     vllm_enable_prefix_caching: bool = True
     # reward function args, see details in swift/plugin/orm.py
     # cosine reward, https://arxiv.org/abs/2502.03373
-    cosine_min_len_value_wrong: float = 0.0  # r^w_0 in paper, Reward for wrong answers with zero completion length.
-    cosine_max_len_value_wrong: float = -0.5  # r^w_L in paper, Reward for wrong answers with max completion length.
+    cosine_min_len_value_wrong: float = -0.5  # r^w_0 in paper, Reward for wrong answers with zero completion length.
+    cosine_max_len_value_wrong: float = 0.0  # r^w_L in paper, Reward for wrong answers with max completion length.
     cosine_min_len_value_correct: float = 1.0  # r^c_0 in paper, Reward for correct answers with zero completion length.
     cosine_max_len_value_correct: float = 0.5  # r^c_L in paper, Reward for correct answers with max completion length.
     cosine_max_len: Optional[int] = None  # Lmax in paper, default equal to max_completion_length
@@ -156,6 +158,9 @@ class GRPOArgumentsMixin:
     offload_model: bool = False
     gc_collect_after_offload: bool = False
     multi_turn_func: Optional[str] = None
+
+    # mini-batch
+    mini_batch_size: Optional[int] = None
 
 
 @dataclass

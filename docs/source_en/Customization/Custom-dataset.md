@@ -13,7 +13,7 @@ The standard dataset format for ms-swift accepts keys such as: 'messages', 'reje
 
 There are three core preprocessors in ms-swift: `MessagesPreprocessor`, `AlpacaPreprocessor`, and `ResponsePreprocessor`. `MessagesPreprocessor` is used to convert datasets in the messages and sharegpt format into the standard format. `AlpacaPreprocessor` converts datasets in the alpaca format, while `ResponsePreprocessor` converts datasets in the query/response format. `AutoPreprocessor` automatically selects the appropriate preprocessor for the task.
 
-The following four formats will all be converted to the messages field in the ms-swift standard format by `AutoPreprocessor`:
+The following four formats will all be converted into the `messages` field of the ms-swift standard format under the processing of `AutoPreprocessor`, meaning they can all be directly used with `--dataset <dataset-path>`:
 
 Messages format (standard format):
 ```jsonl
