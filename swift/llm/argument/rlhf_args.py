@@ -56,7 +56,6 @@ class GRPOArguments(GRPOArgumentsMixin):
     # multi step
     num_iterations: int = 1
     epsilon: float = 0.2
-    episilon_high: Optional[float] = None
 
 
 @dataclass
