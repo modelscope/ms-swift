@@ -318,7 +318,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         llm = llm[0]
                     if name.startswith('base_model'):
                         name = name.replace('base_model.', '')
-                    if name in llm:
+                    if llm in name:
                         layer_count = len(module)
                 else:
                     layer_count = len(module)
@@ -608,6 +608,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # This must be done after loading weights to ensure they correspond to the merged state.
                 if is_peft_model(unwrapped_model):
                     unwrapped_model.unmerge_adapter()
+
+        if self.infer_rank >= 0 and self.args.use_vllm and self.args.vllm_enable_prefix_caching:
+            self.engine.engine.reset_prefix_cache()
 
     def _wait_queue(self):
         while self._queue.empty():
@@ -977,7 +980,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             mean_kl = (per_token_kl * completion_mask).sum() / completion_mask.sum()
             metrics['kl'] = mean_kl
 
-        is_clipped = (per_token_loss1 < per_token_loss2).float()
+        is_clipped = (coef_1 < (1 - self.epsilon)) | (coef_1 > (1 + self.epsilon))
         clip_ratio = (is_clipped * completion_mask).sum() / completion_mask.sum()
         metrics['clip_ratio'] = clip_ratio
 
