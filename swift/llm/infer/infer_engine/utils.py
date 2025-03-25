@@ -470,12 +470,12 @@ def patch_npu_vllm(vllm_device: str):
 
 @contextmanager
 def set_device_context(device: Union[str, int]):
-    original_device = torch.cuda.current_device()
-    torch.cuda.set_device(device)
+    origin_device = get_current_device()
+    set_device(device)
     try:
         yield
     finally:
-        torch.cuda.set_device(original_device)
+        set_device(origin_device)
 
 
 @contextmanager
