@@ -66,10 +66,6 @@ class VllmEngine(InferEngine):
         distributed_executor_backend: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
-        if version.parse(vllm.__version__) >= version.parse('0.8') and dist.is_initialized():
-            from vllm import envs
-            os.environ['VLLM_DISABLE_COMPILE_CACHE'] = '1'
-            envs.VLLM_DISABLE_COMPILE_CACHE = True
         self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -135,6 +131,10 @@ class VllmEngine(InferEngine):
         enable_sleep_mode: bool = False,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
+        if version.parse(vllm.__version__) >= version.parse('0.8') and dist.is_initialized():
+            from vllm import envs
+            os.environ['VLLM_DISABLE_COMPILE_CACHE'] = '1'
+            envs.VLLM_DISABLE_COMPILE_CACHE = True
         if engine_kwargs is None:
             engine_kwargs = {}
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
