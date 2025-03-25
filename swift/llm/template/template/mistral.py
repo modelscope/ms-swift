@@ -29,7 +29,7 @@ class Mistral2503Template(Template):
         idx_list = findall(input_ids, self.image_token)
         if idx_list:
             image_inputs = processor.image_processor(images, patch_size=processor.patch_size, return_tensors='pt')
-            encoded['pixel_values'] = image_inputs['pixel_values'].to(self.config.torch_dtype)
+            encoded['pixel_values'] = image_inputs['pixel_values'].to(self.model_info.torch_dtype)
             encoded['image_sizes'] = image_sizes = image_inputs['image_sizes']
 
             def _get_new_tokens(i):

@@ -122,6 +122,8 @@ class SwiftArgumentsMixin(TrainArgumentsMixin):
 
 @dataclass
 class GRPOArgumentsMixin:
+    epsilon: float = 0.2
+    epsilon_high: Optional[float] = None
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.

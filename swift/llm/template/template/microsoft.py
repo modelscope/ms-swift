@@ -46,7 +46,7 @@ class FlorenceTemplate(Template):
             labels = [0] + labels
         if images:
             pixel_values = processor.image_processor(
-                images, return_tensors='pt')['pixel_values'].to(self.config.torch_dtype)
+                images, return_tensors='pt')['pixel_values'].to(self.model_info.torch_dtype)
             encoded['pixel_values'] = pixel_values
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
