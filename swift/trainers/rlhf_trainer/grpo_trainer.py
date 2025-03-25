@@ -772,6 +772,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             for prompt_idx in range(len(outputs)):
                                 _outputs.append(outputs[prompt_idx][tp_idx])
                         outputs = _outputs
+                elif isinstance(outputs[0][0], list):
+                    outputs = [output[0] for output in outputs]
         else:
             if self.args.async_generate:
                 # using old model to generate, which will ignore the `clip` of advantages.
@@ -782,8 +784,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs = []
         outputs = gather_object(outputs)
         outputs = self.reorder_outputs(outputs, distributed_idx)
-        if isinstance(outputs[0][0], list):
-            outputs = [output[0] for output in outputs]
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
             if self.args.gc_collect_after_offload:
