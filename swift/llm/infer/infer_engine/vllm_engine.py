@@ -7,6 +7,7 @@ from copy import deepcopy
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
+import torch.distributed as dist
 from packaging import version
 from tqdm import tqdm
 from transformers import GenerationConfig
@@ -65,6 +66,10 @@ class VllmEngine(InferEngine):
         distributed_executor_backend: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
+        if version.parse(vllm.__version__) >= version.parse('0.8') and dist.is_initialized():
+            from vllm import envs
+            os.environ['VLLM_DISABLE_COMPILE_CACHE'] = '1'
+            envs.VLLM_DISABLE_COMPILE_CACHE = True
         self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
             model_id_or_path,
