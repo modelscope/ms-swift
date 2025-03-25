@@ -707,8 +707,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs.append(_choices)
             assert len(outputs) == prompt_lens
             assert all([len(o) == self.args.tensor_parallel_size for o in outputs])
-            if isinstance(outputs[0][0], list):
-                outputs = [output[0] for output in outputs]
             return outputs
 
     def async_infer(self, inputs, inputs_slice, distributed_idx):
@@ -832,6 +830,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.model.train()
             if is_multimodal:
                 self.template.register_post_encode_hook(models)
+            if isinstance(outputs[0][0], list):
+                outputs = [output[0] for output in outputs]
 
         # Slice to keep only the local part of the data
         process_slice = slice(
