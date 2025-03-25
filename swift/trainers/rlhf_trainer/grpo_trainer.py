@@ -627,7 +627,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
-    def _infer_multi_turn(self, inputs_slice, request_config):
+    def _infer_multi_turn(self, inputs_slice, request_config) -> List[List[Dict[str, Any]]]:
         from swift.llm.infer.protocol import ChatCompletionResponse
         rank, _, _, _ = get_dist_setting()
         request_config = copy(request_config)
@@ -693,10 +693,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             for i, output in enumerate(results):
                 _choices = []
                 for choice in output.choices:
-                    _input: Dict = deepcopy(inputs_slice[i])
-                    InferRequest.remove_response(_input['messages'])
-                    _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
-                    _choices.append(_input['messages'])
+                    messages: list = deepcopy(inputs_slice[i])['messages']
+                    InferRequest.remove_response(messages)
+                    messages.append({'role': 'assistant', 'content': choice.message.content})
+                    _choices.append(messages)
                 outputs.append(_choices)
             if isinstance(outputs[0][0], list):
                 outputs = [output[0] for output in outputs]
