@@ -120,6 +120,14 @@ class Internvl2Template(InternvlTemplate):
                 max_num = video_max_num
             pixel_values = [transform_image(image, input_size, max_num) for image in images]
             num_patches = [pv.shape[0] for pv in pixel_values]
+            if isinstance(self.config.torch_dtype, str):
+                dtype_mapping = {
+                    "float32": torch.float32,
+                    "float16": torch.float16,
+                    "bfloat16": torch.bfloat16,
+                }
+                self.config.torch_dtype = dtype_mapping.get(self.config.torch_dtype, torch.float16)
+
             pixel_values = torch.cat(pixel_values).to(self.config.torch_dtype)
         else:
             pixel_values = None
