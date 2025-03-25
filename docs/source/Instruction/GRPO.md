@@ -69,8 +69,8 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 使用余弦函数平滑地调整奖励值，确保奖励变化在合理范围内。余弦函数的参数包括生成文本的长度、最大长度限制以及奖励的最小值和最大值。
 
 参数
-- cosine_min_len_value_wrong（默认值：0.0）：生成错误答案时，最小长度对应的奖励值。
-- cosine_max_len_value_wrong（默认值：-0.5）：生成错误答案时，最大长度对应的奖励值。
+- cosine_min_len_value_wrong（默认值：-0.5）：生成错误答案时，最小长度对应的奖励值。
+- cosine_max_len_value_wrong（默认值：0.0）：生成错误答案时，最大长度对应的奖励值。
 - cosine_min_len_value_correct（默认值：1.0）：生成正确答案时，最小长度对应的奖励值。
 - cosine_max_len_value_correct（默认值：0.5）：生成正确答案时，最大长度对应的奖励值。
 - cosine_max_len（默认值等于模型生成的最大程度）：生成文本的最大长度限制。

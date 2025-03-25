@@ -72,8 +72,8 @@ The paper found that training with only the accuracy reward function could lead 
 A cosine function is used to smoothly adjust the reward value, ensuring that the changes are within a reasonable range. The parameters for the cosine function include the length of the generated text, the maximum length limit, and the minimum and maximum reward values.
 
 Parameters:
-- `cosine_min_len_value_wrong` (default: 0.0): Reward value corresponding to the minimum length when the answer is incorrect.
-- `cosine_max_len_value_wrong` (default: -0.5): Reward value corresponding to the maximum length when the answer is incorrect.
+- `cosine_min_len_value_wrong` (default: -0.5): Reward value corresponding to the minimum length when the answer is incorrect.
+- `cosine_max_len_value_wrong` (default: 0.0): Reward value corresponding to the maximum length when the answer is incorrect.
 - `cosine_min_len_value_correct` (default: 1.0): Reward value corresponding to the minimum length when the answer is correct.
 - `cosine_max_len_value_correct` (default: 0.5): Reward value corresponding to the maximum length when the answer is correct.
 - `cosine_max_len` (default value equal to the model's maximum generation capacity): Maximum length limit for generated text.
