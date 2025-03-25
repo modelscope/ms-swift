@@ -7,7 +7,6 @@ from copy import deepcopy
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
-import torch.distributed as dist
 from packaging import version
 from tqdm import tqdm
 from transformers import GenerationConfig
@@ -23,6 +22,7 @@ from .utils import AdapterRequest, InferStreamer, patch_npu_vllm, patch_vllm
 
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
+    os.environ['VLLM_USE_V1'] = '1'
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '3600'
     import vllm
@@ -131,10 +131,6 @@ class VllmEngine(InferEngine):
         enable_sleep_mode: bool = False,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
-        if version.parse(vllm.__version__) >= version.parse('0.8') and dist.is_initialized():
-            from vllm import envs
-            os.environ['VLLM_DISABLE_COMPILE_CACHE'] = '1'
-            envs.VLLM_DISABLE_COMPILE_CACHE = True
         if engine_kwargs is None:
             engine_kwargs = {}
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
