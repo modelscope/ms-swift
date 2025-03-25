@@ -199,9 +199,10 @@ def get_model_tokenizer_from_local(model_dir: str,
                 model = None
 
         automodel_class = automodel_class or AutoModelForCausalLM
+        model_meta = kwargs['model_meta']
         if model is None:
-            if model_info.task_type == 'seq_cls':
-                context = partial(patch_automodel_for_sequence_classification, model_meta=kwargs['model_meta'])
+            if model_info.task_type == 'seq_cls' and not model_meta.is_reward:
+                context = partial(patch_automodel_for_sequence_classification, model_meta=model_meta)
             else:
                 context = partial(patch_automodel, automodel_class=automodel_class, model_info=model_info)
             with context():
@@ -216,7 +217,7 @@ def get_model_tokenizer_from_local(model_dir: str,
 
         if model_info.task_type == 'embedding' and automodel_class.__name__ != 'AutoModel':
             from swift.llm.model.patcher import patch_output_normalizer
-            patch_output_normalizer(model, model_meta=kwargs['model_meta'])
+            patch_output_normalizer(model, model_meta=model_meta)
 
     model_info.config = model_config if model is None else model.config
     return model, tokenizer
