@@ -52,7 +52,7 @@ class PaliGemmaTemplate(Template):
             encoded['token_type_ids'] = [0] * len(encoded['input_ids'])
         if raw_image:
             model_inputs = processor(text='<image>' * len(raw_image), images=raw_image, return_tensors='pt')
-            encoded['pixel_values'] = model_inputs['pixel_values'].to(self.config.torch_dtype)
+            encoded['pixel_values'] = model_inputs['pixel_values'].to(self.model_info.torch_dtype)
         return encoded
 
 

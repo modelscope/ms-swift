@@ -36,7 +36,7 @@ class LlavaHfTemplate(Template):
         images = inputs.images
         if images:
             image_processor = self.processor.image_processor
-            image_inputs = image_processor(images, return_tensors='pt').to(self.config.torch_dtype)
+            image_inputs = image_processor(images, return_tensors='pt').to(self.model_info.torch_dtype)
             encoded['pixel_values'] = image_inputs['pixel_values']
             if 'image_sizes' in image_inputs:
                 encoded['image_sizes'] = image_inputs['image_sizes']
@@ -99,11 +99,11 @@ class LlavaVideoHfTemplate(Template):
         videos = inputs.videos or []
         if len(videos) > 0:
             video_processor = self.processor.video_processor
-            video_inputs = video_processor(videos, return_tensors='pt').to(self.config.torch_dtype)
+            video_inputs = video_processor(videos, return_tensors='pt').to(self.model_info.torch_dtype)
             encoded['pixel_values_videos'] = video_inputs['pixel_values_videos']
         if len(images) > 0:
             image_processor = self.processor.image_processor
-            image_inputs = image_processor(images, return_tensors='pt').to(self.config.torch_dtype)
+            image_inputs = image_processor(images, return_tensors='pt').to(self.model_info.torch_dtype)
             encoded['pixel_values'] = image_inputs['pixel_values']
             encoded['image_sizes'] = image_inputs['image_sizes']
         return encoded
@@ -190,7 +190,7 @@ class LlavaOneVisionHfTemplate(Llava1_6HfTemplate):
         processor = self.processor
         if images:
             image_processor = processor.image_processor
-            image_inputs = image_processor(images, return_tensors='pt').to(self.config.torch_dtype)
+            image_inputs = image_processor(images, return_tensors='pt').to(self.model_info.torch_dtype)
             height, width = image_inputs['pixel_values'][0].shape[-2:]
             added_tokens_len = 0
             for idx, pixel_v, image_size in zip(idx_list, image_inputs['pixel_values'], image_inputs['image_sizes']):
@@ -250,7 +250,7 @@ class LLavaLlama3HfTemplate(Template):
         raw_image = inputs.images
         if raw_image:
             pixel_values = self.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
-            encoded['pixel_values'] = pixel_values.to(self.config.torch_dtype)
+            encoded['pixel_values'] = pixel_values.to(self.model_info.torch_dtype)
         return encoded
 
 
