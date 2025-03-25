@@ -1,5 +1,5 @@
 # pip install math_verify # reward function
-# pip install trl==0.16
+# pip install -U trl
 # GPU memory: 80GiB
 
 CUDA_VISIBLE_DEVICES=0 \

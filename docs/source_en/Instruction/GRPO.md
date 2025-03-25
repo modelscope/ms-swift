@@ -8,7 +8,7 @@ environments
 
 ```bash
 pip install math_verify # reward function
-pip install git+https://github.com/huggingface/trl.git"
+pip install -U trl
 ```
 
 **Note**: It is normal for the loss to approach zero during training. Refer to this [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851) for more details.

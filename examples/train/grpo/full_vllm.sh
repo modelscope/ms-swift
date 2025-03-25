@@ -1,6 +1,6 @@
 # One GPU is left for vLLM inference acceleration.
 # pip install math_verify # reward function
-# pip install trl==0.16
+# pip install -U trl
 # GPU memory: 8 * 80GiB
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \

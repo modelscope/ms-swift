@@ -1,6 +1,6 @@
 # Two GPUs are left for vLLM inference acceleration.
 # pip install math_verify # reward function
-# pip install trl==0.16
+# pip install -U trl
 # GPU memory: 8 * 60GiB
 
 MAX_PIXELS=602112 \
