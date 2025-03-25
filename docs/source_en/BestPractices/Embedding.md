@@ -52,6 +52,8 @@ The source code for the loss functions can be found [here](https://github.com/mo
 {"query": "sentence1", "response": "<image>sentence2", "images": ["/some/images1.jpg"], "label": 0.7}
 ```
 
+The eval metrics are the Pearson and Spearman's Rank Correlation Coefficient of the embeddings' euclidean distance/dot production and so on, totally 8 values.
+
 ### Format for Contrastive/Online Contrastive Loss
 
 ```json lines
@@ -82,6 +84,10 @@ InfoNCE loss supports the following environment variables:
 >
 > `rejected_response` can also be omitted. In this case, `INFONCE_USE_BATCH` remains `True` and will use other samples within the batch as rejected responses.
 
+The evaluation of InfoNCE loss includes the following metrics:
+- mean_neg: The average of all hard negatives
+- mean_pos: The average of all positives
+- margin: The average of (positive - max hard negative)
 
 ## Scaffolding
 

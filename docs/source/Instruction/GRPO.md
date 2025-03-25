@@ -115,6 +115,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - offload_optimizer: 是否在vLLM/LMDeploy推理时offload optimizer参数，默认为False
 - offload_model: 是否在vLLM/LMDeploy推理时offload 模型本身，默认为False
 - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False
+- multi_turn_func: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现
 
 奖励函数超参，见[内置奖励函数](#内置奖励函数)
 
