@@ -131,7 +131,7 @@ class SwiftInfer(SwiftPipeline):
             infer_state.add_query(query)
             if args.model_meta.is_multimodal:
                 infer_state.input_mm_data()
-            if args.task_type == 'seq_cls' and args.num_labels == 1:
+            if args.model_meta.is_reward or args.task_type == 'prm':
                 # reward model
                 response = infer_state.input_text()
                 infer_state.add_response(response)
