@@ -609,7 +609,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if is_peft_model(unwrapped_model):
                     unwrapped_model.unmerge_adapter()
 
-        if self.infer_rank >= 0 and self.use_vllm and self.args.vllm_enable_prefix_caching:
+        if self.infer_rank >= 0 and self.args.use_vllm and self.args.vllm_enable_prefix_caching:
             self.engine.engine.reset_prefix_cache()
 
     def _wait_queue(self):
