@@ -108,7 +108,8 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - vllm_max_model_len: vLLM透传参数
 - reward_model: 同model, 使用奖励模型作为奖励函数，与reward_funcs至少需要指定一个
 - num_iterations: 每个批次代更新次数，默认为1.
-- epsilon: clip 系数
+- epsilon: clip 系数，默认为0.2
+- epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。
 - async_generate: 异步rollout以提高训练速度，默认`false`.
 - sleep_level: vllm特有参数，在训练和rollout复用卡的时候，可以选择vllm进行offload.
 - move_model_batches: 在模型向vLLM/LMDeploy等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个
