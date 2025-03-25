@@ -292,6 +292,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._buffered_inputs = [None] * args.gradient_accumulation_steps
         if self.args.async_generate:
             self.add_callback(GRPOCallback(self))
+        self.set_multi_turn_engine_default_max_tokens()
 
     def split_batches(self):
         """Sync weights in batches
@@ -643,6 +644,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 request_config.n = 1
                 if self.infer_rank_tp_0 >= 0:
                     inputs = []
+                    request_config = []
                     cnt = 0
                     for i, output in enumerate(results):
                         for choice in output.choices:
@@ -665,7 +667,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if self.args.tensor_parallel_size > 1:
                     # avoid duplicate calling in the same tensor parallel group
                     import torch.distributed as dist
-                    dist.broadcast_object_list(results, group_src=0, group=self.group)
+                    if 'group_src' in inspect.signature(dist.broadcast_object_list).parameters:
+                        dist.broadcast_object_list(results, group_src=0, group=self.group)
+                    else:
+                        global_src = dist.get_global_rank(self.group, 0)
+                        dist.broadcast_object_list(results, src=global_src, group=self.group)
                 inputs_slice = [r for r in results if not r['finished']]
                 for idx, r in enumerate(results):
                     if r['finished']:
@@ -1110,3 +1116,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return self.eval_queue
         else:
             return self.train_queue
+
+    def set_multi_turn_engine_default_max_tokens(self):
+        # Reset max_model_len to ensure that the total length during multi-turn generation
+        # does not exceed max_tokens, i.e., max_completion_length
+        if self.multi_turn_func:
+            origin_set_default_max_tokens = self.engine.set_default_max_tokens
+
+            def new_set_default_max_tokens(_self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
+                max_model_len = _self.max_model_len or 8192
+                max_prompt_length = self.template.max_length
+                _self.max_model_len = min(max_model_len, max_prompt_length + request_config.max_tokens)
+                origin_method(_self, request_config, inputs)
+
+            self.engine.set_default_max_tokens = MethodType(new_set_default_max_tokens, self.engine)
+            self.engine.set_default_max_tokens_origin = origin_set_default_max_tokens
