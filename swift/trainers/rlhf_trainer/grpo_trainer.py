@@ -36,7 +36,7 @@ from .rlhf_mixin import RLHFTrainerMixin
 try:
     from trl.extras.profiling import profiling_decorator
 except ImportError:
-    raise ImportError('Please install trl from source using: `pip install git+https://github.com/huggingface/trl.git`')
+    raise ImportError('Please install trl from source using: `pip install trl==0.16`')
 
 del HFGRPOTrainer.__init__
 
