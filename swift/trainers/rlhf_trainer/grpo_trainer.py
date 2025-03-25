@@ -644,7 +644,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 request_config.n = 1
                 if self.infer_rank_tp_0 >= 0:
                     inputs = []
-                    request_config = []
                     cnt = 0
                     for i, output in enumerate(results):
                         for choice in output.choices:
