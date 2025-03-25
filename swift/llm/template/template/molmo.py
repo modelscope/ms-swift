@@ -31,7 +31,7 @@ class MolmoTemplate(Template):
         if labels:
             encoded['labels'] = [-100] * idx[0] + labels
         if 'images' in images_inputs:
-            images_inputs['images'] = images_inputs['images'].to(self.config.torch_dtype)
+            images_inputs['images'] = images_inputs['images'].to(self.model_info.torch_dtype)
         encoded.update(images_inputs)
         return encoded
 
