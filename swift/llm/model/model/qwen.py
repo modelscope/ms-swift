@@ -615,11 +615,11 @@ register_model(
 
 def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     from transformers import Qwen2_5OmniModel, Qwen2_5OmniProcessor, Qwen2_5OmniConfig
+    from qwen_omni_utils import vision_process
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2_5OmniModel
     processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['tokenizer'] = processor.tokenizer
     kwargs['model_config'] = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
-    from qwen_omni_utils import vision_process
     patch_qwen_vl_utils(vision_process)
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     if model:
