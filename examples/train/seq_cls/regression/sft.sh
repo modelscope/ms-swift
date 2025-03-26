@@ -24,4 +24,5 @@ swift sft \
     --dataset_num_proc 4 \
     --num_labels 1 \
     --task_type seq_cls \
-    --use_chat_template false
+    --use_chat_template false \
+    --problem_type regression

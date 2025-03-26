@@ -257,7 +257,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             args.training_args.evaluation_strategy = IntervalStrategy.NO
             args.training_args.eval_strategy = IntervalStrategy.NO
 
-        args.problem_type = args.problem_type or getattr(self.model.config, 'problem_type', None)
+        if args.task_type == 'seq_cls':
+            args.problem_type = args.problem_type or getattr(self.model.config, 'problem_type', None)
+            logger.info(f'args.problem_type: {args.problem_type}')
         return train_dataset, val_dataset
 
 
