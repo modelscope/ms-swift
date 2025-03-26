@@ -72,20 +72,23 @@ def get_batch_on_this_tp_rank(data_iterator):
                 item, mpu.get_tensor_model_parallel_src_rank(), group=mpu.get_tensor_model_parallel_group())
 
     if mpu.get_tensor_model_parallel_rank() == 0:
-
-        if data_iterator is not None:
+        try:
             data = next(data_iterator)
+        except StopIteration:
+            seq_length = -1
         else:
-            data = None
-        tokens = data['input_ids']
-        seq_length = torch.tensor(tokens.shape[1]).cuda(non_blocking=True)
-        batch = {
-            'tokens': tokens.cuda(non_blocking=True),
-            'labels': data['labels'].cuda(non_blocking=True),
-            'attention_mask': None if 'attention_mask' not in data else data['attention_mask'].cuda(non_blocking=True),
-            'position_ids': data['position_ids'].cuda(non_blocking=True)
-        }
+            tokens = data['input_ids']
+            seq_length = tokens.shape[1]
+            batch = {
+                'tokens': tokens.cuda(non_blocking=True),
+                'labels': data['labels'].cuda(non_blocking=True),
+                'attention_mask': None if 'attention_mask' not in data else data['attention_mask'].cuda(non_blocking=True),
+                'position_ids': data['position_ids'].cuda(non_blocking=True)
+            }
+        seq_length = torch.tensor(seq_length).cuda(non_blocking=True)
         _broadcast(seq_length)
+        if seq_length.item() == -1:
+            raise StopIteration
         if args.pipeline_model_parallel_size == 1:
             _broadcast(batch['tokens'])
             _broadcast(batch['labels'])
@@ -104,6 +107,8 @@ def get_batch_on_this_tp_rank(data_iterator):
     else:
         seq_length = torch.empty((), dtype=torch.int64, device=torch.cuda.current_device())
         _broadcast(seq_length)
+        if seq_length.item() == -1:
+            raise StopIteration
 
         micro_batch_size = 1  # use qkv_format 'thd'
         tokens = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
