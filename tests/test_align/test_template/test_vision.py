@@ -50,6 +50,14 @@ def test_qwen2_5_vl():
         'characteristic of the Labrador Retriever breed.')
 
 
+def test_qwen2_5_omni():
+    pt_engine = PtEngine('Qwen/Qwen2.5-Omni-7B')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
+
+
 def test_qvq():
     pt_engine = PtEngine('Qwen/QVQ-72B-Preview')
     response = _infer_model(pt_engine)
@@ -507,6 +515,7 @@ if __name__ == '__main__':
     logger = get_logger()
     # test_qwen2_vl()
     # test_qwen2_5_vl()
+    test_qwen2_5_omni()
     # test_internvl2()
     # test_internvl2_phi3()
     # test_llava()
@@ -547,4 +556,4 @@ if __name__ == '__main__':
     # test_valley()
     # test_ui_tars()
     # test_gemma3_vision()
-    test_mistral_2503()
+    # test_mistral_2503()

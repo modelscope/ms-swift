@@ -365,8 +365,12 @@ class Qwen2_5OmniTemplate(Template):
                     media_inputs = processor.omni_processor(
                         images=images, videos=None, return_tensors='pt', do_resize=False)
                 else:
-                    media_inputs = processor.image_processor(
+                    media_inputs = processor.omni_processor(
                         images=None, videos=videos, return_tensors='pt', do_resize=False)
+                    from qwen_omni_utils import vision_process
+                    media_inputs['video_second_per_grid'] = [
+                        processor.omni_processor.temporal_patch_size / vision_process.FPS
+                    ] * len(videos)
                 encoded.update(media_inputs)
         return encoded
 
@@ -379,12 +383,7 @@ class Qwen2_5OmniTemplate(Template):
         return res
 
 
-register_template(
-    QwenTemplateMeta(
-        MLLMTemplateType.qwen2_5_omni,
-        default_system=('You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, '
-                        'capable of perceiving auditory and visual inputs, as well as generating text and speech.'),
-        template_cls=Qwen2_5OmniTemplate))
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_omni, template_cls=Qwen2_5OmniTemplate))
 
 
 class Ovis1_6Template(Template):

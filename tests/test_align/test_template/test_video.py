@@ -128,6 +128,23 @@ def test_qwen2_5_vl():
         'which adds a playful and endearing touch to the scene.')
 
 
+def test_qwen2_5_omni():
+    os.environ['VIDEO_MAX_PIXELS'] = str(28 * 28 * 64)
+    pt_engine = PtEngine('Qwen/Qwen2.5-Omni-7B')
+    system = ('You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, '
+              'capable of perceiving auditory and visual inputs, as well as generating text and speech.')
+    messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': '<video>'}]
+    videos = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2.5-Omni/draw.mp4']
+    response = _infer_model(pt_engine, messages=messages, videos=videos, images=[])
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, videos=videos, images=[])
+    assert response == response2 == (
+        "Oh, that sounds like a really cool project! So, you're using a tablet to draw a guitar and a key? "
+        "That's a creative way to combine two different things. Have you thought about what you'll "
+        'do with the final drawing? Maybe could use it for a poster or something? '
+        'Let me know how it turns out!')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -140,4 +157,5 @@ if __name__ == '__main__':
     # test_minicpmv()
     # test_minicpmo()
     # test_valley()
-    test_qwen2_5_vl()
+    # test_qwen2_5_vl()
+    test_qwen2_5_omni()
