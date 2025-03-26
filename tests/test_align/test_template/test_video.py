@@ -135,9 +135,9 @@ def test_qwen2_5_omni():
               'capable of perceiving auditory and visual inputs, as well as generating text and speech.')
     messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': '<video>'}]
     videos = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2.5-Omni/draw.mp4']
-    response = _infer_model(pt_engine, messages=messages, videos=videos, images=[])
+    response = _infer_model(pt_engine, messages=messages, videos=videos)
     pt_engine.default_template.template_backend = 'jinja'
-    response2 = _infer_model(pt_engine, messages=messages, videos=videos, images=[])
+    response2 = _infer_model(pt_engine, messages=messages, videos=videos)
     assert response == response2 == (
         "Oh, that sounds like a really cool project! So, you're using a tablet to draw a guitar and a key? "
         "That's a creative way to combine two different things. Have you thought about what you'll "
