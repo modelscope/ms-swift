@@ -345,26 +345,29 @@ class Qwen2_5OmniTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         from qwen_omni_utils import fetch_image, fetch_video
+        sampling_rate = self.processor.feature_extractor.sampling_rate
         if media_type == 'image':
             inputs.images[index] = fetch_image({'image': inputs.images[index]})
             return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
         elif media_type == 'audio':
+            sampling_rate = get_env_args('sampling_rate', int, sampling_rate)
+            inputs.audios[index] = load_audio(inputs.audios[index], sampling_rate)
             return ['<|audio_bos|><|AUDIO|><|audio_eos|>']
         elif media_type == 'video':
             video = inputs.videos[index]
             inputs.videos[index] = fetch_video({'video': video}).to(torch.uint8)
             use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
             if use_audio_in_video:
+                import librosa
+                sampling_rate = get_env_args('sampling_rate', int, sampling_rate)
+                video = librosa.load(video, sr=sampling_rate)[0]
                 inputs.audios.insert(inputs.audio_idx, video)
+                inputs.audio_idx += 1
             return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        processor = self.processor
-        if inputs.audios:
-            sampling_rate = get_env_args('sampling_rate', int, processor.feature_extractor.sampling_rate)
-            inputs.audios = load_batch(inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate))
-        media_inputs = processor(
+        media_inputs = self.processor(
             text='',
             audios=inputs.audios or None,
             images=inputs.images or None,
@@ -386,6 +389,9 @@ class Qwen2_5OmniTemplate(Template):
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
+        video_second_per_grid = self.gather_list(batch, 'video_second_per_grid')
+        if video_second_per_grid:
+            res['video_second_per_grid'] = video_second_per_grid
         for media_type in ['image', 'video']:
             grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
             if grid_thw:

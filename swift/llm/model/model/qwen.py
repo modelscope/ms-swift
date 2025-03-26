@@ -633,7 +633,7 @@ register_model(
     ModelMeta(
         MLLMModelType.qwen2_5_omni, [
             ModelGroup([
-                Model('Qwen/Qwen2.5-Omni-7B:thinker', 'Qwen/Qwen2.5-Omni-7B:thinker'),
+                Model('Qwen/Qwen2.5-Omni-7B', 'Qwen/Qwen2.5-Omni-7B'),
             ]),
         ],
         TemplateType.qwen2_5_omni,

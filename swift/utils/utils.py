@@ -227,8 +227,7 @@ def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: 
     else:
         if type_func is bool:
             value = strtobool(value)
-        else:
-            value = type_func(value)
+        value = type_func(value)
         log_info = f'Using environment variable `{args_name_upper}`, Setting {args_name}: {value}.'
     logger.info_once(log_info)
     return value
