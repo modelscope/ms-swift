@@ -625,6 +625,7 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     if model:
         use_submodel_func(model, 'thinker')
         model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
+        model.config.talker_config.pad_token_id = None
     return model, processor
 
 
@@ -640,7 +641,9 @@ register_model(
         model_arch=ModelArch.qwen2_5_omni,
         architectures=['Qwen2_5OmniModel'],
         requires=['transformers>=4.50', 'soundfile', 'qwen_omni_utils', 'decord'],
-        tags=['vision', 'video', 'audio']))
+        tags=['vision', 'video', 'audio'],
+        additional_saved_files=['spk_dict.pt'],
+))
 
 
 def get_model_tokenizer_qwen2_audio(*args, **kwargs):
