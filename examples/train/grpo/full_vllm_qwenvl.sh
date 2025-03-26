@@ -1,6 +1,6 @@
 # Two GPUs are left for vLLM inference acceleration.
 # pip install math_verify # reward function
-# pip install git+https://github.com/huggingface/trl.git
+# pip install -U trl
 # GPU memory: 8 * 60GiB
 
 MAX_PIXELS=602112 \

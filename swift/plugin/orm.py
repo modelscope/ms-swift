@@ -300,8 +300,8 @@ class CosineReward(ORM):
     # https://arxiv.org/abs/2502.03373
     def __init__(self,
                  tokenizer=None,
-                 cosine_min_len_value_wrong: float = 0.0,
-                 cosine_max_len_value_wrong: float = -0.5,
+                 cosine_min_len_value_wrong: float = -0.5,
+                 cosine_max_len_value_wrong: float = 0.0,
                  cosine_min_len_value_correct: float = 1.0,
                  cosine_max_len_value_correct: float = 0.5,
                  cosine_max_len: int = 1000,
@@ -329,8 +329,8 @@ class CosineReward(ORM):
                 min_value = self.max_len_value_correct
                 max_value = self.min_len_value_correct
             else:
-                min_value = self.min_len_value_wrong
-                max_value = self.max_len_value_wrong
+                min_value = self.max_len_value_wrong
+                max_value = self.min_len_value_wrong
             gen_len = len(self.tokenizer.encode(content))
             reward = self.cosfn(gen_len, self.max_len, min_value, max_value)
             rewards.append(reward)

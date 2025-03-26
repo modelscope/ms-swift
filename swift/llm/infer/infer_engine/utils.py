@@ -18,7 +18,7 @@ from transformers import GenerationConfig, LogitsProcessor
 from transformers.generation.streamers import BaseStreamer
 
 from swift.llm.model.register import fix_do_sample_warning
-from swift.utils import get_device, get_device_count, get_node_setting
+from swift.utils import get_current_device, get_device, get_device_count, get_node_setting, set_device
 from ..protocol import RequestConfig
 
 
@@ -470,12 +470,12 @@ def patch_npu_vllm(vllm_device: str):
 
 @contextmanager
 def set_device_context(device: Union[str, int]):
-    original_device = torch.cuda.current_device()
-    torch.cuda.set_device(device)
+    origin_device = get_current_device()
+    set_device(device)
     try:
         yield
     finally:
-        torch.cuda.set_device(original_device)
+        set_device(origin_device)
 
 
 @contextmanager
@@ -504,13 +504,13 @@ def restore_torch_device_after_vllm_init():
     ensures it is restored upon exit, even if the device is modified within the context.
 
     """
-    origin_device = torch.cuda.current_device()
+    origin_device = get_current_device()
     try:
         yield
     finally:
-        current_device = torch.cuda.current_device()
+        current_device = get_current_device()
         if origin_device != current_device:
-            torch.cuda.set_device(origin_device)
+            set_device(origin_device)
 
 
 def patch_vllm_memory_leak():

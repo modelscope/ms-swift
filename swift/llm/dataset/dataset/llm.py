@@ -334,9 +334,40 @@ class StsbPreprocessor(ResponsePreprocessor):
         return super().preprocess(row)
 
 
+class StsbGeneratePreprocessor(ResponsePreprocessor):
+    prompt = """Task: Based on the given two sentences, provide a similarity score between 0.0 and 1.0.
+Sentence 1: {text1}
+Sentence 2: {text2}
+Similarity score: """
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        return super().preprocess({
+            'query': self.prompt.format(text1=row['sentence1'], text2=row['sentence2']),
+            'response': f"{row['score']:.1f}"
+        })
+
+
+class StsbRegressionPreprocessor(StsbGeneratePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        return super(StsbGeneratePreprocessor, self).preprocess({
+            'query':
+            self.prompt.format(text1=row['sentence1'], text2=row['sentence2']),
+            'label':
+            row['score']
+        })
+
+
 register_dataset(
     DatasetMeta(
-        ms_dataset_id='sentence-transformers/stsb', preprocess_func=StsbPreprocessor(), tags=['similarity', '🔥']))
+        ms_dataset_id='sentence-transformers/stsb',
+        hf_dataset_id='sentence-transformers/stsb',
+        subsets=[
+            SubsetDataset('default', preprocess_func=StsbPreprocessor()),  # embedding
+            SubsetDataset('generate', preprocess_func=StsbGeneratePreprocessor()),
+            SubsetDataset('reg', preprocess_func=StsbRegressionPreprocessor()),
+        ],
+        tags=['similarity', '🔥']))
 
 
 def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:

@@ -171,7 +171,6 @@ def get_model_tokenizer_from_local(model_dir: str,
         model_config.keys_to_ignore_at_inference = []
     if 'past_key_values' not in model_config.keys_to_ignore_at_inference:
         model_config.keys_to_ignore_at_inference.append('past_key_values')
-    model_info.config = model_config
 
     torch_dtype = model_info.torch_dtype
     model_config.torch_dtype = torch_dtype
@@ -184,7 +183,7 @@ def get_model_tokenizer_from_local(model_dir: str,
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
     num_labels = model_info.num_labels or getattr(model_config, 'num_labels', None)
-    if num_labels and model_info.task_type != 'causal_lm':
+    if num_labels and model_info.task_type == 'seq_cls':
         model_info.num_labels = num_labels
         model_config.num_labels = num_labels
 
@@ -200,9 +199,10 @@ def get_model_tokenizer_from_local(model_dir: str,
                 model = None
 
         automodel_class = automodel_class or AutoModelForCausalLM
+        model_meta = kwargs['model_meta']
         if model is None:
-            if model_info.task_type == 'seq_cls':
-                context = partial(patch_automodel_for_sequence_classification, model_meta=kwargs['model_meta'])
+            if model_info.task_type == 'seq_cls' and not model_meta.is_reward:
+                context = partial(patch_automodel_for_sequence_classification, model_meta=model_meta)
             else:
                 context = partial(patch_automodel, automodel_class=automodel_class, model_info=model_info)
             with context():
@@ -217,8 +217,9 @@ def get_model_tokenizer_from_local(model_dir: str,
 
         if model_info.task_type == 'embedding' and automodel_class.__name__ != 'AutoModel':
             from swift.llm.model.patcher import patch_output_normalizer
-            patch_output_normalizer(model, model_meta=kwargs['model_meta'])
+            patch_output_normalizer(model, model_meta=model_meta)
 
+    model_info.config = model_config if model is None else model.config
     return model, tokenizer
 
 
@@ -267,14 +268,11 @@ def get_default_device_map():
     if local_rank == -1:
         local_rank = 0
     if is_torch_npu_available():
-        return f'npu:{local_rank}'
+        return 'auto' if is_mp() else f'npu:{local_rank}'
     elif is_torch_mps_available():
         return f'mps:{local_rank}'
     elif is_torch_cuda_available():
-        if is_mp():
-            return 'auto'
-        else:
-            return f'cuda:{local_rank}'
+        return 'auto' if is_mp() else f'cuda:{local_rank}'
     else:
         return 'cpu'
 
@@ -538,6 +536,11 @@ def get_model_tokenizer(
         patch_getattr(processor.__class__, 'tokenizer')
     else:
         tokenizer = processor
+    problem_type = kwargs.get('problem_type')
+    if problem_type is None and model_info.num_labels == 1:
+        problem_type = 'regression'
+    if problem_type is not None:
+        model_info.config.problem_type = problem_type
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
 

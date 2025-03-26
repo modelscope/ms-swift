@@ -57,7 +57,7 @@ class Trainer(SwiftMixin, HfTrainer):
         loss, outputs = super().compute_loss(model, inputs, return_outputs=True)
         if inputs.get('labels') is not None:
             self._compute_acc(outputs, inputs['labels'])
-        if num_items_in_batch is not None:
+        if num_items_in_batch is not None and self.model_accepts_loss_kwargs:
             loss /= self.args.gradient_accumulation_steps
         return (loss, outputs) if return_outputs else loss
 
@@ -71,48 +71,11 @@ class EmbeddingTrainer(Trainer):
         self.label_names = ['labels']
 
     def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
-        from sklearn.metrics.pairwise import paired_cosine_distances, paired_euclidean_distances, \
-            paired_manhattan_distances
-        from scipy.stats import pearsonr, spearmanr
-
-        embeddings = eval_prediction.predictions
-        labels = eval_prediction.label_ids
-        batch_size = 2 * self.args.per_device_eval_batch_size
-        half_batch_size = self.args.per_device_eval_batch_size
-        embeddings1 = []
-        embeddings2 = []
-        for i in range(embeddings.shape[0] // batch_size):
-            embeddings1.append(embeddings[i * batch_size:i * batch_size + half_batch_size])
-            embeddings2.append(embeddings[i * batch_size + half_batch_size:(i + 1) * batch_size])
-
-        embeddings1 = np.concatenate(embeddings1)
-        embeddings2 = np.concatenate(embeddings2)
-        if len(embeddings1.shape) == 3:
-            embeddings1 = embeddings1[:, 0]
-            embeddings2 = embeddings2[:, 0]
-        cosine_scores = 1 - (paired_cosine_distances(embeddings1, embeddings2))
-        manhattan_distances = -paired_manhattan_distances(embeddings1, embeddings2)
-        euclidean_distances = -paired_euclidean_distances(embeddings1, embeddings2)
-        dot_products = [np.dot(emb1, emb2) for emb1, emb2 in zip(embeddings1, embeddings2)]
-
-        eval_pearson_cosine, _ = pearsonr(labels, cosine_scores)
-        eval_spearman_cosine, _ = spearmanr(labels, cosine_scores)
-
-        eval_pearson_manhattan, _ = pearsonr(labels, manhattan_distances)
-        eval_spearman_manhattan, _ = spearmanr(labels, manhattan_distances)
-
-        eval_pearson_euclidean, _ = pearsonr(labels, euclidean_distances)
-        eval_spearman_euclidean, _ = spearmanr(labels, euclidean_distances)
-
-        eval_pearson_dot, _ = pearsonr(labels, dot_products)
-        eval_spearman_dot, _ = spearmanr(labels, dot_products)
-
-        return {
-            'cosine': eval_spearman_cosine,
-            'euclidean': eval_pearson_euclidean,
-            'manhattan': eval_pearson_manhattan,
-            'dot_product': eval_spearman_dot,
-        }
+        from swift.plugin.loss import infonce_loss, calculate_paired_metrics, calculate_infonce_metrics
+        if self.compute_loss_func is infonce_loss:
+            return calculate_infonce_metrics(eval_prediction.predictions, eval_prediction.label_ids)
+        else:
+            return calculate_paired_metrics(eval_prediction.predictions, eval_prediction.label_ids)
 
 
 class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
@@ -236,7 +199,7 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
             from swift.trainers.xtuner import reduce_xtuner_sequence_parallel_loss
             loss = reduce_xtuner_sequence_parallel_loss(loss, labels)
 
-        if getattr(self.args, 'average_tokens_across_devices', False):
+        if getattr(self.args, 'average_tokens_across_devices', False) and self.model_accepts_loss_kwargs:
             loss *= self.accelerator.num_processes
 
         if outputs.logits is not None and labels is not None:

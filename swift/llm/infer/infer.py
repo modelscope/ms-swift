@@ -131,7 +131,7 @@ class SwiftInfer(SwiftPipeline):
             infer_state.add_query(query)
             if args.model_meta.is_multimodal:
                 infer_state.input_mm_data()
-            if args.task_type == 'seq_cls' and args.num_labels == 1:
+            if args.model_meta.is_reward or args.task_type == 'prm':
                 # reward model
                 response = infer_state.input_text()
                 infer_state.add_response(response)
@@ -212,8 +212,6 @@ class SwiftInfer(SwiftPipeline):
                     labels = InferRequest.remove_response(data['messages'])
                 else:
                     labels = data.pop('label', None)
-                    if labels is not None:
-                        labels = str(int(labels))
                 labels_list.append(labels)
 
             resp_list = self.infer(

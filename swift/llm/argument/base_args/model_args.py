@@ -43,6 +43,7 @@ class ModelArguments:
     attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None
 
     num_labels: Optional[int] = None
+    problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
     rope_scaling: Literal['linear', 'dynamic'] = None
     device_map: Optional[Union[dict, str]] = None
     max_memory: Optional[Union[dict, str]] = None
@@ -135,6 +136,7 @@ class ModelArguments:
         self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
         self.task_type = self.model_info.task_type
         self.num_labels = self.model_info.num_labels
+
         self.model_dir = self.model_info.model_dir
         self.model_type = self.model_info.model_type
         if isinstance(self.rope_scaling, str):
@@ -164,5 +166,6 @@ class ModelArguments:
             'attn_impl': self.attn_impl,
             'rope_scaling': self.rope_scaling,
             'task_type': self.task_type,
-            'num_labels': self.num_labels
+            'num_labels': self.num_labels,
+            'problem_type': self.problem_type,
         }

@@ -1,5 +1,5 @@
 # pip install math_verify # reward function
-# pip install git+https://github.com/huggingface/trl.git
+# pip install -U trl
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 export NNODES=2
 export NODE_RANK=0

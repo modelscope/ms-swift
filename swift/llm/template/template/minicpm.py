@@ -91,7 +91,7 @@ class MiniCPMVTemplate(Template):
         if slice_mode:
             if self.is_v2_5:
                 image_processor = self.processor.image_processor
-                image_inputs = image_processor(images, return_tensors='pt').to(self.config.torch_dtype)
+                image_inputs = image_processor(images, return_tensors='pt').to(self.model_info.torch_dtype)
                 placeholder = image_processor.get_slice_image_placeholder(image_inputs.image_sizes[0][0])
                 pixel_values = image_inputs['pixel_values']
                 tgt_sizes = image_inputs['tgt_sizes']
@@ -183,7 +183,7 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
 
         image_processor = self.processor.image_processor
         image_inputs = image_processor([images], return_tensors='pt',
-                                       max_slice_nums=max_slice_nums).to(self.config.torch_dtype)
+                                       max_slice_nums=max_slice_nums).to(self.model_info.torch_dtype)
 
         def _get_new_tokens(i):
             placeholder = image_processor.get_slice_image_placeholder(

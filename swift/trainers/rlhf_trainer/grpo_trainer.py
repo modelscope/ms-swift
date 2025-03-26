@@ -25,7 +25,9 @@ from trl import GRPOTrainer as HFGRPOTrainer
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
 from swift.llm.infer.infer_engine import set_device_context
+from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import orms
+from swift.plugin.multi_turn import multi_turns
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
@@ -34,7 +36,7 @@ from .rlhf_mixin import RLHFTrainerMixin
 try:
     from trl.extras.profiling import profiling_decorator
 except ImportError:
-    raise ImportError('Please install trl from source using: `pip install git+https://github.com/huggingface/trl.git`')
+    raise ImportError('Please install trl from source using: `pip install -U trl`')
 
 del HFGRPOTrainer.__init__
 
@@ -108,19 +110,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.offload_modules = {}
         self.offload_states = {}
         _, _, _, local_world_size = get_dist_setting()
-        if self.args.tensor_parallel_size > 1:
-            assert (get_device_count() == local_world_size == self.args.num_infer_workers
-                    and local_world_size > 1), ('tensor_parallel_size>1 only supports num_infer_workers==your '
-                                                'available device count.')
-        if self.args.async_generate:
-            assert (local_world_size + self.args.num_infer_workers <=
-                    get_device_count()), ('async_generate requires training and rollout use '
-                                          'different GPUS.')
-
-        if self.args.sleep_level > 0:
-            if local_world_size + self.args.num_infer_workers <= get_device_count():
-                logger.warning('You are using different GPUs for training and rollout, '
-                               'so you do not need to use sleep_level > 0')
 
         if not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
@@ -141,6 +130,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
 
         self.reward_funcs = reward_funcs
+
+        self.multi_turn_func = None
+        if self.args.multi_turn_func:
+            if isinstance(self.args.multi_turn_func, str):
+                assert self.args.multi_turn_func in multi_turns
+                multi_turn_func = multi_turns[self.args.multi_turn_func]
+                self.multi_turn_func = multi_turn_func
+            else:
+                self.multi_turn_func = self.args.multi_turn_func
+
         self.reward_templates = [None] * len(self.reward_funcs)
         if reward_model is not None:
             self.reward_templates.append(kwargs.pop('reward_template', None))
@@ -165,6 +164,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
+
+        if self.args.tensor_parallel_size > 1 and self.multi_turn_func:
+            import torch.distributed as dist
+            rank, _, _, _ = get_dist_setting()
+            for tp_group in self.tp_group_ranks():
+                group = dist.new_group(tp_group)
+                if rank in tp_group:
+                    self.group = group
 
         super().__init__(model, ref_model, *_args, **kwargs)
 
@@ -275,7 +282,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
-        self.epsilon = args.epsilon
+        self.epsilon_low = args.epsilon
+        self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
+
         # Tracks the number of iterations (forward + backward passes), including those within a gradient accumulation cycle. # noqa
         self._step = 0
         # Buffer the batch to reuse generated outputs across multiple updates. For more details, see
@@ -283,6 +292,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._buffered_inputs = [None] * args.gradient_accumulation_steps
         if self.args.async_generate:
             self.add_callback(GRPOCallback(self))
+        self.set_multi_turn_engine_default_max_tokens()
 
     def split_batches(self):
         """Sync weights in batches
@@ -311,7 +321,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         llm = llm[0]
                     if name.startswith('base_model'):
                         name = name.replace('base_model.', '')
-                    if name.startswith(llm):
+                    if llm in name:
                         layer_count = len(module)
                 else:
                     layer_count = len(module)
@@ -420,6 +430,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return -1
 
+    def tp_group_ranks(self):
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
+        return [
+            list(range(0, world_size))[i:i + self.args.tensor_parallel_size]
+            for i in range(0, world_size, self.args.tensor_parallel_size)
+        ]
+
     @staticmethod
     def round_robin(num_reqs, nodes):
         distribution = [[] for _ in range(nodes)]
@@ -428,18 +445,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             distribution[node_id].append(idx)
         return distribution
 
-    @staticmethod
     @contextmanager
-    def _template_context(template):
+    def _template_context(self, template):
         # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
         max_length = template.max_length
         mode = template.mode
         if mode in {'vllm', 'pt', 'lmdeploy'}:
             template.set_mode('train')
         template.max_length = None
+        loss_scale = template.loss_scale
+        if self.multi_turn_func:
+            template.loss_scale = 'default'
         try:
             yield
         finally:
+            template.loss_scale = loss_scale
             template.set_mode(mode)
             template.max_length = max_length
 
@@ -501,10 +521,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @profiling_decorator
     def _move_model_to_vllm_lmdeploy(self):
-        # TODO This may be low efficiency
-        # 1. deepspeed parallel == vllm tensor parallel, may be do not need to gather
-        # 2. may be each process in tp group only need gather a part of the parameters
-        # 3. the split of parameter_groups may be imbalanced
         from accelerate.utils.other import is_compiled_module
 
         for i, parameter_group in enumerate(self.parameter_groups):
@@ -596,6 +612,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if is_peft_model(unwrapped_model):
                     unwrapped_model.unmerge_adapter()
 
+        if self.infer_rank >= 0 and self.args.use_vllm and self.args.vllm_enable_prefix_caching:
+            self.engine.engine.reset_prefix_cache()
+
     def _wait_queue(self):
         while self._queue.empty():
             time.sleep(0.01)
@@ -611,13 +630,90 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
+    def _infer_multi_turn(self, inputs_slice, request_config) -> List[List[List[Dict[str, Any]]]]:
+        from swift.llm.infer.protocol import ChatCompletionResponse
+        rank, _, _, _ = get_dist_setting()
+        request_config = copy(request_config)
+        results: List[ChatCompletionResponse] = self.engine.infer(
+            infer_requests=inputs_slice, request_config=request_config, use_tqdm=False)
+        prompt_lens = len(inputs_slice)
+        messages_list = [None] * (len(inputs_slice) * self.args.tensor_parallel_size)
+        if self.multi_turn_func:
+            remove_response = True
+            while len(inputs_slice) > 0:
+                request_config.n = 1
+                if self.infer_rank_tp_0 >= 0:
+                    inputs = []
+                    cnt = 0
+                    for i, output in enumerate(results):
+                        for choice in output.choices:
+                            _input: Dict = deepcopy(inputs_slice[i])
+                            if remove_response or _input['messages'][-1]['role'] != 'assistant' or not \
+                                    _input['messages'][-1]['content']:
+                                InferRequest.remove_response(_input['messages'])
+                                _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
+                            else:
+                                _input['messages'][-1]['content'] += choice.message.content
+                            if 'index' not in _input:
+                                _input['index'] = cnt
+                            cnt += 1
+                            inputs.append(_input)
+                    results: List[Dict] = self.multi_turn_func(inputs)  # noqa
+                else:
+                    length = sum([len(results[i].choices) for i in range(len(results))])
+                    results = [None] * length
+
+                if self.args.tensor_parallel_size > 1:
+                    # avoid duplicate calling in the same tensor parallel group
+                    import torch.distributed as dist
+                    if 'group_src' in inspect.signature(dist.broadcast_object_list).parameters:
+                        dist.broadcast_object_list(results, group_src=0, group=self.group)
+                    else:
+                        global_src = dist.get_global_rank(self.group, 0)
+                        dist.broadcast_object_list(results, src=global_src, group=self.group)
+                inputs_slice = [r for r in results if not r['finished']]
+                for idx, r in enumerate(results):
+                    if r['finished']:
+                        messages_list[r['index']] = r['messages']
+                if len(inputs_slice) > 0:
+                    _input_std = []
+                    for _input in inputs_slice:
+                        _input_std.append(StdTemplateInputs.from_dict(_input))
+                        # StdTemplateInputs will not remove responses in infer
+                    results = self.engine.infer(
+                        infer_requests=_input_std, request_config=request_config, use_tqdm=False)
+                # concat responses from the second loop
+                remove_response = False
+
+            outputs = []
+            assert not any([m is None for m in messages_list])
+            for i in range(0, len(messages_list), self.args.tensor_parallel_size):
+                # reformat to [[x, x, x, x] [x, x, x, x]]
+                # this is the same format of sampling_params.n > 1
+                outputs.append(messages_list[i:i + self.args.tensor_parallel_size])
+            assert len(outputs) == prompt_lens
+            assert all([len(o) == self.args.tensor_parallel_size for o in outputs])
+            return outputs
+        else:
+            # single turn
+            outputs = []
+            for i, output in enumerate(results):
+                _choices = []
+                for choice in output.choices:
+                    _input: Dict = deepcopy(inputs_slice[i])
+                    InferRequest.remove_response(_input['messages'])
+                    _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
+                    _choices.append(_input['messages'])
+                outputs.append(_choices)
+            assert len(outputs) == prompt_lens
+            assert all([len(o) == self.args.tensor_parallel_size for o in outputs])
+            return outputs
+
     def async_infer(self, inputs, inputs_slice, distributed_idx):
 
         def infer_task():
             with set_device_context(self.infer_device):
-                result = self.engine.infer(
-                    infer_requests=inputs_slice, request_config=self.request_config, use_tqdm=False)
-                return result
+                return self._infer_multi_turn(inputs_slice, self.request_config)
 
         future: Future = self.executor.submit(infer_task)
         # pre-fetch the queue to avoid switching back to eval_queue at the end of training sample sampling
@@ -634,7 +730,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
         if self.infer_rank >= 0:
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
-            outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
+            outputs = self._infer_multi_turn(_input_slice, self.request_config)
             self._queue.put(DataCache(inputs, outputs, distributed_idx))
         else:
             self._queue.put(DataCache(inputs, [], distributed_idx))
@@ -676,7 +772,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     request_config = copy(self.request_config)
                     if self.args.tensor_parallel_size > 1:
                         request_config.seed += self.state.global_step
-                    outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
+                    outputs = self._infer_multi_turn(_input_slice, self.request_config)
                 if self.args.tensor_parallel_size > 1:
                     if self.infer_rank_tp_0 < 0:
                         outputs = []
@@ -684,9 +780,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         _outputs = []
                         for tp_idx in range(self.args.tensor_parallel_size):
                             for prompt_idx in range(len(outputs)):
-                                output = deepcopy(outputs[prompt_idx])
-                                output.choices = [output.choices[tp_idx]]
-                                _outputs.append(output)
+                                _outputs.append(outputs[prompt_idx][tp_idx])
                         outputs = _outputs
         else:
             if self.args.async_generate:
@@ -698,6 +792,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs = []
         outputs = gather_object(outputs)
         outputs = self.reorder_outputs(outputs, distributed_idx)
+        if isinstance(outputs[0][0], list):
+            outputs = [output[0] for output in outputs]
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
             if self.args.gc_collect_after_offload:
@@ -730,10 +826,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with unwrap_model_for_generation(
                     self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation):
                 # same reference
-                outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
+                outputs = self._infer_multi_turn(inputs, self.request_config)
                 self.model.train()
             if is_multimodal:
                 self.template.register_post_encode_hook(models)
+            if isinstance(outputs[0][0], list):
+                outputs = [output[0] for output in outputs]
 
         # Slice to keep only the local part of the data
         process_slice = slice(
@@ -744,34 +842,40 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs = outputs[process_slice]
 
         for i, output in enumerate(outputs):
-            messages = inputs[i]['messages']
-            InferRequest.remove_response(messages)
-            messages.append({'role': 'assistant', 'content': output.choices[0].message.content})
+            inputs[i]['messages'] = output
+
+        mini_batch_inputs = self._split_into_mini_batches(inputs, mini_batch_size=self.args.mini_batch_size)
+        batch_encoded_inputs = []
         from copy import copy
         template = copy(self.template)
-        with self._template_context(template):
-            batched_inputs = [template.encode(infer_request) for infer_request in inputs]
-            outputs = to_device(template.data_collator(batched_inputs), self.model.device)
+        for mini_batch in mini_batch_inputs:
+            with self._template_context(template):
+                mini_batch_encoded_inputs = [template.encode(infer_request) for infer_request in mini_batch]
+                mini_batch_encoded_inputs = to_device(
+                    template.data_collator(mini_batch_encoded_inputs), self.model.device)
 
-        # we only need to compute the logits for the completion tokens
-        labels = outputs.pop('labels')
-        logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
-        outputs['logits_to_keep'] = logits_to_keep
-        outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
+            labels = mini_batch_encoded_inputs.pop('labels')
+            logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
+            mini_batch_encoded_inputs['logits_to_keep'] = logits_to_keep
+            mini_batch_encoded_inputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
-        with torch.no_grad():
-            if self.old_policy:
-                outputs['old_per_token_logps'] = self._get_per_token_logps(self.model, outputs)
-            else:
-                outputs['old_per_token_logps'] = None
+            with torch.no_grad():
+                if self.old_policy:
+                    mini_batch_encoded_inputs['old_per_token_logps'] = self._get_per_token_logps(
+                        self.model, mini_batch_encoded_inputs)
+                else:
+                    mini_batch_encoded_inputs['old_per_token_logps'] = None
 
-            if self.beta == 0.0:
-                ref_per_token_logps = None
-            elif self.ref_model is not None:
-                ref_per_token_logps = self._get_per_token_logps(self.ref_model, outputs)
-            else:
-                with self.accelerator.unwrap_model(self.model).disable_adapter():
-                    ref_per_token_logps = self._get_per_token_logps(self.model, outputs)
+                if self.beta == 0.0:
+                    ref_per_token_logps = None
+                elif self.ref_model is not None:
+                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, mini_batch_encoded_inputs)
+                else:
+                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                        ref_per_token_logps = self._get_per_token_logps(self.model, mini_batch_encoded_inputs)
+
+                mini_batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
+                batch_encoded_inputs.append(mini_batch_encoded_inputs)
 
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
         completions = [example['messages'][-1]['content'] for example in inputs]
@@ -782,8 +886,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     batched_inputs = [reward_template.encode(infer_request) for infer_request in inputs]
                     reward_inputs = to_device(reward_template.data_collator(batched_inputs), reward_func.device)
 
-                with torch.inference_mode():
-                    rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]
+                with torch.inference_mode(), unwrap_model_for_generation(reward_func,
+                                                                         self.accelerator) as unwrapped_reward_func:
+                    rewards_per_func[:, i] = unwrapped_reward_func(**reward_inputs).logits[:, 0]
             else:
                 # Repeat all input columns (but "messages" and "completion") to match the number of generations
                 reward_kwargs = RowPreprocessor.rows_to_batched(inputs)
@@ -803,15 +908,22 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
         advantages = advantages[process_slice]
-
+        mini_batch_advantages = self._split_into_mini_batches(advantages, mini_batch_size=self.args.mini_batch_size)
+        # merge advantages to mini_batch_inputs
+        for i, mini_batch_advantage in enumerate(mini_batch_advantages):
+            batch_encoded_inputs[i].update({'advantages': mini_batch_advantage})
         # Log the metrics
         mode = 'eval' if self.control.should_evaluate else 'train'
-        completion_length = self.accelerator.gather_for_metrics(outputs['completion_mask'].sum(1)).float().mean().item()
+        completion_length = self.accelerator.gather_for_metrics(
+            torch.cat([mb['completion_mask'].sum(1).float() for mb in batch_encoded_inputs])).mean().item()
         self._metrics[mode]['completion_length'].append(completion_length)
         # clip ratio
-        response_clip_ratio = torch.gt(
-            self.accelerator.gather_for_metrics(outputs['completion_mask'].sum(1)),
-            self.args.max_completion_length).float().mean().item()
+        response_clip_ratio = (
+            torch.gt(
+                self.accelerator.gather_for_metrics(
+                    torch.cat([mb['completion_mask'].sum(1) for mb in batch_encoded_inputs])),
+                self.args.max_completion_length).float().mean().item())
+
         self._metrics[mode]['response_clip_ratio'].append(response_clip_ratio)
         reward_per_func = rewards_per_func.mean(0)
         for i, reward_func in enumerate(self.reward_funcs):
@@ -826,10 +938,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self._metrics[mode]['reward'].append(rewards.mean().item())
         self._metrics[mode]['reward_std'].append(std_grouped_rewards.mean().item())
-        outputs.update({
-            'ref_per_token_logps': ref_per_token_logps,
-            'advantages': advantages,
-        })
         if self.log_completions and self.state.global_step % self.args.logging_steps == 0:
             # For logging
             table = {
@@ -844,13 +952,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 df = pd.DataFrame(table)
                 wandb.log({'completions': wandb.Table(dataframe=df)})
 
-        return outputs
+        return batch_encoded_inputs
 
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        if return_outputs:
-            raise ValueError('The GRPOTrainer does not support returning outputs')
-        # Compute the per-token log probabilities for the model
+        # Compute the per-token log probabilities for the model, return_outputs=True in mini-batch training
+        if isinstance(inputs, list):
+            assert len(inputs) == 1
+            inputs = inputs[0]
         completion_mask = inputs['completion_mask']
         per_token_logps = self._get_per_token_logps(model, inputs)
 
@@ -863,7 +972,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         advantages = inputs['advantages']
         old_per_token_logps = inputs['old_per_token_logps'] if self.old_policy else per_token_logps.detach()
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
-        coef_2 = torch.clamp(coef_1, 1 - self.epsilon, 1 + self.epsilon)
+        coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
         per_token_loss1 = coef_1 * advantages.unsqueeze(1)
         per_token_loss2 = coef_2 * advantages.unsqueeze(1)
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
@@ -873,16 +982,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         loss = (per_token_loss * completion_mask).sum() / completion_mask.sum()
 
         # Log the metrics
+        metrics = {}
         mode = 'eval' if self.control.should_evaluate else 'train'
 
         if self.beta != 0.0:
-            mean_kl = ((per_token_kl * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
-            self._metrics[mode]['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
+            mean_kl = (per_token_kl * completion_mask).sum() / completion_mask.sum()
+            metrics['kl'] = mean_kl
 
-        is_clipped = (per_token_loss1 < per_token_loss2).float()
+        is_clipped = (coef_1 < (1 - self.epsilon_low)) | (coef_1 > (1 + self.epsilon_high))
         clip_ratio = (is_clipped * completion_mask).sum() / completion_mask.sum()
-        self._metrics[mode]['clip_ratio'].append(self.accelerator.gather_for_metrics(clip_ratio).mean().item())
-        return loss
+        metrics['clip_ratio'] = clip_ratio
+
+        # Log metrics or return them
+        if return_outputs:
+            metrics['completion_length'] = completion_mask.sum()
+            return loss, metrics
+        else:
+            for key, value in metrics.items():
+                self._metrics[mode][key].append(self.accelerator.gather_for_metrics(value).mean().item())
+            return loss
 
     # Get the per-token log probabilities for the completions for the model and the reference model
     @profiling_decorator
@@ -908,13 +1026,88 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
 
     def evaluation_loop(self, dataloader, *args, **kwargs):
+        # set mini_batch_size None in evaluation
+        mini_batch_size = self.args.mini_batch_size
+        self.args.mini_batch_size = None
         if self._queue.empty() and self.args.async_generate:
             self._prefetch(dataloader)
         metric_key_prefix = kwargs['metric_key_prefix']
         output = super().evaluation_loop(dataloader, *args, **kwargs)
         metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics['eval'].items()}
         output.metrics.update(metrics)
+        self.args.mini_batch_size = mini_batch_size
         return output
+
+    def training_step(self,
+                      model: nn.Module,
+                      inputs: Dict[str, Union[torch.Tensor, Any]],
+                      num_items_in_batch=None) -> torch.Tensor:
+
+        if self.args.mini_batch_size is None:
+            return super().training_step(model, inputs, num_items_in_batch)
+        model.train()
+        if hasattr(self.optimizer, 'train') and callable(self.optimizer.train):
+            self.optimizer.train()
+
+        batch_inputs = self._prepare_inputs(inputs)
+
+        total_loss = torch.tensor(0.0, device=batch_inputs[0]['input_ids'].device)
+        # Initialize metrics accumulators
+        total_kl = 0.0
+        total_clip_ratio = 0.0
+        total_completion_length = 0
+        for mini_batch in batch_inputs:
+
+            with self.compute_loss_context_manager():
+                mini_batch_loss, mini_batch_metrics = self.compute_loss(model, mini_batch, return_outputs=True)
+                mb_completion_length = mini_batch_metrics['completion_length']
+
+            self.accelerator.backward(mini_batch_loss)
+            # Token-level metrics are weighted by completion length to ensure a fair average over all tokens.
+            if self.beta != 0.0:
+                total_kl += mini_batch_metrics['kl'] * mb_completion_length
+            total_clip_ratio += mini_batch_metrics['clip_ratio'] * mb_completion_length
+            total_completion_length += mb_completion_length
+            total_loss += mini_batch_loss * mb_completion_length
+
+        mode = 'eval' if self.control.should_evaluate else 'train'
+        if self.beta != 0.0:
+            self._metrics[mode]['kl'].append(
+                self.accelerator.gather_for_metrics(total_kl / total_completion_length).mean().item())
+        self._metrics[mode]['clip_ratio'].append(
+            self.accelerator.gather_for_metrics(total_clip_ratio / total_completion_length).mean().item())
+
+        total_loss = total_loss / total_completion_length
+
+        del inputs, batch_inputs
+        if (self.args.torch_empty_cache_steps is not None
+                and self.state.global_step % self.args.torch_empty_cache_steps == 0):
+            gc_collect()
+
+        return total_loss.detach()
+
+    @staticmethod
+    def _split_into_mini_batches(batch: List, mini_batch_size: int) -> List[List]:
+        """
+        Splits a full batch into multiple mini-batches based on the specified mini_batch_size.
+
+        Args:
+            batch (List): The full batch.
+            mini_batch_size (int): The size of each mini-batch.
+
+        Returns:
+            List[List]: A list of mini-batches.
+        """
+        if mini_batch_size is None or mini_batch_size >= len(batch):
+            # If mini_batch_size is not specified or larger than the batch size,
+            # return the full batch as a single mini-batch
+            return [batch]
+
+        mini_batches = []
+        for i in range(0, len(batch), mini_batch_size):
+            mini_batch = batch[i:i + mini_batch_size]
+            mini_batches.append(mini_batch)
+        return mini_batches
 
     @property
     def _queue(self):
@@ -922,3 +1115,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return self.eval_queue
         else:
             return self.train_queue
+
+    def set_multi_turn_engine_default_max_tokens(self):
+        # Reset max_model_len to ensure that the total length during multi-turn generation
+        # does not exceed max_tokens, i.e., max_completion_length
+        if self.multi_turn_func:
+            origin_set_default_max_tokens = self.engine.set_default_max_tokens
+
+            def new_set_default_max_tokens(_self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
+                max_model_len = _self.max_model_len or 8192
+                max_prompt_length = self.template.max_length
+                _self.max_model_len = min(max_model_len, max_prompt_length + request_config.max_tokens)
+                _self.origin_set_default_max_tokens(request_config, inputs)
+
+            self.engine.set_default_max_tokens = MethodType(new_set_default_max_tokens, self.engine)
+            self.engine.origin_set_default_max_tokens = origin_set_default_max_tokens
