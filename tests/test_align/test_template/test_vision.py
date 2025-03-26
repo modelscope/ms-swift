@@ -506,7 +506,7 @@ if __name__ == '__main__':
 
     logger = get_logger()
     # test_qwen2_vl()
-    # test_qwen2_5_vl()
+    test_qwen2_5_vl()
     # test_internvl2()
     # test_internvl2_phi3()
     # test_llava()
