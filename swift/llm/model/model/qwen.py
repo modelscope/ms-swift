@@ -631,7 +631,8 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.qwen2_5_omni, [
+        MLLMModelType.qwen2_5_omni,
+        [
             ModelGroup([
                 Model('Qwen/Qwen2.5-Omni-7B', 'Qwen/Qwen2.5-Omni-7B'),
             ]),
@@ -643,7 +644,7 @@ register_model(
         requires=['transformers>=4.50', 'soundfile', 'qwen_omni_utils', 'decord'],
         tags=['vision', 'video', 'audio'],
         additional_saved_files=['spk_dict.pt'],
-))
+    ))
 
 
 def get_model_tokenizer_qwen2_audio(*args, **kwargs):

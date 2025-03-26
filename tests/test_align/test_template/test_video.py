@@ -142,10 +142,9 @@ def test_qwen2_5_omni():
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, videos=videos)
     assert response == response2 == (
-        "Oh, that sounds like a really cool project! So, you're using a tablet to draw a guitar and a key? "
-        "That's a creative way to combine two different things. Have you thought about what you'll "
-        'do with the final drawing? Maybe could use it for a poster or something? '
-        'Let me know how it turns out!')
+        "Oh, that sounds like a really cool project! So, you're using a tablet to draw a guitar, right? "
+        "And you're adding colors to it. What kind of colors are you thinking of using? Maybe some bright, "
+        'fun ones to make it pop? Let me know how it turns out!')
 
 
 if __name__ == '__main__':
