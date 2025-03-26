@@ -12,7 +12,7 @@ from swift.llm import ExportArguments, get_model_tokenizer, get_template, save_c
 from swift.utils import get_logger, get_n_params_grads
 from ..argument import MegatronArguments
 from ..model import get_megatron_model_meta
-from .patcher import patch_megatron_tokenizer, patch_torch_dist_shard
+from .patcher import patch_megatron
 
 logger = get_logger()
 
@@ -66,13 +66,13 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     if args.thread_count is None:
         checkpoint_size = sum(get_n_params_grads(hf_model)[0]) * torch.finfo(args.torch_dtype).bits // 8e9
         args.thread_count = max(math.ceil(checkpoint_size / 10), 2)  # 10GB
-    patch_torch_dist_shard(args.thread_count)
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
     kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
-    megatron_args = MegatronArguments(**kwargs, **convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
-    patch_megatron_tokenizer(processor)
+    megatron_args = MegatronArguments(
+        **kwargs, **convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype, thread_count=args.thread_count)
+    patch_megatron(processor)
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
 
@@ -93,13 +93,13 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     if args.thread_count is None:
         checkpoint_size = sum(get_n_params_grads(hf_model)[0]) * torch.finfo(args.torch_dtype).bits // 8e9
         args.thread_count = max(math.ceil(checkpoint_size / 10), 2)  # 10GB
-    patch_torch_dist_shard(args.thread_count)
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
     kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
-    megatron_args = MegatronArguments(**kwargs, **convert_kwargs, load=args.mcore_model, torch_dtype=args.torch_dtype)
-    patch_megatron_tokenizer(processor)
+    megatron_args = MegatronArguments(
+        **kwargs, **convert_kwargs, load=args.mcore_model, torch_dtype=args.torch_dtype, thread_count=args.thread_count)
+    patch_megatron(processor)
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
 

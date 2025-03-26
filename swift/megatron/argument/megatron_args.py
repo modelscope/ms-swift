@@ -14,6 +14,8 @@ class ExtraMegatronArguments:
     padded_vocab_size: Optional[int] = None
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
+    thread_count: Optional[int] = None
+    max_epochs: Optional[int] = None
 
 
 @dataclass
