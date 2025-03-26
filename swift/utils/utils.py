@@ -14,6 +14,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
+from transformers.utils import strtobool
 
 from .env import is_dist, is_dist_ta
 from .logger import get_logger
@@ -224,6 +225,8 @@ def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: 
         log_info = (f'Setting {args_name}: {default_value}. '
                     f'You can adjust this hyperparameter through the environment variable: `{args_name_upper}`.')
     else:
+        if type_func is bool:
+            value = strtobool(value)
         value = type_func(value)
         log_info = f'Using environment variable `{args_name_upper}`, Setting {args_name}: {value}.'
     logger.info_once(log_info)

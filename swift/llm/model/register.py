@@ -220,6 +220,10 @@ def get_model_tokenizer_from_local(model_dir: str,
             patch_output_normalizer(model, model_meta=model_meta)
 
     model_info.config = model_config if model is None else model.config
+    if model:
+        # fix seq classification task
+        pad_token_id = model.config.pad_token_id or tokenizer.pad_token_id
+        HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token_id)
     return model, tokenizer
 
 
@@ -555,9 +559,6 @@ def get_model_tokenizer(
     assert tokenizer.pad_token_id is not None
 
     if model is not None:
-        # fix seq classification task
-        pad_token_id = model.config.pad_token_id or tokenizer.pad_token_id
-        HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token_id)
         model.model_info = model_info
         model.model_meta = model_meta
         model.model_dir = model_dir

@@ -575,6 +575,10 @@ For the meaning of the arguments, please refer to [here](https://github.com/Qwen
 ### qwen2_audio
 - SAMPLING_RATE: Default is 16000
 
+### qwen2_5_omni
+qwen2_5_omni not only includes the model-specific parameters of qwen2_5_vl and qwen2_audio, but also contains the following parameter:
+- USE_AUDIO_IN_VIDEO: Default is False.
+
 ### internvl, internvl_phi3
 For the meaning of the arguments, please refer to [here](https://modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)
 - MAX_NUM: Default is 12
