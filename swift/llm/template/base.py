@@ -7,6 +7,7 @@ import re
 from copy import deepcopy
 from dataclasses import asdict
 from functools import partial, wraps
+from io import BytesIO
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -24,7 +25,7 @@ from swift.utils import get_dist_setting, get_env_args, get_logger, use_torchacc
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
-from .vision_utils import load_audio, load_batch, load_image, rescale_image
+from .vision_utils import load_audio, load_batch, load_file, load_image, rescale_image
 
 logger = get_logger()
 
@@ -218,19 +219,83 @@ class Template(ProcessorMixin):
             self._add_default_tags(inputs)
 
     @staticmethod
+    def _is_valid_image_source(src: str) -> bool:
+        try:
+            _ = load_file(src)
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def _format_image_entry(src: str):
+        if src.startswith('http') or os.path.exists(os.path.expanduser(src)) \
+            or (not src.startswith('data:') and len(src) <= 200):
+            return {'bytes': None, 'path': src}
+        try:
+            data = load_file(src)
+            if isinstance(data, BytesIO):
+                return {'bytes': data.getvalue(), 'path': None}
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
     def _replace_image_tags(inputs: StdTemplateInputs):
-        # compat
-        images = []
-        pattern = r'<img>(.+?)</img>'
-        for message in inputs.messages:
-            content = message['content']
+        """将消息中的合法 <img>标签替换为 <image> 占位符，并按顺序插入对应图片到 inputs.images，保持占位符与图像一一对应。"""
+        pattern = re.compile(r'(<image>|<img>.+?</img>)', flags=re.DOTALL)
+        placeholders, existing_used, compat_img = [], 0, False
+
+        for msg in inputs.messages:
+            content = msg['content']
             if not isinstance(content, str):
                 continue
-            images += re.findall(pattern, content)
-            message['content'] = re.sub(pattern, '<image>', content)
-        if images:
-            assert not inputs.images, f'images: {images}, inputs.images: {inputs.images}'
-            inputs.images = images
+
+            tokens = re.split(pattern, content)
+            if len(tokens) == 1:
+                continue
+
+            new_fragments = []
+            for token in tokens:
+                if not token:
+                    continue
+                if token == '<image>':
+                    placeholders.append(('existing', None))
+                    existing_used += 1
+                    new_fragments.append('<image>')
+                elif token.startswith('<img>') and token.endswith('</img>'):
+                    match = re.match(r'^<img>(.+?)</img>$', token, flags=re.DOTALL)
+                    if match:
+                        img_src = match.group(1).strip()
+                        if Template._is_valid_image_source(img_src):
+                            image_entry = Template._format_image_entry(img_src)
+                            if image_entry:
+                                placeholders.append(('new', image_entry))
+                                new_fragments.append('<image>')
+                                compat_img = True
+                                continue
+                    new_fragments.append(token)
+                else:
+                    new_fragments.append(token)
+            msg['content'] = ''.join(new_fragments)
+
+        if not compat_img:
+            return
+
+        old_images = inputs.images or []
+        new_images, old_index = [], 0
+
+        for typ, val in placeholders:
+            if typ == 'existing':
+                if old_index < len(old_images):
+                    new_images.append(old_images[old_index])
+                old_index += 1
+            else:
+                new_images.append(val)
+
+        if old_index < len(old_images):
+            new_images.extend(old_images[old_index:])
+
+        inputs.images = new_images
 
     @staticmethod
     def _replace_start_image_tags(inputs: StdTemplateInputs):
