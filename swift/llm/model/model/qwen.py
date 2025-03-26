@@ -601,6 +601,7 @@ register_model(
             ModelGroup([
                 Model('Qwen/Qwen2.5-VL-3B-Instruct-AWQ', 'Qwen/Qwen2.5-VL-3B-Instruct-AWQ'),
                 Model('Qwen/Qwen2.5-VL-7B-Instruct-AWQ', 'Qwen/Qwen2.5-VL-7B-Instruct-AWQ'),
+                Model('Qwen/Qwen2.5-VL-32B-Instruct-AWQ', 'Qwen/Qwen2.5-VL-32B-Instruct-AWQ'),
                 Model('Qwen/Qwen2.5-VL-72B-Instruct-AWQ', 'Qwen/Qwen2.5-VL-72B-Instruct-AWQ'),
             ]),
         ],
@@ -621,7 +622,9 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     from qwen_omni_utils import vision_process
     patch_qwen_vl_utils(vision_process)
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-    use_submodel_func(model, 'thinker')
+    if model:
+        use_submodel_func(model, 'thinker')
+        model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
     return model, processor
 
 

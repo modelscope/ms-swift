@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Literal, Optional
 import torch
 import torch.nn.functional as F
 
-from swift.llm import to_device
+from swift.llm import to_device, to_float_dtype
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
@@ -348,31 +348,41 @@ class Qwen2_5OmniTemplate(Template):
         if media_type == 'image':
             inputs.images[index] = fetch_image({'image': inputs.images[index]})
             return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
+        elif media_type == 'audio':
+            return ['<|audio_bos|><|AUDIO|><|audio_eos|>']
         elif media_type == 'video':
-            inputs.videos[index] = fetch_video({'video': inputs.videos[index]}).to(torch.uint8)
+            video = inputs.videos[index]
+            inputs.videos[index] = fetch_video({'video': video}).to(torch.uint8)
+            use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
+            if use_audio_in_video:
+                inputs.audios.insert(inputs.audio_idx, video)
             return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         processor = self.processor
-        input_ids = encoded['input_ids']
-        labels = encoded['labels']
-        images = inputs.images
-        videos = inputs.videos
-        for media_type in ['images', 'videos']:
-            if locals()[media_type]:
-                if media_type == 'images':
-                    media_inputs = processor.omni_processor(
-                        images=images, videos=None, return_tensors='pt', do_resize=False)
-                else:
-                    media_inputs = processor.omni_processor(
-                        images=None, videos=videos, return_tensors='pt', do_resize=False)
-                    from qwen_omni_utils import vision_process
-                    media_inputs['video_second_per_grid'] = [
-                        processor.omni_processor.temporal_patch_size / vision_process.FPS
-                    ] * len(videos)
-                encoded.update(media_inputs)
+        if inputs.audios:
+            sampling_rate = get_env_args('sampling_rate', int, processor.feature_extractor.sampling_rate)
+            inputs.audios = load_batch(inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate))
+        media_inputs = processor(
+            text='',
+            audios=inputs.audios or None,
+            images=inputs.images or None,
+            videos=inputs.videos or None,
+            return_tensors='pt')
+        media_inputs.pop('input_ids')
+        media_inputs.pop('attention_mask')
+        media_inputs = to_float_dtype(media_inputs, self.model_info.torch_dtype)
+        encoded.update(media_inputs)
         return encoded
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        if self.is_training:
+            feature_attention_mask = inputs.get('feature_attention_mask')
+            if feature_attention_mask is not None:
+                inputs['input_features'] = inputs['input_features'].permute(0, 2, 1)[feature_attention_mask.bool()]
+                inputs['input_features'] = inputs['input_features'].permute(1, 0)
+        return inputs
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
@@ -380,7 +390,19 @@ class Qwen2_5OmniTemplate(Template):
             grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
             if grid_thw:
                 res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
+        input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
+        feature_attention_mask = [
+            b['feature_attention_mask'] for b in batch if b.get('feature_attention_mask') is not None
+        ]
+        if input_features:
+            res['input_features'] = torch.concat(input_features)
+            res['feature_attention_mask'] = torch.concat(feature_attention_mask)
         return res
+
+    def generate(self, model, *args, **kwargs):
+        if kwargs.get('video_grid_thw') is not None:
+            kwargs['use_audio_in_video'] = get_env_args('use_audio_in_video', bool, False)
+        return model.generate(*args, **kwargs)
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_omni, template_cls=Qwen2_5OmniTemplate))

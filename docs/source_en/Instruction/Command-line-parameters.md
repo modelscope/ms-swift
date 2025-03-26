@@ -557,7 +557,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 
 Specific model arguments can be set using `--model_kwargs` or environment variables, for example: `--model_kwargs '{"fps_max_frames": 12}'` or `FPS_MAX_FRAMES=12`.
 
-### qwen2_vl, qvq, qwen2_5_vl, qwen2_5_omni
+### qwen2_vl, qvq, qwen2_5_vl
 For the meaning of the arguments, please refer to [here](https://github.com/QwenLM/Qwen2-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)
 
 - IMAGE_FACTOR: Default is 28
@@ -574,6 +574,10 @@ For the meaning of the arguments, please refer to [here](https://github.com/Qwen
 
 ### qwen2_audio
 - SAMPLING_RATE: Default is 16000
+
+### qwen2_5_omni
+qwen2_5_omni not only includes the model-specific parameters of qwen2_5_vl and qwen2_audio, but also contains the following parameter:
+- USE_AUDIO_IN_VIDEO: Default is False.
 
 ### internvl, internvl_phi3
 For the meaning of the arguments, please refer to [here](https://modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)
