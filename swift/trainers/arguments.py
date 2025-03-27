@@ -36,6 +36,8 @@ class TrainArgumentsMixin:
     lr_scheduler_type: str = 'cosine'
     lr_scheduler_kwargs: Optional[Union[dict, str]] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
+    dataloader_persistent_workers: Optional[bool] = None
+    dataloader_prefetch_factor: int = 10
 
     # extra
     check_model: bool = True
@@ -89,6 +91,8 @@ class TrainArgumentsMixin:
             self.lr_scheduler_kwargs = ModelArguments.parse_to_dict(self.lr_scheduler_kwargs)
         if self.gradient_checkpointing_kwargs:
             self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
+        if self.dataloader_persistent_workers is None:
+            self.dataloader_persistent_workers = self.dataloader_num_workers > 0
         self._fix_gradient_checkpointing()
 
         if self.eval_use_evalscope:

@@ -266,7 +266,7 @@ class Qwen2VLTemplate(Template):
     @contextmanager
     def _patch_flash_attention_forward(inputs):
         position_ids = inputs['position_ids']
-        inputs['position_ids'] = inputs.pop('_position_ids')
+        inputs['position_ids'] = inputs.pop('real_position_ids')
         from transformers.models.qwen2_5_vl import modeling_qwen2_5_vl
         from transformers.models.qwen2_vl import modeling_qwen2_vl
         _origin_flash_attention_forward = modeling_qwen2_5_vl._flash_attention_forward
@@ -284,7 +284,7 @@ class Qwen2VLTemplate(Template):
             modeling_qwen2_5_vl._flash_attention_forward = _origin_flash_attention_forward
 
     def _compute_loss_context(self, inputs):
-        if '_position_ids' not in inputs:
+        if 'real_position_ids' not in inputs:
             return super()._compute_loss_context(inputs)
         return self._patch_flash_attention_forward(inputs)
 
@@ -348,8 +348,7 @@ class Qwen2VLTemplate(Template):
             r['input_ids'] = torch.tensor(r['input_ids'])[None]
             position_ids.append(self._get_position_ids(r))
         packed = super().packing_row(row)
-        packed['position_ids'] = packed['position_ids']
-        packed['_position_ids'] = torch.concat(position_ids, dim=-1)
+        packed['real_position_ids'] = torch.concat(position_ids, dim=-1)
         return packed
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
