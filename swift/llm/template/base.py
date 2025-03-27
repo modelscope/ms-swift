@@ -228,8 +228,8 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _format_image_entry(src: str):
-        if src.startswith('http') or os.path.exists(os.path.expanduser(src)) \
-            or (not src.startswith('data:') and len(src) <= 200):
+        if src.startswith('http') or os.path.exists(os.path.expanduser(src)) or (not src.startswith('data:')
+                                                                                 and len(src) <= 200):
             return {'bytes': None, 'path': src}
         try:
             data = load_file(src)
