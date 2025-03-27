@@ -313,7 +313,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         pattern = r'\.(\d+)\.'
 
         layer_count = None
-        # search LLM modules num of layers
+        # Get the number of layers in LLM modules
         for name, module in model.named_modules():
             if isinstance(module, ModuleList):
                 if model_arch is not None and isinstance(model_arch, MultiModelKeys):
