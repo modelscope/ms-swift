@@ -1126,8 +1126,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             def new_set_default_max_tokens(_self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
                 max_model_len = _self.max_model_len or 8192
-                max_prompt_length = self.template.max_length
-                _self.max_model_len = min(max_model_len, max_prompt_length + request_config.max_tokens)
+                for inp in inputs:
+                    num_tokens = max(num_tokens, _self._get_num_tokens(inp))
+                _self.max_model_len = min(max_model_len, num_tokens + request_config.max_tokens)
                 _self.origin_set_default_max_tokens(request_config, inputs)
 
             self.engine.set_default_max_tokens = MethodType(new_set_default_max_tokens, self.engine)
