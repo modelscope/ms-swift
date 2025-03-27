@@ -406,7 +406,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for _vllm_rank in range(self.args.num_infer_workers):
             if local_rank == _vllm_rank:
                 return get_node_setting()[0] * self.args.num_infer_workers + _vllm_rank
-
+        if local_rank == -1:
+            return 0
         return -1
 
     @property
@@ -418,7 +419,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if local_rank == _vllm_rank and _vllm_rank % self.args.tensor_parallel_size == 0:
                 return (get_node_setting()[0] * self.args.num_infer_workers
                         + _vllm_rank // self.args.tensor_parallel_size)
-
+        if local_rank == -1:
+            return 0
         return -1
 
     @property
@@ -1119,7 +1121,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def set_multi_turn_engine_default_max_tokens(self):
         # Reset max_model_len to ensure that the total length during multi-turn generation
         # does not exceed max_tokens, i.e., max_completion_length
-        if self.multi_turn_func:
+        if self.multi_turn_func and self.infer_rank >= 0:
             origin_set_default_max_tokens = self.engine.set_default_max_tokens
 
             def new_set_default_max_tokens(_self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
