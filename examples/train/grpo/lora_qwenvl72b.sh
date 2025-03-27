@@ -20,8 +20,8 @@ swift rlhf \
   --per_device_train_batch_size 1 \
   --per_device_eval_batch_size 1 \
   --gradient_accumulation_steps 1 \
-  --eval_steps 1000 \
-  --save_steps 2000 \
+  --eval_steps 500 \
+  --save_steps 500 \
   --learning_rate 1e-6 \
   --save_total_limit 2 \
   --logging_steps 1 \
