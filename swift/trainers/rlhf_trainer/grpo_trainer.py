@@ -220,11 +220,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                          'value lower than the number of GPUs available on your machine—typically, '
                                          'reducing it by one is sufficient. '
                                          f'In your case: `--num_processes {get_device_count() - 1}`.')
-                    # Check that the requested device is not also used for training
-                    if _device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
-                        logger.warning(f'The requested device {_device} is also used for training. '
-                                       f'This may lead to unexpected behavior. '
-                                       f'It is recommended to use a dedicated device for vLLM.')
 
                 if use_vllm:
                     if not is_vllm_available():
