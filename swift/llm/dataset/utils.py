@@ -133,24 +133,10 @@ class PackingPreprocessor(EncodePreprocessor):
     def calculate_matched_group(self, sequences):
         # https://arxiv.org/pdf/2404.10830
         import binpacking
-        keys = list(sequences[0][0].keys())
         sequences = binpacking.to_constant_volume(sequences, self.template.max_length, weight_pos=1)
         res = []
         for row in sequences:
-            packed = {}
-            for key in keys:
-                if key == 'labels':
-                    labels_list = []
-                    for x in row:
-                        labels = x[0][key]
-                        # https://github.com/huggingface/transformers/pull/31629
-                        labels[0] = -100
-                        labels_list.append(labels)
-                    packed[key] = sum(labels_list, start=[])
-                else:
-                    packed[key] = sum((x[0][key] for x in row), start=[])
-            if 'position_ids' not in packed:
-                packed['position_ids'] = sum((list(range(x[1])) for x in row), start=[])
+            packed = self.template.packing_row(row)
             res.append(packed)
         return res
 

@@ -1,7 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -201,6 +202,7 @@ class Qwen2VLTemplate(Template):
     video_token_id = 151656
     placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
     version = 'v2'
+    use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -260,6 +262,32 @@ class Qwen2VLTemplate(Template):
         encoded['labels'] = labels
         return encoded
 
+    @staticmethod
+    @contextmanager
+    def _patch_flash_attention_forward(inputs):
+        position_ids = inputs['position_ids']
+        inputs['position_ids'] = inputs.pop('_position_ids')
+        from transformers.models.qwen2_5_vl import modeling_qwen2_5_vl
+        from transformers.models.qwen2_vl import modeling_qwen2_vl
+        _origin_flash_attention_forward = modeling_qwen2_5_vl._flash_attention_forward
+
+        def _flash_attention_forward(*args, **kwargs):
+            kwargs['position_ids'] = position_ids
+            return _origin_flash_attention_forward(*args, **kwargs)
+
+        modeling_qwen2_vl._flash_attention_forward = _flash_attention_forward
+        modeling_qwen2_5_vl._flash_attention_forward = _flash_attention_forward
+        try:
+            yield
+        finally:
+            modeling_qwen2_vl._flash_attention_forward = _origin_flash_attention_forward
+            modeling_qwen2_5_vl._flash_attention_forward = _origin_flash_attention_forward
+
+    def _compute_loss_context(self, inputs):
+        if '_position_ids' not in inputs:
+            return super()._compute_loss_context(inputs)
+        return self._patch_flash_attention_forward(inputs)
+
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:
             return inputs
@@ -271,7 +299,6 @@ class Qwen2VLTemplate(Template):
         pixel_values_videos = inputs.get('pixel_values_videos')
         image_grid_thw = inputs.get('image_grid_thw')
         video_grid_thw = inputs.get('video_grid_thw')
-        second_per_grid_ts = inputs.get('second_per_grid_ts')
 
         inputs_embeds = _model.embed_tokens(input_ids)
 
@@ -301,16 +328,10 @@ class Qwen2VLTemplate(Template):
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
 
-        # fix https://github.com/huggingface/transformers/pull/33487
-        kwargs = {}
-        if self.version == 'v2_5':
-            kwargs = {'second_per_grid_ts': second_per_grid_ts}
-        position_ids, _ = model.get_rope_index(
-            input_ids, image_grid_thw, video_grid_thw, attention_mask=inputs['attention_mask'], **kwargs)
-        return {'inputs_embeds': inputs_embeds, 'position_ids': position_ids.contiguous()}
+        return {'inputs_embeds': inputs_embeds}
 
-    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to)
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
         second_per_grid_ts = self.gather_list(batch, 'second_per_grid_ts')
         if second_per_grid_ts:
             res['second_per_grid_ts'] = second_per_grid_ts
@@ -318,6 +339,38 @@ class Qwen2VLTemplate(Template):
             grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
             if grid_thw:
                 res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
+        return res
+
+    def packing_row(self, row: List[Tuple[Dict[str, Any], int]]) -> Dict[str, Any]:
+        position_ids = []
+        for r in row:
+            r = r[0].copy()
+            r['input_ids'] = torch.tensor(r['input_ids'])[None]
+            position_ids.append(self._get_position_ids(r))
+        packed = super().packing_row(row)
+        packed['position_ids'] = packed['position_ids']
+        packed['_position_ids'] = torch.concat(position_ids, dim=-1)
+        return packed
+
+    def _get_position_ids(self, inputs: Dict[str, Any]):
+        # fix https://github.com/huggingface/transformers/pull/33487
+        kwargs = {}
+        if self.version == 'v2_5':
+            kwargs = {'second_per_grid_ts': inputs.get('second_per_grid_ts')}
+        position_ids, _ = self.model.get_rope_index(
+            inputs['input_ids'],
+            inputs.get('image_grid_thw'),
+            inputs.get('video_grid_thw'),
+            attention_mask=inputs.get('attention_mask'),
+            **kwargs)
+        return position_ids.contiguous()
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = {}
+        res.update(super()._data_collator(batch, padding_to=padding_to))
+        if not self._packing:
+            if self.is_training:
+                res['position_ids'] = self._get_position_ids(res)
         return res
 
 

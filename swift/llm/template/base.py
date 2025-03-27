@@ -4,6 +4,7 @@ import inspect
 import math
 import os
 import re
+from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import asdict
 from functools import partial, wraps
@@ -256,6 +257,9 @@ class Template(ProcessorMixin):
             added_tokens_len += token_len - 1
         return input_ids, labels
 
+    def _compute_loss_context(self, inputs):
+        return nullcontext()
+
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
         assert chosen_inputs.rejected_response is not None, f'inputs: {inputs}'
@@ -385,6 +389,28 @@ class Template(ProcessorMixin):
             encoded['labels'] = encoded['labels'][1:] + [-100]
             encoded['position_ids'] = list(range(len(encoded['labels'])))
         return encoded
+
+    def packing_row(self, row: List[Tuple[Dict[str, Any], int]]) -> Dict[str, Any]:
+        packed = {}
+        keys = set()
+        for r in row:
+            keys.update(r[0].keys())
+        for key in keys:
+            if key == 'labels':
+                labels_list = []
+                for x in row:
+                    labels = x[0][key]
+                    # https://github.com/huggingface/transformers/pull/31629
+                    labels[0] = -100
+                    labels_list.append(labels)
+                packed[key] = sum(labels_list, start=[])
+            elif key == 'input_ids':
+                packed[key] = sum((x[0][key] for x in row), start=[])
+        if 'position_ids' not in packed:
+            packed['position_ids'] = sum((list(range(x[1])) for x in row), start=[])
+
+        packed.update(self._data_collator_mm_data([r[0] for r in row]))
+        return packed
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return inputs
@@ -1173,9 +1199,10 @@ class Template(ProcessorMixin):
         padding_right = padding_side == 'right'
         packing_mode = self.use_megatron or self._packing and 'position_ids' in batch[0]
         res = {}
+        packing_keys = ['input_ids', 'labels', 'position_ids']
         if packing_mode:
             # only support llm
-            for k in ['input_ids', 'labels', 'position_ids']:
+            for k in packing_keys:
                 res[k] = [self.gather_list(batch, k)]
         else:
             inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
@@ -1225,6 +1252,18 @@ class Template(ProcessorMixin):
             res[key] = self._pad_sequence(res[key], pad_value)
 
         # multimodal
+        if packing_mode:
+            res.update(self._data_collator_mm_data(batch))
+        else:
+            res.update({k: v for k, v in batch[0].items() if k not in packing_keys})
+        if use_torchacc() or self.sequence_parallel_size > 1:
+            res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
+
+        return res
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        # multimodal
+        res = {}
         pixel_values = [b['pixel_values'] for b in batch if b.get('pixel_values') is not None]
         if len(pixel_values) > 0:
             res['pixel_values'] = torch.concat(pixel_values)
@@ -1236,9 +1275,6 @@ class Template(ProcessorMixin):
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
-        if use_torchacc() or self.sequence_parallel_size > 1:
-            res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
-
         return res
 
     def _torchacc_xtuner_data_collator(self, res, padding_to, tokenizer, padding_side):
