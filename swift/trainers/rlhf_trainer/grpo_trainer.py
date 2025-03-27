@@ -71,8 +71,6 @@ def unwrap_model_for_generation(
     else:
         yield unwrapped_model
 
-def print_gpu_memory(prefix):
-    print(f"{prefix}: Allocated = {torch.cuda.memory_allocated()/1e9:.2f}GB, Reserved = {torch.cuda.memory_reserved()/1e9:.2f}GB")
 
 class GRPOCallback(TrainerCallback):
 
@@ -615,18 +613,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         llm_model = self.engine.inner_model
                     else:
                         llm_model = self.engine.engine.engine
-                    if self.accelerator.is_main_process and i == 0:
-                        print_gpu_memory("Before load_weights")
                     llm_model.load_weights(state_dict.items())
-                    if self.accelerator.is_main_process and i == 0:
-                        print_gpu_memory("After load_weights")
-                        del state_dict
-                        torch.cuda.empty_cache()
-                        print_gpu_memory("After del state_dict")
+                    del state_dict
+                    gc_collect()
                 # Unmerge the adapter to restore the model to its original state.
                 # This must be done after loading weights to ensure they correspond to the merged state.
-                if is_peft_model(unwrapped_model):
-                    unwrapped_model.unmerge_adapter()
+        if is_peft_model(unwrapped_model):
+            unwrapped_model.unmerge_adapter()
 
         if self.infer_rank >= 0 and self.args.use_vllm and self.args.vllm_enable_prefix_caching:
             self.engine.engine.reset_prefix_cache()

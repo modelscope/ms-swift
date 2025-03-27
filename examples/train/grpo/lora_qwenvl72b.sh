@@ -1,10 +1,10 @@
 # pip install math_verify # reward function
-# GPU memory: 2 * 80GiB
+# GPU memory: 8 * 80GiB
 
-MAX_PIXELS=602112\
-WANDB_API_KEY=xxx\
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\
-NPROC_PER_NODE=8\
+MAX_PIXELS=602112 \
+WANDB_API_KEY=xxx \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=8 \
 swift rlhf \
   --rlhf_type grpo \
   --model Qwen/Qwen2.5-VL-72B-Instruct \
@@ -13,6 +13,7 @@ swift rlhf \
   --external_plugins examples/train/grpo/plugin/plugin.py \
   --reward_funcs external_r1v_acc \
   --torch_dtype bfloat16 \
+  --attn_impl flash_attn \
   --num_train_epochs 1 \
   --max_length 8192 \
   --per_device_train_batch_size 1 \
