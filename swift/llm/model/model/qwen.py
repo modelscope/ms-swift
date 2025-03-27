@@ -601,6 +601,7 @@ register_model(
             ModelGroup([
                 Model('Qwen/Qwen2.5-VL-3B-Instruct-AWQ', 'Qwen/Qwen2.5-VL-3B-Instruct-AWQ'),
                 Model('Qwen/Qwen2.5-VL-7B-Instruct-AWQ', 'Qwen/Qwen2.5-VL-7B-Instruct-AWQ'),
+                Model('Qwen/Qwen2.5-VL-32B-Instruct-AWQ', 'Qwen/Qwen2.5-VL-32B-Instruct-AWQ'),
                 Model('Qwen/Qwen2.5-VL-72B-Instruct-AWQ', 'Qwen/Qwen2.5-VL-72B-Instruct-AWQ'),
             ]),
         ],
@@ -610,6 +611,40 @@ register_model(
         architectures=['Qwen2_5_VLForConditionalGeneration'],
         requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6', 'decord'],
         tags=['vision', 'video']))
+
+
+def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
+    from transformers import Qwen2_5OmniModel, Qwen2_5OmniProcessor, Qwen2_5OmniConfig
+    from qwen_omni_utils import vision_process
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2_5OmniModel
+    processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    kwargs['tokenizer'] = processor.tokenizer
+    kwargs['model_config'] = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
+    patch_qwen_vl_utils(vision_process)
+    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    if model:
+        use_submodel_func(model, 'thinker')
+        model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
+        model.config.talker_config.pad_token_id = None
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen2_5_omni,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen2.5-Omni-7B', 'Qwen/Qwen2.5-Omni-7B'),
+            ]),
+        ],
+        TemplateType.qwen2_5_omni,
+        get_model_tokenizer_qwen2_5_omni,
+        model_arch=ModelArch.qwen2_5_omni,
+        architectures=['Qwen2_5OmniModel'],
+        requires=['transformers>=4.50', 'soundfile', 'qwen_omni_utils', 'decord'],
+        tags=['vision', 'video', 'audio'],
+        additional_saved_files=['spk_dict.pt'],
+    ))
 
 
 def get_model_tokenizer_qwen2_audio(*args, **kwargs):
