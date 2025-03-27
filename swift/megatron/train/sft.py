@@ -65,7 +65,8 @@ class MegatronSft(SwiftSft):
         data_collator = self.template.data_collator
         if args.streaming:
             train_dataset = build_streaming_dataloader(args, train_dataset, data_collator)
-            val_dataset = build_streaming_dataloader(args, val_dataset, data_collator)
+            if val_dataset is not None:
+                val_dataset = build_streaming_dataloader(args, val_dataset, data_collator)
         datasets_provider = get_swift_datasets_provider(train_dataset, val_dataset)
         datasets_provider.is_distributed = True
 
