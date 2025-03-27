@@ -220,11 +220,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                          'value lower than the number of GPUs available on your machine—typically, '
                                          'reducing it by one is sufficient. '
                                          f'In your case: `--num_processes {get_device_count() - 1}`.')
-                    # Check that the requested device is not also used for training
-                    if _device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
-                        logger.warning(f'The requested device {_device} is also used for training. '
-                                       f'This may lead to unexpected behavior. '
-                                       f'It is recommended to use a dedicated device for vLLM.')
 
                 if use_vllm:
                     if not is_vllm_available():
@@ -313,10 +308,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         pattern = r'\.(\d+)\.'
 
         layer_count = None
+        # Get the number of layers in LLM modules
         for name, module in model.named_modules():
             if isinstance(module, ModuleList):
                 if model_arch is not None and isinstance(model_arch, MultiModelKeys):
                     llm = model_arch.language_model
+                    vision_tower = model_arch.vision_tower
+                    if any(vt in name for vt in vision_tower):
+                        continue
                     if isinstance(llm, list):
                         llm = llm[0]
                     if name.startswith('base_model'):
@@ -355,12 +354,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 continue
             if model_arch is not None and isinstance(model_arch, MultiModelKeys):
                 llm = model_arch.language_model
-                if isinstance(llm, list):
-                    llm = llm[0]
-                if name.startswith(llm):
-                    split_llm(name)
-                else:
+                vision_tower = model_arch.vision_tower
+                if any(vt in name for vt in vision_tower):
                     non_llm_parameters.append(name)
+                elif isinstance(llm, list):
+                    llm = llm[0]
+                    if llm in name:
+                        split_llm(name)
+                    else:
+                        non_llm_parameters.append(name)
             else:
                 split_llm(name)
 
@@ -609,10 +611,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     else:
                         llm_model = self.engine.engine.engine
                     llm_model.load_weights(state_dict.items())
-                # Unmerge the adapter to restore the model to its original state.
-                # This must be done after loading weights to ensure they correspond to the merged state.
-                if is_peft_model(unwrapped_model):
-                    unwrapped_model.unmerge_adapter()
+                    del state_dict
+                    gc_collect()
+        # Unmerge the adapter to restore the model to its original state.
+        # This must be done after loading weights to ensure they correspond to the merged state.
+        if is_peft_model(unwrapped_model):
+            unwrapped_model.unmerge_adapter()
 
         if self.infer_rank >= 0 and self.args.use_vllm and self.args.vllm_enable_prefix_caching:
             self.engine.engine.reset_prefix_cache()
