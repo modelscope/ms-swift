@@ -11,7 +11,8 @@ swift rlhf \
   --train_type lora \
   --dataset lmms-lab/multimodal-open-r1-8k-verified#1000 \
   --external_plugins examples/train/grpo/plugin/plugin.py \
-  --reward_funcs external_r1v_acc \
+  --reward_funcs external_r1v_acc format \
+  --reward_weights 1 0.1 \
   --torch_dtype bfloat16 \
   --attn_impl flash_attn \
   --num_train_epochs 1 \
@@ -44,4 +45,5 @@ swift rlhf \
   --gc_collect_after_offload true \
   --move_model_batches 40 \
   --sleep_level 1 \
-  --report_to wandb
+  --report_to wandb \
+  --system examples/train/grpo/prompt.txt
