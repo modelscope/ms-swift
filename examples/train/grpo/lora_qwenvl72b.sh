@@ -27,7 +27,6 @@ swift rlhf \
   --warmup_ratio 0.05 \
   --dataloader_num_workers 4 \
   --max_completion_length 2048 \
-  --reward_funcs format \
   --num_generations 8 \
   --use_vllm true \
   --vllm_gpu_memory_utilization 0.5 \
