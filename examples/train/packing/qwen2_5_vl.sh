@@ -1,4 +1,4 @@
-# 22GB
+# 4 * 36GB
 NPROC_PER_NODE=4 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -18,8 +18,8 @@ swift sft \
     --lora_alpha 32 \
     --target_modules all-linear \
     --gradient_accumulation_steps 1 \
-    --eval_steps 50 \
-    --save_steps 50 \
+    --eval_steps 100 \
+    --save_steps 100 \
     --save_total_limit 5 \
     --logging_steps 5 \
     --max_length 8192 \
