@@ -221,11 +221,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                          'value lower than the number of GPUs available on your machine—typically, '
                                          'reducing it by one is sufficient. '
                                          f'In your case: `--num_processes {get_device_count() - 1}`.')
-                    # Check that the requested device is not also used for training
-                    if _device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
-                        logger.warning(f'The requested device {_device} is also used for training. '
-                                       f'This may lead to unexpected behavior. '
-                                       f'It is recommended to use a dedicated device for vLLM.')
 
                 if use_vllm:
                     if not is_vllm_available():
@@ -250,7 +245,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             cache_max_entry_count=args.lmdeploy_cache_max_entry_count,
                             reload_weights=True)
                         self.infer_device = fast_infer_device
-                    self.engine.default_template = self.template
+                    self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
             self._last_loaded_step = 0  # tag to avoid useless loading during grad accumulation
 
             # When using vLLM, the main process is responsible for loading the model weights. This can cause process
@@ -259,7 +254,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.accelerator.wait_for_everyone()
         else:
             from swift.llm import PtEngine
-            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+            self.engine = PtEngine.from_model_template(self.model, copy(self.template), max_batch_size=0)  # 0: no limit
+        # Avoid thread-unsafe modifications of the mode.
         self.request_config = RequestConfig(
             max_tokens=args.max_completion_length,
             temperature=args.temperature,
@@ -314,10 +310,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         pattern = r'\.(\d+)\.'
 
         layer_count = None
+        # Get the number of layers in LLM modules
         for name, module in model.named_modules():
             if isinstance(module, ModuleList):
                 if model_arch is not None and isinstance(model_arch, MultiModelKeys):
                     llm = model_arch.language_model
+                    vision_tower = model_arch.vision_tower
+                    if any(vt in name for vt in vision_tower):
+                        continue
                     if isinstance(llm, list):
                         llm = llm[0]
                     if name.startswith('base_model'):
@@ -356,12 +356,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 continue
             if model_arch is not None and isinstance(model_arch, MultiModelKeys):
                 llm = model_arch.language_model
-                if isinstance(llm, list):
-                    llm = llm[0]
-                if name.startswith(llm):
-                    split_llm(name)
-                else:
+                vision_tower = model_arch.vision_tower
+                if any(vt in name for vt in vision_tower):
                     non_llm_parameters.append(name)
+                elif isinstance(llm, list):
+                    llm = llm[0]
+                    if llm in name:
+                        split_llm(name)
+                    else:
+                        non_llm_parameters.append(name)
             else:
                 split_llm(name)
 
@@ -562,9 +565,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     llm_model.load_weights(state_dict.items())
                 # Unmerge the adapter to restore the model to its original state.
                 # This must be done after loading weights to ensure they correspond to the merged state.
-                if is_peft_model(unwrapped_model):
-                    with patch_lora_unmerge(unwrapped_model, parameter_group):
-                        unwrapped_model.unmerge_adapter()
+        if is_peft_model(unwrapped_model):
+            with patch_lora_unmerge(unwrapped_model, parameter_group):
+                unwrapped_model.unmerge_adapter()
 
         if self.infer_rank >= 0 and self.args.use_vllm and self.args.vllm_enable_prefix_caching:
             self.engine.engine.reset_prefix_cache()
@@ -802,7 +805,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mini_batch_inputs = self._split_into_mini_batches(inputs, mini_batch_size=self.args.mini_batch_size)
         batch_encoded_inputs = []
         from copy import copy
-        template = copy(self.template)
+        template = self.template
         for mini_batch in mini_batch_inputs:
             with self._template_context(template):
                 mini_batch_encoded_inputs = [template.encode(infer_request) for infer_request in mini_batch]
@@ -973,7 +976,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             for k, v in inputs.items() if k not in
             ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps']
         }
-        logits = model(**inputs).logits
+        with self._template_context(self.template):
+            logits = model(**inputs).logits
         # exclude the last logit: it corresponds to the next token pred
         logits = logits[:, -(logits_to_keep + 1):-1, :]
         logits = logits / self.temperature

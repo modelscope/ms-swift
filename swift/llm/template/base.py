@@ -220,17 +220,22 @@ class Template(ProcessorMixin):
     @staticmethod
     def _replace_image_tags(inputs: StdTemplateInputs):
         # compat
+        if inputs.images:
+            return
         images = []
         pattern = r'<img>(.+?)</img>'
         for message in inputs.messages:
             content = message['content']
             if not isinstance(content, str):
                 continue
-            images += re.findall(pattern, content)
+            for image in re.findall(pattern, content):
+                # only support local_path
+                if os.path.isfile(image):
+                    images.append(image)
+                else:
+                    logger.warning_once(f'Failed to parse image path: `{content}`.', hash_id='<img></img>')
             message['content'] = re.sub(pattern, '<image>', content)
-        if images:
-            assert not inputs.images, f'images: {images}, inputs.images: {inputs.images}'
-            inputs.images = images
+        inputs.images = images
 
     @staticmethod
     def _replace_start_image_tags(inputs: StdTemplateInputs):
