@@ -51,6 +51,10 @@ def patch_lora_merge(model, parameter_group=None):
             self.lora_B[adapter].weight.data = self.lora_B[adapter].weight.data.to(
                 self.base_layer.weight.device)
         return self.get_delta_weight_origin(adapter).to(self.base_layer.weight.device)
+    
+    def _cache_pop(self, key: str) -> Any:
+        value = self._caches.pop(key).to(self.base_layer.weight.device)
+        return value
 
     # Patch all LoraLayer instances
     for name, module in model.named_modules():
@@ -61,6 +65,8 @@ def patch_lora_merge(model, parameter_group=None):
                 module.merge = MethodType(merge, module)
                 module.get_delta_weight_origin = module.get_delta_weight
                 module.get_delta_weight = MethodType(get_delta_weight, module)
+                module._cache_pop_origin = module._cache_pop
+                module._cache_pop = MethodType(_cache_pop, module)
 
     try:
         yield model
@@ -73,6 +79,8 @@ def patch_lora_merge(model, parameter_group=None):
                     del module.merge_origin
                     module.get_delta_weight = module.get_delta_weight_origin
                     del module.get_delta_weight_origin
+                    module._cache_pop = module._cache_pop_origin
+                    del module._cache_pop_origin
 
 
 
