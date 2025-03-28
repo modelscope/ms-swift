@@ -36,6 +36,7 @@ register_dataset(
 ```
 
 The purpose of redefining the dataset preprocessor here is to modify the query. A sample dataset entry is as follows, including `messages`, `images`, and `solution` fields. The `solution` is used in the reward function, while `messages` and `images` serve as model input.
+- Note: `{'role': 'assistant', 'content': '<answer> 3 </answer>'}` will be removed in GRPOTrainer and can be ignored. The 'solution' field will be passed directly into the ORM. When creating a custom dataset, the 'images' field should be organized as `["image_path1", "image_path2"]`.
 
 ```json
 {
