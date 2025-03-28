@@ -644,6 +644,7 @@ register_model(
         requires=['transformers>=4.50', 'soundfile', 'qwen_omni_utils', 'decord'],
         tags=['vision', 'video', 'audio'],
         additional_saved_files=['spk_dict.pt'],
+        ignore_patterns=[],
     ))
 
 

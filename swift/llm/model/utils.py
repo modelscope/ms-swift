@@ -237,11 +237,10 @@ def safe_snapshot_download(model_id_or_path: str,
             logger.info(f'Loading the model using local model_dir: {model_dir}')
             return model_dir
     if ignore_patterns is None:
-        ignore_patterns = []
-    ignore_patterns += [
-        '*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx/*', '*.safetensors.md', '*.msgpack', '*.onnx',
-        '*.ot', '*.h5'
-    ]
+        ignore_patterns = [
+            '*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx/*', '*.safetensors.md', '*.msgpack', '*.onnx',
+            '*.ot', '*.h5'
+        ]
     if not download_model:
         ignore_patterns += ['*.bin', '*.safetensors']
     hub = get_hub(use_hf)
