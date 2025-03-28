@@ -354,7 +354,7 @@ def patch_lmdeploy(load_weights=False):
     TurboMindInstance._create_model_instance = _create_model_instance
 
 
-def patch_vllm(world_size=1, vllm_device: Optional[str] = None):
+def patch_vllm(world_size=1):
 
     @contextmanager
     def _get_context():
@@ -438,7 +438,7 @@ def patch_vllm(world_size=1, vllm_device: Optional[str] = None):
         GroupCoordinator.__init__ = __init__
 
         try:
-            with profiling_patch, restore_torch_device_after_vllm_init(), set_local_rank_context(vllm_device):
+            with profiling_patch, restore_torch_device_after_vllm_init():
                 torch.distributed.get_world_size_origin = torch.distributed.get_world_size
                 torch.distributed.get_world_size = get_world_size
                 yield
@@ -476,21 +476,6 @@ def set_device_context(device: Union[str, int]):
         yield
     finally:
         set_device(origin_device)
-
-
-@contextmanager
-def set_local_rank_context(device: Union[str, int]):
-    if isinstance(device, str):
-        device = int(device.split(':')[-1])
-    origin_local_rank = os.environ.get('LOCAL_RANK', None)
-    os.environ['LOCAL_RANK'] = str(device)
-    try:
-        yield
-    finally:
-        if origin_local_rank is not None:
-            os.environ['LOCAL_RANK'] = origin_local_rank
-        else:
-            del os.environ['LOCAL_RANK']
 
 
 @contextmanager
