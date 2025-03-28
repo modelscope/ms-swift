@@ -77,7 +77,7 @@ def patch_lora_merge(model, parameter_group=None):
 
 
 @contextmanager
-def patch_lora_merge(model):
+def patch_lora_unmerge(model):
     """Patch LoraLayer's _cache_pop method to ensure proper device placement.
     
     Args:
