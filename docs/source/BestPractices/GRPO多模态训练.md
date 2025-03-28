@@ -33,10 +33,11 @@ register_dataset(
 
 ```
 这里重新定义dataset preprocessor的目的是修改query。数据集示例样本如下，包含messages,images和solution字段，solution会送入后续的奖励函数中，而messages和images则会作为模型输入。
+- 其中：
 ```json
 {
     'images': [{'bytes': b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x01\xe0\x00\x00\x01@\x08\x06\x00\x00\x00d\xc8\xafB`\x82 ...', 'path': 'CLEVR_trainA_000000.png'}],
-    'messages': [{'role': 'user', 'content': 'How many items are there in the image? Output the thinking process in <think> </think> and\n final answer (number) in <answer> </answer> tags.'}],
+    'messages': [{'role': 'user', 'content': 'How many items are there in the image? Output the thinking process in <think> </think> and\n final answer (number) in <answer> </answer> tags.'}, {'role': 'assistant', 'content': '<answer> 3 </answer>'}],
     'solution': '<answer> 3 </answer>'
 }
 ```
