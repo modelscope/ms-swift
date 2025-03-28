@@ -244,7 +244,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             cache_max_entry_count=args.lmdeploy_cache_max_entry_count,
                             reload_weights=True)
                         self.infer_device = fast_infer_device
-                    self.engine.default_template = self.template
+                    self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
             self._last_loaded_step = 0  # tag to avoid useless loading during grad accumulation
 
             # When using vLLM, the main process is responsible for loading the model weights. This can cause process
@@ -253,9 +253,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.accelerator.wait_for_everyone()
         else:
             from swift.llm import PtEngine
-            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+            self.engine = PtEngine.from_model_template(self.model, copy(self.template), max_batch_size=0)  # 0: no limit
         # Avoid thread-unsafe modifications of the mode.
-        self.engine.default_template = copy(self.engine.default_template)
         self.request_config = RequestConfig(
             max_tokens=args.max_completion_length,
             temperature=args.temperature,
