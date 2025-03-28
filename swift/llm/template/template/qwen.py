@@ -161,8 +161,6 @@ register_template(QwenTemplateMeta(MLLMTemplateType.qwen_audio, template_cls=Qwe
 
 
 class Qwen2AudioTemplate(Template):
-    placeholder_tokens = ['<|AUDIO|>']
-
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'audio'
