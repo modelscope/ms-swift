@@ -13,7 +13,8 @@ def _infer_model(pt_engine, system=None, messages=None, audios=None):
         messages += [{'role': 'user', 'content': '你好'}]
         resp = pt_engine.infer([{'messages': messages}], request_config=request_config)
         response = resp[0].choices[0].message.content
-        messages += [{'role': 'assistant', 'content': response}, {'role': 'user', 'content': '<audio>这段语音说了什么'}]
+        messages += [{'role': 'assistant', 'content': response}]
+        messages += [{'role': 'user', 'content': '<audio>这段语音说了什么'}]
     else:
         messages = messages.copy()
     if audios is None:
