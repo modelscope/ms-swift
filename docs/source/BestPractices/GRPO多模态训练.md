@@ -33,7 +33,8 @@ register_dataset(
 
 ```
 这里重新定义dataset preprocessor的目的是修改query。数据集示例样本如下，包含messages,images和solution字段，solution会送入后续的奖励函数中，而messages和images则会作为模型输入。
-- 其中：
+- 注意：`{'role': 'assistant', 'content': '<answer> 3 </answer>'}`将会在GRPOTrainer中被移除，可以忽略。'solution'字段将会透传入ORM中。在自定义数据集时，'images'字段组织成`["image_path1", "image_path2"]`即可。
+
 ```json
 {
     'images': [{'bytes': b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x01\xe0\x00\x00\x01@\x08\x06\x00\x00\x00d\xc8\xafB`\x82 ...', 'path': 'CLEVR_trainA_000000.png'}],
