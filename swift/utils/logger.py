@@ -26,16 +26,18 @@ warning_set = set()
 
 
 def info_once(self, msg, *args, **kwargs):
-    if msg in info_set:
+    hash_id = kwargs.get('hash_id') or msg
+    if hash_id in info_set:
         return
-    info_set.add(msg)
+    info_set.add(hash_id)
     self.info(msg)
 
 
 def warning_once(self, msg, *args, **kwargs):
-    if msg in warning_set:
+    hash_id = kwargs.get('hash_id') or msg
+    if hash_id in warning_set:
         return
-    warning_set.add(msg)
+    warning_set.add(hash_id)
     self.warning(msg)
 
 
