@@ -232,6 +232,8 @@ class Template(ProcessorMixin):
                 # only support local_path
                 if os.path.isfile(image):
                     images.append(image)
+                else:
+                    logger.warning_once(f'Failed to parse image path: `{content}`.', hash_id='<img></img>')
             message['content'] = re.sub(pattern, '<image>', content)
         inputs.images = images
 
