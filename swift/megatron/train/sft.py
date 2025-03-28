@@ -10,7 +10,7 @@ from swift.llm import EncodePreprocessor, LazyLLMDataset, PackingPreprocessor
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
-from ..utils import patch_megatron_tokenizer
+from ..utils import patch_megatron
 from .patcher import patch_megatron_data_collator, patch_training_log
 from .utils import build_streaming_dataloader, forward_step, get_swift_datasets_provider
 
@@ -26,7 +26,7 @@ class MegatronSft(SwiftSft):
         super(SwiftSft, self).__init__(args)
         args = self.args
         _, self.processor = args.get_model_processor(load_model=False)
-        patch_megatron_tokenizer(self.processor)
+        patch_megatron(self.processor)
         args.init_model_args(self.processor.model_info.config)
         self._prepare_template()
         self.template.use_megatron = True
