@@ -1,4 +1,4 @@
-# 4*80GB
+# 4*25GB
 # A demo for four modalities that can be run directly
 nproc_per_node=4
 
