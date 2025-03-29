@@ -11,7 +11,10 @@ from swift.utils import (append_to_jsonl, get_logger, get_model_parameter_info, 
                          use_torchacc)
 from ..argument import TrainArguments
 from ..base import SwiftPipeline
-from ..dataset import EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, PackingPreprocessor, load_dataset
+from ..dataset import (
+    EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, PackingPreprocessor, load_dataset,
+    IterablePackingDataset
+)
 from ..infer import prepare_generation_config
 from ..model import HfConfigFactory, get_model_arch
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
@@ -233,12 +236,20 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
         is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
         if not is_grpo:
-            if args.lazy_tokenize:
+            if args.packing and args.streaming:
+                train_dataset = IterablePackingDataset(train_dataset, self.template, args.dataset_num_proc, strict=args.strict)
+                if val_dataset is not None:
+                    val_dataset = IterablePackingDataset(val_dataset, self.template, args.dataset_num_proc, strict=args.strict)
+            elif args.lazy_tokenize:
                 train_dataset = LazyLLMDataset(
                     train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
                 if val_dataset is not None and not args.predict_with_generate:
                     val_dataset = LazyLLMDataset(
                         val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
+                if args.packing:
+                    train_dataset = PackingDataset(train_dataset, self.template, args.dataset_num_proc)
+                    if val_dataset is not None:
+                        val_dataset = PackingDataset(val_dataset, self.template, args.dataset_num_proc)
             else:
                 preprocessor_cls = PackingPreprocessor if args.packing else EncodePreprocessor
                 preprocessor = preprocessor_cls(template=template)

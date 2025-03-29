@@ -91,9 +91,8 @@ class PtEngine(InferEngine):
         self._task_thread = None
 
     def _start_infer_worker(self):
-        if self._task_thread is None:
-            self._task_thread = Thread(target=self._infer_worker, daemon=True)
-            self._task_thread.start()
+        self._task_thread = Thread(target=self._infer_worker, daemon=True)
+        self._task_thread.start()
 
     def _fetch_infer_requests(self):
         while not self._queue.empty():
@@ -422,7 +421,8 @@ class PtEngine(InferEngine):
             'pre_infer_hook': pre_infer_hook
         }, (queue, asyncio.get_event_loop())))
         await asyncio.sleep(0)
-        self._start_infer_worker()
+        if self._task_thread is None:
+            self._start_infer_worker()
         if request_config.stream:
 
             async def _gen_wrapper():
