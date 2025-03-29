@@ -215,6 +215,7 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
     elif args.train_type == 'adalora':
         lora_kwargs.pop('lorap_lr_ratio', None)
         lora_kwargs['rank_pattern'] = None
+        from swift.plugin.optimizer import calculate_max_steps
         adalora_config = AdaLoraConfig(
             task_type=task_type,
             **lora_kwargs,
@@ -226,6 +227,7 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
             beta1=args.adalora_beta1,
             beta2=args.adalora_beta2,
             orth_reg_weight=args.adalora_orth_reg_weight,
+            total_step=calculate_max_steps(args.training_args, train_dataset),
         )
         model = Swift.prepare_model(model, adalora_config)
         logger.info(f'adalora_config: {adalora_config}')
