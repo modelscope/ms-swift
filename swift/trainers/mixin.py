@@ -27,7 +27,7 @@ from transformers.trainer_utils import EvalPrediction
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
-from swift.llm import Template
+from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
 from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_mp_ddp, use_torchacc
@@ -358,15 +358,51 @@ class SwiftMixin:
         else:
             super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
 
-    def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
-        if self.args.train_sampler_random:
-            return super()._get_train_sampler()
-        else:
-            return self._get_eval_sampler(self.train_dataset)
+    @staticmethod
+    @contextmanager
+    def _patch_accelerator_prepare(accelerator):
+        prepare = accelerator.__class__.prepare
+
+        def _new_prepare(self, *args):
+            return args
+
+        accelerator.__class__.prepare = _new_prepare
+        try:
+            yield
+        finally:
+            accelerator.__class__.prepare = prepare
 
     def get_train_dataloader(self):
         if self.template.sequence_parallel_size == 1:
-            return super().get_train_dataloader()
+            # Higher efficiency
+            if self.train_dataset is None:
+                raise ValueError('Trainer: training requires a train_dataset.')
+
+            train_dataset = self.train_dataset
+
+            dataloader_params = {
+                'collate_fn': self.data_collator,
+                'num_workers': self.args.dataloader_num_workers,
+                'pin_memory': self.args.dataloader_pin_memory,
+                'persistent_workers': self.args.dataloader_persistent_workers,
+                'prefetch_factor': self.args.dataloader_prefetch_factor
+            }
+            batch_sampler_params = {
+                'drop_last': self.args.dataloader_drop_last,
+                'shuffle': self.args.train_dataloader_shuffle,
+                'data_seed': self.args.data_seed,
+            }
+
+            if not isinstance(train_dataset, torch.utils.data.IterableDataset):
+                batch_sampler = BatchSamplerShard(
+                    len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
+                dataloader = DataLoaderShard(train_dataset, batch_sampler, **dataloader_params)
+            else:
+                # IterableDataset
+                dataloader = DataLoader(train_dataset, batch_size=self._train_batch_size, **dataloader_params)
+                dataloader = DataLoaderDispatcher(dataloader)
+
+            return dataloader
         else:
             from swift.trainers.xtuner import get_xtuner_train_dataloader
             return get_xtuner_train_dataloader(self)

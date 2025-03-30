@@ -1124,6 +1124,14 @@ class Template(ProcessorMixin):
                 res += b.pop(attr_name)
         return res
 
+    @staticmethod
+    def concat_tensor(batch: List[Dict[str, Any]], attr_name: str, dim: int) -> Optional[torch.Tensor]:
+        res = []
+        for b in batch:
+            if b.get(attr_name) is not None:
+                res.append(b.pop(attr_name))
+        return torch.concat(res, dim=dim) if res else None
+
     def _rlhf_data_collator(self,
                             batch: List[Dict[str, Any]],
                             *,

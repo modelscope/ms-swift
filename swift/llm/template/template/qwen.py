@@ -336,9 +336,9 @@ class Qwen2VLTemplate(Template):
         if second_per_grid_ts:
             res['second_per_grid_ts'] = second_per_grid_ts
         for media_type in ['image', 'video']:
-            grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
-            if grid_thw:
-                res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
+            grid_thw = self.concat_tensor(batch, f'{media_type}_grid_thw', 0)
+            if grid_thw is not None:
+                res[f'{media_type}_grid_thw'] = grid_thw
         return res
 
     def packing_row(self, row: List[Tuple[Dict[str, Any], int]]) -> Dict[str, Any]:
@@ -367,9 +367,10 @@ class Qwen2VLTemplate(Template):
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = {}
         res.update(super()._data_collator(batch, padding_to=padding_to))
-        if not self._packing:
-            if self.is_training:
-                res['position_ids'] = self._get_position_ids(res)
+        if self._packing:
+            res['real_position_ids'] = self.concat_tensor(batch, 'real_position_ids', -1)
+        elif self.is_training:
+            res['position_ids'] = self._get_position_ids(res)
         return res
 
 

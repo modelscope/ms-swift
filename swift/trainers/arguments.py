@@ -40,7 +40,7 @@ class TrainArgumentsMixin:
     # extra
     check_model: bool = True
     acc_strategy: Literal['token', 'seq'] = 'token'
-    train_sampler_random: bool = True
+    train_dataloader_shuffle: bool = True
 
     # torchacc
     metric_warmup_step: Optional[float] = 0

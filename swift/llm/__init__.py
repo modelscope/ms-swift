@@ -25,11 +25,12 @@ if TYPE_CHECKING:
     from .dataset import (AlpacaPreprocessor, ResponsePreprocessor, MessagesPreprocessor, AutoPreprocessor,
                           DATASET_MAPPING, MediaResource, register_dataset, register_dataset_info, EncodePreprocessor,
                           LazyLLMDataset, load_dataset, DATASET_TYPE, sample_dataset, RowPreprocessor, DatasetMeta,
-                          HfDataset, SubsetDataset, PackingPreprocessor)
+                          HfDataset, SubsetDataset)
     from .utils import (deep_getattr, to_float_dtype, to_device, History, Messages, history_to_messages,
                         messages_to_history, Processor, save_checkpoint, ProcessorMixin,
                         get_temporary_cache_files_directory, get_cache_dir)
     from .base import SwiftPipeline
+    from .data_loader import DataLoaderDispatcher, DataLoaderShard, BatchSamplerShard
 else:
     _import_structure = {
         'rlhf': ['rlhf_main'],
@@ -62,7 +63,7 @@ else:
             'AlpacaPreprocessor', 'MessagesPreprocessor', 'AutoPreprocessor', 'DATASET_MAPPING', 'MediaResource',
             'register_dataset', 'register_dataset_info', 'EncodePreprocessor', 'LazyLLMDataset', 'load_dataset',
             'DATASET_TYPE', 'sample_dataset', 'RowPreprocessor', 'ResponsePreprocessor', 'DatasetMeta', 'HfDataset',
-            'SubsetDataset', 'PackingPreprocessor'
+            'SubsetDataset'
         ],
         'utils': [
             'deep_getattr', 'to_device', 'to_float_dtype', 'History', 'Messages', 'history_to_messages',
@@ -70,6 +71,7 @@ else:
             'get_temporary_cache_files_directory', 'get_cache_dir'
         ],
         'base': ['SwiftPipeline'],
+        'data_loader': ['DataLoaderDispatcher', 'DataLoaderShard', 'BatchSamplerShard'],
     }
 
     import sys

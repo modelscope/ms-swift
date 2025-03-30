@@ -1,12 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import multiprocessing as mp
+import time
 from typing import Any, Callable, Dict, Optional, Union
 
 import numpy as np
 from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset, IterableDataset
+from tqdm import tqdm
+
 from swift.utils import get_logger
-from functools import partial
-import multiprocessing as mp
 from ..template import MaxLengthError
 from .preprocessor import RowPreprocessor
 
@@ -100,106 +102,164 @@ class LazyLLMDataset(Dataset):
 
 
 class BasePackingDataset:
-    def __init__(self, dataset, template, num_workers: int = 4, *,
-                 packing_buffer: int = 1000,
-                 queue_buffer: Optional[int] = None):
-        self.dataset = dataset
+
+    def __init__(self,
+                 template,
+                 dataset,
+                 num_workers: int = 1,
+                 *,
+                 packing_interval: int = 128,
+                 queue_buffer: Optional[int] = None,
+                 strict: bool = False):
+        template._packing = True
         self.template = template
-        self.template._packing = True
+        self.dataset = dataset
         self.num_workers = num_workers
-        self.packing_buffer = packing_buffer
-        self.queue_buffer = queue_buffer or 2 * packing_buffer
-        assert self.queue_buffer >= self.packing_buffer, f'queue_buffer: {queue_buffer}, packing_buffer: {packing_buffer}'
+        self.packing_interval = packing_interval
+        self.queue_buffer = queue_buffer or max(2 * packing_interval, 1000)
+        self.strict = strict
+        self.prog_bar = None
+        assert num_workers >= 1, f'num_workers: {num_workers}'
+        assert self.queue_buffer >= self.packing_interval, (
+            f'queue_buffer: {queue_buffer}, packing_interval: {packing_interval}')
         self.workers = []
-        self._queue = mp.Queue(maxsize=self.queue_buffer)
+        self._queue = None
         self._terminated_workers = 0
+
+    def get_process(self, rank: int):
+        raise NotImplementedError
+
+    def _init_workers(self):
+        self._terminate_workers()
+        for i in range(self.num_workers):
+            worker = self.get_process(i)
+            worker.start()
+            self.workers.append(worker)
 
     def _terminate_workers(self):
         for worker in self.workers:
             worker.terminate()
         self.workers = []
+        self._queue = mp.Queue(maxsize=self.queue_buffer)
         self._terminated_workers = 0
 
-    def fetch_packing_data(self):
-        res = []
-        for _ in range(self.packing_buffer):
+    def fetch_packing_data(self, res: Optional[list] = None):
+        res = res or []
+        for _ in range(self.packing_interval):
             data = self._queue.get()
             if data is None:
                 self._terminated_workers += 1
                 if self._terminated_workers == self.num_workers:
                     break
                 continue
-            res.append(data)
+            if getattr(self, 'prog_bar'):
+                self.prog_bar.update(1)
+            res.append((data, len(data['input_ids'])))
         return res
+
+    @staticmethod
+    def calculate_matched_group(template, sequences, drop_last: bool = True):
+        if len(sequences) == 0:
+            return []
+        # https://arxiv.org/pdf/2404.10830
+        import binpacking
+        sequences = binpacking.to_constant_volume(sequences, template.max_length, weight_pos=1)
+        res = []
+        if sequences and drop_last:
+            sequences, ret_sequences = sequences[:-1], sequences[-1]
+        else:
+            ret_sequences = []
+        for row in sequences:
+            packed = template.packing_row(row)
+            res.append(packed)
+        return res, ret_sequences
+
+    def run_packing(self):
+        self._terminate_workers()
+        self._init_workers()
+        data = []
+        while True:
+            data = self.fetch_packing_data(data)
+            is_finished = self._terminated_workers == self.num_workers
+            res, data = self.calculate_matched_group(self.template, data, drop_last=not is_finished)
+            yield from res
+            if is_finished:
+                break
+        self._terminate_workers()
+
+    def _encode_and_put_queue(self, data):
+        try:
+            data = self.template.encode(data)
+            self._queue.put(data)
+        except Exception as e:
+            if self.strict and not isinstance(e, MaxLengthError):
+                raise
 
 
 class PackingDataset(BasePackingDataset, Dataset):
 
-    def _encode_worker(self, rank: int):
-        pass
-
-    def __init__(self, dataset, template, num_workers: int = 4, *,
-                 packing_buffer: int = 1000,
-                 queue_buffer: Optional[int] = None):
-        super().__init__(dataset, template, num_workers, packing_buffer=packing_buffer, queue_buffer=queue_buffer)
+    def __init__(self,
+                 template,
+                 dataset,
+                 num_workers: int = 1,
+                 *,
+                 packing_interval: int = 128,
+                 queue_buffer: Optional[int] = None,
+                 strict: bool = False):
+        super().__init__(
+            template, dataset, num_workers, packing_interval=packing_interval, queue_buffer=queue_buffer, strict=strict)
+        self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc='Packing')
         self._init_workers()
+        self.packed_dataset = list(self.run_packing())
         self._terminate_workers()
+        self.prog_bar.close()
 
-    def _init_workers(self):
-        for i in range(self.num_workers):
-            worker = mp.Process(target=partial(self._encode_worker, rank=i), daemon=True)
-            worker.start()
-            self.workers.append(worker)
+    def _producer(self, shard_dataset):
+        for data in shard_dataset:
+            self._encode_and_put_queue(data)
+        self._queue.put(None)
+        while True:
+            # Wait for the main process to terminate to avoid fd anomalies.
+            time.sleep(0.1)
+
+    def get_process(self, rank: int):
+        self.dataset: HfDataset
+        shard_dataset = self.dataset.shard(self.num_workers, rank)
+        return mp.Process(target=self._producer, args=(shard_dataset, ), daemon=True)
 
     def __getitem__(self, index):
-        pass
+        return self.packed_dataset[index].copy()
 
     def __len__(self):
-        pass
+        return len(self.packed_dataset)
 
 
 class IterablePackingDataset(BasePackingDataset, IterableDataset):
 
-    def __init__(self, dataset, template, num_workers: int = 4, strict: bool = True, *,
-                 packing_buffer: int = 1000,
-                 queue_buffer: Optional[int] = None):
-        self.strict = strict
-        super().__init__(dataset, template, num_workers, packing_buffer=packing_buffer, queue_buffer=queue_buffer)
-
-    def _init_workers(self):
-        self._terminate_workers()
-        for i in range(self.num_workers):
-            worker = mp.Process(target=partial(self._encode_worker, rank=i), daemon=True)
-            worker.start()
-            self.workers.append(worker)
-
-    def _encode_worker(self, rank: int):
+    def _producer(self, rank):
         dataset = iter(self.dataset)
         while True:
+            data = None
             try:
-                data = None
                 for i in range(self.num_workers):
                     _data = next(dataset)
                     if i == rank:
                         data = _data
             except StopIteration:
-                self._queue.put(None)
+                if data is not None:
+                    self._encode_and_put_queue(data)
                 break
-            try:
-                inputs = self.template.encode(data)
-                self._queue.put(inputs)
-            except MaxLengthError:
-                continue
-            except Exception:
-                if self.strict:
-                    raise
+            self._encode_and_put_queue(data)
+        self._queue.put(None)
+        while True:
+            # Wait for the main process to terminate to avoid fd anomalies.
+            time.sleep(0.1)
+
+    def get_process(self, rank: int):
+        return mp.Process(target=self._producer, args=(rank,), daemon=True)
 
     def __iter__(self):
-        self._init_workers()
-        while self._terminated_workers < self.num_workers:
-            data = self.fetch_packing_data()
-            yield from PackingPreprocessor.calculate_matched_group(self.template, data)
-        self._terminate_workers()
+        yield from self.run_packing()
 
 
 class EncodePreprocessor(RowPreprocessor):
@@ -210,42 +270,6 @@ class EncodePreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return self.template.encode(row)
-
-
-class PackingPreprocessor(EncodePreprocessor):
-
-    def __init__(self, template: 'Template'):
-        super().__init__(template=template)
-        self.template._packing = True
-
-    def _rename_columns(self, dataset):
-        # fix streaming
-        return dataset
-
-    def batched_preprocess(self, batched_row: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        rows = self.batched_to_rows(batched_row)
-        inputs_list = []
-        for row in rows:
-            try:
-                inputs = self.template.encode(row)
-            except MaxLengthError:
-                continue
-        packed = self.calculate_matched_group(inputs_list)
-        return self.rows_to_batched(packed)
-
-    @staticmethod
-    def calculate_matched_group(template, sequences):
-        if len(sequences) == 0:
-            return []
-        # https://arxiv.org/pdf/2404.10830
-        sequences = [(seq, len(seq['input_ids'])) for seq in sequences]
-        import binpacking
-        sequences = binpacking.to_constant_volume(sequences, template.max_length, weight_pos=1)
-        res = []
-        for row in sequences:
-            packed = template.packing_row(row)
-            res.append(packed)
-        return res
 
 
 class GetLengthPreprocessor(RowPreprocessor):

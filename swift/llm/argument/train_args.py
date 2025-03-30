@@ -125,9 +125,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
     zero_hpz_partition_size: Optional[int] = None
 
     def _init_lazy_tokenize(self):
-        if self.model_meta.is_multimodal and self.packing and not self.streaming:
-            self.streaming = True
-            logger.info(f'Setting args.streaming: {self.streaming}')
         if self.streaming and self.lazy_tokenize:
             self.lazy_tokenize = False
             logger.warning('Streaming and lazy_tokenize are incompatible. '

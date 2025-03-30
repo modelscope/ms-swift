@@ -32,6 +32,7 @@ class DatasetSyntax:
     dataset: str
     subsets: List[str] = field(default_factory=list)
     dataset_sample: Optional[int] = None
+    use_hf: Optional[bool] = None
 
     def __post_init__(self):
         if os.path.isfile(self.dataset):
@@ -71,7 +72,14 @@ class DatasetSyntax:
     @classmethod
     def parse(cls, dataset: str) -> 'DatasetSyntax':
         """Parse the dataset from the command line"""
-        # dataset_id or dataset_path:subset1/subset2/subset3#dataset_sample
+        # hf/ms::dataset_id or dataset_path:subset1/subset2/subset3#dataset_sample
+        if os.path.exists(dataset):
+            use_hf = None
+        else:
+            use_hf, dataset = cls._safe_split(dataset, '::', False)
+            if isinstance(use_hf, str):
+                use_hf = use_hf.lower()
+            use_hf = {'hf': True, 'ms': False}.get(use_hf)
         if os.path.exists(dataset):
             other, dataset_sample = dataset, None
         else:
@@ -85,7 +93,7 @@ class DatasetSyntax:
             subsets = [subset.strip() for subset in subsets.split('/')]
         if dataset_sample is not None:
             dataset_sample = int(dataset_sample)
-        return cls(dataset.strip(), subsets or [], dataset_sample)
+        return cls(dataset.strip(), subsets or [], dataset_sample, use_hf)
 
     def get_dataset_meta(self, use_hf: bool):
         dataset_meta_mapping = self._get_dataset_meta_mapping()
@@ -451,11 +459,8 @@ def load_dataset(
         num_proc = None
     train_datasets = []
     val_datasets = []
-    if use_hf is None:
-        use_hf = True if use_hf_hub() else False
     load_kwargs = {
         'num_proc': num_proc,
-        'use_hf': use_hf,
         'strict': strict,
         'download_mode': download_mode,
         'columns': columns,
@@ -463,16 +468,22 @@ def load_dataset(
         'hub_token': hub_token,
         'remove_unused_columns': remove_unused_columns,
     }
+    use_hf_default = True if use_hf_hub() else False
     for dataset in datasets:
-        # compat dataset_name
-        if dataset in DATASET_MAPPING:
-            dataset_meta = DATASET_MAPPING[dataset]
-            dataset = dataset_meta.dataset_path or (dataset_meta.hf_dataset_id
-                                                    if use_hf else dataset_meta.ms_dataset_id)
         dataset_syntax = DatasetSyntax.parse(dataset)
-        dataset_meta = dataset_syntax.get_dataset_meta(use_hf)
+        use_hf = dataset_syntax.use_hf or use_hf_default
+        # compat dataset_name
+        if dataset_syntax.dataset in DATASET_MAPPING:
+            dataset_meta = DATASET_MAPPING[dataset_syntax.dataset]
+            if dataset_syntax.use_hf is None and dataset_meta.dataset_path is not None:
+                dataset_syntax.dataset = dataset_meta.dataset_path
+                dataset_syntax.dataset_type = 'path'
+            else:
+                dataset_syntax.dataset = dataset_meta.hf_dataset_id if use_hf else dataset_meta.ms_dataset_id
+        else:
+            dataset_meta = dataset_syntax.get_dataset_meta(use_hf)
         load_function = dataset_meta.load_function
-        train_dataset = load_function(dataset_syntax, dataset_meta, **load_kwargs)
+        train_dataset = load_function(dataset_syntax, dataset_meta, **load_kwargs, use_hf=use_hf)
         train_dataset, val_dataset = DatasetLoader.post_process(
             train_dataset,
             dataset_sample=dataset_syntax.dataset_sample,
