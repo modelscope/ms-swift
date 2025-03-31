@@ -1,4 +1,4 @@
-# 4 * 36GB
+# 4 * 32GB
 # Multimodal packing currently only supports qwen2_vl, qwen2_5_vl and qwen2_5_omni.
 # A demo for four modalities that can be run directly
 # For local datasets, it is recommended to use streaming: `--streaming true` (save memory)
@@ -19,7 +19,7 @@ swift sft \
     --num_train_epochs 3 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
-    --learning_rate 3e-4 \
+    --learning_rate 1e-4 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \

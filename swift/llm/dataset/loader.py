@@ -185,6 +185,14 @@ class DatasetLoader:
         return concatenate_datasets(datasets)
 
     @staticmethod
+    def _interleave_datasets(datasets, *args, **kwargs):
+        if len(datasets) == 0:
+            return
+        if len(datasets) == 1:
+            return datasets[0]
+        return interleave_datasets(datasets, *args, **kwargs)
+
+    @staticmethod
     def _load_dataset_path(
         dataset_path: str,
         dataset_meta: DatasetMeta,
@@ -504,8 +512,8 @@ def load_dataset(
         train_datasets = DatasetLoader._concat_datasets(train_datasets)
         val_datasets = DatasetLoader._concat_datasets(val_datasets)
     else:
-        train_datasets = interleave_datasets(
+        train_datasets = DatasetLoader._interleave_datasets(
             train_datasets, interleave_prob, seed=get_seed(seed), stopping_strategy=stopping_strategy)
-        val_datasets = interleave_datasets(
+        val_datasets = DatasetLoader._interleave_datasets(
             val_datasets, interleave_prob, seed=get_seed(seed), stopping_strategy=stopping_strategy)
     return train_datasets, val_datasets
