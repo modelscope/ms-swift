@@ -8,7 +8,7 @@ HF_ENDPOINT=https://hf-mirror.com \
 swift sft \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
     --train_type lora \
-    --dataset 'HF::linxy/LaTeX_OCR:human_handwrite#20000' \
+    --dataset 'HF::linxy/LaTeX_OCR#20000' \
     --torch_dtype bfloat16 \
     --max_steps 1000 \
     --attn_impl flash_attn \
@@ -29,6 +29,6 @@ swift sft \
     --max_length 8192 \
     --output_dir output \
     --warmup_ratio 0.05 \
-    --dataloader_num_workers 0 \
+    --dataloader_num_workers 1 \
     --dataset_num_proc 8 \
     --deepspeed zero2

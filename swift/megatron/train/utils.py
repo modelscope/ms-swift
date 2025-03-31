@@ -28,7 +28,7 @@ class MegatronDataLoaderDispatcher(DataLoaderDispatcher):
     def src_rank(self):
         return mpu.get_data_parallel_src_rank()
 
-    property
+    @property
     def group(self):
         return mpu.get_data_parallel_group()
 
