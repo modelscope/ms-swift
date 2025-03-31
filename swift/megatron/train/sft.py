@@ -2,11 +2,9 @@
 import os
 from typing import List, Union
 
-from datasets import Dataset as HfDataset
 from megatron.core.enums import ModelType
 from megatron.training import pretrain
 
-from swift.llm import EncodePreprocessor, LazyLLMDataset
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments

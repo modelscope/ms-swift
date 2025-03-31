@@ -1212,10 +1212,9 @@ class Template(ProcessorMixin):
         padding_right = padding_side == 'right'
         packing_mode = self.use_megatron or self._packing and 'position_ids' in batch[0]
         res = {}
-        packing_keys = ['input_ids', 'labels', 'position_ids']
         if packing_mode:
             # only support llm
-            for k in packing_keys:
+            for k in ['input_ids', 'labels', 'position_ids']:
                 res[k] = [self.gather_list(batch, k)]
         else:
             inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
