@@ -224,8 +224,14 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _stat_dataset(self, dataset: HfDataset):
         args = self.args
-        dataset = GetLengthPreprocessor()(dataset, num_proc=args.dataset_num_proc)
-        _, stat_str = stat_array(dataset['length'])
+        if isinstance(dataset, HfDataset):
+            dataset = GetLengthPreprocessor()(dataset, num_proc=args.dataset_num_proc)
+            length = dataset['length']
+        else:
+            length = []
+            for row in dataset:
+                length.append(max([len(row[k]) for k in row.keys() if k.endswith('input_ids')]))
+        _, stat_str = stat_array(length)
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
 
@@ -253,10 +259,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 if val_dataset is not None and not args.predict_with_generate:
                     val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
 
+            is_indexed_dataset = hasattr(train_dataset, '__getitem__')
             if is_master():
-                inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
+                inputs = train_dataset[0] if is_indexed_dataset else next(iter(train_dataset))
                 template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
-            if isinstance(train_dataset, HfDataset):
+            if is_indexed_dataset:
                 self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
                 if val_dataset is not None and not args.predict_with_generate:
                     self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)

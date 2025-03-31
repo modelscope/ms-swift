@@ -381,7 +381,7 @@ class SwiftMixin:
                 'data_seed': args.data_seed,
             }
 
-            if not isinstance(train_dataset, torch.utils.data.IterableDataset):
+            if hasattr(train_dataset, '__getitem__'):
                 batch_sampler = BatchSamplerShard(
                     len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
                 dataloader = DataLoaderShard(train_dataset, batch_sampler, **dataloader_params)
