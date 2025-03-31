@@ -29,7 +29,7 @@ swift sft \
     --save_steps 50 \
     --save_total_limit 5 \
     --logging_steps 5 \
-    --max_length 4096 \
+    --max_length 8192 \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \

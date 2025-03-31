@@ -168,7 +168,8 @@ class PackingDataset(BasePackingDataset, Dataset):
                 if self._terminated_workers == self.num_workers:
                     break
                 continue
-            res.append((data, len(data['input_ids'])))
+            if data:
+                res.append((data, len(data['input_ids'])))
         return res
 
     def get_packed_dataset(self):
@@ -186,8 +187,9 @@ class PackingDataset(BasePackingDataset, Dataset):
     def _producer(self, shard_dataset):
         for data in shard_dataset:
             encoded_data = self._encode_data(data)
-            if encoded_data is not None:
-                self._queue.put(encoded_data)
+            if encoded_data is None:
+                encoded_data = {}  # ignore
+            self._queue.put(encoded_data)
         self._queue.put(None)
         while True:
             # Wait for the main process to terminate to avoid fd anomalies.
