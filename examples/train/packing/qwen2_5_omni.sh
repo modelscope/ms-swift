@@ -1,7 +1,7 @@
 # 4 * 36GB
 # Multimodal packing currently only supports qwen2_vl, qwen2_5_vl and qwen2_5_omni.
 # A demo for four modalities that can be run directly
-# For local datasets, it is recommended to use streaming: `--streaming true`
+# For local datasets, it is recommended to use streaming: `--streaming true` (save memory)
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 VIDEO_MAX_PIXELS=50176 \
@@ -9,10 +9,9 @@ FPS_MAX_FRAMES=12 \
 MAX_PIXELS=1003520 \
 swift sft \
     --model Qwen/Qwen2.5-Omni-7B \
-    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
-              'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
-              'speech_asr/speech_asr_aishell1_trainsets:validation#5000' \
-              'swift/VideoChatGPT:Generic' \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
+              'AI-ModelScope/LaTeX_OCR#2000' \
+              'speech_asr/speech_asr_aishell1_trainsets:validation#2000' \
     --train_type lora \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \
@@ -30,7 +29,7 @@ swift sft \
     --save_steps 50 \
     --save_total_limit 5 \
     --logging_steps 5 \
-    --max_length 8192 \
+    --max_length 4096 \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
