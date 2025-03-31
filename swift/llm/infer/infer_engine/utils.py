@@ -395,11 +395,11 @@ def patch_vllm(world_size=1, vllm_device: Optional[str] = None):
                 else:
                     raise ValueError(f'Unsupported type: {obj}')
 
-            rank = dist.get_rank()
             if kwargs.get('group_name') == 'world':
                 local_rank = local_rank + node_rank * num_infer_workers
             else:
-                local_rank = map_rank_to_real_device(rank - node_rank * num_infer_workers)
+                local_rank = map_rank_to_real_device(local_rank - node_rank * num_infer_workers)
+            rank = dist.get_rank()
             if world_size == 1 and [rank] not in group_ranks:
                 # for ddp inference
                 group_ranks = [[rank]]

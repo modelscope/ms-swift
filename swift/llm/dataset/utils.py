@@ -110,7 +110,6 @@ class BasePackingDataset:
         self.num_workers = num_workers
         self.packing_interval = packing_interval
         self.strict = strict
-        self.prog_bar = None
         assert num_workers >= 1, f'num_workers: {num_workers}'
         self.workers = []
 
@@ -143,20 +142,10 @@ class BasePackingDataset:
 
 class PackingDataset(BasePackingDataset, Dataset):
 
-    def __init__(self,
-                 template,
-                 dataset,
-                 num_workers: int = 1,
-                 *,
-                 packing_interval: int = 128,
-                 queue_buffer: Optional[int] = None,
-                 strict: bool = False):
+    def __init__(self, template, dataset, num_workers: int = 1, *, packing_interval: int = 128, strict: bool = False):
         super().__init__(template, dataset, num_workers, packing_interval=packing_interval, strict=strict)
-        self.queue_buffer = (queue_buffer or max(2 * packing_interval, 1000))
-        assert self.queue_buffer >= self.packing_interval, (
-            f'queue_buffer: {queue_buffer}, packing_interval: {packing_interval}')
         self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc='Packing')
-        self._queue = mp.Queue(maxsize=self.queue_buffer)
+        self._queue = mp.Queue()
         self._terminated_workers = 0
         for i in range(self.num_workers):
             shard_dataset = self.dataset.shard(self.num_workers, i)
@@ -213,14 +202,15 @@ class PackingDataset(BasePackingDataset, Dataset):
 
 class IterablePackingDataset(BasePackingDataset, IterableDataset):
 
-    def __init__(self,
-                 template,
-                 dataset,
-                 num_workers: int = 1,
-                 *,
-                 packing_interval: int = 128,
-                 strict: bool = False,
-                 **kwargs):
+    def __init__(
+        self,
+        template,
+        dataset,
+        num_workers: int = 1,
+        *,
+        packing_interval: int = 128,
+        strict: bool = False,
+    ):
         super().__init__(template, dataset, num_workers, packing_interval=packing_interval, strict=strict)
         self._in_queue = mp.Queue()
         self._out_queue = mp.Queue()

@@ -56,7 +56,7 @@ class BatchSamplerShard:
 
 class DataLoaderShard(DataLoader):
 
-    def __init__(self, dataset, batch_sampler, **dataloader_params):
+    def __init__(self, dataset, batch_sampler: BatchSamplerShard, **dataloader_params):
         self.batch_sampler = batch_sampler
         super().__init__(dataset, batch_sampler=self.batch_sampler, **dataloader_params)
 
