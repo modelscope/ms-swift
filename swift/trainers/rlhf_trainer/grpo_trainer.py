@@ -32,7 +32,7 @@ from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, 
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import patch_lora_merge, patch_lora_unmerge, round_robin
+from .utils import patch_lora_merge, patch_lora_unmerge, round_robin,_split_into_mini_batches
 
 try:
     from trl.extras.profiling import profiling_decorator
@@ -467,61 +467,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template.set_mode(mode)
             template.max_length = max_length
 
-    @torch.no_grad()
-    def offload_model(self):
-        if len(self.offload_modules) > 0:
-            return
-        unwrapped_model = self.accelerator.unwrap_model(self.model)
-        for name, module in unwrapped_model.named_modules():
-            if isinstance(module, torch.nn.Embedding):
-                self.offload_modules[name] = module.weight.device
-                module.to('cpu')
-            elif not hasattr(module, 'device'):
-                pass
-            elif module.device.type != 'cpu':
-                self.offload_modules[name] = module.device
-                module.to('cpu')
 
-    @torch.no_grad()
-    def load_model(self):
-        if len(self.offload_modules) == 0:
-            return
-        unwrapped_model = self.accelerator.unwrap_model(self.model)
-        for name, device in self.offload_modules.items():
-            module = unwrapped_model.get_submodule(name)
-            if isinstance(module, torch.nn.Embedding):
-                module.weight.to(device)
-            else:
-                module.to(device)
-        self.offload_modules.clear()
-
-    @torch.no_grad()
-    def offload_optimizer(self):
-        if len(self.offload_states) > 0:
-            return
-        if not self.optimizer.state:
-            return
-        for param_group in self.optimizer.param_groups:
-            for param in param_group['params']:
-                state = self.optimizer.state[param]
-                for key, value in state.items():
-                    if isinstance(value, torch.Tensor):
-                        self.offload_states[key] = value.device
-                        state[key] = value.to('cpu', non_blocking=True)
-
-    @torch.no_grad()
-    def load_optimizer(self):
-        if len(self.offload_states) == 0:
-            return
-        if not self.optimizer.state:
-            return
-        for param_group in self.optimizer.param_groups:
-            for param in param_group['params']:
-                state = self.optimizer.state[param]
-                for key, value in state.items():
-                    if isinstance(value, torch.Tensor):
-                        state[key] = value.to(self.offload_states[key], non_blocking=True)
-        self.offload_states.clear()
 
     @profiling_decorator
     def _move_model_to_vllm_lmdeploy(self):
@@ -701,12 +647,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.accelerator.num_processes > 1:
             self.accelerator.wait_for_everyone()
 
-    def _fast_infer(self, inputs):
+    def _fast_infer(self, all_inputs, inputs=None):
         """
         This function performs fast inference by managing model and optimizer offloading,
         loading weights if necessary, distributing inputs among workers, and generating
         completions using the vLLM/LMDeploy framework. It supports both synchronous and asynchronous
         inference modes.
+        all_inputs: all gather inputs in distributed
+        inputs: local inputs
         """
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
             if self.args.offload_model:
@@ -723,7 +671,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self._move_model_to_vllm_lmdeploy()
             self._last_loaded_step = self.state.global_step
         # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
-        all_inputs = gather_object(inputs)
         # Distribute inputs to different workers
         # for example, 2 workers, 6 inputs, 0/2/4 dispatch to the first worker
         # 1/3/5 dispatch to the second worker
@@ -780,12 +727,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _generate_completions(self, inputs):
         if self.args.use_vllm or self.args.use_lmdeploy:
-            _, outputs = self._fast_infer(inputs)
+            all_inputs = gather_object(inputs)
+              
+            _, outputs = self._fast_infer(all_inputs, inputs)
             # Slice to keep only the local part of the data
             process_slice = slice(
                 self.accelerator.process_index * len(inputs),
                 (self.accelerator.process_index + 1) * len(inputs),
-            )
+            )  
             outputs = outputs[process_slice]
         else:
             # pt infer
@@ -807,9 +756,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
 
         device = self.accelerator.device
-        # Generate completions
+        # Generate completions. The 'outputs' includes the messages with assistant completions.
         outputs = self._generate_completions(inputs)
-
+        # overwrite the 'messages' in 'inputs' with the results obtained from sampling
         for i, output in enumerate(outputs):
             inputs[i]['messages'] = output
 
@@ -831,53 +780,64 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return batch_encoded_inputs
 
     def _handle_zero_std_groups(self, inputs, rewards, rewards_per_func, completions, device):
-        """Handle groups with std=0 with simplified attempt control"""
+        """Handle groups with std=0 in distributed setting"""
         max_total_attempts = self.args.max_resample_times
         total_attempts = 0
-
+        
+        global_num_prompts = len(inputs) * self.accelerator.num_processes // self.num_generations
+        global_group_size = self.num_generations * self.accelerator.num_processes
+        
         while total_attempts < max_total_attempts:
-            grouped_rewards = rewards.view(-1, self.num_generations)
+            all_rewards = self.accelerator.gather(rewards)
+            
+            grouped_rewards = all_rewards.view(global_num_prompts, global_group_size)
             std_grouped_rewards = grouped_rewards.std(dim=1)
-            zero_std_indices = torch.where(std_grouped_rewards == 0)[0]
-
-            if len(zero_std_indices) == 0:
+            
+            zero_std_mask = std_grouped_rewards == 0
+            if not zero_std_mask.any():
                 break
-
+                
             total_attempts += 1
-            if total_attempts >= max_total_attempts:
-                logger.warning(f'Reached max resample attempts ({max_total_attempts})')
-                break
-
-            resample_inputs = [inputs[i * self.num_generations] for i in zero_std_indices]
+            
+            prompt_indices = torch.arange(len(inputs) // self.num_generations, 
+                                        device=device) * self.num_generations
+            global_prompt_indices = (self.accelerator.process_index * len(inputs) // self.num_generations + 
+                                    prompt_indices)
+            
+            need_resample_mask = zero_std_mask[global_prompt_indices]
+            need_resample_indices = prompt_indices[need_resample_mask]
+            
+            if len(need_resample_indices) == 0:
+                continue
+                
+            resample_inputs = [inputs[i] for i in need_resample_indices]
+            
             resample_outputs = self._generate_completions(resample_inputs)
-
-            new_completions = completions.copy()
-            for i, idx in enumerate(zero_std_indices):
-                start_idx = idx * self.num_generations
+            
+            for i, idx in enumerate(need_resample_indices):
                 for j in range(self.num_generations):
-                    inputs[start_idx + j]['messages'] = resample_outputs[i * self.num_generations + j]
-                    new_completions[start_idx + j] = resample_outputs[i * self.num_generations + j][-1]['content']
-
-            resample_rewards_per_func, resample_completions = self._score_completions([
-                inputs[idx * self.num_generations + j] for idx in zero_std_indices for j in range(self.num_generations)
-            ], device)
-
+                    inputs[idx + j]['messages'] = resample_outputs[i * self.num_generations + j]
+                    completions[idx + j] = resample_outputs[i * self.num_generations + j][-1]['content']
+            
+            resample_rewards_per_func, resample_completions = self._score_completions(
+                [inputs[idx + j] for idx in need_resample_indices for j in range(self.num_generations)], 
+                device)
+            
             resample_rewards = (resample_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).sum(dim=1)
-            for i, idx in enumerate(zero_std_indices):
-                start_idx = idx * self.num_generations
-                rewards[start_idx:start_idx + self.num_generations] = resample_rewards[i * self.num_generations:(i + 1)
-                                                                                       * self.num_generations]
-                completions[start_idx:start_idx
-                            + self.num_generations] = resample_completions[i * self.num_generations:(i + 1)
-                                                                           * self.num_generations]
-
-            for i in range(rewards_per_func.size(1)):
-                for j, idx in enumerate(zero_std_indices):
-                    start_idx = idx * self.num_generations
-                    resample_start = j * self.num_generations
-                    rewards_per_func[start_idx:start_idx + self.num_generations, i] = (
-                        resample_rewards_per_func[resample_start:resample_start + self.num_generations, i])
-
+            for i, idx in enumerate(need_resample_indices):
+                rewards[idx:idx + self.num_generations] = resample_rewards[i * self.num_generations:(i + 1) * self.num_generations]
+                completions[idx:idx + self.num_generations] = resample_completions[i * self.num_generations:(i + 1) * self.num_generations]
+            
+            for k in range(rewards_per_func.size(1)):
+                for i, idx in enumerate(need_resample_indices):
+                    start = i * self.num_generations
+                    rewards_per_func[idx:idx + self.num_generations, k] = resample_rewards_per_func[start:start + self.num_generations, k]
+        
+        if total_attempts >= max_total_attempts and self.accelerator.is_main_process:
+            remaining_zero_std = (self.accelerator.gather(rewards).view(
+                global_num_prompts, global_group_size).std(dim=1) == 0).sum()
+            logger.warning(f"{remaining_zero_std} groups still have std=0 after max attempts")
+        
         return rewards, completions, inputs
 
     def _score_completions(self, inputs, device):
@@ -924,7 +884,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         advantages = advantages[process_slice]
 
         # Prepare mini-batches
-        mini_batch_inputs = self._split_into_mini_batches(inputs, mini_batch_size=self.args.mini_batch_size)
+        mini_batch_inputs = _split_into_mini_batches(inputs, mini_batch_size=self.args.mini_batch_size)
         batch_encoded_inputs = []
         template = self.template
 
@@ -958,7 +918,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 batch_encoded_inputs.append(mini_batch_encoded_inputs)
 
         # Split advantages into mini-batches
-        mini_batch_advantages = self._split_into_mini_batches(advantages, mini_batch_size=self.args.mini_batch_size)
+        mini_batch_advantages = _split_into_mini_batches(advantages, mini_batch_size=self.args.mini_batch_size)
         for i, mini_batch_advantage in enumerate(mini_batch_advantages):
             batch_encoded_inputs[i].update({'advantages': mini_batch_advantage})
 
@@ -1141,28 +1101,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return total_loss.detach()
 
-    @staticmethod
-    def _split_into_mini_batches(batch: List, mini_batch_size: int) -> List[List]:
-        """
-        Splits a full batch into multiple mini-batches based on the specified mini_batch_size.
 
-        Args:
-            batch (List): The full batch.
-            mini_batch_size (int): The size of each mini-batch.
-
-        Returns:
-            List[List]: A list of mini-batches.
-        """
-        if mini_batch_size is None or mini_batch_size >= len(batch):
-            # If mini_batch_size is not specified or larger than the batch size,
-            # return the full batch as a single mini-batch
-            return [batch]
-
-        mini_batches = []
-        for i in range(0, len(batch), mini_batch_size):
-            mini_batch = batch[i:i + mini_batch_size]
-            mini_batches.append(mini_batch)
-        return mini_batches
 
     @property
     def _queue(self):
@@ -1170,6 +1109,62 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return self.eval_queue
         else:
             return self.train_queue
+
+    @torch.no_grad()
+    def offload_model(self):
+        if len(self.offload_modules) > 0:
+            return
+        unwrapped_model = self.accelerator.unwrap_model(self.model)
+        for name, module in unwrapped_model.named_modules():
+            if isinstance(module, torch.nn.Embedding):
+                self.offload_modules[name] = module.weight.device
+                module.to('cpu')
+            elif not hasattr(module, 'device'):
+                pass
+            elif module.device.type != 'cpu':
+                self.offload_modules[name] = module.device
+                module.to('cpu')
+
+    @torch.no_grad()
+    def load_model(self):
+        if len(self.offload_modules) == 0:
+            return
+        unwrapped_model = self.accelerator.unwrap_model(self.model)
+        for name, device in self.offload_modules.items():
+            module = unwrapped_model.get_submodule(name)
+            if isinstance(module, torch.nn.Embedding):
+                module.weight.to(device)
+            else:
+                module.to(device)
+        self.offload_modules.clear()
+
+    @torch.no_grad()
+    def offload_optimizer(self):
+        if len(self.offload_states) > 0:
+            return
+        if not self.optimizer.state:
+            return
+        for param_group in self.optimizer.param_groups:
+            for param in param_group['params']:
+                state = self.optimizer.state[param]
+                for key, value in state.items():
+                    if isinstance(value, torch.Tensor):
+                        self.offload_states[key] = value.device
+                        state[key] = value.to('cpu', non_blocking=True)
+
+    @torch.no_grad()
+    def load_optimizer(self):
+        if len(self.offload_states) == 0:
+            return
+        if not self.optimizer.state:
+            return
+        for param_group in self.optimizer.param_groups:
+            for param in param_group['params']:
+                state = self.optimizer.state[param]
+                for key, value in state.items():
+                    if isinstance(value, torch.Tensor):
+                        state[key] = value.to(self.offload_states[key], non_blocking=True)
+        self.offload_states.clear()
 
     def set_multi_turn_engine_default_max_tokens(self):
         # Reset max_model_len to ensure that the total length during multi-turn generation

@@ -162,6 +162,13 @@ class GRPOArgumentsMixin:
     # mini-batch
     mini_batch_size: Optional[int] = None
 
+    # DAPO
+    dynamic_sampling: bool = False
+    max_resample_times: int = 3
+
+    # Dr.GRPO
+    scale_rewards: bool = False
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
