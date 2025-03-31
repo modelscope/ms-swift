@@ -9,7 +9,7 @@ FPS_MAX_FRAMES=12 \
 MAX_PIXELS=1003520 \
 swift sft \
     --model Qwen/Qwen2.5-Omni-7B \
-    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#2000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#2000' \
               'speech_asr/speech_asr_aishell1_trainsets:validation#2000' \
               'swift/VideoChatGPT:all#2000' \

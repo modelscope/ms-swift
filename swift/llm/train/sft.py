@@ -260,11 +260,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 if val_dataset is not None and not predict_with_generate:
                     val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
 
-            is_indexable_dataset = hasattr(train_dataset, '__len__')
             if is_master():
-                inputs = train_dataset[0] if is_indexable_dataset else next(iter(train_dataset))
+                inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
                 template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
-            if is_indexable_dataset:
+            if isinstance(train_dataset, (HfDataset, PackingDataset)):
                 self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
                 if val_dataset is not None and not predict_with_generate:
                     self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)

@@ -442,9 +442,9 @@ class Qwen2_5OmniTemplate(Template):
 
                 def _get_new_tokens(i):
                     token_len = (media_grid_thw[i].prod() // merge_length)
-                    return [token_id] * token_len
+                    return token_id * token_len
 
-                _, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
+                input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
         # audio
         feature_attention_mask = media_inputs.get('feature_attention_mask')
         if feature_attention_mask is not None:
@@ -454,10 +454,11 @@ class Qwen2_5OmniTemplate(Template):
 
             def _get_new_tokens(i):
                 place_num = ((audio_feature_lengths[i] - 1) // 2 + 1 - 2) // 2 + 1
-                return [token_id] * place_num
+                return token_id * place_num
 
-            _, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
+            input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
 
+        encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded.update(media_inputs)
         return encoded
@@ -473,7 +474,7 @@ class Qwen2_5OmniTemplate(Template):
                 audio_feature_lengths = None
             use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
             video_second_per_grid = inputs.pop('video_second_per_grid', None)
-            position_ids, _, input_ids, attention_mask = model.thinker.get_rope_index(
+            position_ids, _ = model.thinker.get_rope_index(
                 inputs.get('input_ids'),
                 inputs.get('image_grid_thw'),
                 inputs.get('video_grid_thw'),
@@ -482,8 +483,6 @@ class Qwen2_5OmniTemplate(Template):
                 audio_feature_lengths,
                 video_second_per_grid,
             )
-            inputs['input_ids'] = input_ids
-            inputs['attention_mask'] = attention_mask
             inputs['position_ids'] = position_ids
         return inputs
 
