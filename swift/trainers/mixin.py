@@ -360,39 +360,25 @@ class SwiftMixin:
         else:
             super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
 
-    @staticmethod
-    @contextmanager
-    def _patch_accelerator_prepare(accelerator):
-        prepare = accelerator.__class__.prepare
-
-        def _new_prepare(self, *args):
-            return args
-
-        accelerator.__class__.prepare = _new_prepare
-        try:
-            yield
-        finally:
-            accelerator.__class__.prepare = prepare
-
     def get_train_dataloader(self):
         if self.template.sequence_parallel_size == 1:
             # Higher efficiency
             if self.train_dataset is None:
                 raise ValueError('Trainer: training requires a train_dataset.')
-
+            args = self.args
             train_dataset = self.train_dataset
 
             dataloader_params = {
                 'collate_fn': self.data_collator,
-                'num_workers': self.args.dataloader_num_workers,
-                'pin_memory': self.args.dataloader_pin_memory,
-                'persistent_workers': self.args.dataloader_persistent_workers,
-                'prefetch_factor': self.args.dataloader_prefetch_factor
+                'num_workers': args.dataloader_num_workers,
+                'pin_memory': args.dataloader_pin_memory,
+                'persistent_workers': args.dataloader_persistent_workers,
+                'prefetch_factor': args.dataloader_prefetch_factor
             }
             batch_sampler_params = {
-                'drop_last': self.args.dataloader_drop_last,
-                'shuffle': self.args.train_dataloader_shuffle,
-                'data_seed': self.args.data_seed,
+                'drop_last': args.dataloader_drop_last,
+                'shuffle': args.train_dataloader_shuffle,
+                'data_seed': args.data_seed,
             }
 
             if not isinstance(train_dataset, torch.utils.data.IterableDataset):

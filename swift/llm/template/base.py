@@ -262,7 +262,7 @@ class Template(ProcessorMixin):
             added_tokens_len += token_len - 1
         return input_ids, labels
 
-    def _compute_loss_context(self, inputs):
+    def compute_loss_context(self, inputs):
         return nullcontext()
 
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:

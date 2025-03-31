@@ -283,9 +283,9 @@ class Qwen2VLTemplate(Template):
             modeling_qwen2_vl._flash_attention_forward = _origin_flash_attention_forward
             modeling_qwen2_5_vl._flash_attention_forward = _origin_flash_attention_forward
 
-    def _compute_loss_context(self, inputs):
+    def compute_loss_context(self, inputs):
         if 'real_position_ids' not in inputs:
-            return super()._compute_loss_context(inputs)
+            return super().compute_loss_context(inputs)
         return self._patch_flash_attention_forward(inputs)
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
