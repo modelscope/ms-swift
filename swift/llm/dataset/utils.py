@@ -247,6 +247,10 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
                 worker = mp.Process(target=self._processor, daemon=True)
                 worker.start()
                 self.workers.append(worker)
+        try:
+            next(iter(self.dataset))
+        except StopIteration:
+            return
         iterator = self.cyclic_iter(self.dataset)
         data = []
         while True:

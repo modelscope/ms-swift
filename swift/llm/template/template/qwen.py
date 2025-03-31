@@ -468,8 +468,6 @@ class Qwen2_5OmniTemplate(Template):
             feature_attention_mask = inputs.get('feature_attention_mask')
             if feature_attention_mask is not None:
                 audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
-                inputs['input_features'] = inputs['input_features'].permute(0, 2, 1)[feature_attention_mask.bool()]
-                inputs['input_features'] = inputs['input_features'].permute(1, 0)
             else:
                 audio_feature_lengths = None
             use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
