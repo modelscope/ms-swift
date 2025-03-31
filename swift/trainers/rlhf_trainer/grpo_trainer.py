@@ -289,6 +289,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.args.async_generate:
             self.add_callback(GRPOCallback(self))
         self.set_multi_turn_engine_default_max_tokens()
+        # just for debug, TODO: add in config
+        self.args.dynamic_sampling = True
+        self.args.max_resample_times = 3
+        self.args.scale_rewards = True
 
     def split_batches(self):
         """Sync weights in batches
@@ -745,6 +749,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.accelerator.wait_for_everyone()
 
     def _fast_infer(self, inputs):
+        """
+        This function performs fast inference by managing model and optimizer offloading,
+        loading weights if necessary, distributing inputs among workers, and generating
+        completions using the vLLM/LMDeploy framework. It supports both synchronous and asynchronous
+        inference modes.
+        """
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
             if self.args.offload_model:
                 self.offload_model()
@@ -815,24 +825,22 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def old_policy(self):
         return self.num_iterations > 1
 
-    def _generate_and_score_completions(
-            self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
-
-        device = self.accelerator.device
-        # Generate completions using either vLLM or regular generation
+    def _generate_completions(self, inputs):
         if self.args.use_vllm or self.args.use_lmdeploy:
-            inputs, outputs = self._fast_infer(inputs)
-            # Broadcast the completions from the main process to all processes, ensuring each process receives its
-            # corresponding slice.
-            # outputs = broadcast_object_list(outputs, from_process=0)
+            _, outputs = self._fast_infer(inputs)
+            # Slice to keep only the local part of the data
+            process_slice = slice(
+                self.accelerator.process_index * len(inputs),
+                (self.accelerator.process_index + 1) * len(inputs),
+            )
+            outputs = outputs[process_slice]
         else:
-            # Regular generation path
+            # pt infer
             is_multimodal = self.model.model_meta.is_multimodal
             if is_multimodal:
                 models = self.template.remove_post_encode_hook()
             with unwrap_model_for_generation(
                     self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation):
-                # same reference
                 outputs = self._infer_multi_turn(inputs, self.request_config)
                 self.model.train()
             if is_multimodal:
@@ -840,21 +848,130 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if isinstance(outputs[0][0], list):
                 outputs = [output[0] for output in outputs]
 
+        return outputs
+
+    def _generate_and_score_completions(
+            self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
+
+        device = self.accelerator.device
+        # Generate completions
+        outputs = self._generate_completions(inputs)
+
+        for i, output in enumerate(outputs):
+            inputs[i]['messages'] = output
+
+        # scoring completion with reward funcs/models
+        rewards_per_func, completions = self._score_completions(inputs, device)
+        rewards = (rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).sum(dim=1)
+
+        # dynamic sampling for std=0 groups
+        if self.args.dynamic_sampling:
+            rewards, completions, inputs = self._handle_zero_std_groups(
+                inputs, rewards, rewards_per_func, completions, device)
+            
+        # Prepare final outputs with advantages and other required fields
+        batch_encoded_inputs = self._prepare_batch_inputs(inputs, rewards, device)
+
+        # Log metrics
+        self._log_metrics(inputs, completions, rewards, rewards_per_func, device)
+
+        return batch_encoded_inputs
+
+    def _handle_zero_std_groups(self, inputs, rewards, rewards_per_func, completions, device):
+        """Handle groups with std=0 with simplified attempt control"""
+        max_total_attempts = self.args.max_resample_times
+        total_attempts = 0
+        
+        while total_attempts < max_total_attempts:
+            grouped_rewards = rewards.view(-1, self.num_generations)
+            std_grouped_rewards = grouped_rewards.std(dim=1)
+            zero_std_indices = torch.where(std_grouped_rewards == 0)[0]
+            
+            if len(zero_std_indices) == 0:
+                break
+                
+            total_attempts += 1
+            if total_attempts >= max_total_attempts:
+                logger.warning(f"Reached max resample attempts ({max_total_attempts})")
+                break
+
+            resample_inputs = [inputs[i*self.num_generations] for i in zero_std_indices]
+            resample_outputs = self._generate_completions(resample_inputs)
+            
+            new_completions = completions.copy()
+            for i, idx in enumerate(zero_std_indices):
+                start_idx = idx * self.num_generations
+                for j in range(self.num_generations):
+                    inputs[start_idx + j]['messages'] = resample_outputs[i*self.num_generations + j]
+                    new_completions[start_idx + j] = resample_outputs[i*self.num_generations + j][-1]['content']
+            
+            resample_rewards_per_func, resample_completions = self._score_completions(
+                [inputs[idx*self.num_generations + j] for idx in zero_std_indices 
+                for j in range(self.num_generations)], device)
+            
+            resample_rewards = (resample_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).sum(dim=1)
+            for i, idx in enumerate(zero_std_indices):
+                start_idx = idx * self.num_generations
+                rewards[start_idx:start_idx+self.num_generations] = resample_rewards[i*self.num_generations:(i+1)*self.num_generations]
+                completions[start_idx:start_idx+self.num_generations] = resample_completions[i*self.num_generations:(i+1)*self.num_generations]
+                
+            for i in range(rewards_per_func.size(1)):
+                for j, idx in enumerate(zero_std_indices):
+                    start_idx = idx * self.num_generations
+                    resample_start = j * self.num_generations
+                    rewards_per_func[start_idx:start_idx+self.num_generations, i] = (
+                        resample_rewards_per_func[resample_start:resample_start+self.num_generations, i])
+
+        return rewards, completions, inputs
+
+    def _score_completions(self, inputs, device):
+        """Score completions using all reward functions"""
+        completions = [example['messages'][-1]['content'] for example in inputs]
+        rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
+
+        for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, self.reward_templates)):
+            if isinstance(reward_func, nn.Module):
+                with self._template_context(reward_template):
+                    batched_inputs = [reward_template.encode(infer_request) for infer_request in inputs]
+                    reward_inputs = to_device(reward_template.data_collator(batched_inputs), reward_func.device)
+
+                with torch.inference_mode(), unwrap_model_for_generation(reward_func,
+                                                                         self.accelerator) as unwrapped_reward_func:
+                    rewards_per_func[:, i] = unwrapped_reward_func(**reward_inputs).logits[:, 0]
+            else:
+                reward_kwargs = RowPreprocessor.rows_to_batched(inputs)
+                output_reward_func = reward_func(completions, **reward_kwargs)
+                rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
+
+        rewards_per_func = gather(rewards_per_func)
+        return rewards_per_func, completions
+
+    def _prepare_batch_inputs(self, inputs, rewards, device):
+        """Prepare the final batch inputs with advantages and other required fields"""
+        # Compute advantages
+        grouped_rewards = rewards.view(-1, self.num_generations)
+        mean_grouped_rewards = grouped_rewards.mean(dim=1)
+        std_grouped_rewards = grouped_rewards.std(dim=1)
+
+        # Normalize rewards to compute advantages
+        mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
+        std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
+        advantages = (rewards - mean_grouped_rewards)
+        if self.args.scale_rewards:
+            advantages /= (std_grouped_rewards + 1e-4)
+
         # Slice to keep only the local part of the data
         process_slice = slice(
             self.accelerator.process_index * len(inputs),
             (self.accelerator.process_index + 1) * len(inputs),
         )
-        if self.args.use_vllm or self.args.use_lmdeploy:
-            outputs = outputs[process_slice]
+        advantages = advantages[process_slice]
 
-        for i, output in enumerate(outputs):
-            inputs[i]['messages'] = output
-
+        # Prepare mini-batches
         mini_batch_inputs = self._split_into_mini_batches(inputs, mini_batch_size=self.args.mini_batch_size)
         batch_encoded_inputs = []
-        from copy import copy
         template = self.template
+
         for mini_batch in mini_batch_inputs:
             with self._template_context(template):
                 mini_batch_encoded_inputs = [template.encode(infer_request) for infer_request in mini_batch]
@@ -884,73 +1001,49 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 mini_batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
                 batch_encoded_inputs.append(mini_batch_encoded_inputs)
 
-        rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
-        completions = [example['messages'][-1]['content'] for example in inputs]
-
-        for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, self.reward_templates)):
-            if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
-                with self._template_context(reward_template):
-                    batched_inputs = [reward_template.encode(infer_request) for infer_request in inputs]
-                    reward_inputs = to_device(reward_template.data_collator(batched_inputs), reward_func.device)
-
-                with torch.inference_mode(), unwrap_model_for_generation(reward_func,
-                                                                         self.accelerator) as unwrapped_reward_func:
-                    rewards_per_func[:, i] = unwrapped_reward_func(**reward_inputs).logits[:, 0]
-            else:
-                # Repeat all input columns (but "messages" and "completion") to match the number of generations
-                reward_kwargs = RowPreprocessor.rows_to_batched(inputs)
-                output_reward_func = reward_func(completions, **reward_kwargs)
-                rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
-
-        rewards_per_func = gather(rewards_per_func)
-        # Apply weights to each reward function's output and sum
-        rewards = (rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).sum(dim=1)
-
-        # Compute grouped-wise rewards
-        mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
-        std_grouped_rewards = rewards.view(-1, self.num_generations).std(dim=1)
-
-        # Normalize the rewards to compute the advantages
-        mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
-        std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
-        advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
-        advantages = advantages[process_slice]
+        # Split advantages into mini-batches
         mini_batch_advantages = self._split_into_mini_batches(advantages, mini_batch_size=self.args.mini_batch_size)
-        # merge advantages to mini_batch_inputs
         for i, mini_batch_advantage in enumerate(mini_batch_advantages):
             batch_encoded_inputs[i].update({'advantages': mini_batch_advantage})
-        # Log the metrics
-        mode = 'eval' if self.control.should_evaluate else 'train'
-        completion_length = self.accelerator.gather_for_metrics(
-            torch.cat([mb['completion_mask'].sum(1).float() for mb in batch_encoded_inputs])).mean().item()
-        self._metrics[mode]['completion_length'].append(completion_length)
-        # clip ratio
-        response_clip_ratio = (
-            torch.gt(
-                self.accelerator.gather_for_metrics(
-                    torch.cat([mb['completion_mask'].sum(1) for mb in batch_encoded_inputs])),
-                self.args.max_completion_length).float().mean().item())
 
+        return batch_encoded_inputs
+
+    def _log_metrics(self, inputs, completions, rewards, rewards_per_func, device):
+        """Log training/evaluation metrics"""
+        mode = 'eval' if self.control.should_evaluate else 'train'
+
+        # Calculate completion length metrics
+        completion_lengths = torch.tensor([len(c) for c in completions], device=device)
+        self._metrics[mode]['completion_length'].append(
+            self.accelerator.gather_for_metrics(completion_lengths).mean().item())
+
+        # Calculate clip ratio
+        response_clip_ratio = (torch.gt(completion_lengths, self.args.max_completion_length).float().mean().item())
         self._metrics[mode]['response_clip_ratio'].append(response_clip_ratio)
+
+        # Log rewards
         reward_per_func = rewards_per_func.mean(0)
         for i, reward_func in enumerate(self.reward_funcs):
-            if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
+            if isinstance(reward_func, nn.Module):
                 reward_func_name = reward_func.config._name_or_path.split('/')[-1]
             else:
                 if inspect.isfunction(reward_func):
-                    reward_func_name = reward_func.__name__  # function
+                    reward_func_name = reward_func.__name__
                 else:
-                    reward_func_name = reward_func.__class__.__name__  # method
+                    reward_func_name = reward_func.__class__.__name__
             self._metrics[mode][f'rewards/{reward_func_name}'].append(reward_per_func[i].item())
 
-        self._metrics[mode]['reward'].append(rewards.mean().item())
-        self._metrics[mode]['reward_std'].append(std_grouped_rewards.mean().item())
+        # Log overall reward stats
+        grouped_rewards = rewards.view(-1, self.num_generations)
+        self._metrics[mode]['reward'].append(grouped_rewards.mean().item())
+        self._metrics[mode]['reward_std'].append(grouped_rewards.std(dim=1).mean().item())
+
+        # Log completions if enabled
         if self.log_completions and self.state.global_step % self.args.logging_steps == 0:
-            # For logging
             table = {
                 'step': [str(self.state.global_step)] * len(rewards),
-                'messages': [inputs['messages'][:-1] for inputs in gather_object(inputs)],
-                'completion': gather_object(completions),
+                'messages': [inputs[i]['messages'][:-1] for i in range(len(inputs))],
+                'completion': completions,
                 'reward': rewards.tolist(),
             }
             self.jsonl_writer.append(table)
@@ -958,8 +1051,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 import pandas as pd
                 df = pd.DataFrame(table)
                 wandb.log({'completions': wandb.Table(dataframe=df)})
-
-        return batch_encoded_inputs
 
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
