@@ -96,8 +96,9 @@ class VllmEngine(InferEngine):
             enable_sleep_mode=enable_sleep_mode,
             engine_kwargs=engine_kwargs,
         )
-        context, npu_context = patch_vllm(num_infer_workers * get_node_setting()[1],
-                                          self.engine_args.device), nullcontext()
+        nnodes = get_node_setting()[1]
+        total_infer_workers = num_infer_workers * nnodes
+        context, npu_context = patch_vllm(world_size=total_infer_workers), nullcontext()
         if tensor_parallel_size == 1 or pipeline_parallel_size == 1:
             npu_context = patch_npu_vllm(self.engine_args.device)
         with context, npu_context:

@@ -32,6 +32,7 @@ from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, 
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
+from .utils import patch_lora_merge, patch_lora_unmerge, round_robin
 
 try:
     from trl.extras.profiling import profiling_decorator
@@ -381,6 +382,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         _, _, _, local_world_size = get_dist_setting()
         if local_world_size == self.args.num_infer_workers == get_device_count() and local_world_size > 1:
+            # Compatibility with TP
             cls = GRPOVllmEngine
         else:
             cls = VllmEngine
@@ -406,9 +408,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     @property
     def infer_rank(self):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
+        node_rank = get_node_setting()[0]
         for _vllm_rank in range(self.args.num_infer_workers):
             if local_rank == _vllm_rank:
-                return get_node_setting()[0] * self.args.num_infer_workers + _vllm_rank
+                return node_rank * self.args.num_infer_workers + _vllm_rank
         if local_rank == -1:
             return 0
         return -1
@@ -418,10 +421,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # whether is tp rank0, get data from this rank
         # vllm needs all tp ranks inputs and sampling params are the same
         rank, local_rank, world_size, local_world_size = get_dist_setting()
+        node_rank = get_node_setting()[0]
         for _vllm_rank in range(self.args.num_infer_workers):
             if local_rank == _vllm_rank and _vllm_rank % self.args.tensor_parallel_size == 0:
-                return (get_node_setting()[0] * self.args.num_infer_workers
-                        + _vllm_rank // self.args.tensor_parallel_size)
+                return (node_rank * self.args.num_infer_workers + _vllm_rank // self.args.tensor_parallel_size)
         if local_rank == -1:
             return 0
         return -1
@@ -441,14 +444,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             list(range(0, world_size))[i:i + self.args.tensor_parallel_size]
             for i in range(0, world_size, self.args.tensor_parallel_size)
         ]
-
-    @staticmethod
-    def round_robin(num_reqs, nodes):
-        distribution = [[] for _ in range(nodes)]
-        for idx in range(num_reqs):
-            node_id = idx % nodes
-            distribution[node_id].append(idx)
-        return distribution
 
     @contextmanager
     def _template_context(self, template):
@@ -536,54 +531,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     gather_deepspeed3_params=self.args.ds3_gather_for_generation,
                     gather_parameters=parameter_group) as unwrapped_model:
 
-                def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
-                    if parameter_group and all([self.name not in pg for pg in parameter_group]):
-                        # Not this group, skip
-                        return
-                    else:
-                        ret = self.merge_origin(safe_merge, adapter_names)
-                        return ret
-
-                def get_delta_weight(self, adapter) -> torch.Tensor:
-                    # may be offload
-                    from peft.tuners import lora
-                    if isinstance(self, lora.Embedding):
-                        self.lora_embedding_A[adapter].data = self.lora_embedding_A[adapter].data.to(
-                            self.base_layer.weight.device)
-                        self.lora_embedding_B[adapter].data = self.lora_embedding_B[adapter].data.to(
-                            self.base_layer.weight.device)
-                    else:
-                        self.lora_A[adapter].weight.data = self.lora_A[adapter].weight.data.to(
-                            self.base_layer.weight.device)
-                        self.lora_B[adapter].weight.data = self.lora_B[adapter].weight.data.to(
-                            self.base_layer.weight.device)
-                    tensor = self.get_delta_weight_origin(adapter)
-                    return tensor.to(self.base_layer.weight.device)
-
-                @contextmanager
-                def patch_merge(model):
-                    from peft.tuners.lora import LoraLayer
-                    for name, module in model.named_modules():
-                        if isinstance(module, LoraLayer):
-                            module.name = name
-                            if not hasattr(module, 'merge_origin') and hasattr(module, 'base_layer'):
-                                module.merge_origin = module.merge
-                                module.merge = MethodType(merge, module)
-                                module.get_delta_weight_origin = module.get_delta_weight
-                                module.get_delta_weight = MethodType(get_delta_weight, module)
-                    yield
-                    for name, module in model.named_modules():
-                        if isinstance(module, LoraLayer):
-                            if hasattr(module, 'merge_origin'):
-                                module.merge = module.merge_origin
-                                del module.merge_origin
-                                module.get_delta_weight = module.get_delta_weight_origin
-                                del module.get_delta_weight_origin
-
                 if is_compiled_module(unwrapped_model):
                     unwrapped_model = unwrapped_model._orig_mod
                 if is_peft_model(unwrapped_model):
-                    with patch_merge(unwrapped_model):
+                    with patch_lora_merge(unwrapped_model, parameter_group):
                         unwrapped_model.merge_adapter()
                     state_dict = unwrapped_model.state_dict()
                     # Remove base_model and base_layer prefixes
@@ -614,10 +565,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     llm_model.load_weights(state_dict.items())
                     del state_dict
                     gc_collect()
-        # Unmerge the adapter to restore the model to its original state.
-        # This must be done after loading weights to ensure they correspond to the merged state.
-        if is_peft_model(unwrapped_model):
-            unwrapped_model.unmerge_adapter()
+                # Unmerge the adapter to restore the model to its original state.
+                # This must be done after loading weights to ensure they correspond to the merged state.
+                if is_peft_model(unwrapped_model):
+                    with patch_lora_unmerge(unwrapped_model):
+                        unwrapped_model.unmerge_adapter()
 
         if self.infer_rank >= 0 and self.args.use_vllm and self.args.vllm_enable_prefix_caching:
             self.engine.engine.reset_prefix_cache()
@@ -734,7 +686,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _prefetch(self, dataloader):
         inputs = next(iter(dataloader))
         all_inputs = gather_object(inputs)
-        distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
+        nnodes = get_node_setting()[1]
+        distributed_idx = round_robin(len(all_inputs), nnodes * self.args.num_infer_workers)
         if self.infer_rank >= 0:
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
             outputs = self._infer_multi_turn(_input_slice, self.request_config)
@@ -765,7 +718,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # for example, 2 workers, 6 inputs, 0/2/4 dispatch to the first worker
         # 1/3/5 dispatch to the second worker
         # trying to shuffle and average the length
-        distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
+        distributed_idx = round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
         if self.infer_rank >= 0:
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
             if self.args.async_generate:
@@ -1132,8 +1085,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             def new_set_default_max_tokens(_self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
                 max_model_len = _self.max_model_len or 8192
-                max_prompt_length = self.template.max_length
-                _self.max_model_len = min(max_model_len, max_prompt_length + request_config.max_tokens)
+                for inp in inputs:
+                    num_tokens = max(num_tokens, _self._get_num_tokens(inp))
+                _self.max_model_len = min(max_model_len, num_tokens + request_config.max_tokens)
                 _self.origin_set_default_max_tokens(request_config, inputs)
 
             self.engine.set_default_max_tokens = MethodType(new_set_default_max_tokens, self.engine)
