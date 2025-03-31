@@ -36,10 +36,22 @@ def patch_lora_merge(model, parameter_group=None):
     Yields:
         The patched model (context manager ensures cleanup)
     """
+    from peft.tuners.tuners_utils import check_adapters_to_merge
 
     def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
         if parameter_group and all(self.name not in pg for pg in parameter_group):
             return  # Skip if not in target parameter group
+        adapter_names = check_adapters_to_merge(self, adapter_names)
+        if not adapter_names:
+            return
+
+        for active_adapter in adapter_names:
+            if active_adapter in self.lora_A.keys():
+                base_layer = self.get_base_layer()
+                if self.use_dora.get(active_adapter, False):
+                    self.lora_magnitude_vector[active_adapter].weight.data = \
+                        self.lora_magnitude_vector[active_adapter].weight.data.to(base_layer.weight.device)
+
         return self.merge_origin(safe_merge, adapter_names)
 
     def get_delta_weight(self, adapter) -> torch.Tensor:
