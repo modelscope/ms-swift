@@ -1,5 +1,6 @@
 # 4 * 36GB
 # Multimodal packing currently only supports qwen2_vl and qwen2_5_vl.
+# Efficiency: With packing: 10 minutes; Without packing: >=1 hour
 NPROC_PER_NODE=4 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
