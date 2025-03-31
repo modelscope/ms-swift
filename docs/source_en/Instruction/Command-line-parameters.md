@@ -46,6 +46,8 @@ Hints:
 - data_seed: Random seed for the dataset, default is 42.
 - 🔥dataset_num_proc: Number of processes for dataset preprocessing, default is 1.
 - 🔥streaming: Stream reading and processing of the dataset, default is False. It is typically set to True when handling large datasets.
+- interleave_prob: Defaults to None. When combining multiple datasets, the `concatenate_datasets` function is used by default. If this parameter is set, the `interleave_datasets` function will be used instead. This parameter is typically used when combining streaming datasets and is passed to the `interleave_datasets` function.
+- stopping_strategy: Can be either "first_exhausted" or "all_exhausted", with the default being "first_exhausted". This parameter is passed to the `interleave_datasets` function.
 - enable_cache: Use cache for dataset preprocessing, default is False.
 - download_mode: Dataset download mode, including `reuse_dataset_if_exists` and `force_redownload`, default is reuse_dataset_if_exists.
 - columns: Used for column mapping of the dataset to ensure that the dataset conforms to the format that AutoPreprocessor can handle. For more details, see [here](../Customization/Custom-dataset.md). You can pass in a JSON string, for example: `'{"text1": "query", "text2": "response"}'`, with the default being None.

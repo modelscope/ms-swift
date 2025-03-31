@@ -11,7 +11,7 @@ from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 from datasets import Dataset as HfDataset
-from datasets import concatenate_datasets
+from datasets import concatenate_datasets, interleave_datasets
 from datasets import load_dataset as hf_load_dataset
 from modelscope.hub.api import ModelScopeConfig
 from modelscope.utils.config_ds import MS_CACHE_HOME
@@ -177,7 +177,7 @@ class DatasetLoader:
         return local_dir
 
     @staticmethod
-    def _concat_datasets(datasets: List[HfDataset], streaming: bool) -> Optional[HfDataset]:
+    def _concat_datasets(datasets: List[HfDataset]) -> Optional[HfDataset]:
         if len(datasets) == 0:
             return
         if len(datasets) == 1:
@@ -278,7 +278,7 @@ class DatasetLoader:
             if remove_unused_columns:
                 dataset = RowPreprocessor.remove_useless_columns(dataset)
             datasets.append(dataset)
-        return DatasetLoader._concat_datasets(datasets, streaming)
+        return DatasetLoader._concat_datasets(datasets)
 
     @staticmethod
     def _select_subsets(subsets: List[str], dataset_meta: DatasetMeta) -> List[SubsetDataset]:
@@ -394,7 +394,7 @@ class DatasetLoader:
                     remove_unused_columns=remove_unused_columns,
                 )
                 datasets.append(dataset)
-            dataset = DatasetLoader._concat_datasets(datasets, streaming)
+            dataset = DatasetLoader._concat_datasets(datasets)
         return dataset
 
 
@@ -420,6 +420,8 @@ def load_dataset(
     seed: Union[int, np.random.RandomState, None] = None,
     num_proc: int = 1,
     streaming: bool = False,
+    interleave_prob: Optional[List[float]] = None,
+    stopping_strategy: Literal["first_exhausted", "all_exhausted"] = "first_exhausted",
     use_hf: Optional[bool] = None,
     hub_token: Optional[str] = None,
     strict: bool = False,
@@ -468,7 +470,9 @@ def load_dataset(
         'hub_token': hub_token,
         'remove_unused_columns': remove_unused_columns,
     }
-    use_hf_default = True if use_hf_hub() else False
+    use_hf_default = use_hf
+    if use_hf_default is None:
+        use_hf_default = True if use_hf_hub() else False
     for dataset in datasets:
         dataset_syntax = DatasetSyntax.parse(dataset)
         use_hf = dataset_syntax.use_hf or use_hf_default
@@ -496,6 +500,10 @@ def load_dataset(
         if val_dataset is not None:
             val_datasets.append(val_dataset)
 
-    train_datasets = DatasetLoader._concat_datasets(train_datasets, streaming)
-    val_datasets = DatasetLoader._concat_datasets(val_datasets, streaming)
+    if interleave_prob is None:
+        train_datasets = DatasetLoader._concat_datasets(train_datasets)
+        val_datasets = DatasetLoader._concat_datasets(val_datasets)
+    else:
+        train_datasets = interleave_datasets(train_datasets, interleave_prob, seed=get_seed(seed), stopping_strategy=stopping_strategy)
+        val_datasets = interleave_datasets(val_datasets, interleave_prob, seed=get_seed(seed), stopping_strategy=stopping_strategy)
     return train_datasets, val_datasets
