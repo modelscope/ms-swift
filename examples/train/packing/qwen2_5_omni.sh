@@ -12,7 +12,7 @@ swift sft \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
               'speech_asr/speech_asr_aishell1_trainsets:validation#5000' \
-              'swift/VideoChatGPT:all' \
+              'swift/VideoChatGPT:Generic' \
     --train_type lora \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \
