@@ -209,7 +209,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                     f'Colocate mode requires device_count({device_count}) == num_infer_workers({num_infer_workers}). '
                     'Please check if your device count matches NPROC_PER_NODE setting.')
                 logger.info(
-                    'You are using colocate mode because you have set num_infer_workers to be the same as'
+                    'You are using colocate mode because you have set num_infer_workers to be the same as '
                     'NPROC_PER_NODE, where model training and sampling will be performed on a single GPU. '
                     'If you encounter an Out-of-Memory (OOM) error, it is recommended to set the `sleep_level`, '
                     '`offload_model`, and `offload_optimizer` parameters.')
