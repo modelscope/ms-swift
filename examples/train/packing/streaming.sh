@@ -1,16 +1,20 @@
 # 4 * 36GB
+# A demo using the Hugging Face dataset
 # Multimodal packing currently only supports qwen2_vl and qwen2_5_vl.
 NPROC_PER_NODE=4 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
+HF_ENDPOINT=https://hf-mirror.com \
 swift sft \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
     --train_type lora \
-    --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#20000' \
+    --dataset 'HF::linxy/LaTeX_OCR:human_handwrite#20000' \
     --torch_dtype bfloat16 \
+    --max_steps 1000 \
     --attn_impl flash_attn \
+    --streaming true \
     --packing true \
-    --num_train_epochs 3 \
+    --max_steps 1000 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --learning_rate 3e-4 \
@@ -25,6 +29,6 @@ swift sft \
     --max_length 8192 \
     --output_dir output \
     --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
+    --dataloader_num_workers 0 \
     --dataset_num_proc 8 \
     --deepspeed zero2

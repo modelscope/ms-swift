@@ -1265,10 +1265,7 @@ class Template(ProcessorMixin):
             res[key] = self._pad_sequence(res[key], pad_value)
 
         # multimodal
-        if packing_mode:
-            res.update({k: v for k, v in batch[0].items() if k not in packing_keys})
-        else:
-            res.update(self._data_collator_mm_data(batch))
+        res.update(self._data_collator_mm_data(batch))
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
 

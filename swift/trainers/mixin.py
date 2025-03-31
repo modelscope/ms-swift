@@ -18,6 +18,7 @@ from modelscope import check_local_model_is_latest
 from packaging import version
 from peft import PeftModel
 from torch.nn import Module
+from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled

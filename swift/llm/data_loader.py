@@ -1,14 +1,13 @@
-
-from torch.utils.data import DataLoader
 from typing import Optional
-import torch.distributed as dist
+
 import torch
+import torch.distributed as dist
+from torch.utils.data import DataLoader
 
 
 class BatchSamplerShard:
-    def __init__(self,
-                 total_samples: int,
-                 batch_size: int, shuffle: bool, drop_last: bool, data_seed: Optional[int]):
+
+    def __init__(self, total_samples: int, batch_size: int, shuffle: bool, drop_last: bool, data_seed: Optional[int]):
         self.total_samples = total_samples // self.world_size
         self.batch_size = batch_size
         self.shuffle = shuffle
@@ -30,7 +29,7 @@ class BatchSamplerShard:
             generator = torch.Generator()
             generator.manual_seed(self.curr_seed)
             total_idx = torch.randperm(self.total_samples * self.world_size, generator=generator).tolist()
-            total_idx = total_idx[start_idx: start_idx + self.total_samples]
+            total_idx = total_idx[start_idx:start_idx + self.total_samples]
         else:
             total_idx = list(range(start_idx, start_idx + self.total_samples))
 
@@ -56,16 +55,18 @@ class BatchSamplerShard:
 
 
 class DataLoaderShard(DataLoader):
+
     def __init__(self, dataset, batch_sampler, **dataloader_params):
         self.batch_sampler = batch_sampler
-        super().__init__(dataset, batch_sampler=self.batch_sampler,
-                         **dataloader_params)
+        super().__init__(dataset, batch_sampler=self.batch_sampler, **dataloader_params)
 
     def set_epoch(self, epoch: int):
         self.batch_sampler.set_epoch(epoch)
 
+
 class DataLoaderDispatcher:
-    def __iter__(self, base_dataloader):
+
+    def __init__(self, base_dataloader):
         self.base_dataloader = base_dataloader
 
     @property
@@ -86,7 +87,7 @@ class DataLoaderDispatcher:
 
     def _scatter_object_list(self, inputs):
         if not dist.is_initialized():
-            return inputs
+            return inputs[0]
         outputs = [None]
         dist.scatter_object_list(outputs, inputs, self.src_rank, group=self.group)
         return outputs[0]

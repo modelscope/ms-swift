@@ -122,26 +122,9 @@ class BasePackingDataset:
         assert num_workers >= 1, f'num_workers: {num_workers}'
         assert self.queue_buffer >= self.packing_interval, (
             f'queue_buffer: {queue_buffer}, packing_interval: {packing_interval}')
-        self.workers = []
-        self._queue = None
-        self._terminated_workers = 0
-
-    def get_process(self, rank: int):
-        raise NotImplementedError
-
-    def _init_workers(self):
-        self._terminate_workers()
-        for i in range(self.num_workers):
-            worker = self.get_process(i)
-            worker.start()
-            self.workers.append(worker)
-
-    def _terminate_workers(self):
-        for worker in self.workers:
-            worker.terminate()
-        self.workers = []
         self._queue = mp.Queue(maxsize=self.queue_buffer)
         self._terminated_workers = 0
+        self.workers = []
 
     def fetch_packing_data(self, res: Optional[list] = None):
         res = res or []
@@ -175,8 +158,6 @@ class BasePackingDataset:
         return res, ret_sequences
 
     def run_packing(self):
-        self._terminate_workers()
-        self._init_workers()
         data = []
         while True:
             data = self.fetch_packing_data(data)
@@ -185,7 +166,6 @@ class BasePackingDataset:
             yield from res
             if is_finished:
                 break
-        self._terminate_workers()
 
     def _encode_and_put_queue(self, data):
         try:
@@ -209,10 +189,16 @@ class PackingDataset(BasePackingDataset, Dataset):
         super().__init__(
             template, dataset, num_workers, packing_interval=packing_interval, queue_buffer=queue_buffer, strict=strict)
         self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc='Packing')
-        self._init_workers()
+        for i in range(self.num_workers):
+            shard_dataset = self.dataset.shard(self.num_workers, rank)
+            worker = mp.Process(target=self._producer, args=(shard_dataset, ), daemon=True)
+            worker.start()
+            self.workers.append(worker)
+
         self.packed_dataset = list(self.run_packing())
-        self._terminate_workers()
         self.prog_bar.close()
+        for worker in self.workers:
+            worker.terminate()
 
     def _producer(self, shard_dataset):
         for data in shard_dataset:
@@ -221,11 +207,6 @@ class PackingDataset(BasePackingDataset, Dataset):
         while True:
             # Wait for the main process to terminate to avoid fd anomalies.
             time.sleep(0.1)
-
-    def get_process(self, rank: int):
-        self.dataset: HfDataset
-        shard_dataset = self.dataset.shard(self.num_workers, rank)
-        return mp.Process(target=self._producer, args=(shard_dataset, ), daemon=True)
 
     def __getitem__(self, index):
         return self.packed_dataset[index].copy()
@@ -256,10 +237,21 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
             time.sleep(0.1)
 
     def get_process(self, rank: int):
-        return mp.Process(target=self._producer, args=(rank,), daemon=True)
+        return mp.Process(target=self._producer, args=(rank, ), daemon=True)
 
     def __iter__(self):
+        for worker in self.workers:
+            worker.terminate()
+        self._queue = mp.Queue(maxsize=self.queue_buffer)
+        self._terminated_workers = 0
+        self.workers = []
+        for i in range(self.num_workers):
+            worker = mp.Process(target=self._producer, args=(i, ), daemon=True)
+            worker.start()
+            self.workers.append(worker)
         yield from self.run_packing()
+        for worker in self.workers:
+            worker.terminate()
 
 
 class EncodePreprocessor(RowPreprocessor):
