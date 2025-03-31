@@ -11,6 +11,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import safetensors
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import transformers
 from datasets import Dataset as HfDataset
@@ -400,6 +401,8 @@ class SwiftMixin:
                 dataloader = DataLoaderShard(train_dataset, batch_sampler, **dataloader_params)
             else:
                 # IterableDataset
+                if dist.is_initialized():
+                    dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
                 dataloader = DataLoader(train_dataset, batch_size=self._train_batch_size, **dataloader_params)
                 dataloader = DataLoaderDispatcher(dataloader)
 

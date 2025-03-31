@@ -6,7 +6,7 @@ from datasets import Dataset as HfDataset
 from megatron.core.enums import ModelType
 from megatron.training import pretrain
 
-from swift.llm import EncodePreprocessor, LazyLLMDataset, PackingPreprocessor
+from swift.llm import EncodePreprocessor, LazyLLMDataset
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
@@ -31,31 +31,6 @@ class MegatronSft(SwiftSft):
         self._prepare_template()
         self.template.use_megatron = True
         args.save_args(args.save)
-
-    def _encode_dataset(self, train_dataset, val_dataset):
-        template = self.template
-        args = self.args
-        if args.lazy_tokenize:
-            train_dataset = LazyLLMDataset(
-                train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-            if val_dataset is not None:
-                val_dataset = LazyLLMDataset(
-                    val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-        else:
-            preprocessor_cls = PackingPreprocessor if args.packing else EncodePreprocessor
-            preprocessor = preprocessor_cls(template=template)
-            train_dataset = preprocessor(train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
-            if val_dataset is not None:
-                val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
-
-        inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
-        template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
-        if isinstance(train_dataset, HfDataset):
-            self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
-            if val_dataset is not None:
-                self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
-
-        return train_dataset, val_dataset
 
     def run(self):
         args = self.args

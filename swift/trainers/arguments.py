@@ -38,6 +38,7 @@ class TrainArgumentsMixin:
     lr_scheduler_kwargs: Optional[Union[dict, str]] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     dataloader_num_workers: Optional[int] = None
+    dataloader_prefetch_factor: Optional[int] = None
 
     # extra
     check_model: bool = True
@@ -98,6 +99,8 @@ class TrainArgumentsMixin:
             else:
                 self.dataloader_num_workers = 1
             logger.info(f'Setting args.dataloader_num_workers: {self.dataloader_num_workers}')
+        if self.dataloader_prefetch_factor is None and self.dataloader_num_workers > 0:
+            self.dataloader_prefetch_factor = 10
         if self.eval_use_evalscope:
             try:
                 import evalscope

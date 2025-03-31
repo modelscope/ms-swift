@@ -6,7 +6,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
     --train_type lora \
-    --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#20000' \
+    --dataset 'AI-ModelScope/LaTeX_OCR#20000' \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \
     --packing true \

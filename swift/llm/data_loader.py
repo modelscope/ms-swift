@@ -93,10 +93,7 @@ class DataLoaderDispatcher:
         return outputs[0]
 
     def __iter__(self):
-        if self.rank == self.src_rank:
-            base_iter = iter(self.base_dataloader)
-        else:
-            base_iter = None
+        base_iter = iter(self.base_dataloader)
         while True:
             if self.rank == self.src_rank:
                 try:

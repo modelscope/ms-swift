@@ -189,7 +189,7 @@ class PackingDataset(BasePackingDataset, Dataset):
             data = self.fetch_packing_data(data)
             is_finished = self._terminated_workers == self.num_workers
             res, data = self.calculate_matched_group(self.template, data, drop_last=not is_finished)
-            result.append(res)
+            result += res
             if is_finished:
                 break
         return result
@@ -233,23 +233,23 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
             self._out_queue.put(encoded_data)
 
     def _put_data_in_queue(self, iterator):
-        i = 0
-        while i < self.packing_interval:
-            try:
-                data = next(iterator)
-                self._in_queue.put(data)
-            except StopIteration:
-                return i
-            i += 1
-        return i
+        for _ in range(self.packing_interval):
+            data = next(iterator)
+            self._in_queue.put(data)
 
-    def _fetch_data_out_queue(self, res, n: int):
-        for _ in range(n):
+    def _fetch_data_out_queue(self, res):
+        for _ in range(self.packing_interval):
             data = self._out_queue.get()
             if data is None:
                 continue
             res.append((data, len(data['input_ids'])))
         return res
+
+    @staticmethod
+    def cyclic_iter(iterable):
+        while True:
+            for x in iterable:
+                yield x
 
     def __iter__(self):
         if not self.workers:
@@ -257,16 +257,13 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
                 worker = mp.Process(target=self._processor, daemon=True)
                 worker.start()
                 self.workers.append(worker)
-        dataset = iter(self.dataset)
+        iterator = self.cyclic_iter(self.dataset)
         data = []
         while True:
-            n_data = self._put_data_in_queue(dataset)
-            data = self._fetch_data_out_queue(data, n_data)
-            is_finished = n_data != self.packing_interval
-            res, data = self.calculate_matched_group(self.template, data, drop_last=not is_finished)
+            self._put_data_in_queue(iterator)
+            data = self._fetch_data_out_queue(data)
+            res, data = self.calculate_matched_group(self.template, data, drop_last=True)
             yield from res
-            if is_finished:
-                break
 
 
 class EncodePreprocessor(RowPreprocessor):

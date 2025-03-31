@@ -261,7 +261,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 if val_dataset is not None and not args.predict_with_generate:
                     self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
 
-        if val_dataset is None:
+        if val_dataset is None and hasattr(args, 'training_args'):
             args.training_args.evaluation_strategy = IntervalStrategy.NO
             args.training_args.eval_strategy = IntervalStrategy.NO
 
