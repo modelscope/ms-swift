@@ -159,9 +159,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
         self._init_deepspeed()
         self._init_device()
         self._init_lazy_tokenize()
-        if self.packing:
-            self.dataloader_num_workers = 0
-            logger.info(f'Setting args.dataloader_num_workers: {self.dataloader_num_workers}')
 
         if getattr(self, 'accelerator_config', None) is None:
             self.accelerator_config = {'dispatch_batches': False}

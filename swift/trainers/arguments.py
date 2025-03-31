@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import math
 import os
+import platform
 from dataclasses import dataclass, field
 from functools import wraps
 from typing import List, Literal, Optional, Union
@@ -36,6 +37,7 @@ class TrainArgumentsMixin:
     lr_scheduler_type: str = 'cosine'
     lr_scheduler_kwargs: Optional[Union[dict, str]] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
+    dataloader_num_workers: Optional[int] = None
 
     # extra
     check_model: bool = True
@@ -90,7 +92,12 @@ class TrainArgumentsMixin:
         if self.gradient_checkpointing_kwargs:
             self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
         self._fix_gradient_checkpointing()
-
+        if self.dataloader_num_workers is None:
+            if platform.system() == 'Windows':
+                self.dataloader_num_workers = 0
+            else:
+                self.dataloader_num_workers = 1
+            logger.info(f'Setting args.dataloader_num_workers: {self.dataloader_num_workers}')
         if self.eval_use_evalscope:
             try:
                 import evalscope

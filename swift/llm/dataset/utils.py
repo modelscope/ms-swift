@@ -103,47 +103,21 @@ class LazyLLMDataset(Dataset):
 
 class BasePackingDataset:
 
-    def __init__(self,
-                 template,
-                 dataset,
-                 num_workers: int = 1,
-                 *,
-                 packing_interval: int = 128,
-                 queue_buffer: Optional[int] = None,
-                 strict: bool = False):
+    def __init__(self, template, dataset, num_workers: int = 1, *, packing_interval: int = 128, strict: bool = False):
         template._packing = True
         self.template = template
         self.dataset = dataset
         self.num_workers = num_workers
         self.packing_interval = packing_interval
-        self.queue_buffer = queue_buffer or max(2 * packing_interval, 1000)
         self.strict = strict
         self.prog_bar = None
         assert num_workers >= 1, f'num_workers: {num_workers}'
-        assert self.queue_buffer >= self.packing_interval, (
-            f'queue_buffer: {queue_buffer}, packing_interval: {packing_interval}')
-        self._queue = mp.Queue(maxsize=self.queue_buffer)
-        self._terminated_workers = 0
         self.workers = []
-
-    def fetch_packing_data(self, res: Optional[list] = None):
-        res = res or []
-        for _ in range(self.packing_interval):
-            data = self._queue.get()
-            if data is None:
-                self._terminated_workers += 1
-                if self._terminated_workers == self.num_workers:
-                    break
-                continue
-            if getattr(self, 'prog_bar'):
-                self.prog_bar.update(1)
-            res.append((data, len(data['input_ids'])))
-        return res
 
     @staticmethod
     def calculate_matched_group(template, sequences, drop_last: bool = True):
         if len(sequences) == 0:
-            return []
+            return [], []
         # https://arxiv.org/pdf/2404.10830
         import binpacking
         sequences = binpacking.to_constant_volume(sequences, template.max_length, weight_pos=1)
@@ -157,23 +131,14 @@ class BasePackingDataset:
             res.append(packed)
         return res, ret_sequences
 
-    def run_packing(self):
-        data = []
-        while True:
-            data = self.fetch_packing_data(data)
-            is_finished = self._terminated_workers == self.num_workers
-            res, data = self.calculate_matched_group(self.template, data, drop_last=not is_finished)
-            yield from res
-            if is_finished:
-                break
-
-    def _encode_and_put_queue(self, data):
+    def _encode_data(self, data):
+        res = None
         try:
-            data = self.template.encode(data)
-            self._queue.put(data)
+            res = self.template.encode(data)
         except Exception as e:
             if self.strict and not isinstance(e, MaxLengthError):
                 raise
+        return res
 
 
 class PackingDataset(BasePackingDataset, Dataset):
@@ -186,23 +151,54 @@ class PackingDataset(BasePackingDataset, Dataset):
                  packing_interval: int = 128,
                  queue_buffer: Optional[int] = None,
                  strict: bool = False):
-        super().__init__(
-            template, dataset, num_workers, packing_interval=packing_interval, queue_buffer=queue_buffer, strict=strict)
+        super().__init__(template, dataset, num_workers, packing_interval=packing_interval, strict=strict)
+        self.queue_buffer = (queue_buffer or max(2 * packing_interval, 1000))
+        assert self.queue_buffer >= self.packing_interval, (
+            f'queue_buffer: {queue_buffer}, packing_interval: {packing_interval}')
         self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc='Packing')
+        self._queue = mp.Queue(maxsize=self.queue_buffer)
+        self._terminated_workers = 0
         for i in range(self.num_workers):
-            shard_dataset = self.dataset.shard(self.num_workers, rank)
+            shard_dataset = self.dataset.shard(self.num_workers, i)
             worker = mp.Process(target=self._producer, args=(shard_dataset, ), daemon=True)
             worker.start()
             self.workers.append(worker)
 
-        self.packed_dataset = list(self.run_packing())
+        self.packed_dataset = self.get_packed_dataset()
         self.prog_bar.close()
         for worker in self.workers:
             worker.terminate()
 
+    def fetch_packing_data(self, res: Optional[list] = None):
+        res = res or []
+        for _ in range(self.packing_interval):
+            data = self._queue.get()
+            if data is None:
+                self._terminated_workers += 1
+                if self._terminated_workers == self.num_workers:
+                    break
+                continue
+            self.prog_bar.update(1)
+            res.append((data, len(data['input_ids'])))
+        return res
+
+    def get_packed_dataset(self):
+        data = []
+        result = []
+        while True:
+            data = self.fetch_packing_data(data)
+            is_finished = self._terminated_workers == self.num_workers
+            res, data = self.calculate_matched_group(self.template, data, drop_last=not is_finished)
+            result.append(res)
+            if is_finished:
+                break
+        return result
+
     def _producer(self, shard_dataset):
         for data in shard_dataset:
-            self._encode_and_put_queue(data)
+            encoded_data = self._encode_data(data)
+            if encoded_data is not None:
+                self._queue.put(encoded_data)
         self._queue.put(None)
         while True:
             # Wait for the main process to terminate to avoid fd anomalies.
@@ -217,41 +213,60 @@ class PackingDataset(BasePackingDataset, Dataset):
 
 class IterablePackingDataset(BasePackingDataset, IterableDataset):
 
-    def _producer(self, rank):
-        dataset = iter(self.dataset)
-        while True:
-            data = None
-            try:
-                for i in range(self.num_workers):
-                    _data = next(dataset)
-                    if i == rank:
-                        data = _data
-            except StopIteration:
-                if data is not None:
-                    self._encode_and_put_queue(data)
-                break
-            self._encode_and_put_queue(data)
-        self._queue.put(None)
-        while True:
-            # Wait for the main process to terminate to avoid fd anomalies.
-            time.sleep(0.1)
+    def __init__(self,
+                 template,
+                 dataset,
+                 num_workers: int = 1,
+                 *,
+                 packing_interval: int = 128,
+                 strict: bool = False,
+                 **kwargs):
+        super().__init__(template, dataset, num_workers, packing_interval=packing_interval, strict=strict)
+        self._in_queue = mp.Queue()
+        self._out_queue = mp.Queue()
+        self.workers = []
 
-    def get_process(self, rank: int):
-        return mp.Process(target=self._producer, args=(rank, ), daemon=True)
+    def _processor(self):
+        while True:
+            data = self._in_queue.get()
+            encoded_data = self._encode_data(data)
+            self._out_queue.put(encoded_data)
+
+    def _put_data_in_queue(self, iterator):
+        i = 0
+        while i < self.packing_interval:
+            try:
+                data = next(iterator)
+                self._in_queue.put(data)
+            except StopIteration:
+                return i
+            i += 1
+        return i
+
+    def _fetch_data_out_queue(self, res, n: int):
+        for _ in range(n):
+            data = self._out_queue.get()
+            if data is None:
+                continue
+            res.append((data, len(data['input_ids'])))
+        return res
 
     def __iter__(self):
-        for worker in self.workers:
-            worker.terminate()
-        self._queue = mp.Queue(maxsize=self.queue_buffer)
-        self._terminated_workers = 0
-        self.workers = []
-        for i in range(self.num_workers):
-            worker = mp.Process(target=self._producer, args=(i, ), daemon=True)
-            worker.start()
-            self.workers.append(worker)
-        yield from self.run_packing()
-        for worker in self.workers:
-            worker.terminate()
+        if not self.workers:
+            for _ in range(self.num_workers):
+                worker = mp.Process(target=self._processor, daemon=True)
+                worker.start()
+                self.workers.append(worker)
+        dataset = iter(self.dataset)
+        data = []
+        while True:
+            n_data = self._put_data_in_queue(dataset)
+            data = self._fetch_data_out_queue(data, n_data)
+            is_finished = n_data != self.packing_interval
+            res, data = self.calculate_matched_group(self.template, data, drop_last=not is_finished)
+            yield from res
+            if is_finished:
+                break
 
 
 class EncodePreprocessor(RowPreprocessor):
