@@ -239,6 +239,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         template = self.template
         args = self.args
         is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
+        predict_with_generate = getattr(args, 'predict_with_generate', False)
         if not is_grpo:
             if args.packing:
                 packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
@@ -250,22 +251,22 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             elif args.lazy_tokenize:
                 train_dataset = LazyLLMDataset(
                     train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-                if val_dataset is not None and not args.predict_with_generate:
+                if val_dataset is not None and not predict_with_generate:
                     val_dataset = LazyLLMDataset(
                         val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             else:
                 preprocessor = EncodePreprocessor(template=template)
                 train_dataset = preprocessor(train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
-                if val_dataset is not None and not args.predict_with_generate:
+                if val_dataset is not None and not predict_with_generate:
                     val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
 
-            is_indexable_dataset = hasattr(train_dataset, '__getitem__')
+            is_indexable_dataset = hasattr(train_dataset, '__len__')
             if is_master():
                 inputs = train_dataset[0] if is_indexable_dataset else next(iter(train_dataset))
                 template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
             if is_indexable_dataset:
                 self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
-                if val_dataset is not None and not args.predict_with_generate:
+                if val_dataset is not None and not predict_with_generate:
                     self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
 
         if val_dataset is None and hasattr(args, 'training_args'):
