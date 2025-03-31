@@ -281,9 +281,11 @@ class RowPreprocessor:
         *,
         num_proc: int = 1,
         strict: bool = False,
-        batch_size: int = 1000,
+        batch_size: Optional[int] = None,
     ) -> DATASET_TYPE:
         from ..utils import sample_dataset
+        if batch_size is None:
+            batch_size = 1000 if isinstance(dataset, HfDataset) else 16
         if self.dataset_sample is not None:
             dataset = sample_dataset(dataset, self.dataset_sample, self.random_state)
 

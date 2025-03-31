@@ -162,7 +162,8 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
         if loss_scale is not None:
             loss_kwargs['loss_scale'] = loss_scale
 
-        outputs = model(**inputs)
+        with self.template.compute_loss_context(inputs):
+            outputs = model(**inputs)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
         if self.args.past_index >= 0:

@@ -11,7 +11,7 @@ from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 from datasets import Dataset as HfDataset
-from datasets import concatenate_datasets
+from datasets import concatenate_datasets, interleave_datasets
 from datasets import load_dataset as hf_load_dataset
 from modelscope.hub.api import ModelScopeConfig
 from modelscope.utils.config_ds import MS_CACHE_HOME
@@ -32,6 +32,7 @@ class DatasetSyntax:
     dataset: str
     subsets: List[str] = field(default_factory=list)
     dataset_sample: Optional[int] = None
+    use_hf: Optional[bool] = None
 
     def __post_init__(self):
         if os.path.isfile(self.dataset):
@@ -71,7 +72,14 @@ class DatasetSyntax:
     @classmethod
     def parse(cls, dataset: str) -> 'DatasetSyntax':
         """Parse the dataset from the command line"""
-        # dataset_id or dataset_path:subset1/subset2/subset3#dataset_sample
+        # hf/ms::dataset_id or dataset_path:subset1/subset2/subset3#dataset_sample
+        if os.path.exists(dataset):
+            use_hf = None
+        else:
+            use_hf, dataset = cls._safe_split(dataset, '::', False)
+            if isinstance(use_hf, str):
+                use_hf = use_hf.lower()
+            use_hf = {'hf': True, 'ms': False}.get(use_hf)
         if os.path.exists(dataset):
             other, dataset_sample = dataset, None
         else:
@@ -85,7 +93,7 @@ class DatasetSyntax:
             subsets = [subset.strip() for subset in subsets.split('/')]
         if dataset_sample is not None:
             dataset_sample = int(dataset_sample)
-        return cls(dataset.strip(), subsets or [], dataset_sample)
+        return cls(dataset.strip(), subsets or [], dataset_sample, use_hf)
 
     def get_dataset_meta(self, use_hf: bool):
         dataset_meta_mapping = self._get_dataset_meta_mapping()
@@ -169,12 +177,20 @@ class DatasetLoader:
         return local_dir
 
     @staticmethod
-    def _concat_datasets(datasets: List[HfDataset], streaming: bool) -> Optional[HfDataset]:
+    def _concat_datasets(datasets: List[HfDataset]) -> Optional[HfDataset]:
         if len(datasets) == 0:
             return
         if len(datasets) == 1:
             return datasets[0]
         return concatenate_datasets(datasets)
+
+    @staticmethod
+    def _interleave_datasets(datasets, *args, **kwargs):
+        if len(datasets) == 0:
+            return
+        if len(datasets) == 1:
+            return datasets[0]
+        return interleave_datasets(datasets, *args, **kwargs)
 
     @staticmethod
     def _load_dataset_path(
@@ -270,7 +286,7 @@ class DatasetLoader:
             if remove_unused_columns:
                 dataset = RowPreprocessor.remove_useless_columns(dataset)
             datasets.append(dataset)
-        return DatasetLoader._concat_datasets(datasets, streaming)
+        return DatasetLoader._concat_datasets(datasets)
 
     @staticmethod
     def _select_subsets(subsets: List[str], dataset_meta: DatasetMeta) -> List[SubsetDataset]:
@@ -386,7 +402,7 @@ class DatasetLoader:
                     remove_unused_columns=remove_unused_columns,
                 )
                 datasets.append(dataset)
-            dataset = DatasetLoader._concat_datasets(datasets, streaming)
+            dataset = DatasetLoader._concat_datasets(datasets)
         return dataset
 
 
@@ -412,6 +428,8 @@ def load_dataset(
     seed: Union[int, np.random.RandomState, None] = None,
     num_proc: int = 1,
     streaming: bool = False,
+    interleave_prob: Optional[List[float]] = None,
+    stopping_strategy: Literal['first_exhausted', 'all_exhausted'] = 'first_exhausted',
     use_hf: Optional[bool] = None,
     hub_token: Optional[str] = None,
     strict: bool = False,
@@ -451,11 +469,8 @@ def load_dataset(
         num_proc = None
     train_datasets = []
     val_datasets = []
-    if use_hf is None:
-        use_hf = True if use_hf_hub() else False
     load_kwargs = {
         'num_proc': num_proc,
-        'use_hf': use_hf,
         'strict': strict,
         'download_mode': download_mode,
         'columns': columns,
@@ -463,16 +478,24 @@ def load_dataset(
         'hub_token': hub_token,
         'remove_unused_columns': remove_unused_columns,
     }
+    use_hf_default = use_hf
+    if use_hf_default is None:
+        use_hf_default = True if use_hf_hub() else False
     for dataset in datasets:
-        # compat dataset_name
-        if dataset in DATASET_MAPPING:
-            dataset_meta = DATASET_MAPPING[dataset]
-            dataset = dataset_meta.dataset_path or (dataset_meta.hf_dataset_id
-                                                    if use_hf else dataset_meta.ms_dataset_id)
         dataset_syntax = DatasetSyntax.parse(dataset)
-        dataset_meta = dataset_syntax.get_dataset_meta(use_hf)
+        use_hf = dataset_syntax.use_hf or use_hf_default
+        # compat dataset_name
+        if dataset_syntax.dataset in DATASET_MAPPING:
+            dataset_meta = DATASET_MAPPING[dataset_syntax.dataset]
+            if dataset_syntax.use_hf is None and dataset_meta.dataset_path is not None:
+                dataset_syntax.dataset = dataset_meta.dataset_path
+                dataset_syntax.dataset_type = 'path'
+            else:
+                dataset_syntax.dataset = dataset_meta.hf_dataset_id if use_hf else dataset_meta.ms_dataset_id
+        else:
+            dataset_meta = dataset_syntax.get_dataset_meta(use_hf)
         load_function = dataset_meta.load_function
-        train_dataset = load_function(dataset_syntax, dataset_meta, **load_kwargs)
+        train_dataset = load_function(dataset_syntax, dataset_meta, **load_kwargs, use_hf=use_hf)
         train_dataset, val_dataset = DatasetLoader.post_process(
             train_dataset,
             dataset_sample=dataset_syntax.dataset_sample,
@@ -485,6 +508,12 @@ def load_dataset(
         if val_dataset is not None:
             val_datasets.append(val_dataset)
 
-    train_datasets = DatasetLoader._concat_datasets(train_datasets, streaming)
-    val_datasets = DatasetLoader._concat_datasets(val_datasets, streaming)
+    if interleave_prob is None:
+        train_datasets = DatasetLoader._concat_datasets(train_datasets)
+        val_datasets = DatasetLoader._concat_datasets(val_datasets)
+    else:
+        train_datasets = DatasetLoader._interleave_datasets(
+            train_datasets, interleave_prob, seed=get_seed(seed), stopping_strategy=stopping_strategy)
+        val_datasets = DatasetLoader._interleave_datasets(
+            val_datasets, interleave_prob, seed=get_seed(seed), stopping_strategy=stopping_strategy)
     return train_datasets, val_datasets

@@ -46,6 +46,8 @@ Hints:
 - data_seed: Random seed for the dataset, default is 42.
 - 🔥dataset_num_proc: Number of processes for dataset preprocessing, default is 1.
 - 🔥streaming: Stream reading and processing of the dataset, default is False. It is typically set to True when handling large datasets.
+- interleave_prob: Defaults to None. When combining multiple datasets, the `concatenate_datasets` function is used by default. If this parameter is set, the `interleave_datasets` function will be used instead. This parameter is typically used when combining streaming datasets and is passed to the `interleave_datasets` function.
+- stopping_strategy: Can be either "first_exhausted" or "all_exhausted", with the default being "first_exhausted". This parameter is passed to the `interleave_datasets` function.
 - enable_cache: Use cache for dataset preprocessing, default is False.
 - download_mode: Dataset download mode, including `reuse_dataset_if_exists` and `force_redownload`, default is reuse_dataset_if_exists.
 - columns: Used for column mapping of the dataset to ensure that the dataset conforms to the format that AutoPreprocessor can handle. For more details, see [here](../Customization/Custom-dataset.md). You can pass in a JSON string, for example: `'{"text1": "query", "text2": "response"}'`, with the default being None.
@@ -147,10 +149,11 @@ Other important parameters:
 - 🔥ddp_backend: Options include "nccl", "gloo", "mpi", "ccl", "hccl", "cncl", and "mccl". Default is None, which allows for automatic selection.
 - 🔥ddp_find_unused_parameters: Default is None.
 - ddp_timeout: The default value is 1800, with the unit being seconds.
-- 🔥dataloader_num_workers: Default is 0.
+- 🔥dataloader_num_workers: Defaults to None. If the platform is Windows, it is set to 0; otherwise, it is set to 1.
 - dataloader_pin_memory: Default is True.
 - dataloader_persistent_workers: Default is False.
-- dataloader_prefetch_factor: Default is 2.
+- dataloader_prefetch_factor: Defaults to None. If `dataloader_num_workers > 0`, it is set to 10.
+- train_dataloader_shuffle: Whether the training dataloader should shuffle data, defaulting to True. This parameter is invalid for IterableDataset. IterableDataset reads data in a sequential manner.
 - 🔥neftune_noise_alpha: Coefficient of noise added by neftune, default is 0. Usually can be set to 5, 10, 15.
 - average_tokens_across_devices: Whether to average the number of tokens across devices. If set to True, `num_tokens_in_batch` will be synchronized using all_reduce for accurate loss calculation. Default is False.
 - max_grad_norm: Gradient clipping. Default is 1.
@@ -335,7 +338,6 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
   - Note: When using packing, please combine it with --attn_impl flash_attn. For details, see [this PR](https://github.com/huggingface/transformers/pull/31629). Packing does not currently support multimodal models.
 - 🔥lazy_tokenize: Whether to use lazy tokenization. If set to False, all dataset samples are tokenized before training (for multimodal models, this includes reading images from disk). This parameter defaults to False for LLM training, and True for MLLM training, to save memory.
 - acc_strategy: Strategy for calculating accuracy during training and validation. Options are `seq`-level and `token`-level accuracy, with `token` as the default.
-- train_sampler_random: Whether the sampler for the training dataloader uses `RandomSampler`. If set to False, `SequentialSampler` will be used. The default value is True.
 - max_new_tokens: Generation parameter override. The maximum number of tokens to generate when `predict_with_generate=True`, defaulting to 64.
 - temperature: Generation parameter override. The temperature setting when `predict_with_generate=True`, defaulting to 0.
 - optimizer: Custom optimizer name for the plugin, defaults to None.

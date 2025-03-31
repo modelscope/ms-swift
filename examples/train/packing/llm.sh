@@ -26,5 +26,6 @@ swift sft \
     --system 'You are a helpful assistant.' \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
+    --dataset_num_proc 4 \
     --model_author swift \
     --model_name swift-robot

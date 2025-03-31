@@ -11,7 +11,8 @@ from .media import MediaResource
 from .preprocessor import (AlpacaPreprocessor, AutoPreprocessor, MessagesPreprocessor, ResponsePreprocessor,
                            RowPreprocessor)
 from .register import DATASET_MAPPING, DatasetMeta, SubsetDataset, register_dataset, register_dataset_info
-from .utils import EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, PackingPreprocessor, sample_dataset
+from .utils import (EncodePreprocessor, GetLengthPreprocessor, IterablePackingDataset, LazyLLMDataset, PackingDataset,
+                    sample_dataset)
 
 _update_fingerprint = datasets.fingerprint.update_fingerprint
 _get_temporary_cache_files_directory = datasets.fingerprint.get_temporary_cache_files_directory
