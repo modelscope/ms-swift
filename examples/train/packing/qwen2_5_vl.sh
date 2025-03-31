@@ -1,6 +1,7 @@
 # 4 * 36GB
 # Multimodal packing currently only supports qwen2_vl, qwen2_5_vl and qwen2_5_omni.
 # Efficiency: With packing: 10 minutes; Without packing: >=1 hour
+# For local datasets, it is recommended to use streaming: `--streaming true` (save memory)
 NPROC_PER_NODE=4 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
