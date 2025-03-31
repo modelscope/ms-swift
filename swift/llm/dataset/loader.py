@@ -421,7 +421,7 @@ def load_dataset(
     num_proc: int = 1,
     streaming: bool = False,
     interleave_prob: Optional[List[float]] = None,
-    stopping_strategy: Literal["first_exhausted", "all_exhausted"] = "first_exhausted",
+    stopping_strategy: Literal['first_exhausted', 'all_exhausted'] = 'first_exhausted',
     use_hf: Optional[bool] = None,
     hub_token: Optional[str] = None,
     strict: bool = False,
@@ -504,6 +504,8 @@ def load_dataset(
         train_datasets = DatasetLoader._concat_datasets(train_datasets)
         val_datasets = DatasetLoader._concat_datasets(val_datasets)
     else:
-        train_datasets = interleave_datasets(train_datasets, interleave_prob, seed=get_seed(seed), stopping_strategy=stopping_strategy)
-        val_datasets = interleave_datasets(val_datasets, interleave_prob, seed=get_seed(seed), stopping_strategy=stopping_strategy)
+        train_datasets = interleave_datasets(
+            train_datasets, interleave_prob, seed=get_seed(seed), stopping_strategy=stopping_strategy)
+        val_datasets = interleave_datasets(
+            val_datasets, interleave_prob, seed=get_seed(seed), stopping_strategy=stopping_strategy)
     return train_datasets, val_datasets

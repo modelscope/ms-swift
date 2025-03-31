@@ -392,6 +392,7 @@ class Qwen2_5VLTemplate(Qwen2VLTemplate):
         from transformers.models.qwen2_5_vl import modeling_qwen2_5_vl
         return self._patch_flash_attention_forward(inputs, modeling_qwen2_5_vl)
 
+
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_vl, template_cls=Qwen2_5VLTemplate))
 
 

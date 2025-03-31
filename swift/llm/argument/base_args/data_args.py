@@ -41,7 +41,7 @@ class DataArguments:
     dataset_num_proc: int = 1
     streaming: bool = False
     interleave_prob: Optional[List[float]] = None
-    stopping_strategy: Literal["first_exhausted", "all_exhausted"] = "first_exhausted"
+    stopping_strategy: Literal['first_exhausted', 'all_exhausted'] = 'first_exhausted'
 
     enable_cache: bool = False
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists'

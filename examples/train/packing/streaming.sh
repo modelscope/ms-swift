@@ -13,7 +13,6 @@ swift sft \
     --attn_impl flash_attn \
     --streaming true \
     --packing true \
-    --max_steps 1000 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --learning_rate 3e-4 \
