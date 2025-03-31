@@ -186,9 +186,7 @@ class PackingDataset(BasePackingDataset, Dataset):
 
     def _producer(self, shard_dataset):
         for data in shard_dataset:
-            encoded_data = self._encode_data(data)
-            if encoded_data is None:
-                encoded_data = {}  # ignore
+            encoded_data = self._encode_data(data) or {}  # ignore
             self._queue.put(encoded_data)
         self._queue.put(None)
         while True:
