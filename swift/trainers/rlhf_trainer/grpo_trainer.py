@@ -866,9 +866,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # dynamic sampling for std=0 groups
         if self.args.dynamic_sampling:
-            rewards, completions, inputs = self._handle_zero_std_groups(
-                inputs, rewards, rewards_per_func, completions, device)
-            
+            rewards, completions, inputs = self._handle_zero_std_groups(inputs, rewards, rewards_per_func, completions,
+                                                                        device)
+
         # Prepare final outputs with advantages and other required fields
         batch_encoded_inputs = self._prepare_batch_inputs(inputs, rewards, device)
 
@@ -881,46 +881,49 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """Handle groups with std=0 with simplified attempt control"""
         max_total_attempts = self.args.max_resample_times
         total_attempts = 0
-        
+
         while total_attempts < max_total_attempts:
             grouped_rewards = rewards.view(-1, self.num_generations)
             std_grouped_rewards = grouped_rewards.std(dim=1)
             zero_std_indices = torch.where(std_grouped_rewards == 0)[0]
-            
+
             if len(zero_std_indices) == 0:
                 break
-                
+
             total_attempts += 1
             if total_attempts >= max_total_attempts:
-                logger.warning(f"Reached max resample attempts ({max_total_attempts})")
+                logger.warning(f'Reached max resample attempts ({max_total_attempts})')
                 break
 
-            resample_inputs = [inputs[i*self.num_generations] for i in zero_std_indices]
+            resample_inputs = [inputs[i * self.num_generations] for i in zero_std_indices]
             resample_outputs = self._generate_completions(resample_inputs)
-            
+
             new_completions = completions.copy()
             for i, idx in enumerate(zero_std_indices):
                 start_idx = idx * self.num_generations
                 for j in range(self.num_generations):
-                    inputs[start_idx + j]['messages'] = resample_outputs[i*self.num_generations + j]
-                    new_completions[start_idx + j] = resample_outputs[i*self.num_generations + j][-1]['content']
-            
-            resample_rewards_per_func, resample_completions = self._score_completions(
-                [inputs[idx*self.num_generations + j] for idx in zero_std_indices 
-                for j in range(self.num_generations)], device)
-            
+                    inputs[start_idx + j]['messages'] = resample_outputs[i * self.num_generations + j]
+                    new_completions[start_idx + j] = resample_outputs[i * self.num_generations + j][-1]['content']
+
+            resample_rewards_per_func, resample_completions = self._score_completions([
+                inputs[idx * self.num_generations + j] for idx in zero_std_indices for j in range(self.num_generations)
+            ], device)
+
             resample_rewards = (resample_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).sum(dim=1)
             for i, idx in enumerate(zero_std_indices):
                 start_idx = idx * self.num_generations
-                rewards[start_idx:start_idx+self.num_generations] = resample_rewards[i*self.num_generations:(i+1)*self.num_generations]
-                completions[start_idx:start_idx+self.num_generations] = resample_completions[i*self.num_generations:(i+1)*self.num_generations]
-                
+                rewards[start_idx:start_idx + self.num_generations] = resample_rewards[i * self.num_generations:(i + 1)
+                                                                                       * self.num_generations]
+                completions[start_idx:start_idx
+                            + self.num_generations] = resample_completions[i * self.num_generations:(i + 1)
+                                                                           * self.num_generations]
+
             for i in range(rewards_per_func.size(1)):
                 for j, idx in enumerate(zero_std_indices):
                     start_idx = idx * self.num_generations
                     resample_start = j * self.num_generations
-                    rewards_per_func[start_idx:start_idx+self.num_generations, i] = (
-                        resample_rewards_per_func[resample_start:resample_start+self.num_generations, i])
+                    rewards_per_func[start_idx:start_idx + self.num_generations, i] = (
+                        resample_rewards_per_func[resample_start:resample_start + self.num_generations, i])
 
         return rewards, completions, inputs
 
@@ -930,15 +933,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
 
         for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, self.reward_templates)):
+            # reward model
             if isinstance(reward_func, nn.Module):
                 with self._template_context(reward_template):
                     batched_inputs = [reward_template.encode(infer_request) for infer_request in inputs]
                     reward_inputs = to_device(reward_template.data_collator(batched_inputs), reward_func.device)
 
-                with torch.inference_mode(), unwrap_model_for_generation(reward_func,
-                                                                         self.accelerator) as unwrapped_reward_func:
+                with torch.inference_mode(), unwrap_model_for_generation(
+                        reward_func, self.accelerator,
+                        gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_reward_func:
                     rewards_per_func[:, i] = unwrapped_reward_func(**reward_inputs).logits[:, 0]
+            # reward function
             else:
+                # Repeat all input columns (but "messages" and "completion") to match the number of generations
                 reward_kwargs = RowPreprocessor.rows_to_batched(inputs)
                 output_reward_func = reward_func(completions, **reward_kwargs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
@@ -950,12 +957,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """Prepare the final batch inputs with advantages and other required fields"""
         # Compute advantages
         grouped_rewards = rewards.view(-1, self.num_generations)
-        mean_grouped_rewards = grouped_rewards.mean(dim=1)
-        std_grouped_rewards = grouped_rewards.std(dim=1)
-
-        # Normalize rewards to compute advantages
-        mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
-        std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
+        mean_grouped_rewards = grouped_rewards.mean(dim=1).repeat_interleave(self.num_generations, dim=0)
+        std_grouped_rewards = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations, dim=0)
         advantages = (rewards - mean_grouped_rewards)
         if self.args.scale_rewards:
             advantages /= (std_grouped_rewards + 1e-4)
