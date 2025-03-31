@@ -114,14 +114,14 @@ class BasePackingDataset:
         self.workers = []
 
     @staticmethod
-    def calculate_matched_group(template, sequences, drop_last: bool = True):
+    def calculate_matched_group(template, sequences, is_finished: bool = True):
         if len(sequences) == 0:
             return [], []
         # https://arxiv.org/pdf/2404.10830
         import binpacking
         sequences = binpacking.to_constant_volume(sequences, template.max_length, weight_pos=1)
         res = []
-        if sequences and drop_last:
+        if sequences and not is_finished:
             sequences, ret_sequences = sequences[:-1], sequences[-1]
         else:
             ret_sequences = []
@@ -177,7 +177,7 @@ class PackingDataset(BasePackingDataset, Dataset):
         while True:
             data = self.fetch_packing_data(data)
             is_finished = self._terminated_workers == self.num_workers
-            res, data = self.calculate_matched_group(self.template, data, drop_last=not is_finished)
+            res, data = self.calculate_matched_group(self.template, data, is_finished=is_finished)
             result += res
             if is_finished:
                 break
@@ -252,7 +252,7 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
         while True:
             self._put_data_in_queue(iterator)
             data = self._fetch_data_out_queue(data)
-            res, data = self.calculate_matched_group(self.template, data, drop_last=True)
+            res, data = self.calculate_matched_group(self.template, data, is_finished=False)
             yield from res
 
 
