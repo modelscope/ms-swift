@@ -563,6 +563,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     else:
                         llm_model = self.engine.engine.engine
                     llm_model.load_weights(state_dict.items())
+                    del state_dict
+                    gc_collect()
                 # Unmerge the adapter to restore the model to its original state.
                 # This must be done after loading weights to ensure they correspond to the merged state.
                 if is_peft_model(unwrapped_model):
