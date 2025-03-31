@@ -565,9 +565,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     llm_model.load_weights(state_dict.items())
                 # Unmerge the adapter to restore the model to its original state.
                 # This must be done after loading weights to ensure they correspond to the merged state.
-        if is_peft_model(unwrapped_model):
-            with patch_lora_unmerge(unwrapped_model):
-                unwrapped_model.unmerge_adapter()
+                if is_peft_model(unwrapped_model):
+                    with patch_lora_unmerge(unwrapped_model):
+                        unwrapped_model.unmerge_adapter()
 
         if self.infer_rank >= 0 and self.args.use_vllm and self.args.vllm_enable_prefix_caching:
             self.engine.engine.reset_prefix_cache()
