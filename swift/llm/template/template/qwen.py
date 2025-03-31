@@ -264,29 +264,27 @@ class Qwen2VLTemplate(Template):
 
     @staticmethod
     @contextmanager
-    def _patch_flash_attention_forward(inputs):
+    def _patch_flash_attention_forward(inputs, modeling_module):
         position_ids = inputs['position_ids']
         inputs['position_ids'] = inputs.pop('real_position_ids')
-        from transformers.models.qwen2_5_vl import modeling_qwen2_5_vl
-        from transformers.models.qwen2_vl import modeling_qwen2_vl
-        _origin_flash_attention_forward = modeling_qwen2_5_vl._flash_attention_forward
+
+        _origin_flash_attention_forward = modeling_module._flash_attention_forward
 
         def _flash_attention_forward(*args, **kwargs):
             kwargs['position_ids'] = position_ids
             return _origin_flash_attention_forward(*args, **kwargs)
 
-        modeling_qwen2_vl._flash_attention_forward = _flash_attention_forward
-        modeling_qwen2_5_vl._flash_attention_forward = _flash_attention_forward
+        modeling_module._flash_attention_forward = _flash_attention_forward
         try:
             yield
         finally:
-            modeling_qwen2_vl._flash_attention_forward = _origin_flash_attention_forward
-            modeling_qwen2_5_vl._flash_attention_forward = _origin_flash_attention_forward
+            modeling_module._flash_attention_forward = _origin_flash_attention_forward
 
     def compute_loss_context(self, inputs):
         if 'real_position_ids' not in inputs:
             return super().compute_loss_context(inputs)
-        return self._patch_flash_attention_forward(inputs)
+        from transformers.models.qwen2_vl import modeling_qwen2_vl
+        return self._patch_flash_attention_forward(inputs, modeling_qwen2_vl)
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:
@@ -365,8 +363,7 @@ class Qwen2VLTemplate(Template):
         return position_ids.contiguous()
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = {}
-        res.update(super()._data_collator(batch, padding_to=padding_to))
+        res = super()._data_collator(batch, padding_to=padding_to)
         if self._packing:
             res['real_position_ids'] = self.concat_tensor(batch, 'real_position_ids', -1)
         elif self.is_training:
@@ -389,11 +386,16 @@ class Qwen2_5VLTemplate(Qwen2VLTemplate):
     version = 'v2_5'
     norm_bbox = 'none'
 
+    def compute_loss_context(self, inputs):
+        if 'real_position_ids' not in inputs:
+            return super().compute_loss_context(inputs)
+        from transformers.models.qwen2_5_vl import modeling_qwen2_5_vl
+        return self._patch_flash_attention_forward(inputs, modeling_qwen2_5_vl)
 
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_vl, template_cls=Qwen2_5VLTemplate))
 
 
-class Qwen2_5OmniTemplate(Template):
+class Qwen2_5OmniTemplate(Qwen2VLTemplate):
     placeholder_tokens = ['<|IMAGE|>', '<|AUDIO|>', '<|VIDEO|>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -418,6 +420,12 @@ class Qwen2_5OmniTemplate(Template):
                 inputs.audios.insert(inputs.audio_idx, video)
                 inputs.audio_idx += 1
             return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
+
+    def compute_loss_context(self, inputs):
+        if 'real_position_ids' not in inputs:
+            return super().compute_loss_context(inputs)
+        from transformers.models.qwen2_5_omni import modeling_qwen2_5_omni
+        return self._patch_flash_attention_forward(inputs, modeling_qwen2_5_omni)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
@@ -464,35 +472,36 @@ class Qwen2_5OmniTemplate(Template):
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        if self.is_training:
-            feature_attention_mask = inputs.get('feature_attention_mask')
-            if feature_attention_mask is not None:
-                audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
-            else:
-                audio_feature_lengths = None
-            use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
-            video_second_per_grid = inputs.pop('video_second_per_grid', None)
-            position_ids, _ = model.thinker.get_rope_index(
-                inputs.get('input_ids'),
-                inputs.get('image_grid_thw'),
-                inputs.get('video_grid_thw'),
-                inputs.get('attention_mask'),
-                use_audio_in_video,
-                audio_feature_lengths,
-                video_second_per_grid,
-            )
-            inputs['position_ids'] = position_ids
-        return inputs
+        return Template._post_encode(self, model, inputs)
 
-    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to)
+    def _get_position_ids(self, inputs: Dict[str, Any]):
+        feature_attention_mask = inputs.get('feature_attention_mask')
+        if feature_attention_mask is not None:
+            audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
+        else:
+            audio_feature_lengths = None
+        use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
+        video_second_per_grid = inputs.pop('video_second_per_grid', None)
+        input_ids = inputs['input_ids']
+        attention_mask = inputs.get('attention_mask')
+        if attention_mask is None:
+            attention_mask = torch.ones_like(input_ids)
+        position_ids, _ = self.model.thinker.get_rope_index(
+            input_ids,
+            inputs.get('image_grid_thw'),
+            inputs.get('video_grid_thw'),
+            attention_mask,
+            use_audio_in_video,
+            audio_feature_lengths,
+            video_second_per_grid,
+        )
+        return position_ids.contiguous()
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
         video_second_per_grid = self.gather_list(batch, 'video_second_per_grid')
         if video_second_per_grid:
             res['video_second_per_grid'] = video_second_per_grid
-        for media_type in ['image', 'video']:
-            grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
-            if grid_thw:
-                res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
         input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
         feature_attention_mask = [
             b['feature_attention_mask'] for b in batch if b.get('feature_attention_mask') is not None

@@ -1,6 +1,5 @@
 # 4 * 36GB
 # A demo using the Hugging Face dataset
-# Multimodal packing currently only supports qwen2_vl and qwen2_5_vl.
 NPROC_PER_NODE=4 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \

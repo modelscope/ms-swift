@@ -1,13 +1,18 @@
 # 4 * 36GB
 # Multimodal packing currently only supports qwen2_vl, qwen2_5_vl and qwen2_5_omni.
-# Efficiency: With packing: 10 minutes; Without packing: >=1 hour
+# A demo for four modalities that can be run directly
 NPROC_PER_NODE=4 \
-MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
+VIDEO_MAX_PIXELS=50176 \
+FPS_MAX_FRAMES=12 \
+MAX_PIXELS=1003520 \
 swift sft \
-    --model Qwen/Qwen2.5-VL-7B-Instruct \
+    --model Qwen/Qwen2.5-Omni-7B \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
+              'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
+              'speech_asr/speech_asr_aishell1_trainsets:validation#5000' \
+              'swift/VideoChatGPT:all' \
     --train_type lora \
-    --dataset 'AI-ModelScope/LaTeX_OCR#20000' \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \
     --packing true \
@@ -18,9 +23,10 @@ swift sft \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
+    --freeze_vit true \
     --gradient_accumulation_steps 1 \
-    --eval_steps 100 \
-    --save_steps 100 \
+    --eval_steps 50 \
+    --save_steps 50 \
     --save_total_limit 5 \
     --logging_steps 5 \
     --max_length 8192 \
