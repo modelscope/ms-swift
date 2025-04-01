@@ -781,8 +781,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             valid_samples = []
             valid_rewards = []
             valid_rewards_per_func = []
+            valid_completions = []
             # Store original data as fallback
-            origin_inputs, origin_rewards, origin_rewards_per_func = inputs, total_rewards, total_rewards_per_func
+            origin_inputs, origin_rewards, origin_rewards_per_func, origin_completions = \
+                inputs, total_rewards, total_rewards_per_func, completions
 
             while resample_count < self.args.max_resample_times:
                 grouped_rewards = total_rewards.view(-1, self.num_generations)
@@ -794,6 +796,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 valid_samples.extend([inp for inp, mask in zip(all_inputs, valid_mask) if mask])
                 valid_rewards.append(total_rewards[valid_mask])
                 valid_rewards_per_func.append(total_rewards_per_func[valid_mask])
+                valid_completions.extend(
+                    [inp['messages'][-1]['content'] for inp, mask in zip(all_inputs, valid_mask) if mask])
                 if len(valid_samples) >= self.global_train_batch_size:
                     break
                 # Resample for invalid groups
@@ -803,7 +807,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 total_rewards_per_func, total_rewards, completions = self._score_completions(inputs, device)
                 resample_count += 1
 
-            if len(valid_samples) > 0:
+            if len(valid_samples) >= self.global_train_batch_size:
                 process_slice = slice(
                     self.accelerator.process_index * len(inputs),
                     (self.accelerator.process_index + 1) * len(inputs),
@@ -811,10 +815,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 inputs = valid_samples[:self.global_train_batch_size][process_slice]
                 total_rewards = torch.cat(valid_rewards)[:self.global_train_batch_size]
                 total_rewards_per_func = torch.cat(valid_rewards_per_func)[:self.global_train_batch_size]
+                completions = valid_completions[:self.global_train_batch_size][process_slice]
             else:
                 logger.warning(f'There are still std=0 groups present after {self.args.max_resample_times} retries.')
                 # Restore original data to ensure the quantity of data, or maybe raise a error here?
-                inputs, total_rewards, total_rewards_per_func = origin_inputs, origin_rewards, origin_rewards_per_func
+                inputs, total_rewards, total_rewards_per_func, completions = \
+                    origin_inputs, origin_rewards, origin_rewards_per_func, origin_completions
 
         # Prepare final outputs with advantages and other required fields
         batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards, device)
