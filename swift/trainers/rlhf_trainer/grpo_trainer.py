@@ -802,7 +802,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     break
                 # Resample for invalid groups
                 inputs = next(self.resample_iterator)
-                inputs = self._prepare_inputs(inputs)  # Use instance method directly
+                inputs = Trainer._prepare_inputs(self, inputs)  # Use instance method directly
                 inputs = self._generate_completions(inputs)
                 total_rewards_per_func, total_rewards, completions = self._score_completions(inputs, device)
                 resample_count += 1

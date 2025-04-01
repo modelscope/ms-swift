@@ -194,3 +194,10 @@ swift rlhf \
     --system 'examples/train/grpo/prompt.txt' \
     --log_completions true
 ```
+
+## DAPO
+[DAPO]()在GRPO的基础上设置了几种trick，分别是
+- Clip-Higher: 对upper clip采用更大的epsilon系数鼓励模型探索
+- 
+- 
+- 
