@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from types import MethodType
-from typing import Any, Optional, List
+from typing import Any, List, Optional
 
 import torch
 from peft.tuners import lora
@@ -130,6 +130,7 @@ def patch_lora_unmerge(model):
                 del module.unmerge_origin
                 module._cache_pop = module._cache_pop_origin
                 del module._cache_pop_origin
+
 
 def _split_into_mini_batches(batch: List, mini_batch_size: int) -> List[List]:
     """
