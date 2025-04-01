@@ -132,7 +132,7 @@ def test_qwen2_5_vl():
 
 def test_qwen2_5_omni():
     os.environ['VIDEO_MAX_PIXELS'] = str(28 * 28 * 64)
-    USE_AUDIO_IN_VIDEO = True
+    USE_AUDIO_IN_VIDEO = False
     os.environ['USE_AUDIO_IN_VIDEO'] = str(USE_AUDIO_IN_VIDEO)
     pt_engine = PtEngine('Qwen/Qwen2.5-Omni-7B')
     system = ('You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, '
