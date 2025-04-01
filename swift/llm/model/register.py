@@ -8,6 +8,8 @@ from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
+import transformers
+from packaging import version
 from peft import PeftModel
 from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModelForSequenceClassification,
                           AutoTokenizer, GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
@@ -154,6 +156,28 @@ def load_by_unsloth(args):
     return model, processor
 
 
+def _patch_awq_compat(model_info):
+    if version.parse(transformers.__version__) < version.parse('4.50') or model_info.quant_method != 'awq':
+        return
+
+    try:
+        # compat transformers>=4.50 (autoawq)
+        from transformers.quantizers.quantizer_awq import AwqQuantizer
+        from transformers.integrations import get_keys_to_not_convert
+        _process_model_before_weight_loading = AwqQuantizer._process_model_before_weight_loading
+
+        def _new_process_model_before_weight_loading(self, model, *args, **kwargs):
+            modules_to_not_convert = self.quantization_config.modules_to_not_convert
+            if modules_to_not_convert is not None:
+                self.quantization_config.modules_to_not_convert = list(
+                    modules_to_not_convert) + get_keys_to_not_convert(model)
+            return _process_model_before_weight_loading(self, model, *args, **kwargs)
+
+        AwqQuantizer._process_model_before_weight_loading = _new_process_model_before_weight_loading
+    except Exception:
+        pass
+
+
 def get_model_tokenizer_from_local(model_dir: str,
                                    model_info: ModelInfo,
                                    model_kwargs: Dict[str, Any],
@@ -189,6 +213,7 @@ def get_model_tokenizer_from_local(model_dir: str,
 
     model = None
     if load_model:
+        _patch_awq_compat(model_info)
         logger.info(f'model_kwargs: {model_kwargs}')
         # fix seq_cls
         if model_info.task_type == 'seq_cls' and automodel_class is None:
