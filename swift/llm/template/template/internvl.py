@@ -59,7 +59,7 @@ class InternvlTemplate(Template):
         if self._packing and 'internlm2' in model_name:
             position_ids = inputs['position_ids']
             modeling_module = model.language_model.model.layers[0].attention.__class__
-            return self._patch_flash_attention_forward(inputs, modeling_module, position_ids, use_new_func=True)
+            return self._patch_flash_attention_forward(modeling_module, position_ids, use_new_func=True)
         else:
             return super().compute_loss_context(model, inputs)
 

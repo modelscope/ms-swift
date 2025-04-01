@@ -273,7 +273,7 @@ class Qwen2VLTemplate(Template):
             from transformers.models.qwen2_5_omni import modeling_qwen2_5_omni as modeling_module
         position_ids = inputs['position_ids']
         inputs['position_ids'] = inputs.pop('real_position_ids')
-        return self._patch_flash_attention_forward(inputs, modeling_module, position_ids)
+        return self._patch_flash_attention_forward(modeling_module, position_ids)
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:

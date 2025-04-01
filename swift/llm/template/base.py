@@ -1450,12 +1450,13 @@ class Template(ProcessorMixin):
 
     @staticmethod
     @contextmanager
-    def _patch_flash_attention_forward(inputs, modeling_module, position_ids, use_new_func: bool = False):
+    def _patch_flash_attention_forward(modeling_module, position_ids, use_new_func: bool = False):
         _origin_flash_attention_forward = modeling_module._flash_attention_forward
 
         def _flash_attention_forward(*args, **kwargs):
             if use_new_func:
-                from transformers.modeling_flash_attention_utils import _flash_attention_forward as flash_attention_forward
+                from transformers.modeling_flash_attention_utils import (_flash_attention_forward as
+                                                                         flash_attention_forward)
                 if args and isinstance(args[0], nn.Module):
                     args = args[1:]
                 if 'is_causal' not in kwargs:
