@@ -122,6 +122,6 @@ if __name__ == '__main__':
     from swift.plugin import InferStats
     # NOTE: In a real deployment scenario, please comment out the context of run_deploy.
     with run_deploy(
-            DeployArguments(model='Qwen/Qwen2-VL-2B-Instruct', verbose=False, log_interval=-1,
+            DeployArguments(model='Qwen/Qwen2.5-VL-3B-Instruct', verbose=False, log_interval=-1,
                             infer_backend='vllm')) as port:
         run_client(port=port)
