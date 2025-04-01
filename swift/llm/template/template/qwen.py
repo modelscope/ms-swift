@@ -388,7 +388,7 @@ class Qwen2_5VLTemplate(Qwen2VLTemplate):
 
     def compute_loss_context(self, inputs):
         if 'real_position_ids' not in inputs:
-            return super().compute_loss_context(inputs)
+            return Template.compute_loss_context(self, inputs)
         from transformers.models.qwen2_5_vl import modeling_qwen2_5_vl
         return self._patch_flash_attention_forward(inputs, modeling_qwen2_5_vl)
 
@@ -424,12 +424,12 @@ class Qwen2_5OmniTemplate(Qwen2VLTemplate):
 
     def compute_loss_context(self, inputs):
         if 'real_position_ids' not in inputs:
-            return super().compute_loss_context(inputs)
+            return Template.compute_loss_context(self, inputs)
         from transformers.models.qwen2_5_omni import modeling_qwen2_5_omni
         return self._patch_flash_attention_forward(inputs, modeling_qwen2_5_omni)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded = super()._encode(inputs)
+        encoded = Template._encode(self, inputs)
         media_inputs = self.processor(
             text='',
             audios=inputs.audios or None,
