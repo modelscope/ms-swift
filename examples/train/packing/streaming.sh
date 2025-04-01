@@ -7,7 +7,7 @@ HF_ENDPOINT=https://hf-mirror.com \
 swift sft \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
     --train_type lora \
-    --dataset 'HF::linxy/LaTeX_OCR#20000' \
+    --dataset 'HF::linxy/LaTeX_OCR:full#20000' \
     --torch_dtype bfloat16 \
     --max_steps 1000 \
     --attn_impl flash_attn \

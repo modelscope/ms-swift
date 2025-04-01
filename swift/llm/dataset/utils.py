@@ -162,12 +162,12 @@ class PackingDataset(BasePackingDataset, Dataset):
         res = res or []
         for _ in range(self.packing_interval):
             data = self._queue.get()
-            self.prog_bar.update(1)
             if data is None:
                 self._terminated_workers += 1
                 if self._terminated_workers == self.num_workers:
                     break
                 continue
+            self.prog_bar.update(1)
             if data:
                 res.append((data, len(data['input_ids'])))
         return res
