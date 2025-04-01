@@ -262,7 +262,7 @@ class Qwen2VLTemplate(Template):
         encoded['labels'] = labels
         return encoded
 
-    def compute_loss_context(self, inputs):
+    def compute_loss_context(self, model, inputs):
         if 'real_position_ids' not in inputs:
             return super().compute_loss_context(inputs)
         if self.version == 'v2':

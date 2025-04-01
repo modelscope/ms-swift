@@ -4,7 +4,7 @@ import inspect
 import math
 import os
 import re
-from contextlib import nullcontext, contextmanager
+from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from dataclasses import asdict
 from functools import partial, wraps
@@ -262,7 +262,7 @@ class Template(ProcessorMixin):
             added_tokens_len += token_len - 1
         return input_ids, labels
 
-    def compute_loss_context(self, inputs):
+    def compute_loss_context(self, model, inputs):
         return nullcontext()
 
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -1450,12 +1450,20 @@ class Template(ProcessorMixin):
 
     @staticmethod
     @contextmanager
-    def _patch_flash_attention_forward(inputs, modeling_module, position_ids):
+    def _patch_flash_attention_forward(inputs, modeling_module, position_ids, use_new_func: bool = False):
         _origin_flash_attention_forward = modeling_module._flash_attention_forward
 
         def _flash_attention_forward(*args, **kwargs):
+            if use_new_func:
+                from transformers.modeling_flash_attention_utils import _flash_attention_forward as flash_attention_forward
+                if args and isinstance(args[0], nn.Module):
+                    args = args[1:]
+                if 'is_causal' not in kwargs:
+                    kwargs['is_causal'] = True
+            else:
+                flash_attention_forward = _origin_flash_attention_forward
             kwargs['position_ids'] = position_ids
-            return _origin_flash_attention_forward(*args, **kwargs)
+            return flash_attention_forward(*args, **kwargs)
 
         modeling_module._flash_attention_forward = _flash_attention_forward
         try:
