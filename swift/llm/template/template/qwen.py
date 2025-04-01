@@ -262,29 +262,18 @@ class Qwen2VLTemplate(Template):
         encoded['labels'] = labels
         return encoded
 
-    @staticmethod
-    @contextmanager
-    def _patch_flash_attention_forward(inputs, modeling_module):
+    def compute_loss_context(self, model, inputs):
+        if 'real_position_ids' not in inputs:
+            return super().compute_loss_context(model, inputs)
+        if self.version == 'v2':
+            from transformers.models.qwen2_vl import modeling_qwen2_vl as modeling_module
+        elif self.version == 'v2_5':
+            from transformers.models.qwen2_5_vl import modeling_qwen2_5_vl as modeling_module
+        elif self.version == 'omni':
+            from transformers.models.qwen2_5_omni import modeling_qwen2_5_omni as modeling_module
         position_ids = inputs['position_ids']
         inputs['position_ids'] = inputs.pop('real_position_ids')
-
-        _origin_flash_attention_forward = modeling_module._flash_attention_forward
-
-        def _flash_attention_forward(*args, **kwargs):
-            kwargs['position_ids'] = position_ids
-            return _origin_flash_attention_forward(*args, **kwargs)
-
-        modeling_module._flash_attention_forward = _flash_attention_forward
-        try:
-            yield
-        finally:
-            modeling_module._flash_attention_forward = _origin_flash_attention_forward
-
-    def compute_loss_context(self, inputs):
-        if 'real_position_ids' not in inputs:
-            return super().compute_loss_context(inputs)
-        from transformers.models.qwen2_vl import modeling_qwen2_vl
-        return self._patch_flash_attention_forward(inputs, modeling_qwen2_vl)
+        return self._patch_flash_attention_forward(modeling_module, position_ids)
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:
@@ -386,17 +375,12 @@ class Qwen2_5VLTemplate(Qwen2VLTemplate):
     version = 'v2_5'
     norm_bbox = 'none'
 
-    def compute_loss_context(self, inputs):
-        if 'real_position_ids' not in inputs:
-            return Template.compute_loss_context(self, inputs)
-        from transformers.models.qwen2_5_vl import modeling_qwen2_5_vl
-        return self._patch_flash_attention_forward(inputs, modeling_qwen2_5_vl)
-
 
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_vl, template_cls=Qwen2_5VLTemplate))
 
 
-class Qwen2_5OmniTemplate(Qwen2VLTemplate):
+class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
+    version = 'omni'
     placeholder_tokens = ['<|IMAGE|>', '<|AUDIO|>', '<|VIDEO|>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -421,12 +405,6 @@ class Qwen2_5OmniTemplate(Qwen2VLTemplate):
                 inputs.audios.insert(inputs.audio_idx, video)
                 inputs.audio_idx += 1
             return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
-
-    def compute_loss_context(self, inputs):
-        if 'real_position_ids' not in inputs:
-            return Template.compute_loss_context(self, inputs)
-        from transformers.models.qwen2_5_omni import modeling_qwen2_5_omni
-        return self._patch_flash_attention_forward(inputs, modeling_qwen2_5_omni)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)
