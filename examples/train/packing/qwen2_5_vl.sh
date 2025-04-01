@@ -1,5 +1,5 @@
 # 4 * 36GB
-# Multimodal packing currently only supports qwen2_vl, qwen2_5_vl, qwen2_5_omni, internvl2, internvl2_5.
+# Multimodal packing currently only supports qwen2_vl, qwen2_5_vl, qwen2_5_omni, internvl2, internvl2_5, deepseek_vl2.
 # Efficiency: With packing: 10 minutes; Without packing: >=1 hour
 # For local datasets, it is recommended to use streaming: `--streaming true` (save memory)
 NPROC_PER_NODE=4 \
