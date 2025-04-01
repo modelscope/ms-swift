@@ -1187,8 +1187,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'pin_memory': self.args.dataloader_pin_memory,
             'persistent_workers': self.args.dataloader_persistent_workers,
         }
+
+        @contextmanager
+        def seed_context(self):
+            seed = self.args.seed
+            self.args.seed = seed + 1
+            yield
+            self.args.seed = seed
+
         if not isinstance(resample_dataset, torch.utils.data.IterableDataset):
-            dataloader_params['sampler'] = self._get_train_sampler()
+            with seed_context(self):  # Set a different seed for resampling than the train_dataset.
+                dataloader_params['sampler'] = self._get_train_sampler()
             dataloader_params['drop_last'] = self.args.dataloader_drop_last
             dataloader_params['worker_init_fn'] = seed_worker
             dataloader_params['prefetch_factor'] = self.args.dataloader_prefetch_factor
