@@ -772,56 +772,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         device = self.accelerator.device
         inputs = self._generate_completions(inputs)
-        total_rewards_per_func, total_rewards, completions = self._score_completions(inputs, device)
+        total_rewards_per_func, total_rewards, completions = self._score_completions(inputs)
         # dynamic sampling for std=0 groups
         mode = 'eval' if self.control.should_evaluate else 'train'
 
         if self.args.dynamic_sampling and mode == 'train':
-            resample_count = 0
-            valid_samples = []
-            valid_rewards = []
-            valid_rewards_per_func = []
-            valid_completions = []
-            # Store original data as fallback
-            origin_inputs, origin_rewards, origin_rewards_per_func, origin_completions = \
-                inputs, total_rewards, total_rewards_per_func, completions
-
-            while resample_count < self.args.max_resample_times:
-                grouped_rewards = total_rewards.view(-1, self.num_generations)
-                group_std = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations, dim=0)
-                if (group_std > 0).all():
-                    break
-                valid_mask = group_std > 0
-                all_inputs = gather_object(inputs)
-                valid_samples.extend([inp for inp, mask in zip(all_inputs, valid_mask) if mask])
-                valid_rewards.append(total_rewards[valid_mask])
-                valid_rewards_per_func.append(total_rewards_per_func[valid_mask])
-                valid_completions.extend(
-                    [inp['messages'][-1]['content'] for inp, mask in zip(all_inputs, valid_mask) if mask])
-                if len(valid_samples) >= self.global_train_batch_size:
-                    break
-                # Resample for invalid groups
-                inputs = next(self.resample_iterator)
-                inputs = Trainer._prepare_inputs(self, inputs)  # Use instance method directly
-                inputs = self._generate_completions(inputs)
-                total_rewards_per_func, total_rewards, completions = self._score_completions(inputs, device)
-                resample_count += 1
-
-            if len(valid_samples) >= self.global_train_batch_size:
-                process_slice = slice(
-                    self.accelerator.process_index * len(inputs),
-                    (self.accelerator.process_index + 1) * len(inputs),
-                )
-                inputs = valid_samples[:self.global_train_batch_size][process_slice]
-                total_rewards = torch.cat(valid_rewards)[:self.global_train_batch_size]
-                total_rewards_per_func = torch.cat(valid_rewards_per_func)[:self.global_train_batch_size]
-                completions = valid_completions[:self.global_train_batch_size][process_slice]
-            else:
-                logger.warning(f'There are still std=0 groups present after {self.args.max_resample_times} retries.')
-                # Restore original data to ensure the quantity of data, or maybe raise a error here?
-                inputs, total_rewards, total_rewards_per_func, completions = \
-                    origin_inputs, origin_rewards, origin_rewards_per_func, origin_completions
-
+            inputs, rewards, rewards_per_func, completions = self._dynamic_sampling(inputs, rewards, rewards_per_func,
+                                                                                    completions)
         # Prepare final outputs with advantages and other required fields
         batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards, device)
         messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
@@ -830,8 +787,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return batch_encoded_inputs
 
-    def _score_completions(self, inputs, device):
+    def _score_completions(self, inputs):
         """Score completions using all reward functions"""
+        device = self.accelerator.device
         completions = [example['messages'][-1]['content'] for example in inputs]
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
 
@@ -857,6 +815,55 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         total_rewards = (total_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).sum(dim=1)
 
         return total_rewards_per_func, total_rewards, completions
+
+    def _dynamic_sampling(self, inputs, rewards, rewards_per_func, completions):
+        # dapo https://arxiv.org/abs/2503.14476
+        resample_count = 0
+        valid_samples = []
+        valid_rewards = []
+        valid_rewards_per_func = []
+        valid_completions = []
+
+        origin_data = (inputs, rewards, rewards_per_func, completions)
+
+        while resample_count < self.args.max_resample_times:
+            grouped_rewards = rewards.view(-1, self.num_generations)
+            group_std = grouped_rewards.std(dim=1)
+
+            if (group_std > 0).all():
+                break
+
+            valid_mask = (group_std > 0).repeat_interleave(self.num_generations)
+            all_inputs = gather_object(inputs)
+            valid_samples.extend([inp for inp, mask in zip(all_inputs, valid_mask) if mask])
+            valid_rewards.append(rewards[valid_mask])
+            valid_rewards_per_func.append(rewards_per_func[valid_mask])
+            valid_completions.extend(
+                [inp['messages'][-1]['content'] for inp, mask in zip(all_inputs, valid_mask) if mask])
+
+            if len(valid_samples) >= self.global_train_batch_size:
+                break
+
+            inputs = next(self.resample_iterator)
+            inputs = self._prepare_inputs(inputs)
+            inputs = self._generate_completions(inputs)
+            rewards_per_func, rewards, completions = self._score_completions(inputs)
+            resample_count += 1
+
+        if len(valid_samples) >= self.global_train_batch_size:
+            process_slice = slice(
+                self.accelerator.process_index * len(inputs),
+                (self.accelerator.process_index + 1) * len(inputs),
+            )
+            inputs = valid_samples[:self.global_train_batch_size][process_slice]
+            rewards = torch.cat(valid_rewards)[:self.global_train_batch_size][process_slice]
+            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.global_train_batch_size][process_slice]
+            completions = valid_completions[:self.global_train_batch_size][process_slice]
+        else:
+            logger.warning(f'There are still std=0 groups present after {self.args.max_resample_times} retries.')
+            inputs, rewards, rewards_per_func, completions = origin_data
+
+        return inputs, rewards, rewards_per_func, completions
 
     def _prepare_batch_inputs(self, inputs, rewards, device):
         """Prepare the final batch inputs with advantages and other required fields"""
