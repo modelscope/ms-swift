@@ -826,7 +826,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards, device)
         messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
         # Log metrics
-        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func, device)
+        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func)
 
         return batch_encoded_inputs
 
@@ -921,12 +921,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mode = 'eval' if self.control.should_evaluate else 'train'
 
         # Calculate completion length metrics
-        completion_length = self.accelerator.gather_for_metrics(inputs['completion_mask'].sum(1)).float().mean().item()
+        completion_lengths = self.accelerator.gather_for_metrics(
+            torch.cat([inp['completion_mask'].sum(1) for inp in inputs]))
+        completion_lengths_mean = completion_lengths.float().mean().item()
 
-        self._metrics[mode]['completion_length'].append(completion_length)
+        self._metrics[mode]['completion_length'].append(completion_lengths_mean)
 
         # Calculate clip ratio
         response_clip_ratio = (torch.gt(completion_lengths, self.args.max_completion_length).float().mean().item())
+
         self._metrics[mode]['response_clip_ratio'].append(response_clip_ratio)
 
         # Log rewards
