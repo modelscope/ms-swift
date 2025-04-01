@@ -1447,3 +1447,18 @@ class Template(ProcessorMixin):
         else:
             result_str += tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
         return result_str
+
+    @staticmethod
+    @contextmanager
+    def _patch_flash_attention_forward(inputs, modeling_module, position_ids):
+        _origin_flash_attention_forward = modeling_module._flash_attention_forward
+
+        def _flash_attention_forward(*args, **kwargs):
+            kwargs['position_ids'] = position_ids
+            return _origin_flash_attention_forward(*args, **kwargs)
+
+        modeling_module._flash_attention_forward = _flash_attention_forward
+        try:
+            yield
+        finally:
+            modeling_module._flash_attention_forward = _origin_flash_attention_forward
