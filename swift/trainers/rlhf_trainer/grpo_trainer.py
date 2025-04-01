@@ -824,9 +824,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Prepare final outputs with advantages and other required fields
         batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards, device)
-
+        messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
         # Log metrics
-        self._log_metrics(inputs, completions, total_rewards, total_rewards_per_func, device)
+        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func, device)
 
         return batch_encoded_inputs
 
@@ -916,14 +916,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return batch_encoded_inputs
 
-    def _log_metrics(self, inputs, completions, rewards, rewards_per_func, device):
+    def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func):
         """Log training/evaluation metrics"""
         mode = 'eval' if self.control.should_evaluate else 'train'
 
         # Calculate completion length metrics
-        completion_lengths = torch.tensor([len(c) for c in completions], device=device)
-        self._metrics[mode]['completion_length'].append(
-            self.accelerator.gather_for_metrics(completion_lengths).mean().item())
+        completion_length = self.accelerator.gather_for_metrics(inputs['completion_mask'].sum(1)).float().mean().item()
+
+        self._metrics[mode]['completion_length'].append(completion_length)
 
         # Calculate clip ratio
         response_clip_ratio = (torch.gt(completion_lengths, self.args.max_completion_length).float().mean().item())
@@ -950,7 +950,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.log_completions and self.state.global_step % self.args.logging_steps == 0:
             table = {
                 'step': [str(self.state.global_step)] * len(rewards),
-                'messages': [inputs[i]['messages'][:-1] for i in range(len(inputs))],
+                'messages': messages,
                 'completion': completions,
                 'reward': rewards.tolist(),
             }
