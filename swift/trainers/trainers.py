@@ -5,17 +5,19 @@ from contextlib import contextmanager, nullcontext
 from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
+import torch.distributed as dist
 from peft import PeftModel
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import DataLoader
 from transformers import EvalPrediction
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
+from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
 from swift.utils import JsonlWriter, Serializer, gc_collect
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import SwiftMixin

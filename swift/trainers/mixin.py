@@ -11,7 +11,6 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import safetensors
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 import transformers
 from datasets import Dataset as HfDataset
@@ -19,7 +18,6 @@ from modelscope import check_local_model_is_latest
 from packaging import version
 from peft import PeftModel
 from torch.nn import Module
-from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
@@ -29,7 +27,7 @@ from transformers.trainer_utils import EvalPrediction
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
-from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
+from swift.llm import Template
 from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_mp_ddp, use_torchacc
