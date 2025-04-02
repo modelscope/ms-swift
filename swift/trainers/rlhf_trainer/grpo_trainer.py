@@ -762,7 +762,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         for i, output in enumerate(outputs):
             inputs[i]['messages'] = output[0][0]
-            inputs[i]['is_truncated'] = output[0][1] == 'finish'
+            inputs[i]['is_truncated'] = output[0][1] == 'length'
 
         return inputs
 
@@ -982,7 +982,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         truncated_mask = inputs['truncated_mask']
         # mask the completion_mask using truncated_mask
         if self.args.overlong_filter and any(truncated_mask):
-            truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask)
+            truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask).to(completion_mask.device)
             completion_mask = completion_mask * (~truncated_mask)
 
         per_token_logps = self._get_per_token_logps(model, inputs)
