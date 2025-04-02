@@ -11,7 +11,7 @@ import torch.utils.checkpoint
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
-from swift.utils import get_dist_setting, get_logger, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_liger_available, use_torchacc
 from .optimizers.galore import GaLoreConfig
 
 logger = get_logger()
@@ -49,6 +49,7 @@ class TrainArgumentsMixin:
     metric_warmup_step: Optional[float] = 0
     fsdp_num: int = 1
     acc_steps: int = 1
+    use_liger_kernel: bool = False
 
     # train-eval loop args
     eval_use_evalscope: bool = False
@@ -79,6 +80,10 @@ class TrainArgumentsMixin:
             transformers.modeling_utils.checkpoint = _new_checkpoint
         except (ImportError, AttributeError):
             pass
+
+    def _init_liger(self):
+        if self.use_liger_kernel:
+            assert is_liger_available(), 'use_liger requires liger_kernels, try `pip install liger-kernel`'
 
     def __post_init__(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
