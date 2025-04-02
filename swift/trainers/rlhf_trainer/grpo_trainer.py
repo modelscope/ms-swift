@@ -762,7 +762,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         for i, output in enumerate(outputs):
             inputs[i]['messages'] = output[0][0]
-            inputs[i]['finish_reason'] = output[0][1]
+            inputs[i]['is_truncated'] = output[0][1] == 'finish'
 
         return inputs
 
@@ -913,7 +913,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         ref_per_token_logps = self._get_per_token_logps(self.model, mini_batch_encoded_inputs)
 
                 mini_batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
-                mini_batch_encoded_inputs['finish_reason'] = mini_batch['finish_reason']
+                mini_batch_encoded_inputs['truncated_mask'] = \
+                    torch.tensor([mb['is_truncated'] for mb in mini_batch], dtype=torch.bool)
                 batch_encoded_inputs.append(mini_batch_encoded_inputs)
         # Split advantages into mini-batches
         mini_batch_advantages = _split_into_mini_batches(advantages, mini_batch_size=self.args.mini_batch_size)
@@ -978,8 +979,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             assert len(inputs) == 1
             inputs = inputs[0]
         completion_mask = inputs['completion_mask']
-        truncated_mask = [inp['finish_reason'] == 'length' for inp in inputs]
-
+        truncated_mask = inputs['truncated_mask']
+        # mask the completion_mask using truncated_mask
         if self.args.overlong_filter and any(truncated_mask):
             truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask)
             completion_mask = completion_mask * (~truncated_mask)
