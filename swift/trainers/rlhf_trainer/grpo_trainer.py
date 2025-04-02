@@ -935,7 +935,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Calculate clip ratio
         response_clip_ratio = (torch.gt(completion_lengths, self.args.max_completion_length).float().mean().item())
-        truncated_mask = [inp['finish_reason'] == 'length' for inp in inputs]
+        # truncated_mask = [inp['finish_reason'] == 'length' for inp in inputs]
 
         # response_clip_ratio = truncated_mask.sum(1) / len(completion_lengths)
         self._metrics[mode]['response_clip_ratio'].append(response_clip_ratio)

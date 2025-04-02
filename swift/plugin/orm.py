@@ -378,20 +378,19 @@ class RepetitionPenalty(ORM):
 
 class SoftOverlong(ORM):
 
-    def __init__(self, soft_l_max, soft_l_cache):
+    def __init__(self, tokenizer, soft_l_max, soft_l_cache):
+        self.tokenizer = tokenizer
+        assert soft_l_cache < soft_l_max
         self.soft_l_max = soft_l_max
         self.soft_l_cache = soft_l_cache
 
     def __call__(self, completions, **kwargs) -> List[float]:
         rewards = []
         for completion in completions:
-            completion_length = len(completion)
-            if completion_length <= self.soft_l_max - self.soft_l_max:
-                rewards.append(0)
-            elif self.soft_l_max - self.soft_l_cache < completion_length <= self.soft_l_max:
-                return rewards.append((self.soft_l_max - self.soft_l_cache - completion_length) / self.soft_l_cache)
-            else:
-                return rewards.append(-1)
+            completion_length = len(self.tokenizer.encode(completion))
+            expected_len = self.soft_l_max - self.soft_l_cache
+            exceed_len = completion_length - expected_len
+            rewards.append(-exceed_len / self.soft_l_cache, 0)
         return rewards
 
 
