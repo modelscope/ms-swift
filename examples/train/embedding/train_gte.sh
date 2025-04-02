@@ -19,7 +19,7 @@ swift sft \
     --save_steps 100 \
     --eval_strategy steps \
     --use_chat_template false \
-    --save_total_limit 5 \
+    --save_total_limit 2 \
     --logging_steps 5 \
     --output_dir output \
     --warmup_ratio 0.05 \
