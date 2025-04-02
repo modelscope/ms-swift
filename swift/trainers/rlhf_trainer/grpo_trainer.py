@@ -913,8 +913,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         ref_per_token_logps = self._get_per_token_logps(self.model, mini_batch_encoded_inputs)
 
                 mini_batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
+                mini_batch_encoded_inputs['finish_reason'] = mini_batch['finish_reason']
                 batch_encoded_inputs.append(mini_batch_encoded_inputs)
-            batch_encoded_inputs.update({'finish_reason': mini_batch['finish_reason']})
         # Split advantages into mini-batches
         mini_batch_advantages = _split_into_mini_batches(advantages, mini_batch_size=self.args.mini_batch_size)
         for i, mini_batch_advantage in enumerate(mini_batch_advantages):
