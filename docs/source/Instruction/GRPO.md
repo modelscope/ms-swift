@@ -110,8 +110,8 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 除了基于规则的奖励函数外，本框架还支持使用奖励模型作为奖励函数。在使用奖励模型时，需要指定 reward_model 参数，该参数与 model 参数类似，用于指定奖励模型的路径或名称。需要注意的是，reward_model 和 reward_funcs 至少需要指定一个。
 
 
-## 运行脚本
-超参数
+## 参数与运行脚本
+参数
 - num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_eval_batch_size * nproc_per_node 整除
 - max_completion_length: 采样生成的最大长度，默认为512
 - ds3_gather_for_generation: 该参数适用于DeepSpeed ZeRO-3。如果启用，策略模型权重将被收集用于生成，从而提高生成速度。然而，禁用此选项允许训练超出单个GPU VRAM的模型，尽管生成速度会变慢。禁用此选项与vLLM生成不兼容。默认为True
@@ -136,14 +136,16 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False
 - multi_turn_func: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现
 - mini_batch_size：用于将每个设备上的批次大小（per_device_batch）进一步切分为更小的子批次。为确保切分有效，per_device_batch 需要能够被 mini_batch_size 整除
+-
 
-奖励函数超参，见[内置奖励函数](#内置奖励函数)
+奖励函数参数，见[内置奖励函数](#内置奖励函数)
 
 建议使用vLLM作为采样后端加速训练，多卡环境下，建议单独设置一张显卡用于部署vLLM，此时进程数应等于显卡数减一
 
 多卡vLLM
 ```bash
-# nproc_per_node 比显卡数少一，vLLM默认单独部署于最后一张卡，即卡7
+# async mode
+# 要求 num_infer_workers(部署) + NPROC_PER_NODE(训练) = device_count
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=7 \
 swift rlhf \
@@ -154,6 +156,7 @@ swift rlhf \
     --vllm_device auto \
     --vllm_gpu_memory_utilization 0.7 \
     --vllm_max_model_len 8192 \
+    --num_infer_workers 1 \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'AI-MO/NuminaMath-TIR#5000' \
@@ -177,7 +180,51 @@ swift rlhf \
     --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero2 \
     --log_completions true
+
+# colocate mode
+# 要求 num_infer_workers(部署) = NPROC_PER_NODE(训练) = device_count
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=8 \
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --reward_funcs accuracy format \
+    --use_vllm true \
+    --vllm_device auto \
+    --vllm_gpu_memory_utilization 0.7 \
+    --vllm_max_model_len 8192 \
+    --num_infer_workers 8 \
+    --train_type full \
+    --torch_dtype bfloat16 \
+    --dataset 'AI-MO/NuminaMath-TIR#5000' \
+    --max_completion_length 2048 \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 1 \
+    --per_device_eval_batch_size 1 \
+    --learning_rate 1e-6 \
+    --gradient_accumulation_steps 2 \
+    --eval_steps 200 \
+    --save_steps 200 \
+    --save_total_limit 2 \
+    --logging_steps 5 \
+    --max_length 4096 \
+    --output_dir output \
+    --warmup_ratio 0.05 \
+    --dataloader_num_workers 4 \
+    --dataset_num_proc 4 \
+    --num_generations 7 \
+    --temperature 0.9 \
+    --system 'examples/train/grpo/prompt.txt' \
+    --deepspeed zero2 \
+    --log_completions true \
+    --sleep_level 1 \
+    --offload_model true \
+    --offload_optimizer true \
+    --gc_collect_after_offload true \
+    --log_completions true \
+
 ```
+
 
 单卡
 ```bash
