@@ -57,7 +57,7 @@ class QuantEngine(ProcessorMixin):
             None,
             self.processor,
             args.output_dir,
-            model_dirs=[args.model],
+            model_dirs=[args.model_dir],
             additional_saved_files=self.model.model_meta.additional_saved_files)
         logger.info(f'Successfully quantized the model and saved in {args.output_dir}.')
 

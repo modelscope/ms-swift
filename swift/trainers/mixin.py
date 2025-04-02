@@ -224,7 +224,12 @@ class SwiftMixin:
         if not is_adapter:
             from swift.llm import save_checkpoint
             additional_saved_files = self.model_meta.additional_saved_files
-            save_checkpoint(None, self.template.processor, output_dir, additional_saved_files=additional_saved_files)
+            save_checkpoint(
+                None,
+                self.template.processor,
+                output_dir,
+                model_dirs=[self.model.model_dir],
+                additional_saved_files=additional_saved_files)
             if getattr(self.model, 'origin_generation_config', None):
                 self.model.origin_generation_config.save_pretrained(output_dir)
 
