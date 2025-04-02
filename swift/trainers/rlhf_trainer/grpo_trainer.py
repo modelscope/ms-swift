@@ -817,6 +817,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _dynamic_sampling(self, inputs, rewards, rewards_per_func, completions):
         # DAPO https://arxiv.org/abs/2503.14476
+        # Replaces samples with zero-reward-variance groups (std=0)
         resample_count = 0
         valid_samples = []
         valid_rewards = []

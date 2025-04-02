@@ -44,12 +44,6 @@ orms['dummy']= DummyLengthRewardFunction
 ### 内置奖励函数
 swift内置了五种基于规则的奖励函数(代码见swift/plugin/orm.py)
 
-其中 accuracy 和 format 奖励函数源于论文[DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning](https://arxiv.org/abs/2501.12948)
-
-cosine 和 repetition 奖励函数源于论文[Demystifying Long Chain-of-Thought Reasoning in LLMs](https://arxiv.org/abs/2502.03373)，
-
-soft_overlong 奖励函数源于论文[Decoupled Clip and Dynamic sAmpling Policy Optimization (DAPO)](https://arxiv.org/abs/2503.14476)
-
 | 奖励函数       | 论文                                                                 |
 |----------------|----------------------------------------------------------------------------|
 | accuracy       | [DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via RL](https://arxiv.org/abs/2501.12948) |
