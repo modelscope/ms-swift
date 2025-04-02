@@ -7,7 +7,7 @@
 环境安装
 ```bash
 pip install math_verify # reward function
-pip install -U trl"
+pip install -U trl
 ```
 
 **注意**：训练过程中 loss 接近0 是正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
@@ -42,15 +42,29 @@ orms['dummy']= DummyLengthRewardFunction
 执行脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_rm.sh)
 
 ### 内置奖励函数
-swift内置了四种基于规则的奖励函数，分别是 accuracy、format、 cosine 和 repetition。(代码见swift/plugin/orm.py)
+swift内置了五种基于规则的奖励函数(代码见swift/plugin/orm.py)
 
-其中 accuracy 和 format 奖励函数源于论文[DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning](https://arxiv.org/abs/2501.12948), cosine 和 repetition 奖励函数源于论文[Demystifying Long Chain-of-Thought Reasoning in LLMs](https://arxiv.org/abs/2502.03373)
+其中 accuracy 和 format 奖励函数源于论文[DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning](https://arxiv.org/abs/2501.12948)
 
-1. **accuracy**
+cosine 和 repetition 奖励函数源于论文[Demystifying Long Chain-of-Thought Reasoning in LLMs](https://arxiv.org/abs/2502.03373)，
+
+soft_overlong 奖励函数源于论文[Decoupled Clip and Dynamic sAmpling Policy Optimization (DAPO)](https://arxiv.org/abs/2503.14476)
+
+| 奖励函数       | 论文                                                                 |
+|----------------|----------------------------------------------------------------------------|
+| accuracy       | [DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via RL](https://arxiv.org/abs/2501.12948) |
+| format         | 同上                                                                        |
+| cosine         | [Demystifying Long Chain-of-Thought Reasoning in LLMs](https://arxiv.org/abs/2502.03373) |
+| repetition     | 同上                                                                        |
+| soft_overlong  | [Decoupled Clip and Dynamic sAmpling Policy Optimization (DAPO)](https://arxiv.org/abs/2503.14476)    |
+
+#### 1. **accuracy**
 
 该函数将模型的生成结果与数据集中的 solution 列进行比较，计算准确率分数。如果生成结果与标准答案一致，则得分为 1.0；否则为 0.0。
 
-2. **format**
+注意：该奖励函数使用`math_verify`库解析生成结果和solution中的答案，可能只适用于特定的数学数据集。
+
+#### 2. **format**
 
 论文中使用以下system prompt要求模型按照固定格式进行返回
 ```
@@ -59,7 +73,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 该函数检查模型是否按照 `<think>think content</think><answer>answer content</answer>` 的格式进行生成。如果生成文本符合格式要求，则得分为 1.0；否则为 0.0。
 
-3. **cosine**
+#### 3. **cosine**
 
 论文发现，仅使用 accuracy 奖励函数进行训练会导致模型的生成长度趋于超长，从而影响训练效果。cosine 奖励函数通过控制模型的生成长度来优化训练过程：
 
@@ -76,7 +90,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - cosine_max_len（默认值等于模型生成的最大程度）：生成文本的最大长度限制。
 
 
-4. **repetition**
+#### 4. **repetition**
 
 惩罚模型生成文本中的重复内容，通过检测生成文本中的重复 n-gram 模式来评估重复程度，并给予相应的惩罚。
 
@@ -86,8 +100,18 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - repetition_n_grams（默认值：3）：用于检测重复的 n-gram 大小。
 - repetition_max_penalty（默认值：-1.0）：最大惩罚值，用于控制惩罚的强度。
 
+#### 5. **soft overlong punishment**
+定义长度惩罚区间。在这个区间内，给予[-1,0]的线性惩罚。
 
-5. **奖励模型**
+参数
+- soft_max_length: 论文中的L_max，模型的最大生成长度，默认等于max_completion_length
+- soft_cache_length: 论文中的L_cache，控制长度惩罚区间。区间为[soft_max_length-soft_cache_length, soft_max_length]
+
+
+论文原文
+> a length-aware penalty mechanism designed to shape the reward for truncated samples. Specifically, when the response length exceeds the predefined maximum value, we define a punishment interval. Within this interval, the longer the response, the greater the punishment it receives. This penalty is added to the original rule-based correctness reward, thereby signaling to the model to avoid excessively long responses.
+
+6. **奖励模型**
 
 除了基于规则的奖励函数外，本框架还支持使用奖励模型作为奖励函数。在使用奖励模型时，需要指定 reward_model 参数，该参数与 model 参数类似，用于指定奖励模型的路径或名称。需要注意的是，reward_model 和 reward_funcs 至少需要指定一个。
 

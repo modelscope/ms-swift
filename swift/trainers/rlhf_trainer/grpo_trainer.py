@@ -844,7 +844,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 break
 
             inputs = next(self.resample_iterator)
-            inputs = self._prepare_inputs(inputs)
+            inputs = Trainer._prepare_inputs(self, inputs)
             inputs = self._generate_completions(inputs)
             rewards_per_func, rewards, completions = self._score_completions(inputs)
             resample_count += 1
