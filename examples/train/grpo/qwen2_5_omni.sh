@@ -8,7 +8,7 @@ swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-Omni-7B \
     --reward_funcs external_r1v_acc format \
-    --reward_weights 1 0.1 \
+    --reward_weights 1 0.5 \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -25,7 +25,7 @@ swift rlhf \
     --eval_steps 100 \
     --save_steps 100 \
     --save_total_limit 2 \
-    --logging_steps 1 \
+    --logging_steps 5 \
     --max_length 8192 \
     --output_dir output \
     --warmup_ratio 0.05 \
