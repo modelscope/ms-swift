@@ -40,6 +40,8 @@ class DataArguments:
     data_seed: Optional[int] = None
     dataset_num_proc: int = 1
     streaming: bool = False
+    interleave_prob: Optional[List[float]] = None
+    stopping_strategy: Literal['first_exhausted', 'all_exhausted'] = 'first_exhausted'
 
     enable_cache: bool = False
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists'
@@ -80,6 +82,8 @@ class DataArguments:
             'seed': self.data_seed,
             'num_proc': self.dataset_num_proc,
             'streaming': self.streaming,
+            'interleave_prob': self.interleave_prob,
+            'stopping_strategy': self.stopping_strategy,
             'use_hf': self.use_hf,
             'hub_token': self.hub_token,
             'download_mode': self.download_mode,

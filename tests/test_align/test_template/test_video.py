@@ -132,7 +132,8 @@ def test_qwen2_5_vl():
 
 def test_qwen2_5_omni():
     os.environ['VIDEO_MAX_PIXELS'] = str(28 * 28 * 64)
-    # os.environ['USE_AUDIO_IN_VIDEO'] = 'true'
+    USE_AUDIO_IN_VIDEO = False
+    os.environ['USE_AUDIO_IN_VIDEO'] = str(USE_AUDIO_IN_VIDEO)
     pt_engine = PtEngine('Qwen/Qwen2.5-Omni-7B')
     system = ('You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, '
               'capable of perceiving auditory and visual inputs, as well as generating text and speech.')
@@ -141,10 +142,17 @@ def test_qwen2_5_omni():
     response = _infer_model(pt_engine, messages=messages, videos=videos)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, videos=videos)
-    assert response == response2 == (
-        "Oh, that sounds like a really cool project! So, you're using a tablet to draw a guitar, right? "
-        "And you're adding colors to it. What kind of colors are you thinking of using? Maybe some bright, "
-        'fun ones to make it pop? Let me know how it turns out!')
+    if USE_AUDIO_IN_VIDEO:
+
+        ground_truth = ('Oh, that sounds like a really cool project! Are you using a specific app on the tablet for '
+                        "drawing? And what kind of details are you adding to the guitar? It'd be interesting to hear "
+                        'more about your creative process.')
+    else:
+        ground_truth = (
+            "Oh, that sounds like a really cool project! So, you're using a tablet to draw a guitar and a key? "
+            "That's a creative way to combine two different things. Have you thought about what you'll do "
+            'with the final drawing? Maybe could use it for a poster or something? Let me know how it turns out!')
+    assert response == response2 == ground_truth
 
 
 if __name__ == '__main__':

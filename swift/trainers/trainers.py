@@ -5,17 +5,19 @@ from contextlib import contextmanager, nullcontext
 from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
+import torch.distributed as dist
 from peft import PeftModel
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import DataLoader
 from transformers import EvalPrediction
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
+from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
 from swift.utils import JsonlWriter, Serializer, gc_collect
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import SwiftMixin
@@ -112,6 +114,43 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
             self.data_collator = origin_data_collator
             self.template.set_mode(origin_mode)
 
+    def get_train_dataloader(self):
+        if self.template.sequence_parallel_size == 1:
+            # Higher efficiency
+            if self.train_dataset is None:
+                raise ValueError('Trainer: training requires a train_dataset.')
+            args = self.args
+            train_dataset = self.train_dataset
+
+            dataloader_params = {
+                'collate_fn': self.data_collator,
+                'num_workers': args.dataloader_num_workers,
+                'pin_memory': args.dataloader_pin_memory,
+                'persistent_workers': args.dataloader_persistent_workers,
+                'prefetch_factor': args.dataloader_prefetch_factor
+            }
+            batch_sampler_params = {
+                'drop_last': args.dataloader_drop_last,
+                'shuffle': args.train_dataloader_shuffle,
+                'data_seed': args.data_seed,
+            }
+
+            if hasattr(train_dataset, '__len__'):
+                batch_sampler = BatchSamplerShard(
+                    len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
+                dataloader = DataLoaderShard(train_dataset, batch_sampler, **dataloader_params)
+            else:
+                # IterableDataset
+                if dist.is_initialized():
+                    dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
+                dataloader = DataLoader(train_dataset, batch_size=self._train_batch_size, **dataloader_params)
+                dataloader = DataLoaderDispatcher(dataloader)
+
+            return dataloader
+        else:
+            from swift.trainers.xtuner import get_xtuner_train_dataloader
+            return get_xtuner_train_dataloader(self)
+
     def evaluate(self, *args, **kwargs):
         context = self._patch_predict_with_generate() if self.args.predict_with_generate else nullcontext()
         with context:
@@ -162,7 +201,8 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
         if loss_scale is not None:
             loss_kwargs['loss_scale'] = loss_scale
 
-        outputs = model(**inputs)
+        with self.template.compute_loss_context(model, inputs):
+            outputs = model(**inputs)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
         if self.args.past_index >= 0:
