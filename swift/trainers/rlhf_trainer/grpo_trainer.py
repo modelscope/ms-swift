@@ -294,10 +294,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.args.async_generate:
             self.add_callback(GRPOCallback(self))
         self.set_multi_turn_engine_default_max_tokens()
-        # just for debug, TODO: add in config
+        # just for debug
         self.args.dynamic_sampling = True
         self.args.max_resample_times = 3
         self.args.scale_rewards = True
+        self.args.overlong_filter = True
 
         if self.args.dynamic_sampling:
             self.resample_dataset = deepcopy(self.train_dataset)
@@ -779,7 +780,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._dynamic_sampling(inputs, total_rewards, total_rewards_per_func, completions)
 
         # Prepare final outputs with advantages and other required fields
-        batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards, device)
+        batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards)
         messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
         # Log metrics
         self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func)
@@ -864,7 +865,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return inputs, rewards, rewards_per_func, completions
 
-    def _prepare_batch_inputs(self, inputs, rewards, device):
+    def _prepare_batch_inputs(self, inputs, rewards):
         """Prepare the final batch inputs with advantages and other required fields"""
         # Compute advantages
         grouped_rewards = rewards.view(-1, self.num_generations)
@@ -914,7 +915,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
                 mini_batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
                 batch_encoded_inputs.append(mini_batch_encoded_inputs)
-
+            batch_encoded_inputs.update({'finish_reason': mini_batch['finish_reason']})
         # Split advantages into mini-batches
         mini_batch_advantages = _split_into_mini_batches(advantages, mini_batch_size=self.args.mini_batch_size)
         for i, mini_batch_advantage in enumerate(mini_batch_advantages):
@@ -935,7 +936,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Calculate clip ratio
         response_clip_ratio = (torch.gt(completion_lengths, self.args.max_completion_length).float().mean().item())
+        truncated_mask = [inp['finish_reason'] == 'length' for inp in inputs]
 
+        # response_clip_ratio = truncated_mask.sum(1) / len(completion_lengths)
         self._metrics[mode]['response_clip_ratio'].append(response_clip_ratio)
 
         # Log rewards
@@ -976,6 +979,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             assert len(inputs) == 1
             inputs = inputs[0]
         completion_mask = inputs['completion_mask']
+        truncated_mask = [inp['finish_reason'] == 'length' for inp in inputs]
+
+        if self.args.overlong_filter and any(truncated_mask):
+            truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask)
+            completion_mask = completion_mask * (~truncated_mask)
+
         per_token_logps = self._get_per_token_logps(model, inputs)
 
         # Compute the KL divergence between the model and the reference model
@@ -1030,8 +1039,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
         inputs = {
             k: v
-            for k, v in inputs.items() if k not in
-            ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps']
+            for k, v in inputs.items() if k not in [
+                'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
+                'finish_reason'
+            ]
         }
         with self._template_context(self.template):
             logits = model(**inputs).logits

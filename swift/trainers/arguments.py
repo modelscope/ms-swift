@@ -165,6 +165,7 @@ class GRPOArgumentsMixin:
     # DAPO
     dynamic_sampling: bool = False
     max_resample_times: int = 3
+    overlong_filter: bool = False
 
     # Dr.GRPO
     scale_rewards: bool = False
