@@ -130,7 +130,7 @@ class DeepseekVLTemplate(Template):
 
     def generate(self, model, *args, **kwargs):
         if not kwargs.get('generate_mode'):
-            return model.generate(*args, **kwargs)
+            return super().generate(model, *args, **kwargs)
 
         else:
             # generate how many number of images for each prompt, it is named parallel_size in the author's code

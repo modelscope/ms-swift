@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import datetime as dt
 import os
 from contextlib import nullcontext
 from typing import List, Union
@@ -57,8 +56,11 @@ class SwiftEval(SwiftPipeline):
                     result[report['dataset']] = {report['metric']: report[self.args.model_suffix]}
         elif task_cfg.eval_backend == EvalBackend.VLM_EVAL_KIT:
             for report in reports:
-                metric = next(iter(report)).rsplit('_')[-1]
-                dataset = next(iter(report)).rsplit('_')[-2]
+                splited_key = next(iter(report)).rsplit('_', 2)
+                if len(splited_key) == 3:
+                    _, dataset, metric = splited_key
+                else:
+                    dataset, metric = '-', '-'
                 result[dataset] = {metric: list(report.values())[0]}
         else:
             result = reports

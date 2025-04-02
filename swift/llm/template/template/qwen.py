@@ -493,7 +493,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
     def generate(self, model, *args, **kwargs):
         if kwargs.get('video_grid_thw') is not None:
             kwargs['use_audio_in_video'] = get_env_args('use_audio_in_video', bool, False)
-        return model.generate(*args, **kwargs)
+        return super().generate(model, *args, **kwargs)
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_omni, template_cls=Qwen2_5OmniTemplate))
