@@ -624,7 +624,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     _input: Dict = deepcopy(inputs_slice[i])
                     InferRequest.remove_response(_input['messages'])
                     _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
-                    _choices.append(_input['messages'])
+                    # _choices.append(_input['messages'])
+                    _choices.append((_input['messages'], choice.finish_reason))
                 outputs.append(_choices)
             assert len(outputs) == prompt_lens
             assert all([len(o) == self.args.tensor_parallel_size for o in outputs])
@@ -733,10 +734,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.load_optimizer()
         return inputs, outputs
 
-    @property
-    def old_policy(self):
-        return self.num_iterations > 1
-
     def _generate_completions(self, inputs):
         if self.args.use_vllm or self.args.use_lmdeploy:
             all_inputs = gather_object(inputs)
@@ -763,7 +760,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs = [output[0] for output in outputs]
 
         for i, output in enumerate(outputs):
-            inputs[i]['messages'] = output
+            inputs[i]['messages'] = output[0][0]
+            inputs[i]['finish_reason'] = output[0][1]
 
         return inputs
 
@@ -777,8 +775,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mode = 'eval' if self.control.should_evaluate else 'train'
 
         if self.args.dynamic_sampling and mode == 'train':
-            inputs, rewards, rewards_per_func, completions = self._dynamic_sampling(inputs, rewards, rewards_per_func,
-                                                                                    completions)
+            inputs, total_rewards, total_rewards_per_func, completions = \
+                self._dynamic_sampling(inputs, total_rewards, total_rewards_per_func, completions)
+
         # Prepare final outputs with advantages and other required fields
         batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards, device)
         messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
@@ -817,7 +816,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return total_rewards_per_func, total_rewards, completions
 
     def _dynamic_sampling(self, inputs, rewards, rewards_per_func, completions):
-        # dapo https://arxiv.org/abs/2503.14476
+        # DAPO https://arxiv.org/abs/2503.14476
         resample_count = 0
         valid_samples = []
         valid_rewards = []
@@ -1102,6 +1101,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             gc_collect()
 
         return total_loss.detach()
+
+    @property
+    def old_policy(self):
+        return self.num_iterations > 1
 
     @property
     def _queue(self):

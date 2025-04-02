@@ -196,8 +196,67 @@ swift rlhf \
 ```
 
 ## DAPO
-[DAPO]()在GRPO的基础上设置了几种trick，分别是
-- Clip-Higher: 对upper clip采用更大的epsilon系数鼓励模型探索
--
--
--
+[Decoupled Clip and Dynamic sAmpling Policy Optimization (DAPO)](https://arxiv.org/abs/2503.14476)在GRPO的基础上设置了几种trick，分别是
+- Clip-Higher
+- Dynamic Sampling
+- Overlong Filtering
+- Token-level Loss
+- Soft Overlong Punishment
+
+其中Token-level Loss是默认实现，不用额外设置。对于其余trick，我们可以基于GRPOTrainer，设置以下参数实现。
+
+| 参数                 | 类型      | 值      |
+|----------------------|-----------|-------------|
+| `--epsilon_high`     | `float`   | `0.28`      |
+| `--dynamic_sample`   | `bool`    | `True`      |
+| `--overlong_filter`  | `bool`    | `True`      |
+| `--reward_funcs`     | `str`     | `soft_overlong`|
+| `--max_resample_times` | `int`    | `3`        |
+
+其中 `max_resample_times` 对应Dynamic Sampling过程中的最大尝试次数。
+
+参考训练脚本(八卡colocate mode)
+```bash
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=8 \
+CUDA_LAUNCH_BLOCKING=1 \
+WANDB_API_KEY=xxx \
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen2.5-7B \
+    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --reward_funcs soft_overlong format \
+    --use_vllm true \
+    --vllm_gpu_memory_utilization 0.6 \
+    --train_type lora \
+    --torch_dtype bfloat16 \
+    --dataset AI-MO/NuminaMath-TIR#5000 \
+    --max_completion_length 2048 \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 1 \
+    --learning_rate 1e-5 \
+    --eval_steps 10 \
+    --save_steps 1000 \
+    --save_total_limit 2 \
+    --logging_steps 5 \
+    --warmup_ratio 0.05 \
+    --dataloader_num_workers 4 \
+    --dataset_num_proc 4 \
+    --num_generations 7 \
+    --temperature 1.0 \
+    --top_p 1.0 \
+    --async_generate false \
+    --system 'examples/train/grpo/prompt.txt' \
+    --deepspeed zero3 \
+    --log_completions true \
+    --num_iterations 1 \
+    --num_infer_workers 1 \
+    --max_steps 50 \
+    --report_to tensorboard wandb \
+    --epsilon 0.2 \
+    --epsilon_high 0.28 \
+    --dynamic_sample true \
+    --overlong_filter true \
+    --max_resample_times 3 \
+    --beta 0.0 \

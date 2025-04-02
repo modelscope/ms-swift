@@ -376,6 +376,25 @@ class RepetitionPenalty(ORM):
         return rewards
 
 
+class SoftOverlong(ORM):
+
+    def __init__(self, soft_l_max, soft_l_cache):
+        self.soft_l_max = soft_l_max
+        self.soft_l_cache = soft_l_cache
+
+    def __call__(self, completions, **kwargs) -> List[float]:
+        rewards = []
+        for completion in completions:
+            completion_length = len(completion)
+            if completion_length <= self.soft_l_max - self.soft_l_max:
+                rewards.append(0)
+            elif self.soft_l_max - self.soft_l_cache < completion_length <= self.soft_l_max:
+                return rewards.append((self.soft_l_max - self.soft_l_cache - completion_length) / self.soft_l_cache)
+            else:
+                return rewards.append(-1)
+        return rewards
+
+
 orms = {
     'toolbench': ReactORM,
     'math': MathORM,
@@ -384,4 +403,5 @@ orms = {
     'react_format': ReActFormat,
     'cosine': CosineReward,
     'repetition': RepetitionPenalty,
+    'soft_overlong': SoftOverlong,
 }
