@@ -436,14 +436,14 @@ class Template(ProcessorMixin):
         idxs = logprobs.argsort(descending=True, dim=-1)[:top_logprobs].tolist()
         logprobs = logprobs.tolist()
         return {
-            'content': {
+            'content': [{
                 'index': pred,
                 'logprobs': [logprobs[p] for p in pred] if isinstance(pred, (list, tuple)) else logprobs[pred],
                 'top_logprobs': [{
                     'index': idx,
                     'logprob': logprobs[idx]
                 } for idx in idxs]
-            }
+            }]
         }
 
     @staticmethod

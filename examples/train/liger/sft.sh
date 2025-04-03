@@ -1,7 +1,7 @@
 # test env: 4 * A100
-# Using use_liger and packing: 4 * 42GB, 1 hour 35 minutes
-# Not using use_liger: 4 * 54GB, 1 hour 40 minutes
-# Not using use_liger and packing: 4 * 52GB, 3 hours 30 minutes
+# Using use_liger_kernel and packing: 4 * 42GB, 1 hour 35 minutes
+# Not using use_liger_kernel: 4 * 54GB, 1 hour 40 minutes
+# Not using use_liger_kernel and packing: 4 * 52GB, 3 hours 30 minutes
 
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -28,4 +28,4 @@ swift sft \
     --deepspeed zero3 \
     --attn_impl flash_attn \
     --packing true \
-    --use_liger true
+    --use_liger_kernel true

@@ -1,7 +1,6 @@
 # test env: 4 * A100
-# Using use_liger and packing: 4 * 42GB, 1 hour 35 minutes
-# Not using use_liger: 4 * 54GB, 1 hour 40 minutes
-# Not using use_liger and packing: 4 * 52GB, 3 hours 30 minutes
+# Using use_liger_kernel: 4 * 61GB, 4 hour 30 minutes
+# Not using use_liger_kernel: 4 * 54GB, 1 hour 40 minutes
 
 nproc_per_node=4
 
@@ -17,7 +16,7 @@ swift rlhf \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
-    --learning_rate 1e-4 \
+    --learning_rate 1e-5 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
@@ -33,4 +32,5 @@ swift rlhf \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
-    --use_liger true
+    --dataset_num_proc 4 \
+    --use_liger_kernel true
