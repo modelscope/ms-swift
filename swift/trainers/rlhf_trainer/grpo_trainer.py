@@ -293,11 +293,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._buffered_inputs = [None] * args.gradient_accumulation_steps
         if self.args.async_generate:
             self.add_callback(GRPOCallback(self))
-        # just for debug
-        self.args.dynamic_sampling = True
-        self.args.max_resample_times = 3
-        self.args.scale_rewards = True
-        self.args.overlong_filter = True
 
         if self.args.dynamic_sampling:
             self.resample_dataset = deepcopy(self.train_dataset)
@@ -724,8 +719,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs = []
         outputs = gather_object(outputs)
         outputs = self.reorder_outputs(outputs, distributed_idx)
-        # if isinstance(outputs[0][0], list):
-        #     outputs = [output[0] for output in outputs]
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
             if self.args.gc_collect_after_offload:
@@ -941,7 +934,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Calculate clip ratio
         response_clip_ratio = (torch.gt(completion_lengths, self.args.max_completion_length).float().mean().item())
 
-        # response_clip_ratio = truncated_mask.sum(1) / len(completion_lengths)
         self._metrics[mode]['response_clip_ratio'].append(response_clip_ratio)
 
         # Log rewards
