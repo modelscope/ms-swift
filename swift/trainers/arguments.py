@@ -83,7 +83,7 @@ class TrainArgumentsMixin:
 
     def _init_liger(self):
         if self.use_liger_kernel:
-            assert is_liger_available(), 'use_liger requires liger_kernels, try `pip install liger-kernel`'
+            assert is_liger_available(), 'use_liger_kernel requires liger_kernels, try `pip install liger-kernel`'
 
     def __post_init__(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
