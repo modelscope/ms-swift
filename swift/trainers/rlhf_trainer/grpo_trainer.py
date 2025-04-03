@@ -578,6 +578,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                 _input['messages'][-1]['content'] += choice.message.content
                             if 'index' not in _input:
                                 _input['index'] = cnt
+                            _input['finish_reason'] = choice.finish_reason
                             cnt += 1
                             inputs.append(_input)
                     results: List[Dict] = self.multi_turn_func(inputs)  # noqa
@@ -593,9 +594,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     else:
                         global_src = dist.get_global_rank(self.group, 0)
                         dist.broadcast_object_list(results, src=global_src, group=self.group)
-                inputs_slice = [r for r in results if not r['finished']]
+                inputs_slice = [r for r in results if not (r['finished'] or r['finish_reason'] == 'length')]
                 for idx, r in enumerate(results):
-                    if r['finished']:
+                    if r['finished'] or r['finish_reason'] == 'length':
                         messages_list[r['index']] = r['messages']
                 if len(inputs_slice) > 0:
                     _input_std = []
