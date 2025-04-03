@@ -597,7 +597,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 inputs_slice = [r for r in results if not (r['finished'] or r['finish_reason'] == 'length')]
                 for idx, r in enumerate(results):
                     if r['finished'] or r['finish_reason'] == 'length':
-                        messages_list[r['index']] = r['messages']
+                        messages_list[r['index']] = (r['messages'], r['finish_reason'])
                 if len(inputs_slice) > 0:
                     _input_std = []
                     for _input in inputs_slice:
@@ -938,7 +938,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Calculate clip ratio
         response_clip_ratio = (torch.gt(completion_lengths, self.args.max_completion_length).float().mean().item())
-        # truncated_mask = [inp['finish_reason'] == 'length' for inp in inputs]
 
         # response_clip_ratio = truncated_mask.sum(1) / len(completion_lengths)
         self._metrics[mode]['response_clip_ratio'].append(response_clip_ratio)

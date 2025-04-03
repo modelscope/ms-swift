@@ -99,7 +99,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 参数
 - soft_max_length: 论文中的L_max，模型的最大生成长度，默认等于max_completion_length
-- soft_cache_length: 论文中的L_cache，控制长度惩罚区间。区间为[soft_max_length-soft_cache_length, soft_max_length]
+- soft_cache_length: 论文中的L_cache，控制长度惩罚区间，区间为[soft_max_length-soft_cache_length, soft_max_length]
 
 
 论文原文
@@ -262,10 +262,10 @@ swift rlhf \
 
 ## DAPO
 [Decoupled Clip and Dynamic sAmpling Policy Optimization (DAPO)](https://arxiv.org/abs/2503.14476)在GRPO的基础上设置了几种trick，分别是
-- Clip-Higher
+- Clip Higher
 - Dynamic Sampling
 - Overlong Filtering
-- Token-level Loss
+- Token level Loss
 - Soft Overlong Punishment
 
 其中Token-level Loss是默认实现，不用额外设置。对于其余trick，我们可以基于GRPOTrainer，设置以下参数实现。
@@ -290,14 +290,21 @@ swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B \
     --external_plugins examples/train/grpo/plugin/plugin.py \
-    --reward_funcs soft_overlong format \
+    --reward_funcs accuracy soft_overlong \
+    --max_completion_length 4096 \
+    --soft_cache_length 819 \
+    --epsilon 0.2 \
+    --epsilon_high 0.28 \
+    --dynamic_sample true \
+    --overlong_filter true \
+    --max_resample_times 3 \
     --use_vllm true \
     --vllm_gpu_memory_utilization 0.6 \
-    --train_type lora \
+    --num_infer_workers 8 \
+    --train_type full \
     --torch_dtype bfloat16 \
     --dataset AI-MO/NuminaMath-TIR#5000 \
-    --max_completion_length 2048 \
-    --num_train_epochs 3 \
+    --num_train_epochs 1 \
     --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 1 \
     --learning_rate 1e-5 \
@@ -308,20 +315,12 @@ swift rlhf \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
-    --num_generations 7 \
+    --num_generations 8 \
     --temperature 1.0 \
     --top_p 1.0 \
-    --async_generate false \
-    --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero3 \
     --log_completions true \
     --num_iterations 1 \
-    --num_infer_workers 1 \
     --max_steps 50 \
     --report_to tensorboard wandb \
-    --epsilon 0.2 \
-    --epsilon_high 0.28 \
-    --dynamic_sample true \
-    --overlong_filter true \
-    --max_resample_times 3 \
     --beta 0.0 \
