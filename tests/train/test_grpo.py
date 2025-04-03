@@ -19,21 +19,21 @@ kwargs = {
     'num_train_epochs': 1,
     'num_generations': 2,
     'max_completion_length': 2048,
-    'max_steps': 10,
-    'eval_steps': 5,
+    'max_steps': 3,
+    'eval_steps': 3,
     'system': SYSTEM_PROMPT,
 }
 
 
 def test_llm_pt():
-    os.environ['NPROC_PER_NODES'] = 4
+    os.environ['NPROC_PER_NODES'] = '4'
     multi_turn_funcs = [None, 'math_tip_trick']
     for multi_turn_func in multi_turn_funcs:
         kwargs['multi_turn_func'] = multi_turn_func
         rlhf_main(
             RLHFArguments(
                 model='Qwen/Qwen2.5-1.5B-Instruct',
-                dataset=['MATH-lighteval#100'],
+                dataset=['AI-MO/NuminaMath-TIR#100'],
                 reward_funcs=['accuracy', 'format'],
                 **kwargs))
 
@@ -45,14 +45,14 @@ def test_llm_vllm():
     for num_infer_workers in infer_workers:
         for tp_size in tp_sizes:
             for multi_turn_func in multi_turn_funcs:
-                os.environ['NPROC_PER_NODES'] = 4 if num_infer_workers == 4 else 3
+                os.environ['NPROC_PER_NODES'] = '4' if num_infer_workers == 4 else str(4 - num_infer_workers)
                 kwargs['use_vllm'] = True
                 kwargs['tensor_parallel_size'] = tp_size
                 kwargs['multi_turn_func'] = multi_turn_func
                 rlhf_main(
                     RLHFArguments(
                         model='Qwen/Qwen2.5-1.5B-Instruct',
-                        dataset=['MATH-lighteval#100'],
+                        dataset=['AI-MO/NuminaMath-TIR#100'],
                         reward_funcs=['accuracy', 'format'],
                         **kwargs))
 
