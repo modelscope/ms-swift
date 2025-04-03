@@ -147,6 +147,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                             'will use the old weights to generate responses to accelerate. '
                             'This will ignore the `CLIP` of advantages, if you found the training '
                             'is unstable, you may consider using --async_generate false.')
+            if self.soft_cache_length is None:
+                since
 
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':

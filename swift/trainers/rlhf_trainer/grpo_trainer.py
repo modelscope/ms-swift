@@ -981,9 +981,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs = inputs[0]
         completion_mask = inputs['completion_mask']
         truncated_mask = inputs['truncated_mask']
-
-        # overlong filter
+        # apply the completion_mask to exclude loss and metrics for overlong completions
         if self.args.overlong_filter and any(truncated_mask):
+            if all(truncated_mask):
+                logger.info('All completions are overlong, loss and KL will be zero')
             truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask).to(completion_mask.device)
             completion_mask = completion_mask * (~truncated_mask)
 
@@ -1005,23 +1006,27 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
-        loss = (per_token_loss * completion_mask).sum() / completion_mask.sum()
+        completions_length = completion_mask.sum()
+        if completions_length == 0:
+            # Prevent division by zero issues after all completions are filtered by the overlong filter
+            completions_length += 1e-4
+        loss = (per_token_loss * completion_mask).sum() / completions_length
 
         # Log the metrics
         metrics = {}
         mode = 'eval' if self.control.should_evaluate else 'train'
 
         if self.beta != 0.0:
-            mean_kl = (per_token_kl * completion_mask).sum() / completion_mask.sum()
+            mean_kl = (per_token_kl * completion_mask).sum() / completions_length
             metrics['kl'] = mean_kl
 
         is_clipped = (coef_1 < (1 - self.epsilon_low)) | (coef_1 > (1 + self.epsilon_high))
-        clip_ratio = (is_clipped * completion_mask).sum() / completion_mask.sum()
+        clip_ratio = (is_clipped * completion_mask).sum() / completions_length
         metrics['clip_ratio'] = clip_ratio
 
         # Log metrics or return them
         if return_outputs:
-            metrics['completion_length'] = completion_mask.sum()
+            metrics['completions_length'] = completions_length
             return loss, metrics
         else:
             for key, value in metrics.items():
@@ -1043,7 +1048,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             k: v
             for k, v in inputs.items() if k not in [
                 'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                'finish_reason'
+                'truncated_mask'
             ]
         }
         with self._template_context(self.template):
@@ -1089,7 +1094,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             with self.compute_loss_context_manager():
                 mini_batch_loss, mini_batch_metrics = self.compute_loss(model, mini_batch, return_outputs=True)
-                mb_completion_length = mini_batch_metrics['completion_length']
+                mb_completion_length = mini_batch_metrics['completions_length']
 
             self.accelerator.backward(mini_batch_loss)
             # Token-level metrics are weighted by completion length to ensure a fair average over all tokens.

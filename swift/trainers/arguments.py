@@ -176,6 +176,8 @@ class GRPOArgumentsMixin:
     dynamic_sampling: bool = False
     max_resample_times: int = 3
     overlong_filter: bool = False
+    soft_max_length: Optional[int] = None
+    soft_cache_length: Optional[int] = None
 
     # Dr.GRPO
     scale_rewards: bool = False
