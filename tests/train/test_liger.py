@@ -24,7 +24,8 @@ def test_mllm_dpo():
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='dpo',
-            model='Qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/Qwen2.5-VL-3B-Instruct',
+            train_type='full',
             dataset=['swift/RLAIF-V-Dataset#1000'],
             dataset_num_proc=8,
             deepspeed='zero3',
@@ -36,3 +37,4 @@ def test_mllm_dpo():
 
 if __name__ == '__main__':
     test_sft()
+    # test_mllm_dpo()

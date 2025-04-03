@@ -296,7 +296,7 @@ swift pt \
     --train_type full \
     --deepspeed zero2 \
     --output_dir output \
-    --max_steps 100000 \
+    --max_steps 10000 \
     ...
 ```
 
