@@ -136,7 +136,9 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False
 - multi_turn_func: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现
 - mini_batch_size：用于将每个设备上的批次大小（per_device_batch）进一步切分为更小的子批次。为确保切分有效，per_device_batch 需要能够被 mini_batch_size 整除
--
+- dynamic_sample：筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
+- max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。
+- overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。
 
 奖励函数参数，见[内置奖励函数](#内置奖励函数)
 
@@ -289,7 +291,6 @@ WANDB_API_KEY=xxx \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
     --reward_funcs accuracy soft_overlong \
     --max_completion_length 4096 \
     --soft_cache_length 819 \
