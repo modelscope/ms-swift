@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from types import MethodType
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 import torch
 from peft.tuners import lora
@@ -130,3 +130,26 @@ def patch_lora_unmerge(model):
                 del module.unmerge_origin
                 module._cache_pop = module._cache_pop_origin
                 del module._cache_pop_origin
+
+
+def _split_into_mini_batches(batch: List, mini_batch_size: int) -> List[List]:
+    """
+    Splits a full batch into multiple mini-batches based on the specified mini_batch_size.
+
+    Args:
+        batch (List): The full batch.
+        mini_batch_size (int): The size of each mini-batch.
+
+    Returns:
+        List[List]: A list of mini-batches.
+    """
+    if mini_batch_size is None or mini_batch_size >= len(batch):
+        # If mini_batch_size is not specified or larger than the batch size,
+        # return the full batch as a single mini-batch
+        return [batch]
+
+    mini_batches = []
+    for i in range(0, len(batch), mini_batch_size):
+        mini_batch = batch[i:i + mini_batch_size]
+        mini_batches.append(mini_batch)
+    return mini_batches
