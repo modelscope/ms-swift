@@ -280,8 +280,6 @@ swift rlhf \
 | `--reward_funcs`     | `str`     | `soft_overlong`|
 | `--max_resample_times` | `int`    | `3`        |
 
-其中 `max_resample_times` 对应Dynamic Sampling过程中的最大尝试次数。
-
 参考训练脚本(八卡colocate mode)
 ```bash
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
