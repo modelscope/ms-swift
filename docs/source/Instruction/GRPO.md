@@ -214,7 +214,7 @@ swift rlhf \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
-    --num_generations 7 \
+    --num_generations 8 \
     --temperature 0.9 \
     --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero2 \
