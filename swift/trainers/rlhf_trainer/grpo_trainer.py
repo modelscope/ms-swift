@@ -293,7 +293,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._buffered_inputs = [None] * args.gradient_accumulation_steps
         if self.args.async_generate:
             self.add_callback(GRPOCallback(self))
-        self.set_multi_turn_engine_default_max_tokens()
         # just for debug
         self.args.dynamic_sampling = True
         self.args.max_resample_times = 3
@@ -556,8 +555,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.llm.infer.protocol import ChatCompletionResponse
         rank, _, _, _ = get_dist_setting()
         request_config = copy(request_config)
-        results: List[ChatCompletionResponse] = self.engine.infer(
-            infer_requests=inputs_slice, request_config=request_config, use_tqdm=False)
+        with self.multi_turn_completion_length_context():
+            results: List[ChatCompletionResponse] = self.engine.infer(
+                infer_requests=inputs_slice, request_config=request_config, use_tqdm=False)
         prompt_lens = len(inputs_slice)
         messages_list = [None] * (len(inputs_slice) * self.args.tensor_parallel_size)
         if self.multi_turn_func:
@@ -1187,22 +1187,36 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         state[key] = value.to(self.offload_states[key], non_blocking=True)
         self.offload_states.clear()
 
-    def set_multi_turn_engine_default_max_tokens(self):
-        # Reset max_model_len to ensure that the total length during multi-turn generation
-        # does not exceed max_tokens, i.e., max_completion_length
-        if self.multi_turn_func and self.infer_rank >= 0:
-            origin_set_default_max_tokens = self.engine.set_default_max_tokens
+    @contextmanager
+    def multi_turn_completion_length_context(self):
+        """
+        Context manager that temporarily adjusts the engine's max length handling
+        for multi-turn generation scenarios.
 
-            def new_set_default_max_tokens(_self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
-                max_model_len = _self.max_model_len or 8192
-                num_tokens = 0
-                for inp in inputs:
-                    num_tokens = max(num_tokens, _self._get_num_tokens(inp))
-                _self.max_model_len = min(max_model_len, num_tokens + request_config.max_tokens)
-                _self.origin_set_default_max_tokens(request_config, inputs)
+        Ensures the total sequence length (prompt + completion) never exceeds:
+            min(original_max_len, prompt_tokens + max_completion_length)
+        """
+        if not (self.multi_turn_func and self.infer_rank >= 0):
+            yield
+            return
 
-            self.engine.set_default_max_tokens = MethodType(new_set_default_max_tokens, self.engine)
-            self.engine.origin_set_default_max_tokens = origin_set_default_max_tokens
+        original_fn = self.engine.set_default_max_tokens
+
+        def set_default_max_tokens(_self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
+            # Calculate required context window
+            original_max_len = _self.max_model_len or 8192  # Fallback default
+            prompt_tokens = max(_self._get_num_tokens(inp) for inp in inputs)
+            max_len = min(original_max_len, prompt_tokens + request_config.max_tokens)
+
+            # Temporarily adjust and delegate
+            _self.max_model_len = max_len
+            original_fn(request_config, inputs)
+
+        try:
+            self.engine.set_default_max_tokens = MethodType(set_default_max_tokens, self.engine)
+            yield
+        finally:
+            self.engine.set_default_max_tokens = original_fn
 
     def get_resample_dataloader(self) -> DataLoader:
         resample_dataset = self.resample_dataset
