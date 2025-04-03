@@ -724,8 +724,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs = []
         outputs = gather_object(outputs)
         outputs = self.reorder_outputs(outputs, distributed_idx)
-        if isinstance(outputs[0][0], list):
-            outputs = [output[0] for output in outputs]
+        # if isinstance(outputs[0][0], list):
+        #     outputs = [output[0] for output in outputs]
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
             if self.args.gc_collect_after_offload:
@@ -762,7 +762,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs = [output[0] for output in outputs]
 
         for i, output in enumerate(outputs):
-            inputs[i]['messages'] = output[0][0]
+            if isinstance(output[0][0], list):
+                output[0] = output[0][0]
+            inputs[i]['messages'] = output[0]
             inputs[i]['is_truncated'] = output[0][1] == 'length'
 
         return inputs
