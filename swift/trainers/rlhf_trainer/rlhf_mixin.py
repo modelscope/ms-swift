@@ -100,37 +100,10 @@ class RLHFTrainerMixin:
         self.is_vision_model = False
         self.label_pad_token_id = -100
         self.use_dpo_data_collator = True
-        if args.use_liger_kernel:
-            for m in [model, ref_model]:
-                if m is not None:
-                    self._apply_liger(m)
-
         if is_deepspeed_zero3_enabled() and ref_model is not None:
             model = ModelWrapper(model, ref_model)
-        args.use_liger_kernel = False  # compat zero3
         super().__init__(model, *_args, **kwargs)
-        args.use_liger_kernel = True  # recover
         self.padding_value = self.tokenizer.pad_token_id
-
-    @staticmethod
-    def _apply_liger(model):
-        # copy from transformers trainer
-        from transformers.utils import is_liger_kernel_available
-        if is_liger_kernel_available():
-            from liger_kernel.transformers import _apply_liger_kernel_to_instance
-
-            if isinstance(model, PreTrainedModel):
-                # Patch the model with liger kernels. Use the default kernel configurations.
-                _apply_liger_kernel_to_instance(model=model)
-            elif hasattr(model, 'get_base_model') and isinstance(model.get_base_model(), PreTrainedModel):
-                # Patch the base model with liger kernels where model is a PeftModel.
-                # Use the default kernel configurations.
-                _apply_liger_kernel_to_instance(model=model.get_base_model())
-            else:
-                logger.warning('The model is not an instance of PreTrainedModel. No liger kernels will be applied.')
-        else:
-            raise ImportError('You have set `use_liger_kernel` to `True` but liger-kernel >= 0.3.0 is not available. '
-                              'Please install it with `pip install liger-kernel`')
 
     def _save_checkpoint(self, model, *args, **kwargs):
         context = nullcontext()
