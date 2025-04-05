@@ -205,12 +205,6 @@ class QuantEngine(ProcessorMixin):
         prefix, experts = QuantEngine._get_experts(block)
         num_experts = len(experts)
 
-        def _select_module(name, module):
-
-            if module.out_features in {1, num_experts}:
-                return False
-            return True
-
         layers = get_layers(block)
         res = []
         experts = defaultdict(list)
