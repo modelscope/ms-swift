@@ -36,6 +36,7 @@ swift export \
     --test_convert_precision true \
     --output_dir Qwen2.5-7B-Instruct-mcore
 ```
+- Note: If an OOM (Out Of Memory) error occurs, please remove the --test_convert_precision true parameter.
 
 Next, use the following script to start training. The required GPU memory resources are 2*80GiB:
 

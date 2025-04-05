@@ -21,7 +21,7 @@ swift sft \
     --gradient_accumulation_steps $(expr 32 / $nproc_per_node) \
     --eval_steps 500 \
     --save_steps 500 \
-    --save_total_limit 5 \
+    --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 8192 \
     --output_dir output \
