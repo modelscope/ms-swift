@@ -155,7 +155,7 @@ Other important parameters:
 - dataloader_prefetch_factor: Defaults to None. If `dataloader_num_workers > 0`, it is set to 10.
 - train_dataloader_shuffle: Whether the training dataloader should shuffle data, defaulting to True. This parameter is invalid for IterableDataset. IterableDataset reads data in a sequential manner.
 - 🔥neftune_noise_alpha: Coefficient of noise added by neftune, default is 0. Usually can be set to 5, 10, 15.
-- 🔥use_liger_kernel: Whether to enable the [Liger](https://github.com/linkedin/Liger-Kernel) kernel to accelerate training and reduce GPU memory consumption. Defaults to False.
+- 🔥use_liger_kernel: Whether to enable the [Liger](https://github.com/linkedin/Liger-Kernel) kernel to accelerate training and reduce GPU memory consumption. Defaults to False. Example shell script can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/liger).
 - average_tokens_across_devices: Whether to average the number of tokens across devices. If set to True, `num_tokens_in_batch` will be synchronized using all_reduce for accurate loss calculation. Default is False.
 - max_grad_norm: Gradient clipping. Default is 1.
 - push_to_hub: Push checkpoint to hub. Default is False.

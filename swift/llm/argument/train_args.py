@@ -154,7 +154,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
             raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
 
         self._handle_pai_compat()
-        self._init_liger()
 
         self._init_deepspeed()
         self._init_device()
