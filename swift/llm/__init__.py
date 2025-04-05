@@ -28,7 +28,7 @@ if TYPE_CHECKING:
                           HfDataset, SubsetDataset)
     from .utils import (deep_getattr, to_float_dtype, to_device, History, Messages, history_to_messages,
                         messages_to_history, Processor, save_checkpoint, ProcessorMixin,
-                        get_temporary_cache_files_directory, get_cache_dir)
+                        get_temporary_cache_files_directory, get_cache_dir, is_moe_model)
     from .base import SwiftPipeline
     from .data_loader import DataLoaderDispatcher, DataLoaderShard, BatchSamplerShard
 else:
@@ -68,7 +68,7 @@ else:
         'utils': [
             'deep_getattr', 'to_device', 'to_float_dtype', 'History', 'Messages', 'history_to_messages',
             'messages_to_history', 'Processor', 'save_checkpoint', 'ProcessorMixin',
-            'get_temporary_cache_files_directory', 'get_cache_dir'
+            'get_temporary_cache_files_directory', 'get_cache_dir', 'is_moe_model'
         ],
         'base': ['SwiftPipeline'],
         'data_loader': ['DataLoaderDispatcher', 'DataLoaderShard', 'BatchSamplerShard'],

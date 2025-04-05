@@ -34,6 +34,7 @@ swift export \
     --test_convert_precision true \
     --output_dir Qwen2.5-7B-Instruct-mcore
 ```
+- 注意：若出现OOM，请将`--test_convert_precision true`参数去除
 
 然后，使用以下脚本进行训练，训练所需显存资源为2*80GiB：
 ```shell

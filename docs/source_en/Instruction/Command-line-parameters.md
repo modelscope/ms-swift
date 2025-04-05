@@ -126,7 +126,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - lr_scheduler_type: Type of lr_scheduler, defaults to 'cosine'.
 - lr_scheduler_kwargs: Other parameters for the lr_scheduler, defaults to None.
 - 🔥gradient_checkpointing_kwargs: Parameters for `torch.utils.checkpoint`. For example, set as `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Defaults to None.
-- report_to: Default value is `tensorboard`. You can also specify `--report_to tensorboard wandb swanlab` or `--report_to all`.
+- 🔥report_to: Default value is `tensorboard`. You can also specify `--report_to tensorboard wandb swanlab` or `--report_to all`.
 - logging_first_step: Whether to log the first step, defaults to True.
 - logging_steps: Interval for logging, defaults to 5.
 - predict_with_generate: Whether to use generative method during validation, default is False.
@@ -335,7 +335,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
 - loss_type: Type of loss. Defaults to None, which uses the model's built-in loss function.
 - 🔥packing: Whether to use sequence packing to improve computational efficiency. The default value is False.
-  - Note: When using packing, please combine it with --attn_impl flash_attn. For details, see [this PR](https://github.com/huggingface/transformers/pull/31629). Packing does not currently support multimodal models.
+  - Note: When using packing, please combine it with `--attn_impl flash_attn` and ensure "transformers>=4.44". For details, see [this PR](https://github.com/huggingface/transformers/pull/31629).
 - 🔥lazy_tokenize: Whether to use lazy tokenization. If set to False, all dataset samples are tokenized before training (for multimodal models, this includes reading images from disk). This parameter defaults to False for LLM training, and True for MLLM training, to save memory.
 - acc_strategy: Strategy for calculating accuracy during training and validation. Options are `seq`-level and `token`-level accuracy, with `token` as the default.
 - max_new_tokens: Generation parameter override. The maximum number of tokens to generate when `predict_with_generate=True`, defaulting to 64.

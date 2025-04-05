@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from collections import defaultdict
 from contextlib import contextmanager
 from typing import Dict, List, Optional
 
@@ -7,7 +8,7 @@ import torch.nn as nn
 from tqdm import tqdm
 
 from swift.llm import (ExportArguments, HfConfigFactory, MaxLengthError, ProcessorMixin, deep_getattr, get_model_arch,
-                       load_dataset, prepare_model_template, save_checkpoint, to_device)
+                       is_moe_model, load_dataset, prepare_model_template, save_checkpoint, to_device)
 from swift.utils import get_logger, get_model_parameter_info
 
 logger = get_logger()
@@ -170,7 +171,8 @@ class QuantEngine(ProcessorMixin):
             quantizer.get_dataset = _get_dataset_origin
             quantizer.prepare_dataset = _prepare_dataset_origin
 
-    def get_block_name_to_quantize(self, model: nn.Module) -> Optional[str]:
+    @staticmethod
+    def get_block_name_to_quantize(model: nn.Module) -> Optional[str]:
         model_arch = get_model_arch(model.model_meta.model_arch)
         prefix = ''
         if hasattr(model_arch, 'language_model'):
@@ -187,18 +189,49 @@ class QuantEngine(ProcessorMixin):
             module_list = max(module_lists, key=lambda x: len(x[1]))
             return f'{prefix}.{module_list[0]}'.strip('.')
 
+    @staticmethod
+    def _get_experts(block):
+        for n, m in block.named_modules():
+            if isinstance(m, (nn.ModuleList, nn.Sequential)):
+                return n, m
+
+    @staticmethod
+    def get_modules_in_block_to_quantize(model, block_name: str):
+        if not is_moe_model(model):
+            return
+        from optimum.gptq.utils import get_layers
+        # Do not quantize the gate part.
+        block = deep_getattr(model, block_name)[-1]
+        prefix, experts = QuantEngine._get_experts(block)
+        num_experts = len(experts)
+
+        layers = get_layers(block)
+        res = []
+        experts = defaultdict(list)
+        experts_idx = None
+        for name, layer in layers.items():
+            if name.startswith(prefix):
+                suffix = name.rsplit('.', 1)[-1]
+                experts[suffix].append(name)
+                experts_idx = len(res)
+            elif layer.out_features not in {1, num_experts}:
+                res.append([name])
+        res[experts_idx:experts_idx] = experts.values()
+        return res
+
     def gptq_model_quantize(self):
         from optimum.gptq import GPTQQuantizer
         args = self.args
         logger.info(f'Quantization dataset: {args.dataset}')
+        block_name_to_quantize = self.get_block_name_to_quantize(self.model)
         with self._patch_gptq():
             gptq_quantizer = GPTQQuantizer(
                 bits=args.quant_bits,
                 group_size=args.group_size,
                 dataset=','.join(args.dataset),
                 batch_size=args.quant_batch_size,
-                block_name_to_quantize=self.get_block_name_to_quantize(self.model),
-            )
+                block_name_to_quantize=block_name_to_quantize,
+                modules_in_block_to_quantize=self.get_modules_in_block_to_quantize(self.model, block_name_to_quantize))
             gptq_quantizer.serialization_keys.append('block_name_to_quantize')
             logger.info('Start quantizing the model...')
             logger.warning('The process of packing the model takes a long time and there is no progress bar. '

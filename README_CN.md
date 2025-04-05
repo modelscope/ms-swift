@@ -152,7 +152,7 @@ swift sft \
     --gradient_accumulation_steps 16 \
     --eval_steps 50 \
     --save_steps 50 \
-    --save_total_limit 5 \
+    --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \
@@ -296,7 +296,7 @@ swift pt \
     --train_type full \
     --deepspeed zero2 \
     --output_dir output \
-    --max_steps 100000 \
+    --max_steps 10000 \
     ...
 ```
 
