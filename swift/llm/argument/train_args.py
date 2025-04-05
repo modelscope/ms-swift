@@ -9,8 +9,8 @@ from transformers.utils.versions import require_version
 from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
 from swift.trainers.arguments import TrainArgumentsMixin
-from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir,
-                         is_liger_available, is_master, is_mp, is_pai_training_job, is_swanlab_available)
+from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
+                         is_mp, is_pai_training_job, is_swanlab_available)
 from .base_args import BaseArguments, to_abspath
 from .tuner_args import TunerArguments
 
@@ -195,13 +195,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
                 logger.warn('If `zero_hpz_partition_size`(ZeRO++) causes grad_norm NaN, please'
                             ' try `--torch_dtype float16`')
             logger.info(f'Using deepspeed: {self.deepspeed}')
-
-    def _init_liger(self):
-        if self.use_liger:
-            assert is_liger_available(), 'use_liger requires liger_kernels, try `pip install liger-kernel`'
-            if self.loss_scale != 'default':
-                logger.warning('use_liger is not compatible with `loss_scale`, setting to default...')
-                self.loss_scale = 'default'
 
     def _handle_pai_compat(self) -> None:
         if not is_pai_training_job():

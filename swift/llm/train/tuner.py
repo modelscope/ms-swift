@@ -1,10 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import os
 from typing import List, Union
 
 import torch
 import transformers
 from packaging import version
+from transformers import TrainingArguments
 
 from swift.llm import TrainArguments, get_model_arch
 from swift.plugin import Tuner, extra_tuners
@@ -337,7 +339,7 @@ class TunerMixin:
 
     @classmethod
     def prepare_model(cls, args, model, *, template=None, train_dataset=None, task_type=None):
-        if args.use_liger:
+        if args.use_liger_kernel and 'use_liger_kernel' not in inspect.signature(TrainingArguments).parameters:
             # Apply liger
             apply_liger(args.model_type)
 

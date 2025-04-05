@@ -95,8 +95,6 @@ class TunerArguments:
         reft_rank (int): Rank parameter for ReFT. Default is 4.
         reft_intervention_type (Literal): Type of intervention for ReFT. Default is 'LoreftIntervention'.
         reft_args (Optional[str]): Additional arguments for ReFT. Default is None.
-
-        use_liger (bool): Flag to indicate if Liger-kernel is used. Default is False.
     """
     # full
     freeze_parameters: List[str] = field(default_factory=list)
@@ -195,9 +193,6 @@ class TunerArguments:
                                     'LobireftIntervention', 'DireftIntervention',
                                     'NodireftIntervention'] = 'LoreftIntervention'
     reft_args: Optional[str] = None
-
-    # use_liger
-    use_liger: bool = False
 
     def __post_init__(self):
         if isinstance(self.init_weights, str) and self.init_weights.lower() in {'true', 'false'}:

@@ -180,7 +180,7 @@ class LLMTrain(BaseUI):
                 'en': 'The tuner backend'
             }
         },
-        'use_liger': {
+        'use_liger_kernel': {
             'label': {
                 'zh': '使用Liger kernel',
                 'en': 'Use Liger kernel'
@@ -231,7 +231,7 @@ class LLMTrain(BaseUI):
                     with gr.Row():
                         gr.Textbox(elem_id='seed', scale=4)
                         gr.Dropdown(elem_id='torch_dtype', scale=4)
-                        gr.Checkbox(elem_id='use_liger', scale=4)
+                        gr.Checkbox(elem_id='use_liger_kernel', scale=4)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                         gr.Textbox(elem_id='ddp_num', value='2', scale=4)
                 Hyper.build_ui(base_tab)
