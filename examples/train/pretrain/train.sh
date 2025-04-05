@@ -1,4 +1,6 @@
-# If not using flash_attn, please remove `--packing true`
+# If not using flash_attn, or transformers<4.44,
+# or encountering an abnormally large loss (i.e., the model does not support packing),
+# please remove `--packing true`.
 nproc_per_node=4
 
 NPROC_PER_NODE=$nproc_per_node \
