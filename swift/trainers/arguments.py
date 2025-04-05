@@ -11,7 +11,7 @@ import torch.utils.checkpoint
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
-from swift.utils import get_dist_setting, get_logger, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_liger_available, use_torchacc
 from .optimizers.galore import GaLoreConfig
 
 logger = get_logger()
@@ -49,6 +49,7 @@ class TrainArgumentsMixin:
     metric_warmup_step: Optional[float] = 0
     fsdp_num: int = 1
     acc_steps: int = 1
+    use_liger_kernel: bool = False
 
     # train-eval loop args
     eval_use_evalscope: bool = False
@@ -80,6 +81,10 @@ class TrainArgumentsMixin:
         except (ImportError, AttributeError):
             pass
 
+    def _init_liger(self):
+        if self.use_liger_kernel:
+            assert is_liger_available(), 'use_liger_kernel requires liger_kernels, try `pip install liger-kernel`'
+
     def __post_init__(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
         if use_torchacc():
@@ -93,6 +98,7 @@ class TrainArgumentsMixin:
         if self.gradient_checkpointing_kwargs:
             self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
         self._fix_gradient_checkpointing()
+        self._init_liger()
         if self.dataloader_num_workers is None:
             if platform.system() == 'Windows':
                 self.dataloader_num_workers = 0
