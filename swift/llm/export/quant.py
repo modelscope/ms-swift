@@ -201,15 +201,9 @@ class QuantEngine(ProcessorMixin):
             return
         from optimum.gptq.utils import get_layers
         # Do not quantize the gate part.
-        block = deep_getattr(model, block_name)[0]
+        block = deep_getattr(model, block_name)[-1]
         prefix, experts = QuantEngine._get_experts(block)
         num_experts = len(experts)
-
-        def _select_module(name, module):
-
-            if module.out_features in {1, num_experts}:
-                return False
-            return True
 
         layers = get_layers(block)
         res = []
