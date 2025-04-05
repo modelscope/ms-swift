@@ -27,5 +27,5 @@ swift pt \
     --dataloader_num_workers 4 \
     --dataset_num_proc 8 \
     --save_only_model true \
-    --output_dir output/Qwen2.5-14B \
+    --output_dir output/Qwen2.5-7B \
     --attn_impl flash_attn
