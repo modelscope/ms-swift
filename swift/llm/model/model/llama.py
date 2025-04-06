@@ -224,7 +224,8 @@ register_model(
                 Model('LLM-Research/Llama-4-Scout-17B-16E-Instruct', 'meta-llama/Llama-4-Scout-17B-16E-Instruct'),
                 Model('LLM-Research/Llama-4-Maverick-17B-128E-Instruct-FP8',
                       'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8'),
-                Model('LLM-Research/Llama-4-Maverick-17B-128E-Instruct', 'meta-llama/Llama-4-Maverick-17B-128E-Instruct'),
+                Model('LLM-Research/Llama-4-Maverick-17B-128E-Instruct',
+                      'meta-llama/Llama-4-Maverick-17B-128E-Instruct'),
             ])
         ],
         TemplateType.llama4,

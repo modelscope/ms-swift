@@ -116,6 +116,7 @@ class Llama3_2VisionTemplate(Template):
 
 register_template(Llama3_2TemplateMeta(MLLMTemplateType.llama3_2_vision, template_cls=Llama3_2VisionTemplate))
 
+
 class Llama4Template(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -127,19 +128,27 @@ class Llama4Template(Template):
         encoded = super()._encode(inputs)
         images = inputs.images
         if images:
+            split_token = self._tokenize('\n')
             input_ids, labels = encoded['input_ids'], encoded['labels']
             idx_list = findall(input_ids, -100)
+            media_inputs = self.processor(text='\n'.join(['<|image|>']), images=images, add_special_tokens=False)
+            splited_tokens = self._split_list(media_inputs['input_ids'][0], split_token)
 
-            input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, )
+            encoded['input_ids'], encoded['labels'] = self._extend_tokens(
+                input_ids,
+                labels,
+                idx_list, lambda: i, splited_tokens[i]
+            )
         return encoded
+
 
 @dataclass
 class Llama4TemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ['<|begin_of_text|>'])
-    prompt: Prompt = field(default_factory=lambda: [
-        '<|header_start|>user<|header_end|>\n\n{{QUERY}}<|eot|>'
-        '<|header_start|>assistant<|header_end|>\n\n'
-    ])
+    prompt: Prompt = field(
+        default_factory=lambda:
+        ['<|header_start|>user<|header_end|>\n\n{{QUERY}}<|eot|>'
+         '<|header_start|>assistant<|header_end|>\n\n'])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|eot|>'])
     suffix: Prompt = field(default_factory=lambda: ['<|eot|>'])
     stop_words: List[Word] = field(default_factory=lambda: ['<|end_of_text|>', '<|eom|>'])
@@ -148,7 +157,6 @@ class Llama4TemplateMeta(TemplateMeta):
 
 
 register_template(Llama4TemplateMeta(MLLMTemplateType.llama4, template_cls=Llama4Template))
-
 
 register_template(
     Llama3TemplateMeta(
