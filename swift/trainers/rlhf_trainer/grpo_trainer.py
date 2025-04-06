@@ -851,8 +851,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 (self.accelerator.process_index + 1) * len(inputs),
             )
             inputs = valid_samples[:self.global_train_batch_size][process_slice]
-            rewards = torch.cat(valid_rewards)[:self.global_train_batch_size][process_slice]
-            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.global_train_batch_size][process_slice]
+            rewards = torch.cat(valid_rewards)[:self.global_train_batch_size]
+            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.global_train_batch_size]
             completions = valid_completions[:self.global_train_batch_size][process_slice]
         else:
             logger.warning(f'There are still std=0 groups present after {self.args.max_resample_times} retries.')
