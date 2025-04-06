@@ -33,6 +33,7 @@ class MLLMModelArch:
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'
+    llama4 = 'llama4'
 
     llava_hf = 'llava_hf'
     llava_next_video_hf = 'llava_next_video_hf'
