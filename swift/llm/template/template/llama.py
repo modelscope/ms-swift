@@ -118,6 +118,7 @@ register_template(Llama3_2TemplateMeta(MLLMTemplateType.llama3_2_vision, templat
 
 
 class Llama4Template(Template):
+    placeholder_tokens = ['<|patch|>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -131,14 +132,16 @@ class Llama4Template(Template):
             split_token = self._tokenize('\n')
             input_ids, labels = encoded['input_ids'], encoded['labels']
             idx_list = findall(input_ids, -100)
-            media_inputs = self.processor(text='\n'.join(['<|image|>']), images=images, add_special_tokens=False)
-            splited_tokens = self._split_list(media_inputs['input_ids'][0], split_token)
+            media_inputs = self.processor(
+                text='\n'.join(['<|image|>'] * len(idx_list)),
+                images=images,
+                add_special_tokens=False,
+                return_tensors='pt')
+            splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
 
-            encoded['input_ids'], encoded['labels'] = self._extend_tokens(
-                input_ids,
-                labels,
-                idx_list, lambda: i, splited_tokens[i]
-            )
+            encoded['input_ids'], encoded['labels'] = self._extend_tokens(input_ids, labels, idx_list,
+                                                                          lambda i: splited_tokens[i])
+            encoded['pixel_values'] = media_inputs['pixel_values']
         return encoded
 
 

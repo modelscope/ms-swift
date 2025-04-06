@@ -508,6 +508,18 @@ def test_mistral_2503():
         'The kitten appears to be looking directly at the viewer with a curious and endearing expression.')
 
 
+def test_llama4():
+    pt_engine = PtEngine('LLM-Research/Llama-4-Scout-17B-16E-Instruct')
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    assert response[:128] == ('The two images are distinct in their subject matter and style. The first image features '
+                              'a realistic depiction of a kitten, while') and len(response) == 654
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -515,7 +527,7 @@ if __name__ == '__main__':
     logger = get_logger()
     # test_qwen2_vl()
     # test_qwen2_5_vl()
-    test_qwen2_5_omni()
+    # test_qwen2_5_omni()
     # test_internvl2()
     # test_internvl2_phi3()
     # test_llava()
@@ -557,3 +569,4 @@ if __name__ == '__main__':
     # test_ui_tars()
     # test_gemma3_vision()
     # test_mistral_2503()
+    test_llama4()
