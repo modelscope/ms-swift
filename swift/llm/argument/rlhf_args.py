@@ -139,7 +139,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 self.gradient_accumulation_steps = 1
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
-            self.truncation_strategy = 'left'  # Used for trimming the excessively long parts of a prompt.
+            if self.truncation_strategy != 'left':
+                raise ValueError('GRPO only support left truncation strategy')
             if self.beta is None:
                 self.beta = 0.04  # https://arxiv.org/abs/2402.03300
             if self.async_generate:
