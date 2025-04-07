@@ -173,7 +173,7 @@ class GRPOArgumentsMixin:
     mini_batch_size: Optional[int] = None
 
     # DAPO, https://arxiv.org/abs/2503.14476
-    dynamic_sampling: bool = False
+    dynamic_sample: bool = False
     max_resample_times: int = 3
     overlong_filter: bool = False
     soft_max_length: Optional[int] = None
