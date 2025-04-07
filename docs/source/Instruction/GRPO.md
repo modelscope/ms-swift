@@ -7,7 +7,7 @@
 环境安装
 ```bash
 pip install math_verify # reward function
-pip install -U trl"
+pip install -U trl
 ```
 
 **注意**：训练过程中 loss 接近0 是正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
@@ -26,7 +26,7 @@ SWIFT的GRPO训练中，训练模型尽量使用可见显卡的前部分，而ro
 
 ## 奖励函数
 ### 自定义奖励函数
-奖励函数接受模型生成的文本 completions 以及其他数据集中的列作为参数，并对模型生成的文本进行打分。以下是一个示例，展示了如何实现一个简单的长度奖励函数。该函数会在模型生成的文本长度超过 1024 时，给予 1.0 的奖励信号；否则，奖励信号为 0.0。
+奖励函数接受模型生成的文本 completions 以及其他数据集中的列作为参数(kwargs)，并对模型生成的文本进行打分。以下是一个示例，展示了如何实现一个简单的长度奖励函数。该函数会在模型生成的文本长度超过 1024 时，给予 1.0 的奖励信号；否则，奖励信号为 0.0。
 
 ```python
 from swift.plugin import ORM, orms
@@ -42,15 +42,23 @@ orms['dummy']= DummyLengthRewardFunction
 执行脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_rm.sh)
 
 ### 内置奖励函数
-swift内置了四种基于规则的奖励函数，分别是 accuracy、format、 cosine 和 repetition。(代码见swift/plugin/orm.py)
+swift内置了五种基于规则的奖励函数(代码见swift/plugin/orm.py)
 
-其中 accuracy 和 format 奖励函数源于论文[DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning](https://arxiv.org/abs/2501.12948), cosine 和 repetition 奖励函数源于论文[Demystifying Long Chain-of-Thought Reasoning in LLMs](https://arxiv.org/abs/2502.03373)
+| 奖励函数       | 论文                                                                 |
+|----------------|----------------------------------------------------------------------------|
+| accuracy       | [DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via RL](https://arxiv.org/abs/2501.12948) |
+| format         | 同上                                                                        |
+| cosine         | [Demystifying Long Chain-of-Thought Reasoning in LLMs](https://arxiv.org/abs/2502.03373) |
+| repetition     | 同上                                                                        |
+| soft_overlong  | [Decoupled Clip and Dynamic sAmpling Policy Optimization (DAPO)](https://arxiv.org/abs/2503.14476)    |
 
-1. **accuracy**
+#### 1. **accuracy**
 
 该函数将模型的生成结果与数据集中的 solution 列进行比较，计算准确率分数。如果生成结果与标准答案一致，则得分为 1.0；否则为 0.0。
 
-2. **format**
+注意：该奖励函数使用`math_verify`库解析生成结果和solution中的答案，可能只适用于特定的数学数据集。
+
+#### 2. **format**
 
 论文中使用以下system prompt要求模型按照固定格式进行返回
 ```
@@ -59,7 +67,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 该函数检查模型是否按照 `<think>think content</think><answer>answer content</answer>` 的格式进行生成。如果生成文本符合格式要求，则得分为 1.0；否则为 0.0。
 
-3. **cosine**
+#### 3. **cosine**
 
 论文发现，仅使用 accuracy 奖励函数进行训练会导致模型的生成长度趋于超长，从而影响训练效果。cosine 奖励函数通过控制模型的生成长度来优化训练过程：
 
@@ -76,7 +84,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - cosine_max_len（默认值等于模型生成的最大程度）：生成文本的最大长度限制。
 
 
-4. **repetition**
+#### 4. **repetition**
 
 惩罚模型生成文本中的重复内容，通过检测生成文本中的重复 n-gram 模式来评估重复程度，并给予相应的惩罚。
 
@@ -86,14 +94,24 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - repetition_n_grams（默认值：3）：用于检测重复的 n-gram 大小。
 - repetition_max_penalty（默认值：-1.0）：最大惩罚值，用于控制惩罚的强度。
 
+#### 5. **soft overlong punishment**
+定义长度惩罚区间。在这个区间内，给予[-1,0]的线性惩罚。
 
-5. **奖励模型**
+参数
+- soft_max_length: 论文中的L_max，模型的最大生成长度，默认等于max_completion_length
+- soft_cache_length: 论文中的L_cache，控制长度惩罚区间，区间为[soft_max_length-soft_cache_length, soft_max_length]
+
+
+论文原文
+> a length-aware penalty mechanism designed to shape the reward for truncated samples. Specifically, when the response length exceeds the predefined maximum value, we define a punishment interval. Within this interval, the longer the response, the greater the punishment it receives. This penalty is added to the original rule-based correctness reward, thereby signaling to the model to avoid excessively long responses.
+
+6. **奖励模型**
 
 除了基于规则的奖励函数外，本框架还支持使用奖励模型作为奖励函数。在使用奖励模型时，需要指定 reward_model 参数，该参数与 model 参数类似，用于指定奖励模型的路径或名称。需要注意的是，reward_model 和 reward_funcs 至少需要指定一个。
 
 
-## 运行脚本
-超参数
+## 参数与运行脚本
+参数
 - num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_eval_batch_size * nproc_per_node 整除
 - max_completion_length: 采样生成的最大长度，默认为512
 - ds3_gather_for_generation: 该参数适用于DeepSpeed ZeRO-3。如果启用，策略模型权重将被收集用于生成，从而提高生成速度。然而，禁用此选项允许训练超出单个GPU VRAM的模型，尽管生成速度会变慢。禁用此选项与vLLM生成不兼容。默认为True
@@ -118,24 +136,28 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False
 - multi_turn_func: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现
 - mini_batch_size：用于将每个设备上的批次大小（per_device_batch）进一步切分为更小的子批次。为确保切分有效，per_device_batch 需要能够被 mini_batch_size 整除
+- dynamic_sample：筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
+- max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。
+- overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。
 
-奖励函数超参，见[内置奖励函数](#内置奖励函数)
+奖励函数参数，见[内置奖励函数](#内置奖励函数)
 
-建议使用vLLM作为采样后端加速训练，多卡环境下，建议单独设置一张显卡用于部署vLLM，此时进程数应等于显卡数减一
-
+可以使用vLLM、LMDeploy作为采样后端加速训练
 多卡vLLM
 ```bash
-# nproc_per_node 比显卡数少一，vLLM默认单独部署于最后一张卡，即卡7
+# async mode
+# 要求 num_infer_workers(部署) + NPROC_PER_NODE(训练) = device_count
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=7 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen2.5-7B \
     --reward_funcs accuracy format \
     --use_vllm true \
     --vllm_device auto \
     --vllm_gpu_memory_utilization 0.7 \
     --vllm_max_model_len 8192 \
+    --num_infer_workers 1 \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'AI-MO/NuminaMath-TIR#5000' \
@@ -159,14 +181,58 @@ swift rlhf \
     --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero2 \
     --log_completions true
+
+# colocate mode
+# 要求 num_infer_workers(部署) = NPROC_PER_NODE(训练) = device_count
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=8 \
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen2.5-1.5B \
+    --reward_funcs accuracy format \
+    --use_vllm true \
+    --vllm_device auto \
+    --vllm_gpu_memory_utilization 0.5 \
+    --vllm_max_model_len 8192 \
+    --num_infer_workers 8 \
+    --train_type full \
+    --torch_dtype bfloat16 \
+    --dataset 'AI-MO/NuminaMath-TIR#5000' \
+    --max_completion_length 2048 \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 1 \
+    --per_device_eval_batch_size 1 \
+    --learning_rate 1e-6 \
+    --gradient_accumulation_steps 2 \
+    --eval_steps 200 \
+    --save_steps 200 \
+    --save_total_limit 2 \
+    --logging_steps 5 \
+    --max_length 4096 \
+    --output_dir output \
+    --warmup_ratio 0.05 \
+    --dataloader_num_workers 4 \
+    --dataset_num_proc 4 \
+    --num_generations 8 \
+    --temperature 0.9 \
+    --system 'examples/train/grpo/prompt.txt' \
+    --deepspeed zero2 \
+    --log_completions true \
+    --sleep_level 1 \
+    --offload_model true \
+    --offload_optimizer true \
+    --gc_collect_after_offload true \
+    --log_completions true
 ```
+
 
 单卡
 ```bash
+# PT backend
 CUDA_VISIBLE_DEVICES=0 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen2.5-7B \
     --reward_funcs accuracy format \
     --train_type lora \
     --lora_rank 8 \
@@ -193,4 +259,103 @@ swift rlhf \
     --temperature 0.9 \
     --system 'examples/train/grpo/prompt.txt' \
     --log_completions true
+
+# vLLM backend
+CUDA_VISIBLE_DEVICES=0 \
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen2.5-7B \
+    --vllm_gpu_memory_utilization 0.5 \
+    --use_vllm true \
+    --sleep_level 1 \
+    --offload_model true \
+    --offload_optimizer true \
+    --gc_collect_after_offload true \
+    --reward_funcs accuracy format \
+    --train_type lora \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --target_modules all-linear \
+    --torch_dtype bfloat16 \
+    --dataset 'AI-MO/NuminaMath-TIR#1000' \
+    --max_completion_length 1024 \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --learning_rate 1e-5 \
+    --gradient_accumulation_steps 1 \
+    --eval_steps 100 \
+    --save_steps 100 \
+    --save_total_limit 2 \
+    --logging_steps 5 \
+    --max_length 2048 \
+    --output_dir output \
+    --warmup_ratio 0.05 \
+    --dataloader_num_workers 4 \
+    --dataset_num_proc 4 \
+    --num_generations 4 \
+    --temperature 0.9 \
+    --system 'examples/train/grpo/prompt.txt' \
+    --log_completions true
+```
+
+## DAPO
+[Decoupled Clip and Dynamic sAmpling Policy Optimization (DAPO)](https://arxiv.org/abs/2503.14476)在GRPO的基础上设置了几种trick，分别是
+- Clip Higher
+- Dynamic Sampling
+- Overlong Filtering
+- Token level Loss
+- Soft Overlong Punishment
+
+其中Token level Loss是默认实现，不用额外设置。对于其余trick，我们可以基于GRPOTrainer，设置以下参数实现。
+
+| 参数                 | 类型      | 值      |
+|----------------------|-----------|-------------|
+| `--epsilon_high`     | `float`   | `0.28`      |
+| `--dynamic_sample`   | `bool`    | `true`      |
+| `--overlong_filter`  | `bool`    | `true`      |
+| `--reward_funcs`     | `str`     | `soft_overlong`|
+| `--max_resample_times` | `int`    | `3`        |
+
+参考训练脚本(八卡colocate mode)
+```bash
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=8 \
+WANDB_API_KEY=xxx \
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen2.5-1.5B \
+    --reward_funcs accuracy soft_overlong \
+    --max_completion_length 4096 \
+    --soft_cache_length 819 \
+    --epsilon 0.2 \
+    --epsilon_high 0.28 \
+    --dynamic_sample true \
+    --overlong_filter true \
+    --max_resample_times 3 \
+    --use_vllm true \
+    --vllm_gpu_memory_utilization 0.6 \
+    --num_infer_workers 8 \
+    --train_type full \
+    --torch_dtype bfloat16 \
+    --dataset AI-MO/NuminaMath-TIR#5000 \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --learning_rate 1e-6 \
+    --eval_steps 1000 \
+    --save_steps 1000 \
+    --save_total_limit 2 \
+    --logging_steps 5 \
+    --warmup_ratio 0.05 \
+    --dataloader_num_workers 4 \
+    --dataset_num_proc 4 \
+    --num_generations 8 \
+    --temperature 1.0 \
+    --top_p 1.0 \
+    --deepspeed zero2 \
+    --log_completions true \
+    --num_iterations 1 \
+    --report_to tensorboard wandb \
+    --beta 0.0 \
 ```
