@@ -26,7 +26,7 @@ SWIFT的GRPO训练中，训练模型尽量使用可见显卡的前部分，而ro
 
 ## 奖励函数
 ### 自定义奖励函数
-奖励函数接受模型生成的文本 completions 以及其他数据集中的列作为参数，并对模型生成的文本进行打分。以下是一个示例，展示了如何实现一个简单的长度奖励函数。该函数会在模型生成的文本长度超过 1024 时，给予 1.0 的奖励信号；否则，奖励信号为 0.0。
+奖励函数接受模型生成的文本 completions 以及其他数据集中的列作为参数(kwargs)，并对模型生成的文本进行打分。以下是一个示例，展示了如何实现一个简单的长度奖励函数。该函数会在模型生成的文本长度超过 1024 时，给予 1.0 的奖励信号；否则，奖励信号为 0.0。
 
 ```python
 from swift.plugin import ORM, orms
@@ -142,8 +142,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 奖励函数参数，见[内置奖励函数](#内置奖励函数)
 
-建议使用vLLM作为采样后端加速训练，多卡环境下，建议单独设置一张显卡用于部署vLLM，此时进程数应等于显卡数减一
-
+可以使用vLLM、LMDeploy作为采样后端加速训练
 多卡vLLM
 ```bash
 # async mode
@@ -230,10 +229,49 @@ swift rlhf \
 
 单卡
 ```bash
+# PT backend
 CUDA_VISIBLE_DEVICES=0 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
+    --reward_funcs accuracy format \
+    --train_type lora \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --target_modules all-linear \
+    --torch_dtype bfloat16 \
+    --dataset 'AI-MO/NuminaMath-TIR#1000' \
+    --max_completion_length 1024 \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --learning_rate 1e-5 \
+    --gradient_accumulation_steps 1 \
+    --eval_steps 100 \
+    --save_steps 100 \
+    --save_total_limit 2 \
+    --logging_steps 5 \
+    --max_length 2048 \
+    --output_dir output \
+    --warmup_ratio 0.05 \
+    --dataloader_num_workers 4 \
+    --dataset_num_proc 4 \
+    --num_generations 4 \
+    --temperature 0.9 \
+    --system 'examples/train/grpo/prompt.txt' \
+    --log_completions true
+
+# vLLM backend
+CUDA_VISIBLE_DEVICES=0 \
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --vllm_gpu_memory_utilization 0.5 \
+    --use_vllm true \
+    --sleep_level 1 \
+    --offload_model true \
+    --offload_optimizer true \
+    --gc_collect_after_offload true \
     --reward_funcs accuracy format \
     --train_type lora \
     --lora_rank 8 \
