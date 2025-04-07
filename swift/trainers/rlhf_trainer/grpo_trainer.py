@@ -294,7 +294,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.args.async_generate:
             self.add_callback(GRPOCallback(self))
 
-        if self.args.dynamic_sampling:
+        if self.args.dynamic_sample:
             self.resample_dataset = deepcopy(self.train_dataset)
 
             def cyclic_iter(iterable):
@@ -770,7 +770,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         total_rewards_per_func, total_rewards, completions = self._score_completions(inputs)
         mode = 'eval' if self.control.should_evaluate else 'train'
 
-        if self.args.dynamic_sampling and mode == 'train':
+        if self.args.dynamic_sample and mode == 'train':
             # dynamic sampling for std=0 groups
             inputs, total_rewards, total_rewards_per_func, completions = \
                 self._dynamic_sampling(inputs, total_rewards, total_rewards_per_func, completions)
