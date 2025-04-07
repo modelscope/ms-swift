@@ -15,11 +15,12 @@ from .preprocessor import RowPreprocessor
 logger = get_logger()
 
 
-def sample_dataset(dataset: HfDataset,
-                   dataset_sample: Optional[int],
-                   shuffle: bool = True,
-                   random_state: Optional[np.random.RandomState] = None,
-                   ) -> HfDataset:
+def sample_dataset(
+    dataset: HfDataset,
+    dataset_sample: Optional[int],
+    shuffle: bool = True,
+    random_state: Optional[np.random.RandomState] = None,
+) -> HfDataset:
     """Sample dataset by a dataset_sample number
     Args:
         dataset: The dataset instance, iterable dataset is not supported
