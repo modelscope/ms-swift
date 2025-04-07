@@ -39,9 +39,11 @@ class DataArguments:
 
     data_seed: Optional[int] = None
     dataset_num_proc: int = 1
+    dataset_shuffle: bool = True
     streaming: bool = False
     interleave_prob: Optional[List[float]] = None
     stopping_strategy: Literal['first_exhausted', 'all_exhausted'] = 'first_exhausted'
+    shuffle_buffer_size: int = 1000
 
     enable_cache: bool = False
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists'
@@ -81,9 +83,11 @@ class DataArguments:
         return {
             'seed': self.data_seed,
             'num_proc': self.dataset_num_proc,
+            'shuffle': self.dataset_shuffle,
             'streaming': self.streaming,
             'interleave_prob': self.interleave_prob,
             'stopping_strategy': self.stopping_strategy,
+            'shuffle_buffer_size': self.shuffle_buffer_size,
             'use_hf': self.use_hf,
             'hub_token': self.hub_token,
             'download_mode': self.download_mode,
