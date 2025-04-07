@@ -40,7 +40,7 @@ class ModelArguments:
     torch_dtype: Literal['bfloat16', 'float16', 'float32', None] = None
     # flash_attn: It will automatically convert names based on the model.
     # None: It will be automatically selected between sdpa and eager.
-    attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None
+    attn_impl: Optional[str] = None  # 'flash_attn', 'sdpa', 'eager'
 
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
