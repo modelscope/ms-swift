@@ -778,7 +778,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Prepare final outputs with advantages and other required fields
         batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards)
         # Log metrics
-        self._log_metrics(batch_encoded_inputs, completions, total_rewards, total_rewards_per_func)
+        messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
+
+        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func)
 
         return batch_encoded_inputs
 
@@ -920,7 +922,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return batch_encoded_inputs
 
-    def _log_metrics(self, inputs, completions, rewards, rewards_per_func):
+    def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func):
         """Log training/evaluation metrics"""
         mode = 'eval' if self.control.should_evaluate else 'train'
 
@@ -957,7 +959,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.log_completions and self.state.global_step % self.args.logging_steps == 0:
             table = {
                 'step': [str(self.state.global_step)] * len(rewards),
-                'messages': [inputs['messages'][:-1] for inputs in gather_object(inputs)],
+                'messages': gather_object(messages),
                 'completion': gather_object(completions),
                 'reward': rewards.tolist(),
             }
