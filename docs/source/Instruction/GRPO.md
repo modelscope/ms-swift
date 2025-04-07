@@ -192,7 +192,7 @@ swift rlhf \
     --reward_funcs accuracy format \
     --use_vllm true \
     --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.7 \
+    --vllm_gpu_memory_utilization 0.5 \
     --vllm_max_model_len 8192 \
     --num_infer_workers 8 \
     --train_type full \
@@ -216,14 +216,13 @@ swift rlhf \
     --num_generations 8 \
     --temperature 0.9 \
     --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero2 \
+    --deepspeed zero3 \
     --log_completions true \
     --sleep_level 1 \
     --offload_model true \
     --offload_optimizer true \
     --gc_collect_after_offload true \
-    --log_completions true \
-
+    --log_completions true
 ```
 
 

@@ -20,6 +20,11 @@ class ModelWrapper(nn.Module):
         super().__init__()
         self._model = model
         self._ref_model = ref_model
+        self._ref_model.eval()
+
+    def train(self, mode: bool = True):
+        self._model.train(mode)
+        return self
 
     def forward(self, *args, **kwargs):
         return self._model(*args, **kwargs)
