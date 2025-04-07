@@ -1000,6 +1000,17 @@ class Template(ProcessorMixin):
         for v in val:
             self.print_inputs({k: v.tolist()})
 
+    @staticmethod
+    def _split_list(inputs: List[int], x: int) -> List[List[int]]:
+        idxs = findall(inputs, x)
+        idxs.append(len(inputs))
+        res = []
+        lo = 0
+        for idx in idxs:
+            res.append(inputs[lo:idx])
+            lo = idx + 1
+        return res
+
     def replace_video2image(self, load_video_func, inputs, replace_tag: Callable) -> List[Context]:
         context_list = []
         if self.mode in {'vllm', 'lmdeploy'}:

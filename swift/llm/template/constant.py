@@ -102,6 +102,7 @@ class MLLMTemplateType:
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'
+    llama4 = 'llama4'
 
     llava1_5_hf = 'llava1_5_hf'
     llava1_6_mistral_hf = 'llava1_6_mistral_hf'

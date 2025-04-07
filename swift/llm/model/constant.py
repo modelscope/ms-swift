@@ -157,6 +157,7 @@ class MLLMModelType:
     xcomposer2_5_ol_audio = 'xcomposer2_5_ol_audio'
 
     llama3_2_vision = 'llama3_2_vision'
+    llama4 = 'llama4'
     llama3_1_omni = 'llama3_1_omni'
 
     llava1_5_hf = 'llava1_5_hf'
