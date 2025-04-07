@@ -29,7 +29,8 @@ from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import orms
 from swift.plugin.multi_turn import multi_turns
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
-                         get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
+                         get_node_setting, is_liger_available, is_lmdeploy_available, is_vllm_available,
+                         is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import patch_lora_merge, patch_lora_unmerge, round_robin
@@ -38,6 +39,9 @@ try:
     from trl.extras.profiling import profiling_decorator
 except ImportError:
     raise ImportError('Please install trl from source using: `pip install -U trl`')
+
+if is_liger_available():
+    from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
 
 del HFGRPOTrainer.__init__
 
@@ -175,6 +179,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     self.group = group
 
         super().__init__(model, ref_model, *_args, **kwargs)
+
+        if self.use_liger_loss:
+            if not is_liger_available():
+                raise ImportError(
+                    'Liger is required to use `liger_loss` as the GRPO loss. Run `pip install liger-kernel`.')
+            if is_peft_model(model):
+                raise ValueError('Liger loss is not supported with a PEFT model.')
+
+            self.liger_grpo_loss = LigerFusedLinearGRPOLoss(
+                beta=self.beta,
+                epsilon_low=self.epsilon_low,
+                epsilon_high=self.epsilon_high,
+                temperature=self.temperature,
+                use_ref_model=self.ref_model is not None,
+            )
 
         num_processes = self.accelerator.num_processes
         global_batch_size = args.per_device_train_batch_size * num_processes
@@ -920,6 +939,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if isinstance(inputs, list):
             assert len(inputs) == 1
             inputs = inputs[0]
+        if self.use_liger_loss:
+            return self.compute_liger_loss(model, inputs)
+
         completion_mask = inputs['completion_mask']
         per_token_logps = self._get_per_token_logps(model, inputs)
 
@@ -985,6 +1007,58 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         logits = logits / self.temperature
         input_ids = input_ids[:, -logits_to_keep:]
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
+
+    @profiling_decorator
+    def _get_last_hidden_state(self, model, inputs):
+        # unwrap the model to access the model.model
+        logits_to_keep = inputs['logits_to_keep']
+        unwrapped_model = self.accelerator.unwrap_model(model)
+        if not unwrapped_model.model_meta.is_multimodal:
+            last_hidden_state = unwrapped_model.model(
+                input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask']).last_hidden_state
+        else:
+            inputs = {
+                k: v
+                for k, v in inputs.items() if k not in
+                ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps']
+            }
+            with self._template_context(self.template):
+                last_hidden_state = unwrapped_model.model(**inputs).last_hidden_state
+        last_hidden_state = last_hidden_state[:, :-1, :]  # (B, L-1, H)
+        if logits_to_keep is not None:
+            last_hidden_state = last_hidden_state[:, -logits_to_keep:, :]  # (B, logits_to_keep, H)
+        return last_hidden_state
+
+    def compute_liger_loss(self, model, inputs):
+        # Compute the per-token log probabilities for the model
+        input_ids = inputs['input_ids']
+        completion_ids = [input_ids[:logits_to_keep] for logits_to_keep in inputs['logits_to_keep']]
+        completion_mask = inputs['completion_mask']
+
+        # get the last hidden state of the model
+        last_hidden_state = self._get_last_hidden_state(model, inputs)
+        unwrapped_model = self.accelerator.unwrap_model(model)
+        # compute loss and metrics using liger grpo loss
+        loss, metrics = self.liger_grpo_loss(
+            _input=last_hidden_state,
+            lin_weight=unwrapped_model.lm_head.weight,
+            selected_token_ids=completion_ids,
+            attention_mask=completion_mask,
+            advantages=inputs['advantages'],
+            bias=unwrapped_model.lm_head.bias,
+            ref_per_token_logps=inputs['ref_per_token_logps'],
+            old_per_token_logps=inputs['old_per_token_logps'],
+        )
+        # Extract metrics from the liger_grpo_loss output
+        # KL divergence is the first metric when beta is non-zero
+        mean_kl = metrics[0] if self.beta != 0.0 else None
+        clip_ratio = metrics[-1]
+
+        mode = 'eval' if self.control.should_evaluate else 'train'
+        if self.beta != 0.0:
+            self._metrics[mode]['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
+        self._metrics[mode]['clip_ratio'].append(self.accelerator.gather_for_metrics(clip_ratio).mean().item())
+        return loss
 
     def evaluation_loop(self, dataloader, *args, **kwargs):
         # set mini_batch_size None in evaluation

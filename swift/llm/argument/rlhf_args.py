@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
 from swift.trainers.arguments import GRPOArgumentsMixin
-from swift.utils import get_logger, set_default_ddp_config
+from swift.utils import get_logger, is_liger_available, set_default_ddp_config
 from .train_args import TrainArguments
 
 logger = get_logger()
@@ -235,3 +235,10 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         if self.mini_batch_size:
             assert self.per_device_train_batch_size % self.mini_batch_size == 0,\
                 'per_device_train_batch_size needs be divisible by mini_batch_size'
+
+        if self.use_liger_loss:
+            assert self.mini_batch_size is None, 'liger loss is not compatible with mini batch currently'
+            try:
+                from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
+            except ImportError:
+                raise ImportError('liger_kernel is not available. Run `pip install liger-kernel>=0.5.6`.')
