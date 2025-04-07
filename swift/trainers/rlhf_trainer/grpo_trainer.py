@@ -550,9 +550,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.llm.infer.protocol import ChatCompletionResponse
         rank, _, _, _ = get_dist_setting()
         request_config = copy(request_config)
-        with self.multi_turn_completion_length_context():
-            results: List[ChatCompletionResponse] = self.engine.infer(
-                infer_requests=inputs_slice, request_config=request_config, use_tqdm=False)
+        results: List[ChatCompletionResponse] = self.engine.infer(
+            infer_requests=inputs_slice, request_config=request_config, use_tqdm=False)
         prompt_lens = len(inputs_slice)
         messages_list = [None] * (len(inputs_slice) * self.args.tensor_parallel_size)
         if self.multi_turn_func:
@@ -589,7 +588,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     else:
                         global_src = dist.get_global_rank(self.group, 0)
                         dist.broadcast_object_list(results, src=global_src, group=self.group)
-                inputs_slice = [r for r in results if not (r['finished'] or r['finish_reason'] == 'length')]
+                inputs_slice = [r for r in results if not r['finished']]
                 for idx, r in enumerate(results):
                     if r['finished'] or r['finish_reason'] == 'length':
                         messages_list[r['index']] = (r['messages'], r['finish_reason'])
@@ -630,7 +629,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def async_infer(self, inputs, inputs_slice, distributed_idx):
 
         def infer_task():
-            with set_device_context(self.infer_device):
+            with set_device_context(self.infer_device), self.multi_turn_completion_length_context():
                 return self._infer_multi_turn(inputs_slice, self.request_config)
 
         future: Future = self.executor.submit(infer_task)
@@ -649,7 +648,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         distributed_idx = round_robin(len(all_inputs), nnodes * self.args.num_infer_workers)
         if self.infer_rank >= 0:
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
-            outputs = self._infer_multi_turn(_input_slice, self.request_config)
+            with self.multi_turn_completion_length_context():
+                outputs = self._infer_multi_turn(_input_slice, self.request_config)
             self._queue.put(DataCache(inputs, outputs, distributed_idx))
         else:
             self._queue.put(DataCache(inputs, [], distributed_idx))
@@ -698,7 +698,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     request_config = copy(self.request_config)
                     if self.args.tensor_parallel_size > 1:
                         request_config.seed += self.state.global_step
-                    outputs = self._infer_multi_turn(_input_slice, self.request_config)
+                    with self.multi_turn_completion_length_context():
+                        outputs = self._infer_multi_turn(_input_slice, self.request_config)
                 if self.args.tensor_parallel_size > 1:
                     if self.infer_rank_tp_0 < 0:
                         outputs = []
@@ -745,7 +746,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if is_multimodal:
                 models = self.template.remove_post_encode_hook()
             with unwrap_model_for_generation(
-                    self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation):
+                    self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
+            ), self.multi_turn_completion_length_context():
                 outputs = self._infer_multi_turn(inputs, self.request_config)
                 self.model.train()
             if is_multimodal:
@@ -1194,6 +1196,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return
 
         original_fn = self.engine.set_default_max_tokens
+        original_max_len = self.engine.max_model_len
 
         def set_default_max_tokens(_self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
             # Calculate required context window
@@ -1201,8 +1204,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if isinstance(inputs, dict):
                 inputs = [inputs]
             prompt_tokens = max(_self._get_num_tokens(inp) for inp in inputs)
-            max_len = min(original_max_len, prompt_tokens + request_config.max_tokens)
-            _self.max_model_len = max_len
+
+            if not hasattr(_self, 'set_grpo_max_model_len'):
+                # set max model len in first round
+                max_len = min(original_max_len, prompt_tokens + request_config.max_tokens)
+                _self.max_model_len = max_len
+                _self.set_grpo_max_model_len = True
+            else:
+                if _self.max_model_len <= prompt_tokens:
+                    # modify max_model_len > prompt_tokens to avoid crash
+                    _self.max_model_len = (prompt_tokens + 10)
+
             original_fn(request_config, inputs)
 
         try:
@@ -1210,6 +1222,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             yield
         finally:
             self.engine.set_default_max_tokens = original_fn
+            self.engine.max_model_len = original_max_len
+            del self.engine.set_grpo_max_model_len
 
     def get_resample_dataloader(self) -> DataLoader:
         resample_dataset = self.resample_dataset
