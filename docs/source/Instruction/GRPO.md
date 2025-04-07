@@ -188,7 +188,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B \
+    --model Qwen/Qwen2.5-1.5B \
     --reward_funcs accuracy format \
     --use_vllm true \
     --vllm_device auto \
@@ -216,7 +216,7 @@ swift rlhf \
     --num_generations 8 \
     --temperature 0.9 \
     --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero3 \
+    --deepspeed zero2 \
     --log_completions true \
     --sleep_level 1 \
     --offload_model true \
@@ -325,7 +325,7 @@ CUDA_LAUNCH_BLOCKING=1 \
 WANDB_API_KEY=xxx \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B \
+    --model Qwen/Qwen2.5-1.5B \
     --reward_funcs accuracy soft_overlong \
     --max_completion_length 4096 \
     --soft_cache_length 819 \
@@ -354,7 +354,7 @@ swift rlhf \
     --num_generations 8 \
     --temperature 1.0 \
     --top_p 1.0 \
-    --deepspeed zero3 \
+    --deepspeed zero2 \
     --log_completions true \
     --num_iterations 1 \
     --max_steps 50 \
