@@ -154,7 +154,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=7 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen2.5-7B \
     --reward_funcs accuracy format cosine repetition\
     --use_vllm true \
     --vllm_device auto \
@@ -191,7 +191,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen2.5-7B \
     --reward_funcs accuracy format \
     --use_vllm true \
     --vllm_device auto \
@@ -234,7 +234,7 @@ Single-GPU
 CUDA_VISIBLE_DEVICES=0 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen2.5-7B \
     --reward_funcs accuracy format cosine repetition\
     --train_type lora \
     --lora_rank 8 \
@@ -266,7 +266,7 @@ swift rlhf \
 CUDA_VISIBLE_DEVICES=0 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen2.5-7B \
     --vllm_gpu_memory_utilization 0.5 \
     --use_vllm true \
     --sleep_level 1 \
