@@ -203,8 +203,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.infer_device = None
-
-        if use_vllm or use_lmdeploy:
+        self.use_fast_infer = use_vllm or use_lmdeploy  # whether to use the PT backend
+        if self.use_fast_infer:
             if self.infer_rank >= 0:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
                 if fast_infer_device[0] == 'auto':
@@ -558,7 +558,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             remove_response = True
             while len(inputs_slice) > 0:
                 request_config.n = 1
-                if self.infer_rank_tp_0 >= 0:
+                if self.infer_rank_tp_0 >= 0 or not self.use_fast_infer:
                     inputs = []
                     cnt = 0
                     for i, output in enumerate(results):
@@ -730,7 +730,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return inputs, outputs
 
     def _generate_completions(self, inputs):
-        if self.args.use_vllm or self.args.use_lmdeploy:
+        if self.use_fast_infer:
             all_inputs = gather_object(inputs)
 
             _, outputs = self._fast_infer(all_inputs, inputs)
@@ -1213,7 +1213,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:
                 if _self.max_model_len <= prompt_tokens:
                     # modify max_model_len > prompt_tokens to avoid crash
-                    _self.max_model_len = (prompt_tokens + 10)
+                    num_tokens_avoid_crash = 10
+                    _self.max_model_len = (prompt_tokens + num_tokens_avoid_crash)
+                    request_config.max_tokens = num_tokens_avoid_crash
 
             original_fn(request_config, inputs)
 
