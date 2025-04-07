@@ -172,6 +172,8 @@ class GRPOArgumentsMixin:
     # mini-batch
     mini_batch_size: Optional[int] = None
 
+    use_liger_loss: bool = False
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
