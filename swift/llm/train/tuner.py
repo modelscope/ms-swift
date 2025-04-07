@@ -76,11 +76,11 @@ def get_multimodal_target_regex(
     ignore_pattern += model_arch.lm_head or []
     ignore_pattern = '|'.join(ignore_pattern)
 
-    target_regex = f'^({prefix_pattern})'
+    target_regex = rf'^({prefix_pattern})'
     if ignore_pattern:
-        target_regex += f'(?!.*({ignore_pattern})).*'
+        target_regex += rf'(?!.*\b({ignore_pattern})\b).*'
     if rejected_pattern:
-        target_regex = f'(?!^({rejected_pattern}))' + target_regex
+        target_regex = rf'(?!^({rejected_pattern}))' + target_regex
     return target_regex
 
 
