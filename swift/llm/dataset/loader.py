@@ -308,15 +308,20 @@ class DatasetLoader:
         ]
         return [subset.set_default(dataset_meta) for subset in subsets]
 
+    def shuffle_dataset(self, dataset, seed: int, buffer_size: int = 1000):
+        if isinstance(dataset, HfDataset):
+            return dataset.shuffle(seed=seed)
+        else:
+            return dataset.shuffle(seed=seed, buffer_size=buffer_size)
+
     @staticmethod
-    def post_process(
-        train_dataset: DATASET_TYPE,
-        *,
-        dataset_sample: Optional[int] = None,
-        split_dataset_ratio: float = 0.,
-        streaming: bool = False,
-        random_state: Optional[np.random.RandomState] = None,
-    ) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
+    def post_process(train_dataset: DATASET_TYPE,
+                     *,
+                     dataset_sample: Optional[int] = None,
+                     split_dataset_ratio: float = 0.,
+                     streaming: bool = False,
+                     random_state: Optional[np.random.RandomState] = None,
+                     shuffle: bool = True) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
         """Split into train/val datasets and perform dataset sampling."""
         assert dataset_sample is None or dataset_sample > 0
         assert 0 <= split_dataset_ratio <= 1
@@ -427,9 +432,11 @@ def load_dataset(
     split_dataset_ratio: float = 0.,
     seed: Union[int, np.random.RandomState, None] = None,
     num_proc: int = 1,
+    shuffle: bool = True,
     streaming: bool = False,
     interleave_prob: Optional[List[float]] = None,
     stopping_strategy: Literal['first_exhausted', 'all_exhausted'] = 'first_exhausted',
+    shuffle_buffer_size: int = 1000,
     use_hf: Optional[bool] = None,
     hub_token: Optional[str] = None,
     strict: bool = False,
@@ -448,6 +455,7 @@ def load_dataset(
         split_dataset_ratio: The dataset split ratio
         seed: The dataset random seed
         num_proc: Proc number to use when preprocess the dataset.
+        shuffle: Whether to shuffle the dataset.
         streaming: Streaming mode or not
         use_hf: Use hf dataset or ms dataset.
         hub_token: The token of the hub.
@@ -500,8 +508,9 @@ def load_dataset(
             train_dataset,
             dataset_sample=dataset_syntax.dataset_sample,
             split_dataset_ratio=split_dataset_ratio,
-            random_state=seed,
             streaming=streaming,
+            random_state=seed,
+            shuffle=shuffle,
         )
         if train_dataset is not None:
             train_datasets.append(train_dataset)
@@ -516,4 +525,12 @@ def load_dataset(
             train_datasets, interleave_prob, seed=get_seed(seed), stopping_strategy=stopping_strategy)
         val_datasets = DatasetLoader._interleave_datasets(
             val_datasets, interleave_prob, seed=get_seed(seed), stopping_strategy=stopping_strategy)
+
+    if shuffle:
+        if train_datasets:
+            train_datasets = DatasetLoader.shuffle_dataset(
+                train_datasets, seed=get_seed(seed), buffer_size=shuffle_buffer_size)
+        if val_datasets:
+            val_datasets = DatasetLoader.shuffle_dataset(
+                val_datasets, seed=get_seed(seed), buffer_size=shuffle_buffer_size)
     return train_datasets, val_datasets
