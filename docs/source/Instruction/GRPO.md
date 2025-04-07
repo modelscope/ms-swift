@@ -321,7 +321,6 @@ swift rlhf \
 ```bash
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
-CUDA_LAUNCH_BLOCKING=1 \
 WANDB_API_KEY=xxx \
 swift rlhf \
     --rlhf_type grpo \
@@ -342,9 +341,9 @@ swift rlhf \
     --dataset AI-MO/NuminaMath-TIR#5000 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 1 \
-    --learning_rate 1e-5 \
-    --eval_steps 10 \
+    --per_device_eval_batch_size 4 \
+    --learning_rate 1e-6 \
+    --eval_steps 1000 \
     --save_steps 1000 \
     --save_total_limit 2 \
     --logging_steps 5 \
@@ -357,7 +356,6 @@ swift rlhf \
     --deepspeed zero2 \
     --log_completions true \
     --num_iterations 1 \
-    --max_steps 50 \
     --report_to tensorboard wandb \
     --beta 0.0 \
 ```
