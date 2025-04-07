@@ -22,7 +22,7 @@ swift sft \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
-    --num_labels 1 \
+    --num_labels '<num-labels>' \
     --task_type seq_cls \
     --use_chat_template false \
     --problem_type multi_label_classification
