@@ -768,18 +768,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         inputs = self._generate_completions(inputs)
         total_rewards_per_func, total_rewards, completions = self._score_completions(inputs)
-        # dynamic sampling for std=0 groups
         mode = 'eval' if self.control.should_evaluate else 'train'
 
         if self.args.dynamic_sampling and mode == 'train':
+            # dynamic sampling for std=0 groups
             inputs, total_rewards, total_rewards_per_func, completions = \
                 self._dynamic_sampling(inputs, total_rewards, total_rewards_per_func, completions)
 
         # Prepare final outputs with advantages and other required fields
         batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards)
-        messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
         # Log metrics
-        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func)
+        self._log_metrics(batch_encoded_inputs, completions, total_rewards, total_rewards_per_func)
 
         return batch_encoded_inputs
 
@@ -921,7 +920,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return batch_encoded_inputs
 
-    def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func):
+    def _log_metrics(self, inputs, completions, rewards, rewards_per_func):
         """Log training/evaluation metrics"""
         mode = 'eval' if self.control.should_evaluate else 'train'
 
@@ -958,8 +957,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.log_completions and self.state.global_step % self.args.logging_steps == 0:
             table = {
                 'step': [str(self.state.global_step)] * len(rewards),
-                'messages': messages,
-                'completion': completions,
+                'messages': [inputs['messages'][:-1] for inputs in gather_object(inputs)],
+                'completion': gather_object(completions),
                 'reward': rewards.tolist(),
             }
             self.jsonl_writer.append(table)
