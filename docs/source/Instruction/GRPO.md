@@ -308,13 +308,13 @@ swift rlhf \
 - Token level Loss
 - Soft Overlong Punishment
 
-其中Token-level Loss是默认实现，不用额外设置。对于其余trick，我们可以基于GRPOTrainer，设置以下参数实现。
+其中Token level Loss是默认实现，不用额外设置。对于其余trick，我们可以基于GRPOTrainer，设置以下参数实现。
 
 | 参数                 | 类型      | 值      |
 |----------------------|-----------|-------------|
 | `--epsilon_high`     | `float`   | `0.28`      |
-| `--dynamic_sample`   | `bool`    | `True`      |
-| `--overlong_filter`  | `bool`    | `True`      |
+| `--dynamic_sample`   | `bool`    | `true`      |
+| `--overlong_filter`  | `bool`    | `true`      |
 | `--reward_funcs`     | `str`     | `soft_overlong`|
 | `--max_resample_times` | `int`    | `3`        |
 
@@ -361,3 +361,4 @@ swift rlhf \
     --max_steps 50 \
     --report_to tensorboard wandb \
     --beta 0.0 \
+```
