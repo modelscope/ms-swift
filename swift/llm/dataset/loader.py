@@ -308,7 +308,8 @@ class DatasetLoader:
         ]
         return [subset.set_default(dataset_meta) for subset in subsets]
 
-    def shuffle_dataset(self, dataset, seed: int, buffer_size: int = 1000):
+    @staticmethod
+    def shuffle_dataset(dataset, seed: int, buffer_size: int = 1000):
         if isinstance(dataset, HfDataset):
             return dataset.shuffle(seed=seed)
         else:
