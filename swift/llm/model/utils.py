@@ -89,7 +89,7 @@ class HfConfigFactory:
     @staticmethod
     def _get_config_attrs(config: Union[PretrainedConfig, Dict[str, Any]],
                           attr_name: str,
-                          key: Optional[str] = None) -> List[Tuple[PretrainedConfig, Any]]:
+                          parent_key: Optional[str] = None) -> List[Tuple[PretrainedConfig, Any]]:
         res = []
         config_origin = config
         if not isinstance(config, dict):
@@ -98,7 +98,7 @@ class HfConfigFactory:
             if k.endswith('_config'):
                 res += HfConfigFactory._get_config_attrs(v, attr_name, k)
         value = deep_getattr(config, attr_name, None)
-        if value is not None and key in [None, 'language_config', 'llm_config', 'text_config']:
+        if value is not None and parent_key in [None, 'language_config', 'llm_config', 'text_config']:
             res.append((config_origin, value))
         return res
 
