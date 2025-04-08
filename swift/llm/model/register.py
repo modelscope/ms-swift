@@ -404,7 +404,7 @@ def _read_args_json_model_type(model_dir):
 
 def _get_model_info(model_dir: str, model_type: Optional[str], quantization_config) -> ModelInfo:
     try:
-        config = AutoConfig.from_pretrained(model_dir)
+        config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     except Exception:
         config = PretrainedConfig.get_config_dict(model_dir)[0]
     if quantization_config is not None:
