@@ -188,6 +188,9 @@ class GRPOArgumentsMixin:
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
     scale_rewards: bool = True
 
+    # compatible with trl main branch(0.17.0.dev0)
+    wandb_log_unique_prompts: Optional[bool] = None
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
