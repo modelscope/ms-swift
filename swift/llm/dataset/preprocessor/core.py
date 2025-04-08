@@ -291,7 +291,7 @@ class RowPreprocessor:
         if batch_size is None:
             batch_size = 1000 if isinstance(dataset, HfDataset) else 16
         if self.dataset_sample is not None:
-            dataset = sample_dataset(dataset, self.dataset_sample, self.random_state)
+            dataset = sample_dataset(dataset, self.dataset_sample, True, self.random_state)
 
         map_kwargs = {'batched': True, 'batch_size': batch_size}
         if isinstance(dataset, HfDataset):
