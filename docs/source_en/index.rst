@@ -39,7 +39,7 @@ Swift DOCUMENTATION
 
    Customization/Custom-model.md
    Customization/Custom-dataset.md
-   Customization/Plugin.md
+   Customization/Pluginization.md
 
 
 .. toctree::
