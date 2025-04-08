@@ -300,10 +300,10 @@ def test_ovis1_6_llama3():
 def test_ovis2():
     pt_engine = PtEngine('AIDC-AI/Ovis2-2B')  # with flash_attn
     response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'Describe the image.'}])
-    assert response[:200] == (
-        'The image features a close-up portrait of a young kitten with striking blue eyes. '
-        'The kitten has a distinctive coat pattern with a mix of gray, black, and white fur, '
-        'typical of a tabby pattern. Its ea')
+    assert response[:200] == ('The image features a close-up portrait of a young kitten with striking blue eyes. '
+                              'The kitten has a distinctive coat pattern with a mix of gray, black, and white fur, '
+                              'typical of a tabby pattern. Its ea')
+
 
 def test_paligemma():
     pt_engine = PtEngine('AI-ModelScope/paligemma-3b-mix-224')
