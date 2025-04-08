@@ -5,7 +5,7 @@ import inspect
 import os
 import re
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from concurrent.futures import Future
 from contextlib import contextmanager
 from copy import copy, deepcopy
@@ -165,7 +165,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.temperature = args.temperature
         model.warnings_issued['estimate_tokens'] = True
         kwargs['data_collator'] = lambda features: features
-        self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
 
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
@@ -179,6 +178,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     self.group = group
 
         super().__init__(model, ref_model, *_args, **kwargs)
+
+        self._metrics = {"train": defaultdict(list), "eval": defaultdict(list)}
+        self._total_train_tokens = 0
+        self.log_completions = args.log_completions
+        self.num_completions_to_print = args.num_completions_to_print
+        self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
+        # maxlen is set to the total number of forward passes per step. This value of `maxlen` ensures we log only the
+        # final optimization step.
+        maxlen = self.accelerator.num_processes * args.per_device_train_batch_size * args.gradient_accumulation_steps
+        self._textual_logs = {
+            "prompt": deque(maxlen=maxlen),
+            "completion": deque(maxlen=maxlen),
+            "rewards": defaultdict(lambda: deque(maxlen=maxlen)),
+        }
 
         num_processes = self.accelerator.num_processes
         self.global_train_batch_size = global_batch_size = args.per_device_train_batch_size * num_processes
@@ -278,8 +291,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
-        self.log_completions = args.log_completions
-        self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
 
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
