@@ -309,12 +309,20 @@ class DatasetLoader:
         return [subset.set_default(dataset_meta) for subset in subsets]
 
     @staticmethod
+    def shuffle_dataset(dataset, seed: int, buffer_size: int = 1000):
+        if isinstance(dataset, HfDataset):
+            return dataset.shuffle(seed=seed)
+        else:
+            return dataset.shuffle(seed=seed, buffer_size=buffer_size)
+
+    @staticmethod
     def post_process(
         train_dataset: DATASET_TYPE,
         *,
         dataset_sample: Optional[int] = None,
         split_dataset_ratio: float = 0.,
         streaming: bool = False,
+        shuffle: bool = True,
         random_state: Optional[np.random.RandomState] = None,
     ) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
         """Split into train/val datasets and perform dataset sampling."""
@@ -340,14 +348,14 @@ class DatasetLoader:
             if dataset_sample is None:
                 dataset_sample = len(train_dataset)
             if split_dataset_ratio == 0:
-                train_dataset = sample_dataset(train_dataset, dataset_sample, random_state)
+                train_dataset = sample_dataset(train_dataset, dataset_sample, shuffle, random_state)
                 val_dataset = None
             elif split_dataset_ratio == 1:
                 train_dataset, val_dataset = None, train_dataset
                 val_sample = dataset_sample
                 # Avoid duplication in the val_dataset.
                 assert val_sample <= len(val_dataset), f'val_sample: {val_sample}, len(val_dataset): {len(val_dataset)}'
-                val_dataset = sample_dataset(val_dataset, val_sample, random_state)
+                val_dataset = sample_dataset(val_dataset, val_sample, shuffle, random_state)
             else:
                 # Avoid duplication in the val_dataset.
                 train_len = min(len(train_dataset), dataset_sample)
@@ -355,8 +363,8 @@ class DatasetLoader:
                 train_sample = dataset_sample - val_sample
                 assert train_sample > 0
                 train_dataset, val_dataset = train_dataset.train_test_split(
-                    test_size=val_sample, seed=get_seed(random_state)).values()
-                train_dataset = sample_dataset(train_dataset, train_sample, random_state)
+                    test_size=val_sample, shuffle=shuffle, seed=get_seed(random_state)).values()
+                train_dataset = sample_dataset(train_dataset, train_sample, shuffle, random_state)
         return train_dataset, val_dataset
 
     @staticmethod
@@ -427,9 +435,11 @@ def load_dataset(
     split_dataset_ratio: float = 0.,
     seed: Union[int, np.random.RandomState, None] = None,
     num_proc: int = 1,
+    shuffle: bool = True,
     streaming: bool = False,
     interleave_prob: Optional[List[float]] = None,
     stopping_strategy: Literal['first_exhausted', 'all_exhausted'] = 'first_exhausted',
+    shuffle_buffer_size: int = 1000,
     use_hf: Optional[bool] = None,
     hub_token: Optional[str] = None,
     strict: bool = False,
@@ -448,6 +458,7 @@ def load_dataset(
         split_dataset_ratio: The dataset split ratio
         seed: The dataset random seed
         num_proc: Proc number to use when preprocess the dataset.
+        shuffle: Whether to shuffle the dataset.
         streaming: Streaming mode or not
         use_hf: Use hf dataset or ms dataset.
         hub_token: The token of the hub.
@@ -500,8 +511,9 @@ def load_dataset(
             train_dataset,
             dataset_sample=dataset_syntax.dataset_sample,
             split_dataset_ratio=split_dataset_ratio,
-            random_state=seed,
             streaming=streaming,
+            shuffle=shuffle,
+            random_state=seed,
         )
         if train_dataset is not None:
             train_datasets.append(train_dataset)
@@ -516,4 +528,12 @@ def load_dataset(
             train_datasets, interleave_prob, seed=get_seed(seed), stopping_strategy=stopping_strategy)
         val_datasets = DatasetLoader._interleave_datasets(
             val_datasets, interleave_prob, seed=get_seed(seed), stopping_strategy=stopping_strategy)
+
+    if shuffle:
+        if train_datasets:
+            train_datasets = DatasetLoader.shuffle_dataset(
+                train_datasets, seed=get_seed(seed), buffer_size=shuffle_buffer_size)
+        if val_datasets:
+            val_datasets = DatasetLoader.shuffle_dataset(
+                val_datasets, seed=get_seed(seed), buffer_size=shuffle_buffer_size)
     return train_datasets, val_datasets

@@ -12,6 +12,7 @@ swift sft \
     --max_steps 1000 \
     --attn_impl flash_attn \
     --streaming true \
+    --shuffle_buffer_size 1000 \
     --packing true \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \

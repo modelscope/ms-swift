@@ -15,31 +15,38 @@ from .preprocessor import RowPreprocessor
 logger = get_logger()
 
 
-def sample_dataset(dataset: HfDataset,
-                   dataset_sample: Optional[int],
-                   random_state: Optional[np.random.RandomState] = None) -> HfDataset:
+def sample_dataset(
+    dataset: HfDataset,
+    dataset_sample: Optional[int],
+    shuffle: bool = True,
+    random_state: Optional[np.random.RandomState] = None,
+) -> HfDataset:
     """Sample dataset by a dataset_sample number
     Args:
         dataset: The dataset instance, iterable dataset is not supported
         dataset_sample: The sample number
+        shuffle: Whether to perform random sampling on non-streaming datasets
         random_state: The random state
     Returns:
         The sampled dataset
     """
     if dataset_sample is None:
         return dataset
-    if random_state is None:
-        random_state = np.random.RandomState()
 
     n_repeat_sample = dataset_sample // len(dataset)
-    n_random_sample = dataset_sample % len(dataset)
-    if n_repeat_sample >= 1 and n_random_sample >= 1:
+    n_remain_sample = dataset_sample % len(dataset)
+    if n_repeat_sample >= 1 and n_remain_sample >= 1:
         logger.warning(f'dataset_sample:{dataset_sample} is greater than len(dataset):{len(dataset)}, '
                        'repeated sampling will be performed.')
     idx = np.tile(range(len(dataset)), n_repeat_sample)
-    if n_random_sample >= 1:
-        idx_random = random_state.permutation(len(dataset))[:n_random_sample]
-        idx = np.concatenate([idx, idx_random])
+    if n_remain_sample >= 1:
+        if shuffle:
+            if random_state is None:
+                random_state = np.random.RandomState()
+            idx_remain = random_state.permutation(len(dataset))[:n_remain_sample]
+        else:
+            idx_remain = np.arange(n_remain_sample)
+        idx = np.concatenate([idx, idx_remain])
     dataset = dataset.select(idx)
     return dataset
 
