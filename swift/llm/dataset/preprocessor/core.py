@@ -8,7 +8,7 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
-from datasets import Value
+from datasets import Sequence, Value
 
 from swift.llm import history_to_messages
 from swift.utils import get_logger
@@ -254,11 +254,12 @@ class RowPreprocessor:
         def _new_init(self, schema=None, features=None, *args, **kwargs):
 
             if features is not None:
-                features['messages'] = [{
-                    'role': Value(dtype='string', id=None),
-                    'content': Value(dtype='string', id=None)
-                }]
-                features['images'] = [{'bytes': Value(dtype='binary', id=None), 'path': Value(dtype='string', id=None)}]
+                features['messages'] = [{'role': Value(dtype='string'), 'content': Value(dtype='string')}]
+                features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
+                features['objects'] = {
+                    'ref': Sequence(feature=Value(dtype='string'), length=-1),
+                    'bbox': Sequence(feature=Sequence(feature=Value(dtype='int64'), length=-1), length=-1)
+                }
             ArrowWriter.__origin_init__(self, schema, features, *args, **kwargs)
 
         ArrowWriter.__origin_init__ = ArrowWriter.__init__
