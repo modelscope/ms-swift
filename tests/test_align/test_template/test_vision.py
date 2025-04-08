@@ -280,9 +280,10 @@ def test_mplug_owl3():
 def test_ovis1_6():
     pt_engine = PtEngine('AIDC-AI/Ovis1.6-Gemma2-9B')
     # pt_engine = PtEngine('AIDC-AI/Ovis1.6-Gemma2-27B')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_ovis1_6_llama3():
@@ -297,11 +298,11 @@ def test_ovis1_6_llama3():
 
 
 def test_ovis2():
-    pt_engine = PtEngine('AIDC-AI/Ovis2-2B')
+    pt_engine = PtEngine('AIDC-AI/Ovis2-2B')  # with flash_attn
     response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'Describe the image.'}])
-    assert response[:200] == (
-        'The image showcases a charming digital illustration of a young kitten. The kitten has striking blue '
-        'eyes and a mix of gray, white, and black fur, with distinctive black stripes on its head. Its ears a')
+    assert response[:200] == ('The image features a close-up portrait of a young kitten with striking blue eyes. '
+                              'The kitten has a distinctive coat pattern with a mix of gray, black, and white fur, '
+                              'typical of a tabby pattern. Its ea')
 
 
 def test_paligemma():

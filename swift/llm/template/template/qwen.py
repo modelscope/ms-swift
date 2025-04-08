@@ -536,14 +536,20 @@ class Ovis1_6Template(Template):
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         padding_side = self.padding_side if self.is_training else 'left'
-        self.model.config.multimodal_max_length = self.max_length
-        _, inputs_embeds, labels, attention_mask = self.model.merge_multimodal(
-            text_input_ids=inputs['input_ids'],
-            text_attention_masks=torch.ones_like(inputs['input_ids']),  # not use, only compat
-            text_labels=inputs.get('labels'),
+        if self.max_length is not None:
+            model.config.multimodal_max_length = self.max_length
+        input_ids = inputs['input_ids']
+        labels = inputs.get('labels')
+        if labels is None:
+            labels = input_ids.new_full(input_ids.shape, -100)
+        _, inputs_embeds, labels, attention_mask = model.merge_multimodal(
+            text_input_ids=input_ids,
+            text_attention_masks=torch.ones_like(input_ids),  # not use, only compat
+            text_labels=labels,
             pixel_values=inputs['pixel_values'],
             left_padding=padding_side == 'left')
-
+        if inputs.get('labels') is None:
+            labels = None
         return {'inputs_embeds': inputs_embeds, 'labels': labels, 'attention_mask': attention_mask}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
