@@ -1,4 +1,4 @@
-# Custom dataset format reference: https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html
+# Custom dataset format reference: https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-0.5B \
