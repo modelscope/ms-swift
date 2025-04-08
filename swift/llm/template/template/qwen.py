@@ -541,7 +541,7 @@ class Ovis1_6Template(Template):
         labels = inputs.get('labels')
         if labels is None:
             labels = input_ids.new_full(input_ids.shape, -100)
-        _, inputs_embeds, labels, attention_mask = self.model.merge_multimodal(
+        _, inputs_embeds, labels, attention_mask = model.merge_multimodal(
             text_input_ids=input_ids,
             text_attention_masks=torch.ones_like(input_ids),  # not use, only compat
             text_labels=labels,
