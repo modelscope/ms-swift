@@ -99,11 +99,11 @@ class HfConfigFactory:
             return []
 
         for k in keys:
-            if isinstance(config, dict):
-                v = config[k]
-            else:
-                v = getattr(config, k)
             if k.endswith('_config'):
+                if isinstance(config, dict):
+                    v = config[k]
+                else:
+                    v = getattr(config, k)
                 res += HfConfigFactory._get_config_attrs(v, attr_name, k)
         value = deep_getattr(config, attr_name, None)
         if value is not None and parent_key in [None, 'language_config', 'llm_config', 'text_config']:
