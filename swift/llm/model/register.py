@@ -403,7 +403,10 @@ def _read_args_json_model_type(model_dir):
 
 
 def _get_model_info(model_dir: str, model_type: Optional[str], quantization_config) -> ModelInfo:
-    config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
+    try:
+        config_dict = AutoConfig.from_pretrained(model_dir).__dict__
+    except Exception:
+        config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
     if quantization_config is not None:
         config_dict['quantization_config'] = quantization_config
     quant_info = HfConfigFactory.get_quant_info(config_dict) or {}
