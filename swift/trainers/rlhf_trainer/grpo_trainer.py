@@ -182,7 +182,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         super().__init__(model, ref_model, *_args, **kwargs)
 
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
-        self._total_train_tokens = 0
         self.log_completions = args.log_completions
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
         # maxlen is set to the total number of forward passes per step. This value of `maxlen` ensures we log only the
@@ -1302,7 +1301,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics[mode].clear()
 
         if (self.accelerator.is_main_process and self.args.report_to and 'wandb' in self.args.report_to
-                and wandb.run is not None):
+                and wandb.run is not None and self.log_completions):
             import pandas as pd
             table = {
                 'step': [str(self.state.global_step)] * len(self._textual_logs['prompt']),
