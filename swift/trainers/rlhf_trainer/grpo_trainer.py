@@ -940,14 +940,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         device = self.accelerator.device
 
         # Calculate completion length metrics
-        agg_completion_mask = self.accelerator.gather_for_metrics(
-            torch.cat([inp['completion_mask'].sum(1) for inp in inputs]))
+        agg_completion_mask = gather(torch.cat([inp['completion_mask'].sum(1) for inp in inputs]))
 
         self._metrics[mode]['completions/mean_length'].append(agg_completion_mask.float().mean().item())
         self._metrics[mode]['completions/min_length'].append(agg_completion_mask.float().min().item())
         self._metrics[mode]['completions/max_length'].append(agg_completion_mask.float().max().item())
         # Calculate clip ratio
-        agg_truncated_mask = self.accelerator.gather_for_metrics(inputs['truncated_mask'])
+        agg_truncated_mask = gather(torch.cat([inp['truncated_mask'] for inp in inputs]).to(device))
 
         term_completion_mask = agg_completion_mask[agg_truncated_mask]
         clipped_completions_ratio = 1 - len(term_completion_mask) / len(agg_completion_mask)
@@ -972,23 +971,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     reward_func_name = reward_func.__class__.__name__
 
             reward_func_names.append(reward_func_name)
-
+        metrics_mask = ~agg_truncated_mask if self.args.overlong_filter else torch.ones(
+            agg_completion_mask.shape[0], dtype=torch.bool)
         for i, reward_func_name in enumerate(reward_func_names):
-            mean_rewards = (rewards_per_func[:, i]).mean().item()
+            mean_rewards = (rewards_per_func[:, i][metrics_mask]).mean().item()
             self._metrics[mode][f'rewards/{reward_func_name}/mean'].append(mean_rewards)
-            std_rewards = (rewards_per_func[:, i]).std().item()
+            std_rewards = (rewards_per_func[:, i][metrics_mask]).std().item()
             self._metrics[mode][f'rewards/{reward_func_name}/std'].append(std_rewards)
 
         # Log overall reward stats
-        grouped_rewards = rewards.view(-1, self.num_generations)
+        grouped_rewards = rewards[metrics_mask].view(-1, self.num_generations)
         self._metrics[mode]['reward'].append(grouped_rewards.mean().item())
         self._metrics[mode]['reward_std'].append(grouped_rewards.std(dim=1).mean().item())
 
         # Log prompt and completion texts
-        self._textual_logs['prompt'].extend(gather_object(messages))
-        self._textual_logs['completion'].extend(gather_object(completions))
+        self._textual_logs['prompt'].extend(m for m, mask in zip(gather_object(messages), metrics_mask) if mask)
+        self._textual_logs['completion'].extend(c for c, mask in zip(gather_object(completions), metrics_mask) if mask)
+
         for i, name in enumerate(reward_func_names):
-            self._textual_logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
+            self._textual_logs['rewards'][name].extend(rewards_per_func[:, i][metrics_mask].tolist())
 
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
