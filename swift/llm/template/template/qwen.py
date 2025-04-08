@@ -536,7 +536,8 @@ class Ovis1_6Template(Template):
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         padding_side = self.padding_side if self.is_training else 'left'
-        model.config.multimodal_max_length = self.max_length
+        if self.max_length is not None:
+            model.config.multimodal_max_length = self.max_length
         input_ids = inputs['input_ids']
         labels = inputs.get('labels')
         if labels is None:
