@@ -147,6 +147,12 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                             'will use the old weights to generate responses to accelerate. '
                             'This will ignore the `CLIP` of advantages, if you found the training '
                             'is unstable, you may consider using --async_generate false.')
+            if 'soft_overlong' in self.reward_funcs:
+                assert self.soft_cache_length is not None, \
+                    'The soft_cache_length must be set when using soft overlong rewards.'
+                if self.soft_max_length is None:
+                    self.soft_max_length = self.max_completion_length
+                    logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
 
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':
