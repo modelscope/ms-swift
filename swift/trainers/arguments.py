@@ -191,7 +191,7 @@ class GRPOArgumentsMixin:
     # compatible with trl main branch(0.17.0.dev0)
     num_completions_to_print: Optional[int] = None
     wandb_log_unique_prompts: Optional[bool] = None
-    
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
