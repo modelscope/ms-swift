@@ -142,10 +142,13 @@ class RowPreprocessor:
         objects = row.get('objects')
         if objects is None:
             return
-        for k in list(objects.keys()):
-            if k not in {'bbox', 'ref', 'bbox_type', 'image_id'}:
-                objects.pop(k)
-        bbox = objects['bbox']
+        new_objects = {}
+        # Ensure the order
+        for k in ['ref', 'bbox', 'bbox_type', 'image_id']:
+            if k in objects.keys():
+                new_objects[k] = objects[k]
+        row['objects'] = new_objects
+        bbox = new_objects['bbox']
 
         # check bbox
         for box in bbox:
@@ -258,7 +261,7 @@ class RowPreprocessor:
                 features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
                 features['objects'] = {
                     'ref': Sequence(feature=Value(dtype='string'), length=-1),
-                    'bbox': Sequence(feature=Sequence(feature=Value(dtype='int64'), length=-1), length=-1)
+                    'bbox': Sequence(feature=Sequence(feature=Value(dtype='float64'), length=-1), length=-1)
                 }
             ArrowWriter.__origin_init__(self, schema, features, *args, **kwargs)
 
