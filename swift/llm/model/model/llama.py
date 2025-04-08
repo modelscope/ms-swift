@@ -279,7 +279,7 @@ register_model(
         get_model_tokenizer_omnli,
         architectures=['OmniSpeech2SLlamaForCausalLM'],
         model_arch=ModelArch.llama3_1_omni,
-        requires=['whisper', 'openai-whisper'],
+        requires=['openai-whisper'],
         tags=['audio'],
     ))
 

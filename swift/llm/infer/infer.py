@@ -158,7 +158,7 @@ class SwiftInfer(SwiftPipeline):
         else:
             _, val_dataset = load_dataset(args.dataset, split_dataset_ratio=args.split_dataset_ratio, **dataset_kwargs)
         assert val_dataset is not None
-        val_dataset = sample_dataset(val_dataset, args.val_dataset_sample, self.random_state)
+        val_dataset = sample_dataset(val_dataset, args.val_dataset_sample, args.dataset_shuffle, self.random_state)
         return val_dataset
 
     def _calc_metric(self):
