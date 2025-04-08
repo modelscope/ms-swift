@@ -250,7 +250,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             reload_weights=True)
                         self.infer_device = fast_infer_device
                         from lmdeploy.turbomind.turbomind import TurboMind
-                        assert isinstance(self.engine, TurboMind), (
+                        lmdeploy_engine = self.engine.engine.engine
+                        assert isinstance(lmdeploy_engine, TurboMind), (
                             "Currently only LMDeploy's TurboMind backend is supported. "
                             'The current model is incompatible - please use vLLM or PyTorch backend instead.')
                     self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
