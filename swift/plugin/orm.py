@@ -244,7 +244,7 @@ class MathAccuracy(ORM):
         from math_verify import LatexExtractionConfig, parse, verify
         rewards = []
         for content, sol in zip(completions, solution):
-            gold_parsed = parse(sol, extraction_mode='first_match', extraction_config=[LatexExtractionConfig()])
+            gold_parsed = parse(sol, extraction_mode='first_match')
             if len(gold_parsed) != 0:
                 # We require the answer to be provided in correct latex (no malformed operators)
                 answer_parsed = parse(
@@ -268,12 +268,12 @@ class MathAccuracy(ORM):
                 )
                 # edge case
                 try:
-                    reward = float(verify(answer_parsed, gold_parsed))
+                    reward = float(verify(gold_parsed, answer_parsed))
                 except Exception:
                     reward = 0.0
             else:
-                # If the gold solution is not parseable, we reward 1 to skip this example
-                reward = 1.0
+                # If the gold solution is not parseable, we reward 0 to skip this example
+                reward = 0.0
             rewards.append(reward)
         return rewards
 

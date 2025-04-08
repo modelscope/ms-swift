@@ -88,19 +88,26 @@ class HfConfigFactory:
 
     @staticmethod
     def _get_config_attrs(config: Union[PretrainedConfig, Dict[str, Any]],
-                          attr_name: str) -> List[Tuple[PretrainedConfig, Any]]:
+                          attr_name: str,
+                          parent_key: Optional[str] = None) -> List[Tuple[PretrainedConfig, Any]]:
         res = []
-        for key in [None, 'language_config', 'llm_config', 'text_config']:
-            if key is not None:
+        if isinstance(config, dict):
+            keys = config.keys()
+        elif isinstance(config, PretrainedConfig):
+            keys = dir(config)
+        else:
+            return []
+
+        for k in keys:
+            if k.endswith('_config'):
                 if isinstance(config, dict):
-                    llm_config = config.get(key)
+                    v = config[k]
                 else:
-                    llm_config = getattr(config, key, None)
-            else:
-                llm_config = config
-            value = deep_getattr(llm_config, attr_name, None)
-            if value is not None:
-                res.append((llm_config, value))
+                    v = getattr(config, k)
+                res += HfConfigFactory._get_config_attrs(v, attr_name, k)
+        value = deep_getattr(config, attr_name, None)
+        if value is not None and parent_key in [None, 'language_config', 'llm_config', 'text_config']:
+            res.append((config, value))
         return res
 
     @staticmethod

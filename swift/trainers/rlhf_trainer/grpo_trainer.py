@@ -249,6 +249,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             cache_max_entry_count=args.lmdeploy_cache_max_entry_count,
                             reload_weights=True)
                         self.infer_device = fast_infer_device
+                        from lmdeploy.turbomind.turbomind import TurboMind
+                        lmdeploy_engine = self.engine.engine.engine
+                        assert isinstance(lmdeploy_engine, TurboMind), (
+                            "Currently only LMDeploy's TurboMind backend is supported. "
+                            'The current model is incompatible - please use vLLM or PyTorch backend instead.')
                     self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
             self._last_loaded_step = 0  # tag to avoid useless loading during grad accumulation
 
