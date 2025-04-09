@@ -56,7 +56,7 @@ class GRPOArguments(GRPOArgumentsMixin):
     # multi step
     num_iterations: int = 1
 
-    truncation_strategy: Literal['delete', 'left', 'right'] = 'left'
+    truncation_strategy: Optional[Literal['delete', 'left', 'right']] = None
 
 
 @dataclass
@@ -140,6 +140,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 self.gradient_accumulation_steps = 1
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
+            if self.truncation_strategy is None:
+                self.truncation_strategy = 'left'
             assert self.truncation_strategy == 'left', \
                 "GRPO requires `truncation_strategy='left'`," \
                 f"Current value: `truncation_strategy='{self.truncation_strategy}'`."
