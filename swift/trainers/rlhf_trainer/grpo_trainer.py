@@ -1308,7 +1308,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics[mode].clear()
 
         if self.accelerator.is_main_process and self.log_completions:
-            import pandas as pd
             table = {
                 'step': [str(self.state.global_step)] * len(self._textual_logs['prompt']),
                 'prompt': self._textual_logs['prompt'],
@@ -1317,6 +1316,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             }
             self.jsonl_writer.append(table)
             if self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None:
+                import pandas as pd
                 df = pd.DataFrame(table)
                 if self.args.wandb_log_unique_prompts:
                     df = df.drop_duplicates(subset=['prompt'])
