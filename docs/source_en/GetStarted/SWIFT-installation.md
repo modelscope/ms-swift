@@ -65,7 +65,7 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 | python       | >=3.9        | 3.10        |                                           |
 | cuda         |              | cuda12      | No need to install if using CPU, NPU, MPS |
 | torch        | >=2.0        |             |                                           |
-| transformers | >=4.33       | 4.50      |                                           |
+| transformers | >=4.33       | 4.51      |                                           |
 | modelscope   | >=1.19       |             |                                           |
 | peft         | >=0.11,<0.16 |             |                                           |
 | trl          | >=0.13,<0.17 | 0.16      | RLHF                                      |
