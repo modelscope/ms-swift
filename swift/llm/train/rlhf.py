@@ -57,7 +57,7 @@ class SwiftRLHF(SwiftSft):
             setattr(self, f'{origin_key}_model', model)
             HfConfigFactory.set_model_config_attr(model, 'use_cache', False)
             if origin_key == 'reward' and args.rlhf_type == 'grpo':
-                reward_template = self.args.get_template(processor)
+                reward_template = self.args.get_template(processor, processor.model_meta.template)
                 if reward_template.use_model:
                     reward_template.model = model
                 self.reward_template = reward_template
