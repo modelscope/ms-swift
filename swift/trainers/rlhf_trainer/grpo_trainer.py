@@ -410,13 +410,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.llm import VllmEngine
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         _, _, _, local_world_size = get_dist_setting()
+        if self.args.tensor_parallel_size > 1:
+            vllm_kwargs = {'distributed_executor_backend': 'external_launcher'}
+        else:
+            vllm_kwargs = {}
         if local_world_size == self.args.num_infer_workers == get_device_count() and local_world_size > 1:
             # Compatibility with TP
             cls = GRPOVllmEngine
-            vllm_kwargs = {'distributed_executor_backend': 'external_launcher'}
         else:
             cls = VllmEngine
-            vllm_kwargs = {}
         with Swift.grpo_context(model, self.template.processor):
             self.engine = cls(
                 model.model_dir,
