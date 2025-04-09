@@ -450,7 +450,7 @@ repetition penalty function arguments
 
 Inference arguments include the [base arguments](#base-arguments), [merge arguments](#merge-arguments), [vLLM arguments](#vllm-arguments), [LMDeploy arguments](#LMDeploy-arguments), and also contain the following:
 
-- 🔥infer_backend: Inference acceleration backend, supporting three inference engines: 'pt', 'vllm', and 'lmdeploy'. The default is 'pt'.
+- 🔥infer_backend: Inference acceleration backend, supporting four inference engines: 'pt', 'vllm', 'sglang', and 'lmdeploy'. The default is 'pt'.
 - 🔥max_batch_size: Effective when infer_backend is set to 'pt'; used for batch inference, with a default value of 1.
 - ddp_backend: Effective when infer_backend is set to 'pt'; used to specify the distributed backend for multi-GPU inference. The default is None, which means automatic selection. For an example of multi-GPU inference, you can refer [here](https://github.com/modelscope/ms-swift/tree/main/examples/infer/pt).
 - 🔥result_path: Path to store inference results (jsonl). The default is None, meaning results are saved in the checkpoint directory (with args.json file) or './result' directory. The final storage path will be printed in the command line.

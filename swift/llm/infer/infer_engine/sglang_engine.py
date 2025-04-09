@@ -1,9 +1,11 @@
+import inspect
 import os
 from copy import deepcopy
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import sglang as sgl
 import torch
+from sglang.srt.sampling.sampling_params import SamplingParams
 from transformers import GenerationConfig
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
@@ -14,10 +16,6 @@ from .infer_engine import InferEngine
 
 
 class SglangEngine(InferEngine):
-    sampling_parameters = {
-        'max_new_tokens', 'stop', 'temperature', 'top_p', 'top_k', 'min_p', 'frequency_penalty', 'presence_penalty',
-        'repetition_penalty', 'min_new_tokens', 'n'
-    }
 
     def __init__(
         self,
@@ -39,7 +37,7 @@ class SglangEngine(InferEngine):
             hub_token=hub_token,
             revision=revision)[1]
         self._post_init()
-        self.engine = sgl.Engine(model_path=model_id_or_path, dtype=torch_dtype)
+        self.engine = sgl.Engine(model_path=self.model_dir, dtype=self.model_info.torch_dtype)
         self._load_generation_config()
 
     def _load_generation_config(self) -> None:
@@ -51,12 +49,13 @@ class SglangEngine(InferEngine):
             if top_k == 0:
                 kwargs['top_k'] = -1
 
+            parameters = inspect.signature(SamplingParams).parameters
             for k, v in kwargs.copy().items():
-                if k not in self.sampling_parameters or v is None:
+                if k not in parameters or v is None:
                     kwargs.pop(k)
-            self.generation_config = kwargs
+            self.generation_config = SamplingParams(**kwargs)
         else:
-            self.generation_config = {}
+            self.generation_config = SamplingParams()
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> Dict[str, Any]:
         kwargs = {'max_new_tokens': request_config.max_tokens}
@@ -69,12 +68,25 @@ class SglangEngine(InferEngine):
         for key in ['n', 'frequency_penalty', 'presence_penalty']:
             kwargs[key] = getattr(request_config, key)
 
-        return kwargs
+        return SamplingParams(**kwargs)
 
     def _add_stop_words(self, generation_config: Dict[str, Any], request_config: RequestConfig,
                         template_meta: TemplateMeta) -> None:
-        stop_words = (request_config.stop or []) + (self.generation_config.get('stop') or []) + template_meta.stop_words
+        stop_words = (request_config.stop or []) + (self.generation_config.stop or []) + template_meta.stop_words
         generation_config['stop'] = self._get_stop_words(stop_words)
+
+    def _create_chat_completion_response(self, output, template):
+        assert result is not None
+        meta_info = output['meta_info']
+        usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
+        response = output['text']
+        toolcall = self._get_toolcall(response, template.tools_prompt)
+        choice = ChatCompletionResponseChoice(
+            index=0,
+            message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+            finish_reason=meta_info['finish_reason']['type'],
+            logprobs=None)
+        return ChatCompletionResponse(model=self.model_name, choices=[choice], usage=usage_info, id=request_id)
 
     def infer(self,
               infer_requests: List[InferRequest],
@@ -93,7 +105,8 @@ class SglangEngine(InferEngine):
         self._add_stop_words(generation_config, request_config, template.template_meta)
         input_ids = [inputs['input_ids'] for inputs in batched_inputs]
         outputs = self.engine.generate(input_ids=input_ids, sampling_params=generation_config)
-        print()
+
+        return [self._create_chat_completion_response(output, template) for output in outputs]
 
     async def infer_async(
         self,
