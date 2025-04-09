@@ -125,7 +125,7 @@ Running Environment:
 | peft | >=0.11,<0.16 | ||
 | trl | >=0.13,<0.17 | 0.16 |RLHF|
 | deepspeed    | >=0.14       | 0.14.5 | Training                                  |
-| vllm         | >=0.5.1,<0.8      | 0.7.3       | Inference/Deployment/Evaluation           |
+| vllm         | >=0.5.1      | 0.8.3       | Inference/Deployment/Evaluation           |
 | lmdeploy     | >=0.5        | 0.7.2.post1       | Inference/Deployment/Evaluation           |
 | evalscope | >=0.11       |  | Evaluation |
 
