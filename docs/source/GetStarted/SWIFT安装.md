@@ -64,7 +64,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | python | >=3.9        | 3.10 ||
 | cuda |              | cuda12 |使用cpu、npu、mps则无需安装|
 | torch | >=2.0        |  ||
-| transformers | >=4.33       | 4.50 ||
+| transformers | >=4.33       | 4.51 ||
 | modelscope | >=1.19       |  ||
 | peft | >=0.11,<0.16 | ||
 | trl | >=0.13,<0.17 | 0.16 |RLHF|
