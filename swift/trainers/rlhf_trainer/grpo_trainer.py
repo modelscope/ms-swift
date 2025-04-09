@@ -152,7 +152,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if reward_model is not None:
             if is_deepspeed_zero3_enabled():
                 from trl.models.utils import prepare_deepspeed
-                prepare_deepspeed(self.reward_model, self.accelerator)  # Does not wrap DeepSpeedEngine
+                prepare_deepspeed(reward_model, self.accelerator)  # Does not wrap DeepSpeedEngine
             self.reward_templates.append(kwargs.pop('reward_template', None))
             self.reward_funcs.append(reward_model)
         if not self.reward_funcs:
