@@ -267,7 +267,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         assert isinstance(lmdeploy_engine, TurboMind), (
                             "Currently only LMDeploy's TurboMind backend is supported. "
                             'The current model is incompatible - please use vLLM or PyTorch backend instead.')
-                    self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
+                self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
             self._last_loaded_step = 0  # tag to avoid useless loading during grad accumulation
 
             # When using vLLM, the main process is responsible for loading the model weights. This can cause process
