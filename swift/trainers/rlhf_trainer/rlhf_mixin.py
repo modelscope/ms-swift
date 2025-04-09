@@ -60,7 +60,7 @@ class RLHFTrainerMixin:
                 from trl.models.utils import prepare_deepspeed
             except ImportError as e:
                 raise ImportError('Please install trl>=0.14 via `pip install "trl>=0.14"`') from e
-            prepare_deepspeed(self.ref_model, self.accelerator)
+            self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
         self.padding_value = self.tokenizer.pad_token_id
 
     def concatenated_forward(
