@@ -969,6 +969,12 @@ class Template(ProcessorMixin):
                 if loss_scale is not None:
                     loss_scale = loss_scale[:self.max_length]
             else:
+                if len(input_ids) > self.max_length:
+                    logger.warning(
+                        'Input data was left-truncated because its length exceeds `max_length` (input length: '
+                        f'{len(input_ids)}, max_length: {self.max_length}). '
+                        'This may cause loss of important tokens (e.g., image tokens) and lead to errors. '
+                        'To avoid this, consider increasing `max_length` or pre-filtering long sequences.')
                 input_ids = input_ids[-self.max_length:]
                 if labels is not None:
                     labels = labels[-self.max_length:]

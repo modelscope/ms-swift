@@ -141,7 +141,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
             assert self.truncation_strategy == 'left', \
-                "GRPO requires `truncation_strategy='left'` to ensure consistent sequence alignment during training. " \
+                "GRPO requires `truncation_strategy='left'`," \
                 f"Current value: `truncation_strategy='{self.truncation_strategy}'`."
             if self.beta is None:
                 self.beta = 0.04  # https://arxiv.org/abs/2402.03300
