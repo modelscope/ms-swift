@@ -150,9 +150,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.reward_templates = [None] * len(self.reward_funcs)
         if reward_model is not None:
-            if is_deepspeed_zero3_enabled():
-                from trl.models.utils import prepare_deepspeed
-                prepare_deepspeed(reward_model, self.accelerator)  # Does not wrap DeepSpeedEngine
             self.reward_templates.append(kwargs.pop('reward_template', None))
             self.reward_funcs.append(reward_model)
         if not self.reward_funcs:
@@ -297,6 +294,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.request_config.seed = self.infer_rank // self.args.tensor_parallel_size
 
         self.model_accepts_loss_kwargs = False
+        for i, reward_func in enumerate(self.reward_funcs):
+            if isinstance(reward_func, PreTrainedModel) and is_deepspeed_zero3_enabled():
+                from trl.models.utils import prepare_deepspeed
+                prepare_deepspeed(reward_func, self.accelerator)  # Does not wrap DeepSpeedEngine
 
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
