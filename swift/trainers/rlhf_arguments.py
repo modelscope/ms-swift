@@ -56,3 +56,4 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
         if self.deepspeed and self.deepspeed['zero_optimization'][
                 'stage'] == 3 and 'zero_optimization' in self.deepspeed:
             self.deepspeed['zero_optimization']['stage3_prefetch_bucket_size'] = 0
+            self.deepspeed_plugin.hf_ds_config.config['zero_optimization']['stage3_prefetch_bucket_size'] = 0
