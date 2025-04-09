@@ -25,6 +25,7 @@ from packaging import version
 from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
+from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.trainer import Trainer
 from transformers.trainer_utils import seed_worker
 from trl import GRPOTrainer as HFGRPOTrainer
@@ -43,7 +44,7 @@ from .utils import _split_into_mini_batches, patch_lora_merge, patch_lora_unmerg
 try:
     from trl.extras.profiling import profiling_decorator
 except ImportError:
-    raise ImportError('Please install trl : `pip install -U trl`')
+    raise ImportError('Please install trl: `pip install -U trl`')
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
 
@@ -149,6 +150,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.reward_templates = [None] * len(self.reward_funcs)
         if reward_model is not None:
+            if is_deepspeed_zero3_enabled():
+                from trl.models.utils import prepare_deepspeed
+                prepare_deepspeed(self.reward_model, self.accelerator)  # Does not wrap DeepSpeedEngine
             self.reward_templates.append(kwargs.pop('reward_template', None))
             self.reward_funcs.append(reward_model)
         if not self.reward_funcs:
@@ -293,9 +297,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.request_config.seed = self.infer_rank // self.args.tensor_parallel_size
 
         self.model_accepts_loss_kwargs = False
-        for i, reward_func in enumerate(self.reward_funcs):
-            if isinstance(reward_func, PreTrainedModel):
-                self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
 
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
@@ -815,10 +816,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     batched_inputs = [reward_template.encode(infer_request) for infer_request in inputs]
                     reward_inputs = to_device(reward_template.data_collator(batched_inputs), reward_func.device)
 
-                with torch.inference_mode(), unwrap_model_for_generation(
-                        reward_func, self.accelerator,
-                        gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_reward_func:
-                    rewards_per_func[:, i] = unwrapped_reward_func(**reward_inputs).logits[:, 0]
+                with torch.inference_mode():
+                    rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]
             # reward function
             else:
                 # Repeat all input columns (but "messages" and "completion") to match the number of generations
@@ -1307,8 +1306,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             super().log(logs)
         self._metrics[mode].clear()
 
-        if (self.accelerator.is_main_process and self.args.report_to and 'wandb' in self.args.report_to
-                and wandb.run is not None and self.log_completions):
+        if self.accelerator.is_main_process and self.log_completions:
             import pandas as pd
             table = {
                 'step': [str(self.state.global_step)] * len(self._textual_logs['prompt']),
@@ -1316,8 +1314,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'completion': self._textual_logs['completion'],
                 **self._textual_logs['rewards'],
             }
-            df = pd.DataFrame(table)
             self.jsonl_writer.append(table)
-            if self.args.wandb_log_unique_prompts:
-                df = df.drop_duplicates(subset=['prompt'])
-            wandb.log({'completions': wandb.Table(dataframe=df)})
+            if self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None:
+                df = pd.DataFrame(table)
+                if self.args.wandb_log_unique_prompts:
+                    df = df.drop_duplicates(subset=['prompt'])
+                wandb.log({'completions': wandb.Table(dataframe=df)})
