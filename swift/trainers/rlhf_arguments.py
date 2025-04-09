@@ -52,3 +52,7 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
         if self.cosine_max_len is None:
             self.cosine_max_len = self.max_completion_length
         self.vllm_limit_mm_per_prompt = ModelArguments.parse_to_dict(self.vllm_limit_mm_per_prompt)
+
+        if self.deepspeed and self.deepspeed['zero_optimization'][
+                'stage'] == 3 and 'zero_optimization' in self.deepspeed:
+            self.deepspeed['zero_optimization']['stage3_prefetch_bucket_size'] = 0
