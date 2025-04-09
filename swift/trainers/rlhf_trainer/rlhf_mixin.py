@@ -16,24 +16,13 @@ except (ImportError, RuntimeError):
 
 class RLHFTrainerMixin:
 
-    @staticmethod
-    def get_model_config_attr(config, key):
-        for k in [None, 'language_config', 'llm_config', 'text_config']:
-            if k is None:
-                llm_config = config
-            else:
-                llm_config = getattr(config, k, None)
-            if llm_config:
-                val = getattr(llm_config, key)
-                if val is not None:
-                    return val
-
     def __init__(self,
                  model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  *_args,
                  **kwargs):
         from trl.trainer import disable_dropout_in_model
+        from swift.llm import HfConfigFactory
         self.ref_model = ref_model
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
         args = kwargs['args']
@@ -48,8 +37,8 @@ class RLHFTrainerMixin:
         self._peft_has_been_casted_to_bf16 = False
         self.generate_during_eval = getattr(args, 'generate_during_eval', False)
         if self.is_encoder_decoder:
-            self.decoder_start_token_id = self.get_model_config_attr(model.config, 'decoder_start_token_id')
-            self.pad_token_id = self.get_model_config_attr(model.config, 'pad_token_id')
+            self.decoder_start_token_id = HfConfigFactory.get_config_attr(model.config, 'decoder_start_token_id')
+            self.pad_token_id = HfConfigFactory.get_config_attr(model.config, 'pad_token_id')
         # not use
         self.is_vision_model = False
         self.label_pad_token_id = -100
