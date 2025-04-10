@@ -590,6 +590,7 @@ The parameter meanings are the same as in the `qwen_vl_utils` or `qwen_omni_util
 ### qwen2_5_omni
 qwen2_5_omni not only includes the model-specific parameters of qwen2_5_vl and qwen2_audio, but also contains the following parameter:
 - USE_AUDIO_IN_VIDEO: Default is False.
+- ENABLE_AUDIO_OUTPUT: Default is True. If training with zero3, set it to False.
 
 ### internvl, internvl_phi3
 For the meaning of the arguments, please refer to [here](https://modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)
