@@ -683,15 +683,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.accelerator.num_processes > 1:
             self.accelerator.wait_for_everyone()
 
-    def _fast_infer(self, all_inputs, inputs=None):
+    def _fast_infer(self, inputs):
         """
         This function performs fast inference by managing model and optimizer offloading,
         loading weights if necessary, distributing inputs among workers, and generating
         completions using the vLLM/LMDeploy framework. It supports both synchronous and asynchronous
         inference modes.
-        all_inputs: all gather inputs in distributed
         inputs: local inputs
         """
+
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
             if self.args.offload_model:
                 self.offload_model()
@@ -706,6 +706,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.state.global_step != self._last_loaded_step:
             self._move_model_to_vllm_lmdeploy()
             self._last_loaded_step = self.state.global_step
+        all_inputs = gather_object(inputs)
         # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
         # Distribute inputs to different workers
         # for example, 2 workers, 6 inputs, 0/2/4 dispatch to the first worker
@@ -758,9 +759,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _generate_completions(self, inputs):
         if self.use_fast_infer:
-            all_inputs = gather_object(inputs)
-
-            _, outputs = self._fast_infer(all_inputs, inputs)
+            inputs, outputs = self._fast_infer(inputs)
             # Slice to keep only the local part of the data
             process_slice = slice(
                 self.accelerator.process_index * len(inputs),
