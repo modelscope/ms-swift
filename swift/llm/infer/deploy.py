@@ -3,7 +3,7 @@ import asyncio
 import inspect
 import multiprocessing
 import time
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from dataclasses import asdict
 from http import HTTPStatus
 from threading import Thread

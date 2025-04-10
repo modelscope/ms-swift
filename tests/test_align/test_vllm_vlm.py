@@ -31,8 +31,9 @@ def _infer_image(model, use_chat_template: bool = True, max_model_len=8192, syst
     return resp_list[0].choices[0].message.content
 
 
-def _infer_video(model, use_chat_template: bool = True, max_model_len=8192, system=None):
-    engine = VllmEngine(model, max_model_len=max_model_len, limit_mm_per_prompt={'image': 16, 'video': 2})
+def _infer_video(model, use_chat_template: bool = True, max_model_len=8192, system=None, limit_mm_per_prompt=None):
+    limit_mm_per_prompt = limit_mm_per_prompt or {'image': 16, 'video': 2}
+    engine = VllmEngine(model, max_model_len=max_model_len, limit_mm_per_prompt=limit_mm_per_prompt)
     if not use_chat_template:
         engine.default_template.use_chat_template = False
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
@@ -116,6 +117,12 @@ def test_qwen2_5_vl_video():
                         'on a white blanket. The baby is looking at the book and is smiling. The baby')
 
 
+def test_qwen2_5_omni():
+    limit_mm_per_prompt = {'image': 1, 'video': 1, 'audio': 1}
+    response = _infer_video('Qwen/Qwen2.5-Omni-7B', limit_mm_per_prompt=limit_mm_per_prompt)
+    assert response
+
+
 if __name__ == '__main__':
     from swift.llm import VllmEngine, InferRequest, RequestConfig
     # test_qwen2_vl()
@@ -125,5 +132,6 @@ if __name__ == '__main__':
     # test_qwen2_audio()
     # test_minicpmv_2_5()
     # test_minicpmv_2_6()
-    test_minicpmo_2_6_video()
+    # test_minicpmo_2_6_video()
     # test_qwen2_5_vl_video()
+    test_qwen2_5_omni()
