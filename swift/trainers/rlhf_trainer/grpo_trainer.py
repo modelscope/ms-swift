@@ -1333,7 +1333,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             wandb.log({'completions': wandb.Table(dataframe=df)})
 
     def is_async_generate_eval_rollout_done(self):
-        return not self.eval_flag or self.eval_queue.empty()
+        return not self.eval_flag or not self.eval_queue.empty()
 
     def is_async_generate_train_rollout_done(self):
-        return self.train_queue.empty()
+        return not self.train_queue.empty()
