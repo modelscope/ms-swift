@@ -719,7 +719,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 data_cache = self._queue.get()
                 inputs = data_cache.inputs
                 outputs = data_cache.outputs
-                outputs = [output[0][0] for output in outputs]
+                outputs = [output[0] for output in outputs]
                 distributed_idx = data_cache.distributed_idx
             else:
                 with set_device_context(self.infer_device):
