@@ -719,6 +719,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 data_cache = self._queue.get()
                 inputs = data_cache.inputs
                 outputs = data_cache.outputs
+                outputs = [output[0][0] for output in outputs]
                 distributed_idx = data_cache.distributed_idx
             else:
                 with set_device_context(self.infer_device):
@@ -783,7 +784,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs = [output[0] for output in outputs]
 
         for i, output in enumerate(outputs):
-            if isinstance(output[0][0], list):
+            if isinstance(output[0], list) and isinstance(output[0][0], list):
                 output[0] = output[0][0]
             inputs[i]['messages'] = output[0]
             inputs[i]['is_truncated'] = output[0][1] == 'length'
