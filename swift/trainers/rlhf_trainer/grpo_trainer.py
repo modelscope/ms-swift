@@ -321,6 +321,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         yield x
 
             self.resample_iterator = cyclic_iter(self.get_resample_dataloader())
+        # flag indicating whether the evaluation has started
+        self.eval_flag = False
 
     def split_batches(self):
         """Sync weights in batches
@@ -1089,6 +1091,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
 
     def evaluation_loop(self, dataloader, *args, **kwargs):
+        # Wait for the training rollout to complete
+        if self.args.async_generate:
+            while not self.is_async_generate_eval_rollout_done():
+                time.sleep(0.1)
         # set mini_batch_size None in evaluation
         mini_batch_size = self.args.mini_batch_size
         self.args.mini_batch_size = None
@@ -1099,13 +1105,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics['eval'].items()}
         output.metrics.update(metrics)
         self.args.mini_batch_size = mini_batch_size
+        self.eval_flag = True
         return output
 
     def training_step(self,
                       model: nn.Module,
                       inputs: Dict[str, Union[torch.Tensor, Any]],
                       num_items_in_batch=None) -> torch.Tensor:
-
+        if self.args.async_generate:
+            # Wait for the eval rollout to complete
+            while not self.is_async_generate_eval_rollout_done():
+                time.sleep(0.1)
         if self.args.mini_batch_size is None:
             return super().training_step(model, inputs, num_items_in_batch)
         model.train()
@@ -1326,3 +1336,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if self.args.wandb_log_unique_prompts:
                     df = df.drop_duplicates(subset=['prompt'])
                 wandb.log({'completions': wandb.Table(dataframe=df)})
+
+    def is_async_generate_eval_rollout_done(self):
+        return not self.eval_flag or not self.eval_queue.empty()
+
+    def is_async_generate_train_rollout_done(self):
+        return not self.train_queue.empty()
