@@ -417,7 +417,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if local_world_size == self.args.num_infer_workers == get_device_count() and local_world_size > 1:
             # Compatibility with TP
             cls = GRPOVllmEngine
-            engine_kwargs = {'seed': self.infer_rank // self.args.tensor_parallel_size}
+            engine_kwargs = {'seed': 0}
         else:
             cls = VllmEngine
             engine_kwargs = {}
