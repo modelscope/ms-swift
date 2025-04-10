@@ -4,6 +4,7 @@ import concurrent.futures
 import inspect
 import os
 import re
+import threading
 import time
 from collections import defaultdict, deque
 from concurrent.futures import Future
@@ -319,6 +320,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         yield x
 
             self.resample_iterator = cyclic_iter(self.get_resample_dataloader())
+        self._production_lock = threading.Lock()
+        self._current_production_mode = None
 
     def split_batches(self):
         """Sync weights in batches
@@ -659,20 +662,35 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         future.add_done_callback(done)
 
+    def wait_for_production(self, target_mode):
+        while True:
+            with self._production_lock:
+                if self._current_production_mode == target_mode or self._current_production_mode is None:
+                    return
+            time.sleep(0.1)
+
     def _prefetch(self, dataloader):
-        inputs = next(iter(dataloader))
-        all_inputs = gather_object(inputs)
-        nnodes = get_node_setting()[1]
-        distributed_idx = round_robin(len(all_inputs), nnodes * self.args.num_infer_workers)
-        if self.infer_rank >= 0:
-            _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
-            with self.multi_turn_completion_length_context():
-                outputs = self._infer_multi_turn(_input_slice, self.request_config)
-            self._queue.put(DataCache(inputs, outputs, distributed_idx))
-        else:
-            self._queue.put(DataCache(inputs, [], distributed_idx))
-        if self.accelerator.num_processes > 1:
-            self.accelerator.wait_for_everyone()
+        mode = 'eval' if self.control.should_evaluate else 'train'
+        self.wait_for_production(mode)
+        with self._production_lock:
+            self._current_production_mode = mode
+        try:
+            inputs = next(iter(dataloader))
+            all_inputs = gather_object(inputs)
+            nnodes = get_node_setting()[1]
+            distributed_idx = round_robin(len(all_inputs), nnodes * self.args.num_infer_workers)
+            if self.infer_rank >= 0:
+                _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
+                with self.multi_turn_completion_length_context():
+                    outputs = self._infer_multi_turn(_input_slice, self.request_config)
+                self._queue.put(DataCache(inputs, outputs, distributed_idx))
+            else:
+                self._queue.put(DataCache(inputs, [], distributed_idx))
+            if self.accelerator.num_processes > 1:
+                self.accelerator.wait_for_everyone()
+        finally:
+            with self._production_lock:
+                self._current_production_mode = None
 
     def _fast_infer(self, all_inputs, inputs=None):
         """
