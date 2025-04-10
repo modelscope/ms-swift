@@ -321,6 +321,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         yield x
 
             self.resample_iterator = cyclic_iter(self.get_resample_dataloader())
+        # flag indicating whether the evaluation has started
         self.eval_flag = False
 
     def split_batches(self):
@@ -1104,7 +1105,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics['eval'].items()}
         output.metrics.update(metrics)
         self.args.mini_batch_size = mini_batch_size
-        # flag indicating whether the evaluation has started
         self.eval_flag = True
         return output
 
