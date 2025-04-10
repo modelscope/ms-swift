@@ -33,7 +33,7 @@ class TemplateArguments:
     system: Optional[str] = None  # Override the default_system in the template.
     max_length: Optional[int] = None
 
-    truncation_strategy: Literal['delete', 'left', 'right'] = 'delete'
+    truncation_strategy: Optional[Literal['delete', 'left', 'right']] = None
     max_pixels: Optional[int] = None
     tools_prompt: str = 'react_en'  # Override the default_tools_prompt in the template.
     norm_bbox: Literal['norm1000', 'none', None] = None
@@ -53,6 +53,8 @@ class TemplateArguments:
             assert os.path.isfile(self.system), f'self.system: {self.system}'
             with open(self.system, 'r') as f:
                 self.system = f.read()
+        if self.truncation_strategy is None:
+            self.truncation_strategy = 'delete'
 
     def get_template_kwargs(self):
         truncation_strategy = self.truncation_strategy
