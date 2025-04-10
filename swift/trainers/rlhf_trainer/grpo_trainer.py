@@ -1099,6 +1099,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics['eval'].items()}
         output.metrics.update(metrics)
         self.args.mini_batch_size = mini_batch_size
+        # flag indicating whether the evaluation has started
         self.eval_flag = True
         return output
 
@@ -1332,7 +1333,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             wandb.log({'completions': wandb.Table(dataframe=df)})
 
     def is_async_generate_eval_rollout_done(self):
-        return not self._eval_has_started or self.eval_queue.empty()
+        return not self.eval_flag or self.eval_queue.empty()
 
     def is_async_generate_train_rollout_done(self):
         return self.train_queue.empty()
