@@ -321,6 +321,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         yield x
 
             self.resample_iterator = cyclic_iter(self.get_resample_dataloader())
+        # flag indicating whether the evaluation has started
+        self.eval_flag = False
 
     def split_batches(self):
         """Sync weights in batches
@@ -412,13 +414,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.llm import VllmEngine
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         _, _, _, local_world_size = get_dist_setting()
+        if self.args.tensor_parallel_size > 1:
+            vllm_kwargs = {'distributed_executor_backend': 'external_launcher'}
+        else:
+            vllm_kwargs = {}
         if local_world_size == self.args.num_infer_workers == get_device_count() and local_world_size > 1:
             # Compatibility with TP
             cls = GRPOVllmEngine
-            vllm_kwargs = {'distributed_executor_backend': 'external_launcher'}
+            engine_kwargs = {'seed': 0}
         else:
             cls = VllmEngine
-            vllm_kwargs = {}
+            engine_kwargs = {}
         with Swift.grpo_context(model, self.template.processor):
             self.engine = cls(
                 model.model_dir,
@@ -435,6 +441,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 enable_sleep_mode=self.args.sleep_level > 0,
                 use_async_engine=False,
                 max_model_len=self.args.vllm_max_model_len,
+                engine_kwargs=engine_kwargs,
                 **vllm_kwargs)
             self.engine.default_template = self.template
 
@@ -676,15 +683,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.accelerator.num_processes > 1:
             self.accelerator.wait_for_everyone()
 
-    def _fast_infer(self, all_inputs, inputs=None):
+    def _fast_infer(self, inputs):
         """
         This function performs fast inference by managing model and optimizer offloading,
         loading weights if necessary, distributing inputs among workers, and generating
         completions using the vLLM/LMDeploy framework. It supports both synchronous and asynchronous
         inference modes.
-        all_inputs: all gather inputs in distributed
         inputs: local inputs
         """
+
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
             if self.args.offload_model:
                 self.offload_model()
@@ -699,6 +706,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.state.global_step != self._last_loaded_step:
             self._move_model_to_vllm_lmdeploy()
             self._last_loaded_step = self.state.global_step
+        all_inputs = gather_object(inputs)
         # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
         # Distribute inputs to different workers
         # for example, 2 workers, 6 inputs, 0/2/4 dispatch to the first worker
@@ -751,9 +759,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _generate_completions(self, inputs):
         if self.use_fast_infer:
-            all_inputs = gather_object(inputs)
-
-            _, outputs = self._fast_infer(all_inputs, inputs)
+            inputs, outputs = self._fast_infer(inputs)
             # Slice to keep only the local part of the data
             process_slice = slice(
                 self.accelerator.process_index * len(inputs),
@@ -1084,6 +1090,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
 
     def evaluation_loop(self, dataloader, *args, **kwargs):
+        # Wait for the training rollout to complete
+        if self.args.async_generate:
+            while not self.is_async_generate_eval_rollout_done():
+                time.sleep(0.1)
         # set mini_batch_size None in evaluation
         mini_batch_size = self.args.mini_batch_size
         self.args.mini_batch_size = None
@@ -1094,13 +1104,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics['eval'].items()}
         output.metrics.update(metrics)
         self.args.mini_batch_size = mini_batch_size
+        self.eval_flag = True
         return output
 
     def training_step(self,
                       model: nn.Module,
                       inputs: Dict[str, Union[torch.Tensor, Any]],
                       num_items_in_batch=None) -> torch.Tensor:
-
+        if self.args.async_generate:
+            # Wait for the eval rollout to complete
+            while not self.is_async_generate_eval_rollout_done():
+                time.sleep(0.1)
         if self.args.mini_batch_size is None:
             return super().training_step(model, inputs, num_items_in_batch)
         model.train()
@@ -1321,3 +1335,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if self.args.wandb_log_unique_prompts:
                     df = df.drop_duplicates(subset=['prompt'])
                 wandb.log({'completions': wandb.Table(dataframe=df)})
+
+    def is_async_generate_eval_rollout_done(self):
+        return not self.eval_flag or not self.eval_queue.empty()
+
+    def is_async_generate_train_rollout_done(self):
+        return not self.train_queue.empty()

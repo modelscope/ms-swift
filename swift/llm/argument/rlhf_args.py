@@ -56,7 +56,7 @@ class GRPOArguments(GRPOArgumentsMixin):
     # multi step
     num_iterations: int = 1
 
-    truncation_strategy: Optional[Literal['delete', 'left', 'right']] = None
+    truncation_strategy: Literal['delete', 'left', 'right', None] = None
 
 
 @dataclass

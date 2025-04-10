@@ -424,6 +424,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - move_model_batches: When moving model parameters to fast inference frameworks such as vLLM/LMDeploy, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
 - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM/LMDeploy. The default is `False`.
 - offload_model: Whether to offload the model itself during inference with vLLM/LMDeploy. The default is `False`.
+  - Note: If this parameter is set to True and the grad_norm remains zero during training, please install vllm==0.7.3.
 - gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
 - multi_turn_func: The multi turn GRPO plugin name. Add your multi-turn implementation in plugin/multi_turn.py
 - mini_batch_size: Used to further split the batch size on each device (per_device_batch) into smaller sub-batches. To ensure the split is valid, per_device_train_batch_size needs be divisible by mini_batch_size
@@ -590,6 +591,7 @@ The parameter meanings are the same as in the `qwen_vl_utils` or `qwen_omni_util
 ### qwen2_5_omni
 qwen2_5_omni not only includes the model-specific parameters of qwen2_5_vl and qwen2_audio, but also contains the following parameter:
 - USE_AUDIO_IN_VIDEO: Default is False.
+- 🔥ENABLE_AUDIO_OUTPUT: Default is True. If training with zero3, set it to False.
 
 ### internvl, internvl_phi3
 For the meaning of the arguments, please refer to [here](https://modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)
