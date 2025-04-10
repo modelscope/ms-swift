@@ -1,9 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from contextlib import nullcontext
 from typing import Any, Dict, List, Union
 
 import numpy as np
-import torch.distributed as dist
 from datasets import Dataset as HfDataset
 
 from swift.llm import InferArguments, InferRequest, SwiftPipeline, load_dataset, prepare_model_template, sample_dataset
