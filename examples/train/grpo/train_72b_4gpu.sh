@@ -1,5 +1,6 @@
 # 4*80G GPU
-# Note: If the grad_norm remains zero during training, 
+
+# Note: If the grad_norm remains zero during training,
 # please remove the `--offload_model true` parameter, or use `vllm==0.7.3`.
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
