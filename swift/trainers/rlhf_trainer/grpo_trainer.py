@@ -651,17 +651,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs.append(messages_list[i:i + self.args.tensor_parallel_size])
             assert len(outputs) == prompt_lens
             assert all([len(o) == self.args.tensor_parallel_size for o in outputs])
-            if self.args.tensor_parallel_size > 1:
-                if self.infer_rank_tp_0 < 0:
-                    outputs = []
-                else:
-                    _outputs = []
-                    for tp_idx in range(self.args.tensor_parallel_size):
-                        for prompt_idx in range(len(outputs)):
-                            _outputs.append(outputs[prompt_idx][tp_idx])
-                    outputs = [_outputs]
-
-            return outputs
         else:
             # single turn
             outputs = []
@@ -675,7 +664,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs.append(_choices)
             assert len(outputs) == prompt_lens
             assert all([len(o) == self.args.tensor_parallel_size for o in outputs])
-            return outputs
+
+        if self.args.tensor_parallel_size > 1:
+            if self.infer_rank_tp_0 < 0:
+                outputs = []
+            else:
+                _outputs = []
+                for tp_idx in range(self.args.tensor_parallel_size):
+                    for prompt_idx in range(len(outputs)):
+                        _outputs.append(outputs[prompt_idx][tp_idx])
+                outputs = [_outputs]
+
+        return outputs
 
     def async_infer(self, inputs, inputs_slice, distributed_idx):
 
