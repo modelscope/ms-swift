@@ -278,6 +278,28 @@ register_model(
 
 register_model(
     ModelMeta(
+        MLLMModelType.internvl3,
+        [
+            ModelGroup([
+                Model('OpenGVLab/InternVL3-1B', 'OpenGVLab/InternVL3-1B'),
+                Model('OpenGVLab/InternVL3-2B', 'OpenGVLab/InternVL3-2B'),
+                Model('OpenGVLab/InternVL3-8B', 'OpenGVLab/InternVL3-8B'),
+                Model('OpenGVLab/InternVL3-9B', 'OpenGVLab/InternVL3-9B'),
+                Model('OpenGVLab/InternVL3-14B', 'OpenGVLab/InternVL3-14B'),
+                Model('OpenGVLab/InternVL3-38B', 'OpenGVLab/InternVL3-38B'),
+                Model('OpenGVLab/InternVL3-78B', 'OpenGVLab/InternVL3-78B'),
+            ]),
+        ],
+        TemplateType.internvl2_5,
+        get_model_tokenizer_internvl,
+        architectures=['InternVLChatModel'],
+        model_arch=ModelArch.internvl,
+        requires=['transformers>=4.37.2', 'timm'],
+        tags=['vision', 'video'],
+    ))
+
+register_model(
+    ModelMeta(
         MLLMModelType.xcomposer2_5,
         [
             ModelGroup([
