@@ -8,8 +8,6 @@
 pip install 'ms-swift'
 # 使用评测
 pip install 'ms-swift[eval]' -U
-# 使用序列并行
-pip install 'ms-swift[seq_parallel]' -U
 # 全能力
 pip install 'ms-swift[all]' -U
 ```
