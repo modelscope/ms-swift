@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from math import ceil
 from queue import Queue
 from types import MethodType
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeAlias, Union
 
 import datasets
 import numpy as np
@@ -51,6 +51,9 @@ del HFGRPOTrainer.log
 logger = get_logger()
 if is_wandb_available():
     import wandb
+
+InputsType: TypeAlias = List[Dict[str, Union[torch.Tensor, Any]]]
+OutputsType: TypeAlias = List[List[Tuple[List[Dict], str]]]
 
 
 @contextmanager
@@ -573,7 +576,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
-    def _infer_multi_turn(self, inputs_slice, request_config) -> List[List[List[Dict[str, Any]]]]:
+    def _infer_multi_turn(self, inputs_slice: np.ndarray, request_config: RequestConfig) -> Union[OutputsType, List]:
+        """Perform multi-turn or single-turn inference with support for tensor parallelism.
+
+        Args:
+            inputs_slice: Array of input requests
+            request_config: Inference configuration parameters
+
+        Returns:
+            List of outputs where each entry contains:
+            - List of responses per prompt (length = tensor_parallel_size)
+            - Each response is a tuple of (message_history, finish_reason)
+        """
         from swift.llm.infer.protocol import ChatCompletionResponse
         rank, _, _, _ = get_dist_setting()
         request_config = copy(request_config)
@@ -637,7 +651,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs.append(messages_list[i:i + self.args.tensor_parallel_size])
             assert len(outputs) == prompt_lens
             assert all([len(o) == self.args.tensor_parallel_size for o in outputs])
-            return outputs
         else:
             # single turn
             outputs = []
@@ -651,7 +664,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs.append(_choices)
             assert len(outputs) == prompt_lens
             assert all([len(o) == self.args.tensor_parallel_size for o in outputs])
-            return outputs
+
+        if self.args.tensor_parallel_size > 1:
+            if self.infer_rank_tp_0 < 0:
+                outputs = []
+            else:
+                _outputs = []
+                for tp_idx in range(self.args.tensor_parallel_size):
+                    for prompt_idx in range(len(outputs)):
+                        _outputs.append(outputs[prompt_idx][tp_idx])
+                outputs = [_outputs]
+
+        return outputs
 
     def async_infer(self, inputs, inputs_slice, distributed_idx):
 
@@ -668,7 +692,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         future.add_done_callback(done)
 
-    def _prefetch(self, dataloader):
+    def _prefetch(self, dataloader: DataLoader):
         inputs = next(iter(dataloader))
         all_inputs = gather_object(inputs)
         nnodes = get_node_setting()[1]
@@ -683,7 +707,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.accelerator.num_processes > 1:
             self.accelerator.wait_for_everyone()
 
-    def _fast_infer(self, inputs):
+    def _fast_infer(self, inputs: InputsType) -> Tuple[InputsType, OutputsType]:
         """
         This function performs fast inference by managing model and optimizer offloading,
         loading weights if necessary, distributing inputs among workers, and generating
@@ -728,15 +752,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         request_config.seed += self.state.global_step
                     with self.multi_turn_completion_length_context():
                         outputs = self._infer_multi_turn(_input_slice, self.request_config)
-                if self.args.tensor_parallel_size > 1:
-                    if self.infer_rank_tp_0 < 0:
-                        outputs = []
-                    else:
-                        _outputs = []
-                        for tp_idx in range(self.args.tensor_parallel_size):
-                            for prompt_idx in range(len(outputs)):
-                                _outputs.append(outputs[prompt_idx][tp_idx])
-                        outputs = _outputs
         else:
             if self.args.async_generate:
                 # using old model to generate, which will ignore the `clip` of advantages.
@@ -746,6 +761,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 distributed_idx = data_cache.distributed_idx
             outputs = []
         outputs = gather_object(outputs)
+        if self.args.tensor_parallel_size > 1:
+            outputs = [item for output in outputs for item in output]
         outputs = self.reorder_outputs(outputs, distributed_idx)
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
@@ -757,7 +774,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.load_optimizer()
         return inputs, outputs
 
-    def _generate_completions(self, inputs):
+    def _generate_completions(self, inputs: InputsType) -> InputsType:
+        """Generate completions for given inputs using either fast inference or standard PyTorch inference.
+
+        Args:
+            inputs: List of input examples containing conversation messages.
+
+        Returns:
+            Modified inputs with generated completions added to the last message
+            and truncation flag set in 'is_truncated' field.
+        """
         if self.use_fast_infer:
             inputs, outputs = self._fast_infer(inputs)
             # Slice to keep only the local part of the data
@@ -782,15 +808,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs = [output[0] for output in outputs]
 
         for i, output in enumerate(outputs):
-            if isinstance(output[0][0], list):
-                output[0] = output[0][0]
-            inputs[i]['messages'] = output[0]
+            inputs[i]['messages'] = output[0][0]
             inputs[i]['is_truncated'] = output[0][1] == 'length'
 
         return inputs
 
-    def _generate_and_score_completions(
-            self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
+    def _generate_and_score_completions(self, inputs: InputsType) -> InputsType:
 
         inputs = self._generate_completions(inputs)
         total_rewards_per_func, total_rewards, completions = self._score_completions(inputs)
@@ -810,8 +833,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return batch_encoded_inputs
 
-    def _score_completions(self, inputs):
-        """Score completions using all reward functions"""
+    def _score_completions(self, inputs: InputsType) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
+        """Score completions using all reward functions
+
+        Args:
+            inputs: List of input examples, each containing a 'messages' list with conversation history
+
+        Returns:
+            Tuple containing:
+            - rewards_per_func: Tensor of shape (num_examples, num_reward_funcs) with individual rewards
+            - total_rewards: Tensor of shape (num_examples,) with weighted sum of rewards
+            - completions: List of generated completion strings
+        """
         device = self.accelerator.device
         completions = [example['messages'][-1]['content'] for example in inputs]
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
@@ -887,7 +920,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return inputs, rewards, rewards_per_func, completions
 
-    def _prepare_batch_inputs(self, inputs, rewards):
+    def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> InputsType:
         """Prepare the final batch inputs with advantages and other required fields"""
         # Compute advantages
         grouped_rewards = rewards.view(-1, self.num_generations)
@@ -961,14 +994,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         agg_truncated_mask = gather(torch.cat([inp['truncated_mask'] for inp in inputs]).to(device))
 
         term_completion_mask = agg_completion_mask[agg_truncated_mask]
-        clipped_completions_ratio = 1 - len(term_completion_mask) / len(agg_completion_mask)
+        clipped_completions_ratio = len(term_completion_mask) / len(agg_completion_mask)
 
-        if len(term_completion_mask) == 0:
-            # edge case where no completed sequences are found
-            term_completion_mask = torch.zeros(1, device=device)
-        self._metrics[mode]['completions/mean_terminated_length'].append(term_completion_mask.float().mean().item())
-        self._metrics[mode]['completions/min_terminated_length'].append(term_completion_mask.float().min().item())
-        self._metrics[mode]['completions/max_terminated_length'].append(term_completion_mask.float().max().item())
         self._metrics[mode]['completions/clipped_ratio'].append(clipped_completions_ratio)
 
         # Get the names of the reward functions
@@ -1107,10 +1134,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.eval_flag = True
         return output
 
-    def training_step(self,
-                      model: nn.Module,
-                      inputs: Dict[str, Union[torch.Tensor, Any]],
-                      num_items_in_batch=None) -> torch.Tensor:
+    def training_step(self, model: nn.Module, inputs: InputsType, num_items_in_batch=None) -> torch.Tensor:
         if self.args.async_generate:
             # Wait for the eval rollout to complete
             while not self.is_async_generate_eval_rollout_done():
@@ -1241,7 +1265,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         original_fn = self.engine.set_default_max_tokens
         original_max_len = self.engine.max_model_len
 
-        def set_default_max_tokens(_self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
+        def set_default_max_tokens(_self, request_config: RequestConfig, inputs: InputsType) -> None:
             # Calculate required context window
             original_max_len = _self.max_model_len or 8192
             if isinstance(inputs, dict):
