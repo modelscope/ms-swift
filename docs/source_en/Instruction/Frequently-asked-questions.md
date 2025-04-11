@@ -290,6 +290,139 @@ Yes, refer to [examples/train/grpo/plugin](https://github.com/modelscope/ms-swif
 ### Q89: Why do I get the error when using --torch_dtype float16 (card cannot use bf16): lib/python3.12/site-packages/torch/amp/grad_scaler.py", line 260, in unscale_grads raise ValueError("Attempting to unscale FP16 gradients.") ValueError: Attempting to unscale FP16 gradients.
 FP16 does not support full-parameter training.
 
+### Q90: I have a question. I trained a reward model using Swift (baseline is qwen2.5-7b), but when loading it in PPO or GRPO, it shows an error. The reward model was trained using LoRA.
+```shell
+--rlhf_type ppo \
+--model Qwen/Qwen2.5-14B-Instruct \
+--reward_model /mnt/workspace/output/rm/model --train_type lora \
+--dataset 'AI-ModelScope/alpaca-gpt4-data-zh#20000' --torch_dtype float32 --num_train_epochs 1 \
+--per_device_train_batch_size 1 --per_device_eval_batch_size 1 --learning_rate 1e-5 --lora_rank 8 --lora_alpha 32 \
+--target_modules all-linear \
+--gradient_accumulation_steps 16 --eval_steps 100 --save_steps 100 \
+```
+The LoRA-trained reward model needs to be merged.
+
+### Q91: What version of transformers is needed to fine-tune deepseek_vl2? Official docs say <4.42, but it also shows errors with 4.42 and below. Does the peft version need to be lowered too?
+Use `peft==0.11.*`.
+
+### Q92: Generate train split is too slow (about 30+ datasets with around a million total data points). Previously Swift 2.x wasn't this slow. Lazy tokenize is already enabled.
+Set `--dataset_num_proc 16`.
+
+### Q93: How can I full-parameter fine-tune the visual encoder while using LoRA to fine-tune LLM when fine-tuning qwen2.5vl?
+Refer to this [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/lora_llm_full_vit).
+
+### Q94: How to use custom loss functions in Swift?
+Add it in the plugin.
+
+### Q95: What are the parameters for MoE? Can't find keywords in the parameter table. How to set expert numbers and expert routing parameters?
+Use parameters directly from `config.json`.
+
+### Q96: Using lmdeploy in grpo training reports missing functions. The load_weights function isn't found in lmdeployengine class.
+Only supported under turbomind engine.
+
+### Q97: Getting errors when fine-tuning Moonlight-16B-A3B-Instruct model. Seems ms-swift doesn't support fine-tuning this model?
+Training is disabled in model files. Refer to deepseek_vl2's solution in the issues.
+
+### Q98: How to solve this error: RuntimeError: "triu_tril_cuda_template" not implemented for 'BFloat16'?
+```shell
+CUDA_VISIBLE_DEVICES=01,2,3,4,5,6,7 \
+swift sft \
+    --model Internlm3-8b \
+    --dataset train.json \
+    --train_type full \
+    --torch_dtype bfloat16 \
+    --num_train_epochs 5 \
+    --per_device_train_batch_size 1 \
+    --deepspeed zero3 \
+    --per_device_eval_batch_size 1 \
+    --learning_rate 1e-4 \
+    --gradient_accumulation_steps 16 \
+    --eval_steps 100 \
+    --save_steps 100 \
+    --save_total_limit 5 \
+    --logging_steps 5 \
+    --max_length 2048 \
+    --output_dir output \
+    --warmup_ratio 0.05 \
+    --dataloader_num_workers 4
+```
+Upgrade torch.
+
+### Q99: Does it support custom rewards?
+Yes, please check this [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin).
+
+### Q100: Is it normal that both loss and grad_norm are 0 during GRPO training?
+```text
+{'loss':    0.0.    'grad norm':0.0,    'learning_rate':9e-08,    'memory(GiB)':88.1，    'train_speed(iter/s)':0.009252，    'completion_length':    150.00000763，    'response_clip ratio': 0.0,    'rewards/Format':1.0,    'reward
+: 1.0,    'reward std':0.0，    'kl': 0.0, 'clip_ratio': 0.0,    'epoch': 0.0， 'qlobal step/max steps':'1/1052'，    'percentage':'0.10%    'elapsed time':    '36s    'remaining time': '10h 43m 54s'}
+{'loss': 0.0，'grad_norm':0.0，'learning_rate': 1.8e-07,'memory(GiB)':94.15，'train_speed(iter/s)':0.014782，'completion_length': 133.25000763，'response_clip_ratio': 0.0，'rewards/Format': 1.0, 'rewa rd': 1.0，'reward_std': 0.0, 'kl': 0.0，'clip_ratio': 0.0,'epoch': 0.0, 'global_step/max_steps': '2/1052'，'percentage': '0.19%', 'elapsed_time': '1m 3s'， 'remaining_time': '9h 19m 49s'}
+{'loss': 0.0， 'qrad norm': 0.0, 'learning rate': 2.7e-07,'memory(GiB)': 94.15，'train_speed(iter/s)': 0.018695，'completion_length': 123.08333969，，'response_clip_ratio': 0.0，'rewards/Format': 1.0, 'rewa rd': 1.0， 'reward_ std': 0.0,'kl': 0.0,'clip_ratio': 0.0， 'epoch': 0.0， 'global_step/max_steps': '3/1052'，'percentage': '0.29%，'elapsed_time': '1m 29s'，'remaining_time': '8h 39m 34s'}
+```
+Training with loss close to 0 is normal, refer to this [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851).
+
+### Q101: Where can I pass in accuracy_orm for GRPO's built-in reward function?
+Currently it requires modifying the code directly.
+
+### Q102: I notice the reward function has a solution parameter, does it need to be passed from the dataset? Does my dataset must have a solution field?
+Yes, it's necessary for math problems to calculate accuracy.
+
+### Q103: Why is there no token_acc during training?
+Some models have mismatched `logits` and `labels` counts, so token accuracy isn't calculated.
+
+### Q104: When fine-tuning Ovis2, LoRA parameters don't seem to work? Memory usage doesn't change with or without --train_type lora.
+Limit `--max_length`, this model is special and needs padding to max_length.
+
+### Q105: Getting ValueError when running classification task with Qwen2.5: The model did not return a loss from the inputs, only the following keys: logits. For reference, the inputs it received are input_ids,attention_mask.
+dataset format: {"messages": [{"role": "user", "content": "xxxxx"}, {"label": 1}]}
+Put `label` at the same level as `messages`, not inside it.
+
+### Q106: Does anyone know what's wrong with this? The training method is VERA
+```text
+KeyError("The 'metric_for_best_model' training argument is set to 'eval_loss', which is not found in the evaluati on metrics. The available evaluation metrics are:['eval_runtime', 'eval_samples_per_second', 'eval_steps_per_sec ond', 'epoch', 'global_step/max_steps', 'percentage', 'elapsed_time', 'remaining_time']. consider changing the 'metric_for_best_model' via the TrainingArguments.")
+Train: 45%|    100/220[09:47<11:44，5.87s/it]
+```
+```shell
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+swift sft \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --dataset '/mnt/workspace/data.json' \
+    --train_type vera \
+    --torch_dtype bfloat16 \
+    --num_train_epochs 4 \
+    --per_device_train_batch_size 1 \
+    --learning_rate 1e-4 \
+    --gradient_accumulation_steps 16 \
+    --eval_steps 100 \
+    --save_steps 100 \
+    --save_total_limit 5 \
+    --logging_steps 5 \
+    --max_length 4096 \
+    --warmup_ratio 0.05 \
+    --output_dir output/Qwen2.5-7B-vera \
+```
+Add `--label_names labels` parameter.
+
+### Q107: How to exit VllmEngine? I want to release GPU memory after inference rather than keeping it occupied.
+Use sleep mode: `engine.sleep(level=1)/engine.wake_up()` with `enable_sleep_mode=True` during initialization.
+
+### Q108: Does trainer_sampler_random have no effect in streaming mode?
+Streaming is not random.
+
+### Q109: Can trust_remote_code be set when using VLLM for GRPO training?
+It's true by default.
+
+### Q110: For large dataset pretraining using streaming and packing, is there a way to calculate total steps based on epochs, batch size etc when setting max_steps?
+Training will end based on whichever is smaller between `epochs` and `max_steps`.
+
+### Q111: Unsloth training error: "assert(type(target modules) in (list,tuple,))" when using --target_modules all-linear
+Don't use `all-linear`, specify concrete module list like `--target_modules q k v`.
+
+### Q112: Does Swift support multi-label classification now?
+Yes. Check custom dataset docs for format and search for `problem_type` in command line parameter docs.
+
+### Q113: How does flash_attn handle packing - separately or merged?
+Flash attention is required to avoid errors, otherwise attention_mask will have issues.
+
 ## Inference
 
 ### Q1: Is there documentation for Swift inference?
@@ -406,6 +539,23 @@ swift infer \
 ```
 Use `--stream true`. This will write results one by one, but it's non-batch inference.
 
+### Q32: When I trained and did inference in Swift it worked, but after merge_lora when using Ollama's API the effect disappeared.
+Try loading with transformers, Swift's template is aligned with transformers.
+
+### Q33: Which parameter should I set if I need to continue inference under a specific prefix during model inference?
+The parameter `--response_prefix`.
+
+### Q34: How do I fix this error that keeps appearing?
+```text
+File "/mnt/workspace/swift/swift/1lm/dataset/preprocessor/core. py", line 69, in _check_messages raise
+ValueError(f'assistant_message; {assistant_message}')
+ValueError: assistant_message: {'role' :'assistant', 'content': ''}
+```
+```shell
+CUDA_VISIBLE_DEVICES=0 NPROC_PER_NODE=1 MAX_PIXELS=1003520 swift sft --model Qwen/Qwen2.5-VL-7B-Instruct --train_type lora --dataset /mnt/workspace/data.json --deepspeed zero2 --max_length 16384
+```
+The assistant field in the dataset is empty. If this is for inference, delete this empty string because it will cause NaN during training and will be checked.
+
 ## Deployment
 
 ### Q1: How to deploy a trained model?
@@ -455,6 +605,9 @@ It's controlled by the client side. Please check [examples/deploy/client](https:
 
 ### Q14: After deploying a multimodal model with Swift, is there an example of passing PIL.Image from the client?
 Check this [client example](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/client/mllm/openai_client.py).
+
+### Q15: When deploying, which parameter should be set to output multiple results in a single response?
+The parameter `n` in `RequestConfig`.
 
 ## Evaluation
 
@@ -519,7 +672,45 @@ You can try using evalscope's [Model Inference Stress Testing](https://evalscope
 Use the configuration parameter `--eval_limit`. This `--eval_limit` controls the number of entries in each subset. For example, if MMLU has over 50 subsets, and each limit is set to 10 entries, then that would be over 500 entries in total.
 
 ### Q11: When evaluating, isn't it just having the model output an answer once and checking if it's correct? Is there a way to record or see the complete answer each time?
-For multiple-choice evaluations like ceval, the evaluation is done by calculating the logits for each option, without outputting the actual answer content. If you want to see the answer content, you can deploy the model as a service with a specified API URL for evaluation, which will evaluate based on parsing the model's output. See the [documentation]((https://evalscope.readthedocs.io/zh-cn/latest/get_started/basic_usage.html#api)) for details. Both methods can be made optional.
+For multiple-choice evaluations like ceval, the evaluation is done by calculating the logits for each option, without outputting the actual answer content. If you want to see the answer content, you can deploy the model as a service with a specified API URL for evaluation, which will evaluate based on parsing the model's output. See the [documentation](https://evalscope.readthedocs.io/en/latest/get_started/basic_usage.html#model-api-service-evaluation) for details. Both methods can be made optional.
 
 ### Q12: I want to stress test my model using evalscope and would like to use a prompt.txt file format. What should the format of this file look like?
-Configure line_by_line, see the [documentation](https://evalscope.readthedocs.io/zh-cn/latest/user_guides/stress_test/parameters.html#id5) for details.
+Configure line_by_line, see the [documentation](https://evalscope.readthedocs.io/en/latest/user_guides/stress_test/parameters.html#dataset-configuration) for details.
+
+### Q13: How should I use the 'parallel' and 'number' parameters when conducting model inference performance testing using evalscope perf?
+`number` is the total number of requests, while `parallel` is the number of concurrent requests.
+
+### Q14: In swift eval, the model stops generating after 1024 tokens. How can I modify this? Setting --max_new_tokens 5000 doesn't seem to work.
+This parameter hasn't been exposed in swift yet. You can use evalscope to run it, and configure max_tokens in the model according to the [documentation](https://evalscope.readthedocs.io/en/latest/user_guides/backend/vlmevalkit_backend.html#configure-model-evaluation-parameters).
+
+### Q15: Does evalscope currently support benchmarks like AIME and MATH-500 for deepseek-r1?
+Yes, it does. Here are the [best practices](https://evalscope.readthedocs.io/en/latest/best_practice/deepseek_r1_distill.html).
+
+### Q16: I'm getting this error when using a local path for gpqa evaluation in evalscope: ValueError: BuildingConfig 'gpqa_extended' not found. Available: ['default']
+Parameter configuration:
+```shell
+ --datasets gpqa --dataset-args '{"gpqa": {"local_path": "/mnt/workspace/gpqa"} }'
+ ```
+If you want to use datasets locally, it's recommended to clone the repository from modelscope and then specify the path.
+
+### Q17: When evaluating the arc dataset with evalscope, I get this error. What's the reason? I'm using the local data path method.
+```text
+KeyError: 'RequestId'
+```
+```shell
+--datasets arc --dataset-args '{"arc": {"local_path": "/mnt/workspace/arc"}}'
+```
+According to the [documentation](https://evalscope.readthedocs.io/en/latest/get_started/basic_usage.html#using-local-datasets-and-models), the arc dataset needs to be downloaded using a Python script; directly cloning the repository won't work.
+
+### Q18: How can I load downloaded datasets locally when using opencompass backend for evaluation?
+The opencompass backend doesn't support setting `data_args`.
+
+### Q19: Does swift eval with --eval_backend OpenCompass not support custom datasets?
+```text
+ValueError: eval_dataset: /mnt/workspace/data.jsonl is not supported.
+eval_backend: OpenCompass supported datasets: ['C3', 'summedits', 'WiC', 'csl', 'lambada', 'mbpp', 'hellaswag', 'ARC_e', 'math', 'nq', 'race', 'MultiRC', 'cmb', 'ceval', 'GaokaoBench', 'mmlu', 'winogrande', 'tnews', 'triviaqa', 'CB', 'cluewsc', 'humaneval', 'AX_g', 'DRCD', 'RTE', 'ocnli_fc', 'gsm8k', 'obqa', 'ReCoRD', 'Xsum', 'ocnli', 'WSC', 'siqa', 'agieval', 'piqa', 'cmnli', 'cmmlu', 'eprstmt', 'storycloze', 'AX_b', 'afqmc', 'strategyqa', 'bustm', 'BoolQ', 'COPA', 'ARC_c', 'PMMEval', 'chid', 'CMRC', 'lcsts']
+```
+OpenCompass doesn't support custom datasets; use native mode for custom datasets.
+
+### Q20: When I run the RAGAS evaluation task from the evalscope official documentation (https://evalscope.readthedocs.io/zh-cn/latest/user_guides/backend/rageval_backend/ragas.html) locally on a single A100, it takes 10 minutes to run the two examples in the documentation. Is this normal? Are there ways to optimize the running speed?
+RAG evaluation itself is resource-intensive, and using a local critic LLM will indeed be slower as it can't handle batch requests. It's recommended to use frameworks like vllm to launch tasks.
