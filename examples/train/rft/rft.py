@@ -90,7 +90,9 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
 
     for proc, handler in enumerate(handlers):
         handler.wait()
-        assert os.path.exists(os.path.join('sample_output', f'iter_{iter}_proc_{proc}_sampling.jsonl')), f'{os.path.join("sample_output", f"iter_{iter}_proc_{proc}_sampling.jsonl")} not exists, please check the sample logs to get the detail error.'
+        assert os.path.exists(os.path.join('sample_output', f'iter_{iter}_proc_{proc}_sampling.jsonl')), (
+            f'{os.path.join("sample_output", f"iter_{iter}_proc_{proc}_sampling.jsonl")} not exists, '
+            'please check the sample logs to get the detail error.')
         datasets.append(os.path.join('sample_output', f'iter_{iter}_proc_{proc}_sampling.jsonl'))
     print(f'Sampling done, files:{datasets}', flush=True)
     return datasets
