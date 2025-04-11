@@ -52,6 +52,8 @@ logger = get_logger()
 if is_wandb_available():
     import wandb
 
+InputsType: TypeAlias = Dict[str, Union[torch.Tensor, Any]]
+
 
 @contextmanager
 def unwrap_model_for_generation(
@@ -573,7 +575,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
-    def _infer_multi_turn(self, inputs_slice, request_config) -> List[List[Tuple[Dict, str]]]:
+    def _infer_multi_turn(self, inputs_slice, request_config: RequestConfig) -> List[List[Tuple[List[Dict], str]]]:
         from swift.llm.infer.protocol import ChatCompletionResponse
         rank, _, _, _ = get_dist_setting()
         request_config = copy(request_config)
@@ -683,7 +685,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.accelerator.num_processes > 1:
             self.accelerator.wait_for_everyone()
 
-    def _fast_infer(self, inputs):
+    def _fast_infer(self, inputs: InputsType) -> Tuple[List[Dict], List[Dict]]:
         """
         This function performs fast inference by managing model and optimizer offloading,
         loading weights if necessary, distributing inputs among workers, and generating
@@ -757,7 +759,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.load_optimizer()
         return inputs, outputs
 
-    def _generate_completions(self, inputs):
+    def _generate_completions(self, inputs: InputsType) -> InputsType:
         if self.use_fast_infer:
             inputs, outputs = self._fast_infer(inputs)
             # Slice to keep only the local part of the data
@@ -789,8 +791,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return inputs
 
-    def _generate_and_score_completions(
-            self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
+    def _generate_and_score_completions(self, inputs: InputsType) -> InputsType:
 
         inputs = self._generate_completions(inputs)
         total_rewards_per_func, total_rewards, completions = self._score_completions(inputs)
@@ -810,7 +811,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return batch_encoded_inputs
 
-    def _score_completions(self, inputs):
+    def _score_completions(self, inputs: InputsType):
         """Score completions using all reward functions"""
         device = self.accelerator.device
         completions = [example['messages'][-1]['content'] for example in inputs]
@@ -887,7 +888,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return inputs, rewards, rewards_per_func, completions
 
-    def _prepare_batch_inputs(self, inputs, rewards):
+    def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> InputsType:
         """Prepare the final batch inputs with advantages and other required fields"""
         # Compute advantages
         grouped_rewards = rewards.view(-1, self.num_generations)
@@ -1107,10 +1108,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.eval_flag = True
         return output
 
-    def training_step(self,
-                      model: nn.Module,
-                      inputs: Dict[str, Union[torch.Tensor, Any]],
-                      num_items_in_batch=None) -> torch.Tensor:
+    def training_step(self, model: nn.Module, inputs: InputsType, num_items_in_batch=None) -> torch.Tensor:
         if self.args.async_generate:
             # Wait for the eval rollout to complete
             while not self.is_async_generate_eval_rollout_done():
@@ -1241,7 +1239,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         original_fn = self.engine.set_default_max_tokens
         original_max_len = self.engine.max_model_len
 
-        def set_default_max_tokens(_self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
+        def set_default_max_tokens(_self, request_config: RequestConfig, inputs: InputsType) -> None:
             # Calculate required context window
             original_max_len = _self.max_model_len or 8192
             if isinstance(inputs, dict):
