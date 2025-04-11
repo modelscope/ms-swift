@@ -214,7 +214,7 @@ class MathORM(ORM):
     def __call__(self, infer_requests: List[Union[InferRequest, Dict]], ground_truths: List[str],
                  **kwargs) -> List[float]:
         rewards = []
-        predictions = [request['messages'][-1]['content'] for request in infer_requests]
+        predictions = [request.messages[-1]['content'] for request in infer_requests]
         for prediction, ground_truth in zip(predictions, ground_truths):
             if '# Answer' in prediction:
                 prediction = prediction.split('# Answer')[1]
