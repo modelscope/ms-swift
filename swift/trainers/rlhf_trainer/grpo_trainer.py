@@ -673,7 +673,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _prefetch(self, dataloader: DataLoader):
         inputs = next(iter(dataloader))
-        all_inputs = gather_object(inputs)  # inputs: InputsType
+        all_inputs = gather_object(inputs)
         nnodes = get_node_setting()[1]
         distributed_idx = round_robin(len(all_inputs), nnodes * self.args.num_infer_workers)
         if self.infer_rank >= 0:
