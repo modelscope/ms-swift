@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from math import ceil
 from queue import Queue
 from types import MethodType
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeAlias, Union
 
 import datasets
 import numpy as np
@@ -575,7 +575,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
-    def _infer_multi_turn(self, inputs_slice, request_config: RequestConfig) -> List[List[Tuple[List[Dict], str]]]:
+    def _infer_multi_turn(self, inputs_slice: np.ndarray,
+                          request_config: RequestConfig) -> List[List[Tuple[List[Dict], str]]]:
         from swift.llm.infer.protocol import ChatCompletionResponse
         rank, _, _, _ = get_dist_setting()
         request_config = copy(request_config)
@@ -670,9 +671,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         future.add_done_callback(done)
 
-    def _prefetch(self, dataloader):
+    def _prefetch(self, dataloader: DataLoader):
         inputs = next(iter(dataloader))
-        all_inputs = gather_object(inputs)
+        all_inputs = gather_object(inputs)  # inputs: InputsType
         nnodes = get_node_setting()[1]
         distributed_idx = round_robin(len(all_inputs), nnodes * self.args.num_infer_workers)
         if self.infer_rank >= 0:
@@ -685,7 +686,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.accelerator.num_processes > 1:
             self.accelerator.wait_for_everyone()
 
-    def _fast_infer(self, inputs: InputsType) -> Tuple[List[Dict], List[Dict]]:
+    def _fast_infer(self, inputs: InputsType) -> Tuple[InputsType, InputsType]:
         """
         This function performs fast inference by managing model and optimizer offloading,
         loading weights if necessary, distributing inputs among workers, and generating
