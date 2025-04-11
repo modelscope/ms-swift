@@ -74,8 +74,6 @@ Hints:
 - response_prefix: The prefix character for the response, for example, setting the response_prefix to `'<think>\n'` for QwQ-32B. The default is None, and it is automatically set according to the model.
 - padding_side: Padding side when `batch_size>=2` during training. Options are 'left' and 'right', with 'right' as the default. (For inference with batch_size>=2, only left padding is applied.)
 - loss_scale: Setting for the loss weight of training tokens. Default is `'default'`, meaning all responses (including history) are calculated with a cross-entropy loss of 1. Options are 'default', 'last_round', 'all', and agent-specific loss scales: 'react', 'agentflan', 'alpha_umi', and 'qwen'. 'last_round' means calculating only the loss of the last round's response, and 'all' calculates the loss for all tokens. For agent parts, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
-- sequence_parallel_size: The number of sequence parallelism, with a default value of 1. This parameter is only supported in `swift pt/sft`. Refer to [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel/train.sh).
-  - Note: This feature is implemented with the capabilities of [xtuner](https://github.com/InternLM/xtuner), and not all models support this parameter.
 - use_chat_template: Use chat template or generation template, default is `True`. `swift pt` is automatically set to the generation template.
 - template_backend: Selection of the template backend. Options are 'swift' and 'jinja', with 'swift' as the default. If using jinja, it applies transformer's `apply_chat_template`.
   - Note: The jinja template backend supports only inference, not training.
@@ -247,7 +245,7 @@ Vera uses the three parameters `target_modules`, `target_regex`, and `modules_to
 
 #### LISA
 
-Note: LISA only supports full parameters, i.e., `train_type full`.
+Note: LISA only supports full parameters, i.e., `--train_type full`.
 
 - 🔥lisa_activated_layers: Default value is `0`, representing LISA is not used. Setting to a non-zero value activates that many layers, it is recommended to set to 2 or 8.
 - lisa_step_interval: Default value is `20`, number of iter to switch to layers that can be backpropagated.

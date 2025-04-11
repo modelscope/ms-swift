@@ -190,16 +190,6 @@ class LLMTrain(BaseUI):
                 'en': 'Liger kernel can reduce memory usage'
             }
         },
-        'sequence_parallel_size': {
-            'label': {
-                'zh': '序列并行分段',
-                'en': 'Sequence parallel size'
-            },
-            'info': {
-                'zh': 'DDP条件下的序列并行（减小显存），需要安装ms-swift[seq_parallel]',
-                'en': 'Sequence parallel when ddp, need to install ms-swift[seq_parallel]'
-            }
-        },
         'train_param': {
             'label': {
                 'zh': '训练参数设置',
@@ -227,7 +217,6 @@ class LLMTrain(BaseUI):
                         gr.Dropdown(elem_id='train_stage', choices=['pt', 'sft', 'rlhf'], value='sft', scale=3)
                         gr.Dropdown(elem_id='train_type', scale=2, choices=list(get_supported_tuners()))
                         gr.Dropdown(elem_id='tuner_backend', scale=2)
-                        gr.Textbox(elem_id='sequence_parallel_size', scale=3)
                     with gr.Row():
                         gr.Textbox(elem_id='seed', scale=4)
                         gr.Dropdown(elem_id='torch_dtype', scale=4)
