@@ -762,7 +762,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs = []
         outputs = gather_object(outputs)
         if self.args.tensor_parallel_size > 1:
-            outputs = [item for output in outputs for item in output]
+            outputs = [[item] for output in outputs for item in output]
         outputs = self.reorder_outputs(outputs, distributed_idx)
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
