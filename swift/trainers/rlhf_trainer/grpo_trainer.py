@@ -962,14 +962,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         agg_truncated_mask = gather(torch.cat([inp['truncated_mask'] for inp in inputs]).to(device))
 
         term_completion_mask = agg_completion_mask[agg_truncated_mask]
-        clipped_completions_ratio = 1 - len(term_completion_mask) / len(agg_completion_mask)
+        clipped_completions_ratio = len(term_completion_mask) / len(agg_completion_mask)
 
-        if len(term_completion_mask) == 0:
-            # edge case where no completed sequences are found
-            term_completion_mask = torch.zeros(1, device=device)
-        self._metrics[mode]['completions/mean_terminated_length'].append(term_completion_mask.float().mean().item())
-        self._metrics[mode]['completions/min_terminated_length'].append(term_completion_mask.float().min().item())
-        self._metrics[mode]['completions/max_terminated_length'].append(term_completion_mask.float().max().item())
         self._metrics[mode]['completions/clipped_ratio'].append(clipped_completions_ratio)
 
         # Get the names of the reward functions
