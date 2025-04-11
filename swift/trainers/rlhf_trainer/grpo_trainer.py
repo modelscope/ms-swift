@@ -1019,7 +1019,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self._metrics[mode][f'rewards/{reward_func_name}/std'].append(std_rewards)
 
         # Log overall reward stats
-        grouped_rewards = rewards[metrics_mask].view(-1, self.num_generations)
+        grouped_rewards = rewards.view(-1, self.num_generations)[metrics_mask]
         self._metrics[mode]['reward'].append(grouped_rewards.mean().item())
         self._metrics[mode]['reward_std'].append(grouped_rewards.std(dim=1).mean().item())
 
