@@ -81,6 +81,7 @@ class LazyLLMDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         for i in range(self.n_try_fetch):
+            n_try = i
             if i == 0:
                 i = idx
             else:
@@ -90,7 +91,7 @@ class LazyLLMDataset(Dataset):
             try:
                 return self.encode_func(data)
             except Exception:
-                if i == self.n_try_fetch - 1:
+                if n_try == self.n_try_fetch - 1:
                     if self.strict:
                         logger.warning('To avoid errors, you can pass `strict=False`.')
                     raise
