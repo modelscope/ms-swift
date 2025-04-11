@@ -885,9 +885,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             grouped_rewards = rewards.view(-1, self.num_generations)
             group_std = grouped_rewards.std(dim=1)
 
-            if (group_std > 0).all():
-                break
-
             valid_mask = (group_std > 0).repeat_interleave(self.num_generations)
             all_inputs = gather_object(inputs)
             valid_samples.extend([inp for inp, mask in zip(all_inputs, valid_mask) if mask])
