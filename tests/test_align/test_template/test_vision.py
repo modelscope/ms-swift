@@ -2,7 +2,7 @@ import os
 
 import torch
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '4,5,6,7'
 os.environ['SWIFT_DEBUG'] = '1'
 
 
@@ -83,20 +83,18 @@ def test_internvl2_phi3():
 
 def test_internvl3_8b():
     pt_engine = PtEngine('OpenGVLab/InternVL3-8B')
-    messages = [{'role': 'user', 'content': '描述图片'}]
-    response = _infer_model(pt_engine, messages=messages)
-    assert response == ('这张图片展示了一只可爱的小猫咪的特写。 \n\n- **眼睛**：小猫咪的大眼睛占据了画面的主要部分，'
-                        '充满了清澈的蓝色，看起来十分灵动，透露出一种天真无邪的神情。\n- **脸部**：面部非常柔顺，两只耳朵竖立，'
-                        '毛发厚实且有些波浪状的纹路。脸部的毛色主要是白色，夹杂着灰色或黑色的斑纹。\n- **表情**：小猫的表情显得非常专注，'
-                        '给人一种好奇或警觉的感觉。粉色的小鼻子和嘴巴使得它的表情显得更加生动。\n- **光线**：图片的光线非常好，来自自然光的柔和照明，'
-                        '突显了毛发的柔软和眼睛的明亮。\n\n背景比较模糊，使得前景的小猫成为视觉焦点。这张图片充满了可爱与温馨的气息，让人不禁喜爱上这只小猫咪。')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
+    assert response == response2
 
 
 def test_internvl3_9b():
     pt_engine = PtEngine('OpenGVLab/InternVL3-9B')
-    messages = [{'role': 'user', 'content': '描述图片'}]
-    response = _infer_model(pt_engine, messages=messages)
-    assert response == ('这是一张可爱的小猫照片。小猫拥有大而明亮的眼睛，表情非常温柔，毛色为白色带有灰色条纹。' '猫咪的耳朵竖起，胡须清晰可见，整体看起来非常萌。背景模糊，突出小猫作为主体。')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
+    assert response == response2
 
 
 def test_llava():
