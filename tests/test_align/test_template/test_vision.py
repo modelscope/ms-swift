@@ -81,6 +81,22 @@ def test_internvl2_phi3():
     _infer_model(pt_engine, system='')
 
 
+def test_internvl3_8b():
+    pt_engine = PtEngine('OpenGVLab/InternVL3-8B')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
+    assert response == response2
+
+
+def test_internvl3_9b():
+    pt_engine = PtEngine('OpenGVLab/InternVL3-9B')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
+    assert response == response2
+
+
 def test_llava():
     pt_engine = PtEngine('AI-ModelScope/llava-v1.6-mistral-7b')
     _infer_model(pt_engine)
@@ -570,4 +586,6 @@ if __name__ == '__main__':
     # test_ui_tars()
     # test_gemma3_vision()
     # test_mistral_2503()
-    test_llama4()
+    # test_llama4()
+    test_internvl3_8b()
+    test_internvl3_9b()

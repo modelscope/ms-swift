@@ -214,7 +214,7 @@ class StdTemplateInputs:
         messages = [
             {'role': 'user', 'content': "What's the weather today in Hangzhou?"},
             {'role': 'assistant', 'content': 'Action: get_weather\nAction Input:\
-                    [{"location": "Hangzhou"}]\nObservations: It is 26 degrees Celsius and sunny in Hangzhou today.'}
+                    [{"location": "Hangzhou"}]\nObservations: It is 26 degrees Celsius and sunny in Hangzhou today.\n'}
         ]
         """
         if len(messages) < 2:
@@ -229,7 +229,7 @@ class StdTemplateInputs:
             if (pre_role == 'assistant' and role == 'tool' and isinstance(pre_content, str)
                     and pre_content.endswith(keyword.get('observation'))):
                 assert isinstance(pre_content, str)
-                pre_message['content'] = pre_content + content  # assistant
+                pre_message['content'] = pre_content + content + '\n'  # assistant
                 messages.pop(i)  # remove tool
             elif (pre_role == 'assistant' and role == 'assistant' and isinstance(pre_content, str)
                   and isinstance(content, str)):
