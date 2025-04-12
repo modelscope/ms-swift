@@ -295,7 +295,7 @@ class MSHub(HubOperation):
             version=revision,
             download_mode=download_mode,
             use_streaming=streaming,
-            trust_remote_code=True)
+        )
 
     @classmethod
     def download_model(cls,
