@@ -1059,7 +1059,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
-        completions_length = completion_mask.sum()
+        completions_length = completion_mask.sum().item()
         if completions_length == 0:
             # Prevent division by zero issues after all completions are filtered by the overlong filter
             completions_length += 1e-4
