@@ -1235,7 +1235,9 @@ class Template(ProcessorMixin):
         if packing_mode:
             # only support llm
             for k in ['input_ids', 'labels', 'position_ids', 'loss_scale']:
-                res[k] = [self.gather_list(batch, k)]
+                v = self.gather_list(batch, k)
+                if v:
+                    res[k] = [v]
         else:
             inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
             input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
