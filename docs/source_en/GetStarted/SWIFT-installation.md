@@ -8,8 +8,6 @@ You can install it using pip:
 pip install 'ms-swift'
 # For evaluation usage
 pip install 'ms-swift[eval]' -U
-# For sequence parallel usage
-pip install 'ms-swift[seq_parallel]' -U
 # Full capabilities
 pip install 'ms-swift[all]' -U
 ```

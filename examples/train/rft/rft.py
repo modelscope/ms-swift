@@ -29,7 +29,7 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
                       f'and always consider the basic math principles to avoid making calculating mistakes.'
                       f'Give the final answer wrapped with \\boxed{{}}" '
                       f'--load_args false '
-                      f'--sampler_engine lmdeploy '
+                      f'--sampler_engine vllm '
                       f'--max_new_tokens 768 '
                       f'--override_exist_file true '
                       f'--num_sampling_per_gpu_batch_size 1 '
@@ -90,7 +90,9 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
 
     for proc, handler in enumerate(handlers):
         handler.wait()
-        assert os.path.exists(os.path.join('sample_output', f'iter_{iter}_proc_{proc}_sampling.jsonl'))
+        assert os.path.exists(os.path.join('sample_output', f'iter_{iter}_proc_{proc}_sampling.jsonl')), (
+            f'{os.path.join("sample_output", f"iter_{iter}_proc_{proc}_sampling.jsonl")} not exists, '
+            'please check the sample logs to get the detail error.')
         datasets.append(os.path.join('sample_output', f'iter_{iter}_proc_{proc}_sampling.jsonl'))
     print(f'Sampling done, files:{datasets}', flush=True)
     return datasets
@@ -144,8 +146,8 @@ def do_train(model: str, model_type: str, datasets: List[str], iter, cmd='sft'):
 def do_eval(model, model_type: str, iter):
     eval_cmd = (
         f'{conda_prefix} swift eval '
-        '--eval_dataset math '  # eval another dataset
-        '--infer_backend lmdeploy --eval_limit 500 '
+        '--eval_dataset competition_math '  # eval another dataset
+        '--infer_backend vllm --eval_limit 500 '
         f'--model {model} --model_type {model_type} '
         '--system "You are a math model, you should **think step by step** carefully, '
         'and always consider the basic math principles to avoid making calculating mistakes. '
@@ -166,9 +168,9 @@ def do_eval(model, model_type: str, iter):
     # | math | 393424 | accuracy | gen | 39.00 |
     with open(f'logs/eval_iter_{iter}.log', 'r') as f:
         for line in f.readlines():
-            if '| math |' in line:
+            if 'Level 5' in line and 'AveragePass@1' in line:
                 parts = [p for p in line.split('|') if p.strip()]
-                acc = float(parts[-1])
+                acc = float(parts[-2])
                 break
 
     print(f'Iter {iter} eval done with acc: {acc}.', flush=True)

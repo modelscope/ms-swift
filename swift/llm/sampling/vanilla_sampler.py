@@ -178,8 +178,7 @@ class VanillaSampler(Sampler):
 
             _mask = _orm_mask & _prm_mask
             if not any(_mask):
-                # Should not happen
-                raise
+                continue
 
             choices.append(ground_truth)
             choices = np.array(choices)

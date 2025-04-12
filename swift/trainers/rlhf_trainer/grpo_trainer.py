@@ -885,9 +885,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             grouped_rewards = rewards.view(-1, self.num_generations)
             group_std = grouped_rewards.std(dim=1)
 
-            if (group_std > 0).all():
-                break
-
             valid_mask = (group_std > 0).repeat_interleave(self.num_generations)
             all_inputs = gather_object(inputs)
             valid_samples.extend([inp for inp, mask in zip(all_inputs, valid_mask) if mask])
@@ -1010,25 +1007,24 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     reward_func_name = reward_func.__class__.__name__
 
             reward_func_names.append(reward_func_name)
-        metrics_mask = ~agg_truncated_mask if self.args.overlong_filter else torch.ones(
-            agg_completion_mask.shape[0], dtype=torch.bool)
+
         for i, reward_func_name in enumerate(reward_func_names):
-            mean_rewards = (rewards_per_func[:, i][metrics_mask]).mean().item()
+            mean_rewards = rewards_per_func[:, i].mean().item()
             self._metrics[mode][f'rewards/{reward_func_name}/mean'].append(mean_rewards)
-            std_rewards = (rewards_per_func[:, i][metrics_mask]).std().item()
+            std_rewards = rewards_per_func[:, i].std().item()
             self._metrics[mode][f'rewards/{reward_func_name}/std'].append(std_rewards)
 
         # Log overall reward stats
-        grouped_rewards = rewards[metrics_mask].view(-1, self.num_generations)
+        grouped_rewards = rewards.view(-1, self.num_generations)
         self._metrics[mode]['reward'].append(grouped_rewards.mean().item())
         self._metrics[mode]['reward_std'].append(grouped_rewards.std(dim=1).mean().item())
 
         # Log prompt and completion texts
-        self._textual_logs['prompt'].extend(m for m, mask in zip(gather_object(messages), metrics_mask) if mask)
-        self._textual_logs['completion'].extend(c for c, mask in zip(gather_object(completions), metrics_mask) if mask)
+        self._textual_logs['prompt'].extend(gather_object(messages))
+        self._textual_logs['completion'].extend(gather_object(completions))
 
         for i, name in enumerate(reward_func_names):
-            self._textual_logs['rewards'][name].extend(rewards_per_func[:, i][metrics_mask].tolist())
+            self._textual_logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
 
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
@@ -1077,7 +1073,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             mean_kl = (per_token_kl * completion_mask).sum() / completions_length
             metrics['kl'] = mean_kl
 
-        is_clipped = (coef_1 < (1 - self.epsilon_low)) | (coef_1 > (1 + self.epsilon_high))
+        is_clipped = ((coef_1 < 1 - self.epsilon_low) &
+                      (advantages.unsqueeze(1) < 0)) | ((coef_1 > 1 + self.epsilon_high) &
+                                                        (advantages.unsqueeze(1) > 0))
+
         clip_ratio = (is_clipped * completion_mask).sum() / completions_length
         metrics['clip_ratio'] = clip_ratio
 
