@@ -1066,7 +1066,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completions_length = completion_mask.sum()
         if completions_length == 0:
             # Prevent division by zero issues after all completions are filtered by the overlong filter
-            completions_length += 1e-4
+            completions_length = completions_length.float() + 1e-4
         loss = (per_token_loss * completion_mask).sum() / completions_length
 
         # Log the metrics
