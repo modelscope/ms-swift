@@ -596,7 +596,7 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - MAX_NUM: Default is 12
 - INPUT_SIZE: Default is 448
 
-### internvl2, internvl2_phi3, internvl2_5
+### internvl2, internvl2_phi3, internvl2_5, internvl3
 For the meaning of the arguments, please refer to [here](https://modelscope.cn/models/OpenGVLab/InternVL2_5-2B)
 - MAX_NUM: Default is 12
 - INPUT_SIZE: Default is 448
