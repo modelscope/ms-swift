@@ -69,7 +69,7 @@ def get_multimodal_target_regex(
 
     ignore_pattern = ['lora_A', 'lora_B', 'base_layer']
     if ignore_embedding:
-        ignore_pattern += ['\w*emb\w*', 'wte', 'shared']
+        ignore_pattern += [r'\w*emb\w*', 'wte', 'shared']
         ignore_pattern += model_arch.embedding or []
     # lm_head
     ignore_pattern += ['lm_head', 'output', 'score', 'v_head', 'classifier']
