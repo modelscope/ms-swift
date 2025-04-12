@@ -29,7 +29,6 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.trainer import Trainer
 from transformers.trainer_utils import seed_worker
 from trl import GRPOTrainer as HFGRPOTrainer
-from trl.trainer.grpo_trainer import nanstd
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
 from swift.llm.infer.infer_engine import set_device_context
@@ -1011,26 +1010,26 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     reward_func_name = reward_func.__class__.__name__
 
             reward_func_names.append(reward_func_name)
-        metrics_mask = ~agg_truncated_mask if self.args.overlong_filter else torch.ones(
-            agg_completion_mask.shape[0], dtype=torch.bool)
 
-        masked_rewards = torch.where(mask, grouped_rewards, torch.nan)
         for i, reward_func_name in enumerate(reward_func_names):
-            mean_rewards = torch.nanmean(masked_rewards[:, i]).item()
+            mean_rewards = rewards_per_func[:, i].mean().item()
             self._metrics[mode][f'rewards/{reward_func_name}/mean'].append(mean_rewards)
-            std_rewards = nanstd(masked_rewards[:, i]).item()
+            std_rewards = rewards_per_func[:, i].std().item()
             self._metrics[mode][f'rewards/{reward_func_name}/std'].append(std_rewards)
 
+        mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
+        std_grouped_rewards = rewards.view(-1, self.num_generations).std(dim=1)
+
         # Log overall reward stats
-        self._metrics[mode]['reward'].append(grouped_rewards.mean().item())
-        self._metrics[mode]['reward_std'].append(grouped_rewards.std(dim=1).mean().item())
+        self._metrics[mode]['reward'].append(mean_grouped_rewards.mean().item())
+        self._metrics[mode]['reward_std'].append(std_grouped_rewards.mean().item())
 
         # Log prompt and completion texts
-        self._textual_logs['prompt'].extend(m for m, mask in zip(gather_object(messages), metrics_mask) if mask)
-        self._textual_logs['completion'].extend(c for c, mask in zip(gather_object(completions), metrics_mask) if mask)
+        self._textual_logs['prompt'].extend(gather_object(messages))
+        self._textual_logs['completion'].extend(gather_object(completions))
 
         for i, name in enumerate(reward_func_names):
-            self._textual_logs['rewards'][name].extend(rewards_per_func[:, i][metrics_mask].tolist())
+            self._textual_logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
 
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
