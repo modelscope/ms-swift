@@ -1017,12 +1017,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             std_rewards = rewards_per_func[:, i].std().item()
             self._metrics[mode][f'rewards/{reward_func_name}/std'].append(std_rewards)
 
-        mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
-        std_grouped_rewards = rewards.view(-1, self.num_generations).std(dim=1)
-
         # Log overall reward stats
-        self._metrics[mode]['reward'].append(mean_grouped_rewards.mean().item())
-        self._metrics[mode]['reward_std'].append(std_grouped_rewards.mean().item())
+        grouped_rewards = rewards.view(-1, self.num_generations)
+        self._metrics[mode]['reward'].append(grouped_rewards.mean().item())
+        self._metrics[mode]['reward_std'].append(grouped_rewards.std(dim=1).mean().item())
 
         # Log prompt and completion texts
         self._textual_logs['prompt'].extend(gather_object(messages))
@@ -1078,7 +1076,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             mean_kl = (per_token_kl * completion_mask).sum() / completions_length
             metrics['kl'] = mean_kl
 
-        is_clipped = (coef_1 < (1 - self.epsilon_low)) | (coef_1 > (1 + self.epsilon_high))
+        is_clipped = ((coef_1 < 1 - self.epsilon_low) &
+                      (advantages.unsqueeze(1) < 0)) | ((coef_1 > 1 + self.epsilon_high) &
+                                                        (advantages.unsqueeze(1) > 0))
+
         clip_ratio = (is_clipped * completion_mask).sum() / completions_length
         metrics['clip_ratio'] = clip_ratio
 
