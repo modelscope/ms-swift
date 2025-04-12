@@ -6,15 +6,13 @@ NPROC_PER_NODE=4 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
-    --model OpenGVLab/InternVL3-1B \
+    --model Qwen/Qwen2.5-VL-7B-Instruct \
     --train_type lora \
-    --dataset '/mnt/nas2/huangjintao.hjt/work/dataset/LaTeX_OCR#20000' \
+    --dataset 'AI-ModelScope/LaTeX_OCR#20000' \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \
     --packing true \
     --num_train_epochs 3 \
-    --streaming true \
-    --max_steps 2000 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --learning_rate 1e-4 \
