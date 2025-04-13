@@ -27,7 +27,7 @@ register_template(
 
 @dataclass
 class GLM4TemplateMeta(GLMTemplateMeta):
-    prefix: Prompt = field(default_factory=list)
+    prefix: Prompt = field(default_factory=lambda: ['[gMASK]<sop>'])
     prompt: Prompt = field(default_factory=lambda: ['<|user|>\n{{QUERY}}<|assistant|>\n'])
     chat_sep: Optional[Prompt] = field(default_factory=list)
     suffix: Prompt = field(default_factory=lambda: ['<|user|>'])
