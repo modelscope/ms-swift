@@ -129,6 +129,22 @@ register_model(
 
 register_model(
     ModelMeta(
+        LLMModelType.glm4_z1,
+        [
+            ModelGroup([
+                Model('ZhipuAI/GLM-4-Z1-9B-0414', 'THUDM/GLM-4-Z1-9B-0414'),
+                Model('ZhipuAI/GLM-4-Z1-32B-0414', 'THUDM/GLM-4-Z1-32B-0414'),
+            ])
+        ],
+        TemplateType.glm4,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Glm4ForCausalLM'],
+        model_arch=ModelArch.chatglm,
+        requires=['transformers>4.5.1'],
+    ))
+
+register_model(
+    ModelMeta(
         LLMModelType.longwriter_llama3_1,
         [ModelGroup([
             Model('ZhipuAI/LongWriter-llama3.1-8b', 'THUDM/LongWriter-llama3.1-8b'),
