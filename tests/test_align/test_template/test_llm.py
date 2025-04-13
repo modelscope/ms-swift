@@ -79,7 +79,7 @@ def test_glm4_0414():
     # The Jinja prompt is missing \n.
     models = ['ZhipuAI/GLM-4-Z1-9B-0414', 'ZhipuAI/GLM-4-Z1-32B-0414']
     for model in models:
-        pt_engine = PtEngine('ZhipuAI/glm-4-9b-chat')
+        pt_engine = PtEngine(model)
         response1 = _infer_model(pt_engine)
         pt_engine.default_template.template_backend = 'jinja'
         response2 = _infer_model(pt_engine)

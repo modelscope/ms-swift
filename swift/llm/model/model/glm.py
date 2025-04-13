@@ -113,8 +113,6 @@ register_model(
                 Model('ZhipuAI/glm-4-9b-chat', 'THUDM/glm-4-9b-chat'),
                 Model('ZhipuAI/glm-4-9b', 'THUDM/glm-4-9b'),
                 Model('ZhipuAI/glm-4-9b-chat-1m', 'THUDM/glm-4-9b-chat-1m'),
-                Model('ZhipuAI/GLM-4-Z1-9B-0414', 'THUDM/GLM-4-Z1-9B-0414'),
-                Model('ZhipuAI/GLM-4-Z1-32B-0414', 'THUDM/GLM-4-Z1-32B-0414'),
             ]),
             ModelGroup([
                 Model('ZhipuAI/LongWriter-glm4-9b', 'THUDM/LongWriter-glm4-9b'),
