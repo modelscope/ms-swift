@@ -38,23 +38,6 @@ class GLM4TemplateMeta(GLMTemplateMeta):
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>', '<|user|>', '<|observation|>'])
 
 
-@dataclass
-class GLM4Z1TemplateMeta(GLMTemplateMeta):
-    prefix: Prompt = field(default_factory=list)
-    prompt: Prompt = field(default_factory=lambda: ['<|user|>\n{{QUERY}}<|assistant|>'])
-    chat_sep: Optional[Prompt] = field(default_factory=list)
-    suffix: Prompt = field(default_factory=lambda: ['<|user|>'])
-    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>\n{{SYSTEM}}'])
-
-    default_tools_prompt: str = 'glm4'
-    tool_prompt: Optional[Prompt] = field(default_factory=lambda: ['<|observation|>\n{{QUERY}}<|assistant|>\n'])
-    stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>', '<|user|>', '<|observation|>'])
-
-
-# '[gMASK]<sop><|user|>\nLet a, b be positive real numbers such that ab = a + b + 3. Determine the range of possible values for a + b.<|assistant|>'
-# '[gMASK]<sop><|system|>\naaa<|user|>\nLet a, b be positive real numbers such that ab = a + b + 3. Determine the range of possible values for a + b.<|assistant|>'
-
-
 class GLM4VTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
