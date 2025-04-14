@@ -76,7 +76,7 @@ def test_glm4():
 
 
 def test_glm4_0414():
-    models = ['ZhipuAI/GLM-4-Z1-9B-0414', 'ZhipuAI/GLM-4-Z1-32B-0414']
+    models = ['ZhipuAI/GLM-4-Z1-Rumination-32B-0414', 'ZhipuAI/GLM-4-32B-Chat-0414']
     for model in models:
         pt_engine = PtEngine(model)
         _infer_model(pt_engine)
