@@ -53,30 +53,30 @@ class SglangEngine(InferEngine):
             for k, v in kwargs.copy().items():
                 if k not in parameters or v is None:
                     kwargs.pop(k)
-            self.generation_config = SamplingParams(**kwargs)
+            self.generation_config = kwargs
         else:
-            self.generation_config = SamplingParams()
+            self.generation_config = {}
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> Dict[str, Any]:
         kwargs = {'max_new_tokens': request_config.max_tokens}
         for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
             new_value = getattr(request_config, key)
             if new_value is None:
-                kwargs[key] = getattr(self.generation_config, key)
+                kwargs[key] = self.generation_config.get(key)
             else:
                 kwargs[key] = new_value
         for key in ['n', 'frequency_penalty', 'presence_penalty']:
             kwargs[key] = getattr(request_config, key)
 
-        return SamplingParams(**kwargs)
+        return kwargs
 
     def _add_stop_words(self, generation_config: Dict[str, Any], request_config: RequestConfig,
                         template_meta: TemplateMeta) -> None:
-        stop_words = (request_config.stop or []) + (self.generation_config.stop or []) + template_meta.stop_words
+        stop_words = (request_config.stop or []) + (self.generation_config.get('stop') or []) + template_meta.stop_words
         generation_config['stop'] = self._get_stop_words(stop_words)
 
     def _create_chat_completion_response(self, output, template):
-        assert result is not None
+        assert output is not None
         meta_info = output['meta_info']
         usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
         response = output['text']
@@ -86,7 +86,7 @@ class SglangEngine(InferEngine):
             message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
             finish_reason=meta_info['finish_reason']['type'],
             logprobs=None)
-        return ChatCompletionResponse(model=self.model_name, choices=[choice], usage=usage_info, id=request_id)
+        return ChatCompletionResponse(model=self.model_name, choices=[choice], usage=usage_info, id=random_uuid())
 
     def infer(self,
               infer_requests: List[InferRequest],
@@ -104,9 +104,12 @@ class SglangEngine(InferEngine):
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)
         input_ids = [inputs['input_ids'] for inputs in batched_inputs]
-        outputs = self.engine.generate(input_ids=input_ids, sampling_params=generation_config)
+        if request_config.stream:
+            pass
+        else:
+            outputs = self.engine.generate(input_ids=input_ids, sampling_params=generation_config)
 
-        return [self._create_chat_completion_response(output, template) for output in outputs]
+            return [self._create_chat_completion_response(output, template) for output in outputs]
 
     async def infer_async(
         self,
