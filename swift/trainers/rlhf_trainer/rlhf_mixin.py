@@ -14,65 +14,7 @@ except (ImportError, RuntimeError):
     AutoModelForCausalLMWithValueHead = None
 
 
-class ModelWrapper(nn.Module):
-    # compat zero3 & rlhf
-    def __init__(self, model: nn.Module, ref_model: nn.Module):
-        super().__init__()
-        self._model = model
-        self._ref_model = ref_model
-
-    def forward(self, *args, **kwargs):
-        return self._model(*args, **kwargs)
-
-    def __getattr__(self, key: str):
-        """Forward missing attributes to the wrapped module."""
-        try:
-            return super().__getattr__(key)
-        except AttributeError:
-            if '_model' in dir(self):
-                return getattr(self._model, key)
-            raise
-
-    def load_state_dict(self, *args, **kwargs):
-        return self._model.load_state_dict(*args, **kwargs)
-
-    def state_dict(self, *args, **kwargs):
-        return self._model.state_dict(*args, **kwargs)
-
-    def parameters(self, *args, **kwargs):
-        return self._model.parameters(*args, **kwargs)
-
-    @staticmethod
-    @contextmanager
-    def _save_load_context(trainer):
-        # fix zero3 & save/load model
-        deepspeed_model = trainer.deepspeed
-        _new_model = deepspeed_model._model
-        _old_model = deepspeed_model.__dict__['module']
-        deepspeed_model.__dict__['module'] = _new_model
-        deepspeed_model._modules['module'] = _new_model
-        trainer.model = _new_model
-        try:
-            yield
-        finally:
-            deepspeed_model.__dict__['module'] = _old_model
-            deepspeed_model._modules['module'] = _old_model
-            trainer.model = _old_model
-
-
 class RLHFTrainerMixin:
-
-    @staticmethod
-    def get_model_config_attr(config, key):
-        for k in [None, 'language_config', 'llm_config', 'text_config']:
-            if k is None:
-                llm_config = config
-            else:
-                llm_config = getattr(config, k, None)
-            if llm_config:
-                val = getattr(llm_config, key)
-                if val is not None:
-                    return val
 
     def __init__(self,
                  model: Optional[Union[PreTrainedModel, nn.Module]] = None,
@@ -80,6 +22,7 @@ class RLHFTrainerMixin:
                  *_args,
                  **kwargs):
         from trl.trainer import disable_dropout_in_model
+        from swift.llm import HfConfigFactory
         self.ref_model = ref_model
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
         args = kwargs['args']
@@ -94,23 +37,20 @@ class RLHFTrainerMixin:
         self._peft_has_been_casted_to_bf16 = False
         self.generate_during_eval = getattr(args, 'generate_during_eval', False)
         if self.is_encoder_decoder:
-            self.decoder_start_token_id = self.get_model_config_attr(model.config, 'decoder_start_token_id')
-            self.pad_token_id = self.get_model_config_attr(model.config, 'pad_token_id')
+            self.decoder_start_token_id = HfConfigFactory.get_config_attr(model.config, 'decoder_start_token_id')
+            self.pad_token_id = HfConfigFactory.get_config_attr(model.config, 'pad_token_id')
         # not use
         self.is_vision_model = False
         self.label_pad_token_id = -100
         self.use_dpo_data_collator = True
-        if is_deepspeed_zero3_enabled() and ref_model is not None:
-            model = ModelWrapper(model, ref_model)
         super().__init__(model, *_args, **kwargs)
+        if is_deepspeed_zero3_enabled() and ref_model is not None:
+            try:
+                from trl.models.utils import prepare_deepspeed
+            except ImportError as e:
+                raise ImportError('Please install trl>=0.14 via `pip install "trl>=0.14"`') from e
+            prepare_deepspeed(self.ref_model, self.accelerator)  # Does not wrap DeepSpeedEngine
         self.padding_value = self.tokenizer.pad_token_id
-
-    def _save_checkpoint(self, model, *args, **kwargs):
-        context = nullcontext()
-        if hasattr(model, '_save_load_context'):
-            context = model._save_load_context(self)
-        with context:
-            return super()._save_checkpoint(model, *args, **kwargs)
 
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]

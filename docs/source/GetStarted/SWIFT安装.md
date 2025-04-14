@@ -8,8 +8,6 @@
 pip install 'ms-swift'
 # 使用评测
 pip install 'ms-swift[eval]' -U
-# 使用序列并行
-pip install 'ms-swift[seq_parallel]' -U
 # 全能力
 pip install 'ms-swift[all]' -U
 ```
@@ -39,7 +37,15 @@ pip install ms-swift==2.*
 
 ## 镜像
 
-镜像可以查看[这里](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F)
+```
+# vllm0.8.3 (该版本vllm可能导致部分GRPO训练卡住，GRPO建议优先使用vllm0.7.3)
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
+
+# vllm0.7.3
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.5.1-modelscope1.25.0-swift3.2.2
+```
+
+更多镜像可以查看[这里](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F)
 
 ## 支持的硬件
 
@@ -60,12 +66,12 @@ pip install ms-swift==2.*
 | python | >=3.9        | 3.10 ||
 | cuda |              | cuda12 |使用cpu、npu、mps则无需安装|
 | torch | >=2.0        |  ||
-| transformers | >=4.33       | 4.50 ||
+| transformers | >=4.33       | 4.51 ||
 | modelscope | >=1.19       |  ||
 | peft | >=0.11,<0.16 | ||
 | trl | >=0.13,<0.17 | 0.16 |RLHF|
 | deepspeed | >=0.14       | 0.14.5 |训练|
-| vllm | >=0.5.1,<0.8      | 0.7.3 |推理/部署/评测|
+| vllm | >=0.5.1      | 0.7.3/0.8.3 |推理/部署/评测|
 | lmdeploy | >=0.5        | 0.7.2.post1 |推理/部署/评测|
 | evalscope | >=0.11       | |评测|
 

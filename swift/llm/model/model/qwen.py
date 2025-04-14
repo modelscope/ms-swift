@@ -621,6 +621,7 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     kwargs['tokenizer'] = processor.tokenizer
     kwargs['model_config'] = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
     patch_qwen_vl_utils(vision_process)
+    kwargs['model_config'].enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, True)
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     if model:
         use_submodel_func(model, 'thinker')

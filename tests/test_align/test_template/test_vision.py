@@ -81,6 +81,22 @@ def test_internvl2_phi3():
     _infer_model(pt_engine, system='')
 
 
+def test_internvl3_8b():
+    pt_engine = PtEngine('OpenGVLab/InternVL3-8B')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
+    assert response == response2
+
+
+def test_internvl3_9b():
+    pt_engine = PtEngine('OpenGVLab/InternVL3-9B')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
+    assert response == response2
+
+
 def test_llava():
     pt_engine = PtEngine('AI-ModelScope/llava-v1.6-mistral-7b')
     _infer_model(pt_engine)
@@ -280,9 +296,10 @@ def test_mplug_owl3():
 def test_ovis1_6():
     pt_engine = PtEngine('AIDC-AI/Ovis1.6-Gemma2-9B')
     # pt_engine = PtEngine('AIDC-AI/Ovis1.6-Gemma2-27B')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_ovis1_6_llama3():
@@ -297,11 +314,11 @@ def test_ovis1_6_llama3():
 
 
 def test_ovis2():
-    pt_engine = PtEngine('AIDC-AI/Ovis2-2B')
+    pt_engine = PtEngine('AIDC-AI/Ovis2-2B')  # with flash_attn
     response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'Describe the image.'}])
-    assert response[:200] == (
-        'The image showcases a charming digital illustration of a young kitten. The kitten has striking blue '
-        'eyes and a mix of gray, white, and black fur, with distinctive black stripes on its head. Its ears a')
+    assert response[:200] == ('The image features a close-up portrait of a young kitten with striking blue eyes. '
+                              'The kitten has a distinctive coat pattern with a mix of gray, black, and white fur, '
+                              'typical of a tabby pattern. Its ea')
 
 
 def test_paligemma():
@@ -569,4 +586,6 @@ if __name__ == '__main__':
     # test_ui_tars()
     # test_gemma3_vision()
     # test_mistral_2503()
-    test_llama4()
+    # test_llama4()
+    test_internvl3_8b()
+    test_internvl3_9b()

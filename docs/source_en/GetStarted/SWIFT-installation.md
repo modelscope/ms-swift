@@ -8,8 +8,6 @@ You can install it using pip:
 pip install 'ms-swift'
 # For evaluation usage
 pip install 'ms-swift[eval]' -U
-# For sequence parallel usage
-pip install 'ms-swift[seq_parallel]' -U
 # Full capabilities
 pip install 'ms-swift[all]' -U
 ```
@@ -40,7 +38,15 @@ pip install ms-swift==2.*
 
 ## Mirror
 
-You can view the image [here](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F).
+```
+# vllm0.8.3 (This version of vllm may cause some GRPO training to get stuck; it is recommended to use vllm0.7.3 for GRPO training as a priority).
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
+
+# vllm0.7.3
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.5.1-modelscope1.25.0-swift3.2.2
+```
+
+More images can be found [here](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F).
 
 ## Supported Hardware
 
@@ -61,12 +67,12 @@ You can view the image [here](https://modelscope.cn/docs/intro/environment-setup
 | python       | >=3.9        | 3.10        |                                           |
 | cuda         |              | cuda12      | No need to install if using CPU, NPU, MPS |
 | torch        | >=2.0        |             |                                           |
-| transformers | >=4.33       | 4.50      |                                           |
+| transformers | >=4.33       | 4.51      |                                           |
 | modelscope   | >=1.19       |             |                                           |
 | peft         | >=0.11,<0.16 |             |                                           |
 | trl          | >=0.13,<0.17 | 0.16      | RLHF                                      |
 | deepspeed    | >=0.14       | 0.14.5 | Training                                  |
-| vllm         | >=0.5.1,<0.8      | 0.7.3       | Inference/Deployment/Evaluation           |
+| vllm         | >=0.5.1      | 0.7.3/0.8.3       | Inference/Deployment/Evaluation           |
 | lmdeploy     | >=0.5        | 0.7.2.post1       | Inference/Deployment/Evaluation           |
 | evalscope | >=0.11       | | Evaluation |
 

@@ -187,8 +187,7 @@ class VllmEngine(InferEngine):
     def _fix_vllm_bug(self) -> None:
         # fix vllm==0.4 bug (very slow)
         tokenizer = self.tokenizer
-        if version.parse(
-                vllm.__version__) >= version.parse('0.4') and not tokenizer.__class__.__name__.startswith('Cached'):
+        if self._version_ge('0.4') and not tokenizer.__class__.__name__.startswith('Cached'):
             _tokenizer_len = len(tokenizer)
             __old_len__ = tokenizer.__class__.__len__
 
@@ -224,6 +223,13 @@ class VllmEngine(InferEngine):
         stop_words = (request_config.stop or []) + (self.generation_config.stop or []) + template_meta.stop_words
         generation_config.stop = self._get_stop_words(stop_words)
 
+    @staticmethod
+    def _version_ge(base_version: str):
+        vllm_version = vllm.__version__
+        if vllm_version is None or 'dev' in vllm_version:
+            return True
+        return version.parse(vllm_version) >= version.parse(base_version)
+
     def _add_request(self,
                      inputs: Dict[str, Any],
                      generation_config: SamplingParams,
@@ -241,18 +247,18 @@ class VllmEngine(InferEngine):
                     lora_name=adapter_name, lora_path=adapter_path, lora_int_id=len(self._adapters_pool) + 1)
                 self._adapters_pool[adapter_name] = kwargs['lora_request']
         input_ids = inputs['input_ids']
-        if version.parse(vllm.__version__) >= version.parse('0.4.3'):
+        if self._version_ge('0.4.3'):
             llm_inputs = {'prompt_token_ids': input_ids}
             mm_data = {}
             for key in ['images', 'audios', 'videos']:
                 media_data = inputs.get(key) or []
                 if media_data:
-                    if version.parse(vllm.__version__) < version.parse('0.6'):
+                    if self._version_ge('0.6'):
+                        mm_data = {key.rstrip('s'): media_data[0] if len(media_data) == 1 else media_data}
+                    else:
                         assert len(media_data) == 1, (
                             f'The current version of vllm only supports single {key}. Please upgrade to vllm >= 0.6.0')
                         mm_data = {key.rstrip('s'): media_data[0]}
-                    else:
-                        mm_data = {key.rstrip('s'): media_data[0] if len(media_data) == 1 else media_data}
             if mm_data:
                 llm_inputs['multi_modal_data'] = mm_data
             if self.use_async_engine:

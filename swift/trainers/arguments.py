@@ -178,6 +178,19 @@ class GRPOArgumentsMixin:
     # mini-batch
     mini_batch_size: Optional[int] = None
 
+    # DAPO, https://arxiv.org/abs/2503.14476
+    dynamic_sample: bool = False
+    max_resample_times: int = 3
+    overlong_filter: bool = False
+    soft_max_length: Optional[int] = None
+    soft_cache_length: Optional[int] = None
+
+    # Dr. GRPO, https://arxiv.org/abs/2503.20783
+    scale_rewards: bool = True
+
+    # compatible with trl main branch(0.17.0.dev0)
+    wandb_log_unique_prompts: Optional[bool] = None
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):

@@ -8,7 +8,7 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
-from datasets import Value
+from datasets import Sequence, Value
 
 from swift.llm import history_to_messages
 from swift.utils import get_logger
@@ -142,10 +142,13 @@ class RowPreprocessor:
         objects = row.get('objects')
         if objects is None:
             return
-        for k in list(objects.keys()):
-            if k not in {'bbox', 'ref', 'bbox_type', 'image_id'}:
-                objects.pop(k)
-        bbox = objects['bbox']
+        new_objects = {}
+        # Ensure the order
+        for k in ['ref', 'bbox', 'bbox_type', 'image_id']:
+            if k in objects.keys():
+                new_objects[k] = objects[k]
+        row['objects'] = new_objects
+        bbox = new_objects['bbox']
 
         # check bbox
         for box in bbox:
@@ -254,11 +257,12 @@ class RowPreprocessor:
         def _new_init(self, schema=None, features=None, *args, **kwargs):
 
             if features is not None:
-                features['messages'] = [{
-                    'role': Value(dtype='string', id=None),
-                    'content': Value(dtype='string', id=None)
-                }]
-                features['images'] = [{'bytes': Value(dtype='binary', id=None), 'path': Value(dtype='string', id=None)}]
+                features['messages'] = [{'role': Value(dtype='string'), 'content': Value(dtype='string')}]
+                features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
+                features['objects'] = {
+                    'ref': Sequence(feature=Value(dtype='string'), length=-1),
+                    'bbox': Sequence(feature=Sequence(feature=Value(dtype='float64'), length=-1), length=-1)
+                }
             ArrowWriter.__origin_init__(self, schema, features, *args, **kwargs)
 
         ArrowWriter.__origin_init__ = ArrowWriter.__init__
@@ -287,7 +291,7 @@ class RowPreprocessor:
         if batch_size is None:
             batch_size = 1000 if isinstance(dataset, HfDataset) else 16
         if self.dataset_sample is not None:
-            dataset = sample_dataset(dataset, self.dataset_sample, self.random_state)
+            dataset = sample_dataset(dataset, self.dataset_sample, True, self.random_state)
 
         map_kwargs = {'batched': True, 'batch_size': batch_size}
         if isinstance(dataset, HfDataset):
