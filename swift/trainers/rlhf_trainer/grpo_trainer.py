@@ -186,6 +186,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     self.group = group
 
         super().__init__(model, ref_model, *_args, **kwargs)
+        self.use_liger_loss = self.args.use_liger_loss
         if self.use_liger_loss:
             from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
             if not is_liger_available():

@@ -247,4 +247,4 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             try:
                 from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
             except ImportError:
-                raise ImportError('liger_kernel is not available. Run `pip install liger-kernel>=0.5.6`.')
+                raise ImportError('liger_kernel is not available. Run `pip install -U liger-kernel`.')
