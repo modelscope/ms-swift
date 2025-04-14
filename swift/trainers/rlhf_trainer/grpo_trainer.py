@@ -1138,9 +1138,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
 
     @profiling_decorator
-    def _get_last_hidden_state(self, model, inputs):
+    def _get_last_hidden_state(self, model, inputs, logits_to_keep):
         # unwrap the model to access the model.model
-        logits_to_keep = inputs['logits_to_keep']
         unwrapped_model = self.accelerator.unwrap_model(model)
         if not unwrapped_model.model_meta.is_multimodal:
             last_hidden_state = unwrapped_model.model(
@@ -1161,11 +1160,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def compute_liger_loss(self, model, inputs):
         # Compute the per-token log probabilities for the model
         input_ids = inputs['input_ids']
-        completion_ids = [input_ids[:logits_to_keep] for logits_to_keep in inputs['logits_to_keep']]
+        logits_to_keep = inputs['logits_to_keep']
+        completion_ids = input_ids[:, :logits_to_keep]
         completion_mask = inputs['completion_mask']
 
         # get the last hidden state of the model
-        last_hidden_state = self._get_last_hidden_state(model, inputs)
+        last_hidden_state = self._get_last_hidden_state(model, inputs, logits_to_keep)
         unwrapped_model = self.accelerator.unwrap_model(model)
         # compute loss and metrics using liger grpo loss
         loss, metrics = self.liger_grpo_loss(
