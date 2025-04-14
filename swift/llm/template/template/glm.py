@@ -49,7 +49,7 @@ class GLM4TemplateMeta(GLMTemplateMeta):
 
 
 @dataclass
-class GLM4Z1TemplateMeta(GLMTemplateMeta):
+class GLM4Z1TemplateMeta(GLM4TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ['[gMASK]<sop>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>\n{{SYSTEM}}'])
 
