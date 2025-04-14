@@ -20,7 +20,7 @@ pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation -
 
 或者你也可以使用镜像：
 ```
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.5.1-modelscope1.25.0-swift3.2.2
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
 ```
 
 依赖库Megatron-LM将会由swift进行git clone并安装，不需要用户手动安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.11.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.11.0)）。
