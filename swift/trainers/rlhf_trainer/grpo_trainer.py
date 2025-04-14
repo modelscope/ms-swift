@@ -1161,7 +1161,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Compute the per-token log probabilities for the model
         input_ids = inputs['input_ids']
         logits_to_keep = inputs['logits_to_keep']
-        completion_ids = input_ids[:, :logits_to_keep]
+        completion_ids = input_ids[:, -logits_to_keep:]
         completion_mask = inputs['completion_mask']
 
         # get the last hidden state of the model
