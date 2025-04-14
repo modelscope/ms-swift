@@ -7,5 +7,6 @@ pip install auto_gptq optimum bitsandbytes -U
 pip install git+https://github.com/modelscope/ms-swift.git#egg=ms-swift[all]
 pip install timm -U
 pip install deepspeed -U
-pip install qwen_vl_utils qwen_omni_utils decord librosa pyav icecream soundfile liger_kernel -U
+pip install qwen_vl_utils qwen_omni_utils decord librosa pyav icecream soundfile -U
+pip install liger_kernel nvitop -U
 # flash-attn: https://github.com/Dao-AILab/flash-attention/releases
