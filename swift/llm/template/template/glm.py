@@ -17,15 +17,6 @@ class GLMTemplateMeta(TemplateMeta):
     auto_add_bos: bool = True
 
 
-class GLM4Z1Template(Template):
-
-    def _swift_encode(self, inputs: StdTemplateInputs):
-        for message in inputs.messages:
-            if message['role'] == 'assistant' and isinstance(message['content'], str):
-                message['content'] = message['content'].split('</think>')[-1].strip()
-        return super()._swift_encode(inputs)
-
-
 register_template(
     GLMTemplateMeta(
         LLMTemplateType.chatglm2,
@@ -88,8 +79,6 @@ class GLM4VTemplate(Template):
 register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate, suffix=['<|endoftext|>']))
 
 register_template(GLM4TemplateMeta(LLMTemplateType.glm4))
-
-register_template(GLM4TemplateMeta(LLMTemplateType.glm4_z1, template_cls=GLM4Z1Template))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 
