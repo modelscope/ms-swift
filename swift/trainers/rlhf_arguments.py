@@ -58,6 +58,6 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
             # https://github.com/modelscope/ms-swift/issues/3237
             self.deepspeed['zero_optimization']['stage3_prefetch_bucket_size'] = 0
             self.deepspeed_plugin.hf_ds_config.config['zero_optimization']['stage3_prefetch_bucket_size'] = 0
-        
+
         # https://github.com/modelscope/ms-swift/issues/3863
         self.dataloader_drop_last = True
