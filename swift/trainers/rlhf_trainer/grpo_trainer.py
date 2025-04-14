@@ -1147,11 +1147,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         else:
             inputs = {
                 k: v
-                for k, v in inputs.items() if k not in
-                ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps']
+                for k, v in inputs.items() if k not in [
+                    'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
+                    'truncated_mask'
+                ]
             }
             with self._template_context(self.template):
-                last_hidden_state = unwrapped_model.model(**inputs).last_hidden_state
+                last_hidden_state = model(**inputs).last_hidden_state
         last_hidden_state = last_hidden_state[:, :-1, :]  # (B, L-1, H)
         if logits_to_keep is not None:
             last_hidden_state = last_hidden_state[:, -logits_to_keep:, :]  # (B, logits_to_keep, H)
