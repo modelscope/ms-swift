@@ -1150,7 +1150,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Initialize metrics accumulators
         total_kl = 0.0
         total_clip_ratio = 0.0
-        total_completion_length = 0
+        total_completion_length = 0.0
         for mini_batch in batch_inputs:
 
             with self.compute_loss_context_manager():
