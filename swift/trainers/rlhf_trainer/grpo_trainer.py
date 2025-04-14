@@ -171,22 +171,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.num_generations = args.num_generations
         self.temperature = args.temperature
-        model.warnings_issued['estimate_tokens'] = True
-        kwargs['data_collator'] = lambda features: features
-
-        use_vllm = args.use_vllm
-        use_lmdeploy = args.use_lmdeploy
-
-        if self.args.tensor_parallel_size > 1 and self.multi_turn_func:
-            import torch.distributed as dist
-            rank, _, _, _ = get_dist_setting()
-            for tp_group in self.tp_group_ranks():
-                group = dist.new_group(tp_group)
-                if rank in tp_group:
-                    self.group = group
-
-        super().__init__(model, ref_model, *_args, **kwargs)
+        self.use_vllm = args.use_vllm
+        self.use_lmdeploy = args.use_lmdeploy
+        self.epsilon_low = args.epsilon
+        self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
         self.use_liger_loss = self.args.use_liger_loss
+        self.log_completions = args.log_completions
+
         if self.use_liger_loss:
             from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
             if not is_liger_available():
@@ -202,8 +193,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 temperature=self.temperature,
                 use_ref_model=self.ref_model is not None,
             )
+
+        if self.args.tensor_parallel_size > 1 and self.multi_turn_func:
+            import torch.distributed as dist
+            rank, _, _, _ = get_dist_setting()
+            for tp_group in self.tp_group_ranks():
+                group = dist.new_group(tp_group)
+                if rank in tp_group:
+                    self.group = group
+
+        model.warnings_issued['estimate_tokens'] = True
+        kwargs['data_collator'] = lambda features: features
+
+        super().__init__(model, ref_model, *_args, **kwargs)
+
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
-        self.log_completions = args.log_completions
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
         # maxlen is set to the total number of forward passes per step. This value of `maxlen` ensures we log only the
         # final optimization step.
@@ -237,7 +241,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.infer_device = None
-        self.use_fast_infer = use_vllm or use_lmdeploy  # whether to use the PT backend
+        self.use_fast_infer = self.use_vllm or self.use_lmdeploy  # whether to use the PT backend
         if self.use_fast_infer:
             if self.infer_rank >= 0:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
@@ -260,13 +264,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                          'reducing it by one is sufficient. '
                                          f'In your case: `--num_processes {get_device_count() - 1}`.')
 
-                if use_vllm:
+                if self.use_vllm:
                     if not is_vllm_available():
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                           'Please install vLLM with `pip install vllm -U` to use it.')
                     self.prepare_vllm(model, fast_infer_device)
                     self.infer_device = fast_infer_device[self.local_infer_rank]
-                elif use_lmdeploy:
+                elif self.use_lmdeploy:
                     if not is_lmdeploy_available():
                         raise ImportError('LMDeploy is not available and `use_lmdeploy` is set to True.'
                                           'Please install LMDeploy with `pip install lmdeploy -U` to use it.')
@@ -321,8 +325,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
-        self.epsilon_low = args.epsilon
-        self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
 
         # Tracks the number of iterations (forward + backward passes), including those within a gradient accumulation cycle. # noqa
         self._step = 0
@@ -562,7 +564,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if self.infer_rank >= 0:
                     if self.args.async_generate:
                         self._wait_queue()
-                    if self.args.use_vllm:
+                    if self.use_vllm:
                         llm_model = self.engine.inner_model
                     else:
                         llm_model = self.engine.engine.engine
@@ -575,7 +577,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     with patch_lora_unmerge(unwrapped_model):
                         unwrapped_model.unmerge_adapter()
 
-        if self.infer_rank >= 0 and self.args.use_vllm and self.args.vllm_enable_prefix_caching:
+        if self.infer_rank >= 0 and self.use_vllm and self.args.vllm_enable_prefix_caching:
             self.engine.engine.reset_prefix_cache()
 
     def _wait_queue(self):
