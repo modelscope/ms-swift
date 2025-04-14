@@ -134,11 +134,11 @@ register_model(
                 Model('ZhipuAI/GLM-4-Z1-32B-0414', 'THUDM/GLM-4-Z1-32B-0414'),
             ])
         ],
-        TemplateType.glm4,
+        TemplateType.glm4_z1,
         get_model_tokenizer_with_flash_attn,
         architectures=['Glm4ForCausalLM'],
         model_arch=ModelArch.chatglm,
-        requires=['transformers>4.5.1'],
+        requires=['transformers>4.51'],
     ))
 
 register_model(
