@@ -1082,7 +1082,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Log metrics or return them
         if return_outputs:
-            metrics['completions_length'] = completions_length
+            metrics['completions_length'] = completions_length.item()
             return loss, metrics
         else:
             for key, value in metrics.items():
