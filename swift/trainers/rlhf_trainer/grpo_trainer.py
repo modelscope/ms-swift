@@ -46,8 +46,6 @@ try:
     from trl.extras.profiling import profiling_decorator
 except ImportError:
     raise ImportError('Please install trl: `pip install -U trl`')
-if is_liger_available():
-    from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
@@ -188,7 +186,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     self.group = group
 
         super().__init__(model, ref_model, *_args, **kwargs)
+        if self.use_liger_loss:
+            from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
+            if not is_liger_available():
+                raise ImportError(
+                    'Liger is required to use `liger_loss` as the GRPO loss. Run `pip install liger-kernel`.')
+            if is_peft_model(model):
+                raise ValueError('Liger loss is not supported with a PEFT model.')
 
+            self.liger_grpo_loss = LigerFusedLinearGRPOLoss(
+                beta=self.beta,
+                epsilon_low=self.epsilon_low,
+                epsilon_high=self.epsilon_high,
+                temperature=self.temperature,
+                use_ref_model=self.ref_model is not None,
+            )
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self.log_completions = args.log_completions
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))

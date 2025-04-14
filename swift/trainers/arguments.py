@@ -178,9 +178,6 @@ class GRPOArgumentsMixin:
     # mini-batch
     mini_batch_size: Optional[int] = None
 
-<<<<<<< HEAD
-    use_liger_loss: bool = False
-=======
     # DAPO, https://arxiv.org/abs/2503.14476
     dynamic_sample: bool = False
     max_resample_times: int = 3
@@ -193,7 +190,8 @@ class GRPOArgumentsMixin:
 
     # compatible with trl main branch(0.17.0.dev0)
     wandb_log_unique_prompts: Optional[bool] = None
->>>>>>> origin
+
+    use_liger_loss: bool = False
 
 
 @dataclass
