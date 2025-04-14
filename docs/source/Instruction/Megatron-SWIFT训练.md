@@ -9,12 +9,18 @@ SWIFT引入了Megatron的并行技术来加速大模型的训练，包括数据�
 ```shell
 pip install pybind11
 # transformer_engine
+# 若出现安装错误，可以参考该issue解决: https://github.com/modelscope/ms-swift/issues/3793
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
 
 # apex
 git clone https://github.com/NVIDIA/apex
 cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
+```
+
+或者你也可以使用镜像：
+```
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
 ```
 
 依赖库Megatron-LM将会由swift进行git clone并安装，不需要用户手动安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.11.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.11.0)）。
@@ -34,6 +40,7 @@ swift export \
     --test_convert_precision true \
     --output_dir Qwen2.5-7B-Instruct-mcore
 ```
+- 注意：若出现OOM，请将`--test_convert_precision true`参数去除
 
 然后，使用以下脚本进行训练，训练所需显存资源为2*80GiB：
 ```shell
@@ -233,5 +240,5 @@ Megatron训练参数继承自Megatron参数和基本参数。基本参数的内�
 
 - add_version: 在`save`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
 - 🔥packing: 是否使用序列packing，默认为False。
-- 🔥streaming: 流式读取并处理数据集，默认False。通常在处理大型数据集时，设置为True。
+- 🔥streaming: 流式读取并处理数据集，默认False。通常在处理大型数据集时，设置为True。更多流式的参数查看命令行参数文档。
 - lazy_tokenize: 默认为False。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（这可以避免在训练中出现报错）；设置为True，则在训练中对数据集进行tokenize（这可以节约内存）。

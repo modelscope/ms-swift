@@ -53,7 +53,7 @@
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 📝 简介
-🍲 ms-swift是魔搭社区提供的大模型与多模态大模型微调部署框架，现已支持450+大模型与150+多模态大模型的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中大模型包括：Qwen2.5、InternLM3、GLM4、Llama3.3、Mistral、DeepSeek-R1、Yi1.5、TeleChat2、Baichuan2、Gemma2等模型，多模态大模型包括：Qwen2.5-VL、Qwen2-Audio、Llama3.2-Vision、Llava、InternVL2.5、MiniCPM-V-2.6、GLM4v、Xcomposer2.5、Yi-VL、DeepSeek-VL2、Phi3.5-Vision、GOT-OCR2等模型。
+🍲 ms-swift是魔搭社区提供的大模型与多模态大模型微调部署框架，现已支持450+大模型与150+多模态大模型的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中大模型包括：Qwen2.5、InternLM3、GLM4、Mistral、DeepSeek-R1、Yi1.5、TeleChat2、Baichuan2、Gemma2等模型，多模态大模型包括：Qwen2.5-VL、Qwen2-Audio、Llama4、Llava、InternVL2.5、MiniCPM-V-2.6、GLM4v、Xcomposer2.5、Yi-VL、DeepSeek-VL2、Phi3.5-Vision、GOT-OCR2等模型。
 
 🍔 除此之外，ms-swift汇集了最新的训练技术，包括LoRA、QLoRA、Llama-Pro、LongLoRA、GaLore、Q-GaLore、LoRA+、LISA、DoRA、FourierFt、ReFT、UnSloth、和Liger等轻量化训练技术，以及DPO、GRPO、RM、PPO、KTO、CPO、SimPO、ORPO等人类对齐训练方法。ms-swift支持使用vLLM和LMDeploy对推理、评测和部署模块进行加速，并支持使用GPTQ、AWQ、BNB等技术对大模型进行量化。ms-swift还提供了基于Gradio的Web-UI界面及丰富的最佳实践。
 
@@ -115,12 +115,12 @@ pip install -e .
 | python | >=3.9        | 3.10 ||
 | cuda |              | cuda12 |使用cpu、npu、mps则无需安装|
 | torch | >=2.0        |  ||
-| transformers | >=4.33       | 4.50 ||
+| transformers | >=4.33       | 4.51 ||
 | modelscope | >=1.19       |  ||
 | peft | >=0.11,<0.16 | ||
 | trl | >=0.13,<0.17 | 0.16 |RLHF|
 | deepspeed | >=0.14       | 0.14.5 |训练|
-| vllm | >=0.5.1,<0.8      | 0.7.3 |推理/部署/评测|
+| vllm | >=0.5.1      | 0.7.3/0.8.3 |推理/部署/评测|
 | lmdeploy | >=0.5        | 0.7.2.post1 |推理/部署/评测|
 | evalscope | >=0.11       | |评测|
 
@@ -152,7 +152,7 @@ swift sft \
     --gradient_accumulation_steps 16 \
     --eval_steps 50 \
     --save_steps 50 \
-    --save_total_limit 5 \
+    --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \
@@ -296,7 +296,7 @@ swift pt \
     --train_type full \
     --deepspeed zero2 \
     --output_dir output \
-    --max_steps 100000 \
+    --max_steps 10000 \
     ...
 ```
 

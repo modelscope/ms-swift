@@ -164,17 +164,6 @@ class Phi4MMTemplate(Template):
             inputs.audios[index] = sf.read(load_file(inputs.audios[index]))
             return [[-200]]
 
-    @staticmethod
-    def _split_list(inputs: List[int], x: int) -> List[List[int]]:
-        idxs = findall(inputs, x)  # '\n'
-        idxs.append(len(inputs))
-        res = []
-        lo = 0
-        for idx in idxs:
-            res.append(inputs[lo:idx])
-            lo = idx + 1
-        return res
-
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         input_ids = encoded['input_ids']

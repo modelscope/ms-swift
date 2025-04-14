@@ -153,7 +153,7 @@ def _sync_max_memory(max_memory: Dict[Union[int, str], int]) -> Dict[Union[int, 
     return new_max_memory
 
 
-def _find_layers(model: nn.Module, cond: Callable[[str, nn.Module], bool]) -> List[str]:
+def find_layers(model: nn.Module, cond: Callable[[str, nn.Module], bool]) -> List[str]:
     # The content of target_module_names cannot exist in inner_nodes.
     inner_nodes = set()
     for name, module in model.named_modules():
@@ -174,13 +174,13 @@ def _find_layers(model: nn.Module, cond: Callable[[str, nn.Module], bool]) -> Li
 
 def find_norm(model: nn.Module) -> List[str]:
     # find_layer_norm
-    return _find_layers(
+    return find_layers(
         model,
         lambda name, module: isinstance(module, torch.nn.LayerNorm) or 'rmsnorm' in module.__class__.__name__.lower())
 
 
 def find_embedding(model: nn.Module) -> List[str]:
-    return _find_layers(model, lambda name, module: isinstance(module, torch.nn.Embedding))
+    return find_layers(model, lambda name, module: isinstance(module, torch.nn.Embedding))
 
 
 def find_all_linears(model: nn.Module) -> List[str]:
@@ -225,7 +225,7 @@ def find_all_linears(model: nn.Module) -> List[str]:
     # 'score', 'classifier': classification model
     # 'v_head': reward model
     ignore_layers = [lm_head_name, 'score', 'v_head', 'classifier']
-    return _find_layers(
+    return find_layers(
         model, lambda name, module: isinstance(module, tuple(linear_cls)) and all(layer not in name
                                                                                   for layer in ignore_layers))
 

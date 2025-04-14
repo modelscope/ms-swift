@@ -79,9 +79,9 @@ class TestTemplate(unittest.TestCase):
             test_messages = deepcopy(messages)
             obs_word = get_tools_keyword(tool_prompt).get('observation')
             test_messages[1]['content'] = f'{obs_word}'
-            test_messages[2]['content'] = 'first_round_result\n'
+            test_messages[2]['content'] = 'first_round_result'
             test_messages[3]['content'] = f'{obs_word}'
-            test_messages[4]['content'] = 'second_round_result\n'
+            test_messages[4]['content'] = 'second_round_result'
             StdTemplateInputs.messages_join_observation(test_messages, tools_prompt=tool_prompt)
 
             # multi-round tool calling should be joined that only one assistant message left.

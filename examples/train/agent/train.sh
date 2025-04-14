@@ -1,13 +1,10 @@
-# 2*24GiB
-nproc_per_node=2
-
-CUDA_VISIBLE_DEVICES=0,1 \
-MASTER_PORT=29501 \
-NPROC_PER_NODE=$nproc_per_node \
+# 24GB
+CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen2.5-3B \
+    --template default \
     --train_type lora \
-    --dataset swift/ToolBench \
+    --dataset iic/ms_agent \
     --loss_scale react \
     --tools_prompt react_en \
     --torch_dtype bfloat16 \
@@ -18,14 +15,16 @@ swift sft \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
-    --gradient_accumulation_steps $(expr 32 / $nproc_per_node) \
-    --eval_steps 500 \
-    --save_steps 500 \
-    --save_total_limit 5 \
+    --gradient_accumulation_steps 8 \
+    --eval_steps 50 \
+    --save_steps 50 \
+    --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 8192 \
+    --packing true \
+    --use_liger_kernel true \
     --output_dir output \
     --warmup_ratio 0.05 \
+    --attn_impl flash_attn \
     --dataloader_num_workers 4 \
-    --deepspeed zero2 \
     --dataset_num_proc 16

@@ -409,7 +409,7 @@ class Template(ProcessorMixin):
                     labels[0] = -100
                     labels_list.append(labels)
                 packed[key] = sum(labels_list, start=[])
-            elif key == 'input_ids':
+            elif key in {'input_ids', 'loss_scale'}:
                 packed[key] = sum((x[0][key] for x in row), start=[])
         if 'position_ids' not in packed:
             packed['position_ids'] = sum((list(range(x[1])) for x in row), start=[])
@@ -436,14 +436,14 @@ class Template(ProcessorMixin):
         idxs = logprobs.argsort(descending=True, dim=-1)[:top_logprobs].tolist()
         logprobs = logprobs.tolist()
         return {
-            'content': {
+            'content': [{
                 'index': pred,
                 'logprobs': [logprobs[p] for p in pred] if isinstance(pred, (list, tuple)) else logprobs[pred],
                 'top_logprobs': [{
                     'index': idx,
                     'logprob': logprobs[idx]
                 } for idx in idxs]
-            }
+            }]
         }
 
     @staticmethod
@@ -969,6 +969,13 @@ class Template(ProcessorMixin):
                 if loss_scale is not None:
                     loss_scale = loss_scale[:self.max_length]
             else:
+                if len(input_ids) > self.max_length:
+                    logger.warning_once(
+                        'Input data was left-truncated because its length exceeds `max_length` (input length: '
+                        f'{len(input_ids)}, max_length: {self.max_length}). '
+                        'This may cause loss of important tokens (e.g., image tokens) and lead to errors. '
+                        'To avoid this, consider increasing `max_length` or pre-filtering long sequences.',
+                        hash_id='max_length_check')
                 input_ids = input_ids[-self.max_length:]
                 if labels is not None:
                     labels = labels[-self.max_length:]
@@ -999,6 +1006,17 @@ class Template(ProcessorMixin):
             val = inputs['generate_ids']
         for v in val:
             self.print_inputs({k: v.tolist()})
+
+    @staticmethod
+    def _split_list(inputs: List[int], x: int) -> List[List[int]]:
+        idxs = findall(inputs, x)
+        idxs.append(len(inputs))
+        res = []
+        lo = 0
+        for idx in idxs:
+            res.append(inputs[lo:idx])
+            lo = idx + 1
+        return res
 
     def replace_video2image(self, load_video_func, inputs, replace_tag: Callable) -> List[Context]:
         context_list = []
@@ -1216,8 +1234,10 @@ class Template(ProcessorMixin):
         res = {}
         if packing_mode:
             # only support llm
-            for k in ['input_ids', 'labels', 'position_ids']:
-                res[k] = [self.gather_list(batch, k)]
+            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale']:
+                v = self.gather_list(batch, k)
+                if v:
+                    res[k] = [v]
         else:
             inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
             input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]

@@ -23,10 +23,11 @@ swift rlhf \
     --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
     --eval_steps 100 \
     --save_steps 100 \
-    --save_total_limit 5 \
+    --save_total_limit 2 \
     --deepspeed zero2 \
     --logging_steps 5 \
-    --max_length 2048 \
+    --max_length 4096 \
     --output_dir output \
     --warmup_ratio 0.05 \
-    --dataloader_num_workers 4
+    --dataloader_num_workers 4 \
+    --dataset_num_proc 4

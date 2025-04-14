@@ -403,18 +403,21 @@ def _read_args_json_model_type(model_dir):
 
 
 def _get_model_info(model_dir: str, model_type: Optional[str], quantization_config) -> ModelInfo:
-    config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
+    try:
+        config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    except Exception:
+        config = PretrainedConfig.get_config_dict(model_dir)[0]
     if quantization_config is not None:
-        config_dict['quantization_config'] = quantization_config
-    quant_info = HfConfigFactory.get_quant_info(config_dict) or {}
-    torch_dtype = HfConfigFactory.get_torch_dtype(config_dict, quant_info)
-    max_model_len = HfConfigFactory.get_max_model_len(config_dict)
-    rope_scaling = HfConfigFactory.get_config_attr(config_dict, 'rope_scaling')
+        HfConfigFactory.set_config_attr(config, 'quantization_config', quantization_config)
+    quant_info = HfConfigFactory.get_quant_info(config) or {}
+    torch_dtype = HfConfigFactory.get_torch_dtype(config, quant_info)
+    max_model_len = HfConfigFactory.get_max_model_len(config)
+    rope_scaling = HfConfigFactory.get_config_attr(config, 'rope_scaling')
 
     if model_type is None:
         model_type = _read_args_json_model_type(model_dir)
     if model_type is None:
-        architectures = HfConfigFactory.get_config_attr(config_dict, 'architectures')
+        architectures = HfConfigFactory.get_config_attr(config, 'architectures')
         model_types = get_matched_model_types(architectures)
         if len(model_types) > 1:
             raise ValueError('Please explicitly pass the model_type. For reference, '

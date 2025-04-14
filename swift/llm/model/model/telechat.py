@@ -1,5 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+from transformers import GenerationConfig
+
 from swift.llm import TemplateType
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
@@ -8,9 +10,10 @@ from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_fl
 
 def get_model_tokenizer_telechat(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
-    if model is not None:
-        for k in ['bos_token_id', 'eos_token_id', 'pad_token_id', 'user_token_id', 'bot_token_id']:
-            setattr(tokenizer, k, getattr(model.generation_config, k))
+    model_dir = args[0]
+    generation_config = GenerationConfig.from_pretrained(model_dir)
+    for k in ['bos_token_id', 'eos_token_id', 'pad_token_id', 'user_token_id', 'bot_token_id']:
+        setattr(tokenizer, k, getattr(generation_config, k))
     return model, tokenizer
 
 

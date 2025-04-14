@@ -110,6 +110,7 @@ register_model(
             ]),
             ModelGroup([
                 Model('cognitivecomputations/DeepSeek-V3-awq', 'cognitivecomputations/DeepSeek-V3-AWQ'),
+                Model('cognitivecomputations/DeepSeek-V3-0324-AWQ', 'cognitivecomputations/DeepSeek-V3-0324-AWQ')
             ])
         ],
         TemplateType.deepseek_v2_5,

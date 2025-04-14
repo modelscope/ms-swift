@@ -294,7 +294,8 @@ class MSHub(HubOperation):
             split=split,
             version=revision,
             download_mode=download_mode,
-            use_streaming=streaming)
+            use_streaming=streaming,
+        )
 
     @classmethod
     def download_model(cls,

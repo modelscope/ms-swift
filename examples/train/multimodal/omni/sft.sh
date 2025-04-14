@@ -1,5 +1,8 @@
-# 4*25GB
+# 4*35GB
 # A demo for four modalities that can be run directly
+pip uninstall transformers
+pip install git+https://github.com/huggingface/transformers@f742a644ca32e65758c3adb36225aef1731bd2a8
+
 nproc_per_node=4
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -7,6 +10,7 @@ NPROC_PER_NODE=$nproc_per_node \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
 MAX_PIXELS=1003520 \
+ENABLE_AUDIO_OUTPUT=0 \
 swift sft \
     --model Qwen/Qwen2.5-Omni-7B \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#2000' \
@@ -26,7 +30,7 @@ swift sft \
     --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
     --eval_steps 50 \
     --save_steps 50 \
-    --save_total_limit 5 \
+    --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \

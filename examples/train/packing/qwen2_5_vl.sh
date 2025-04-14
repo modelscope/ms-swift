@@ -1,5 +1,5 @@
 # 4 * 36GB
-# Multimodal packing currently only supports qwen2_vl, qwen2_5_vl, qwen2_5_omni, internvl2_5
+# Multimodal packing currently only supports qwen2_vl, qwen2_5_vl, qwen2_5_omni, internvl2_5/3
 # Efficiency: With packing: 10 minutes; Without packing: >=1 hour
 # For local datasets, it is recommended to use streaming: `--streaming true` (save memory)
 NPROC_PER_NODE=4 \
@@ -22,7 +22,7 @@ swift sft \
     --gradient_accumulation_steps 1 \
     --eval_steps 100 \
     --save_steps 100 \
-    --save_total_limit 5 \
+    --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 8192 \
     --output_dir output \

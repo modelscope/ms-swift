@@ -91,7 +91,7 @@ register_model(
     ModelMeta(
         MLLMModelType.minimax_vl, [
             ModelGroup([
-                Model('MiniMaxAI/MiniMax-VL-01', 'MiniMaxAI/MiniMax-VL-01'),
+                Model('MiniMax/MiniMax-VL-01', 'MiniMaxAI/MiniMax-VL-01'),
             ]),
         ],
         TemplateType.minimax_vl,
@@ -148,7 +148,7 @@ register_model(
     ModelMeta(
         LLMModelType.minimax, [
             ModelGroup([
-                Model('MiniMaxAI/MiniMax-Text-01', 'MiniMaxAI/MiniMax-Text-01'),
+                Model('MiniMax/MiniMax-Text-01', 'MiniMaxAI/MiniMax-Text-01'),
             ]),
         ],
         TemplateType.minimax,
