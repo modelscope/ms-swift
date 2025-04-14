@@ -175,9 +175,22 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.use_lmdeploy = args.use_lmdeploy
         self.epsilon_low = args.epsilon
         self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
-        self.use_liger_loss = self.args.use_liger_loss
         self.log_completions = args.log_completions
 
+        if self.args.tensor_parallel_size > 1 and self.multi_turn_func:
+            import torch.distributed as dist
+            rank, _, _, _ = get_dist_setting()
+            for tp_group in self.tp_group_ranks():
+                group = dist.new_group(tp_group)
+                if rank in tp_group:
+                    self.group = group
+
+        model.warnings_issued['estimate_tokens'] = True
+        kwargs['data_collator'] = lambda features: features
+
+        super().__init__(model, ref_model, *_args, **kwargs)
+
+        self.use_liger_loss = self.args.use_liger_loss
         if self.use_liger_loss:
             from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
             if not is_liger_available():
@@ -193,19 +206,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 temperature=self.temperature,
                 use_ref_model=self.ref_model is not None,
             )
-
-        if self.args.tensor_parallel_size > 1 and self.multi_turn_func:
-            import torch.distributed as dist
-            rank, _, _, _ = get_dist_setting()
-            for tp_group in self.tp_group_ranks():
-                group = dist.new_group(tp_group)
-                if rank in tp_group:
-                    self.group = group
-
-        model.warnings_issued['estimate_tokens'] = True
-        kwargs['data_collator'] = lambda features: features
-
-        super().__init__(model, ref_model, *_args, **kwargs)
 
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
