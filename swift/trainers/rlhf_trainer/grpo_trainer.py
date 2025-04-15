@@ -1054,7 +1054,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs = inputs[0]
         if self.use_liger_loss:
             unwrapped_model = self.accelerator.unwrap_model(model)
-            return self.compute_liger_loss(unwrapped_model, inputs)
+            return self._forward_redirection(model, unwrapped_model, self.compute_liger_loss, unwrapped_model, inputs)
 
         completion_mask = inputs['completion_mask']
         truncated_mask = inputs['truncated_mask']
