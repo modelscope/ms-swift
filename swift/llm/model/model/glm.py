@@ -130,9 +130,9 @@ register_model(
         LLMModelType.glm4_z1,
         [
             ModelGroup([
-                Model('ZhipuAI/GLM-4-9B-Chat-0414', 'THUDM/GLM-4-9B-Chat-0414'),
+                Model('ZhipuAI/GLM-4-9B-0414', 'THUDM/GLM-4-9B-0414'),
                 Model('ZhipuAI/GLM-4-32B-0414', 'THUDM/GLM-4-32B-0414'),
-                Model('ZhipuAI/GLM-4-32B-Chat-0414', 'THUDM/GLM-4-32B-Chat-0414'),
+                Model('ZhipuAI/GLM-4-32B-Base-0414', 'THUDM/GLM-4-32B-Base-0414'),
                 Model('ZhipuAI/GLM-4-Z1-9B-0414', 'THUDM/GLM-4-Z1-9B-0414'),
                 Model('ZhipuAI/GLM-4-Z1-32B-0414', 'THUDM/GLM-4-Z1-32B-0414'),
             ])
