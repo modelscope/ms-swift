@@ -183,7 +183,7 @@ def find_embedding(model: nn.Module) -> List[str]:
     return find_layers(model, lambda name, module: isinstance(module, torch.nn.Embedding))
 
 
-def find_all_linears(module, model_arch=None, extra_layers=None):
+def find_all_linears(model, model_arch=None, extra_layers=None):
     if model_arch is None:
         from swift.llm import get_model_arch
         model_arch = get_model_arch(model.model_meta.model_arch)
@@ -205,7 +205,7 @@ def find_all_linears(module, model_arch=None, extra_layers=None):
             return True
         return False
 
-    return find_layers(module, _cond)
+    return find_layers(model, _cond)
 
 
 @contextmanager
