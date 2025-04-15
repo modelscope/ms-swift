@@ -45,31 +45,6 @@ def apply_liger(model_type: str):
         raise ValueError(f'Unsupported liger model_type: {model_type}')
 
 
-def _find_module_all_linear(module, model_arch, include_embedding):
-
-    linear_cls = [nn.Linear]
-    if include_embedding:
-        linear_cls.append(nn.Embedding)
-    # lm_head
-    if model_arch and model_arch.lm_head:
-        output = model_arch.lm_head
-        idx = output.rfind('.')
-        lm_head_name = output[idx + 1:]
-    else:
-        lm_head_name = 'lm_head'
-
-    ignore_layers = [lm_head_name, 'score', 'v_head', 'classifier']
-
-    def _cond(name, module):
-        if not isinstance(module, tuple(linear_cls)):
-            return False
-        if any(layer in name for layer in ignore_layers):
-            return False
-        return True
-
-    return find_layers(module, _cond)
-
-
 def get_multimodal_target_regex(
     model,
     *,
@@ -93,10 +68,14 @@ def get_multimodal_target_regex(
     assert len(modules) > 0, f'modules: {modules}'
     prefix_pattern = '|'.join(modules)
     rejected_pattern = '|'.join(rejected_modules)
+
+    extra_layers = []
+    if include_embedding:
+        extra_layers.append(nn.Embedding)
     target_modules = []
     for module in modules:
         module = deep_getattr(model, module)
-        target_modules += _find_module_all_linear(module, model_arch, include_embedding)
+        target_modules += find_all_linears(module, model_arch, extra_layers)
     target_regex = rf'^({prefix_pattern})\..*\.({"|".join(target_modules)})$'
     if rejected_pattern:
         target_regex = rf'(?!^({rejected_pattern}))' + target_regex
@@ -110,6 +89,7 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
         return args.target_modules
     target_modules = args.target_modules.copy()
     if 'all-linear' in target_modules:
+        find_all_linears(model)
         if model_meta.is_multimodal:
             return get_multimodal_target_regex(
                 model,

@@ -183,51 +183,29 @@ def find_embedding(model: nn.Module) -> List[str]:
     return find_layers(model, lambda name, module: isinstance(module, torch.nn.Embedding))
 
 
-def find_all_linears(model: nn.Module) -> List[str]:
-    from swift.llm import get_model_arch
-    model_info = model.model_info
-    model_arch = get_model_arch(model.model_meta.model_arch)
+def find_all_linears(module, model_arch=None, extra_layers=None):
+    if model_arch is None:
+        from swift.llm import get_model_arch
+        model_arch = get_model_arch(model.model_meta.model_arch)
+    # lm_head
     if model_arch and model_arch.lm_head:
         output = model_arch.lm_head
         idx = output.rfind('.')
         lm_head_name = output[idx + 1:]
     else:
         lm_head_name = 'lm_head'
-
-    quant_method = model_info.quant_method
-    quant_bits = model_info.quant_bits
-    if quant_method == 'bnb':
-        from bitsandbytes.nn import Linear4bit, Linear8bitLt
-        if quant_bits == 4:
-            linear_cls = [Linear4bit]
-        elif quant_bits == 8:
-            linear_cls = [Linear8bitLt]
-    elif quant_method == 'hqq':
-        from hqq.core.quantize import HQQLinear
-        linear_cls = [HQQLinear]
-    elif quant_method == 'eetq':
-        from eetq import EetqLinear
-        linear_cls = [EetqLinear]
-    elif quant_method == 'gptq':
-        from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
-        gptq_quantization_config = get_quantization_config(model, 'gptq')
-        AutoGPTQQuantLinear = get_auto_gptq_quant_linear(gptq_quantization_config)
-        linear_cls = [AutoGPTQQuantLinear]
-    elif quant_method == 'awq':
-        from awq.modules.linear import WQLinear_GEMM
-        linear_cls = [WQLinear_GEMM]
-    elif quant_method == 'aqlm':
-        from aqlm import QuantizedLinear
-        linear_cls = [QuantizedLinear]
-    else:
-        linear_cls = [nn.Linear]
-
     # 'score', 'classifier': classification model
     # 'v_head': reward model
-    ignore_layers = [lm_head_name, 'score', 'v_head', 'classifier']
-    return find_layers(
-        model, lambda name, module: isinstance(module, tuple(linear_cls)) and all(layer not in name
-                                                                                  for layer in ignore_layers))
+    ignore_layers = [lm_head_name, 'score', 'v_head', 'classifier'] + ['lora_A', 'lora_B', 'base_layer']
+
+    def _cond(name, module):
+        module_name = module.__class__.__name__.lower()
+        if (extra_layers and isinstance(module, tuple(extra_layers)) or 'linear' in module_name) and all(
+                layer not in name for layer in ignore_layers):
+            return True
+        return False
+
+    return find_layers(module, _cond)
 
 
 @contextmanager
