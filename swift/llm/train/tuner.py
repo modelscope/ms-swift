@@ -12,8 +12,8 @@ from transformers import TrainingArguments
 from swift.llm import TrainArguments, get_model_arch
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
-from swift.utils import (activate_parameters, deep_getattr, find_all_linears, find_embedding, find_norm,
-                         freeze_parameters, get_logger, use_torchacc)
+from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
+                         get_logger, use_torchacc)
 
 logger = get_logger()
 
@@ -74,8 +74,7 @@ def get_multimodal_target_regex(
         extra_layers.append(nn.Embedding)
     target_modules = []
     for module in modules:
-        module = deep_getattr(model, module)
-        target_modules += find_all_linears(module, model_arch, extra_layers)
+        target_modules += find_all_linears(model, model_arch, extra_layers, sub_module=module)
     target_regex = rf'^({prefix_pattern})\..*\.({"|".join(target_modules)})$'
     if rejected_pattern:
         target_regex = rf'(?!^({rejected_pattern}))' + target_regex

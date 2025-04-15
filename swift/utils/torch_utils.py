@@ -21,6 +21,7 @@ from transformers.utils import is_torch_cuda_available, is_torch_mps_available, 
 
 from .env import get_dist_setting, is_dist, is_dist_ta, is_master
 from .logger import get_logger
+from .utils import deep_getattr
 
 logger = get_logger()
 
@@ -153,15 +154,23 @@ def _sync_max_memory(max_memory: Dict[Union[int, str], int]) -> Dict[Union[int, 
     return new_max_memory
 
 
-def find_layers(model: nn.Module, cond: Callable[[str, nn.Module], bool]) -> List[str]:
+def find_layers(model: nn.Module,
+                cond: Callable[[str, nn.Module], bool],
+                sub_module: Optional[str] = None) -> List[str]:
     # The content of target_module_names cannot exist in inner_nodes.
+    sub_module_str = sub_module
+    if sub_module is None:
+        sub_module = model
+    else:
+        sub_module = deep_getattr(model, sub_module)
     inner_nodes = set()
     for name, module in model.named_modules():
         name = re.sub(r'\d+\.', '{}.', name)
         if not cond(name, module):
             inner_nodes.add(name)
     target_module_names = set()
-    for name, module in model.named_modules():
+    for name, module in sub_module.named_modules():
+        name = f'{sub_module_str}.{name}'
         if cond(name, module):
             module_name_list = name.split('.')
             module_name = module_name_list.pop()
@@ -183,7 +192,7 @@ def find_embedding(model: nn.Module) -> List[str]:
     return find_layers(model, lambda name, module: isinstance(module, torch.nn.Embedding))
 
 
-def find_all_linears(model, model_arch=None, extra_layers=None):
+def find_all_linears(model, model_arch=None, extra_layers=None, sub_module=None):
     if model_arch is None:
         from swift.llm import get_model_arch
         model_arch = get_model_arch(model.model_meta.model_arch)
@@ -197,15 +206,20 @@ def find_all_linears(model, model_arch=None, extra_layers=None):
     # 'score', 'classifier': classification model
     # 'v_head': reward model
     ignore_layers = [lm_head_name, 'score', 'v_head', 'classifier'] + ['lora_A', 'lora_B', 'base_layer']
+    ignore_linear_cls = [
+        'glulinear'  # phi4-mm
+    ]
 
     def _cond(name, module):
         module_name = module.__class__.__name__.lower()
-        if (extra_layers and isinstance(module, tuple(extra_layers)) or 'linear' in module_name) and all(
-                layer not in name for layer in ignore_layers):
+        if (extra_layers and isinstance(module, tuple(extra_layers)) or
+            ('linear' in module_name and all(linear_cls not in module_name
+                                             for linear_cls in ignore_linear_cls))) and all(layer not in name
+                                                                                            for layer in ignore_layers):
             return True
         return False
 
-    return find_layers(model, _cond)
+    return find_layers(model, _cond, sub_module=sub_module)
 
 
 @contextmanager
