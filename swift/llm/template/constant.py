@@ -35,6 +35,8 @@ class LLMTemplateType:
 
     chatglm2 = 'chatglm2'
     glm4 = 'glm4'
+    glm4_z1 = 'glm4_z1'
+    glm4_z1_rumination = 'glm4_z1_rumination'
     codegeex4 = 'codegeex4'
     longwriter_llama = 'longwriter_llama'
 
