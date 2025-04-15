@@ -73,6 +73,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         template = self.args.get_template(self.processor)
         if self.args.task_type == 'causal_lm':
             template.set_mode('train')
+        if template.use_model:
+            template.model = self.model
         self.template = template
 
     def _get_dataset(self):
