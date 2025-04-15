@@ -4,6 +4,7 @@ import os
 from typing import List, Union
 
 import torch
+import torch.nn as nn
 import transformers
 from packaging import version
 from transformers import TrainingArguments
@@ -11,8 +12,8 @@ from transformers import TrainingArguments
 from swift.llm import TrainArguments, get_model_arch
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
-from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
-                         get_logger, use_torchacc)
+from swift.utils import (activate_parameters, deep_getattr, find_all_linears, find_embedding, find_layers, find_norm,
+                         freeze_parameters, get_logger, use_torchacc)
 
 logger = get_logger()
 
@@ -44,41 +45,59 @@ def apply_liger(model_type: str):
         raise ValueError(f'Unsupported liger model_type: {model_type}')
 
 
+def _find_module_all_linear(module, model_arch, include_embedding):
+
+    linear_cls = [nn.Linear]
+    if include_embedding:
+        linear_cls.append(nn.Embedding)
+    # lm_head
+    if model_arch and model_arch.lm_head:
+        output = model_arch.lm_head
+        idx = output.rfind('.')
+        lm_head_name = output[idx + 1:]
+    else:
+        lm_head_name = 'lm_head'
+
+    ignore_layers = [lm_head_name, 'score', 'v_head', 'classifier']
+
+    def _cond(name, module):
+        if not isinstance(module, tuple(linear_cls)):
+            return False
+        if any(layer in name for layer in ignore_layers):
+            return False
+        return True
+
+    return find_layers(module, _cond)
+
+
 def get_multimodal_target_regex(
-    model_arch,
+    model,
     *,
     freeze_llm: bool = False,
     freeze_vit: bool = True,
     freeze_aligner: bool = True,
-    ignore_embedding: bool = True,
+    include_embedding: bool = True,
 ) -> str:
+    model_arch = get_model_arch(model.model_meta.model_arch)
     modules = []
     rejected_modules = []
     if not freeze_llm:
         modules += model_arch.language_model
     if not freeze_vit:
         modules += model_arch.vision_tower
-    if freeze_aligner:
-        rejected_modules += model_arch.aligner
-    else:
+    if not freeze_aligner:
         modules += model_arch.aligner
+    elif not freeze_vit:
+        rejected_modules += model_arch.aligner
 
     assert len(modules) > 0, f'modules: {modules}'
     prefix_pattern = '|'.join(modules)
     rejected_pattern = '|'.join(rejected_modules)
-
-    ignore_pattern = ['lora_A', 'lora_B', 'base_layer']
-    if ignore_embedding:
-        ignore_pattern += [r'\w*emb\w*', 'wte', 'shared']
-        ignore_pattern += model_arch.embedding or []
-    # lm_head
-    ignore_pattern += ['lm_head', 'output', 'score', 'v_head', 'classifier']
-    ignore_pattern += model_arch.lm_head or []
-    ignore_pattern = '|'.join(ignore_pattern)
-
-    target_regex = rf'^({prefix_pattern})'
-    if ignore_pattern:
-        target_regex += rf'(?!.*\b({ignore_pattern})\b).*'
+    target_modules = []
+    for module in modules:
+        module = deep_getattr(model, module)
+        target_modules += _find_module_all_linear(module, model_arch, include_embedding)
+    target_regex = rf'^({prefix_pattern})\..*\.({"|".join(target_modules)})$'
     if rejected_pattern:
         target_regex = rf'(?!^({rejected_pattern}))' + target_regex
     return target_regex
@@ -91,14 +110,13 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
         return args.target_modules
     target_modules = args.target_modules.copy()
     if 'all-linear' in target_modules:
-        model_arch = get_model_arch(args.model_meta.model_arch)
-        if model_meta.is_multimodal and model_arch:
+        if model_meta.is_multimodal:
             return get_multimodal_target_regex(
-                model_arch,
+                model,
                 freeze_llm=args.freeze_llm,
                 freeze_vit=args.freeze_vit,
                 freeze_aligner=args.freeze_aligner,
-                ignore_embedding='all-embedding' not in target_modules)
+                include_embedding='all-embedding' in target_modules)
         else:
             target_modules.remove('all-linear')
             target_modules += find_all_linears(model)
