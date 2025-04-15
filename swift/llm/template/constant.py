@@ -164,6 +164,7 @@ class MLLMTemplateType:
     got_ocr2 = 'got_ocr2'
     got_ocr2_hf = 'got_ocr2_hf'
     step_audio = 'step_audio'
+    kimi_vl = 'kimi_vl'
 
     idefics3 = 'idefics3'
     pixtral = 'pixtral'

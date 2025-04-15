@@ -537,6 +537,18 @@ def test_llama4():
                               'a realistic depiction of a kitten, while') and len(response) == 654
 
 
+def test_kimi_vl():
+    pt_engine = PtEngine('moonshotai/Kimi-VL-A3B-Instruct')
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == ('The first image is a close-up of a kitten with a blurred background, '
+                        'while the second image is a cartoon of four sheep standing in a field.')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -587,5 +599,6 @@ if __name__ == '__main__':
     # test_gemma3_vision()
     # test_mistral_2503()
     # test_llama4()
-    test_internvl3_8b()
-    test_internvl3_9b()
+    # test_internvl3_8b()
+    # test_internvl3_9b()
+    test_kimi_vl()

@@ -39,6 +39,7 @@ pip install ms-swift==2.*
 
 ```
 # vllm0.8.3 (该版本vllm可能导致部分GRPO训练卡住，GRPO建议优先使用vllm0.7.3)
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
 modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
 
 # vllm0.7.3
