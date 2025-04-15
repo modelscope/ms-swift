@@ -1047,7 +1047,8 @@ class Template(ProcessorMixin):
         old_kwargs = to_device(kwargs, model.device)
         kwargs = to_device(self._post_encode(model, old_kwargs), model.device)
         for k, v in old_kwargs.items():
-            if k in {'input_ids', 'attention_mask', 'labels', 'position_ids'} and k not in kwargs:
+            if k in {'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states'
+                     } and k not in kwargs:
                 kwargs[k] = v
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)

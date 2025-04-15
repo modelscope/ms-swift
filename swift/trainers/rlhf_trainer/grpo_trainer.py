@@ -40,7 +40,7 @@ from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, 
                          is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import _split_into_mini_batches, patch_lora_merge, patch_lora_unmerge, round_robin
+from .utils import _ForwardRedirection, _split_into_mini_batches, patch_lora_merge, patch_lora_unmerge, round_robin
 
 try:
     from trl.extras.profiling import profiling_decorator
@@ -206,6 +206,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 temperature=self.temperature,
                 use_ref_model=self.ref_model is not None,
             )
+            self._forward_redirection = _ForwardRedirection()
 
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
@@ -1052,7 +1053,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             assert len(inputs) == 1
             inputs = inputs[0]
         if self.use_liger_loss:
-            return self.compute_liger_loss(model, inputs)
+            unwrapped_model = self.accelerator.unwrap_model(model)
+            return self.compute_liger_loss(unwrapped_model, inputs)
 
         completion_mask = inputs['completion_mask']
         truncated_mask = inputs['truncated_mask']
@@ -1138,9 +1140,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
 
     @profiling_decorator
-    def _get_last_hidden_state(self, model, inputs, logits_to_keep):
+    def _get_last_hidden_state(self, unwrapped_model, inputs, logits_to_keep):
         # unwrap the model to access the model.model
-        unwrapped_model = self.accelerator.unwrap_model(model)
         if not unwrapped_model.model_meta.is_multimodal:
             last_hidden_state = unwrapped_model.model(
                 input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask']).last_hidden_state
@@ -1153,13 +1154,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 ]
             }
             with self._template_context(self.template):
-                last_hidden_state = model(**inputs).last_hidden_state
+                outputs = unwrapped_model(**inputs, output_hidden_states=True)
+                last_hidden_state = outputs.hidden_states[-1]
+
         last_hidden_state = last_hidden_state[:, :-1, :]  # (B, L-1, H)
         if logits_to_keep is not None:
             last_hidden_state = last_hidden_state[:, -logits_to_keep:, :]  # (B, logits_to_keep, H)
         return last_hidden_state
 
-    def compute_liger_loss(self, model, inputs):
+    def compute_liger_loss(self, unwrapped_model, inputs):
         # Compute the per-token log probabilities for the model
         input_ids = inputs['input_ids']
         logits_to_keep = inputs['logits_to_keep']
@@ -1167,8 +1170,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completion_mask = inputs['completion_mask']
 
         # get the last hidden state of the model
-        last_hidden_state = self._get_last_hidden_state(model, inputs, logits_to_keep)
-        unwrapped_model = self.accelerator.unwrap_model(model)
+        last_hidden_state = self._get_last_hidden_state(unwrapped_model, inputs, logits_to_keep)
         # compute loss and metrics using liger grpo loss
         loss, metrics = self.liger_grpo_loss(
             _input=last_hidden_state,
