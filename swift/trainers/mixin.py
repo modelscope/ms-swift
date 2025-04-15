@@ -77,8 +77,6 @@ class SwiftMixin:
             init_sequence_parallel_xtuner(template.sequence_parallel_size)
 
         self.model_meta = model.model_meta
-        if template.use_model:
-            template.model = model
         with self.hub.patch_hub():
             super().__init__(
                 model=model,

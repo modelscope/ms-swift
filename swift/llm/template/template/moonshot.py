@@ -3,8 +3,6 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
-import torch
-
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
