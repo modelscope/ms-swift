@@ -12,7 +12,7 @@ from transformers import TrainingArguments
 from swift.llm import TrainArguments, get_model_arch
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
-from swift.utils import (activate_parameters, deep_getattr, find_all_linears, find_embedding, find_layers, find_norm,
+from swift.utils import (activate_parameters, deep_getattr, find_all_linears, find_embedding, find_norm,
                          freeze_parameters, get_logger, use_torchacc)
 
 logger = get_logger()
