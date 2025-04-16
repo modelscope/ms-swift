@@ -221,7 +221,7 @@ class LLMTrain(BaseUI):
                         gr.Textbox(elem_id='seed', scale=4)
                         gr.Dropdown(elem_id='torch_dtype', scale=4)
                         gr.Checkbox(elem_id='use_liger_kernel', scale=4)
-                        gr.Checkbox(elem_id='use_ddp', value=False, scale=2)
+                        gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                         gr.Textbox(elem_id='ddp_num', value='2', scale=4)
                 Hyper.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
@@ -312,6 +312,9 @@ class LLMTrain(BaseUI):
             raise gr.Error(cls.locale('dataset_alert', cls.lang)['value'])
 
         model = kwargs.get('model')
+        if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
+            kwargs['resume_from_checkpoint'] = kwargs.pop('model')
+
         cmd = train_stage
         if kwargs.get('deepspeed'):
             more_params_cmd += f' --deepspeed {kwargs.pop("deepspeed")} '
