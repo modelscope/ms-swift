@@ -2,6 +2,7 @@
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
+from ..patcher import patch_output_clone
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
 
@@ -21,6 +22,14 @@ register_model(
         requires=['transformers<4.49'],
     ))
 
+
+def get_model_tokenizer_kimi_vl(*args, **kwargs):
+    model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
+    if model is not None:
+        patch_output_clone(model.language_model.model.embed_tokens)
+    return model, processor
+
+
 register_model(
     ModelMeta(
         MLLMModelType.kimi_vl,
@@ -31,7 +40,7 @@ register_model(
             ])
         ],
         TemplateType.kimi_vl,
-        get_model_tokenizer_multimodal,
+        get_model_tokenizer_kimi_vl,
         architectures=['KimiVLForConditionalGeneration'],
         model_arch=ModelArch.llava_hf,
         requires=['transformers<4.49'],
