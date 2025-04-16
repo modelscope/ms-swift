@@ -23,7 +23,7 @@ from peft.tuners.adalora import AdaLoraModel, RankAllocator
 from peft.tuners.lora import Embedding
 from transformers import Trainer
 
-from swift import get_logger
+from swift.utils import get_logger
 
 try:
     from peft import FourierFTModel

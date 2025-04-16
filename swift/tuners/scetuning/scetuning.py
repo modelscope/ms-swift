@@ -7,8 +7,8 @@ from typing import List, Optional, Union
 import torch
 from torch import nn
 
-from swift import get_logger
 from swift.tuners.utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
+from swift.utils import get_logger
 from swift.utils.torch_utils import find_sub_module
 from .scetuning_components import probe_output_hook
 

@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Union
 import torch
 import torch.nn as nn
 
-from swift import get_logger
+from swift.utils import get_logger
 from swift.utils.torch_utils import find_sub_module
 from .restuning_components import ResTuner, detach_tensors, probe_input_pre_hook, probe_output_hook
 from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
