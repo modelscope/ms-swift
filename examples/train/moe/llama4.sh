@@ -13,7 +13,7 @@ swift sft \
     --learning_rate 1e-4 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --target_regex '^(language_model)\..*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$' \
+    --target_regex '^(language_model).*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$' \
     --freeze_vit true \
     --gradient_accumulation_steps 4 \
     --gradient_checkpointing true \

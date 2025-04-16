@@ -40,7 +40,7 @@ class CustomTuner(Tuner):
 
     @staticmethod
     def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
-        target_regex = r'^model\..*\.(o_proj|down_proj|gate_proj|v_proj|q_proj|k_proj|up_proj)$'
+        target_regex = r'^model.*\.(o_proj|down_proj|gate_proj|v_proj|q_proj|k_proj|up_proj)$'
         lora_config = LoraConfig(
             task_type='CAUSAL_LM', r=args.lora_rank, lora_alpha=args.lora_alpha, target_modules=target_regex)
         model = Swift.prepare_model(model, lora_config)
