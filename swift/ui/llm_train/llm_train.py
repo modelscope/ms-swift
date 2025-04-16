@@ -319,17 +319,25 @@ class LLMTrain(BaseUI):
             raise gr.Error(cls.locale('dataset_alert', cls.lang)['value'])
 
         model = kwargs.get('model')
-        if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')) and other_kwargs.get('resume_train'):
-            kwargs['resume_from_checkpoint'] = kwargs.pop('model')
-
         cmd = train_stage
         if kwargs.get('deepspeed'):
             more_params_cmd += f' --deepspeed {kwargs.pop("deepspeed")} '
-        sft_args = RLHFArguments(
-            **{
-                key: value.split(' ') if kwargs_is_list.get(key, False) and isinstance(value, str) else value
-                for key, value in kwargs.items()
-            })
+        try:
+            sft_args = RLHFArguments(
+                **{
+                    key: value.split(' ') if kwargs_is_list.get(key, False) and isinstance(value, str) else value
+                    for key, value in kwargs.items()
+                })
+        except Exception as e:
+            if 'using `--model`' in str(e):  # TODO a dirty fix
+                kwargs['model'] = kwargs.pop('resume_from_checkpoint')
+                sft_args = RLHFArguments(
+                    **{
+                        key: value.split(' ') if kwargs_is_list.get(key, False) and isinstance(value, str) else value
+                        for key, value in kwargs.items()
+                    })
+            else:
+                raise e
         params = ''
 
         sep = f'{cls.quote} {cls.quote}'
