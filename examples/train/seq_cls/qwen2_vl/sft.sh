@@ -3,7 +3,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 swift sft \
-    --model Qwen/Qwen2.5-VL-2B \
+    --model Qwen/Qwen2-VL-2B \
     --train_type lora \
     --dataset 'tany0699/garbage265#20000' \
     --torch_dtype bfloat16 \
