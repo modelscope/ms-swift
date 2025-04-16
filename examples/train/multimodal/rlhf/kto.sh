@@ -7,7 +7,7 @@ NPROC_PER_NODE=$nproc_per_node \
 MAX_PIXELS=1003520 \
 swift rlhf \
     --rlhf_type kto \
-    --model Qwen/Qwen2-VL-7B-Instruct \
+    --model Qwen/Qwen2.5-VL-7B-Instruct \
     --dataset 'AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#10000' \
     --train_type lora \
     --torch_dtype bfloat16 \

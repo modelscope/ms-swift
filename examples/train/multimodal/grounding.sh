@@ -1,9 +1,9 @@
 # 20GiB
-# You can refer to `https://github.com/QwenLM/Qwen2-VL` for the meaning of the `MAX_PIXELS` parameter.
+# You can refer to `https://github.com/QwenLM/Qwen2.5-VL` for the meaning of the `MAX_PIXELS` parameter.
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 swift sft \
-    --model Qwen/Qwen2-VL-7B-Instruct \
+    --model Qwen/Qwen2.5-VL-7B-Instruct \
     --dataset 'AI-ModelScope/coco#20000' \
     --train_type lora \
     --torch_dtype bfloat16 \

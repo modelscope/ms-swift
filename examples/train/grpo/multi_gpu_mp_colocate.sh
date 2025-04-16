@@ -2,7 +2,7 @@ MAX_PIXELS=1003520 \
 NPROC_PER_NODE=8 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2-VL-7B-Instruct \
+    --model Qwen/Qwen2.5-VL-7B-Instruct \
     --train_type lora \
     --dataset AI-ModelScope/chartqa_digit_r1v_format \
     --torch_dtype bfloat16 \
