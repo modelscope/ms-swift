@@ -76,3 +76,9 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
 
                 if wandb.run is not None:
                     wandb.log({'completions': wandb.Table(dataframe=df)})
+            elif 'neptune' in self.args.report_to:
+                import neptune
+                from neptune.types import File
+
+                if neptune.run is not None:
+                    neptune.run['completions'].upload(File.as_html(df))
