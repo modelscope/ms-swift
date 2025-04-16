@@ -75,7 +75,7 @@ def get_multimodal_target_regex(
     target_modules = []
     for module in modules:
         target_modules += find_all_linears(model, model_arch, extra_layers, sub_module=module)
-    target_regex = rf'^({prefix_pattern})\..*\.({"|".join(target_modules)})$'
+    target_regex = rf'^({prefix_pattern}).*\.({"|".join(target_modules)})$'
     if rejected_pattern:
         target_regex = rf'(?!^({rejected_pattern}))' + target_regex
     return target_regex
