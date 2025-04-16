@@ -150,12 +150,6 @@ class LLMTrain(BaseUI):
                 'en': 'Extra env vars'
             },
         },
-        'resume_train': {
-            'label': {
-                'zh': '继续训练',
-                'en': 'Resume train'
-            },
-        },
         'use_ddp': {
             'label': {
                 'zh': '使用DDP',
@@ -228,7 +222,6 @@ class LLMTrain(BaseUI):
                         gr.Dropdown(elem_id='torch_dtype', scale=4)
                         gr.Checkbox(elem_id='use_liger_kernel', scale=4)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=2)
-                        gr.Checkbox(elem_id='resume_train', value=False, scale=2)
                         gr.Textbox(elem_id='ddp_num', value='2', scale=4)
                 Hyper.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
@@ -283,7 +276,7 @@ class LLMTrain(BaseUI):
 
     @classmethod
     def train(cls, *args):
-        ignore_elements = ('logging_dir', 'more_params', 'train_stage', 'envs', 'resume_train')
+        ignore_elements = ('logging_dir', 'more_params', 'train_stage', 'envs')
         default_args = cls.get_default_value_from_dataclass(RLHFArguments)
         kwargs = {}
         kwargs_is_list = {}
