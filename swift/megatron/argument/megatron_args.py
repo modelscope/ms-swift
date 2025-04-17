@@ -105,8 +105,8 @@ class MegatronArguments(ExtraMegatronArguments):
     transformer_impl: Literal['local', 'transformer_engine'] = 'transformer_engine'
 
     # mixed precision
-    fp16: bool = False
-    bf16: bool = False
+    fp16: Optional[bool] = None
+    bf16: Optional[bool] = None
     apply_query_key_layer_scaling: Optional[bool] = None
     attention_softmax_in_fp32: bool = True
 
@@ -132,10 +132,8 @@ class MegatronArguments(ExtraMegatronArguments):
     no_create_attention_mask_in_dataloader: bool = True
 
     def _init_mixed_precision(self):
-        if self.torch_dtype == torch.bfloat16:
-            self.bf16 = True
-        elif self.torch_dtype == torch.float16:
-            self.fp16 = True
+        from swift.llm.argument.base_args.model_args import ModelArguments
+        ModelArguments._init_mixed_precision(self)
         if self.apply_query_key_layer_scaling is None:
             self.apply_query_key_layer_scaling = self.fp16
 
