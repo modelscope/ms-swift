@@ -40,10 +40,16 @@ The purpose of redefining the dataset preprocessor here is to modify the query. 
 
 ```json
 {
-    'images': ['image_path1', 'image_path2'],
-    'messages': [{'role': 'user', 'content': 'How many items are there in the image? Output the thinking process in <think> </think> and\n final answer (number) in <answer> </answer> tags.'}],
-    'solution': '<answer> 3 </answer>'
+    "images": ["image_path1", "image_path2"],
+    "messages": [
+        {
+            "role": "user",
+            "content": "How many items are there in the image? Output the thinking process in <think> </think> and\n final answer (number) in <answer> </answer> tags."
+        }
+    ],
+    "solution": "<answer> 3 </answer>"
 }
+
 ```
 
 ---
