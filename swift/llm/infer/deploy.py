@@ -283,19 +283,10 @@ class SwiftDeploy(SwiftInfer):
         self,
         infer_requests: List[InferRequest],
         request_config: Optional[RequestConfig] = None,
-        metrics: Optional[List[Metric]] = None,
         *,
-        template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-        adapter_request: Optional[AdapterRequest] = None,
     ):
-        return self.infer_engine.infer(
-            infer_requests,
-            request_config,
-            metrics,
-            template=template,
-            use_tqdm=use_tqdm,
-            adapter_request=adapter_request)
+        return self.infer_engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
 
     def run(self):
         args = self.args

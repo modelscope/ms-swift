@@ -43,11 +43,6 @@ from .utils import _split_into_mini_batches, patch_lora_merge, patch_lora_unmerg
 from .vllm_client import VLLMClient
 
 try:
-    from typing import TypeAlias
-except ImportError:
-    from typing_extensions import TypeAlias
-
-try:
     from trl.extras.profiling import profiling_decorator
 except ImportError:
     raise ImportError('Please install trl: `pip install -U trl`')
@@ -58,8 +53,8 @@ logger = get_logger()
 if is_wandb_available():
     import wandb
 
-InputsType: TypeAlias = List[Dict[str, Union[torch.Tensor, Any]]]
-OutputsType: TypeAlias = List[List[Tuple[List[Dict], str]]]
+InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
+OutputsType = List[List[Tuple[List[Dict], str]]]
 
 
 @contextmanager
