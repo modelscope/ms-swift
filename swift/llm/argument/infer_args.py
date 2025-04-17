@@ -152,7 +152,8 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     def _init_ddp(self):
         if not is_dist():
             return
-        assert not self.eval_human and not self.stream
+        assert not self.eval_human and not self.stream, (
+            f'args.eval_human: {self.eval_human}, args.stream: {self.stream}')
         self._init_device()
         init_process_group(self.ddp_backend)
 
