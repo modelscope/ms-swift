@@ -110,11 +110,15 @@ class ModelArguments:
         # Mixed Precision Training
         if isinstance(self, TrainArguments) and not is_torch_mps_available():
             if self.torch_dtype in {torch.float16, torch.float32}:
-                self.fp16, self.bf16 = True, False
+                fp16, bf16 = True, False
             elif self.torch_dtype == torch.bfloat16:
-                self.fp16, self.bf16 = False, True
+                fp16, bf16 = False, True
             else:
                 raise ValueError(f'args.torch_dtype: {self.torch_dtype}')
+        if self.fp16 is None:
+            self.fp16 = fp16
+        if self.bf16 is None:
+            self.bf16 = bf16
 
     def _init_rope_scaling(self):
         assert self.max_length is not None, 'Use max_model_len together with rope_scaling'

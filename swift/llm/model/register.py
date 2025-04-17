@@ -72,7 +72,7 @@ class ModelMeta:
     task_type: Optional[str] = None
 
     # File patterns to ignore when downloading the model.
-    ignore_patterns: List[str] = field(default_factory=list)
+    ignore_patterns: Optional[List[str]] = None
     # Usually specifies the version limits of transformers.
     requires: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
