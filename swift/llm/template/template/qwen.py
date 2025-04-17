@@ -14,7 +14,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
-from ..utils import Context, Word, findall
+from ..utils import Context, Prompt, Word, findall
 from ..vision_utils import load_audio, load_batch, load_video_ovis2
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
@@ -25,6 +25,9 @@ class QwenTemplateMeta(ChatmlTemplateMeta):
     default_system: Optional[str] = DEFAULT_SYSTEM
     auto_add_bos: bool = False
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>'])
+    tool_prompt: Optional[Prompt] = field(
+        default_factory=lambda:
+        ['<|im_start|>user\n<tool_response>\n{{QUERY}}\n</tool_response><|im_end|>\n<|im_start|>assistant\n'])
 
 
 @dataclass
