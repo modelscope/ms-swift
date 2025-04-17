@@ -191,6 +191,11 @@ class GRPOArgumentsMixin:
     # compatible with trl main branch(0.17.0.dev0)
     wandb_log_unique_prompts: Optional[bool] = None
 
+    # external vllm
+    vllm_server_host: Optional[str] = None
+    vllm_server_port: int = 8000
+    vllm_server_timeout: float = 120.0
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
