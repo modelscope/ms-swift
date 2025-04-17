@@ -127,6 +127,8 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     # only for inference
     val_dataset_sample: Optional[int] = None
 
+    use_async_engine: bool = True
+
     def _get_result_path(self, folder_name: str) -> str:
         result_dir = self.ckpt_dir or f'result/{self.model_suffix}'
         os.makedirs(result_dir, exist_ok=True)
