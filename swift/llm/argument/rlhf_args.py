@@ -50,7 +50,7 @@ class GRPOArguments(GRPOArgumentsMixin):
     # vLLM in GRPO
     use_vllm: bool = False
     vllm_device: List[str] = field(default_factory=lambda: ['auto'])
-    vllm_gpu_memory_utilization: float = 0.9
+    vllm_gpu_memory_utilization: Optional[float] = 0.9
     vllm_max_model_len: Optional[int] = None
 
     # multi step
@@ -112,6 +112,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         super().__post_init__()
         self._check_rlhf()
         self._check_grpo()
+        self._init_external_rollout_engine()
 
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
@@ -241,3 +242,31 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         if self.mini_batch_size:
             assert self.per_device_train_batch_size % self.mini_batch_size == 0,\
                 'per_device_train_batch_size needs be divisible by mini_batch_size'
+
+    def _init_external_rollout_engine(self):
+        if self.rlhf_type != 'grpo' or not self.vllm_server_host:
+            if self.vllm_gpu_memory_utilization is None:
+                self.vllm_gpu_memory_utilization = 0.9
+            return
+
+        if self.vllm_device != 'auto':
+            logger.warning("Configuration conflict: External vLLM engine detected, but 'vllm_device' is set to '%s'. ",
+                           self.vllm_device)
+
+        if self.vllm_gpu_memory_utilization is not None:
+            logger.warning(
+                "Configuration conflict: Found 'vllm_gpu_memory_utilization=%s' with external vLLM engine. "
+                'This parameter should be configured on the vLLM server side using: '
+                '`swift infer --gpu_memory_utilization <value>`', self.vllm_gpu_memory_utilization)
+
+        if self.num_infer_workers != 1:
+            logger.warning(
+                "Auto-adjustment: Changing 'num_infer_workers' from %s to 1 because external vLLM engine is detected",
+                self.num_infer_workers)
+            self.num_infer_workers = 1
+
+        if self.vllm_max_model_len is not None:
+            logger.warning(
+                "Configuration conflict: 'vllm_max_model_len=%s' is ignored for external vLLM. "
+                'Please specify it when launching the inference service: '
+                '`swift infer --max_model_len <value>`', self.vllm_max_model_len)
