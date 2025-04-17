@@ -240,6 +240,9 @@ class DeepseekV2_5TemplateMeta(TemplateMeta):
     prompt: Prompt = field(default_factory=lambda: ['<｜User｜>{{QUERY}}<｜Assistant｜>'])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<｜end▁of▁sentence｜>'])
     suffix: Prompt = field(default_factory=lambda: ['<｜end▁of▁sentence｜>'])
+    tool_prompt: Prompt = field(
+        default_factory=lambda:
+        ['<｜tool▁outputs▁begin｜><｜tool▁output▁begin｜>{{QUERY}}<｜tool▁output▁end｜><｜tool▁outputs▁end｜><｜Assistant｜>'])
 
 
 register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))

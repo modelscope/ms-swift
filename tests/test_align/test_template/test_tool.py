@@ -20,9 +20,9 @@ tools = [{
 }]
 
 
-def test_qwen2_5():
-    pt_engine = PtEngine('Qwen/Qwen2.5-7B-Instruct')
-    system = """You are Qwen, created by Alibaba Cloud. You are a helpful assistant.
+def _test_tool(pt_engine, system=None):
+    if system is None:
+        system = """You are Qwen, created by Alibaba Cloud. You are a helpful assistant.
 
 # Tools
 
@@ -59,12 +59,32 @@ For each function call, return a json object with function name and arguments wi
     ]
     request_config = RequestConfig(max_tokens=512, temperature=0)
     response = pt_engine.infer([InferRequest(messages=messages)], request_config=request_config)
-    assert response[0].choices[0].message.content == (
-        'Today in Beijing, the temperature is 25 degrees Celsius with partly cloudy skies.')
+    return response[0].choices[0].message.content
+
+
+def test_qwen2_5():
+    pt_engine = PtEngine('Qwen/Qwen2.5-7B-Instruct')
+    response = _test_tool(pt_engine)
+    assert response == ('Today in Beijing, the temperature is 25 degrees Celsius with partly cloudy skies.')
+
+
+def test_qwq():
+    pt_engine = PtEngine('Qwen/QwQ-32B')
+    response = _test_tool(pt_engine)
+    assert response[-100:] == ('>\n\nThe current temperature in Beijing is **25°C** with **partly '
+                               'cloudy** skies. Have a great day! 🌤️')
+
+
+def test_deepseek_r1_distill():
+    pt_engine = PtEngine('deepseek-ai/DeepSeek-R1-Distill-Qwen-7B')
+    response = _test_tool(pt_engine, system='')
+    assert response == ('Today in Beijing, the temperature is 25 degrees Celsius with partly cloudy skies.')
 
 
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer, InferRequest
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
-    test_qwen2_5()
+    # test_qwen2_5()
+    test_qwq()
+    # test_deepseek_r1_distill()
