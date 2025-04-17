@@ -16,6 +16,14 @@ def is_vllm_available():
     return importlib.util.find_spec('vllm') is not None
 
 
+def is_vllm_ascend_available():
+    return importlib.util.find_spec('vllm_ascend') is not None
+
+
+def is_pydantic_available():
+    return importlib.util.find_spec('pydantic') is not None
+
+
 def is_lmdeploy_available():
     return importlib.util.find_spec('lmdeploy') is not None
 
