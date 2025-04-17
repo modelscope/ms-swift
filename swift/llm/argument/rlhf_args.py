@@ -207,7 +207,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         _, _, _, local_world_size = get_dist_setting()
         num_infer_workers = self.num_infer_workers
         fast_infer = self.use_vllm or self.use_lmdeploy
-        if fast_infer:
+        if fast_infer and self.vllm_server_host is None:
             is_colocate_mode = (device_count == num_infer_workers)
 
             if is_colocate_mode:
