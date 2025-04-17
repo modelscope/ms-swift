@@ -235,7 +235,7 @@ class SwiftDeploy(SwiftInfer):
                 - `world_size` (`int`): Total number of participating processes in the group.
         """
         background_tasks.add_task(
-            self.infer_engine.engine.collective_rpc,
+            self.infer_engine.engine.model_executor.collective_rpc,
             'init_communicator',
             args=(request.host, request.port, self.args.tensor_parallel_size + 1),
         )
@@ -256,13 +256,16 @@ class SwiftDeploy(SwiftInfer):
         """
         # The function is called this way: update_named_param(name="name", dtype=torch.float32, shape=(10, 10))
         # So with collect_rpc we need to call it this way:
-        # self.infer_engine.engine.collective_rpc("update_named_param", args=("name", torch.float32, (10, 10)))
+        # self.infer_engine.engine.model_executor.collective_rpc("update_named_param", \
+        # args=("name", torch.float32, (10, 10)))
         # And with background_tasks.add_task we need to call it this way:
-        # background_tasks.add_task(self.infer_engine.engine.collective_rpc, \
+        # background_tasks.add_task(self.infer_engine.engine.model_executor.collective_rpc, \
         # "update_named_param", args=("name", torch.float32, (10, 10)))
         dtype = torch.__getattribute__(request.dtype.split('.')[-1])
         background_tasks.add_task(
-            self.infer_engine.engine.collective_rpc, 'update_named_param', args=(request.name, dtype, request.shape))
+            self.infer_engine.engine.model_executor.collective_rpc,
+            'update_named_param',
+            args=(request.name, dtype, request.shape))
 
         return {'message': 'Request received, updating named parameter'}
 
@@ -277,7 +280,7 @@ class SwiftDeploy(SwiftInfer):
         """
         Closes the weight update group and cleans up associated resources.
         """
-        self.infer_engine.engine.collective_rpc('close_communicator')
+        self.infer_engine.engine.model_executor.collective_rpc('close_communicator')
         return {'message': 'Request received, closing communicator'}
 
     async def infer(
