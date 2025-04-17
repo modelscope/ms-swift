@@ -16,9 +16,10 @@ from aiohttp import ClientConnectorError
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from swift.llm import AdapterRequest, DeployArguments, InferRequest, Template
+from swift.llm import AdapterRequest, DeployArguments, InferRequest
 from swift.llm.infer.protocol import MultiModalRequestMixin
-from swift.plugin import InferStats, Metric
+from swift.llm.template.template_inputs import InferRequestTest
+from swift.plugin import InferStats
 from swift.utils import JsonlWriter, get_logger
 from .infer import SwiftInfer
 from .infer_engine import InferClient
@@ -44,7 +45,7 @@ class SwiftDeploy(SwiftInfer):
         self.app.post('/update_named_param/')(self.update_named_param)
         self.app.post('/reset_prefix_cache/')(self.reset_prefix_cache)
         self.app.post('/close_communicator/')(self.close_communicator)
-        self.app.post('/infer/')(self.infer)
+        self.app.post('/infer/', response_model=None)(self.infer)
 
     def __init__(self, args: Union[List[str], DeployArguments, None] = None) -> None:
         super().__init__(args)
@@ -281,7 +282,7 @@ class SwiftDeploy(SwiftInfer):
 
     async def infer(
         self,
-        infer_requests: List[InferRequest],
+        infer_requests: List[InferRequestTest],
         request_config: Optional[RequestConfig] = None,
         *,
         use_tqdm: Optional[bool] = None,

@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import json
 from PIL import Image
+from pydantic import BaseModel
 
 from swift.utils import get_logger
 from ..utils import Messages, Tool, messages_to_history
@@ -72,6 +73,17 @@ class InferRequest:
 
     def to_printable(self):
         return InferRequest._to_printable(asdict(self))
+
+
+class InferRequestTest(BaseModel):
+    messages: Messages
+
+    images: List[Union[str, Image.Image]] = field(default_factory=list)
+    audios: List[str] = field(default_factory=list)
+    videos: List[str] = field(default_factory=list)
+
+    tools: Optional[List[Tool]] = None
+    objects: Dict[str, List[Any]] = field(default_factory=dict)
 
 
 @dataclass
