@@ -64,6 +64,7 @@ class SwiftInfer(SwiftPipeline):
             from .infer_engine import VllmEngine
             infer_engine_cls = VllmEngine
             kwargs.update(args.get_vllm_engine_kwargs())
+            kwargs.update({'use_async_engine': args.use_async_engine})
         else:
             from .infer_engine import LmdeployEngine
             infer_engine_cls = LmdeployEngine
