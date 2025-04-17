@@ -90,6 +90,7 @@ class StdTemplateInputs:
     messages: List[Dict[str, str]]
     # None: use default system; '': not use system
     system: Optional[str] = None
+    tools: Optional[List[Tool]] = None
 
     rejected_response: Optional[str] = None
     label: Optional[int] = None
@@ -98,8 +99,6 @@ class StdTemplateInputs:
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
     objects: Dict[str, List[Any]] = field(default_factory=dict)
-
-    agent_keyword: Optional[Dict[str, str]] = None
 
     def __post_init__(self):
         self.image_idx = 0
@@ -113,8 +112,6 @@ class StdTemplateInputs:
             self.videos = [self.videos]
         if self.audios and not isinstance(self.audios, (list, tuple)):
             self.audios = [self.audios]
-        if self.agent_keyword is None:
-            self.agent_keyword = {}
 
     def to_history(self):
         if not self.messages:
@@ -126,8 +123,7 @@ class StdTemplateInputs:
         return bool(self.images or self.audios or self.videos or self.objects)
 
     @classmethod
-    def from_dict(cls, inputs: Dict[str, Any], *, tools_prompt: str = 'react_en') -> 'StdTemplateInputs':
-        from swift.plugin import get_tools_prompt, get_tools_keyword
+    def from_dict(cls, inputs: Dict[str, Any]) -> 'StdTemplateInputs':
         kwargs = {}
         for key in ['rejected_response', 'label']:
             if key in inputs:
@@ -142,16 +138,6 @@ class StdTemplateInputs:
         else:
             system = None
 
-        keyword = None
-        if tools is not None:
-            if system is not None:
-                logger.warning_once(
-                    'You have tools prompt but you also have a system field, so the system field will be ignored')
-            if isinstance(tools, str):
-                tools = json.loads(tools)
-            system = get_tools_prompt(tools, tools_prompt)
-            keyword = get_tools_keyword(tools_prompt)
-
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
         for k in list(media_kwargs.keys()):
             mm_data = media_kwargs[k]
@@ -165,8 +151,7 @@ class StdTemplateInputs:
             else:
                 media_kwargs[k] = inputs_mm_data
 
-        StdTemplateInputs.messages_join_observation(messages, tools_prompt)
-        return cls(messages=messages, system=system, objects=objects, agent_keyword=keyword, **kwargs, **media_kwargs)
+        return cls(messages=messages, system=system, tools=tools, objects=objects, **kwargs, **media_kwargs)
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:

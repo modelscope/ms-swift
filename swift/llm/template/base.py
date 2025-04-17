@@ -10,6 +10,7 @@ from dataclasses import asdict
 from functools import partial, wraps
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
+import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -364,7 +365,8 @@ class Template(ProcessorMixin):
             inputs = deepcopy(inputs)
             if not self.is_training:
                 InferRequest.remove_response(inputs['messages'])
-            inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
+            inputs = StdTemplateInputs.from_dict(inputs)
+            StdTemplateInputs.messages_join_observation(inputs.messages, self.tools_prompt)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
 
@@ -847,12 +849,24 @@ class Template(ProcessorMixin):
         answer_len = 1 if self.is_training else 0
         return [text], [1.], answer_len
 
-    def _swift_encode(self, inputs: StdTemplateInputs):
+    def _get_system(self, inputs):
         template_meta = self.template_meta
         system = inputs.system
+        tools = inputs.tools
         template_meta.check_system(system)
         if system is None:
             system = template_meta.default_system
+
+        from swift.plugin import get_tools_prompt
+        if tools is not None:
+            if isinstance(tools, str):
+                tools = json.loads(tools)
+            system = get_tools_prompt(tools, self.tools_prompt, system)
+        return system
+
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        template_meta = self.template_meta
+        system = self._get_system(inputs)
 
         res_context_list: List[Context] = []
         res_context_types: List[ContextType] = []
