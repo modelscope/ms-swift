@@ -288,7 +288,7 @@ class SwiftDeploy(SwiftInfer):
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
-    ) -> List[ChatCompletionResponse]:
+    ):
         return self.infer_engine.infer(
             infer_requests,
             request_config,

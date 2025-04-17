@@ -257,7 +257,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             logger.warning(
                 "Configuration conflict: Found 'vllm_gpu_memory_utilization=%s' with external vLLM engine. "
                 'This parameter should be configured on the vLLM server side using: '
-                '`swift infer --gpu_memory_utilization <value>`', self.vllm_gpu_memory_utilization)
+                '`swift deploy --gpu_memory_utilization <value>`', self.vllm_gpu_memory_utilization)
 
         if self.num_infer_workers != 1:
             logger.warning(
@@ -269,4 +269,4 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             logger.warning(
                 "Configuration conflict: 'vllm_max_model_len=%s' is ignored for external vLLM. "
                 'Please specify it when launching the inference service: '
-                '`swift infer --max_model_len <value>`', self.vllm_max_model_len)
+                '`swift deploy --max_model_len <value>`', self.vllm_max_model_len)
