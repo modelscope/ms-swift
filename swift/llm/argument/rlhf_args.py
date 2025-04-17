@@ -98,6 +98,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     undesirable_weight: float = 1.0
     # PPO/GRPO
     temperature: float = 0.9
+    # RM
+    center_rewards_coefficient: Optional[float] = None
 
     def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
         if self.rlhf_type == 'ppo':
