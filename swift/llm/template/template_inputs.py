@@ -78,7 +78,7 @@ class InferRequest:
 class InferRequestTest(BaseModel):
     messages: Messages
 
-    images: List[Union[str, Image.Image]] = field(default_factory=list)
+    images: List[str] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
 
