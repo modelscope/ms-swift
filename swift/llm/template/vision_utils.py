@@ -4,7 +4,7 @@ import math
 import os
 import re
 from io import BytesIO
-from typing import Any, Callable, List, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import numpy as np
 import requests
@@ -12,6 +12,13 @@ import torch
 from PIL import Image
 
 from swift.utils import get_env_args
+
+# Try to import lmdb, but don't fail if it's not available
+try:
+    import lmdb
+    LMDB_AVAILABLE = True
+except ImportError:
+    LMDB_AVAILABLE = False
 
 # >>> internvl
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
@@ -99,6 +106,9 @@ def rescale_image(img: Image.Image, max_pixels: int) -> Image.Image:
 
 _T = TypeVar('_T')
 
+# Cache for LMDB environments and read transactions to avoid reopening
+_LMDB_ENV_CACHE: Dict[str, Any] = {}
+_LMDB_TXN_CACHE: Dict[str, Any] = {}
 
 def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
     res = path
@@ -111,6 +121,38 @@ def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
                 request_kwargs['timeout'] = timeout
             content = requests.get(path, **request_kwargs).content
             res = BytesIO(content)
+        elif path.startswith('lmdb://'):
+            if not LMDB_AVAILABLE:
+                raise ImportError(
+                    "LMDB support requires the 'lmdb' package to be installed. "
+                    "Please install it with 'pip install lmdb'."
+                )
+            # Parse LMDB path format: lmdb://key@path_to_lmdb
+            _, _, lmdb_url = path.partition('lmdb://')
+            key, sep, lmdb_dir = lmdb_url.partition('@')
+            
+            # Verify format validity with a single check
+            if not sep or not key or not lmdb_dir or '@' in lmdb_dir:
+                raise ValueError("LMDB path must be in format: lmdb://key@path_to_lmdb (with exactly one '@')")
+            
+            # Use cached environment or create a new one
+            env = _LMDB_ENV_CACHE.get(lmdb_dir)
+            if env is None:
+                env = lmdb.open(lmdb_dir, readonly=True, lock=False, max_readers=1024, max_spare_txns=2)
+                _LMDB_ENV_CACHE[lmdb_dir] = env
+            
+            # Get or create read transaction
+            txn = _LMDB_TXN_CACHE.get(lmdb_dir)
+            if txn is None:
+                txn = env.begin(write=False)
+                _LMDB_TXN_CACHE[lmdb_dir] = txn
+            
+            # Get data using the cached transaction
+            encoded_key = key.encode()
+            data = txn.get(encoded_key)
+            if data is None:
+                raise KeyError(f"Key '{key}' not found in LMDB at '{lmdb_dir}'")
+            res = BytesIO(data)
         elif os.path.exists(path) or (not path.startswith('data:') and len(path) <= 200):
             path = os.path.abspath(os.path.expanduser(path))
             with open(path, 'rb') as f:
