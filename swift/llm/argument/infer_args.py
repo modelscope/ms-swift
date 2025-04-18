@@ -116,7 +116,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         max_batch_size (int): Maximum batch size for the pt engine. Default is 1.
         val_dataset_sample (Optional[int]): Sample size for validation dataset. Default is None.
     """
-    infer_backend: Literal['vllm', 'pt', 'lmdeploy'] = 'pt'
+    infer_backend: Literal['vllm', 'pt', 'sglang', 'lmdeploy'] = 'pt'
 
     result_path: Optional[str] = None
     metric: Literal['acc', 'rouge'] = None
