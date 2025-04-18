@@ -191,6 +191,8 @@ class GRPOArgumentsMixin:
     # compatible with trl main branch(0.17.0.dev0)
     wandb_log_unique_prompts: Optional[bool] = None
 
+    use_liger_loss: bool = False
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
