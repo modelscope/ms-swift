@@ -26,7 +26,7 @@ def get_template(
         template_backend: Literal['swift', 'jinja'] = 'swift',
         truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
         max_pixels: Optional[int] = None,  # h * w
-        tools_prompt: str = 'react_en',
+        tools_prompt: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
         response_prefix: Optional[str] = None,
         # train

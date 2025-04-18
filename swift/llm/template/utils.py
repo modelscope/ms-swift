@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
+from dataclasses import asdict
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
@@ -192,16 +193,16 @@ def split_action_action_input(response: str, tools_prompt='react_en') -> Tuple[O
     ]
     from swift.plugin import get_tools_keyword
     keyword = get_tools_keyword(tools_prompt)
-    for key in keyword.values():
+    for key in asdict(keyword).values():
         if key not in agent_keyword:
             agent_keyword.append(key)
     agent_parts = split_str_parts_by(response, agent_keyword)
     action = None
     action_input = None
     for c in agent_parts:
-        if c['key'].lower() == keyword['action'].lower():
+        if c['key'].lower() == keyword.action.lower():
             action = c['content']
-        elif c['key'].lower() == keyword['action_input'].lower():
+        elif c['key'].lower() == keyword.action_input.lower():
             action_input = c['content']
     if action:
         action = action.strip().replace('\n', '')

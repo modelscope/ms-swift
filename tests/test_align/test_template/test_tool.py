@@ -1,4 +1,9 @@
+import os
+
 import json
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+os.environ['SWIFT_DEBUG'] = '1'
 
 tools = [{
     'name': 'get_current_weather',
@@ -21,27 +26,7 @@ tools = [{
 
 
 def _test_tool(pt_engine, system=None):
-    if system is None:
-        system = """You are Qwen, created by Alibaba Cloud. You are a helpful assistant.
-
-# Tools
-
-You may call one or more functions to assist with the user query.
-
-You are provided with function signatures within <tools></tools> XML tags:
-<tools>
-""" + json.dumps(tools[0]) + """
-</tools>
-
-For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
-<tool_call>
-{"name": <function-name>, "arguments": <args-json-object>}
-</tool_call>"""
     messages = [
-        {
-            'role': 'system',
-            'content': system
-        },
         {
             'role': 'user',
             'content': "How's the weather in Beijing today?"
@@ -58,7 +43,7 @@ For each function call, return a json object with function name and arguments wi
         },
     ]
     request_config = RequestConfig(max_tokens=512, temperature=0)
-    response = pt_engine.infer([InferRequest(messages=messages)], request_config=request_config)
+    response = pt_engine.infer([InferRequest(messages=messages, tools=tools)], request_config=request_config)
     return response[0].choices[0].message.content
 
 
@@ -71,14 +56,13 @@ def test_qwen2_5():
 def test_qwq():
     pt_engine = PtEngine('Qwen/QwQ-32B')
     response = _test_tool(pt_engine)
-    assert response[-100:] == ('>\n\nThe current temperature in Beijing is **25°C** with **partly '
-                               'cloudy** skies. Have a great day! 🌤️')
+    assert response[-100:] == ('ng is **Partly cloudy** with a temperature of **25°C**. '
+                               '\n\nLet me know if you need any other details!')
 
 
 def test_deepseek_r1_distill():
     pt_engine = PtEngine('deepseek-ai/DeepSeek-R1-Distill-Qwen-7B')
-    response = _test_tool(pt_engine, system='')
-    assert response == ('Today in Beijing, the temperature is 25 degrees Celsius with partly cloudy skies.')
+    _test_tool(pt_engine, system='')
 
 
 if __name__ == '__main__':

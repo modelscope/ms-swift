@@ -30,6 +30,7 @@ class QwenTemplateMeta(ChatmlTemplateMeta):
         ['<|im_start|>user\n<tool_response>\n{{QUERY}}\n</tool_response><|im_end|>\n<|im_start|>assistant\n'])
     default_tools_prompt: str = 'hermes'
 
+
 @dataclass
 class Qwen2_5TemplateMeta(QwenTemplateMeta):
     default_system: Optional[str] = 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.'

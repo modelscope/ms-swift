@@ -204,7 +204,7 @@ tools_prompt = {
     'react_zh': (format_react_zh, AgentKeyword()),
     'glm4': (format_glm4, AgentKeyword()),
     'toolbench': (format_toolbench, AgentKeyword()),
-    'hermes': (format_hermes, None),
+    'hermes': (format_hermes, AgentKeyword()),
     'qwen': (format_qwen, AgentKeyword(
         action='✿FUNCTION✿:',
         action_input='✿ARGS✿:',
@@ -227,12 +227,10 @@ def get_tools_prompt(tools: List[Dict[str, Union[str, Dict]]],
             print('invalid tools format, please check'
                   'https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/Agent-deployment-best-practice.md')
             return None
-    prompt_format = tools_prompt.get(prompt_format)[0]
-    return prompt_format(tool_names, tools, system)
+    prompt_format_func = tools_prompt.get(prompt_format)[0]
+    return prompt_format_func(tool_names, tools, system)
 
 
-def get_tools_keyword(prompt_format: str = 'react_en') -> Dict[str, str]:
+def get_tools_keyword(prompt_format: str = 'react_en') -> AgentKeyword:
     keyword = tools_prompt.get(prompt_format)[1]
-    if keyword is None:
-        return {}
-    return keyword.__dict__
+    return keyword
