@@ -5,35 +5,37 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def infer(engine: 'InferEngine', infer_request: 'InferRequest'):
-    request_config = RequestConfig(max_tokens=512, temperature=0, stop=['Observation:'])
+    request_config = RequestConfig(max_tokens=512, temperature=0)
     resp_list = engine.infer([infer_request], request_config)
     query = infer_request.messages[0]['content']
     response = resp_list[0].choices[0].message.content
-    tool = '{"temperature": 72, "condition": "Sunny", "humidity": 50}\n'
     print(f'query: {query}')
-    print(f'response: {response}{tool}', end='')
+    print(f'response: {response}')
 
+    tool = '{"temperature": 32, "condition": "Sunny", "humidity": 50}'
+    print(f'tool: {tool}')
     infer_request.messages += [{'role': 'assistant', 'content': response}, {'role': 'tool', 'content': tool}]
     resp_list = engine.infer([infer_request], request_config)
     response2 = resp_list[0].choices[0].message.content
-    print(response2)
+    print(f'response2: {response2}')
 
 
 def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
-    request_config = RequestConfig(max_tokens=512, temperature=0, stop=['Observation:'], stream=True)
+    request_config = RequestConfig(max_tokens=512, temperature=0, stream=True)
     gen_list = engine.infer([infer_request], request_config)
     query = infer_request.messages[0]['content']
     response = ''
-    tool = '{"temperature": 72, "condition": "Sunny", "humidity": 50}'
-    print(f'query: {query}')
+    print(f'query: {query}\nresponse: ', end='')
     for resp in gen_list[0]:
         if resp is None:
             continue
         delta = resp.choices[0].delta.content
         response += delta
         print(delta, end='', flush=True)
-    print(tool)
+    print()
 
+    tool = '{"temperature": 32, "condition": "Sunny", "humidity": 50}'
+    print(f'tool: {tool}\nresponse2: ', end='')
     infer_request.messages += [{'role': 'assistant', 'content': response}, {'role': 'tool', 'content': tool}]
     gen_list = engine.infer([infer_request], request_config)
     for resp in gen_list[0]:
@@ -47,7 +49,7 @@ def get_infer_request():
     return InferRequest(
         messages=[{
             'role': 'user',
-            'content': "How's the weather today?"
+            'content': "How's the weather in Beijing today?"
         }],
         tools=[{
             'name': 'get_current_weather',
