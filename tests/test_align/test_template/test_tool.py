@@ -1,7 +1,5 @@
 import os
 
-import json
-
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 os.environ['SWIFT_DEBUG'] = '1'
 
@@ -50,7 +48,7 @@ def _test_tool(pt_engine, system=None):
 def test_qwen2_5():
     pt_engine = PtEngine('Qwen/Qwen2.5-7B-Instruct')
     response = _test_tool(pt_engine)
-    assert response == ('Today in Beijing, the temperature is 25 degrees Celsius with partly cloudy skies.')
+    assert response == 'Today in Beijing, the temperature is 25 degrees Celsius with partly cloudy skies.'
 
 
 def test_qwq():
