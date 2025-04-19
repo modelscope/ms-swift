@@ -3,10 +3,17 @@ from typing import Any, Dict, List, Optional, Union
 
 import json
 
-from .base import BaseAgentTemplate
+from .base import AgentKeyword, BaseAgentTemplate
+
+keyword = AgentKeyword(
+    action='✿FUNCTION✿:',
+    action_input='✿ARGS✿:',
+    observation='✿RESULT✿:',
+)
 
 
 class QwenEnAgentTemplate(BaseAgentTemplate):
+    keyword = keyword
 
     def _get_tool_names_descs(self, tools):
         tool_names = []
@@ -38,6 +45,7 @@ class QwenEnAgentTemplate(BaseAgentTemplate):
 
 
 class QwenZhAgentTemplate(BaseAgentTemplate):
+    keyword = keyword
 
     def _get_tool_names_descs(self, tools):
         tool_names = []

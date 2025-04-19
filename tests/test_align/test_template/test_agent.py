@@ -68,6 +68,18 @@ def test_hermes():
     assert len(new_system) == 875
 
 
+def test_toolbench():
+    agent_template = agent_templates['toolbench']()
+    new_system = agent_template.format_system(tools, system)
+    assert len(new_system) == 1833
+
+
+def test_glm4():
+    agent_template = agent_templates['glm4']()
+    new_system = agent_template.format_system(tools, system)
+    assert len(new_system) == 769
+
+
 if __name__ == '__main__':
     test_react_en()
     test_react_zh()
@@ -76,3 +88,5 @@ if __name__ == '__main__':
     test_qwen_en_parallel()
     test_qwen_zh_parallel()
     test_hermes()
+    test_toolbench()
+    test_glm4()

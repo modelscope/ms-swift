@@ -79,10 +79,13 @@ class ReactCompatMixin:
 class BaseAgentTemplate(ReactCompatMixin, ABC):
 
     @staticmethod
+    def _get_tool_name(tool):
+        return tool.get('name_for_model') or tool.get('name')
+
+    @staticmethod
     def _parse_tool(tool, lang: Literal['zh', 'en']) -> ToolDesc:
-        name = tool.get('name')
-        name_for_model = tool.get('name_for_model') or name
-        name_for_human = tool.get('name_for_human') or name
+        name_for_model = BaseAgentTemplate._get_tool_name(tool)
+        name_for_human = tool.get('name_for_human') or name_for_model
 
         description = tool.get('description') or tool.get('description_for_model')
         parameters = tool.get('parameters') or {}
