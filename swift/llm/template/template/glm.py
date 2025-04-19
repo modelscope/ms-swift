@@ -49,7 +49,7 @@ class GLM4TemplateMeta(GLMTemplateMeta):
 
 
 @dataclass
-class GLM4Z1TemplateMeta(GLM4TemplateMeta):
+class GLM4_0414TemplateMeta(GLM4TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ['[gMASK]<sop>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>\n{{SYSTEM}}'])
 
@@ -96,7 +96,7 @@ register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTem
 
 register_template(GLM4TemplateMeta(LLMTemplateType.glm4))
 
-register_template(GLM4Z1TemplateMeta(LLMTemplateType.glm4_z1, template_cls=GLM4Z1Template))
+register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4_0414Template))
 
 glm4z1rumination_system = (
     '你是一个专业的深度研究助手，通过提供的工具与模拟浏览器交互，来帮助用户完成深度信息调研和报告撰写任务。'
@@ -132,8 +132,8 @@ glm4z1rumination_system = (
     '"parameters": {"type": "object", "properties": {}, "additionalProperties": false}}]')
 
 register_template(
-    GLM4Z1TemplateMeta(
-        LLMTemplateType.glm4_z1_rumination, template_cls=GLM4Z1Template, default_system=glm4z1rumination_system))
+    GLM4_0414TemplateMeta(
+        LLMTemplateType.glm4_z1_rumination, template_cls=GLM4_0414Template, default_system=glm4z1rumination_system))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 
