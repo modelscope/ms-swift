@@ -101,5 +101,5 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
                 i += 1
 
     @abstractmethod
-    def _format_system(self, tool_names: List[str], tools: List[Union[str, Dict[str, Any]]], system: str) -> str:
+    def _format_system(self, tool_names: List[str], tools: List[Union[str, dict]], system: str) -> str:
         pass

@@ -13,26 +13,6 @@ class AgentKeyword:
     observation: str = 'Observation:'
 
 
-def format_react_en(tool_names, tools, system):
-    REACT_PROMPT = """Answer the following questions as best as you can. You have access to the following tools:
-
-{tool_list}
-
-Use the following format:
-
-Thought: you should always think about what to do
-Action: the action to take, should be one of [{tool_names}]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
-Final Answer: the final answer to the original input question
-
-Begin!
-"""
-    tools = [json.dumps(t, ensure_ascii=False) if not isinstance(t, str) else t for t in tools]
-    return REACT_PROMPT.format(tool_list='\n\n'.join(tools), tool_names=','.join(tool_names))
-
-
 def format_react_grpo(tool_names, tools, system):
     REACT_PROMPT = """A conversation for tool calling between User and Assistant. The user asks a question which may be solved by calling tools, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process should be enclosed within <think> </think>tags and answer should follow the ReACT format(Action:xxx\nAction Input:xxx), i.e., <think> reasoning process here </think> Action: action here\nAction Input: parameters here
 
@@ -53,26 +33,6 @@ Begin!
 """ # noqa
     tools = [json.dumps(t, ensure_ascii=False) if not isinstance(t, str) else t for t in tools]
     return REACT_PROMPT.format(tool_list='\n\n'.join(tools), tool_names=','.join(tool_names))
-
-
-def format_react_zh(tool_names, tools, system):
-    REACT_ZH_PROMPT = """尽你所能回答以下问题。你拥有如下工具：
-
-{tool_list}
-
-使用以下格式回答：
-
-Thought: 思考你应该做什么
-Action: 工具的名称，必须是[{tool_names}]之一
-Action Input: 工具的输入
-Observation: 工具返回的结果
-... (Thought/Action/Action Input/Observation的过程可以重复零次或多次)
-Final Answer: 对输入问题的最终答案
-
-开始！
-"""
-    tools = [json.dumps(t, ensure_ascii=False) if not isinstance(t, str) else t for t in tools]
-    return REACT_ZH_PROMPT.format(tool_list='\n\n'.join(tools), tool_names=','.join(tool_names))
 
 
 def format_glm4(tool_names, tools, system):
