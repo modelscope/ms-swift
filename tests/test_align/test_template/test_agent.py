@@ -49,6 +49,7 @@ def test_qwen_zh():
     new_system = agent_template.format_system(tools, system)
     assert len(new_system) == 577
 
+
 def test_qwen_en_parallel():
     agent_template = agent_templates['qwen_en_parallel']()
     new_system = agent_template.format_system(tools, system)
@@ -60,6 +61,13 @@ def test_qwen_zh_parallel():
     new_system = agent_template.format_system(tools, system)
     assert len(new_system) == 688
 
+
+def test_hermes():
+    agent_template = agent_templates['hermes']()
+    new_system = agent_template.format_system(tools, system)
+    assert len(new_system) == 875
+
+
 if __name__ == '__main__':
     test_react_en()
     test_react_zh()
@@ -67,3 +75,4 @@ if __name__ == '__main__':
     test_qwen_zh()
     test_qwen_en_parallel()
     test_qwen_zh_parallel()
+    test_hermes()

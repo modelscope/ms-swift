@@ -82,7 +82,7 @@ class QwenEnParallelAgentTemplate(QwenEnAgentTemplate):
 
 ## Insert the following command in your reply when you need to call N tools in parallel:
 
-✿FUNCTION✿: The name of tool 1, should be one of [{tool_names}]
+✿FUNCTION✿: The name of tool 1, should be one of [{','.join(tool_names)}]
 ✿ARGS✿: The input of tool 1
 ✿FUNCTION✿: The name of tool 2
 ✿ARGS✿: The input of tool 2
@@ -110,7 +110,7 @@ class QwenZhParallelAgentTemplate(QwenZhAgentTemplate):
 
 ## 你可以在回复中插入以下命令以并行调用N个工具：
 
-✿FUNCTION✿: 工具1的名称，必须是[{tool_names}]之一
+✿FUNCTION✿: 工具1的名称，必须是[{','.join(tool_names)}]之一
 ✿ARGS✿: 工具1的输入
 ✿FUNCTION✿: 工具2的名称
 ✿ARGS✿: 工具2的输入

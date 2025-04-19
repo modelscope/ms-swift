@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from .base import BaseAgentTemplate
+from .hermes import HermesAgentTemplate
 from .qwen import QwenEnAgentTemplate, QwenEnParallelAgentTemplate, QwenZhAgentTemplate, QwenZhParallelAgentTemplate
 from .react import ReactEnAgentTemplate, ReactZnAgentTemplate
 
@@ -12,4 +13,5 @@ agent_templates = {
     'qwen_zh': QwenZhAgentTemplate,
     'qwen_en_parallel': QwenEnParallelAgentTemplate,
     'qwen_zh_parallel': QwenZhParallelAgentTemplate,
+    'hermes': HermesAgentTemplate,
 }
