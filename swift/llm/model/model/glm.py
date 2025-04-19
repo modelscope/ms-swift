@@ -127,7 +127,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.glm4_z1,
+        LLMModelType.glm4_0414,
         [
             ModelGroup([
                 Model('ZhipuAI/GLM-4-9B-0414', 'THUDM/GLM-4-9B-0414'),
@@ -137,7 +137,7 @@ register_model(
                 Model('ZhipuAI/GLM-Z1-32B-0414', 'THUDM/GLM-Z1-32B-0414'),
             ])
         ],
-        TemplateType.glm4_z1,
+        TemplateType.glm4_0414,
         get_model_tokenizer_with_flash_attn,
         architectures=['Glm4ForCausalLM'],
         model_arch=ModelArch.chatglm,

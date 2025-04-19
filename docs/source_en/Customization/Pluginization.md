@@ -124,15 +124,15 @@ An example can be found [here](https://github.com/modelscope/swift/blob/main/swi
 Here, you can define the format of tools used in Agent training. The tools format refers to how tools are enumerated in the system field during training and inference. For example, `glm4` has its unique tools format:
 
 ```python
-def format_glm4(tool_names, tool_descs):
+def format_glm4(tool_names, tools, system):
     GLM4_PROMPT = """You are an AI assistant named ChatGLM. You are developed based on the GLM-4 model trained by Zhiyupo AI. Your task is to provide appropriate responses and support based on user questions and requests.
 
 # Available Tools
 
 {tool_list}"""
-    tool_descs = [json.dumps(t) if not isinstance(t, str) else t for t in tool_descs]
+    tools = [json.dumps(t) if not isinstance(t, str) else t for t in tools]
     tool_list = ''
-    for name, tool in zip(tool_names, tool_descs):
+    for name, tool in zip(tool_names, tools):
         tool_list += f'## {name}\n\n{tool}\n\n'
     return GLM4_PROMPT.format(tool_list=tool_list)
 ```

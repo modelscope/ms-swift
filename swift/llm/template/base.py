@@ -10,6 +10,7 @@ from dataclasses import asdict
 from functools import partial, wraps
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
+import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -60,7 +61,7 @@ class Template(ProcessorMixin):
         use_chat_template: bool = True,
         truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
         max_pixels: Optional[int] = None,
-        tools_prompt: Optional[str] = None,
+        agent_template: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
         response_prefix: Optional[str] = None,
         # only for train
@@ -76,11 +77,12 @@ class Template(ProcessorMixin):
         truncation_strategy: The truncation strategy
         max_pixels: Rescale image to reduce memory usage, default `None` means no limitation.
             e.g. 512 * 512 (H*W)
-        tools_prompt: The type of tools_prompt added in the system.
         padding_side: The padding_side when the training batch_size >= 2
         loss_scale: The loss scale function to use
         """
         from .template_meta import TemplateMeta
+        from swift.plugin import agent_templates
+
         self.processor = processor
         self.model_info = processor.model_info
         self.config = self.model_info.config
@@ -114,7 +116,8 @@ class Template(ProcessorMixin):
         self.max_pixels = max_pixels
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
-        self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
+        agent_template = agent_template or template_meta.agent_template
+        self.agent_template = agent_templates[agent_template]()
         self.norm_bbox = norm_bbox or self.norm_bbox
         if self.is_encoder_decoder:
             self.skip_prompt = False
@@ -364,7 +367,8 @@ class Template(ProcessorMixin):
             inputs = deepcopy(inputs)
             if not self.is_training:
                 InferRequest.remove_response(inputs['messages'])
-            inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
+            inputs = StdTemplateInputs.from_dict(inputs)
+            self.agent_template.format_messages(inputs.messages)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
 
@@ -847,12 +851,21 @@ class Template(ProcessorMixin):
         answer_len = 1 if self.is_training else 0
         return [text], [1.], answer_len
 
-    def _swift_encode(self, inputs: StdTemplateInputs):
+    def _get_system(self, inputs):
         template_meta = self.template_meta
         system = inputs.system
+        tools = inputs.tools
         template_meta.check_system(system)
         if system is None:
             system = template_meta.default_system
+
+        if tools is not None:
+            system = self.agent_template.format_system(tools, system)
+        return system
+
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        template_meta = self.template_meta
+        system = self._get_system(inputs)
 
         res_context_list: List[Context] = []
         res_context_types: List[ContextType] = []

@@ -46,7 +46,7 @@ class TemplateMeta:
     stop_words: List[Word] = field(default_factory=list)
 
     tool_prompt: Optional[Prompt] = None
-    default_tools_prompt: str = 'react_en'
+    agent_template: str = 'react_en'
 
     def to_generate_template_meta(self) -> 'TemplateMeta':
         self = deepcopy(self)
