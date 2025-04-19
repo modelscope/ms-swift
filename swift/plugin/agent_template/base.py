@@ -1,7 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+
+import json
 
 
 @dataclass
@@ -15,6 +17,15 @@ class AgentKeyword:
     action: str = 'Action:'
     action_input: str = 'Action Input:'
     observation: str = 'Observation:'
+
+
+@dataclass
+class ToolDesc:
+    name_for_model: str
+    name_for_human: str
+    description_for_model: str
+    parameters: str
+    args_format: str
 
 
 class ReactCompatMixin:
@@ -67,17 +78,35 @@ class ReactCompatMixin:
 
 class BaseAgentTemplate(ReactCompatMixin, ABC):
 
+    @staticmethod
+    def _parse_tool(tool, lang: Literal['zh', 'en']) -> ToolDesc:
+        name = tool.get('name')
+        name_for_model = tool.get('name_for_model') or name
+        name_for_human = tool.get('name_for_human') or name
+
+        description = tool.get('description') or tool.get('description_for_model')
+        parameters = tool.get('parameters') or {}
+        parameters = parameters if isinstance(parameters, str) else json.dumps(parameters, ensure_ascii=False)
+        args_format = '此工具的输入应为JSON对象。' if lang == 'zh' else 'Format the arguments as a JSON object.'
+        tool_desc = ToolDesc(
+            name_for_model=name_for_model,
+            name_for_human=name_for_human,
+            description_for_model=description,
+            parameters=parameters,
+            args_format=args_format)
+        assert name_for_model is not None and description is not None, f'tool_desc: {tool_desc}'
+        return tool_desc
+
     def format_system(self, tools, system: Optional[str] = None):
         system = system or ''
         if isinstance(tools, str):
             tools = json.loads(tools)
-        tool_names = []
+        new_tools = []
         for tool in tools:  # info: Dict[str, Union[str, dict]]
-            if isinstance(tool, dict) and 'function' in tool and 'name' in tool['function']:
-                tool_names.append(tool['function']['name'])
-            else:
-                tool_names.append(tool['name'])
-        return self._format_system(tool_names, tools, system)
+            if isinstance(tool, dict) and 'function' in tool:
+                tool = tool['function']
+            new_tools.append(tool)
+        return self._format_system(new_tools, system)
 
     def format_messages(self, messages: List[Dict[str, str]]) -> None:
         if len(messages) < 2:
@@ -101,5 +130,5 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
                 i += 1
 
     @abstractmethod
-    def _format_system(self, tool_names: List[str], tools: List[Union[str, dict]], system: str) -> str:
+    def _format_system(self, tools: List[Union[str, dict]], system: str) -> str:
         pass

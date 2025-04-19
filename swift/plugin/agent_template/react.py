@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
 from typing import Any, Dict, List, Optional, Union
 
 import json
@@ -9,11 +8,20 @@ from .base import BaseAgentTemplate
 
 class ReactEnAgentTemplate(BaseAgentTemplate):
 
-    def _format_system(self, tool_names: List[str], tools: List[Union[str, dict]], system: str) -> str:
-        tools = [t if isinstance(t, str) else json.dumps(t, ensure_ascii=False) for t in tools]
+    def _format_system(self, tools: List[Union[str, dict]], system: str) -> str:
+        tool_names = []
+        tool_descs = []
+        for tool in tools:
+            tool_desc = self._parse_tool(tool, 'en')
+            tool_names.append(tool_desc.name_for_model)
+            tool_descs.append(
+                f'{tool_desc.name_for_model}: Call this tool to interact with the {tool_desc.name_for_human} API. '
+                f'What is the {tool_desc.name_for_human} API useful for? {tool_desc.description_for_model} '
+                f'Parameters: {tool_desc.parameters} {tool_desc.args_format}')
+
         return """Answer the following questions as best you can. You have access to the following tools:
 
-""" + '\n\n'.join(tools) + f"""
+""" + '\n\n'.join(tool_descs) + f"""
 
 Use the following format:
 
@@ -32,11 +40,19 @@ Begin!
 
 class ReactZnAgentTemplate(BaseAgentTemplate):
 
-    def _format_system(self, tool_names: List[str], tools: List[Union[str, dict]], system: str) -> str:
+    def _format_system(self, tools: List[Union[str, dict]], system: str) -> str:
+        tool_names = []
+        tool_descs = []
+        for tool in tools:
+            tool_desc = self._parse_tool(tool, 'zh')
+            tool_names.append(tool_desc.name_for_model)
+            tool_descs.append(f'{tool_desc.name_for_model}: 调用此工具与 {tool_desc.name_for_human} API 进行交互。'
+                              f'{tool_desc.name_for_human} 有什么用？{tool_desc.description_for_model} '
+                              f'输入参数：{tool_desc.parameters} {tool_desc.args_format}')
         tools = [t if isinstance(t, str) else json.dumps(t, ensure_ascii=False) for t in tools]
         return """尽可能地回答以下问题。你可以使用以下工具:
 
-""" + '\n\n'.join(tools) + f"""
+""" + '\n\n'.join(tool_descs) + f"""
 
 请按照以下格式进行:
 
