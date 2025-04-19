@@ -28,9 +28,3 @@ Final Answer: the final answer to the original input question
 
 Begin!
 """
-
-    def _format_observations(self, observations: List[str]) -> str:
-        res = []
-        for observation in observations:
-            res += [observation, '\n']
-        return ''.join(res)

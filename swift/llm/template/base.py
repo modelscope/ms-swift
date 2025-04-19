@@ -368,7 +368,7 @@ class Template(ProcessorMixin):
             if not self.is_training:
                 InferRequest.remove_response(inputs['messages'])
             inputs = StdTemplateInputs.from_dict(inputs)
-            self.agent_template.format_observations(inputs.messages)
+            self.agent_template.format_messages(inputs.messages)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
 

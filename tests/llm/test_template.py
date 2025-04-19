@@ -52,41 +52,45 @@ class TestTemplate(unittest.TestCase):
             # first round
             {
                 'role': 'user',
-                'content': 'testing_user_message'
+                'content': 'user1'
             },
             {
                 'role': 'assistant',
-                'content': ''
+                'content': 'assistant1'
+            },
+            {
+                'role': 'assistant',
+                'content': 'assistant2'
             },
             {
                 'role': 'tool',
-                'content': ''
+                'content': 'tool1'
             },
             # second round
             {
                 'role': 'assistant',
-                'content': ''
+                'content': 'assistant3'
             },
             {
                 'role': 'tool',
-                'content': ''
+                'content': 'tool2'
+            },
+            {
+                'role': 'tool',
+                'content': 'tool3'
             },
         ]
 
         # testing two template type.
         for agent_template_type in ('react_en', 'qwen'):
-            agent_template = agent_templates[agent_template_type]
+            agent_template = agent_templates[agent_template_type]()
+            observation = agent_template.keyword.observation
             test_messages = deepcopy(messages)
-            obs_word = agent_template.keyword.observation
-            test_messages[1]['content'] = f'{obs_word}'
-            test_messages[2]['content'] = 'first_round_result'
-            test_messages[3]['content'] = f'{obs_word}'
-            test_messages[4]['content'] = 'second_round_result'
-            agent_template.format_observations(test_messages)
-
-            # multi-round tool calling should be joined that only one assistant message left.
-            assert len(test_messages) == 2, f'Tool prompt {tool_prompt} join failed, {messages}'
-            assert test_messages[1]['content'] == f"""{obs_word}first_round_result\n{obs_word}second_round_result\n"""
+            test_messages[2]['content'] += observation
+            test_messages[4]['content'] += observation
+            agent_template.format_messages(test_messages)
+            assert test_messages[1]['content'] == (
+                f'assistant1assistant2{observation}tool1\nassistant3{observation}tool2\ntool3\n')
 
 
 if __name__ == '__main__':
