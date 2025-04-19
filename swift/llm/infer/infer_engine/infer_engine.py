@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 from tqdm import tqdm
 
 from swift.llm import InferRequest, ProcessorMixin, get_template
-from swift.llm.template import Template, split_action_action_input
+from swift.llm.template import Template
 from swift.llm.utils import get_ckpt_dir
 from swift.plugin import Metric
 from swift.utils import get_logger

@@ -46,8 +46,7 @@ class TestTemplate(unittest.TestCase):
     def test_tool_message_join(self):
         from copy import deepcopy
 
-        from swift.llm.template.template_inputs import StdTemplateInputs
-        from swift.plugin.tools import get_tools_keyword
+        from swift.plugin import agent_templates
 
         messages = [
             # first round
@@ -75,14 +74,15 @@ class TestTemplate(unittest.TestCase):
         ]
 
         # testing two template type.
-        for tool_prompt in ('react_en', 'qwen'):
+        for agent_template_type in ('react_en', 'qwen'):
+            agent_template = agent_templates[agent_template_type]
             test_messages = deepcopy(messages)
-            obs_word = get_tools_keyword(tool_prompt).get('observation')
+            obs_word = agent_template.keyword.observation
             test_messages[1]['content'] = f'{obs_word}'
             test_messages[2]['content'] = 'first_round_result'
             test_messages[3]['content'] = f'{obs_word}'
             test_messages[4]['content'] = 'second_round_result'
-            StdTemplateInputs.messages_join_observation(test_messages, tools_prompt=tool_prompt)
+            agent_template.format_observations(test_messages)
 
             # multi-round tool calling should be joined that only one assistant message left.
             assert len(test_messages) == 2, f'Tool prompt {tool_prompt} join failed, {messages}'

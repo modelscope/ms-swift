@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from swift.llm.template import split_str_parts_by
+from swift.llm.utils import Messages
 
 
 @dataclass
@@ -57,11 +58,45 @@ class ReactCompatMixin:
 
 class BaseAgentTemplate(ReactCompatMixin, ABC):
 
+    def format_system(self, tools, system: Optional[str] = None):
+        system = system or ''
+        if isinstance(tools, str):
+            tools = json.loads(tools)
+        tool_names = []
+        for tool in tools:  # info: Dict[str, Union[str, dict]]
+            if isinstance(tool, dict) and 'function' in tool and 'name' in tool['function']:
+                tool_names.append(tool['function']['name'])
+            else:
+                tool_names.append(tool['name'])
+        return self._format_system(tool_names, tools, system)
+
+    def format_observations(self, messages: Messages):
+        if len(messages) < 2:
+            return
+        i = 1
+        from swift.plugin import get_tools_keyword
+        keyword = get_tools_keyword(tools_prompt)
+        while i < len(messages):
+            pre_message, message = messages[i - 1], messages[i]
+            pre_role, pre_content = pre_message['role'], pre_message['content']
+            role, content = message['role'], message['content']
+            if (pre_role == 'assistant' and role == 'tool' and isinstance(pre_content, str)
+                    and pre_content.endswith(keyword.observation)):
+                assert isinstance(pre_content, str)
+                pre_message['content'] = pre_content + content + '\n'  # assistant
+                messages.pop(i)  # remove tool
+            elif (pre_role == 'assistant' and role == 'assistant' and isinstance(pre_content, str)
+                  and isinstance(content, str)):
+                # Consecutive messages from the assistant role need to be merged to prevent errors.
+                pre_message['content'] = pre_content + content
+                messages.pop(i)
+            else:
+                i += 1
+
     @abstractmethod
-    def format_system(self, tool_names: List[str], tools: List[Union[str, Dict[str, Any]]],
-                      system: Optional[str]) -> str:
+    def _format_system(self, tool_names: List[str], tools: List[Union[str, Dict[str, Any]]], system: str) -> str:
         pass
 
     @abstractmethod
-    def format_observations(self, observations: List[str]) -> str:
+    def _format_observations(self, observations: List[str]) -> str:
         pass

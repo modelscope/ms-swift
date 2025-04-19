@@ -35,7 +35,7 @@ class TemplateArguments:
 
     truncation_strategy: Literal['delete', 'left', 'right', None] = None
     max_pixels: Optional[int] = None
-    tools_prompt: Optional[str] = None  # Override the default_tools_prompt in the template.
+    agent_template: Optional[str] = None
     norm_bbox: Literal['norm1000', 'none', None] = None
     response_prefix: Optional[str] = None
     # train

@@ -43,7 +43,7 @@ class GLM4TemplateMeta(GLMTemplateMeta):
     suffix: Prompt = field(default_factory=lambda: ['<|user|>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|system|>\n{{SYSTEM}}'])
 
-    default_tools_prompt: str = 'glm4'
+    agent_template: str = 'glm4'
     tool_prompt: Optional[Prompt] = field(default_factory=lambda: ['<|observation|>\n{{QUERY}}<|assistant|>\n'])
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>', '<|user|>', '<|observation|>'])
 

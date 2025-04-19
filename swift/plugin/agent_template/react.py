@@ -9,8 +9,7 @@ from .base import BaseAgentTemplate
 
 class ReactEnAgentTemplate(BaseAgentTemplate):
 
-    def format_system(self, tool_names: List[str], tools: List[Union[str, Dict[str, Any]]],
-                      system: Optional[str]) -> str:
+    def _format_system(self, tool_names: List[str], tools: List[Union[str, Dict[str, Any]]], system: str) -> str:
         tools = [t if isinstance(t, str) else json.dumps(t, ensure_ascii=False) for t in tools]
         return """Answer the following questions as best you can. You have access to the following tools:
 
@@ -30,7 +29,7 @@ Final Answer: the final answer to the original input question
 Begin!
 """
 
-    def format_observations(self, observations: List[str]) -> str:
+    def _format_observations(self, observations: List[str]) -> str:
         res = []
         for observation in observations:
             res += [observation, '\n']

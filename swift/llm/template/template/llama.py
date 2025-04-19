@@ -47,7 +47,7 @@ class Llama3TemplateMeta(TemplateMeta):
         '<|start_header_id|>tool<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
         '<|start_header_id|>assistant<|end_header_id|>\n\n'
     ])
-    default_tools_prompt: str = 'toolbench'
+    agent_template: str = 'toolbench'
 
 
 register_template(Llama3TemplateMeta(LLMTemplateType.llama3))
