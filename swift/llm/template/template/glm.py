@@ -17,7 +17,7 @@ class GLMTemplateMeta(TemplateMeta):
     auto_add_bos: bool = True
 
 
-class GLM4Z1Template(Template):
+class GLM4_0414Template(Template):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         if not self.is_training:

@@ -77,6 +77,12 @@ def test_toolbench():
 def test_glm4():
     agent_template = agent_templates['glm4']()
     new_system = agent_template.format_system(tools, system)
+    assert len(new_system) == 846
+
+
+def test_glm4_0414():
+    agent_template = agent_templates['glm4_0414']()
+    new_system = agent_template.format_system(tools, system)
     assert len(new_system) == 769
 
 
@@ -90,3 +96,4 @@ if __name__ == '__main__':
     test_hermes()
     test_toolbench()
     test_glm4()
+    test_glm4_0414()
