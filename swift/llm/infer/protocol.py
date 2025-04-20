@@ -8,6 +8,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import json
 from PIL import Image
 
 from ..template import InferRequest
@@ -212,6 +213,10 @@ class UsageInfo:
 class Function:
     name: str
     arguments: Optional[str]
+
+    def __post_init__(self):
+        if not isinstance(self.arguments, str):
+            self.arguments = json.dumps(self.arguments)
 
 
 @dataclass

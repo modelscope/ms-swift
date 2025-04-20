@@ -98,6 +98,7 @@ def test_hermes():
     agent_template = agent_templates['hermes']()
     new_system = agent_template.format_system(tools, system)
     assert len(new_system) == 875
+    _infer('Qwen/Qwen2.5-7B-Instruct', agent_template, num_tools=2)
 
 
 def test_toolbench():
@@ -124,9 +125,9 @@ if __name__ == '__main__':
     # test_react_zh()
     # test_qwen_en()
     # test_qwen_zh()
-    test_qwen_en_parallel()
-    test_qwen_zh_parallel()
-    # test_hermes()
+    # test_qwen_en_parallel()
+    # test_qwen_zh_parallel()
+    test_hermes()
     # test_toolbench()
     # test_glm4()
     # test_glm4_0414()

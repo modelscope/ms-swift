@@ -25,9 +25,6 @@ class QwenTemplateMeta(ChatmlTemplateMeta):
     default_system: Optional[str] = DEFAULT_SYSTEM
     auto_add_bos: bool = False
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>'])
-    tool_prompt: Optional[Prompt] = field(
-        default_factory=lambda:
-        ['<|im_start|>user\n<tool_response>\n{{QUERY}}\n</tool_response><|im_end|>\n<|im_start|>assistant\n'])
     agent_template: str = 'hermes'
 
 

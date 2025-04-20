@@ -55,6 +55,7 @@ class ReactCompatMixin:
         assistant_content: str,
         tool_messages: List[str],
     ) -> str:
+        assert len(tool_messages) > 0
         res = [assistant_content]
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action and not assistant_content.endswith(self.keyword.observation):
