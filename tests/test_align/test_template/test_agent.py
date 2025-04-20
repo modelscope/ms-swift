@@ -73,7 +73,7 @@ def _infer(model, agent_template, num_tools: int = 1, agent_tools=None, tool_mes
     stop = [agent_template.keyword.observation]
     query = query or "How's the weather in Beijing today?"
     infer_request = InferRequest([{'role': 'user', 'content': query}], tools=agent_tools)
-    request_config = RequestConfig(max_tokens=512, stop=stop)
+    request_config = RequestConfig(max_tokens=512, stop=stop, temperature=0)
     resp_list = engine.infer([infer_request], request_config=request_config)
     response = resp_list[0].choices[0].message.content
     toolcall = resp_list[0].choices[0].message.tool_calls[0].function
@@ -93,7 +93,15 @@ def test_react_en():
     agent_template = agent_templates['react_en']()
     new_system = agent_template.format_system(tools, system)
     assert len(new_system) == 1144
-    _infer('Qwen/Qwen2.5-7B-Instruct', agent_template)
+    messages, template = _infer('Qwen/Qwen2.5-7B-Instruct', agent_template)
+    assert messages[-1]['content'] == (
+        'Thought: The current temperature in Beijing is 32 degrees Celsius, and the condition is sunny '
+        'with a humidity of 50%.\nFinal Answer: The current temperature in Beijing is 32 degrees Celsius,'
+        ' and the condition is sunny with a humidity of 50%.')
+    template.set_mode('train')
+    encoded = template.encode({'messages': messages})
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
 
 
 def test_react_zh():
@@ -107,7 +115,14 @@ def test_qwen_en():
     agent_template = agent_templates['qwen_en']()
     new_system = agent_template.format_system(tools, system)
     assert len(new_system) == 879
-    _infer('Qwen/Qwen2.5-7B-Instruct', agent_template)
+    messages, template = _infer('Qwen/Qwen2.5-7B-Instruct', agent_template)
+    assert messages[-1]['content'] == (
+        '✿RETURN✿: Today in Beijing, the temperature is 32°C with sunny conditions and the humidity '
+        'is at 50%. Enjoy the nice weather!')
+    template.set_mode('train')
+    encoded = template.encode({'messages': messages})
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
 
 
 def test_qwen_zh():
@@ -123,8 +138,8 @@ def test_qwen_en_parallel():
     assert len(new_system) == 1012
     messages, template = _infer('Qwen/Qwen2.5-7B-Instruct', agent_template, num_tools=2)
     assert messages[-1]['content'] == (
-        '✿RETURN✿: Today in Beijing, the temperature is 32 degrees Celsius with clear skies. '
-        'The humidity is at 50%. Enjoy the sunny day!')
+        '✿RETURN✿: Today in Beijing, the temperature is 32 degrees Celsius with sunny conditions '
+        'and the humidity is at 50%. Enjoy the nice weather!')
     template.set_mode('train')
     encoded = template.encode({'messages': messages})
     print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
@@ -144,7 +159,7 @@ def test_hermes():
     assert len(new_system) == 875
     messages, template = _infer('Qwen/Qwen2.5-7B-Instruct', agent_template, num_tools=2)
     assert messages[-1]['content'] == ('Today in Beijing, the temperature is 32 degrees Celsius with sunny conditions '
-                                       'and the humidity is at 50%. Enjoy the day!')
+                                       'and the humidity is at 50%. Enjoy the nice weather!')
     template.set_mode('train')
     encoded = template.encode({'messages': messages})
     print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
@@ -180,7 +195,7 @@ def test_glm4_0414():
         agent_tools=glm4_tools,
         tool_messages=glm4_tool_messasges,
         query=glm4_query)
-    assert messages[-1]['content'] == ('根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。')
+    assert messages[-1]['content'] == '根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。'
     template.set_mode('train')
     encoded = template.encode({'messages': messages})
     print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
@@ -189,13 +204,13 @@ def test_glm4_0414():
 
 if __name__ == '__main__':
     from swift.llm import PtEngine, InferRequest, RequestConfig, get_template
-    # test_react_en()
+    test_react_en()
     # test_react_zh()
-    # test_qwen_en()
+    test_qwen_en()
     # test_qwen_zh()
     test_qwen_en_parallel()
     # test_qwen_zh_parallel()
-    # test_hermes()
+    test_hermes()
     # test_toolbench()
     # test_glm4()
-    # test_glm4_0414()
+    test_glm4_0414()

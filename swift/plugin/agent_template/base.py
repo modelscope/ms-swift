@@ -126,6 +126,7 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
                     i += 1
                 pre_message['content'], tool_content = self._format_tool_messages(pre_content, messages[i_start:i + 1])
                 messages[i_start:i + 1] = [{'role': 'tool', 'content': tool_content}]
+                i = i_start + 1
             elif pre_role == 'assistant' and role == 'assistant':
                 # Consecutive messages from the assistant role need to be merged to prevent errors.
                 pre_message['content'] = pre_content + content
