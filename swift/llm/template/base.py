@@ -81,6 +81,7 @@ class Template(ProcessorMixin):
         loss_scale: The loss scale function to use
         """
         from .template_meta import TemplateMeta
+        from swift.plugin import agent_templates
 
         self.processor = processor
         self.model_info = processor.model_info
@@ -115,7 +116,8 @@ class Template(ProcessorMixin):
         self.max_pixels = max_pixels
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
-        self.agent_template = agent_template or template_meta.agent_template
+        agent_template = agent_template or template_meta.agent_template
+        self.agent_template = agent_templates[agent_template]()
         self.norm_bbox = norm_bbox or self.norm_bbox
         if self.is_encoder_decoder:
             self.skip_prompt = False
@@ -358,9 +360,6 @@ class Template(ProcessorMixin):
         Returns:
             return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
         """
-        from swift.plugin import agent_templates
-        if isinstance(self.agent_template, str):
-            self.agent_template = agent_templates[self.agent_template]()
         if isinstance(inputs, (InferRequest, TemplateInputs)):
             inputs = asdict(inputs)
 

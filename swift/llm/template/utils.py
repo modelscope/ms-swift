@@ -125,39 +125,18 @@ def split_str_parts_by(text: str, delimiters: List[str]) -> List[Dict[str, str]]
         The split text in list of dicts.
     """
     assert isinstance(text, str), f'text: {text}'
-    all_start_chars = [d[0] for d in delimiters]
-    all_length = [len(d) for d in delimiters]
-
-    text_list = []
-    last_words = ''
-
-    while len(text) > 0:
-        for char_idx, char in enumerate(text):
-            match_index = [idx for idx, start_char in enumerate(all_start_chars) if start_char == char]
-            is_delimiter = False
-            for index in match_index:
-                if text[char_idx:char_idx + all_length[index]] == delimiters[index]:
-                    if text_list:
-                        text_list[-1]['content'] = last_words
-                    elif last_words:
-                        text_list.append({'key': '', 'content': last_words})
-                    last_words = ''
-                    text_list.append({'key': delimiters[index]})
-                    text = text[char_idx + all_length[index]:]
-                    is_delimiter = True
-                    break
-            if not is_delimiter:
-                last_words += char
-            else:
-                break
-        if last_words == text:
-            text = ''
-
-    if len(text_list):
-        text_list[-1]['content'] = last_words
+    regex_pattern = '|'.join(f'({re.escape(delimiter)})' for delimiter in delimiters)
+    split_result = re.split(regex_pattern, text)
+    split_result = [x for x in split_result if x is not None]
+    if split_result[0] == '':
+        split_result.pop(0)
     else:
-        text_list.append({'key': '', 'content': last_words})
-    return text_list
+        split_result.insert(0, '')
+    res = []
+    assert len(split_result) % 2 == 0
+    for key, content in zip(split_result[::2], split_result[1::2]):
+        res.append({'key': key, 'content': content})
+    return res
 
 
 def split_parts_by_regex(text_list: list, regex_delimiters: Dict[str, List[float]]) -> None:

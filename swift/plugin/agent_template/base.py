@@ -25,37 +25,30 @@ class ToolDesc:
 class ReactCompatMixin:
     keyword = AgentKeyword()
 
-    def _split_action_action_input(self, response: str) -> Tuple[Optional[str], Optional[str]]:
+    def _split_action_action_input(self, response: str, keyword: AgentKeyword) -> List['Function']:
         from swift.llm.template import split_str_parts_by
-        keyword = self.keyword
-        agent_keyword = [
-            'action:', 'Action:', 'ACTION:', 'action input:', 'Action Input:', 'Action input:', 'ACTION INPUT:',
-            'Thought:', 'Final Answer:', 'Observation:'
-        ]
-        for key in asdict(keyword).values():
-            if key not in agent_keyword:
-                agent_keyword.append(key)
-        agent_parts = split_str_parts_by(response, agent_keyword)
-        action = None
-        action_input = None
-        for c in agent_parts:
-            if c['key'].lower() == keyword.action.lower():
-                action = c['content']
-            elif c['key'].lower() == keyword.action_input.lower():
-                action_input = c['content']
-        if action:
-            action = action.strip().replace('\n', '')
-        if action_input:
-            action_input.strip().replace('\n', '')
-        return action, action_input
+        from swift.llm.infer.protocol import Function
+        agent_parts = split_str_parts_by(response, list(asdict(keyword).values()))
+        functions = []
+        action_content = None
+
+        for part in agent_parts:
+            key, content = part['key'].lower(), part['content'].strip()
+            if action_content is None and key == keyword.action.lower():
+                action_content = content
+            elif action_content is not None and key == keyword.action_input.lower():
+                functions.append(Function(name=action_content, arguments=content))
+                action_content = None
+
+        return functions
 
     def get_toolcall(self, response: str) -> List['Function']:
         from swift.llm.infer.protocol import Function
-        action, action_input = self._split_action_action_input(response)
-        if action is None:
-            return []
-
-        return [Function(name=action, arguments=action_input)]
+        functions = self._split_action_action_input(response, self.keyword)
+        if len(functions) == 0 and self.keyword != ReactCompatMixin.keyword:
+            # compat react
+            functions = self._split_action_action_input(response, ReactCompatMixin.keyword)
+        return functions
 
     def _format_tool_messages(
         self,
@@ -63,10 +56,17 @@ class ReactCompatMixin:
         tool_messages: List[str],
     ) -> str:
         res = [assistant_content]
-        with_observation = assistant_content.endswith(self.keyword.observation)
-        for tool_message in tool_messages:
-            res.append(tool_message['content'])
-            if with_observation:
+        with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
+        if with_action and not assistant_content.endswith(self.keyword.observation):
+            if not assistant_content.endswith('\n'):
+                res.append('\n')
+            res.append(self.keyword.observation)
+        for i, tool_message in enumerate(tool_messages):
+            tool_content = tool_message['content']
+            if with_action and i > 0:
+                res.append(self.keyword.observation)
+            res.append(tool_content)
+            if with_action and not tool_content.endswith('\n'):
                 res.append('\n')
         return ''.join(res)
 
