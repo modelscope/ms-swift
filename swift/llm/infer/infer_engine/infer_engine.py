@@ -175,16 +175,10 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             return result
 
     @staticmethod
-    def _get_toolcall(response: Union[str, List[Dict[str, Any]]],
-                      tools_prompt='react_en') -> Optional[List[ChatCompletionMessageToolCall]]:
-        if not isinstance(response, str):
-            response = '\n'.join([resp['text'] for resp in response if resp['type'] == 'text'])
-
-        action, action_input = split_action_action_input(response, tools_prompt=tools_prompt)
-        if action is None:
-            return None
-
-        return [ChatCompletionMessageToolCall(function=Function(name=action, arguments=action_input))]
+    def _get_toolcall(response: str, template: Template) -> Optional[List[ChatCompletionMessageToolCall]]:
+        functions = template.agent_template.get_toolcall(response)
+        if functions:
+            return [ChatCompletionMessageToolCall(function=function) for function in functions]
 
     @staticmethod
     def _get_num_tokens(inputs: Dict[str, Any]) -> int:

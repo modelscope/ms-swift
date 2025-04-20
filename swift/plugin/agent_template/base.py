@@ -7,12 +7,6 @@ import json
 
 
 @dataclass
-class Function:
-    name: str
-    arguments: Optional[str]
-
-
-@dataclass
 class AgentKeyword:
     action: str = 'Action:'
     action_input: str = 'Action Input:'
@@ -31,7 +25,7 @@ class ToolDesc:
 class ReactCompatMixin:
     keyword = AgentKeyword()
 
-    def _split_action_action_input(response: str) -> Tuple[Optional[str], Optional[str]]:
+    def _split_action_action_input(self, response: str) -> Tuple[Optional[str], Optional[str]]:
         from swift.llm.template import split_str_parts_by
         keyword = self.keyword
         agent_keyword = [
@@ -55,8 +49,9 @@ class ReactCompatMixin:
             action_input.strip().replace('\n', '')
         return action, action_input
 
-    def get_toolcall(self, response: str) -> List[Function]:
-        action, action_input = split_action_action_input(response, keyword=self.keyword)
+    def get_toolcall(self, response: str) -> List['Function']:
+        from swift.llm.infer.protocol import Function
+        action, action_input = self._split_action_action_input(response)
         if action is None:
             return []
 

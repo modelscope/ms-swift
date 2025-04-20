@@ -29,8 +29,7 @@ class InferRequest:
         The above content is equivalent to:
         [{"role": "user", "content": "<image>Please describe the picture."}]
         and additionally passing in images: ["<url/path/base64/PIL.Image>"].
-    tools: Organize tools into the format of tools_prompt for system. for example, 'react_en'.
-        Specifying this parameter will override system.
+    tools: Organize tools into the format of agent_template for system. for example, 'react_en'.
     """
     messages: Messages
 
