@@ -58,21 +58,23 @@ class ReactCompatMixin:
         assert len(tool_messages) > 0
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
-            if assistant_content.endswith(self.keyword.observation):
-                assistant_content = assistant_content[:-len(self.keyword.observation)]
-            if not assistant_content.endswith('\n'):
-                assistant_content = f'{assistant_content}\n'
-            res = [assistant_content]
-            for tool_message in tool_messages:
+            if not assistant_content.endswith(self.keyword.observation):
+                if not assistant_content.endswith('\n'):
+                    assistant_content += '\n'
+                assistant_content += self.keyword.observation
+            res = []
+            for i, tool_message in enumerate(tool_messages):
+                if i > 0:
+                    res.append(self.keyword.observation)
                 tool_content = tool_message['content']
+                res.append(tool_content)
                 if not tool_content.endswith('\n'):
-                    tool_content = f'{tool_content}\n'
-                res += [self.keyword.observation, tool_content]
+                    res.append('\n')
         else:
-            res = [assistant_content]
+            res = []
             for tool_message in tool_messages:
                 res.append(tool_message['content'])
-        return ''.join(res)
+        return assistant_content, ''.join(res)
 
 
 class BaseAgentTemplate(ReactCompatMixin, ABC):
@@ -122,8 +124,8 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
                 i_start = i
                 while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool':
                     i += 1
-                pre_message['content'] = self._format_tool_messages(pre_content, messages[i_start:i + 1])
-                messages[i_start:i + 1] = []
+                pre_message['content'], tool_content = self._format_tool_messages(pre_content, messages[i_start:i + 1])
+                messages[i_start:i + 1] = [{'role': 'tool', 'content': tool_content}]
             elif pre_role == 'assistant' and role == 'assistant':
                 # Consecutive messages from the assistant role need to be merged to prevent errors.
                 pre_message['content'] = pre_content + content

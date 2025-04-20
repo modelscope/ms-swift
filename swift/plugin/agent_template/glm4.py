@@ -52,14 +52,14 @@ class GLM4AgentTemplate(BaseAgentTemplate):
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             return super()._format_tool_messages(assistant_content, tool_messages)
-        if assistant_content.endswith('<|observation|>'):
-            assistant_content = assistant_content[:-len('<|observation|>')]
-        res = [assistant_content]
-        for tool_message in tool_messages:
+        res = ['\n']
+        for i, tool_message in enumerate(tool_messages):
             tool_content = tool_message['content']
-            res.append(f'<|observation|>\n{tool_content}')
+            if i > 0:
+                res.append('<|observation|>\n')
+            res.append(tool_content)
         res.append('<|assistant|>\n')
-        return ''.join(res)
+        return assistant_content, ''.join(res)
 
 
 class GLM4_0414AgentTemplate(GLM4AgentTemplate):

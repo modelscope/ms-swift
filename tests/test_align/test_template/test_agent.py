@@ -85,7 +85,8 @@ def _infer(model, agent_template, num_tools: int = 1, agent_tools=None, tool_mes
     resp_list = engine.infer([infer_request], request_config=request_config)
     response2 = resp_list[0].choices[0].message.content
     print(f'response2: {response2}')
-    return response2
+    infer_request.messages.append({'role': 'assistant', 'content': response2})
+    return infer_request.messages, engine.default_template
 
 
 def test_react_en():
@@ -120,7 +121,14 @@ def test_qwen_en_parallel():
     agent_template = agent_templates['qwen_en_parallel']()
     new_system = agent_template.format_system(tools, system)
     assert len(new_system) == 1012
-    _infer('Qwen/Qwen2.5-7B-Instruct', agent_template, num_tools=2)
+    messages, template = _infer('Qwen/Qwen2.5-7B-Instruct', agent_template, num_tools=2)
+    assert messages[-1]['content'] == (
+        '✿RETURN✿: Today in Beijing, the temperature is 32 degrees Celsius with clear skies. '
+        'The humidity is at 50%. Enjoy the sunny day!')
+    template.set_mode('train')
+    encoded = template.encode({'messages': messages})
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
 
 
 def test_qwen_zh_parallel():
@@ -134,7 +142,13 @@ def test_hermes():
     agent_template = agent_templates['hermes']()
     new_system = agent_template.format_system(tools, system)
     assert len(new_system) == 875
-    _infer('Qwen/Qwen2.5-7B-Instruct', agent_template, num_tools=2)
+    messages, template = _infer('Qwen/Qwen2.5-7B-Instruct', agent_template, num_tools=2)
+    assert messages[-1]['content'] == ('Today in Beijing, the temperature is 32 degrees Celsius with sunny conditions '
+                                       'and the humidity is at 50%. Enjoy the day!')
+    template.set_mode('train')
+    encoded = template.encode({'messages': messages})
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
 
 
 def test_toolbench():
@@ -160,24 +174,28 @@ def test_glm4_0414():
     agent_template = agent_templates['glm4_0414']()
     new_system = agent_template.format_system(tools, system)
     assert len(new_system) == 769
-    response = _infer(
+    messages, template = _infer(
         'ZhipuAI/GLM-4-9B-0414',
         agent_template,
         agent_tools=glm4_tools,
         tool_messages=glm4_tool_messasges,
         query=glm4_query)
-    assert response == '根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。'
+    assert messages[-1]['content'] == ('根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。')
+    template.set_mode('train')
+    encoded = template.encode({'messages': messages})
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
 
 
 if __name__ == '__main__':
-    from swift.llm import PtEngine, InferRequest, RequestConfig
+    from swift.llm import PtEngine, InferRequest, RequestConfig, get_template
     # test_react_en()
     # test_react_zh()
     # test_qwen_en()
     # test_qwen_zh()
-    # test_qwen_en_parallel()
+    test_qwen_en_parallel()
     # test_qwen_zh_parallel()
     # test_hermes()
     # test_toolbench()
     # test_glm4()
-    test_glm4_0414()
+    # test_glm4_0414()

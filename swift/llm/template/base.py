@@ -821,7 +821,7 @@ class Template(ProcessorMixin):
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
     @staticmethod
-    def _add_dynamic_eos(labels: List[int], suffix_tokens_id: List[int]) -> None:
+    def _add_dynamic_eos(input_ids, labels: List[int], suffix_tokens_id: List[int]) -> None:
         suffix_len = len(suffix_tokens_id)
         start = 0
         for i in range(1, len(labels)):
@@ -830,7 +830,7 @@ class Template(ProcessorMixin):
             if start > 0 and labels[i - 1] == -100 and labels[i] >= 0:
                 # [0, 1, 2, -100(start), -100, 3(i), 4]
                 length = i - start
-                if length >= suffix_len:
+                if length >= suffix_len and input_ids[start:start + suffix_len] == suffix_tokens_id:
                     labels[start:start + suffix_len] = suffix_tokens_id
 
     @staticmethod
@@ -892,7 +892,7 @@ class Template(ProcessorMixin):
             assert query_role in {'user', 'tool'}
             assert response_role in {'assistant'}
             if query_role == 'tool':
-                prompt = template_meta.agent_template
+                prompt = ['{{QUERY}}']
             elif template_meta.is_post_system and i == n_round - 1:
                 prompt = template_meta.system_prompt
             else:
@@ -904,8 +904,9 @@ class Template(ProcessorMixin):
             if i < n_round - 1:
                 # Not the last round.
                 context_list.append('{{RESPONSE}}')
-                extra_context_list = template_meta.chat_sep
-                extra_context_type = ContextType.OTHER
+                if inputs.messages[2 * (i + 1)]['role'] != 'tool':
+                    extra_context_list = template_meta.chat_sep
+                    extra_context_type = ContextType.OTHER
             elif response is not None:
                 # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
@@ -966,7 +967,7 @@ class Template(ProcessorMixin):
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                 res_context_list, loss_scale_list)
         if self.loss_scale in {'default', 'all', 'last_round'}:
-            self._add_dynamic_eos(labels, self._encode_context_list(self.template_meta.suffix)[0])
+            self._add_dynamic_eos(input_ids, labels, self._encode_context_list(self.template_meta.suffix)[0])
 
         if tokenizer_kwargs:
             encoded['tokenizer_kwargs'] = tokenizer_kwargs
