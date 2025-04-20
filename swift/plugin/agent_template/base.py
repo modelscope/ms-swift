@@ -101,7 +101,8 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
         assert name_for_model is not None and description is not None, f'tool_desc: {tool_desc}'
         return tool_desc
 
-    def format_system(self, tools, system: Optional[str] = None):
+    def format_tools(self, tools, system: Optional[str] = None, user_message=None):
+        # user_message: first user message
         system = system or ''
         if isinstance(tools, str):
             tools = json.loads(tools)
@@ -110,7 +111,18 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
             if isinstance(tool, dict) and 'function' in tool:
                 tool = tool['function']
             new_tools.append(tool)
-        return self._format_system(new_tools, system)
+        return self._format_tools(new_tools, system, user_message)
+
+    @staticmethod
+    def _parse_json(json_str: str) -> Optional[Any]:
+        try:
+            res = json.loads(json_str)
+        except json.JSONDecodeError:
+            try:
+                res = ast.literal_eval(json_str)
+            except Exception:
+                return
+        return res
 
     def format_messages(self, messages: List[Dict[str, str]]) -> None:
         if len(messages) < 2:
@@ -135,5 +147,5 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
                 i += 1
 
     @abstractmethod
-    def _format_system(self, tools: List[Union[str, dict]], system: str) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
         pass

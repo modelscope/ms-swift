@@ -15,14 +15,9 @@ class HermesAgentTemplate(BaseAgentTemplate):
         res_list = re.findall(r'<tool_call>(.+?)</tool_call>', response, re.DOTALL)
         functions = []
         for res in res_list:
-            try:
-                res = json.loads(res)
-            except json.JSONDecodeError:
-                try:
-                    res = ast.literal_eval(res)
-                except Exception:
-                    continue
-            functions.append(Function(name=res['name'], arguments=res['arguments']))
+            res = self._parse_json(res)
+            if res is not None:
+                functions.append(Function(name=res['name'], arguments=res['arguments']))
         if len(functions) == 0:
             # compat react_en
             return super().get_toolcall(response)
@@ -43,7 +38,7 @@ class HermesAgentTemplate(BaseAgentTemplate):
         res.append('<|im_end|>\n<|im_start|>assistant\n')
         return assistant_content, ''.join(res)
 
-    def _format_system(self, tools: List[Union[str, dict]], system: str) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
         tool_descs = [json.dumps({'type': 'function', 'function': tool}, ensure_ascii=False) for tool in tools]
         return f"""{system}
 

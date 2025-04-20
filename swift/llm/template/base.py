@@ -851,7 +851,7 @@ class Template(ProcessorMixin):
         answer_len = 1 if self.is_training else 0
         return [text], [1.], answer_len
 
-    def _get_system(self, inputs):
+    def _get_system(self, inputs) -> Optional[str]:
         template_meta = self.template_meta
         system = inputs.system
         tools = inputs.tools
@@ -860,7 +860,7 @@ class Template(ProcessorMixin):
             system = template_meta.default_system
 
         if tools is not None:
-            system = self.agent_template.format_system(tools, system)
+            system = self.agent_template.format_tools(tools, system, inputs.messages[0])
         return system
 
     def _swift_encode(self, inputs: StdTemplateInputs):

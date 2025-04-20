@@ -33,7 +33,7 @@ class GLM4AgentTemplate(BaseAgentTemplate):
             return super().get_toolcall(response)
         return functions
 
-    def _format_system(self, tools: List[Union[str, dict]], system: str) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
         tool_descs = []
         for tool in tools:
             name = self._get_tool_name(tool)

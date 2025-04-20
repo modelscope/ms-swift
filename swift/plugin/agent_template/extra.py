@@ -6,7 +6,7 @@ from .base import BaseAgentTemplate
 
 class ReactGRPOAgentTemplate(BaseAgentTemplate):
 
-    def _format_system(self, tools: List[Union[str, dict]], system: str) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
         tool_names = []
         tool_descs = []
         for tool in tools:

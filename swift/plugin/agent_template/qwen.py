@@ -26,7 +26,7 @@ class QwenEnAgentTemplate(BaseAgentTemplate):
                               f'Parameters: {tool_desc.parameters} {tool_desc.args_format}')
         return tool_names, tool_descs
 
-    def _format_system(self, tools: List[Union[str, dict]], system: str) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
         tool_names, tool_descs = self._get_tool_names_descs(tools)
         return f"""{system}
 
@@ -58,7 +58,7 @@ class QwenZhAgentTemplate(BaseAgentTemplate):
                               f'输入参数：{tool_desc.parameters} {tool_desc.args_format}')
         return tool_names, tool_descs
 
-    def _format_system(self, tools: List[Union[str, dict]], system: str) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
         tool_names, tool_descs = self._get_tool_names_descs(tools)
         return f"""{system}
 
@@ -78,7 +78,7 @@ class QwenZhAgentTemplate(BaseAgentTemplate):
 
 class QwenEnParallelAgentTemplate(QwenEnAgentTemplate):
 
-    def _format_system(self, tools: List[Union[str, dict]], system: str) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
         tool_names, tool_descs = self._get_tool_names_descs(tools)
         return f"""{system}
 
@@ -106,7 +106,7 @@ class QwenEnParallelAgentTemplate(QwenEnAgentTemplate):
 
 class QwenZhParallelAgentTemplate(QwenZhAgentTemplate):
 
-    def _format_system(self, tools: List[Union[str, dict]], system: str) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
         tool_names, tool_descs = self._get_tool_names_descs(tools)
         return f"""{system}
 

@@ -8,7 +8,7 @@ from .base import BaseAgentTemplate
 
 class ToolBenchAgentTemplate(BaseAgentTemplate):
 
-    def _format_system(self, tools: List[Union[str, dict]], system: str) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
         tools = json.dumps(tools, ensure_ascii=False)
         return f"""You can use many tools(functions) to do the following task.
 First I will give you the task description, and your task start.
