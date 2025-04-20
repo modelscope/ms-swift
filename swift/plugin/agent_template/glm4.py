@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import re
 from typing import Any, Dict, List, Optional, Union
 
 import json
@@ -8,6 +9,29 @@ from .base import BaseAgentTemplate
 
 class GLM4AgentTemplate(BaseAgentTemplate):
     is_glm4_0414 = False
+
+    @staticmethod
+    def _find_function_call(single_content: str) -> Optional['Function']:
+        from swift.llm.infer.protocol import Function
+        pattern = re.compile(r'([^\n`]*?)\n({.*?})(?=\w*\n|$)', re.DOTALL)
+        matches = pattern.findall(single_content)
+        if not matches:
+            return
+
+        name, arguments = matches[0]
+        return Function(name=name, arguments=arguments)
+
+    def get_toolcall(self, response: str) -> List['Function']:
+        toolcall_list = response.split('<|assistant|>')
+        functions = []
+        for toolcall in toolcall_list:
+            function = self._find_function_call(toolcall)
+            if function:
+                functions.append(function)
+        if len(functions) == 0:
+            # compat react_en
+            return super().get_toolcall(response)
+        return functions
 
     def _format_system(self, tools: List[Union[str, dict]], system: str) -> str:
         tool_descs = []
@@ -19,6 +43,23 @@ class GLM4AgentTemplate(BaseAgentTemplate):
         return ('' if self.is_glm4_0414 else glm4_system) + """# 可用工具
 
 """ + '\n'.join(tool_descs)
+
+    def _format_tool_messages(
+        self,
+        assistant_content: str,
+        tool_messages: List[str],
+    ) -> str:
+        with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
+        if with_action:
+            return super()._format_tool_messages(assistant_content, tool_messages)
+        if assistant_content.endswith('<|observation|>'):
+            assistant_content = assistant_content[:-len('<|observation|>')]
+        res = [assistant_content]
+        for tool_message in tool_messages:
+            tool_content = tool_message['content']
+            res.append(f'<|observation|>\n{tool_content}')
+        res.append('<|assistant|>\n')
+        return ''.join(res)
 
 
 class GLM4_0414AgentTemplate(GLM4AgentTemplate):

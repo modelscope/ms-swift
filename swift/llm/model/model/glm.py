@@ -141,7 +141,7 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         architectures=['Glm4ForCausalLM'],
         model_arch=ModelArch.chatglm,
-        requires=['transformers>4.51'],
+        requires=['transformers>=4.51'],
     ))
 
 register_model(

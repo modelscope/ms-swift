@@ -217,6 +217,8 @@ class Function:
     def __post_init__(self):
         if not isinstance(self.arguments, str):
             self.arguments = json.dumps(self.arguments)
+        self.name = self.name.strip()
+        self.arguments = self.arguments.strip()
 
 
 @dataclass

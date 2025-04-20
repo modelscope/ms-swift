@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import ast
 import re
 from typing import Any, Dict, List, Optional, Union
 
@@ -17,7 +18,10 @@ class HermesAgentTemplate(BaseAgentTemplate):
             try:
                 res = json.loads(res)
             except json.JSONDecodeError:
-                continue
+                try:
+                    res = ast.literal_eval(res)
+                except Exception:
+                    continue
             functions.append(Function(name=res['name'], arguments=res['arguments']))
         if len(functions) == 0:
             # compat react_en

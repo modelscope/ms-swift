@@ -33,7 +33,7 @@ class ReactCompatMixin:
         action_content = None
 
         for part in agent_parts:
-            key, content = part['key'].lower(), part['content'].strip()
+            key, content = part['key'].lower(), part['content']
             if action_content is None and key == keyword.action.lower():
                 action_content = content
             elif action_content is not None and key == keyword.action_input.lower():
@@ -56,19 +56,22 @@ class ReactCompatMixin:
         tool_messages: List[str],
     ) -> str:
         assert len(tool_messages) > 0
-        res = [assistant_content]
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
-        if with_action and not assistant_content.endswith(self.keyword.observation):
+        if with_action:
+            if assistant_content.endswith(self.keyword.observation):
+                assistant_content = assistant_content[:-len(self.keyword.observation)]
             if not assistant_content.endswith('\n'):
-                res.append('\n')
-            res.append(self.keyword.observation)
-        for i, tool_message in enumerate(tool_messages):
-            tool_content = tool_message['content']
-            if with_action and i > 0:
-                res.append(self.keyword.observation)
-            res.append(tool_content)
-            if with_action and not tool_content.endswith('\n'):
-                res.append('\n')
+                assistant_content = f'{assistant_content}\n'
+            res = [assistant_content]
+            for tool_message in tool_messages:
+                tool_content = tool_message['content']
+                if not tool_content.endswith('\n'):
+                    tool_content = f'{tool_content}\n'
+                res += [self.keyword.observation, tool_content]
+        else:
+            res = [assistant_content]
+            for tool_message in tool_messages:
+                res.append(tool_message['content'])
         return ''.join(res)
 
 

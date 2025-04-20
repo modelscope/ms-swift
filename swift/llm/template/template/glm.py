@@ -17,7 +17,22 @@ class GLMTemplateMeta(TemplateMeta):
     auto_add_bos: bool = True
 
 
-class GLM4_0414Template(Template):
+class GLM4Template(Template):
+
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
+        for i, res_context in enumerate(res_context_list):
+            if res_context.endswith('<|assistant|>\n') and (i + 1 >= len(res_context_list)
+                                                            or '<|observation|>' in res_context_list[i + 1]):
+                res_context_list[i] = res_context_list[i][:-len('\n')]
+        return res_context_list, loss_scale_list, answer_len
+
+    def decode(self, *args, **kwargs):
+        response = super().decode(*args, **kwargs)
+        return response.lstrip('\n')
+
+
+class GLM4_0414Template(GLM4Template):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         if not self.is_training:
@@ -44,7 +59,6 @@ class GLM4TemplateMeta(GLMTemplateMeta):
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|system|>\n{{SYSTEM}}'])
 
     agent_template: str = 'glm4'
-    tool_prompt: Optional[Prompt] = field(default_factory=lambda: ['<|observation|>\n{{QUERY}}<|assistant|>\n'])
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>', '<|user|>', '<|observation|>'])
 
 
@@ -52,6 +66,7 @@ class GLM4TemplateMeta(GLMTemplateMeta):
 class GLM4_0414TemplateMeta(GLM4TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ['[gMASK]<sop>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>\n{{SYSTEM}}'])
+    agent_template: str = 'glm4_0414'
 
 
 class GLM4VTemplate(Template):
@@ -91,10 +106,9 @@ class GLM4VTemplate(Template):
         return res
 
 
-# not '<|assistant|>\n'
 register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate, suffix=['<|endoftext|>']))
 
-register_template(GLM4TemplateMeta(LLMTemplateType.glm4))
+register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template))
 
 register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4_0414Template))
 
