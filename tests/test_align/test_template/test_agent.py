@@ -105,6 +105,15 @@ def test_react_en():
     print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
     print(f'labels: {template.safe_decode(encoded["labels"])}')
 
+    dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
+    data = dataset[6]
+    data['messages'].insert(1, data['messages'][1])
+    data['messages'].insert(3, data['messages'][3])
+    template.template_backend = 'swift'
+    encoded = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
+
 
 def test_react_zh():
     agent_template = agent_templates['react_zh']()
@@ -132,6 +141,15 @@ def test_qwen_en():
     print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
     print(f'labels: {template.safe_decode(encoded["labels"])}')
 
+    dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
+    data = dataset[6]
+    data['messages'].insert(1, data['messages'][1])
+    data['messages'].insert(3, data['messages'][3])
+    template.template_backend = 'swift'
+    encoded = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
+
 
 def test_qwen_zh():
     agent_template = agent_templates['qwen_zh']()
@@ -156,6 +174,15 @@ def test_qwen_en_parallel():
         'and the humidity is at 50%. Enjoy the nice weather!')
     template.set_mode('train')
     encoded = template.encode({'messages': messages})
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
+
+    dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
+    data = dataset[6]
+    data['messages'].insert(1, data['messages'][1])
+    data['messages'].insert(3, data['messages'][3])
+    template.template_backend = 'swift'
+    encoded = template.encode(data)
     print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
     print(f'labels: {template.safe_decode(encoded["labels"])}')
 
@@ -200,7 +227,7 @@ def test_hermes():
     encoded2 = template.encode(data)
     print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
     print(f'labels: {template.safe_decode(encoded2["labels"])}')
-    assert encoded['input_ids'] == encoded2['input_ids']
+    assert encoded['input_ids'] == encoded2['input_ids'][:-1]
 
 
 def test_toolbench():
@@ -237,6 +264,15 @@ def test_glm4_0414():
     print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
     print(f'labels: {template.safe_decode(encoded["labels"])}')
 
+    dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
+    data = dataset[6]
+    data['messages'].insert(1, data['messages'][1])
+    data['messages'].insert(3, data['messages'][3])
+    template.template_backend = 'swift'
+    encoded = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
+
 
 def test_llama3():
     agent_template = agent_templates['llama3']()
@@ -247,6 +283,15 @@ def test_llama3():
 
     template.set_mode('train')
     encoded = template.encode({'messages': messages})
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
+
+    dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
+    data = dataset[6]
+    data['messages'].insert(1, data['messages'][1])
+    data['messages'].insert(3, data['messages'][3])
+    template.template_backend = 'swift'
+    encoded = template.encode(data)
     print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
     print(f'labels: {template.safe_decode(encoded["labels"])}')
 

@@ -180,11 +180,11 @@ class Template(ProcessorMixin):
                 bbox[2 * i + 1] = int(round(y / height * norm_height))
 
     def _preprocess_function_call(self, inputs: StdTemplateInputs) -> None:
+        agent_template = self.agent_template
         if inputs.tools:
-            inputs.tools = [self.agent_template._parse_json(tool) for tool in inputs.tools]
+            inputs.tools = [agent_template._parse_json(tool) for tool in inputs.tools]
             for i, tool in enumerate(inputs.tools):
-                if isinstance(tool, dict) and 'type' not in tool and 'function' not in tool:
-                    inputs.tools[i] = {'type': 'function', 'function': tool}
+                inputs.tools[i] = agent_template.wrap_tool(tool)
         messages = inputs.messages
         for message in messages:
             if message['role'] == 'tool_response':

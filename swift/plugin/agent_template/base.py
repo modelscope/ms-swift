@@ -78,7 +78,13 @@ class ReactCompatMixin:
         return assistant_content, ''.join(res)
 
     def _format_tool_calls(self, tool_call_messages) -> str:
-        raise NotImplementedError
+        tool_calls = []
+        for message in tool_call_messages:
+            tool_call = self._parse_tool_call(message['content'])
+            tool_calls.append(f'{self.keyword.action} {tool_call["name"]}\n'
+                              f'{self.keyword.action_input} {tool_call["arguments"]}\n')
+        tool_calls.append(self.keyword.observation)
+        return ''.join(tool_calls)
 
 
 class BaseAgentTemplate(ReactCompatMixin, ABC):
@@ -88,7 +94,22 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
         return tool.get('name_for_model') or tool.get('name')
 
     @staticmethod
+    def unwrap_tool(tool):
+        assert isinstance(tool, dict), f'tool: {tool}'
+        if 'type' in tool and 'function' in tool:
+            tool = tool['function']
+        return tool
+
+    @staticmethod
+    def wrap_tool(tool):
+        assert isinstance(tool, dict), f'tool: {tool}'
+        if 'type' not in tool and 'function' not in tool:
+            tool = {'type': 'function', 'function': tool}
+        return tool
+
+    @staticmethod
     def _parse_tool(tool, lang: Literal['zh', 'en']) -> ToolDesc:
+        tool = self.unwrap_tool(tool)
         name_for_model = BaseAgentTemplate._get_tool_name(tool)
         name_for_human = tool.get('name_for_human') or name_for_model
 

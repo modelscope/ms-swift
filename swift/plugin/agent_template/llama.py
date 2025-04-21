@@ -58,6 +58,14 @@ Respond in the format {"name": function name, "parameters": dictionary of argume
         user_message['content'] = new_user_content
         return system
 
+    def _format_tool_calls(self, tool_call_messages) -> str:
+        tool_calls = []
+        for message in tool_call_messages:
+            tool_call = self._parse_tool_call(message['content'])
+            tool_call['parameters'] = tool_call.pop('arguments')
+            tool_calls.append(json.dumps(tool_call, ensure_ascii=False))
+        return '\n'.join(tool_calls)
+
 
 class Llama4AgentTemplate(Llama3AgentTemplate):
     eom_token = '<|eom|>'

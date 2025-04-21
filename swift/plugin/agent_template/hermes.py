@@ -40,7 +40,7 @@ class HermesAgentTemplate(BaseAgentTemplate):
         return assistant_content, ''.join(res)
 
     def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
-        tool_descs = [json.dumps(tool, ensure_ascii=False) for tool in tools]
+        tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]
         return f"""{system}
 
 # Tools

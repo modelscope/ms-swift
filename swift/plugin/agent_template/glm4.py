@@ -36,6 +36,7 @@ class GLM4AgentTemplate(BaseAgentTemplate):
     def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
         tool_descs = []
         for tool in tools:
+            tool = self.unwrap_tool(tool)
             name = self._get_tool_name(tool)
             tool_descs.append(f'## {name}\n\n{json.dumps(tool, ensure_ascii=False, indent=4)}\n'
                               '在调用上述函数时，请使用 Json 格式表示调用的参数。')
@@ -60,6 +61,13 @@ class GLM4AgentTemplate(BaseAgentTemplate):
             res.append(tool_content)
         res.append('<|assistant|>\n')
         return assistant_content, ''.join(res)
+
+    def _format_tool_calls(self, tool_call_messages) -> str:
+        tool_calls = []
+        for message in tool_call_messages:
+            tool_call = self._parse_tool_call(message['content'])
+            tool_calls.append(f'{tool_call["name"]}\n{tool_call["arguments"]}')
+        return '<|assistant|>'.join(tool_calls) + '<|observation|>'
 
 
 class GLM4_0414AgentTemplate(GLM4AgentTemplate):
