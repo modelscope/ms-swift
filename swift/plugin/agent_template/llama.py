@@ -1,11 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import ast
 import re
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Tuple, Union
 
 import json
 
 from .base import BaseAgentTemplate
+
+if TYPE_CHECKING:
+    from swift.llm.infer import Function
+    from swift.llm.template import Prompt
 
 
 class Llama3AgentTemplate(BaseAgentTemplate):
@@ -32,7 +35,7 @@ class Llama3AgentTemplate(BaseAgentTemplate):
     def _format_tool_responses(
         self,
         assistant_content: str,
-        tool_messages: List[str],
+        tool_messages,
     ) -> Tuple[str, 'Prompt']:
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:

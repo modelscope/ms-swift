@@ -2,9 +2,13 @@
 import ast
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
+
+if TYPE_CHECKING:
+    from swift.llm.infer import Function
+    from swift.llm.template import Prompt
 
 
 @dataclass
@@ -26,7 +30,8 @@ class ToolDesc:
 class ReactCompatMixin:
     keyword = AgentKeyword()
 
-    def _split_action_action_input(self, response: str, keyword: AgentKeyword) -> List['Function']:
+    @staticmethod
+    def _split_action_action_input(response: str, keyword: AgentKeyword) -> List['Function']:
         from swift.llm.template import split_str_parts_by
         from swift.llm.infer import Function
         agent_parts = split_str_parts_by(response, list(asdict(keyword).values()))
@@ -44,7 +49,6 @@ class ReactCompatMixin:
         return functions
 
     def get_toolcall(self, response: str) -> List['Function']:
-        from swift.llm.infer import Function
         functions = self._split_action_action_input(response, self.keyword)
         if len(functions) == 0 and self.keyword != ReactCompatMixin.keyword:
             # compat react
@@ -54,7 +58,7 @@ class ReactCompatMixin:
     def _format_tool_responses(
         self,
         assistant_content: str,
-        tool_messages: List[str],
+        tool_messages,
     ) -> Tuple[str, 'Prompt']:
         assert len(tool_messages) > 0
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
@@ -76,6 +80,15 @@ class ReactCompatMixin:
             for tool_message in tool_messages:
                 res.append(tool_message['content'])
         return assistant_content, res
+
+    @staticmethod
+    def _parse_tool_call(content) -> Dict[str, Any]:
+        obj = BaseAgentTemplate._parse_json(content)
+        name = obj['name']
+        arguments = obj.get('arguments') or obj.get('parameters')
+        arguments = BaseAgentTemplate._parse_json(arguments)
+        assert arguments is not None, f'content: {content}'
+        return {'name': name, 'arguments': arguments}
 
     def _format_tool_calls(self, tool_call_messages) -> str:
         # -> assistant_content
@@ -139,16 +152,6 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
             except Exception:
                 return
         return res
-
-    @staticmethod
-    def _parse_tool_call(content) -> Dict[str, Any]:
-        from swift.llm.infer import Function
-        obj = BaseAgentTemplate._parse_json(content)
-        name = obj['name']
-        arguments = obj.get('arguments') or obj.get('parameters')
-        arguments = BaseAgentTemplate._parse_json(arguments)
-        assert arguments is not None, f'content: {content}'
-        return {'name': name, 'arguments': arguments}
 
     @abstractmethod
     def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:

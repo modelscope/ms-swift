@@ -1,7 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Optional, Union
-
-import json
+from typing import List, Union
 
 from .base import BaseAgentTemplate
 
