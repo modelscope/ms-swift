@@ -70,6 +70,26 @@ class RequestConfig:
         if self.stop is None:
             self.stop = []
 
+    def to_dict(self):
+        return {
+            'max_tokens': self.max_tokens,
+            'temperature': self.temperature,
+            'top_k': self.top_k,
+            'top_p': self.top_p,
+            'repetition_penalty': self.repetition_penalty,
+            'num_beams': self.num_beams,
+            'stop': self.stop,
+            'seed': self.seed,
+            'stream': self.stream,
+            'logprobs': self.logprobs,
+            'top_logprobs': self.top_logprobs,
+            'n': self.n,
+            'best_of': self.best_of,
+            'presence_penalty': self.presence_penalty,
+            'frequency_penalty': self.frequency_penalty,
+            'length_penalty': self.length_penalty
+        }
+
 
 @dataclass
 class CompletionRequestMixin:

@@ -175,7 +175,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
-        vllm_client = kwargs.pop('vllm_client') # for external vllm
+        vllm_client = kwargs.pop('vllm_client')  # for external vllm
         if self.args.tensor_parallel_size > 1 and self.multi_turn_func:
             import torch.distributed as dist
             rank, _, _, _ = get_dist_setting()
@@ -1201,7 +1201,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         use_tqdm: Optional[bool] = None,
     ):
         if self.is_external_vllm:
-            self.vllm_client.infer(infer_requests, request_config, use_tqdm=use_tqdm)
+            self.vllm_client.infer(infer_requests.tolist(), request_config.to_dict(), use_tqdm=use_tqdm)
         else:
             self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
 
