@@ -487,7 +487,35 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen2MoeForCausalLM'],
         requires=['transformers>=4.40'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3,
+        [
+            ModelGroup([
+                # Model('Qwen/Qwen3-0.6B-Base', 'Qwen/Qwen3-0.6B-Base'),
+            ]),
+        ],
+        TemplateType.qwen,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3ForCausalLM'],
+        requires=['transformers>=4.51'],
         model_arch=ModelArch.llama))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_moe,
+        [
+            ModelGroup([
+                # Model('Qwen/Qwen3-15B-A2B-Base', 'Qwen/Qwen3-15B-A2B-Base'),
+            ]),
+        ],
+        TemplateType.qwen,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3MoeForCausalLM'],
+        requires=['transformers>=4.51'],
+    ))
 
 
 def patch_qwen_vl_utils(vision_process):
