@@ -14,7 +14,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
-from ..utils import Context, Prompt, Word, findall
+from ..utils import Context, Word, findall
 from ..vision_utils import load_audio, load_batch, load_video_ovis2
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta

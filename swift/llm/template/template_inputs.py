@@ -1,9 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Union
 
-import json
 from PIL import Image
 
 from swift.utils import get_logger
