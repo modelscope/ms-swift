@@ -487,11 +487,12 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen2MoeForCausalLM'],
         requires=['transformers>=4.40'],
-        model_arch=ModelArch.llama))
+    ))
 
 register_model(
     ModelMeta(
-        LLMModelType.qwen3, [
+        LLMModelType.qwen3,
+        [
             ModelGroup([
                 # Model('Qwen/Qwen3-0.6B-Base', 'Qwen/Qwen3-0.6B-Base'),
             ]),
