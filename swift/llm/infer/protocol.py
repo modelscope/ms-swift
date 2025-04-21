@@ -264,6 +264,13 @@ class ChatCompletionResponseChoice:
         assert not self.message.tool_calls, f'message: {self.message}'
         return CompletionResponseChoice(self.index, self.message.content, self.finish_reason, self.logprobs)
 
+    def from_dict(cls, data: Dict[str, Any]) -> 'ChatCompletionResponseChoice':
+        return cls(
+            index=data['index'],
+            message=data['message'],
+            finish_reason=data['finish_reason'],
+            logprobs=data['logprobs'])
+
 
 @dataclass
 class CompletionResponseChoice:
@@ -287,6 +294,18 @@ class ChatCompletionResponse:
         choices = [choice.to_cmpl_choice() for choice in self.choices]
         id_ = f'cmpl{self.id[len("chatcmpl"):]}'
         return CompletionResponse(self.model, choices, self.usage, id_, created=self.created)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ChatCompletionResponse':
+        choices = [ChatCompletionResponseChoice.from_dict(choice) for choice in data['choices']]
+        usage = UsageInfo.from_dict(data['usage'])
+        return cls(
+            model=data['model'],
+            choices=choices,
+            usage=usage,
+            id=data['id'],
+            object=data['object'],
+            created=data['created'])
 
 
 @dataclass

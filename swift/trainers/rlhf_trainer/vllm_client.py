@@ -9,11 +9,12 @@ from typing import List, Optional
 
 import requests
 import torch
+from dacite import from_dict
 from requests import ConnectionError
 from torch import nn
 
 from swift.llm import AdapterRequest, InferRequest, Template
-from swift.llm.infer.protocol import RequestConfig
+from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig
 from swift.plugin import Metric
 from swift.utils import is_vllm_ascend_available, is_vllm_available
 
@@ -118,7 +119,7 @@ class VLLMClient:
             },
         )
         if response.status_code == 200:
-            return response.json()  # TODO: verify
+            return from_dict(data_class=ChatCompletionResponse, data=response.json())
         else:
             raise Exception(f'Request failed: {response.status_code}, {response.text}')
 

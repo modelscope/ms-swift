@@ -614,8 +614,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     inputs = []
                     cnt = 0
                     for i, output in enumerate(results):
-                        choices = output['choices'] if isinstance(output, dict) else output.choices
-                        for choice in choices:
+                        for choice in output.choices:
                             _input: Dict = deepcopy(inputs_slice[i])
                             if remove_response or _input['messages'][-1]['role'] != 'assistant' or not \
                                     _input['messages'][-1]['content']:
@@ -668,8 +667,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs = []
             for i, output in enumerate(results):
                 _choices = []
-                choices = output['choices'] if isinstance(output, dict) else output.choices
-                for choice in choices:
+                for choice in output.choices:
                     _input: Dict = deepcopy(inputs_slice[i])
                     InferRequest.remove_response(_input['messages'])
                     _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
