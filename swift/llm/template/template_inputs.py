@@ -75,15 +75,55 @@ class InferRequest:
         return InferRequest._to_printable(asdict(self))
 
 
-class InferRequestTest(BaseModel):
+@dataclass
+class LLMInferRequest:
+    """
+    messages: Input in messages format.
+        Examples: [{
+            "role": "user",  # or assistant/system/role
+            "content": [  # str or List[Dict[str, Any]]
+                {
+                    "type": "image",  # or audio/video
+                    "image": "<url/path/base64/PIL.Image>",
+                },
+                {"type": "text", "text": "Please describe the picture."},
+            ],
+        }]
+        The above content is equivalent to:
+        [{"role": "user", "content": "<image>Please describe the picture."}]
+        and additionally passing in images: ["<url/path/base64/PIL.Image>"].
+    tools: Organize tools into the format of tools_prompt for system. for example, 'react_en'.
+        Specifying this parameter will override system.
+    """
     messages: Messages
-
-    images: List[str] = field(default_factory=list)
-    audios: List[str] = field(default_factory=list)
-    videos: List[str] = field(default_factory=list)
 
     tools: Optional[List[Tool]] = None
     objects: Dict[str, List[Any]] = field(default_factory=dict)
+
+    @staticmethod
+    def remove_response(messages) -> Optional[str]:
+        last_role = messages[-1]['role'] if messages else None
+        if last_role == 'assistant':
+            return messages.pop()['content']
+
+    @staticmethod
+    def _to_printable(obj, key: Optional[str] = None):
+        if isinstance(obj, str) and key not in {'content', 'text'} and len(obj) >= 1000:
+            return f'<<<base64:{obj[:50]}..>>>'
+        elif isinstance(obj, list):
+            res = []
+            for item in obj:
+                res.append(InferRequest._to_printable(item))
+            return res
+        elif isinstance(obj, dict):
+            res = {}
+            for k, v in obj.items():
+                res[k] = InferRequest._to_printable(v, key=k)
+            return res
+        return obj
+
+    def to_printable(self):
+        return InferRequest._to_printable(asdict(self))
 
 
 @dataclass

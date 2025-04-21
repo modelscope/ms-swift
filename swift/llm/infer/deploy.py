@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from swift.llm import AdapterRequest, DeployArguments, InferRequest
 from swift.llm.infer.protocol import MultiModalRequestMixin
-from swift.llm.template.template_inputs import InferRequestTest
+from swift.llm.template.template_inputs import LLMInferRequest
 from swift.plugin import InferStats
 from swift.utils import JsonlWriter, get_logger
 from .infer import SwiftInfer
@@ -285,7 +285,7 @@ class SwiftDeploy(SwiftInfer):
 
     async def infer(
         self,
-        infer_requests: List[InferRequestTest],
+        infer_requests: List[LLMInferRequest],
         request_config: Optional[RequestConfig] = None,
         *,
         use_tqdm: Optional[bool] = None,

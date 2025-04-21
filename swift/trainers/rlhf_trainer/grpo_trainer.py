@@ -9,7 +9,7 @@ from collections import defaultdict, deque
 from concurrent.futures import Future
 from contextlib import contextmanager
 from copy import copy, deepcopy
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from math import ceil
 from queue import Queue
 from types import MethodType
@@ -1201,9 +1201,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         use_tqdm: Optional[bool] = None,
     ):
         if self.is_external_vllm:
-            self.vllm_client.infer(infer_requests.tolist(), request_config.to_dict(), use_tqdm=use_tqdm)
+            return self.vllm_client.infer(infer_requests.tolist(), request_config.to_dict(), use_tqdm=use_tqdm)
         else:
-            self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
+            return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
 
     @property
     def old_policy(self):
