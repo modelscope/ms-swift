@@ -12,7 +12,7 @@ class GLM4AgentTemplate(BaseAgentTemplate):
 
     @staticmethod
     def _find_function_call(single_content: str) -> Optional['Function']:
-        from swift.llm.infer.protocol import Function
+        from swift.llm.infer import Function
         pattern = re.compile(r'([^\n`]*?)\n({.*?})(?=\w*\n|$)', re.DOTALL)
         matches = pattern.findall(single_content)
         if not matches:
@@ -44,14 +44,14 @@ class GLM4AgentTemplate(BaseAgentTemplate):
 
 """ + '\n'.join(tool_descs)
 
-    def _format_tool_messages(
+    def _format_tool_responses(
         self,
         assistant_content: str,
         tool_messages: List[str],
     ) -> str:
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
-            return super()._format_tool_messages(assistant_content, tool_messages)
+            return super()._format_tool_responses(assistant_content, tool_messages)
         res = ['\n']
         for i, tool_message in enumerate(tool_messages):
             tool_content = tool_message['content']

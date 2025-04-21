@@ -10,7 +10,6 @@ from dataclasses import asdict
 from functools import partial, wraps
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
-import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -180,10 +179,33 @@ class Template(ProcessorMixin):
                 bbox[2 * i] = int(round(x / width * norm_width))
                 bbox[2 * i + 1] = int(round(y / height * norm_height))
 
+    def _preprocess_function_call(self, inputs: StdTemplateInputs) -> None:
+        if inputs.tools:
+            inputs.tools = [self.agent_template._parse_json(tool) for tool in inputs.tools]
+            for i, tool in enumerate(inputs.tools):
+                if isinstance(tool, dict) and 'type' not in tool and 'function' not in tool:
+                    inputs.tools[i] = {'type': 'function', 'function': tool}
+        messages = inputs.messages
+        for message in messages:
+            if message['role'] == 'tool_response':
+                message['role'] = 'tool'
+        i = 0
+        while i < len(messages):
+            if messages[i]['role'] == 'tool_call':
+                i_start = i
+                while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool_call':
+                    i += 1
+                tool_content = self.agent_template._format_tool_calls(messages[i_start:i + 1])
+                messages[i_start:i + 1] = [{'role': 'assistant', 'content': tool_content}]
+                i = i_start + 1
+            else:
+                i += 1
+
     def _preprocess_inputs(
         self,
         inputs: StdTemplateInputs,
     ) -> None:
+        self._preprocess_function_call(inputs)
         if self.model_meta.is_multimodal:
             self._replace_image_tags(inputs)
             self._replace_start_image_tags(inputs)
@@ -210,13 +232,6 @@ class Template(ProcessorMixin):
             sampling_rate = get_env_args('sampling_rate', int, None)
             inputs.audios = load_batch(
                 inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate, return_sr=True))
-
-        self._get_std_messages(inputs.messages)
-        n_round = len(inputs.messages) // 2
-        if n_round > 1 and not self.template_meta.support_multi_round:
-            logger.warning_once(
-                'The template does not support multi-round chat. Only use the last round of the conversation.')
-            inputs.messages = inputs.messages[-2:]
 
         if inputs.is_multimodal:
             self._add_default_tags(inputs)
@@ -368,10 +383,8 @@ class Template(ProcessorMixin):
             if not self.is_training:
                 InferRequest.remove_response(inputs['messages'])
             inputs = StdTemplateInputs.from_dict(inputs)
-            self.agent_template.format_messages(inputs.messages)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
-
         assert isinstance(inputs, StdTemplateInputs)
         self._preprocess_inputs(inputs)
         if self.mode in {'vllm', 'lmdeploy'}:
@@ -847,7 +860,11 @@ class Template(ProcessorMixin):
         if messages[-1]['content'] is None:
             messages.pop()
         add_generation_prompt = messages[-1]['role'] != 'assistant'
-        text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=add_generation_prompt)
+        kwargs = {}
+        if inputs.tools:
+            kwargs['tools'] = inputs.tools
+        text = self.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs)
         answer_len = 1 if self.is_training else 0
         return [text], [1.], answer_len
 
@@ -860,12 +877,44 @@ class Template(ProcessorMixin):
             system = template_meta.default_system
 
         if tools is not None:
-            system = self.agent_template.format_tools(tools, system, inputs.messages[0])
+            system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
         return system
+
+    @staticmethod
+    def _swift_prepare_function_call(agent_template, messages):
+        if len(messages) < 2:
+            return
+        i = 1
+        while i < len(messages):
+            pre_message, message = messages[i - 1], messages[i]
+            pre_role, pre_content = pre_message['role'], pre_message['content']
+            role, content = message['role'], message['content']
+            if pre_role == 'assistant' and role == 'tool':
+                i_start = i
+                while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool':
+                    i += 1
+                pre_message['content'], tool_content = agent_template._format_tool_responses(
+                    pre_content, messages[i_start:i + 1])
+                messages[i_start:i + 1] = [{'role': 'tool', 'content': tool_content}]
+                i = i_start + 1
+            elif pre_role == 'assistant' and role == 'assistant':
+                # Consecutive messages from the assistant role need to be merged to prevent errors.
+                pre_message['content'] = pre_content + content
+                messages.pop(i)
+            else:
+                i += 1
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
         system = self._get_system(inputs)
+        self._swift_prepare_function_call(self.agent_template, inputs.messages)
+
+        self._get_std_messages(inputs.messages)
+        n_round = len(inputs.messages) // 2
+        if n_round > 1 and not self.template_meta.support_multi_round:
+            logger.warning_once(
+                'The template does not support multi-round chat. Only use the last round of the conversation.')
+            inputs.messages = inputs.messages[-2:]
 
         res_context_list: List[Context] = []
         res_context_types: List[ContextType] = []

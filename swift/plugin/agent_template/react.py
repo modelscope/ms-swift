@@ -49,7 +49,6 @@ class ReactZnAgentTemplate(BaseAgentTemplate):
             tool_descs.append(f'{tool_desc.name_for_model}: 调用此工具与 {tool_desc.name_for_human} API 进行交互。'
                               f'{tool_desc.name_for_human} 有什么用？{tool_desc.description_for_model} '
                               f'输入参数：{tool_desc.parameters} {tool_desc.args_format}')
-        tools = [t if isinstance(t, str) else json.dumps(t, ensure_ascii=False) for t in tools]
         return """尽可能地回答以下问题。你可以使用以下工具:
 
 """ + '\n\n'.join(tool_descs) + f"""

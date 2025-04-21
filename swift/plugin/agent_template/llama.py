@@ -15,7 +15,7 @@ class Llama3AgentTemplate(BaseAgentTemplate):
     eot_token = '<|eot_id|>'
 
     def get_toolcall(self, response: str) -> List['Function']:
-        from swift.llm.infer.protocol import Function
+        from swift.llm.infer import Function
         if response.endswith(self.eom_token):
             response = response[:-len(self.eom_token)]
         functions = []
@@ -29,14 +29,14 @@ class Llama3AgentTemplate(BaseAgentTemplate):
             return super().get_toolcall(response)
         return functions
 
-    def _format_tool_messages(
+    def _format_tool_responses(
         self,
         assistant_content: str,
         tool_messages: List[str],
     ) -> str:
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
-            return super()._format_tool_messages(assistant_content, tool_messages)
+            return super()._format_tool_responses(assistant_content, tool_messages)
         res = [self.eot_token]
         for tool_message in tool_messages:
             tool_content = tool_message['content']
@@ -47,12 +47,7 @@ class Llama3AgentTemplate(BaseAgentTemplate):
     def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
         assert user_message is not None
         user_content = user_message['content']
-        tool_descs = [
-            json.dumps({
-                'type': 'function',
-                'function': tool
-            }, ensure_ascii=False, indent=4) for tool in tools
-        ]
+        tool_descs = [json.dumps(tool, ensure_ascii=False, indent=4) for tool in tools]
         new_user_content = """Given the following functions, please respond with a JSON for a function call with its proper arguments that best answers the given prompt.
 
 Respond in the format {"name": function name, "parameters": dictionary of argument name and its value}. Do not use variables.

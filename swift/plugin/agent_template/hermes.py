@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
 import re
+from dataclasses import asdict
 from typing import Any, Dict, List, Optional, Union
 
 import json
@@ -11,7 +12,7 @@ from .base import BaseAgentTemplate
 class HermesAgentTemplate(BaseAgentTemplate):
 
     def get_toolcall(self, response: str) -> List['Function']:
-        from swift.llm.infer.protocol import Function
+        from swift.llm.infer import Function
         res_list = re.findall(r'<tool_call>(.+?)</tool_call>', response, re.DOTALL)
         functions = []
         for res in res_list:
@@ -23,14 +24,14 @@ class HermesAgentTemplate(BaseAgentTemplate):
             return super().get_toolcall(response)
         return functions
 
-    def _format_tool_messages(
+    def _format_tool_responses(
         self,
         assistant_content: str,
         tool_messages: List[str],
     ) -> str:
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
-            return super()._format_tool_messages(assistant_content, tool_messages)
+            return super()._format_tool_responses(assistant_content, tool_messages)
         res = ['<|im_end|>\n<|im_start|>user']
         for tool_message in tool_messages:
             tool_content = tool_message['content']
@@ -39,7 +40,7 @@ class HermesAgentTemplate(BaseAgentTemplate):
         return assistant_content, ''.join(res)
 
     def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
-        tool_descs = [json.dumps({'type': 'function', 'function': tool}, ensure_ascii=False) for tool in tools]
+        tool_descs = [json.dumps(tool, ensure_ascii=False) for tool in tools]
         return f"""{system}
 
 # Tools
@@ -55,3 +56,10 @@ For each function call, return a json object with function name and arguments wi
 <tool_call>
 {"name": <function-name>, "arguments": <args-json-object>}
 </tool_call>"""
+
+    def _format_tool_calls(self, tool_call_messages):
+        tool_calls = []
+        for message in tool_call_messages:
+            tool_call = self._parse_tool_call(message['content'])
+            tool_calls.append(f'<tool_call>\n{json.dumps(tool_call, ensure_ascii=True)}\n</tool_call>')
+        return '\n'.join(tool_calls)

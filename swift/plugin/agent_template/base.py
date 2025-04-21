@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import ast
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -27,7 +28,7 @@ class ReactCompatMixin:
 
     def _split_action_action_input(self, response: str, keyword: AgentKeyword) -> List['Function']:
         from swift.llm.template import split_str_parts_by
-        from swift.llm.infer.protocol import Function
+        from swift.llm.infer import Function
         agent_parts = split_str_parts_by(response, list(asdict(keyword).values()))
         functions = []
         action_content = None
@@ -43,14 +44,14 @@ class ReactCompatMixin:
         return functions
 
     def get_toolcall(self, response: str) -> List['Function']:
-        from swift.llm.infer.protocol import Function
+        from swift.llm.infer import Function
         functions = self._split_action_action_input(response, self.keyword)
         if len(functions) == 0 and self.keyword != ReactCompatMixin.keyword:
             # compat react
             functions = self._split_action_action_input(response, ReactCompatMixin.keyword)
         return functions
 
-    def _format_tool_messages(
+    def _format_tool_responses(
         self,
         assistant_content: str,
         tool_messages: List[str],
@@ -75,6 +76,9 @@ class ReactCompatMixin:
             for tool_message in tool_messages:
                 res.append(tool_message['content'])
         return assistant_content, ''.join(res)
+
+    def _format_tool_calls(self, tool_call_messages) -> str:
+        raise NotImplementedError
 
 
 class BaseAgentTemplate(ReactCompatMixin, ABC):
@@ -101,20 +105,10 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
         assert name_for_model is not None and description is not None, f'tool_desc: {tool_desc}'
         return tool_desc
 
-    def format_tools(self, tools, system: Optional[str] = None, user_message=None):
-        # user_message: first user message
-        system = system or ''
-        if isinstance(tools, str):
-            tools = json.loads(tools)
-        new_tools = []
-        for tool in tools:  # info: Dict[str, Union[str, dict]]
-            if isinstance(tool, dict) and 'function' in tool:
-                tool = tool['function']
-            new_tools.append(tool)
-        return self._format_tools(new_tools, system, user_message)
-
     @staticmethod
     def _parse_json(json_str: str) -> Optional[Any]:
+        if not isinstance(json_str, str):
+            return json_str
         try:
             res = json.loads(json_str)
         except json.JSONDecodeError:
@@ -124,27 +118,15 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
                 return
         return res
 
-    def format_messages(self, messages: List[Dict[str, str]]) -> None:
-        if len(messages) < 2:
-            return
-        i = 1
-        while i < len(messages):
-            pre_message, message = messages[i - 1], messages[i]
-            pre_role, pre_content = pre_message['role'], pre_message['content']
-            role, content = message['role'], message['content']
-            if pre_role == 'assistant' and role == 'tool':
-                i_start = i
-                while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool':
-                    i += 1
-                pre_message['content'], tool_content = self._format_tool_messages(pre_content, messages[i_start:i + 1])
-                messages[i_start:i + 1] = [{'role': 'tool', 'content': tool_content}]
-                i = i_start + 1
-            elif pre_role == 'assistant' and role == 'assistant':
-                # Consecutive messages from the assistant role need to be merged to prevent errors.
-                pre_message['content'] = pre_content + content
-                messages.pop(i)
-            else:
-                i += 1
+    @staticmethod
+    def _parse_tool_call(content) -> Dict[str, Any]:
+        from swift.llm.infer import Function
+        obj = BaseAgentTemplate._parse_json(content)
+        name = obj['name']
+        arguments = obj.get('arguments') or obj.get('parameters')
+        arguments = BaseAgentTemplate._parse_json(arguments)
+        assert arguments is not None, f'content: {content}'
+        return {'name': name, 'arguments': arguments}
 
     @abstractmethod
     def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
