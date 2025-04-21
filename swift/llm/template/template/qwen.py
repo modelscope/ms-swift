@@ -411,7 +411,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         encoded = Template._encode(self, inputs)
         media_inputs = self.processor(
             text='',
-            audios=inputs.audios or None,
+            audio=inputs.audios or None,
             images=inputs.images or None,
             videos=inputs.videos or None,
             return_tensors='pt')
@@ -425,7 +425,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             token_id = self._tokenize(token)
             idx_list = findall(input_ids, token_id)
             if idx_list:
-                merge_length = self.processor.omni_processor.merge_size**2
+                merge_length = self.processor.image_processor.merge_size**2
                 media_grid_thw = media_inputs.get(f'{media_type}_grid_thw')
 
                 def _get_new_tokens(i):
