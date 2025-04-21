@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import json
 
@@ -33,7 +33,7 @@ class Llama3AgentTemplate(BaseAgentTemplate):
         self,
         assistant_content: str,
         tool_messages: List[str],
-    ) -> str:
+    ) -> Tuple[str, 'Prompt']:
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
@@ -42,7 +42,7 @@ class Llama3AgentTemplate(BaseAgentTemplate):
             tool_content = tool_message['content']
             res.append(f'{self.start_token}tool{self.end_token}\n\n{tool_content}{self.eot_token}')
         res.append(f'{self.start_token}assistant{self.end_token}\n\n')
-        return assistant_content, ''.join(res)
+        return assistant_content, res
 
     def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
         assert user_message is not None

@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import json
 
@@ -49,7 +49,7 @@ class GLM4AgentTemplate(BaseAgentTemplate):
         self,
         assistant_content: str,
         tool_messages: List[str],
-    ) -> str:
+    ) -> Tuple[str, 'Prompt']:
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
@@ -60,7 +60,7 @@ class GLM4AgentTemplate(BaseAgentTemplate):
                 res.append('<|observation|>\n')
             res.append(tool_content)
         res.append('<|assistant|>\n')
-        return assistant_content, ''.join(res)
+        return assistant_content, res
 
     def _format_tool_calls(self, tool_call_messages) -> str:
         tool_calls = []

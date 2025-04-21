@@ -181,6 +181,7 @@ class Template(ProcessorMixin):
 
     def _preprocess_function_call(self, inputs: StdTemplateInputs) -> None:
         agent_template = self.agent_template
+        agent_template.template_meta = self.template_meta  # for hermes
         if inputs.tools:
             inputs.tools = [agent_template._parse_json(tool) for tool in inputs.tools]
             for i, tool in enumerate(inputs.tools):
@@ -941,7 +942,8 @@ class Template(ProcessorMixin):
             assert query_role in {'user', 'tool'}
             assert response_role in {'assistant'}
             if query_role == 'tool':
-                prompt = ['{{QUERY}}']
+                prompt = query
+                query = ''
             elif template_meta.is_post_system and i == n_round - 1:
                 prompt = template_meta.system_prompt
             else:

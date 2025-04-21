@@ -55,7 +55,7 @@ class ReactCompatMixin:
         self,
         assistant_content: str,
         tool_messages: List[str],
-    ) -> str:
+    ) -> Tuple[str, 'Prompt']:
         assert len(tool_messages) > 0
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
@@ -75,9 +75,10 @@ class ReactCompatMixin:
             res = []
             for tool_message in tool_messages:
                 res.append(tool_message['content'])
-        return assistant_content, ''.join(res)
+        return assistant_content, res
 
     def _format_tool_calls(self, tool_call_messages) -> str:
+        # -> assistant_content
         tool_calls = []
         for message in tool_call_messages:
             tool_call = self._parse_tool_call(message['content'])
@@ -109,7 +110,7 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
 
     @staticmethod
     def _parse_tool(tool, lang: Literal['zh', 'en']) -> ToolDesc:
-        tool = self.unwrap_tool(tool)
+        tool = BaseAgentTemplate.unwrap_tool(tool)
         name_for_model = BaseAgentTemplate._get_tool_name(tool)
         name_for_human = tool.get('name_for_human') or name_for_model
 
