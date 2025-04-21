@@ -290,7 +290,8 @@ class SwiftDeploy(SwiftInfer):
         *,
         use_tqdm: Optional[bool] = None,
     ):
-        return self.infer_engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
+        res = self.infer_engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
+        return res
 
     def run(self):
         args = self.args
