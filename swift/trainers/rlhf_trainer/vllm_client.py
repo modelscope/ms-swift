@@ -119,7 +119,7 @@ class VLLMClient:
             },
         )
         if response.status_code == 200:
-            return from_dict(data_class=ChatCompletionResponse, data=response.json())
+            return [from_dict(data_class=ChatCompletionResponse, data=resp) for resp in response.json()]
         else:
             raise Exception(f'Request failed: {response.status_code}, {response.text}')
 

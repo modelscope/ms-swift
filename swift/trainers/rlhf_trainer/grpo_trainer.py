@@ -221,6 +221,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.infer_device = None
         self.use_fast_infer = use_vllm or use_lmdeploy  # whether to use the PT backend
+        self.is_external_vllm = use_vllm and args.vllm_server_host is not None
         if self.use_fast_infer:
             if self.infer_rank >= 0:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
@@ -244,7 +245,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                          f'In your case: `--num_processes {get_device_count() - 1}`.')
 
                 if use_vllm:
-                    self.is_external_vllm = args.vllm_server_host is not None
                     if not is_vllm_available():
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                           'Please install vLLM with `pip install vllm -U` to use it.')
