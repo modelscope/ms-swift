@@ -1,4 +1,4 @@
-# 4 * 70GiB
+# 35GiB
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-3B \
