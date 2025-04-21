@@ -40,7 +40,6 @@ from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, 
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import _split_into_mini_batches, patch_lora_merge, patch_lora_unmerge, round_robin
-from .vllm_client import VLLMClient
 
 try:
     from trl.extras.profiling import profiling_decorator
@@ -615,7 +614,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     inputs = []
                     cnt = 0
                     for i, output in enumerate(results):
-                        for choice in output.choices:
+                        choices = output['choices'] if isinstance(output, dict) else output.choices
+                        for choice in choices:
                             _input: Dict = deepcopy(inputs_slice[i])
                             if remove_response or _input['messages'][-1]['role'] != 'assistant' or not \
                                     _input['messages'][-1]['content']:
@@ -668,7 +668,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs = []
             for i, output in enumerate(results):
                 _choices = []
-                for choice in output.choices:
+                choices = output['choices'] if isinstance(output, dict) else output.choices
+                for choice in choices:
                     _input: Dict = deepcopy(inputs_slice[i])
                     InferRequest.remove_response(_input['messages'])
                     _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
