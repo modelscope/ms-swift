@@ -493,7 +493,7 @@ register_model(
     ModelMeta(
         LLMModelType.qwen3, [
             ModelGroup([
-                Model('Qwen/Qwen3-0.6B-Base', 'Qwen/Qwen3-0.6B-Base'),
+                # Model('Qwen/Qwen3-0.6B-Base', 'Qwen/Qwen3-0.6B-Base'),
             ]),
         ],
         TemplateType.qwen,
@@ -507,7 +507,7 @@ register_model(
         LLMModelType.qwen3_moe,
         [
             ModelGroup([
-                Model('Qwen/Qwen3-15B-A2B-Base', 'Qwen/Qwen3-15B-A2B-Base'),
+                # Model('Qwen/Qwen3-15B-A2B-Base', 'Qwen/Qwen3-15B-A2B-Base'),
             ]),
         ],
         TemplateType.qwen,
