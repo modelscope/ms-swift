@@ -14,7 +14,7 @@ from swift.llm.template import Template
 from swift.llm.utils import get_ckpt_dir
 from swift.plugin import Metric
 from swift.utils import get_logger
-from ..protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
+from ..protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse,
                         RequestConfig, UsageInfo)
 from .base import BaseInferEngine
 
