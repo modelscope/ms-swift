@@ -737,7 +737,6 @@ register_dataset(
 class FunctionCallChatmlPreprocessor(MessagesPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        from swift.llm.template import split_str_parts_by
         res = super().preprocess(row)
 
         if res['function_description']:
