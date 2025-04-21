@@ -38,7 +38,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             if ckpt_dir:
                 from swift.llm import BaseArguments
                 args = BaseArguments.from_pretrained(ckpt_dir)
-                self.default_template = get_template(args.template, self.processor, default_system=args.system)
+                self.default_template = args.get_template(self.processor)
             else:
                 self.default_template = get_template(self.model_meta.template, self.processor)
 
