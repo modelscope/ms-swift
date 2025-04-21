@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
 from swift.trainers.arguments import GRPOArgumentsMixin
-from swift.utils import get_logger, set_default_ddp_config
+from swift.utils import get_logger, is_master, set_default_ddp_config
 from .train_args import TrainArguments
 
 logger = get_logger()
@@ -109,6 +109,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         self._init_simpo()
         self._init_ppo()
         self._set_default()
+        self._init_external_vllm()
         super().__post_init__()
         self._check_rlhf()
         self._check_grpo()
@@ -185,6 +186,14 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         if self.rlhf_type == 'rm':
             self.task_type = 'seq_cls'
             self.num_labels = 1
+
+    def _init_external_vllm(self):
+        if self.rlhf_type != 'grpo' or self.vllm_server_host is None:
+            return
+        from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
+        if is_master():
+            self.vllm_client = VLLMClient(
+                self.vllm_server_host, self.vllm_server_port, connection_timeout=self.vllm_server_timeout)
 
     def _set_default(self):
         if self.beta is None:

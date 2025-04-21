@@ -250,8 +250,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                           'Please install vLLM with `pip install vllm -U` to use it.')
                     if self.is_external_vllm:
-                        self.vllm_client = VLLMClient(
-                            args.vllm_server_host, args.vllm_server_port, connection_timeout=args.vllm_server_timeout)
+                        self.vllm_client = args.vllm_client
                     else:
                         self.engine = self.prepare_vllm(model, fast_infer_device)
                     self.infer_device = fast_infer_device[self.local_infer_rank]
