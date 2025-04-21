@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional, Union
 
 import json
 from PIL import Image
-from pydantic import BaseModel
 
 from swift.utils import get_logger
 from ..utils import Messages, Tool, messages_to_history

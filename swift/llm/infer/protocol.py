@@ -70,26 +70,6 @@ class RequestConfig:
         if self.stop is None:
             self.stop = []
 
-    def to_dict(self):
-        return {
-            'max_tokens': self.max_tokens,
-            'temperature': self.temperature,
-            'top_k': self.top_k,
-            'top_p': self.top_p,
-            'repetition_penalty': self.repetition_penalty,
-            'num_beams': self.num_beams,
-            'stop': self.stop,
-            'seed': self.seed,
-            'stream': self.stream,
-            'logprobs': self.logprobs,
-            'top_logprobs': self.top_logprobs,
-            'n': self.n,
-            'best_of': self.best_of,
-            'presence_penalty': self.presence_penalty,
-            'frequency_penalty': self.frequency_penalty,
-            'length_penalty': self.length_penalty
-        }
-
 
 @dataclass
 class CompletionRequestMixin:
@@ -264,13 +244,6 @@ class ChatCompletionResponseChoice:
         assert not self.message.tool_calls, f'message: {self.message}'
         return CompletionResponseChoice(self.index, self.message.content, self.finish_reason, self.logprobs)
 
-    def from_dict(cls, data: Dict[str, Any]) -> 'ChatCompletionResponseChoice':
-        return cls(
-            index=data['index'],
-            message=data['message'],
-            finish_reason=data['finish_reason'],
-            logprobs=data['logprobs'])
-
 
 @dataclass
 class CompletionResponseChoice:
@@ -294,18 +267,6 @@ class ChatCompletionResponse:
         choices = [choice.to_cmpl_choice() for choice in self.choices]
         id_ = f'cmpl{self.id[len("chatcmpl"):]}'
         return CompletionResponse(self.model, choices, self.usage, id_, created=self.created)
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ChatCompletionResponse':
-        choices = [ChatCompletionResponseChoice.from_dict(choice) for choice in data['choices']]
-        usage = UsageInfo.from_dict(data['usage'])
-        return cls(
-            model=data['model'],
-            choices=choices,
-            usage=usage,
-            id=data['id'],
-            object=data['object'],
-            created=data['created'])
 
 
 @dataclass

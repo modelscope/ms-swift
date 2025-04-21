@@ -1200,7 +1200,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         use_tqdm: Optional[bool] = None,
     ):
         if self.is_external_vllm:
-            return self.vllm_client.infer(infer_requests.tolist(), request_config.to_dict(), use_tqdm=use_tqdm)
+            return self.vllm_client.infer(infer_requests.tolist(), asdict(request_config), use_tqdm=use_tqdm)
         else:
             return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
 
