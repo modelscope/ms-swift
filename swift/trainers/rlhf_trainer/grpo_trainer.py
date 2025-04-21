@@ -1200,9 +1200,22 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         use_tqdm: Optional[bool] = None,
     ):
         if self.is_external_vllm:
+            self._process_infer_requests_images(infer_requests)
             return self.vllm_client.infer(infer_requests.tolist(), asdict(request_config), use_tqdm=use_tqdm)
         else:
             return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
+
+    def _process_infer_requests_images(self, infer_requests: List[InferRequest]):
+        import base64
+        if not any('images' in request for request in infer_requests):
+            return
+        for request in infer_requests:
+            if 'images' not in request:
+                continue
+            for i, img in enumerate(request['images']):
+                if 'bytes' in img and img['bytes']:
+                    request['images'][i] = base64.b64encode(img['bytes']).decode('utf-8')
+        return
 
     @property
     def old_policy(self):
