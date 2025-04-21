@@ -91,6 +91,7 @@ class SwiftRLHF(SwiftSft):
             trainer_kwargs['reward_template'] = self.reward_template
         if self.args.rlhf_type == 'grpo':
             trainer_kwargs['reward_funcs'] = self.args.reward_funcs
+            trainer_kwargs['vllm_client'] = self.args.vllm_client
         return trainer_kwargs
 
 
