@@ -48,5 +48,3 @@ swift rlhf \
     --num_infer_workers 1 \
     --report_to tensorboard wandb \
     --beta 0.0
-
-

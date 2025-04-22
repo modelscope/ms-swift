@@ -26,10 +26,10 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
   - **异步模式 (Async)**: 训练与推理使用独立GPU资源
 
 ### GRPO训练资源配置方案
-| 配置场景                 | NPROC_PER_NODE | num_infer_workers | 资源分配说明                          |
-|--------------------------|----------------|-------------------|---------------------------------------|
-| **Colocate** (共享模式)  | =总GPU数       | =总GPU数          | 训练和推理共享全部GPU资源              |
-| **Async** (分离模式)     | =训练卡数      | =推理卡数         | 必须满足：训练卡数 + 推理卡数 = 总GPU数 |
+| 配置场景                 | NPROC_PER_NODE | num_infer_workers | 资源分配说明             |
+|--------------------------|----------------|------------------|------------------------|
+| **Colocate**   | =总GPU数      | =总GPU数          | 训练和推理共享全部GPU资源              |
+| **Async**      | =训练卡数      | =推理卡数         | 必须满足：训练卡数 + 推理卡数 = 总GPU数 |
 
 **注：**
 1. 在Colocate模式下推荐设置`sleep_level=1`, 在模型训练时释放vLLM占用显存
@@ -143,8 +143,15 @@ A conversation between User and Assistant. The user asks a question, and the Ass
   - 提示：若没有设置`--report_to wandb`，则会在checkpoint中创建`completions.jsonl`来存储生成内容
 - use_vllm: 是否使用vLLM作为采样的生成后端，默认为False，建议使用加快训练速度
 - vllm_device: 设置vLLM部署的设备，默认为`auto`, 即未被使用的第一张显卡，使用`cuda:x`来设置特定的卡。
-- vllm_gpu_memory_utilization: vLLM透传参数
-- vllm_max_model_len: vLLM透传参数
+- vllm_gpu_memory_utilization: vllm透传参数，默认为0.9
+- vllm_max_model_len: vllm透传参数，默认为None
+- vllm_max_num_seqs: vllm透传参数，默认为256
+- vllm_enforce_eager: vllm透传参数，默认为False
+- vllm_limit_mm_per_prompt: vllm透传参数，默认为None
+- vllm_enable_prefix_caching: vllm透传参数，默认为True
+- vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用
+- vllm_server_port vLLM server 服务端口，默认为8000
+- vllm_server_timeout 连接vLLM server的超时时间，默认为120s
 - reward_model: 同model, 使用奖励模型作为奖励函数，与reward_funcs至少需要指定一个
 - num_iterations: 每个批次代更新次数，默认为1.
 - epsilon: clip 系数，默认为0.2.

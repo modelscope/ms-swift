@@ -113,7 +113,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         super().__post_init__()
         self._check_rlhf()
         self._check_grpo()
-        self._init_external_rollout_engine()
+        self._external_vllm_warning()
 
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
@@ -252,7 +252,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             assert self.per_device_train_batch_size % self.mini_batch_size == 0,\
                 'per_device_train_batch_size needs be divisible by mini_batch_size'
 
-    def _init_external_rollout_engine(self):
+    def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
             if self.vllm_gpu_memory_utilization is None:
                 self.vllm_gpu_memory_utilization = 0.9

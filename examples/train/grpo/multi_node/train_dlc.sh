@@ -1,4 +1,5 @@
-# usd for DLC（Deep Learning Containers）For more information, visit:https://www.aliyun.com/activity/bigdata/pai-dlc
+# This script is used in DLC (Deep Learning Containers)
+# For more information, visit:https://www.aliyun.com/activity/bigdata/pai-dlc
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
 PYTHONPATH=. \

@@ -514,9 +514,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @profiling_decorator
     def _move_model_to_vllm_lmdeploy(self):
-        # decoupled vllm engine
         if self.is_external_vllm:
-            # TODO: LMDeploy
             return super()._move_model_to_vllm()
 
         from accelerate.utils.other import is_compiled_module

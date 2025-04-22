@@ -17,14 +17,36 @@ pip install -U trl
 
 ![](../../resources/grpo.png)
 
-In SWIFT's GRPO training, the training model preferentially uses the front portion of the available GPUs, while the rollout process utilizes the rear portion of the available GPUs. This means:
+The GRPO training framework supports the integration of high-performance inference engines (such as vLLM) to accelerate the sampling process, offering the following two deployment modes:
 
-- **If both `NPROC_PER_NODE` and `num_infer_workers` in the command are equal to the number of available GPUs**, training and inference are assigned to the same GPUs. In this case, you need to configure `sleep_level`.
-- **If the sum of `NPROC_PER_NODE` and `num_infer_workers` equals the total number of available GPUs**, training will use the front GPUs and rollout will use the rear GPUs. In this scenario, you can configure `async_generate`.
+### 1. Internal Integration Mode
 
-> Note: async_generate uses the policy model and responses of current_step-1, so in fact the `clip` method will be ignored
-> If you encountered unstable in training, turn off this argument.
-> In our experiments, unstable cases is not frequently occurring when async_generate is true.
+- Launch the inference service directly within the Trainer.
+- Provides two resource allocation strategies:
+  - **Colocate Mode**: Training and inference share GPU resources.
+  - **Async Mode**: Training and inference use separate GPU resources.
+
+### GRPO Training Resource Allocation Scheme
+
+| Configuration Scenario  | NPROC_PER_NODE | num_infer_workers | Resource Allocation Description       |
+|-------------------------|----------------|-------------------|---------------------------------------|
+| **Colocate**            | = Total GPUs   | = Total GPUs      | Training and inference share all GPU resources. |
+| **Async**               | = Training GPUs| = Inference GPUs  | Must satisfy: Training GPUs + Inference GPUs = Total GPUs. |
+
+**Note:**
+1. In Colocate mode, it is recommended to set `sleep_level=1` to release the GPU memory occupied by vLLM during model training.
+2. Total GPUs refers to the total number of visible GPU devices.
+
+### 2. External Service Mode
+
+Connect to an external vLLM inference server.
+When using this mode, configure the external vLLM server with the following parameters:
+
+```bash
+--vllm_server_host <Server IP> \
+--vllm_server_port <Server Port> \
+--vllm_server_timeout <Timeout> \
+```
 
 ## Reward Functions
 ### Custom Reward Functions
@@ -125,8 +147,15 @@ Arguments
   - Note: If `--report_to wandb` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
 - use_vllm: Whether to use vLLM as the back-end for sampling generation; default is False, using it is recommended to speed up training.
 - vllm_device: Device for deploying vLLM, default is auto, meaning the first unused GPU. Use cuda:x to specify a particular card.
-- vllm_gpu_memory_utilization: vLLM pass-through parameter.
-- vllm_max_model_len: vLLM pass-through parameter.
+- vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
+- vllm_max_model_len: vLLM passthrough parameter, default is None.
+- vllm_max_num_seqs: vLLM passthrough parameter, default is 256.
+- vllm_enforce_eager: vLLM passthrough parameter, default is False.
+- vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
+- vllm_enable_prefix_caching: vLLM passthrough parameter, default is True.
+- vllm_server_host: The host address of the vLLM server. Default is None. This is used when connecting to an external vLLM server.
+- vllm_server_port: The service port of the vLLM server. Default is 8000.
+- vllm_server_timeout: The connection timeout for the vLLM server. Default is 120 seconds.
 - reward_model: Same as the model, using a reward model as a reward function. At least one of reward_funcs and reward_model needs to be specified.
 - num_iterations: number of iterations per batch. Default is 1.
 - epsilon: epsilon value for clipping. Default is 0.2.
@@ -301,6 +330,10 @@ swift rlhf \
     --system 'examples/train/grpo/prompt.txt' \
     --log_completions true
 ```
+
+For multi-node training, refer to [here](../../../examples/train/grpo/multi_node/) .
+
+Note : In the internal integration mode, the GPU configurations and training parameters must be identical across different nodes.
 
 ## DAPO
 Decoupled Clip and Dynamic Sampling Policy Optimization (DAPO) introduces several tricks based on GRPO, which are:
