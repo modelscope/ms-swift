@@ -1,478 +1,199 @@
 # Agent Support
 
-SWIFT supports open-source models, particularly for training medium and small models (like 7B and 14B) in agent scenarios. It applies the [loss-scale technique](https://arxiv.org/pdf/2309.00986.pdf) in agent training for more stable API call capabilities, enabling Agent inference and deployment with a single commercial-grade GPU. It can be directly implemented in a full-cycle, closed-loop manner in production scenarios
 
-## Data Preparation
-
-Currently supported agent datasets in SWIFT include:
-- [msagent-pro](https://www.modelscope.cn/datasets/iic/MSAgent-Pro)
-- [toolbench](https://www.modelscope.cn/datasets/swift/ToolBench)
-- [ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent)
-- [ms-agent-for-agentfabric](https://www.modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric)
-- [ms-agent-multirole](https://www.modelscope.cn/datasets/iic/MSAgent-MultiRole)
-- [toolbench-for-alpha-umi](https://www.modelscope.cn/datasets/shenweizhou/alpha-umi-toolbench-processed-v2)
-- [damo-agent-zh](https://www.modelscope.cn/datasets/iic/MSAgent-Bench)
-- [agent-instruct-all-en](https://www.modelscope.cn/datasets/huangjintao/AgentInstruct_copy)
-
-## Custom Agent Datasets
-
-### ToolBench Format
-
-The ToolBench format mainly consists of:
-1. System part with the API list (tools/system)
-2. User request part (user)
-3. Model response part (assistant)
-   - Note: The model response needs to include the fields `Action: some-api-to-call Action Input: some-parameter-to-input` for API parsing. SWIFT does not support automatic generation of this part. Because the model's responses may contain additional information, please refer to the second point below for details.
-   - It is advisable to include a CoT (Chain of Thought) process in the `Thought:` section to improve learning effectiveness, for example: `Thought: I think I know how to complete this task. Since the user needs xxx, the first step is xxx, the second step...`, followed by the Action section.
-4. Call part (tool) - This part is actually called by the user and returned to the model (or called by the agent framework instead). It represents the actual API return value.
-5. The model's response section (assistant) analyzes the API return values and provides conclusions based on that analysis.
-   - Note that it may contain secondary calls.
-   - It is recommended to include multi-turn call data in the dataset to enhance the model's ability to handle complex tasks.
-   - A minimum of two dialogues is required for ToolBench to address a user request.
+## Dataset Format
+Example data samples for the pure text Agent and multimodal Agent are as follows:
 
 ```jsonl
-{"tools":"{API_LIST}","conversations": [{"role": "user", "content": "Help me to order a ticket"}, {"role": "assistant", "content": "Thought: I need to call some API to book a ticket Action: xxx Action Input: xxx"}, {"role": "tool", "content": "{'response': 'ok'}"}, {"role": "assistant", "content": "I think the task is finished."}]}
-{"tools":"{API_LIST}","conversations": [{"role": "user", "content": "I want to search google to know to weather"}, {"role": "assistant", "content": "Thought: I need to use google to search weather Action: xxx Action Input: xxx"}, {"role": "tool", "content": "{'response': 'weather: xxx, temperature: xxx'}"}, {"role": "assistant", "content": "I think I know the answer, the weather is xxx."}]}
+{"tools": ["{\"type\": \"function\", \"function\": {\"name\": \"realtime_aqi\", \"description\": \"Weather forecast. Get real-time air quality, including current air quality, PM2.5, and PM10 information.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g., Shanghai\"}}, \"required\": [\"city\"]}}}"], "messages": [{"role": "user", "content": "What is the weather like in Beijing and Shanghai today?"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Beijing\"}}"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Shanghai\"}}"}, {"role": "tool_response", "content": "{\"city\": \"Beijing\", \"aqi\": \"10\", \"unit\": \"celsius\"}"}, {"role": "tool_response", "content": "{\"city\": \"Shanghai\", \"aqi\": \"72\", \"unit\": \"fahrenheit\"}"}, {"role": "assistant", "content": "According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution."}]}
+{"tools": ["{\"type\": \"function\", \"function\": {\"name\": \"click\", \"description\": \"Click on a position on the screen\", \"parameters\": {\"type\": \"object\", \"properties\": {\"x\": {\"type\": \"integer\", \"description\": \"X-coordinate representing the horizontal position on the screen\"}, \"y\": {\"type\": \"integer\", \"description\": \"Y-coordinate representing the vertical position on the screen\"}}, \"required\": [\"x\", \"y\"]}}}"], "messages": [{"role": "user", "content": "<image>What time is it now?"}, {"role": "assistant", "content": "<think>\nI can check the current time by opening the calendar app.\n</think>\n"}, {"role": "tool_call", "content": "{\"name\": \"click\", \"arguments\": {\"x\": 105, \"y\": 132}}"}, {"role": "tool_response", "content": "{\"images\": \"<image>\", \"status\": \"success\"}"}, {"role": "assistant", "content": "Successfully opened the calendar app. The current time is 11 o'clock in the morning."}], "images": ["desktop.png", "calendar.png"]}
 ```
+- When the `agent_template` is set to "react_en", "hermes", etc., this format is compatible with training for all model Agents and allows easy switching between different models.
+- Here, `tools` is a `List[str]`, where each tool needs to be a JSON string. Additionally, the `content` part of the messages where the role is `'tool_call'` or `'tool_response/tool'` must also be in JSON string format.
+- The `tools` field will be combined with the `{"role": "system", ...}` section during training/inference according to the `agent_template`, forming a complete system section.
+- The `{"role": "tool_call", ...}` part will automatically be converted into corresponding formats of `{"role": "assistant", ...}` based on the `agent_template`. Multiple consecutive `{"role": "assistant", ...}` entries will be concatenated to form a complete assistant_content.
+- The `{"role": "tool_response", ...}` can also be written as `{"role": "tool", ...}`, these two forms are equivalent. This part will also be automatically converted according to the `agent_template`. During training, this part does not participate in loss calculations, similar to `{"role": "user", ...}`.
+- This format supports parallel tool calls; refer to the first data sample for an example. In multimodal Agent data samples, the number of `<image>` tags should match the length of "images", and their positions indicate where the image features are inserted. It also supports other modalities, such as audios and videos.
 
-SWIFT will concatenate the content of tools into the system field. If you want to define the tools content in the system yourself, you can remove the tools field and add a system field in the conversations:
 
-```jsonl
-{"conversations": [{"role": "system", "content": "You have the following tools to use, tool1: xxx, tool2: xxx"}, {"role": "user", "content": "Help me to order a ticket"}, {"role": "assistant", "content": "Thought: I need to call some API to book a ticket Action: xxx Action Input: xxx"}, {"role": "tool", "content": "{'response': 'ok'}"}, {"role": "assistant", "content": "I think the task is finished."}]}
-{"conversations": [{"role": "system", "content": "You have the following tools to use, tool1: xxx, tool2: xxx"}, {"role": "user", "content": "I want to search google to know to weather"}, {"role": "assistant", "content": "Thought: I need to use google to search weather Action: xxx Action Input: xxx"}, {"role": "tool", "content": "{'response': 'weather: xxx, temperature: xxx'}"}, {"role": "assistant", "content": "I think I know the answer, the weather is xxx."}]}
-```
+The following are the `input_ids` and `labels` after encoding the two data samples mentioned above using the templates for **qwen2_5** and **qwen2_5_vl** , with the selected `agent_template` being **hermes** :
 
-### ReACT Format
-
-The ReACT format mainly consists of:
-1. System part containing the API list (tools/system)
-2. User request part (user)
-3. Model response part (assistant)
-   - Note: The model response needs to include the fields `Action: some-api-to-call Action Input: some-parameter-to-input Observation: api-response` for API parsing and execution. SWIFT does not support automatic generation of this part as well, due to the inclusion of potentially extra information.
-   - It is advisable to include a CoT process in the `Thought:` section for better learning, such as `Thought: I think I know how to complete this task. Since the user needs xxx, the first step is xxx, the second step...`, followed by the Action part.
-   - The difference between the ReACT format and the ToolBench format is that there is no `tool` role in the ReACT format. After `Observation:`, the user needs to concatenate the API call results, and then the model provides feedback based on that content. Therefore, in the model's response section, it may include multiple calls (multiple Thought/Action/Action Input/Observation).
-   - ReACT requires at least one round of conversation to fulfill a user request.
-
-```jsonl
-{"tools":"{API_LIST}","conversations": [{"role": "user", "content": "Help me to order a ticket"}, {"role": "assistant", "content": "Thought: I need to call some API to book a ticket Action: xxx Action Input: xxx Observation: {'response': 'ok'} Final Answer: I think the task is finished."}]}
-{"tools":"{API_LIST}","conversations": [{"role": "user", "content": "I want to search google to know to weather"}, {"role": "assistant", "content": "Thought: I need to use google to search weather Action: xxx Action Input: xxx Observation: {'response': 'weather: xxx, temperature: xxx' Final Answer: I think I know the answer, the weather is xxx."}]}
-```
-
-The ReACT format also supports user-defined system parts, similar to the ToolBench description.
-
-## Specific Format of the Tools Field
-The ReACT format similarly supports providing the system section independently, which can refer to the relevant descriptions in ToolBench.
-```json
-{
-  "tools": [
-    {
-      "type": "function",
-      "function": {
-        "name": "get_current_weather",
-        "description": "Get the current weather in a given location",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "location": {
-              "type": "string",
-              "description": "The city and state, e.g. San Francisco, CA"
-            },
-            "unit": {
-              "type": "string",
-              "enum": ["celsius", "fahrenheit"]
-            }
-          },
-          "required": ["location"]
-        }
-      }
-    }
-  ]
-}
-```
-
-ToolBench tools format looks like this:
-```json
-{
-"tools": [
-      {
-        "name": "url_for_newapi",
-        "description": "This is the subfunction for tool \"newapi\", you can use this tool. The description of this function is: \"url_for_newapi\"",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "url": {
-              "type": "string",
-              "description": "",
-              "example_value": "https://www.instagram.com/reels/CtB6vWMMHFD/"
-            }
-          },
-          "required": [
-            "url"
-          ],
-          "optional": [
-            "url"
-          ]
-        }
-      },
-      {
-        "name": "n_for_newapi",
-        "description": "This is the subfunction for tool \"newapi\", you can use this tool. The description of this function is: \"n_for_newapiew var\"",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "language": {
-              "type": "string",
-              "description": "",
-              "example_value": "https://www.instagram.com/reels/Csb0AI3IYUN/"
-            }
-          },
-          "required": [
-            "language"
-          ],
-          "optional": []
-        }
-      },
-      {
-        "name": "Finish",
-        "description": "If you believe that you have obtained a result that can answer the task, please call this function to provide the final answer. Alternatively, if you recognize that you are unable to proceed with the task in the current state, call this function to restart. Remember: you must ALWAYS call this function at the end of your attempt, and the only part that will be shown to the user is the final answer, so it should contain sufficient information.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "return_type": {
-              "type": "string",
-              "enum": [
-                "give_answer",
-                "give_up_and_restart"
-              ]
-            },
-            "final_answer": {
-              "type": "string",
-              "description": "The final answer you want to give the user. You should have this field if \"return_type\"==\"give_answer\""
-            }
-          },
-          "required": [
-            "return_type"
-          ]
-        }
-      }
-    ]
-}
-```
-
-During inference, the tools information is converted into the corresponding tools system prompt. If a system prompt already exists, it will replace the original content.
-
-Currently, SWIFT supports ReACT in English, ReACT in Chinese, and ToolBench formats, as illustrated below.
-
-ReACT-EN
-```
-Answer the following questions as best you can. You have access to the following tools:
-
-{'name': 'get_current_weather', 'description': 'Get the current weather in a given location', 'parameters': {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'The city and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['celsius', 'fahrenheit']}}, 'required': ['location']}}
-
-Use the following format:
-
-Thought: you should always think about what to do
-Action: the action to take, should be one of [get_current_weather]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
-Final Answer: the final answer to the original input question
-
-Begin!
-```
-
-ReACT-ZH
-```
-尽你所能回答以下问题。你拥有如下工具：
-
-{'name': 'get_current_weather', 'description': 'Get the current weather in a given location', 'parameters': {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'The city and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['celsius', 'fahrenheit']}}, 'required': ['location']}}
-
-以下格式回答：
-
-Thought: 思考你应该做什么
-Action: 工具的名称，必须是[get_current_weather]之一
-Action Input: 工具的输入
-Observation: 工具返回的结果
-... (Thought/Action/Action Input/Observation的过程可以重复零次或多次)
-Final Answer: 对输入问题的最终答案
-
-开始！
-```
-
-ToolBench
-```
-You can use many tools(functions) to do the following task.
-First I will give you the task description, and your task starts.
-At each step, you need to give your thought to analyze the status now and what to do next, with a function call to actually execute your step. Your output should follow this format:
-Thought:
-Action:
-Action Input:
-
-After the call, you will get the call result, and you are now in a new state.
-Then you will analyze your status now, then decide what to do next...
-After many (Thought-call) pairs, you will finally perform the task, then you can give your final answer.
-Remember:
-1. The state change is irreversible; you can’t go back to one of the former states. If you want to restart the task, say "I give up and restart."
-2. All thoughts are short, at most in 5 sentences.
-3. You can do more than one try, so if your plan is to continue trying some conditions, you can do one of the conditions per try.
-Let’s Begin!
-Task description: You should use functions to help handle the real-time user queries. Remember:
-1. ALWAYS call the "Finish" function at the end of the task. The final answer should contain enough information to show to the user. If you can’t handle the task or find that function calls always fail (the function is not valid now), use the Finish function to give up and restart.
-2. Do not use original tool names; use only subfunctions’ names.
-Specifically, you have access to the following APIs: {'name': 'get_current_weather', 'description': 'Get the current weather in a given location', 'parameters': {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'The city and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['celsius', 'fahrenheit']}}, 'required': ['location']}}
-```
-
-By default, the ReACT-EN format is used. You can also specify `--tools_prompt` as `react_zh` or `toolbench` to select the Chinese ReACT or ToolBench format.
-
-If you have better tools system prompt suggestions, please share or contribute them to us.
-
-## Related Training Techniques
-
-SWIFT offers the following techniques to improve agent training:
-
-### loss-scale(--loss_scale)
-
-This technique adjusts the training weights for portions of model output. For example, in ReACT format, `--loss_scale react` can be set. The function of this parameter includes:
-
-Weights for the Thought and Final Answer sections are set to 1; weights for Action and Action Input sections are set to 2; the weight for the Observation: field itself is 2, while the weight for the actual API call response following Observation: is 0.
-
-For a detailed explanation of the loss_scale plugin design, please refer to the [pluginization](../Customization/Pluginization.md) documentation.
-
-### tools(--tools_prompt)
-
-The tools section corresponds to the format of the system field after assembly. In addition to the previously mentioned react_en/react_zh/toolbench, it also supports glm4 format. Furthermore, users can define their own format, tools_prompt, which can also refer to the documentation in the [Pluginization](../Customization/Pluginization.md) section.
-
-For a complete agent training script, see [this link](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent/train.sh).
-
-## Inference
-
-We conducted an evaluation focusing on general knowledge and agents. Below is a simple summary of the evaluation results.
-
-### Original Model
-
-#### General Knowledge
-
-> How to make vinegar fish from West Lake?
-
-![image-20240201122323540](../../resources/image-20240201122323540.png)
-
-> What is the difference between COVID-19 and a common cold?
-
-![image-20240201122441874](../../resources/image-20240201122441874.png)
-
-#### Agent Capabilities
-
-For testing, we used a fire alarm scenario:
+Sample One:
 
 ```text
-Answer the following questions as best you can. You have access to the following APIs:
-1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]
+[INPUT_IDS] <|im_start|>system
+You are Qwen, created by Alibaba Cloud. You are a helpful assistant.
 
-2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administrators. Parameters: []
+# Tools
 
-3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []
+You may call one or more functions to assist with the user query.
 
-4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []
+You are provided with function signatures within <tools></tools> XML tags:
+<tools>
+{"type": "function", "function": {"name": "realtime_aqi", "description": "Weather forecast. Get real-time air quality, including current air quality, PM2.5, and PM10 information.", "parameters": {"type": "object", "properties": {"city": {"type": "string", "description": "City name, e.g., Shanghai"}}, "required": ["city"]}}}
+</tools>
+
+For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
+<tool_call>
+{"name": <function-name>, "arguments": <args-json-object>}
+</tool_call><|im_end|>
+<|im_start|>user
+What is the weather like in Beijing and Shanghai today?<|im_end|>
+<|im_start|>assistant
+<tool_call>
+{"name": "realtime_aqi", "arguments": {"city": "Beijing"}}
+</tool_call>
+<tool_call>
+{"name": "realtime_aqi", "arguments": {"city": "Shanghai"}}
+</tool_call><|im_end|>
+<|im_start|>user
+<tool_response>
+{"city": "Beijing", "aqi": "10", "unit": "celsius"}
+</tool_response>
+<tool_response>
+{"city": "Shanghai", "aqi": "72", "unit": "fahrenheit"}
+</tool_response><|im_end|>
+<|im_start|>assistant
+According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution.<|im_end|>
+
+[LABELS] [-100 * 195]<tool_call>
+{"name": "realtime_aqi", "arguments": {"city": "Beijing"}}
+</tool_call>
+<tool_call>
+{"name": "realtime_aqi", "arguments": {"city": "Shanghai"}}
+</tool_call><|im_end|>[-100 * 67]According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution.<|im_end|>
+```
+
+Sample Two:
+
+```text
+[INPUT_IDS] <|im_start|>system
+You are a helpful assistant.
+
+# Tools
+
+You may call one or more functions to assist with the user query.
+
+You are provided with function signatures within <tools></tools> XML tags:
+<tools>
+{"type": "function", "function": {"name": "click", "description": "Click on a position on the screen", "parameters": {"type": "object", "properties": {"x": {"type": "integer", "description": "X-coordinate representing the horizontal position on the screen"}, "y": {"type": "integer", "description": "Y-coordinate representing the vertical position on the screen"}}, "required": ["x", "y"]}}}
+</tools>
+
+For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
+<tool_call>
+{"name": <function-name>, "arguments": <args-json-object>}
+</tool_call><|im_end|>
+<|im_start|>user
+<|vision_start|>[151655 * 729]<|vision_end|>What time is it now?<|im_end|>
+<|im_start|>assistant
+<think>
+I can check the current time by opening the calendar app.
+</think>
+<tool_call>
+{"name": "click", "arguments": {"x": 105, "y": 132}}
+</tool_call><|im_end|>
+<|im_start|>user
+<tool_response>
+{"images": "<|vision_start|>[151655 * 729]<|vision_end|>", "status": "success"}
+</tool_response><|im_end|>
+<|im_start|>assistant
+Successfully opened the calendar app. The current time is 11 o'clock in the morning.<|im_end|>
+[LABELS] [-100 * 924]<think>
+I can check the current time by opening the calendar app.
+</think>
+<tool_call>
+{"name": "click", "arguments": {"x": 105, "y": 132}}
+</tool_call><|im_end|>[-100 * 759]Successfully opened the calendar app. The current time is 11 o'clock in the morning.<|im_end|>
+```
+
+**react_en** is also the most commonly used agent template format. The following are the `input_ids` and `labels` after encoding Sample One using qwen2_5 with `agent_template='react_en'`:
+
+```text
+[INPUT_IDS] <|im_start|>system
+Answer the following questions as best you can. You have access to the following tools:
+
+realtime_aqi: Call this tool to interact with the realtime_aqi API. What is the realtime_aqi API useful for? Weather forecast. Get real-time air quality, including current air quality, PM2.5, and PM10 information. Parameters: {"type": "object", "properties": {"city": {"type": "string", "description": "City name, e.g., Shanghai"}}, "required": ["city"]} Format the arguments as a JSON object.
 
 Use the following format:
 
+Question: the input question you must answer
 Thought: you should always think about what to do
-Action: the action to take, should be one of the above tools [fire_recognition, fire_alert, call_police, call_fireman]
+Action: the action to take, should be one of [realtime_aqi]
 Action Input: the input to the action
 Observation: the result of the action
 ... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
 Thought: I now know the final answer
 Final Answer: the final answer to the original input question
+
 Begin!
+<|im_end|>
+<|im_start|>user
+What is the weather like in Beijing and Shanghai today?<|im_end|>
+<|im_start|>assistant
+Action: realtime_aqi
+Action Input: {'city': 'Beijing'}
+Action: realtime_aqi
+Action Input: {'city': 'Shanghai'}
+Observation:{"city": "Beijing", "aqi": "10", "unit": "celsius"}
+Observation:{"city": "Shanghai", "aqi": "72", "unit": "fahrenheit"}
+According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution.<|im_end|>
+[LABELS] [-100 * 233]Action: realtime_aqi
+Action Input: {'city': 'Beijing'}
+Action: realtime_aqi
+Action Input: {'city': 'Shanghai'}
+Observation:[-100 * 45]According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution.<|im_end|>
 ```
 
-![image-20240201122625473](../../resources/image-20240201122625473.png)
+For more optional values of the agent template, refer to [here](https://github.com/modelscope/swift/blob/main/swift/plugin/agent_template.__init__.py).
 
-![image-20240201122725477](../../resources/image-20240201122725477.png)
+## Tools Format
 
-![image-20240201131811038](../../resources/image-20240201131811038.png)
+The tools field provides information about the APIs that the model can call. You need to provide the name, description, and parameters of the tools, as shown in the example below:
 
-As observed, the model's answers were incorrect when manually entering the Observation.
+```python
+tools = [{
+    'type': 'function',
+    'function': {
+        'name': 'get_current_weather',
+        'description': 'Get the current weather in a given location',
+        'parameters': {
+            'type': 'object',
+            'properties': {
+                'location': {
+                    'type': 'string',
+                    'description': 'The city and state, e.g. San Francisco, CA'
+                },
+                'unit': {
+                    'type': 'string',
+                    'enum': ['celsius', 'fahrenheit']
+                }
+            },
+            'required': ['location']
+        }
+    }
+}]
+```
 
-### After Training
+## Usage of loss_scale
 
-#### General Knowledge
+`loss_scale` can be used to adjust the training weight of specific parts in the model's output. For example, in the ReACT format, you can set `--loss_scale react`, and the effects of this parameter are as follows:
 
-> How to make vinegar fish from West Lake?
+- The weight for the 'Thought:' and 'Final Answer:' sections is 1.
+- The weight for the 'Action:' and 'Action Input:' sections is 2.
+- The weight for the 'Observation:' field itself is 2.
+- The weight for the tool invocation results following the 'Observation:' field is 0.
 
-![image-20240201132124061](../../resources/image-20240201132124061.png)
+For the detailed design of the `loss_scale` plugin, please refer to the [Plugin-based Architecture](../Customization/Pluginization.md)documentation.
 
-![image-20240201132139698](../../resources/image-20240201132139698.png)
+## Training
 
-> What is the difference between COVID-19 and a common cold?
+Refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent)for smooth switching between different models.
 
-![image-20240201132308260](../../resources/image-20240201132308260.png)
+## Inference
 
-#### Agent Capabilities
-
-![image-20240201132421298](../../resources/image-20240201132421298.png)
-
-![image-20240201132454465](../../resources/image-20240201132454465.png)
-
-After training, the model can correctly invoke the API and provide a final answer.
+- For the original model or full-parameter training, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_agent.py).
+- For LoRA training, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent/loss_scale/infer.md).
 
 ## Deployment
-Here’s an example using vLLM deployment, non-streaming calls, with ReACT prompt.
 
-```shell
-swift deploy \
-  --model LLM-Research/Meta-Llama-3.1-8B-Instruct \
-  --infer_backend pt
-```
-
-Using a curl command to call the interface, due to the ReACT format ending with Observation:, we need to specify `Observation:` as stop words to truncate the model's response. Some models treat `Observation:\n` as a token, and here we will also consider it as a stop word.
-
-If you are using ToolBench prompt, specifying stop words is unnecessary (though it's fine to include them).
-
-```shell
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "Meta-Llama-3.1-8B-Instruct",
-    "messages": [
-      {
-        "role": "user",
-        "content": "What\'s the weather like in Boston today?"
-      }
-    ],
-    "tools": [
-      {
-        "type": "function",
-        "function": {
-          "name": "get_current_weather",
-          "description": "Get the current weather in a given location",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "location": {
-                "type": "string",
-                "description": "The city and state, e.g. San Francisco, CA"
-              },
-              "unit": {
-                "type": "string",
-                "enum": ["celsius", "fahrenheit"]
-              }
-            },
-            "required": ["location"]
-          }
-        }
-      }
-    ],
-    "stream": false,
-    "stop": ["Observation:", "Observation:\n"]
-  }'
-```
-
-You can also specify the `tool_choice` field to select a tool from the tools, such as `"tool_choice":{"type": "function", "function": {"name": "my_function"}}`. By default, all tools are selected, or you can set it to None to disable the tools field.
-
-Call result:
-```json
-{"model":"/mnt/workspace/.cache/modelscope/hub/LLM-Research/Meta-Llama-3___1-8B-Instruct","choices":[{"index":0,"message":{"role":"assistant","content":"Thought: I need to get the current weather in Boston.\nAction: get_current_weather\nAction Input: location=\"Boston, MA\", unit=\"fahrenheit\"\nObservation:","tool_calls":[{"function":{"name":"get_current_weather","arguments":" location=\"Boston, MA\", unit=\"fahrenheit\"\n"},"type":"function","id":"toolcall-cb4082f072fa43b7a1182c30482bf9b7"}]},"finish_reason":"stop","logprobs":null}],"usage":{"prompt_tokens":213,"completion_tokens":35,"total_tokens":248},"id":"chatcmpl-fef66ae309c142b3b96a221a7f1cc424","object":"chat.completion","created":1733225385}
-```
-
-In the returned result's tool_calls, you can find the called function and argument information.
-
-You can also test using the OpenAI SDK:
-```python
-from openai import OpenAI
-client = OpenAI(
-    api_key='EMPTY',
-    base_url='http://localhost:8000/v1',
-)
-query = "What's the weather like in Boston today?"
-messages = [{
-    'role': 'user',
-    'content': query
-}]
-tools =  [
-      {
-        "name": "url_for_newapi",
-        "description": "This is the subfunction for tool \"newapi\", you can use this tool. The description of this function is: \"url_for_newapi\"",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "url": {
-              "type": "string",
-              "description": "",
-              "example_value": "https://www.instagram.com/reels/CtB6vWMMHFD/"
-            }
-          },
-          "required": [
-            "url"
-          ],
-          "optional": [
-            "url"
-          ]
-        }
-      },
-]
-resp = client.chat.completions.create(
-    model='Meta-Llama-3.1-8B-Instruct',
-    tools = tools,
-    messages=messages,
-    seed=42)
-tool_calls = resp.choices[0].message.tool_calls[0]
-print(f'query: {query}')
-print(f'tool_calls: {tool_calls}')
-
-# Stream
-stream_resp = client.chat.completions.create(
-    model='Meta-Llama-3.1-8B-Instruct',
-    messages=messages,
-    tools=tools,
-    stream=True,
-    seed=42)
-
-print(f'query: {query}')
-print('response: ', end='')
-for chunk in stream_resp:
-    print(chunk.choices[0].delta.content, end='', flush=True)
-print(chunk.choices[0].delta.tool_calls[0])
-
-"""
-query: What's the weather like in Boston today?
-tool_calls: ChatCompletionMessageToolCall(id='toolcall-d750fa08b4cf4cd2906afa05bf45062a', function=Function(arguments=' https://weather.com/weather/today/l/USMA0001:1:US\n', name='url_for_newapi'), type='function')
-"""
-```
-
-Once you assume the returned result is `The weather in Boston today is 32°F (0°C), with clear skies`, We will fill in the "role tool" field with the result and pass it into the message.
-
-```shell
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "Meta-Llama-3.1-8B-Instruct",
-    "messages": [
-      {
-        "role": "user",
-        "content": "What'\''s the weather like in Boston today?"
-      },
-      {
-        "role": "assistant",
-        "content": "Question: What'\''s the weather like in Boston today?\n\nThought: I need to get the current weather in Boston.\n\nAction: get_current_weather\n\nAction Input: {\"location\": \"Boston, MA\", \"unit\": \"fahrenheit\"}\n\nObservation:"
-      },
-      {
-        "role": "tool",
-        "content": "{\"result\": \"The weather in Boston today is 32°F (0°C), with clear skies\"}\\n\\n"
-      }
-    ],
-    "stream": false,
-    "stop": ["Observation:", "Observation:\n"]
-  }'
-```
-
-For the ReACT format, we will append the result to the last `Observation:` field returned by the previous model.
-
-For the ToolBench format, processing depends on the model template. If the model template doesn't specify special handling for the field, it will be treated as user input.
-
-Call result:
-```json
-{"model":"/mnt/workspace/.cache/modelscope/hub/LLM-Research/Meta-Llama-3___1-8B-Instruct","choices":[{"index":0,"message":{"role":"assistant","content":"\n\nResponse: The weather in Boston today is 32°F (0°C), with clear skies.","tool_calls":null},"finish_reason":"stop","logprobs":null}],"usage":{"prompt_tokens":93,"completion_tokens":20,"total_tokens":113},"id":"chatcmpl-8d48c8949fd74fc6ae0c5198ed171359","object":"chat.completion","created":1733225830}
-```
-
-If you want to combine code and tools to complete the entire closed-loop, we recommend reading the [OpenAI tutorial](https://cookbook.openai.com/examples/how_to_call_functions_with_chat_models).
+Refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/agent).
