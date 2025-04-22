@@ -4,7 +4,6 @@ from collections import Counter
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import json
 import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import Image

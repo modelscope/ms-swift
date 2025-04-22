@@ -8,7 +8,7 @@ from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from dataclasses import asdict
 from functools import partial, wraps
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -28,6 +28,8 @@ from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, 
 from .vision_utils import load_audio, load_batch, load_image, rescale_image
 
 logger = get_logger()
+if TYPE_CHECKING:
+    from .template_meta import TemplateMeta
 
 
 class MaxLengthError(ValueError):
