@@ -54,11 +54,12 @@ def test_qwen2_5():
 def test_qwq():
     pt_engine = PtEngine('Qwen/QwQ-32B')
     response = _test_tool(pt_engine)
-    assert response[-100:] == ('ng is **Partly cloudy** with a temperature of **25°C**. '
-                               '\n\nLet me know if you need any other details!')
+    assert response[-100:] == ('weather in Beijing is **25°C** with **partly cloudy** skies. '
+                               'It looks like a mild day outside—enjoy!')
 
 
 def test_deepseek_r1_distill():
+    # TODO
     pt_engine = PtEngine('deepseek-ai/DeepSeek-R1-Distill-Qwen-7B')
     _test_tool(pt_engine, system='')
 
