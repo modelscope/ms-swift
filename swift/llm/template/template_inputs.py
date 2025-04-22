@@ -2,6 +2,7 @@
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Union
 
+import json
 from PIL import Image
 
 from swift.utils import get_logger
@@ -134,6 +135,12 @@ class StdTemplateInputs:
             system = message['content']
         else:
             system = None
+
+        for message in messages:
+            if message['role'] == 'tool_response':
+                message['role'] = 'tool'
+            if message['role'] in {'tool_call', 'tool'} and not isinstance(message['content'], str):
+                message['content'] = json.dumps(message['content'], ensure_ascii=False)
 
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
         for k in list(media_kwargs.keys()):

@@ -741,7 +741,6 @@ class FunctionCallChatmlPreprocessor(MessagesPreprocessor):
 
         if res['function_description']:
             res['tools'] = res['function_description'].split('\n\n')
-            res['tools'] = [json.loads(tool) for tool in res['tools']]
         messages = res['messages']
         if messages[0]['role'] == 'system':
             messages.pop(0)

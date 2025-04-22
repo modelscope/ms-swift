@@ -62,8 +62,6 @@ class RowPreprocessor:
             # The terms 'tool' and 'tool_response' have the same meaning, ensuring compatibility.
             assert role in {'system', 'user', 'tool_call', 'tool_response', 'tool', 'assistant'}, f'message: {message}'
             assert content is not None, f'message: {message}'
-            if role == 'assistant':
-                assert content != '', f'message: {message}'
 
     @staticmethod
     def _cast_images(row: Dict[str, Any]) -> None:
@@ -77,13 +75,6 @@ class RowPreprocessor:
             row['images'] = images
         elif isinstance(images, dict):
             row['images'] = [images]
-
-    @staticmethod
-    def _cast_tools(row: Dict[str, Any]) -> None:
-        tools = row.get('tools')
-        if tools is None:
-            return
-        row['tools'] = [tool if isinstance(tool, str) else json.dumps(tool, ensure_ascii=False) for tool in tools]
 
     @staticmethod
     def _check_rejected_response(row: Dict[str, Any]) -> None:
@@ -185,7 +176,6 @@ class RowPreprocessor:
                     self._check_objects(r)
                     self._check_messages(r)
                     self._check_rejected_response(r)
-                    self._cast_tools(r)
                     self._cast_images(r)
             except Exception as e:
                 if strict:

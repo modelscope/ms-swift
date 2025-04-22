@@ -74,5 +74,5 @@ For each function call, return a json object with function name and arguments wi
         tool_calls = []
         for message in tool_call_messages:
             tool_call = self._parse_tool_call(message['content'])
-            tool_calls.append(f'<tool_call>\n{json.dumps(tool_call, ensure_ascii=True)}\n</tool_call>')
+            tool_calls.append(f'<tool_call>\n{json.dumps(tool_call, ensure_ascii=False)}\n</tool_call>')
         return '\n'.join(tool_calls)
