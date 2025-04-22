@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 from PIL import Image
+from pydantic import BaseModel
 
 from ..template import InferRequest
 from ..utils import Messages, Tool
@@ -334,3 +335,15 @@ class CompletionStreamResponse:
     id: str = field(default_factory=lambda: f'cmpl-{random_uuid()}')
     object: str = 'text_completion.chunk'
     created: int = field(default_factory=lambda: int(time.time()))
+
+
+class InitCommunicatorRequest(BaseModel):
+    host: str
+    port: int
+    world_size: int
+
+
+class UpdateWeightsRequest(BaseModel):
+    name: str
+    dtype: str
+    shape: list[int]

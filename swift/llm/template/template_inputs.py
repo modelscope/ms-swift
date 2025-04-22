@@ -73,6 +73,16 @@ class InferRequest:
 
 
 @dataclass
+class RolloutInferRequest(InferRequest):
+    """
+    A request class that modifies the 'images' attribute
+    to be a list of strings for compatibility with POST requests.
+    The strings can represent image URLs or Base64 encoded images.
+    """
+    images: List[str] = field(default_factory=list)
+
+
+@dataclass
 class TemplateInputs(InferRequest):
     """The training functionality has been added on top of the InferRequest.
 

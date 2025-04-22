@@ -412,6 +412,9 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - vllm_enforce_eager: vLLM passthrough parameter, default is False.
 - vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
 - vllm_enable_prefix_caching: vLLM passthrough parameter, default is True.
+- vllm_server_host: The host address of the vLLM server. Default is None. This is used when connecting to an external vLLM server.
+- vllm_server_port: The service port of the vLLM server. Default is 8000.
+- vllm_server_timeout: The connection timeout for the vLLM server. Default is 120 seconds.
 - top_k: Default is 50.
 - top_p: Default is 0.9.
 - repetition_penalty: Repetition penalty term. Default is 1.
@@ -482,6 +485,8 @@ Deployment Arguments inherit from the [inference arguments](#inference-arguments
   - Note: In `swift app` or `swift eval`, the default is False.
 - log_interval: Interval for printing tokens/s statistics, default is 20 seconds. If set to -1, it will not be printed.
 - max_logprobs: Maximum number of logprobs returned to the client, with a default value of 20.
+- use_async_engine: Whether to use the async engine under the vLLM backend. Default is True.
+
 
 ### Web-UI Arguments
 - server_name: Host for the web UI, default is '0.0.0.0'.
