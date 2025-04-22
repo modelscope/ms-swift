@@ -65,10 +65,11 @@ class SwiftInfer(SwiftPipeline):
             infer_engine_cls = VllmEngine
             kwargs.update(args.get_vllm_engine_kwargs())
             kwargs.update({'use_async_engine': args.use_async_engine})
-            # TODO: rl rollout flag? note worker_extension_cls need vllm>8.1
-            engine_kwargs = kwargs.get('engine_kwargs', {})
-            engine_kwargs.update({'worker_extension_cls': 'trl.scripts.vllm_serve.WeightSyncWorkerExtension'})
-            kwargs['engine_kwargs'] = engine_kwargs
+            if not args.use_async_engine:
+                # used for RL external rollout backend
+                engine_kwargs = kwargs.get('engine_kwargs', {})
+                engine_kwargs.update({'worker_extension_cls': 'trl.scripts.vllm_serve.WeightSyncWorkerExtension'})
+                kwargs['engine_kwargs'] = engine_kwargs
         else:
             from .infer_engine import LmdeployEngine
             infer_engine_cls = LmdeployEngine

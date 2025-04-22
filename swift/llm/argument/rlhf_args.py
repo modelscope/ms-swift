@@ -50,7 +50,7 @@ class GRPOArguments(GRPOArgumentsMixin):
     # vLLM in GRPO
     use_vllm: bool = False
     vllm_device: List[str] = field(default_factory=lambda: ['auto'])
-    vllm_gpu_memory_utilization: Optional[float] = 0.9
+    vllm_gpu_memory_utilization: float = 0.9
     vllm_max_model_len: Optional[int] = None
 
     # multi step
@@ -254,19 +254,11 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
-            if self.vllm_gpu_memory_utilization is None:
-                self.vllm_gpu_memory_utilization = 0.9
             return
 
         if self.vllm_device != 'auto':
             logger.warning("Configuration conflict: External vLLM engine detected, but 'vllm_device' is set to '%s'. ",
                            self.vllm_device)
-
-        if self.vllm_gpu_memory_utilization is not None:
-            logger.warning(
-                "Configuration conflict: Found 'vllm_gpu_memory_utilization=%s' with external vLLM engine. "
-                'This parameter should be configured on the vLLM server side using: '
-                '`swift deploy --gpu_memory_utilization <value>`', self.vllm_gpu_memory_utilization)
 
         if self.num_infer_workers != 1:
             logger.warning(
