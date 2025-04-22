@@ -6,7 +6,7 @@ swift sft \
     --train_type lora \
     --dataset iic/ms_agent \
     --loss_scale react \
-    --tools_prompt react_en \
+    --agent_template react_en \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \

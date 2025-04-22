@@ -25,6 +25,7 @@ class QwenTemplateMeta(ChatmlTemplateMeta):
     default_system: Optional[str] = DEFAULT_SYSTEM
     auto_add_bos: bool = False
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>'])
+    agent_template: str = 'hermes'
 
 
 @dataclass

@@ -435,7 +435,7 @@ def load_dataset(
     split_dataset_ratio: float = 0.,
     seed: Union[int, np.random.RandomState, None] = None,
     num_proc: int = 1,
-    shuffle: bool = True,
+    shuffle: bool = False,
     streaming: bool = False,
     interleave_prob: Optional[List[float]] = None,
     stopping_strategy: Literal['first_exhausted', 'all_exhausted'] = 'first_exhausted',
