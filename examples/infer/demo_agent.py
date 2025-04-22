@@ -12,9 +12,10 @@ def infer(engine: 'InferEngine', infer_request: 'InferRequest'):
     response = resp_list[0].choices[0].message.content
     print(f'query: {query}')
     print(f'response: {response}')
+    print(f'tool_calls: {resp_list[0].choices[0].message.tool_calls}')
 
     tool = '{"temperature": 32, "condition": "Sunny", "humidity": 50}'
-    print(f'tool: {tool}')
+    print(f'tool_response: {tool}')
     infer_request.messages += [{'role': 'assistant', 'content': response}, {'role': 'tool', 'content': tool}]
     resp_list = engine.infer([infer_request], request_config)
     response2 = resp_list[0].choices[0].message.content
@@ -35,9 +36,10 @@ def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
         response += delta
         print(delta, end='', flush=True)
     print()
+    print(f'tool_calls: {resp.choices[0].delta.tool_calls}')
 
     tool = '{"temperature": 32, "condition": "Sunny", "humidity": 50}'
-    print(f'tool: {tool}\nresponse2: ', end='')
+    print(f'tool_response: {tool}\nresponse2: ', end='')
     infer_request.messages += [{'role': 'assistant', 'content': response}, {'role': 'tool', 'content': tool}]
     gen_list = engine.infer([infer_request], request_config)
     for resp in gen_list[0]:

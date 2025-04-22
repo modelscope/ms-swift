@@ -36,9 +36,10 @@ def infer(client, model: str, messages, tools):
     response = resp.choices[0].message.content
     print(f'query: {query}')
     print(f'response: {response}')
+    print(f'tool_calls: {resp.choices[0].message.tool_calls}')
 
     tool = '{"temperature": 32, "condition": "Sunny", "humidity": 50}'
-    print(f'tool: {tool}')
+    print(f'tool_response: {tool}')
     messages += [{'role': 'assistant', 'content': response}, {'role': 'tool', 'content': tool}]
     resp = client.chat.completions.create(model=model, messages=messages, tools=tools, max_tokens=512, temperature=0)
     response2 = resp.choices[0].message.content
@@ -58,9 +59,10 @@ def infer_stream(client, model: str, messages, tools):
         response += delta
         print(delta, end='', flush=True)
     print()
+    print(f'tool_calls: {chunk.choices[0].delta.tool_calls}')
 
     tool = '{"temperature": 32, "condition": "Sunny", "humidity": 50}'
-    print(f'tool: {tool}')
+    print(f'tool_response: {tool}')
     messages += [{'role': 'assistant', 'content': response}, {'role': 'tool', 'content': tool}]
     gen = client.chat.completions.create(
         model=model, messages=messages, tools=tools, max_tokens=512, temperature=0, stream=True)

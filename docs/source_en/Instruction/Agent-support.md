@@ -107,7 +107,7 @@ I can check the current time by opening the calendar app.
 </tool_call><|im_end|>[-100 * 759]Successfully opened the calendar app. The current time is 11 o'clock in the morning.<|im_end|>
 ```
 
-**react_en** is also the most commonly used agent template format. The following are the `input_ids` and `labels` after encoding Sample One using qwen2_5 with `agent_template='react_en'`:
+**react_en** is one of the commonly used agent template formats. Below is an example of the `input_ids` and `labels` after encoding by qwen2_5 using `agent_template='react_en'`:
 
 ```text
 [INPUT_IDS] <|im_start|>system
@@ -146,7 +146,19 @@ Action Input: {'city': 'Shanghai'}
 Observation:[-100 * 45]According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution.<|im_end|>
 ```
 
-For more optional values of the agent template, refer to [here](https://github.com/modelscope/swift/blob/main/swift/plugin/agent_template/__init__.py).
+The following code can be used to experiment with more models and `agent_template` options. For more selectable values of `agent_template`, refer to [here](https://github.com/modelscope/swift/blob/main/swift/plugin/agent_template/__init__.py).
+
+```python
+from swift.llm import get_model_tokenizer, get_template
+
+_, tokenizer = get_model_tokenizer('ZhipuAI/GLM-4-9B-0414', load_model=False)
+template = get_template(tokenizer.model_meta.template, tokenizer, agent_template='hermes')
+data = {...}
+template.set_mode('train')
+encoded = template.encode(data)
+print(f'[INPUT_IDS] {template.safe_decode(encoded["input_ids"])}\n')
+print(f'[LABELS] {template.safe_decode(encoded["labels"])}')
+```
 
 ## Tools Format
 
@@ -178,7 +190,7 @@ tools = [{
 
 ## Usage of loss_scale
 
-`loss_scale` can be used to adjust the training weight of specific parts in the model's output. For example, in the ReACT format, you can set `--loss_scale react` (the `loss_scale` configuration file can be found [here ](https://github.com/modelscope/swift/blob/main/swift/plugin/loss_scale/config/default_loss_scale_config.json)). The role of this parameter is as follows:
+`loss_scale` can be used to adjust the training loss weight for the model's output section. For example, in the ReACT format, you can set `--loss_scale react` (the loss_scale configuration file is written [here](https://github.com/modelscope/swift/blob/main/swift/plugin/loss_scale/config/default_loss_scale_config.json)). The role of this parameter is as follows:
 
 - The weight for the 'Thought:' and 'Final Answer:' sections is 1.
 - The weight for the 'Action:' and 'Action Input:' sections is 2.
@@ -189,13 +201,15 @@ For the detailed design of the `loss_scale` plugin, please refer to the [Plugin-
 
 ## Training
 
-Refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent)for smooth switching between different models.
+- Train the Agent capabilities of Base models by switching different models through modifying `--model`. Refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/agent/qwen2_5.sh).
+- The agent_template for training GLM4 is hermes. Refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/agent/glm4.sh).
+- Use `--loss_scale` to adjust the loss weight of the model output section. Refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent/loss_scale).
 
 ## Inference
 
-- For the original model or full-parameter training, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_agent.py).
-- For LoRA training, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent/loss_scale/infer.md).
+- For inference of the original model or fully trained model, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_agent.py).
+- For inference after LoRA training, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent/loss_scale/infer.md).
 
 ## Deployment
 
-Refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/agent).
+For server and client code, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/agent).
