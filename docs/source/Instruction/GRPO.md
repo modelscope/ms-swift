@@ -161,9 +161,9 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - dynamic_sample：筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
 - max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。
 - overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。
-- vllm_server_host：外部vLLM server host地址，默认为None，使用外部vLLM server时使用 \
-- vllm_server_port 外部vLLM server 服务端口，默认为8000 \
-- vllm_server_timeout 连接外部vLLM server的超时时间，默认为120s \
+- vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用 \
+- vllm_server_port vLLM server 服务端口，默认为8000 \
+- vllm_server_timeout 连接vLLM server的超时时间，默认为120s \
 
 
 奖励函数参数，见[内置奖励函数](#内置奖励函数)

@@ -86,7 +86,7 @@ class VLLMClient:
                 if elapsed_time >= total_timeout:
                     raise ConnectionError(
                         f"The vLLM server can't be reached at {self.host}:{self.server_port} after {total_timeout} "
-                        'seconds. Make sure the server is running by running `trl vllm-serve`.') from exc
+                        'seconds. Make sure the server is running by running `swift deploy`.') from exc
             else:
                 if response.status_code == 200:
                     logger.info('Server is up!')
