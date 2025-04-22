@@ -1,17 +1,13 @@
-import os
 import unittest
-
-from swift.llm import PtEngine, RequestConfig
-from swift.utils import get_logger, seed_everything
-
-logger = get_logger()
-os.environ['SWIFT_DEBUG'] = '1'
 
 if __name__ == '__main__':
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['SWIFT_DEBUG'] = '1'
+    from swift.llm import PtEngine, RequestConfig, get_model_tokenizer, get_template
+    from swift.utils import get_logger, seed_everything
 
-SKIP_TEST = True
+logger = get_logger()
 
 
 def _infer_model(pt_engine, system=None, messages=None):
@@ -82,15 +78,26 @@ class TestTemplate(unittest.TestCase):
         ]
 
         # testing two template type.
-        for agent_template_type in ('react_en', 'qwen'):
+        tokenizer = get_model_tokenizer('Qwen/Qwen2.5-7B-Instruct', load_model=False)[1]
+        template = get_template(tokenizer.model_meta.template, tokenizer)
+        for agent_template_type in ('react_zh', 'qwen_zh'):
             agent_template = agent_templates[agent_template_type]()
+            template.agent_template = agent_template
             observation = agent_template.keyword.observation
             test_messages = deepcopy(messages)
-            test_messages[2]['content'] += observation
-            test_messages[4]['content'] += observation
-            agent_template.format_messages(test_messages)
-            assert test_messages[1]['content'] == (
-                f'assistant1assistant2{observation}tool1\nassistant3{observation}tool2\ntool3\n')
+            test_messages[2]['content'] = 'assistant2' + observation
+            test_messages[4]['content'] = (
+                agent_template.keyword.action + agent_template.keyword.action_input + 'assistant3' + observation)
+            encoded = template.encode({'messages': test_messages})
+            res = template.safe_decode(encoded['input_ids'])
+
+            ground_truth = (
+                '<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n'
+                '<|im_start|>user\nuser1<|im_end|>\n'
+                f'<|im_start|>assistant\nassistant1assistant2{observation}tool1'
+                f'{agent_template.keyword.action}{agent_template.keyword.action_input}assistant3'
+                f'{observation}tool2\n{observation}tool3\n')
+            assert res == ground_truth
 
 
 if __name__ == '__main__':
