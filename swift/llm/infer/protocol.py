@@ -9,13 +9,10 @@ from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from PIL import Image
+from pydantic import BaseModel
 
-from swift.utils import is_pydantic_available
 from ..template import InferRequest
 from ..utils import Messages, Tool
-
-if is_pydantic_available():
-    from pydantic import BaseModel
 
 
 def random_uuid() -> str:

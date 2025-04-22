@@ -15,6 +15,8 @@ pip install -U trl
 ## 集群支持
 
 ![](../../resources/grpo.png)
+GRPO可以使用vLLM等推理引擎来加速采样过程，启动
+
 
 SWIFT的GRPO训练中，训练模型尽量使用可见显卡的前部分，而rollout尽量使用可见显卡的后部分。这意味着
 
