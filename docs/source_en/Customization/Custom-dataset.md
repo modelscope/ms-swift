@@ -174,8 +174,17 @@ The format will automatically convert the dataset format to the corresponding mo
 ```
 
 ### Agent Format
-
-Refer to the [Agent documentation](../Instruction/Agent-support.md) for the Agent format.
+Here are example data samples for a text-only Agent and a multimodal Agent:
+```jsonl
+{"tools": [{"type": "function", "function": {"name": "realtime_aqi", "description": "Weather forecast. Get real-time air quality, including current air quality, PM2.5, and PM10 information.", "parameters": {"type": "object", "properties": {"city": {"type": "string", "description": "City name, e.g., Shanghai"}}, "required": ["city"]}}}], "messages": [{"role": "user", "content": "What is the weather like in Beijing and Shanghai today?"}, {"role": "tool_call", "content": {"name": "realtime_aqi", "arguments": {"city": "Beijing"}}}, {"role": "tool_call", "content": {"name": "realtime_aqi", "arguments": {"city": "Shanghai"}}}, {"role": "tool_response", "content": {"city": "Beijing", "aqi": "10", "unit": "celsius"}}, {"role": "tool_response", "content": {"city": "Shanghai", "aqi": "72", "unit": "fahrenheit"}}, {"role": "assistant", "content": "According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution."}]}
+{"tools": [{"type": "function", "function": {"name": "click", "description": "Click on a position on the screen", "parameters": {"type": "object", "properties": {"x": {"type": "integer", "description": "X-coordinate representing the horizontal position on the screen"}, "y": {"type": "integer", "description": "Y-coordinate representing the vertical position on the screen"}}, "required": ["x", "y"]}}}], "messages": [{"role": "user", "content": "<image>What time is it now?"}, {"role": "assistant", "content": "<think>\nI can check the current time by opening the calendar app.\n</think>\n"}, {"role": "tool_call", "content": {"name": "click", "arguments": {"x": 105, "y": 132}}}, {"role": "tool_response", "content": {"images": "<image>", "status": "success"}}, {"role": "assistant", "content": "Successfully opened the calendar app. The current time is 11 o'clock in the morning."}], "images": ["desktop.png", "calendar.png"]}
+```
+- The `tools` field will be combined with the `{"role": "system", ...}` section during training/inference according to the `agent_template`, forming the complete system part.
+- When the `agent_template` is set to "react_en", "hermes", etc., this format adapts to all model Agent training and allows easy switching between different models.
+- The `{"role": "tool_call", ...}` section will be automatically converted into corresponding formats of `{"role": "assistant", ...}` based on the `agent_template`. Multiple consecutive `{"role": "assistant", ...}` entries will be concatenated to form a complete assistant_content.
+- The `{"role": "tool_response", ...}` section can also be written as `{"role": "tool", ...}`, these two forms are equivalent. This part will also be automatically converted according to the `agent_template`. In training, this part does not participate in loss calculation, similar to `{"role": "user", ...}`.
+- This format supports parallel tool calls, as shown in the first data sample. In multimodal Agent data samples, the number of `<image>` tags should match the length of "images", and the tag's position represents where the image features are inserted. It also supports other modalities, such as audios, videos.
+- For more details, please refer to [Agent Documentation](../Instruction/Agent-support.md).
 
 
 ## dataset_info.json

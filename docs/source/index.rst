@@ -29,7 +29,7 @@ Swift DOCUMENTATION
    Instruction/GRPO.md
    Instruction/支持的模型和数据集.md
    Instruction/使用tuners.md
-   Instruction/智能体的支持.md
+   Instruction/Agent支持.md
    Instruction/常见问题整理.md
 
 .. toctree::

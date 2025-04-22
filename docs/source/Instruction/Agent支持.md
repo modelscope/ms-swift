@@ -1,4 +1,4 @@
-# 智能体的支持
+# Agent支持
 
 SWIFT支持了开源模型，尤其是中小型模型（7B、14B等）对Agent场景的训练，并将[loss-scale技术](https://arxiv.org/pdf/2309.00986.pdf)应用到agent训练中，使中小模型API Call能力更稳定，并支持使用单张商业级显卡进行Agent推理和部署，可以直接在生产场景中全链路闭环落地使用。
 
