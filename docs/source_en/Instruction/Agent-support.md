@@ -146,7 +146,7 @@ Action Input: {'city': 'Shanghai'}
 Observation:[-100 * 45]According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution.<|im_end|>
 ```
 
-For more optional values of the agent template, refer to [here](https://github.com/modelscope/swift/blob/main/swift/plugin/agent_template.__init__.py).
+For more optional values of the agent template, refer to [here](https://github.com/modelscope/swift/blob/main/swift/plugin/agent_template/__init__.py).
 
 ## Tools Format
 
@@ -178,7 +178,7 @@ tools = [{
 
 ## Usage of loss_scale
 
-`loss_scale` can be used to adjust the training weight of specific parts in the model's output. For example, in the ReACT format, you can set `--loss_scale react`, and the effects of this parameter are as follows:
+`loss_scale` can be used to adjust the training weight of specific parts in the model's output. For example, in the ReACT format, you can set `--loss_scale react` (the `loss_scale` configuration file can be found [here ](https://github.com/modelscope/swift/blob/main/swift/plugin/loss_scale/config/default_loss_scale_config.json)). The role of this parameter is as follows:
 
 - The weight for the 'Thought:' and 'Final Answer:' sections is 1.
 - The weight for the 'Action:' and 'Action Input:' sections is 2.
