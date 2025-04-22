@@ -5,7 +5,8 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def infer(engine: 'InferEngine', infer_request: 'InferRequest'):
-    request_config = RequestConfig(max_tokens=512, temperature=0)
+    stop = [engine.default_template.agent_template.keyword.observation]  # compat react_en
+    request_config = RequestConfig(max_tokens=512, temperature=0, stop=stop)
     resp_list = engine.infer([infer_request], request_config)
     query = infer_request.messages[0]['content']
     response = resp_list[0].choices[0].message.content
@@ -21,7 +22,8 @@ def infer(engine: 'InferEngine', infer_request: 'InferRequest'):
 
 
 def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
-    request_config = RequestConfig(max_tokens=512, temperature=0, stream=True)
+    stop = [engine.default_template.agent_template.keyword.observation]
+    request_config = RequestConfig(max_tokens=512, temperature=0, stream=True, stop=stop)
     gen_list = engine.infer([infer_request], request_config)
     query = infer_request.messages[0]['content']
     response = ''

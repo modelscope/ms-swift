@@ -23,8 +23,8 @@ class GLM4Template(Template):
         res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
         for i, res_context in enumerate(res_context_list):
             # The last round or is tool_call.
-            if res_context.endswith('<|assistant|>\n') and (i + 1 >= len(res_context_list)
-                                                            or '<|observation|>' in res_context_list[i + 1]):
+            if isinstance(res_context, str) and res_context.endswith('<|assistant|>\n') and (
+                    i + 1 >= len(res_context_list) or '<|observation|>' in res_context_list[i + 1]):
                 res_context_list[i] = res_context_list[i][:-len('\n')]
         return res_context_list, loss_scale_list, answer_len
 
