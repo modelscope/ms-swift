@@ -17,6 +17,7 @@ class GLM4AgentTemplate(BaseAgentTemplate):
     @staticmethod
     def _find_function_call(single_content: str) -> Optional['Function']:
         from swift.llm.infer import Function
+        single_content = single_content.replace('<|observation|>', '')
         pattern = re.compile(r'([^\n`]*?)\n({.*?})(?=\w*\n|$)', re.DOTALL)
         matches = pattern.findall(single_content)
         if not matches:
