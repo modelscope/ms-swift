@@ -98,6 +98,7 @@ I can check the current time by opening the calendar app.
 </tool_response><|im_end|>
 <|im_start|>assistant
 Successfully opened the calendar app. The current time is 11 o'clock in the morning.<|im_end|>
+
 [LABELS] [-100 * 924]<think>
 I can check the current time by opening the calendar app.
 </think>
@@ -137,6 +138,7 @@ Action Input: {'city': 'Shanghai'}
 Observation:{"city": "Beijing", "aqi": "10", "unit": "celsius"}
 Observation:{"city": "Shanghai", "aqi": "72", "unit": "fahrenheit"}
 According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution.<|im_end|>
+
 [LABELS] [-100 * 233]Action: realtime_aqi
 Action Input: {'city': 'Beijing'}
 Action: realtime_aqi

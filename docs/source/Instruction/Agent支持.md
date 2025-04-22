@@ -94,6 +94,7 @@ For each function call, return a json object with function name and arguments wi
 </tool_response><|im_end|>
 <|im_start|>assistant
 成功打开日历App，现在的时间为中午11点<|im_end|>
+
 [LABELS] [-100 * 924]<think>
 我可以通过打开日历App来获取当前时间。
 </think>
@@ -133,6 +134,7 @@ Action Input: {'city': '上海'}
 Observation:{"city": "北京", "aqi": "10", "unit": "celsius"}
 Observation:{"city": "上海", "aqi": "72", "unit": "fahrenheit"}
 根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。<|im_end|>
+
 [LABELS] [-100 * 233]Action: realtime_aqi
 Action Input: {'city': '北京'}
 Action: realtime_aqi
