@@ -1275,12 +1275,13 @@ class Template(ProcessorMixin):
             problem_type = self._get_problem_type(self.config)
             if problem_type == 'regression':
                 labels = torch.tensor(labels, dtype=torch.float32)
+            elif problem_type == 'multi_label_classification':
+                one_hot_labels = torch.zeros((len(labels), self.config.num_labels), dtype=torch.float32)
+                for i, label in enumerate(labels):
+                    one_hot_labels[i, label] = 1
+                labels = one_hot_labels
             else:
                 labels = torch.tensor(labels, dtype=torch.long)
-                if problem_type == 'multi_label_classification':
-                    one_hot_labels = torch.zeros((labels.shape[0], self.config.num_labels), dtype=torch.float32)
-                    one_hot_labels[torch.arange(labels.shape[0])[:, None], labels] = 1
-                    labels = one_hot_labels
             res['labels'] = labels
         return res
 
