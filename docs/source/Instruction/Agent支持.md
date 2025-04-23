@@ -16,7 +16,7 @@
 
 以下为上述两条数据样本由qwen2_5和qwen2_5_vl的template进行encode后的input_ids和labels，选择的agent_template为**hermes**：
 
-样本一：
+样本一（并行工具调用）：
 ```text
 [INPUT_IDS] <|im_start|>system
 You are Qwen, created by Alibaba Cloud. You are a helpful assistant.
@@ -61,7 +61,7 @@ For each function call, return a json object with function name and arguments wi
 </tool_call><|im_end|>[-100 * 67]根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。<|im_end|>
 ```
 
-样本二：
+样本二（多模态，混合assistant和tool_call）：
 ```text
 [INPUT_IDS] <|im_start|>system
 You are a helpful assistant.
@@ -103,7 +103,7 @@ For each function call, return a json object with function name and arguments wi
 </tool_call><|im_end|>[-100 * 759]成功打开日历App，现在的时间为中午11点<|im_end|>
 ```
 
-**react_en**也是最常使用的agent template格式，以下为样本一由qwen2_5使用`agent_template='react_en'`进行encode后的input_ids和labels：
+**react_en**是常用的agent template格式之一，以下为样本一由qwen2_5使用`agent_template='react_en'`进行encode后的input_ids和labels：
 
 ```text
 [INPUT_IDS] <|im_start|>system
@@ -142,7 +142,18 @@ Action Input: {'city': '上海'}
 Observation:[-100 * 45]根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。<|im_end|>
 ```
 
-更多的agent template可选值参考[这里](https://github.com/modelscope/swift/blob/main/swift/plugin/agent_template/__init__.py).
+更多模型和agent_template的尝试可以使用以下代码，更多的agent template可选值参考[这里](https://github.com/modelscope/swift/blob/main/swift/plugin/agent_template/__init__.py)。
+```python
+from swift.llm import get_model_tokenizer, get_template
+
+_, tokenizer = get_model_tokenizer('ZhipuAI/GLM-4-9B-0414', load_model=False)
+template = get_template(tokenizer.model_meta.template, tokenizer, agent_template='hermes')
+data = {...}
+template.set_mode('train')
+encoded = template.encode(data)
+print(f'[INPUT_IDS] {template.safe_decode(encoded["input_ids"])}\n')
+print(f'[LABELS] {template.safe_decode(encoded["labels"])}')
+```
 
 
 ## tools格式
@@ -174,7 +185,7 @@ tools = [{
 
 ## loss_scale的使用
 
-loss_scale可以对模型输出部分的训练权重进行调节。例如在ReACT格式中，可以设置`--loss_scale react`（loss_scale配置文件书写在[这里](https://github.com/modelscope/swift/blob/main/swift/plugin/loss_scale/config/default_loss_scale_config.json)），该参数起到的作用是：
+loss_scale可以对模型输出部分的训练损失权重进行调节。例如在ReACT格式中，可以设置`--loss_scale react`（loss_scale配置文件书写在[这里](https://github.com/modelscope/swift/blob/main/swift/plugin/loss_scale/config/default_loss_scale_config.json)），该参数起到的作用是：
 
 'Thought:'和'Final Answer:'部分权重为1，'Action:'和'Action Input:'部分权重为2，'Observation:'字段本身权重为2，'Observation:'后面的工具调用结果权重为0。
 
@@ -182,13 +193,15 @@ loss_scale可以对模型输出部分的训练权重进行调节。例如在ReAC
 
 
 ## 训练
-参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent)，支持不同模型的丝滑切换。
+- 训练Base模型的Agent能力，通过修改`--model`切换不同模型，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/agent/qwen2_5.sh)。
+- 训练GLM4的agent_template为hermes，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/agent/glm4.sh)。
+- 使用`--loss_scale`对模型输出部分的损失权重进行调整，参加[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent/loss_scale)。
 
 ## 推理
 
-- 原始模型或者全参数训练参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_agent.py)。
-- LoRA训练参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent/loss_scale/infer.md)。
+- 原始模型或者全参数训练后模型的推理，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_agent.py)。
+- LoRA训练后推理，参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent/loss_scale/infer.md)。
 
 ## 部署
 
-参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/agent)。
+服务端和客户端代码，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/agent)。

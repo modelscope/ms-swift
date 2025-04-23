@@ -744,11 +744,6 @@ class FunctionCallChatmlPreprocessor(MessagesPreprocessor):
         messages = res['messages']
         if messages[0]['role'] == 'system':
             messages.pop(0)
-        for message in messages:
-            if message['role'] == 'function-call':
-                message['role'] = 'tool_call'
-            elif message['role'] == 'function-response':
-                message['role'] = 'tool_response'
         return res
 
 
