@@ -20,6 +20,9 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
         args.device_map = device_map or args.device_map
         logger.info(f'merge_device_map: {device_map}')
         model, template = prepare_model_template(args)
+        quant_method = model.model_info.quant_method
+        assert quant_method is None, (f'quant_method: {quant_method}, '
+                                      'quantized model and does not support merge-lora.')
         logger.info('Merge LoRA...')
         Swift.merge_and_unload(model)
         model = model.model
