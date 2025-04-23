@@ -7,6 +7,9 @@ from transformers import Trainer
 
 from swift.plugin import Tuner, extra_tuners, optimizers_map
 from swift.tuners import LoraConfig, Swift
+from swift.utils import get_logger
+
+logger = get_logger()
 
 
 class CustomTuner(Tuner):
@@ -42,6 +45,7 @@ class CustomTuner(Tuner):
     def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
         from swift.llm import get_multimodal_target_regex
         target_regex = get_multimodal_target_regex(model)
+        logger.info(f'target_regex: {target_regex}')
         lora_config = LoraConfig(
             task_type='CAUSAL_LM', r=args.lora_rank, lora_alpha=args.lora_alpha, target_modules=target_regex)
         model = Swift.prepare_model(model, lora_config)
