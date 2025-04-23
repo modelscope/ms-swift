@@ -406,7 +406,11 @@ class Template(ProcessorMixin):
                 encoded.pop(key)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
-
+        if self.max_length is not None and self.truncation_strategy == 'raise':
+            length = len(encoded.get('input_ids') or encoded.get('labels') or [])
+            if length > self.max_length:
+                raise MaxLengthError(f'Current length of row({length}) is larger'
+                                     f' than the max_length({self.max_length}).')
         if self.use_megatron:
             encoded['labels'] = encoded['labels'][1:] + [-100]
             encoded['position_ids'] = list(range(len(encoded['labels'])))
@@ -1023,10 +1027,7 @@ class Template(ProcessorMixin):
             encoded['tokenizer_kwargs'] = tokenizer_kwargs
 
         if self.max_length is not None:
-            if self.truncation_strategy == 'raise' and len(input_ids) > self.max_length:
-                raise MaxLengthError(f'Current length of row({len(input_ids)}) is larger'
-                                     f' than the max_length({self.max_length}).')
-            elif self.truncation_strategy == 'right':
+            if self.truncation_strategy == 'right':
                 input_ids = input_ids[:self.max_length]
                 if labels is not None:
                     labels = labels[:self.max_length]
