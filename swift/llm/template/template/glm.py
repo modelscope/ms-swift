@@ -17,6 +17,32 @@ class GLMTemplateMeta(TemplateMeta):
     auto_add_bos: bool = True
 
 
+class GLM4Template(Template):
+
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
+        for i, res_context in enumerate(res_context_list):
+            # The last round or is tool_call.
+            if isinstance(res_context, str) and res_context.endswith('<|assistant|>\n') and (
+                    i + 1 >= len(res_context_list) or '<|observation|>' in res_context_list[i + 1]):
+                res_context_list[i] = res_context_list[i][:-len('\n')]
+        return res_context_list, loss_scale_list, answer_len
+
+    def decode(self, *args, **kwargs):
+        response = super().decode(*args, **kwargs)
+        return response.lstrip('\n')
+
+
+class GLM4_0414Template(GLM4Template):
+
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        if not self.is_training:
+            for message in inputs.messages:
+                if message['role'] == 'assistant' and isinstance(message['content'], str):
+                    message['content'] = message['content'].split('</think>')[-1].strip()
+        return super()._swift_encode(inputs)
+
+
 register_template(
     GLMTemplateMeta(
         LLMTemplateType.chatglm2,
@@ -33,9 +59,15 @@ class GLM4TemplateMeta(GLMTemplateMeta):
     suffix: Prompt = field(default_factory=lambda: ['<|user|>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|system|>\n{{SYSTEM}}'])
 
-    default_tools_prompt: str = 'glm4'
-    tool_prompt: Optional[Prompt] = field(default_factory=lambda: ['<|observation|>\n{{QUERY}}<|assistant|>\n'])
+    agent_template: str = 'glm4'
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>', '<|user|>', '<|observation|>'])
+
+
+@dataclass
+class GLM4_0414TemplateMeta(GLM4TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['[gMASK]<sop>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>\n{{SYSTEM}}'])
+    agent_template: str = 'glm4_0414'
 
 
 class GLM4VTemplate(Template):
@@ -75,10 +107,48 @@ class GLM4VTemplate(Template):
         return res
 
 
-# not '<|assistant|>\n'
 register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate, suffix=['<|endoftext|>']))
 
-register_template(GLM4TemplateMeta(LLMTemplateType.glm4))
+register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template))
+
+register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4_0414Template))
+
+glm4z1rumination_system = (
+    '你是一个专业的深度研究助手，通过提供的工具与模拟浏览器交互，来帮助用户完成深度信息调研和报告撰写任务。'
+    '今年是 2025 年。\n\n'
+    '<核心要求>\n'
+    '- 首先分解用户请求，得到包含多个子要求的列表\n'
+    '- 制定初始研究计划\n'
+    '- 进行多轮迭代搜索和页面浏览（at least 10 function calls）：\n'
+    '    * 根据已获得的信息调整研究计划和关键词\n'
+    '    * 打开页面阅读，从发现的内容中识别新的关键概念/名词\n'
+    '    * 从搜索结果中提取新的关键词继续搜索\n'
+    '    * 访问并仔细阅读相关页面，识别新的关键概念/名词\n\n'
+    '<重要配置>\n'
+    '- 采用语言\n'
+    '    * 搜索关键词：英语\n'
+    '    * 思考：英语\n\n'
+    '<可调用的工具列表>\n\n'
+    '[{"name": "search", "description": "Execute a search query and return search results. '
+    'Use this function when you need to find information about a specific topic.", '
+    '"parameters": {"type": "object", "properties": {"query": {"type": "string", '
+    '"description": "Search query string, use English words unless it is a proper name in Chinese"}}, '
+    '"required": ["query"], "additionalProperties": false}}, '
+    '{"name": "click", "description": "Click a link in the search results and navigate to the corresponding page. '
+    'Use this function when you need to view detailed content of a specific search result.", '
+    '"parameters": {"type": "object", "properties": {"link_id": {"type": "integer", '
+    '"description": "The link ID to click (from the sequence number in search results)"}}, '
+    '"required": ["link_id"], "additionalProperties": false}}, '
+    '{"name": "open", "description": "Open a specific website. Get content from any website with its URL.", '
+    '"parameters": {"type": "object", "properties": {"url": {"type": "string", '
+    '"description": "The target website URL or domain"}}, "required": ["url"], "additionalProperties": false}}, '
+    '{"name": "finish", "description": "Finish the task. '
+    'Use this function when you have found the information you need.", '
+    '"parameters": {"type": "object", "properties": {}, "additionalProperties": false}}]')
+
+register_template(
+    GLM4_0414TemplateMeta(
+        LLMTemplateType.glm4_z1_rumination, template_cls=GLM4_0414Template, default_system=glm4z1rumination_system))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 

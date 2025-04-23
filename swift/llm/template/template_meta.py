@@ -44,9 +44,7 @@ class TemplateMeta:
 
     auto_add_bos: bool = False
     stop_words: List[Word] = field(default_factory=list)
-
-    tool_prompt: Optional[Prompt] = None
-    default_tools_prompt: str = 'react_en'
+    agent_template: str = 'react_en'
 
     def to_generate_template_meta(self) -> 'TemplateMeta':
         self = deepcopy(self)
@@ -72,7 +70,7 @@ class TemplateMeta:
         # check
         for x in [self.prefix, self.prompt, self.suffix]:
             assert isinstance(x, list)
-        for x in [self.chat_sep, self.system_prefix, self.tool_prompt]:
+        for x in [self.chat_sep, self.system_prefix]:
             assert x is None or isinstance(x, list)
 
     def __post_init__(self):
@@ -94,8 +92,6 @@ class TemplateMeta:
         self.check_system(self.default_system)
 
         self.support_multi_round = self.chat_sep is not None
-        if self.tool_prompt is None:
-            self.tool_prompt = self.prompt  # default as user
 
     @staticmethod
     def _token_attr_to_id(tokenizer: PreTrainedTokenizerBase, value: Optional[Prompt]) -> Optional[Prompt]:

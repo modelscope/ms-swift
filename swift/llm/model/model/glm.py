@@ -127,6 +127,38 @@ register_model(
 
 register_model(
     ModelMeta(
+        LLMModelType.glm4_0414,
+        [
+            ModelGroup([
+                Model('ZhipuAI/GLM-4-9B-0414', 'THUDM/GLM-4-9B-0414'),
+                Model('ZhipuAI/GLM-4-32B-0414', 'THUDM/GLM-4-32B-0414'),
+                Model('ZhipuAI/GLM-4-32B-Base-0414', 'THUDM/GLM-4-32B-Base-0414'),
+                Model('ZhipuAI/GLM-Z1-9B-0414', 'THUDM/GLM-Z1-9B-0414'),
+                Model('ZhipuAI/GLM-Z1-32B-0414', 'THUDM/GLM-Z1-32B-0414'),
+            ])
+        ],
+        TemplateType.glm4_0414,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Glm4ForCausalLM'],
+        model_arch=ModelArch.chatglm,
+        requires=['transformers>=4.51'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.glm4_z1_rumination,
+        [ModelGroup([
+            Model('ZhipuAI/GLM-Z1-Rumination-32B-0414', 'THUDM/GLM-Z1-Rumination-32B-0414'),
+        ])],
+        TemplateType.glm4_z1_rumination,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Glm4ForCausalLM'],
+        model_arch=ModelArch.chatglm,
+        requires=['transformers>4.51'],
+    ))
+
+register_model(
+    ModelMeta(
         LLMModelType.longwriter_llama3_1,
         [ModelGroup([
             Model('ZhipuAI/LongWriter-llama3.1-8b', 'THUDM/LongWriter-llama3.1-8b'),

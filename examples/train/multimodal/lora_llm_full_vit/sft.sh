@@ -8,7 +8,7 @@ swift sft \
     --dataset 'AI-ModelScope/coco#20000' \
     --train_type custom \
     --optimizer custom \
-    --external_plugins 'examples/train/multimodal/custom_tuner/custom_plugin.py' \
+    --external_plugins 'examples/train/multimodal/lora_llm_full_vit/custom_plugin.py' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \

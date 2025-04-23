@@ -1,4 +1,5 @@
 以下为如何使用训练后Agent模型的简易教程：
+- 如果使用全参数训练，则将`--adapters`改成`--model`即可。
 
 ## 方案一：使用swift app
 
@@ -134,7 +135,7 @@ Begin!
     messages += [{'role': 'user', 'content': query}]
     gen_list = engine.infer([InferRequest(messages=messages)], request_config)
     response = ''
-    tool = '{"temperature": 72, "condition": "Sunny", "humidity": 50}\n'
+    tool = '{"temperature": 32, "condition": "Sunny", "humidity": 50}\n'
     print(f'query: {query}')
     for resp in gen_list[0]:
         if resp is None:

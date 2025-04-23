@@ -23,6 +23,8 @@ class Seq2SeqTrainingOverrideArguments(TrainArgumentsMixin, Seq2SeqTrainingArgum
     output_dir: Optional[str] = None
     learning_rate: Optional[float] = None
     eval_strategy: Optional[str] = None  # steps, epoch
+    fp16: Optional[bool] = None
+    bf16: Optional[bool] = None
 
     def _init_output_dir(self):
         if self.output_dir is None:

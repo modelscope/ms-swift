@@ -28,7 +28,7 @@ swift rlhf \
     --deepspeed zero3 \
     --temperature 1.0 \
     --stop_words Observation: \
-    --tools_prompt react_grpo \
+    --agent_template react_grpo \
     --top_p 0.85 \
     --top_k 50 \
     --log_completions true \

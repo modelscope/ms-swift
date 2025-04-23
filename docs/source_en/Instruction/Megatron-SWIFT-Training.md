@@ -21,6 +21,7 @@ pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation -
 
 Alternatively, you can also use the image:
 ```
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
 modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
 ```
 
@@ -215,8 +216,8 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 
 **Mixed Precision Parameters**
 
-- fp16: FP16 mode. Default is False. Set according to the model's torch_dtype. Please use `--torch_dtype` to set it. By default, it reads from config.json.
-- bf16: BF16 mode. Default is False. Set according to the model's torch_dtype.
+- fp16: FP16 mode. The default is None, and it will be set according to the model's torch_dtype. The torch_dtype is read from the config.json by default.
+- bf16: BF16 mode. The default is None, and it will be set according to the model's torch_dtype.
 - apply_query_key_layer_scaling: Scales `Q * K^T` by `1 / layer number` (e.g., divide by layer_num for layer_num-th layer). This is helpful for FP16 training. Default is None, meaning that if `--fp16` is used, it will be set to True.
 - attention_softmax_in_fp32: Uses FP32 for computations in attention_mask and softmax. Default is True.
 
