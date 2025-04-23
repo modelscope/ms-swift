@@ -100,6 +100,7 @@ class Template(ProcessorMixin):
         template_meta.check_system(default_system)
         if default_system is not None:
             template_meta.default_system = default_system
+        logger.info(f'default_system: {template_meta.default_system}')
         if response_prefix is not None:
             template_meta.response_prefix = response_prefix
 
@@ -118,6 +119,7 @@ class Template(ProcessorMixin):
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
         agent_template = agent_template or template_meta.agent_template
+        logger.info(f'agent_template: {agent_template}')
         self.agent_template = agent_templates[agent_template]()
         self.norm_bbox = norm_bbox or self.norm_bbox
         if self.is_encoder_decoder:

@@ -252,7 +252,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         template_kwargs = self.get_template_kwargs()
         template_type = template_type or self.template
         template = get_template(template_type, processor, **template_kwargs)
-        logger.info(f'default_system: {template.template_meta.default_system}')
         return template
 
     def get_model_processor(self,
