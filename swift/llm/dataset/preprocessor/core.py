@@ -401,6 +401,8 @@ class MessagesPreprocessor(RowPreprocessor):
         self.content_keys = ['content', 'value'] if content_key is None else [content_key]
         self.user_roles = ['user', 'human'] if user_role is None else [user_role]
         self.assistant_roles = ['assistant', 'gpt', 'bot'] if assistant_role is None else [assistant_role]
+        self.tool_call_roles = ['function_call']
+        self.tool_response_roles = ['function_response', 'observation', 'observations']
 
         self.system_role = system_role
         self.repair_messages = repair_messages
@@ -446,6 +448,10 @@ class MessagesPreprocessor(RowPreprocessor):
                 message['role'] = 'user'
             elif role in self.assistant_roles:
                 message['role'] = 'assistant'
+            elif role.replace('-', '_') in self.tool_call_roles:
+                message['role'] = 'tool_call'
+            elif role.replace('-', '_') in self.tool_response_roles:
+                message['role'] = 'tool_response'
 
     @staticmethod
     def _to_std_key(messages: List[Dict[str, str]], std_key: str, optional_keys: List[str]) -> None:
