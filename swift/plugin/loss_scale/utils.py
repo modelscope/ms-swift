@@ -44,11 +44,15 @@ def calculate_loss_scale(query: str,
     agent_content = []
     for c in agent_parts:
         if c['key'] in response_loss_scale_map:
-            weights += [response_loss_scale_map[c['key']][0]]
-            weights += [response_loss_scale_map[c['key']][1]]
-            agent_content.append(c['key'])
-            agent_content.append(c['content'])
+            loss_scale = response_loss_scale_map[c['key']]
+            assert len(loss_scale) in {1, 2}, f'loss_scale: {loss_scale}'
+            if len(loss_scale) == 1:
+                weights += loss_scale
+                agent_content.append(c['content'])
+            else:
+                weights += loss_scale
+                agent_content += [c['key'], c['content']]
         else:
-            weights += [1.0]
+            weights.append(1.)
             agent_content.append(c['content'])
     return agent_content, weights

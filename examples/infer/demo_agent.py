@@ -109,10 +109,10 @@ if __name__ == '__main__':
         from swift.llm import LmdeployEngine
         engine = LmdeployEngine(model)
 
-    agent_template = agent_templates['hermes']()  # react_en/qwen_en/qwen_en_parallel
-    engine.default_template.agent_template = agent_template
+    # agent_template = agent_templates['hermes']()  # react_en/qwen_en/qwen_en_parallel
+    # engine.default_template.agent_template = agent_template
 
     infer(engine, get_infer_request())
     infer_stream(engine, get_infer_request())
 
-    infer_continue_generate(engine)
+    # infer_continue_generate(engine)
