@@ -75,6 +75,24 @@ def get_infer_request():
         }])
 
 
+def infer_continue_generate(engine):
+    infer_request = infer_request = InferRequest(messages=[{
+        'role': 'user',
+        'content': 'How is the weather today?'
+    }, {
+        'role': 'assistant',
+        'content': 'It is sunny today, '
+    }, {
+        'role': 'assistant',
+        'content': None
+    }])
+    request_config = RequestConfig(max_tokens=512, temperature=0)
+    resp_list = engine.infer([infer_request], request_config)
+    query = infer_request.messages[0]['content']
+    response = resp_list[0].choices[0].message.content
+    print(f'response: {response}')
+
+
 if __name__ == '__main__':
     from swift.llm import InferEngine, InferRequest, PtEngine, RequestConfig
     model = 'Qwen/Qwen2.5-1.5B-Instruct'
@@ -91,3 +109,5 @@ if __name__ == '__main__':
 
     infer(engine, get_infer_request())
     infer_stream(engine, get_infer_request())
+
+    infer_continue_generate(engine)

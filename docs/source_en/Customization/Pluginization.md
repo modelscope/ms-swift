@@ -95,7 +95,7 @@ In the above definition, we added a new `custom` metric. Its value consists of t
 ## Customizing Optimizers
 
 An example can be found [here](https://github.com/modelscope/swift/blob/main/swift/plugin/optimizer.py).
-- Apply different learning rates to different parts of the model. For example, use separate learning rates for ViT and LLM, as referenced [here ](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/lora_llm_full_vit/custom_plugin.py).
+- Apply different learning rates to different parts of the model. For example, use separate learning rates for ViT and LLM, as referenced [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/lora_llm_full_vit/custom_plugin.py).
 
 Users can add their own optimizers and learning rate schedulers here:
 
@@ -126,8 +126,8 @@ The example is [here](https://github.com/modelscope/swift/blob/main/swift/plugin
 ## Customizing Tuners
 
 An example can be found [here](https://github.com/modelscope/swift/blob/main/swift/plugin/tuner.py).
-- For the multimodal model, full-parameter training is applied to the ViT part, while LoRA training is used for the LLM part. Refer to [here ](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/lora_llm_full_vit).
-- For Phi4-multimodal, train its existing LoRA directly without adding extra LoRA. Refer to [here ](https://github.com/modelscope/ms-swift/blob/main/examples/train/plugins/tuner_phi4_mm.sh).
+- For the multimodal model, full-parameter training is applied to the ViT part, while LoRA training is used for the LLM part. Refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/lora_llm_full_vit).
+- For Phi4-multimodal, train its existing LoRA directly without adding extra LoRA. Refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/plugins/tuner_phi4_mm.sh).
 
 Tuner customization is another unique feature of SWIFT. Developers can bypass the complex tuner initialization process and code integration costs by registering new tuners here:
 
