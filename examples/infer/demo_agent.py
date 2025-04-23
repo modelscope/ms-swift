@@ -2,6 +2,7 @@
 import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+# os.environ['SWIFT_DEBUG'] = '1'
 
 
 def infer(engine: 'InferEngine', infer_request: 'InferRequest'):
@@ -95,6 +96,7 @@ def infer_continue_generate(engine):
 
 if __name__ == '__main__':
     from swift.llm import InferEngine, InferRequest, PtEngine, RequestConfig
+    from swift.plugin import agent_templates
     model = 'Qwen/Qwen2.5-1.5B-Instruct'
     infer_backend = 'pt'
 
@@ -106,6 +108,9 @@ if __name__ == '__main__':
     elif infer_backend == 'lmdeploy':
         from swift.llm import LmdeployEngine
         engine = LmdeployEngine(model)
+
+    agent_template = agent_templates['hermes']()  # react_en/qwen_en/qwen_en_parallel
+    engine.default_template.agent_template = agent_template
 
     infer(engine, get_infer_request())
     infer_stream(engine, get_infer_request())
