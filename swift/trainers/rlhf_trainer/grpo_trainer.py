@@ -43,7 +43,7 @@ from .rlhf_mixin import RLHFTrainerMixin
 from .utils import _split_into_mini_batches, patch_lora_merge, patch_lora_unmerge, round_robin
 
 try:
-    from trl.trainer.grpo_trainer import RepeatSampler
+    from trl.trainer.grpo_trainer import split_tensor_dict as hf_split_tensor_dict
 except ImportError:
     raise ImportError('Please install trl from source: `pip install git+https://github.com/huggingface/trl.git`')
 del HFGRPOTrainer.__init__
@@ -55,6 +55,19 @@ if is_wandb_available():
 
 InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
 OutputsType = List[List[Tuple[List[Dict], str]]]
+
+
+def _batch_split_tensor_dict(tensor_dict_list: List[Dict[str, Optional[torch.Tensor]]],
+                             num_chunks: int) -> List[List[Dict[str, Optional[torch.Tensor]]]]:
+    return [hf_split_tensor_dict(tensor_dict, num_chunks) for tensor_dict in tensor_dict_list]
+
+
+def apply_split_tensor_dict_patch():
+    from trl.trainer import grpo_trainer
+
+    if not hasattr(grpo_trainer, '_original_split_tensor_dict'):
+        grpo_trainer._original_split_tensor_dict = hf_split_tensor_dict
+        grpo_trainer.split_tensor_dict = _batch_split_tensor_dict
 
 
 @contextmanager
@@ -339,6 +352,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.resample_iterator = cyclic_iter(self.get_resample_dataloader())
         # flag indicating whether the evaluation has started
         self.eval_flag = False
+        apply_split_tensor_dict_patch()
 
     def split_batches(self):
         """Sync weights in batches
