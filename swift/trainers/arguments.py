@@ -197,6 +197,8 @@ class GRPOArgumentsMixin:
     vllm_server_timeout: float = 120.0
     vllm_client = None
 
+    # dataset
+    shuffle_dataset: Optional[bool] = True
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
