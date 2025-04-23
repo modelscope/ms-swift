@@ -127,7 +127,7 @@ def _split_str_by_regex(text: str, regex_delimiters: List[str]) -> List[str]:
     return parts
 
 
-def split_str_parts_by(text: str, delimiters: List[str], regex_mode=False) -> List[Dict[str, str]]:
+def split_str_parts_by(text: str, delimiters: List[str], regex_mode: bool = False) -> List[Dict[str, str]]:
     """Split the text field into parts.
 
     Args:
