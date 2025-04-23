@@ -18,7 +18,7 @@ Example data samples for the pure text Agent and multimodal Agent are as follows
 
 The following are the `input_ids` and `labels` after encoding the two data samples mentioned above using the templates for **qwen2_5** and **qwen2_5_vl** , with the selected `agent_template` being **hermes** :
 
-Sample One:
+Sample One (Parallel Tool Calls):
 
 ```text
 [INPUT_IDS] <|im_start|>system
@@ -64,7 +64,7 @@ According to the weather forecast tool, the air quality index (AQI) in Beijing i
 </tool_call><|im_end|>[-100 * 67]According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution.<|im_end|>
 ```
 
-Sample Two:
+Sample Two (Multimodal, Mixed Assistant and Tool Call):
 
 ```text
 [INPUT_IDS] <|im_start|>system

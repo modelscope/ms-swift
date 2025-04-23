@@ -16,7 +16,7 @@
 
 以下为上述两条数据样本由qwen2_5和qwen2_5_vl的template进行encode后的input_ids和labels，选择的agent_template为**hermes**：
 
-样本一：
+样本一（并行工具调用）：
 ```text
 [INPUT_IDS] <|im_start|>system
 You are Qwen, created by Alibaba Cloud. You are a helpful assistant.
@@ -61,7 +61,7 @@ For each function call, return a json object with function name and arguments wi
 </tool_call><|im_end|>[-100 * 67]根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。<|im_end|>
 ```
 
-样本二：
+样本二（多模态，混合assistant和tool_call）：
 ```text
 [INPUT_IDS] <|im_start|>system
 You are a helpful assistant.
