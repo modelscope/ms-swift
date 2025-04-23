@@ -13,7 +13,8 @@ swift sft \
     --learning_rate 1e-4 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --target_modules all-linear all-embedding lm_head \
+    --target_modules all-linear \
+    --modules_to_save embed_tokens lm_head \
     --gradient_accumulation_steps 16 \
     --eval_steps 100 \
     --save_steps 100 \
