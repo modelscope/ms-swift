@@ -218,7 +218,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'model_author',
             'split_dataset_ratio',
             # template_args
-            'agent_template',
             'use_chat_template',
         ]
         skip_keys = list(f.name for f in fields(GenerationArguments) + fields(CompatArguments)) + ['adapters']
