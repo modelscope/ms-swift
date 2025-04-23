@@ -207,7 +207,7 @@ For the detailed design of the `loss_scale` plugin, please refer to the [Plugin-
 
 ## Inference
 
-- For inference of the original model or fully trained model, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_agent.py).
+- 🚀For inference of the original model or fully trained model, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_agent.py).
 - For inference after LoRA training, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent/loss_scale/infer.md).
 
 ## Deployment

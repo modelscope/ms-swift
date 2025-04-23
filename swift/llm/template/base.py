@@ -100,6 +100,7 @@ class Template(ProcessorMixin):
         template_meta.check_system(default_system)
         if default_system is not None:
             template_meta.default_system = default_system
+        logger.info(f'default_system: {template_meta.default_system}')
         if response_prefix is not None:
             template_meta.response_prefix = response_prefix
 
@@ -118,6 +119,7 @@ class Template(ProcessorMixin):
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
         agent_template = agent_template or template_meta.agent_template
+        logger.info(f'agent_template: {agent_template}')
         self.agent_template = agent_templates[agent_template]()
         self.norm_bbox = norm_bbox or self.norm_bbox
         if self.is_encoder_decoder:
@@ -406,7 +408,11 @@ class Template(ProcessorMixin):
                 encoded.pop(key)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
-
+        if self.max_length is not None and self.truncation_strategy == 'raise':
+            length = len(encoded.get('input_ids') or encoded.get('labels') or [])
+            if length > self.max_length:
+                raise MaxLengthError(f'Current length of row({length}) is larger'
+                                     f' than the max_length({self.max_length}).')
         if self.use_megatron:
             encoded['labels'] = encoded['labels'][1:] + [-100]
             encoded['position_ids'] = list(range(len(encoded['labels'])))
@@ -1023,10 +1029,7 @@ class Template(ProcessorMixin):
             encoded['tokenizer_kwargs'] = tokenizer_kwargs
 
         if self.max_length is not None:
-            if self.truncation_strategy == 'raise' and len(input_ids) > self.max_length:
-                raise MaxLengthError(f'Current length of row({len(input_ids)}) is larger'
-                                     f' than the max_length({self.max_length}).')
-            elif self.truncation_strategy == 'right':
+            if self.truncation_strategy == 'right':
                 input_ids = input_ids[:self.max_length]
                 if labels is not None:
                     labels = labels[:self.max_length]

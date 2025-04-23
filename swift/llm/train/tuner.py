@@ -51,7 +51,7 @@ def get_multimodal_target_regex(
     freeze_llm: bool = False,
     freeze_vit: bool = True,
     freeze_aligner: bool = True,
-    include_embedding: bool = True,
+    include_embedding: bool = False,
 ) -> str:
     model_arch = get_model_arch(model.model_meta.model_arch)
     modules = []
