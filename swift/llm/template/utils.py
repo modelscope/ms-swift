@@ -114,7 +114,20 @@ def align_image_inputs(input_ids: List[int], labels: List[int], new_input_ids,
     return input_ids, labels
 
 
-def split_str_parts_by(text: str, delimiters: List[str]) -> List[Dict[str, str]]:
+def _split_str_by_regex(text: str, regex_delimiters: List[str]) -> List[str]:
+    combined_pattern = '|'.join(f'({pattern})' for pattern in regex_delimiters)
+    parts = re.split(combined_pattern, text, flags=re.DOTALL)
+    parts = [part for part in parts if part is not None]
+    if parts[0] == '':
+        parts.pop(0)
+    else:
+        parts.insert(0, '')
+    assert len(parts) % 2 == 0, f'result: {parts}'
+    assert ''.join(parts) == text, f'split_result: {parts}, text: {text}'
+    return parts
+
+
+def split_str_parts_by(text: str, delimiters: List[str], regex_mode=False) -> List[Dict[str, str]]:
     """Split the text field into parts.
 
     Args:
@@ -125,39 +138,23 @@ def split_str_parts_by(text: str, delimiters: List[str]) -> List[Dict[str, str]]
         The split text in list of dicts.
     """
     assert isinstance(text, str), f'text: {text}'
-    regex_pattern = '|'.join(f'({re.escape(delimiter)})' for delimiter in delimiters)
-    split_result = re.split(regex_pattern, text)
-    split_result = [x for x in split_result if x is not None]
-    if split_result[0] == '':
-        split_result.pop(0)
+    if delimiters:
+        if not regex_mode:
+            delimiters = [re.escape(delimiter) for delimiter in delimiters]
+        parts = _split_str_by_regex(text, delimiters)
     else:
-        split_result.insert(0, '')
+        parts = ['', text]
     res = []
-    assert len(split_result) % 2 == 0
-    for key, content in zip(split_result[::2], split_result[1::2]):
-        res.append({'key': key, 'content': content})
+    if regex_mode:
+        parts = [part for part in parts if part]
+        for part in parts:
+            for delimiter in delimiters:
+                if re.match(delimiter, part, re.DOTALL):
+                    break
+            else:
+                delimiter = ''
+            res.append({'key': delimiter, 'content': part})
+    else:
+        for key, content in zip(parts[::2], parts[1::2]):
+            res.append({'key': key, 'content': content})
     return res
-
-
-def split_parts_by_regex(text_list: list, regex_delimiters: Dict[str, List[float]]) -> None:
-    compiled_patterns = [(re.compile(pattern), scale) for pattern, scale in regex_delimiters.items()]
-    for i in range(len(text_list) - 1, -1, -1):
-        item = text_list[i]
-        if item.get('key') == '':
-            res_text = item['content']
-            last_idx = 0
-            segments = []
-
-            for pattern, scale in compiled_patterns:
-                matches = list(re.finditer(pattern, res_text))
-                for match in matches:
-                    if match.start() > last_idx:
-                        segments.append({'key': '', 'content': res_text[last_idx:match.start()]})
-                    segments.append({'key': scale[0], 'content': match.group(0)})
-                    last_idx = match.end()
-
-            if last_idx < len(res_text):
-                segments.insert(0, {'key': '', 'content': res_text[last_idx:]})
-
-            if segments:
-                text_list[i:i + 1] = segments

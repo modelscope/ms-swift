@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional, Tuple
 
-from swift.llm.template.utils import split_parts_by_regex, split_str_parts_by
+from swift.llm.template import split_str_parts_by
 
 
 def calculate_loss_scale(query: str,
@@ -34,24 +34,21 @@ def calculate_loss_scale(query: str,
                     query_loss_scale_map[key] = [query_loss_scale_map[key]]
                 loss_scale_value = query_loss_scale_map[key][0]
                 return [response], [float(loss_scale_value)]
-    delimiters = list(k for k in response_loss_scale_map.keys() if len(response_loss_scale_map[k]) == 2)
-    agent_parts = split_str_parts_by(response, delimiters)
-    regex_delimiters = {k: v for k, v in response_loss_scale_map.items() if len(v) == 1}
-    if len(regex_delimiters):
-        split_parts_by_regex(agent_parts, regex_delimiters)
+    delimiters = [k for k, v in response_loss_scale_map.items() if len(v) == 2]
+    if delimiters:
+        agent_parts = split_str_parts_by(response, delimiters)
+    else:
+        regex_delimiters = [k for k, v in response_loss_scale_map.items() if len(v) == 1]
+        agent_parts = split_str_parts_by(response, regex_delimiters, regex_mode=True)
     weights = []
     agent_content = []
     for c in agent_parts:
-        if isinstance(c['key'], (float, int)):
-            weights += [c['key']]
+        if c['key'] in response_loss_scale_map:
+            weights += [response_loss_scale_map[c['key']][0]]
+            weights += [response_loss_scale_map[c['key']][1]]
+            agent_content.append(c['key'])
             agent_content.append(c['content'])
         else:
-            if c['key'] in response_loss_scale_map:
-                weights += [response_loss_scale_map[c['key']][0]]
-                weights += [response_loss_scale_map[c['key']][1]]
-                agent_content.append(c['key'])
-                agent_content.append(c['content'])
-            else:
-                weights += [1.0]
-                agent_content.append(c['content'])
+            weights += [1.0]
+            agent_content.append(c['content'])
     return agent_content, weights
