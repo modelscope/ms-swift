@@ -213,6 +213,10 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     def _check_grpo(self):
         if self.rlhf_type != 'grpo':
             return
+        if self.num_generations < 2:
+            raise ValueError(
+                'GRPO requires at least 2 generations per prompt to calculate the advantages. You provided '
+                f'{self.num_generations}, which is less than the minimum required.')
         from swift.utils import get_device_count, get_dist_setting
         device_count = get_device_count()
         _, _, _, local_world_size = get_dist_setting()
