@@ -81,14 +81,12 @@ class AgentFlanLossScale(LossScale):
                        *,
                        query: Optional[str] = None):
         if context_type == ContextType.RESPONSE:
-            query_loss_scale_map = self.loss_scale_map['query']
-            response_loss_scale_map = self.loss_scale_map['response']
-            return calculate_loss_scale(query, context, response_loss_scale_map, query_loss_scale_map)
+            return calculate_loss_scale(query, context, self.loss_scale_map['response'], self.loss_scale_map['query'])
         return super().get_loss_scale(context, context_type, is_last_round)
 
 
 class REACTLossScale(LossScale):
-    loss_scale_config = 'default_loss_scale_config.json'
+    loss_scale_config = 'react.json'
 
     def get_loss_scale(self,
                        context: str,
@@ -101,22 +99,16 @@ class REACTLossScale(LossScale):
         return super().get_loss_scale(context, context_type, is_last_round)
 
 
-class QwenLossScale(LossScale):
-    loss_scale_config = 'qwen_loss_scale_config.json'
+class QwenLossScale(REACTLossScale):
+    loss_scale_config = 'qwen.json'
 
-    def get_loss_scale(self,
-                       context: str,
-                       context_type: ContextType,
-                       is_last_round: bool,
-                       *,
-                       query: Optional[str] = None):
-        if context_type == ContextType.RESPONSE:
-            return calculate_loss_scale(query, context, self.loss_scale_map)
-        return super().get_loss_scale(context, context_type, is_last_round)
+
+class HermesLossScale(REACTLossScale):
+    loss_scale_config = 'hermes.json'
 
 
 class AlphaUmiLossScale(REACTLossScale):
-    loss_scale_config = 'alpha_umi_loss_scale_config.json'
+    loss_scale_config = 'alpha_umi.json'
 
 
 class TrainAllLossScale(LossScale):
@@ -135,4 +127,5 @@ loss_scale_map = {
     'react': REACTLossScale(),
     'alpha_umi': AlphaUmiLossScale(),
     'qwen': QwenLossScale(),
+    'hermes': HermesLossScale()
 }
