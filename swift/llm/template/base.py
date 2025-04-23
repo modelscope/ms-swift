@@ -100,9 +100,10 @@ class Template(ProcessorMixin):
         template_meta.check_system(default_system)
         if default_system is not None:
             template_meta.default_system = default_system
-        logger.info(f'default_system: {template_meta.default_system}')
         if response_prefix is not None:
             template_meta.response_prefix = response_prefix
+        logger.info(f'default_system: {repr(template_meta.default_system)}')
+        logger.info(f'response_prefix: {repr(template_meta.response_prefix)}')
 
         for i, token in enumerate(self.placeholder_tokens):
             if isinstance(token, str):
@@ -840,7 +841,8 @@ class Template(ProcessorMixin):
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
     @staticmethod
-    def _add_dynamic_eos(input_ids, labels: List[int], suffix_tokens_id: List[int]) -> None:
+    def _add_dynamic_eos(input_ids: List[int], labels: List[int], loss_scale: Optional[List[int]],
+                         suffix_tokens_id: List[int]) -> None:
         suffix_len = len(suffix_tokens_id)
         start = 0
         for i in range(1, len(labels)):
@@ -851,6 +853,8 @@ class Template(ProcessorMixin):
                 length = i - start
                 if length >= suffix_len and input_ids[start:start + suffix_len] == suffix_tokens_id:
                     labels[start:start + suffix_len] = suffix_tokens_id
+                    if loss_scale and loss_scale[start:start + suffix_len] == [0] * suffix_len:
+                        loss_scale[start:start + suffix_len] = [1] * suffix_len
 
     @staticmethod
     def _get_std_messages(messages):
@@ -1022,8 +1026,7 @@ class Template(ProcessorMixin):
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                 res_context_list, loss_scale_list)
-        if self.loss_scale in {'default', 'all', 'last_round'}:
-            self._add_dynamic_eos(input_ids, labels, self._encode_context_list(self.template_meta.suffix)[0])
+        self._add_dynamic_eos(input_ids, labels, loss_scale, self._encode_context_list(self.template_meta.suffix)[0])
 
         if tokenizer_kwargs:
             encoded['tokenizer_kwargs'] = tokenizer_kwargs
