@@ -76,7 +76,8 @@ def get_infer_request():
 
 
 def infer_continue_generate(engine):
-    infer_request = infer_request = InferRequest(messages=[{
+    # Continue generating after the assistant message.
+    infer_request = InferRequest(messages=[{
         'role': 'user',
         'content': 'How is the weather today?'
     }, {
@@ -88,7 +89,6 @@ def infer_continue_generate(engine):
     }])
     request_config = RequestConfig(max_tokens=512, temperature=0)
     resp_list = engine.infer([infer_request], request_config)
-    query = infer_request.messages[0]['content']
     response = resp_list[0].choices[0].message.content
     print(f'response: {response}')
 
