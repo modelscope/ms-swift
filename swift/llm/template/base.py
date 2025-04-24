@@ -192,6 +192,8 @@ class Template(ProcessorMixin):
                 inputs.tools = agent_template._parse_json(inputs.tools)
             elif isinstance(inputs.tools, (list, tuple)):
                 inputs.tools = [agent_template._parse_json(tool) for tool in inputs.tools]
+            else:
+                raise ValueError(f'inputs.tools: {inputs.tools}')
             for i, tool in enumerate(inputs.tools):
                 inputs.tools[i] = agent_template.wrap_tool(tool)
         i = 0
