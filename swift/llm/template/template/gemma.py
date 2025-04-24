@@ -94,27 +94,19 @@ register_template(Gemma3TextTemplateMeta(LLMTemplateType.gemma3_text, template_c
 
 class Gemma3VisionTemplate(Gemma3Template):
     boi_token_id = 255999
-    placeholder_tokens = ['<start_of_image>']
+    placeholder_tokens = ['<image_soft_token>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
-        return ['<start_of_image>']
+        return [self.processor.full_image_sequence]
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        from transformers.models.gemma3.processing_gemma3 import Gemma3ProcessorKwargs
-
         encoded = super()._encode(inputs)
         if inputs.images:
-            input_ids = encoded['input_ids']
-            labels = encoded['labels']
-            idx_list = findall(input_ids, self.boi_token_id)
-            img_tokens = self.tokenizer.encode(self.processor.full_image_sequence)
-            input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, lambda _: img_tokens)
-
             # TODO: customize
-            processor_kwargs = Gemma3ProcessorKwargs._defaults['images_kwargs']
-            image_inputs = self.processor.image_processor(inputs.images, **processor_kwargs)
+            input_ids = encoded['input_ids']
+            image_inputs = self.processor.image_processor(inputs.images)
             image_inputs['pixel_values'] = torch.as_tensor(np.array(image_inputs['pixel_values']))
             image_inputs.pop('num_crops')
 
@@ -122,9 +114,7 @@ class Gemma3VisionTemplate(Gemma3Template):
             mm_token_type_ids = np.zeros_like(input_ids)
             mm_token_type_ids[array_ids == self.processor.image_token_id] = 1
             encoded['token_type_ids'] = mm_token_type_ids.tolist()
-            encoded['input_ids'] = input_ids
             encoded['pixel_values'] = image_inputs['pixel_values']
-            encoded['labels'] = labels
         return encoded
 
 

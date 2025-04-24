@@ -95,19 +95,6 @@ register_model(
         requires=['transformers>=4.42'],
     ))
 
-
-def get_model_tokenizer_gemma3_text(model_dir: str,
-                                    model_info: ModelInfo,
-                                    model_kwargs: Dict[str, Any],
-                                    load_model: bool = True,
-                                    **kwargs):
-    # It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `sdpa`.
-    kwargs['attn_impl'] = kwargs['attn_impl'] or 'eager'
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-
-    return model, tokenizer
-
-
 register_model(
     ModelMeta(
         LLMModelType.gemma3_text,
@@ -118,31 +105,11 @@ register_model(
             ], ),
         ],
         TemplateType.gemma3_text,
-        get_model_tokenizer_gemma3_text,
+        get_model_tokenizer_with_flash_attn,
         architectures=['Gemma3ForCausalLM'],
         model_arch=ModelArch.llama,
         requires=['transformers>=4.49'],
     ))
-
-
-def get_model_tokenizer_gemma3_vision(model_dir: str,
-                                      model_info: ModelInfo,
-                                      model_kwargs: Dict[str, Any],
-                                      load_model: bool = True,
-                                      **kwargs):
-    try:
-        from transformers import Gemma3ForConditionalGeneration
-    except ImportError:
-        raise ImportError('Please install Gemma3ForConditionalGeneration by running '
-                          '`pip install git+https://github.com/huggingface/transformers@v4.49.0-Gemma-3`')
-
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Gemma3ForConditionalGeneration
-    # It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `sdpa`.
-    kwargs['attn_impl'] = kwargs['attn_impl'] or 'eager'
-    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
-
-    return model, processor
-
 
 register_model(
     ModelMeta(
@@ -158,7 +125,7 @@ register_model(
             ], ),
         ],
         TemplateType.gemma3_vision,
-        get_model_tokenizer_gemma3_vision,
+        get_model_tokenizer_multimodal,
         architectures=['Gemma3ForConditionalGeneration'],
         model_arch=ModelArch.gemma3_vision,
         requires=['transformers>=4.49'],
