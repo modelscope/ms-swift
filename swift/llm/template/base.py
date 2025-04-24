@@ -188,7 +188,10 @@ class Template(ProcessorMixin):
         agent_template = self.agent_template
         agent_template.template_meta = self.template_meta  # for hermes
         if inputs.tools:
-            inputs.tools = [agent_template._parse_json(tool) for tool in inputs.tools]
+            if isinstance(inputs.tools, str):
+                inputs.tools = agent_template._parse_json(inputs.tools)
+            elif isinstance(inputs.tools, (list, tuple)):
+                inputs.tools = [agent_template._parse_json(tool) for tool in inputs.tools]
             for i, tool in enumerate(inputs.tools):
                 inputs.tools[i] = agent_template.wrap_tool(tool)
         i = 0

@@ -185,7 +185,7 @@ tools = [{
 
 ## loss_scale的使用
 
-loss_scale可以对模型输出部分的训练损失权重进行调节。例如在ReACT格式中，可以设置`--loss_scale react`（loss_scale配置文件书写在[这里](https://github.com/modelscope/swift/blob/main/swift/plugin/loss_scale/config/default_loss_scale_config.json)），该参数起到的作用是：
+loss_scale可以对模型输出部分的训练损失权重进行调节。例如在ReACT格式中，可以设置`--loss_scale react`（loss_scale配置文件书写在[这里](https://github.com/modelscope/swift/blob/main/swift/plugin/loss_scale/config/react.json)），该参数起到的作用是：
 
 'Thought:'和'Final Answer:'部分权重为1，'Action:'和'Action Input:'部分权重为2，'Observation:'字段本身权重为2，'Observation:'后面的工具调用结果权重为0。
 

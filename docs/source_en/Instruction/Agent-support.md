@@ -190,7 +190,7 @@ tools = [{
 
 ## Usage of loss_scale
 
-`loss_scale` can be used to adjust the training loss weight for the model's output section. For example, in the ReACT format, you can set `--loss_scale react` (the loss_scale configuration file is written [here](https://github.com/modelscope/swift/blob/main/swift/plugin/loss_scale/config/default_loss_scale_config.json)). The role of this parameter is as follows:
+`loss_scale` can be used to adjust the training loss weight for the model's output section. For example, in the ReACT format, you can set `--loss_scale react` (the loss_scale configuration file is written [here](https://github.com/modelscope/swift/blob/main/swift/plugin/loss_scale/config/react.json)). The role of this parameter is as follows:
 
 - The weight for the 'Thought:' and 'Final Answer:' sections is 1.
 - The weight for the 'Action:' and 'Action Input:' sections is 2.
