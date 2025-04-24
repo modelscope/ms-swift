@@ -447,7 +447,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             def _get_new_audio_tokens(i):
                 if self.use_audio_in_video:
                     i = i + len(inputs.videos)
-                return token_id * audio_lengths
+                return audio_token_id * audio_lengths[i]
 
             input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_audio_tokens)
 
