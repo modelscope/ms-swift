@@ -56,6 +56,8 @@ def test_step_audio_chat():
 
 
 def test_qwen2_5_omni():
+    USE_AUDIO_IN_VIDEO = True
+    os.environ['USE_AUDIO_IN_VIDEO'] = str(USE_AUDIO_IN_VIDEO)
     pt_engine = PtEngine('Qwen/Qwen2.5-Omni-7B')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'

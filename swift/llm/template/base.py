@@ -739,7 +739,7 @@ class Template(ProcessorMixin):
             if context == '<image>' and inputs.is_multimodal and inputs.image_idx < len(inputs.images):
                 c_list = self.replace_tag('image', inputs.image_idx, inputs)
                 inputs.image_idx += 1
-                loss_scale = 0.
+                loss_scale = 0. if self.template_backend == 'swift' else 1.
             else:
                 c_list = [context]
             res += c_list
