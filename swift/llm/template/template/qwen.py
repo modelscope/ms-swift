@@ -454,7 +454,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_audio_tokens)
 
         if self.use_audio_in_video:
-            audio_lengths = audio_lengths_origin[audio_lengths_origin]
+            audio_lengths = audio_lengths_origin[video_audios_mask]
 
         for media_type in ['image', 'video']:
             token = f'<|{media_type.upper()}|>'
