@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -411,7 +410,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                     import audioread
                     video = audioread.ffdec.FFmpegAudioFile(video)
                 video = librosa.load(video, sr=self.sampling_rate)[0]
-                inputs.audios.insert(0, video)
+                inputs.audios.insert(inputs.audio_idx, (video, 'video'))
                 inputs.audio_idx += 1
                 return ['<|vision_bos|><|audio_bos|><|VIDEO|><|audio_eos|><|vision_eos|>']
             return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
@@ -419,6 +418,13 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)
         processor = self.processor
+        video_audios_mask = []
+        for i, audio in enumerate(inputs.audios):
+            if isinstance(audio, tuple) and audio[1] == 'video':
+                inputs.audios[i] = audio[0]
+                video_audios_mask.append(True)
+            else:
+                video_audios_mask.append(False)
         media_inputs = processor(
             text='',
             audio=inputs.audios or None,
@@ -436,23 +442,19 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         feature_attention_mask = media_inputs.get('feature_attention_mask')
         if feature_attention_mask is not None:
             audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
-            audio_lengths = (((audio_feature_lengths - 1) // 2 + 1 - 2) // 2 + 1).tolist()
-        else:
-            audio_lengths = []
+            audio_lengths = (((audio_feature_lengths - 1) // 2 + 1 - 2) // 2 + 1)
         audio_lengths_origin = audio_lengths
         if idx_list:
             if self.use_audio_in_video:
-                audio_lengths = audio_lengths[len(inputs.videos):]
+                audio_lengths = audio_lengths[not video_audios_mask]
 
             def _get_new_audio_tokens(i):
-                if self.use_audio_in_video:
-                    i = i + len(inputs.videos)
                 return audio_token_id * audio_lengths[i]
 
             input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_audio_tokens)
 
         if self.use_audio_in_video:
-            audio_lengths = audio_lengths_origin[:len(inputs.videos)]
+            audio_lengths = audio_lengths_origin[audio_lengths_origin]
 
         for media_type in ['image', 'video']:
             token = f'<|{media_type.upper()}|>'
