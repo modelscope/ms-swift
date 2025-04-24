@@ -190,6 +190,8 @@ class Template(ProcessorMixin):
         if inputs.tools:
             if isinstance(inputs.tools, str):
                 inputs.tools = agent_template._parse_json(inputs.tools)
+                if not isinstance(inputs.tools, (list, tuple)):
+                    inputs.tools = [inputs.tools]
             elif isinstance(inputs.tools, (list, tuple)):
                 inputs.tools = [agent_template._parse_json(tool) for tool in inputs.tools]
             else:
