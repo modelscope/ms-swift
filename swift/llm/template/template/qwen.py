@@ -425,6 +425,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 video_audios_mask.append(True)
             else:
                 video_audios_mask.append(False)
+        video_audios_mask = torch.tensor(video_audios_mask)
         media_inputs = processor(
             text='',
             audio=inputs.audios or None,
@@ -448,15 +449,12 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         audio_lengths_origin = audio_lengths
         if idx_list:
             if self.use_audio_in_video:
-                audio_lengths = audio_lengths[not video_audios_mask]
+                audio_lengths = audio_lengths[~video_audios_mask]
 
             def _get_new_audio_tokens(i):
                 return audio_token_id * audio_lengths[i]
 
             input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_audio_tokens)
-
-        if self.use_audio_in_video:
-            audio_lengths = audio_lengths_origin[video_audios_mask]
 
         for media_type in ['image', 'video']:
             token = f'<|{media_type.upper()}|>'
@@ -466,6 +464,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 merge_size = processor.image_processor.merge_size
                 media_grid_thw = media_inputs.get(f'{media_type}_grid_thw')
                 if media_type == 'video' and self.use_audio_in_video:
+                    audio_lengths = audio_lengths_origin[video_audios_mask]
                     video_second_per_grid = media_inputs['video_second_per_grid']
 
                     def _get_new_tokens_use_audio_in_video(i):
