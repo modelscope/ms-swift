@@ -443,7 +443,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         if feature_attention_mask is not None:
             audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
             audio_lengths = (((audio_feature_lengths - 1) // 2 + 1 - 2) // 2 + 1)
-        audio_lengths_origin = audio_lengths
+            audio_lengths_origin = audio_lengths
         if idx_list:
             if self.use_audio_in_video:
                 audio_lengths = audio_lengths[not video_audios_mask]
