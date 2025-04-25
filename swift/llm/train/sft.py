@@ -6,7 +6,7 @@ from typing import List, Union
 from datasets import Dataset as HfDataset
 
 from swift.plugin import extra_callbacks, get_loss_func, get_metric
-from swift.trainers import IntervalStrategy, TrainerFactory
+from swift.trainers import TrainerFactory
 from swift.utils import (append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array,
                          use_torchacc)
 from ..argument import TrainArguments
@@ -118,7 +118,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
 
         train_dataset, val_dataset = self._get_dataset()
-        self._save_val_dataset(args.output_dir, val_dataset)
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
 
         if args.task_type == 'seq_cls':
@@ -274,9 +273,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 if val_dataset is not None and not predict_with_generate:
                     self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
 
-        if args.task_type == 'seq_cls':
-            args.problem_type = args.problem_type or getattr(self.model.config, 'problem_type', None)
-            logger.info(f'args.problem_type: {args.problem_type}')
         return train_dataset, val_dataset
 
 
