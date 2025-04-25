@@ -1,5 +1,7 @@
+from typing import Any, Dict
+
 from ..config import convert_hf_config
-from typing import Dict, Any
+
 
 def convert_gpt_hf_config(config) -> Dict[str, Any]:
     res = convert_hf_config(config)
