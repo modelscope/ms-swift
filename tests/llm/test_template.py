@@ -1,11 +1,11 @@
+import os
 import unittest
 
-if __name__ == '__main__':
-    import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-    os.environ['SWIFT_DEBUG'] = '1'
-    from swift.llm import PtEngine, RequestConfig, get_model_tokenizer, get_template
-    from swift.utils import get_logger, seed_everything
+from swift.llm import PtEngine, RequestConfig, get_model_tokenizer, get_template
+from swift.utils import get_logger, seed_everything
+
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['SWIFT_DEBUG'] = '1'
 
 logger = get_logger()
 
