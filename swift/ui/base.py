@@ -32,6 +32,7 @@ def update_data(fn):
         if builder is not None:
             choices = base_builder.choice(elem_id)
             if choices:
+                choices = [str(choice) if choice is not None else None for choice in choices]
                 kwargs['choices'] = choices
 
         if not isinstance(self, (Tab, TabItem, Accordion)) and 'interactive' not in kwargs:  # noqa
