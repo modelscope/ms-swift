@@ -188,4 +188,4 @@ class LLMExport(BaseUI):
         run_command, export_args, log_file = cls.export(*args)
         os.system(run_command)
         time.sleep(2)
-        return gr.update(open=True), ExportRuntime.refresh_tasks(log_file), [None]
+        return gr.update(open=True), ExportRuntime.refresh_tasks(log_file)
