@@ -29,10 +29,6 @@
 <p align="center">
         <a href="https://arxiv.org/abs/2408.05517">论文</a> &nbsp ｜ <a href="https://swift.readthedocs.io/en/latest/">Swift3.x En Doc</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">Swift3.x中文文档</a> &nbsp
 </p>
-<p align="center">
-        <a href="https://swift2x-en.readthedocs.io/en/latest/">Swift2.x En Doc</a> &nbsp ｜ &nbsp <a href="https://swift2x.readthedocs.io/zh-cn/latest/">Swift2.x中文文档</a> &nbsp
-</p>
-
 
 ##  📖 目录
 - [用户群](#-用户群)
@@ -74,6 +70,7 @@
 - **模型量化**：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
+- 🎁 2025.04.15: SWIFT论文已经被AAAI 2025接收, 论文地址在[这里](https://ojs.aaai.org/index.php/AAAI/article/view/35383).
 - 🎁 2025.03.23: SWIFT支持了多轮GRPO, 用于构建多轮对话场景的训练(例如agent tool calling), 请查看[训练脚本](examples/train/grpo/train_multi_round.sh).
 - 🎁 2025.03.16: SWIFT支持了Megatron的并行技术进行训练，请查看[Megatron-SWIFT训练文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Megatron-SWIFT训练.html)。
 - 🎁 2025.03.15: SWIFT支持了gme（多模态）embedding模型的微调，请查看[训练脚本](examples/train/embedding/train_gme.sh)。
@@ -120,7 +117,7 @@ pip install -e .
 | peft | >=0.11,<0.16 | ||
 | trl | >=0.13,<0.17 | 0.16 |RLHF|
 | deepspeed | >=0.14       | 0.14.5 |训练|
-| vllm | >=0.5.1      | 0.7.3/0.8.3 |推理/部署/评测|
+| vllm | >=0.5.1      | 0.7.3/0.8.4 |推理/部署/评测|
 | lmdeploy | >=0.5        | 0.7.2.post1 |推理/部署/评测|
 | evalscope | >=0.11       | |评测|
 

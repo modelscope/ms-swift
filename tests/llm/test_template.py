@@ -1,17 +1,13 @@
 import os
 import unittest
 
-from swift.llm import PtEngine, RequestConfig
+from swift.llm import PtEngine, RequestConfig, get_model_tokenizer, get_template
 from swift.utils import get_logger, seed_everything
 
-logger = get_logger()
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 os.environ['SWIFT_DEBUG'] = '1'
 
-if __name__ == '__main__':
-    import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-SKIP_TEST = True
+logger = get_logger()
 
 
 def _infer_model(pt_engine, system=None, messages=None):
@@ -46,47 +42,62 @@ class TestTemplate(unittest.TestCase):
     def test_tool_message_join(self):
         from copy import deepcopy
 
-        from swift.llm.template.template_inputs import StdTemplateInputs
-        from swift.plugin.tools import get_tools_keyword
+        from swift.plugin import agent_templates
 
         messages = [
             # first round
             {
                 'role': 'user',
-                'content': 'testing_user_message'
+                'content': 'user1'
             },
             {
                 'role': 'assistant',
-                'content': ''
+                'content': 'assistant1'
+            },
+            {
+                'role': 'assistant',
+                'content': 'assistant2'
             },
             {
                 'role': 'tool',
-                'content': ''
+                'content': 'tool1'
             },
             # second round
             {
                 'role': 'assistant',
-                'content': ''
+                'content': 'assistant3'
             },
             {
                 'role': 'tool',
-                'content': ''
+                'content': 'tool2'
+            },
+            {
+                'role': 'tool',
+                'content': 'tool3'
             },
         ]
 
         # testing two template type.
-        for tool_prompt in ('react_en', 'qwen'):
+        tokenizer = get_model_tokenizer('Qwen/Qwen2.5-7B-Instruct', load_model=False)[1]
+        template = get_template(tokenizer.model_meta.template, tokenizer)
+        for agent_template_type in ('react_zh', 'qwen_zh'):
+            agent_template = agent_templates[agent_template_type]()
+            template.agent_template = agent_template
+            observation = agent_template.keyword.observation
             test_messages = deepcopy(messages)
-            obs_word = get_tools_keyword(tool_prompt).get('observation')
-            test_messages[1]['content'] = f'{obs_word}'
-            test_messages[2]['content'] = 'first_round_result\n'
-            test_messages[3]['content'] = f'{obs_word}'
-            test_messages[4]['content'] = 'second_round_result\n'
-            StdTemplateInputs.messages_join_observation(test_messages, tools_prompt=tool_prompt)
+            test_messages[2]['content'] = 'assistant2' + observation
+            test_messages[4]['content'] = (
+                agent_template.keyword.action + agent_template.keyword.action_input + 'assistant3' + observation)
+            encoded = template.encode({'messages': test_messages})
+            res = template.safe_decode(encoded['input_ids'])
 
-            # multi-round tool calling should be joined that only one assistant message left.
-            assert len(test_messages) == 2, f'Tool prompt {tool_prompt} join failed, {messages}'
-            assert test_messages[1]['content'] == f"""{obs_word}first_round_result\n{obs_word}second_round_result\n"""
+            ground_truth = (
+                '<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n'
+                '<|im_start|>user\nuser1<|im_end|>\n'
+                f'<|im_start|>assistant\nassistant1assistant2{observation}tool1'
+                f'{agent_template.keyword.action}{agent_template.keyword.action_input}assistant3'
+                f'{observation}tool2\n{observation}tool3\n')
+            assert res == ground_truth
 
 
 if __name__ == '__main__':

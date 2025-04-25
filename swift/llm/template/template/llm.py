@@ -265,17 +265,6 @@ register_template(
 
 register_template(
     TemplateMeta(
-        LLMTemplateType.moonlight,
-        prefix=[],
-        system_prefix=['<|im_system|>system<|im_middle|>{{SYSTEM}}<|im_end|>'],
-        prompt=['<|im_user|>user<|im_middle|>{{QUERY}}<|im_end|><|im_assistant|>assistant<|im_middle|>'],
-        chat_sep=['<|im_end|>'],
-        suffix=['<|im_end|>'],
-        default_system='You are a helpful assistant',
-    ))
-
-register_template(
-    TemplateMeta(
         LLMTemplateType.ling,
         prefix=[],
         system_prefix=['<role>SYSTEM</role>{{SYSTEM}}'],

@@ -32,6 +32,7 @@ def update_data(fn):
         if builder is not None:
             choices = base_builder.choice(elem_id)
             if choices:
+                choices = [str(choice) if choice is not None else None for choice in choices]
                 kwargs['choices'] = choices
 
         if not isinstance(self, (Tab, TabItem, Accordion)) and 'interactive' not in kwargs:  # noqa
@@ -259,10 +260,15 @@ class BaseUI:
     def get_choices_from_dataclass(dataclass):
         choice_dict = {}
         for f in fields(dataclass):
+            default_value = f.default
+            if 'MISSING_TYPE' in str(default_value):
+                default_value = None
             if 'choices' in f.metadata:
-                choice_dict[f.name] = f.metadata['choices']
+                choice_dict[f.name] = list(f.metadata['choices'])
             if 'Literal' in str(f.type) and typing.get_args(f.type):
-                choice_dict[f.name] = typing.get_args(f.type)
+                choice_dict[f.name] = list(typing.get_args(f.type))
+            if f.name in choice_dict and default_value not in choice_dict[f.name]:
+                choice_dict[f.name].insert(0, default_value)
         return choice_dict
 
     @staticmethod
@@ -315,7 +321,13 @@ class BaseUI:
         if os.path.exists(local_args_path):
             try:
                 if hasattr(arg_cls, 'resume_from_checkpoint'):
-                    args = arg_cls(resume_from_checkpoint=model, load_data_args=True)
+                    try:
+                        args = arg_cls(resume_from_checkpoint=model, load_data_args=True)
+                    except Exception as e:
+                        if 'using `--model`' in str(e):  # TODO a dirty fix
+                            args = arg_cls(model=model, load_data_args=True)
+                        else:
+                            raise e
                 else:
                     args = arg_cls(ckpt_dir=model, load_data_args=True)
             except ValueError:

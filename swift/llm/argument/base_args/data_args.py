@@ -40,6 +40,7 @@ class DataArguments:
     data_seed: Optional[int] = None
     dataset_num_proc: int = 1
     dataset_shuffle: bool = True
+    val_dataset_shuffle: bool = False
     streaming: bool = False
     interleave_prob: Optional[List[float]] = None
     stopping_strategy: Literal['first_exhausted', 'all_exhausted'] = 'first_exhausted'
@@ -83,7 +84,6 @@ class DataArguments:
         return {
             'seed': self.data_seed,
             'num_proc': self.dataset_num_proc,
-            'shuffle': self.dataset_shuffle,
             'streaming': self.streaming,
             'interleave_prob': self.interleave_prob,
             'stopping_strategy': self.stopping_strategy,

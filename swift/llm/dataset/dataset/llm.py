@@ -734,6 +734,27 @@ register_dataset(
         tags=['chat', 'zh']))
 
 
+class FunctionCallChatmlPreprocessor(MessagesPreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        res = super().preprocess(row)
+
+        if res['function_description']:
+            res['tools'] = res['function_description'].split('\n\n')
+        messages = res['messages']
+        if messages[0]['role'] == 'system':
+            messages.pop(0)
+        return res
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='AI-ModelScope/function-calling-chatml',
+        hf_dataset_id='Locutusque/function-calling-chatml',
+        preprocess_func=FunctionCallChatmlPreprocessor(),
+        tags=['agent', 'en', 'sft', '🔥']))
+
+
 class Dolly15kPreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:

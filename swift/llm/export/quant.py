@@ -78,12 +78,12 @@ class QuantEngine(ProcessorMixin):
         args = self.args
         assert args.quant_method in {'awq', 'gptq'}
         template = self.template
-        data = args.dataset
         n_samples = args.quant_n_samples
         block_size = args.max_length
 
         # only use train_dataset
-        dataset = load_dataset(data, split_dataset_ratio=0, **args.get_dataset_kwargs())[0]
+        dataset = load_dataset(
+            args.dataset, split_dataset_ratio=0, shuffle=args.dataset_shuffle, **args.get_dataset_kwargs())[0]
         logger.info(f'quant_dataset: {dataset}')
         dataset = dataset.shuffle()
 

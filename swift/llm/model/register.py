@@ -72,7 +72,7 @@ class ModelMeta:
     task_type: Optional[str] = None
 
     # File patterns to ignore when downloading the model.
-    ignore_patterns: List[str] = field(default_factory=list)
+    ignore_patterns: Optional[List[str]] = None
     # Usually specifies the version limits of transformers.
     requires: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
@@ -142,7 +142,9 @@ def load_by_unsloth(args):
         model_name=args.adapters and args.adapters[0] or args.model_dir,
         dtype=args.torch_dtype,
         max_seq_length=args.max_length,
+        full_finetuning=args.quant_bits is None,
         load_in_4bit=args.quant_bits == 4,
+        load_in_8bit=args.quant_bits == 8,
     )
     if isinstance(model, PeftModel):
         base_model = model.model

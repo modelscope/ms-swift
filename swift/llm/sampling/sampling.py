@@ -41,7 +41,8 @@ class SwiftSampling(SwiftPipeline):
     def _get_dataset(self):
         args = self.args
         dataset_kwargs = args.get_dataset_kwargs()
-        sampling_dataset, _ = load_dataset(args.dataset, split_dataset_ratio=0., **dataset_kwargs)
+        sampling_dataset, _ = load_dataset(
+            args.dataset, split_dataset_ratio=0., shuffle=args.dataset_shuffle, **dataset_kwargs)
         logger.info(f'Sampling_dataset: {sampling_dataset}')
         dataset_len = len(sampling_dataset)
         piece_len = dataset_len // self.total_piece

@@ -9,11 +9,11 @@ from collections import defaultdict, deque
 from concurrent.futures import Future
 from contextlib import contextmanager
 from copy import copy, deepcopy
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from math import ceil
 from queue import Queue
 from types import MethodType
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeAlias, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import datasets
 import numpy as np
@@ -52,8 +52,8 @@ logger = get_logger()
 if is_wandb_available():
     import wandb
 
-InputsType: TypeAlias = List[Dict[str, Union[torch.Tensor, Any]]]
-OutputsType: TypeAlias = List[List[Tuple[List[Dict], str]]]
+InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
+OutputsType = List[List[Tuple[List[Dict], str]]]
 
 
 @contextmanager
@@ -174,7 +174,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
-
+        vllm_client = kwargs.pop('vllm_client')  # for external vllm
         if self.args.tensor_parallel_size > 1 and self.multi_turn_func:
             import torch.distributed as dist
             rank, _, _, _ = get_dist_setting()
@@ -221,6 +221,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.infer_device = None
         self.use_fast_infer = use_vllm or use_lmdeploy  # whether to use the PT backend
+        self.is_external_vllm = use_vllm and args.vllm_server_host is not None
         if self.use_fast_infer:
             if self.infer_rank >= 0:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
@@ -247,7 +248,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     if not is_vllm_available():
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                           'Please install vLLM with `pip install vllm -U` to use it.')
-                    self.prepare_vllm(model, fast_infer_device)
+                    if self.is_external_vllm:
+                        self.vllm_client = vllm_client
+                    else:
+                        self.engine = self.prepare_vllm(model, fast_infer_device)
                     self.infer_device = fast_infer_device[self.local_infer_rank]
                 elif use_lmdeploy:
                     if not is_lmdeploy_available():
@@ -271,7 +275,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         assert isinstance(lmdeploy_engine, TurboMind), (
                             "Currently only LMDeploy's TurboMind backend is supported. "
                             'The current model is incompatible - please use vLLM or PyTorch backend instead.')
-                self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
+                if not self.is_external_vllm:
+                    self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
             self._last_loaded_step = 0  # tag to avoid useless loading during grad accumulation
 
             # When using vLLM, the main process is responsible for loading the model weights. This can cause process
@@ -429,7 +434,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             cls = VllmEngine
             engine_kwargs = {}
         with Swift.grpo_context(model, self.template.processor):
-            self.engine = cls(
+            engine = cls(
                 model.model_dir,
                 model.model_info.torch_dtype,
                 model_type=model.model_meta.model_type,
@@ -446,7 +451,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 max_model_len=self.args.vllm_max_model_len,
                 engine_kwargs=engine_kwargs,
                 **vllm_kwargs)
-            self.engine.default_template = self.template
+            engine.default_template = self.template
+        return engine
 
     @property
     def infer_rank(self):
@@ -508,6 +514,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @profiling_decorator
     def _move_model_to_vllm_lmdeploy(self):
+        if self.is_external_vllm:
+            return super()._move_model_to_vllm()
+
         from accelerate.utils.other import is_compiled_module
 
         for i, parameter_group in enumerate(self.parameter_groups):
@@ -591,7 +600,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.llm.infer.protocol import ChatCompletionResponse
         rank, _, _, _ = get_dist_setting()
         request_config = copy(request_config)
-        results: List[ChatCompletionResponse] = self.engine.infer(
+        results: List[ChatCompletionResponse] = self._engine_infer(
             infer_requests=inputs_slice, request_config=request_config, use_tqdm=False)
         prompt_lens = len(inputs_slice)
         messages_list = [None] * (len(inputs_slice) * self.args.tensor_parallel_size)
@@ -638,7 +647,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     for _input in inputs_slice:
                         _input_std.append(StdTemplateInputs.from_dict(_input))
                         # StdTemplateInputs will not remove responses in infer
-                    results = self.engine.infer(
+                    results = self._engine_infer(
                         infer_requests=_input_std, request_config=request_config, use_tqdm=False)
                 # concat responses from the second loop
                 remove_response = False
@@ -716,7 +725,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         inputs: local inputs
         """
 
-        if self.args.sleep_level > 0 and self.infer_rank >= 0:
+        if not self.is_external_vllm and self.args.sleep_level > 0 and self.infer_rank >= 0:
             if self.args.offload_model:
                 self.offload_model()
             if self.args.offload_optimizer:
@@ -764,7 +773,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.args.tensor_parallel_size > 1:
             outputs = [[item] for output in outputs for item in output]
         outputs = self.reorder_outputs(outputs, distributed_idx)
-        if self.args.sleep_level > 0 and self.infer_rank >= 0:
+        if not self.is_external_vllm and self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
             if self.args.gc_collect_after_offload:
                 gc_collect()
@@ -1082,7 +1091,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Log metrics or return them
         if return_outputs:
-            metrics['completions_length'] = completions_length
+            metrics['completions_length'] = completions_length.item()
             return loss, metrics
         else:
             for key, value in metrics.items():
@@ -1181,6 +1190,31 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return total_loss.detach()
 
+    def _engine_infer(
+        self,
+        infer_requests: List[InferRequest],
+        request_config: Optional[RequestConfig] = None,
+        *,
+        use_tqdm: Optional[bool] = None,
+    ):
+        if self.is_external_vllm:
+            self._process_infer_requests_images(infer_requests)
+            return self.vllm_client.infer(infer_requests.tolist(), asdict(request_config), use_tqdm=use_tqdm)
+        else:
+            return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
+
+    def _process_infer_requests_images(self, infer_requests: List[InferRequest]):
+        import base64
+        if not any('images' in request for request in infer_requests):
+            return
+        for request in infer_requests:
+            if 'images' not in request:
+                continue
+            for i, img in enumerate(request['images']):
+                if 'bytes' in img and img['bytes']:
+                    request['images'][i] = base64.b64encode(img['bytes']).decode('utf-8')
+        return
+
     @property
     def old_policy(self):
         return self.num_iterations > 1
@@ -1257,7 +1291,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         Ensures the total sequence length (prompt + completion) never exceeds:
             min(original_max_len, prompt_tokens + max_completion_length)
         """
-        if not (self.multi_turn_func and self.infer_rank >= 0):
+        if not (self.multi_turn_func and self.infer_rank >= 0) or self.is_external_vllm:
             yield
             return
 
