@@ -18,7 +18,9 @@ config_mapping = {
     'untie_embeddings_and_output_weights': ['tie_word_embeddings'],
     'swiglu': ['hidden_act'],
     'add_qkv_bias': ['attention_bias'],
-    'disable_bias_linear': ['mlp_bias']
+    'disable_bias_linear': ['mlp_bias'],
+    'kv_channels': ['head_dim'],
+    'model_type': ['model_type'],
 }
 
 

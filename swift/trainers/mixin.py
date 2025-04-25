@@ -23,7 +23,7 @@ from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import TrainerCallback
-from transformers.trainer_utils import EvalPrediction
+from transformers.trainer_utils import EvalPrediction, IntervalStrategy
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
@@ -68,6 +68,10 @@ class SwiftMixin:
                         'invoked_by': 'local_trainer',
                         'third_party': 'swift',
                     })
+        if eval_dataset is None and args:
+            args.evaluation_strategy = IntervalStrategy.NO
+            args.eval_strategy = IntervalStrategy.NO
+
         self._custom_metrics = {}
         self.template = template
         self.max_memory = 0

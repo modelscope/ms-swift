@@ -45,6 +45,10 @@ def test_llama3_2():
     _test_model('LLM-Research/Llama-3.2-1B-Instruct')
 
 
+def test_qwen3():
+    _test_model('Qwen/Qwen3-0.6B-Base')
+
+
 if __name__ == '__main__':
     # test_llama2()
     # test_llama3()
@@ -54,4 +58,5 @@ if __name__ == '__main__':
     # test_yi()
     # test_megrez()
     # test_llama3_1()
-    test_llama3_2()
+    # test_llama3_2()
+    test_qwen3()

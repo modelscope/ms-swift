@@ -28,6 +28,9 @@ def set_attn_state(args, mg_layer, hf_layer):
                 hf_attn.v_proj.bias.reshape((num_query_groups, -1)),
             ],
                       dim=1).reshape(-1))
+    if args.qk_layernorm:
+        mg_attn.q_layernorm.weight.data.copy_(hf_attn.q_norm.weight)
+        mg_attn.k_layernorm.weight.data.copy_(hf_attn.k_norm.weight)
 
 
 def set_mlp_state(args, mg_layer, hf_layer):
