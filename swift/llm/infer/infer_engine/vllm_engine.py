@@ -64,6 +64,7 @@ class VllmEngine(InferEngine):
         num_infer_workers: int = 1,
         enable_sleep_mode: bool = False,
         distributed_executor_backend: Optional[str] = None,
+        quantization: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.use_async_engine = use_async_engine
@@ -94,6 +95,7 @@ class VllmEngine(InferEngine):
             device=device,
             distributed_executor_backend=distributed_executor_backend,
             enable_sleep_mode=enable_sleep_mode,
+            quantization=quantization,
             engine_kwargs=engine_kwargs,
         )
         nnodes = get_node_setting()[1]
@@ -130,6 +132,7 @@ class VllmEngine(InferEngine):
         enable_prefix_caching: bool = False,
         distributed_executor_backend: Optional[str] = None,
         enable_sleep_mode: bool = False,
+        quantization: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         if engine_kwargs is None:
@@ -156,6 +159,7 @@ class VllmEngine(InferEngine):
         if 'enable_sleep_mode' in parameters:
             engine_kwargs['enable_sleep_mode'] = enable_sleep_mode
 
+        engine_kwargs['quantization'] = quantization
         model_info = self.model_info
         if self.config.architectures is None:
             architectures = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM']}[self.model_meta.model_type]
