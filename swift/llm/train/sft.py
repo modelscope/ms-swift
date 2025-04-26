@@ -242,7 +242,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def _encode_dataset(self, train_dataset, val_dataset):
         template = self.template
         args = self.args
-        self._save_val_dataset(args.output_dir, val_dataset)
+        output_dir = getattr(args, 'output_dir', None) or getattr(args, 'save')
+        self._save_val_dataset(output_dir, val_dataset)
         is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
         predict_with_generate = getattr(args, 'predict_with_generate', False)
         if not is_grpo:
