@@ -84,7 +84,7 @@ def get_model_tokenizer_molmoe(model_dir: str,
     if model is not None:
         model.config._to_dict = model.config.to_dict
         model.config.to_dict = MethodType(to_dict, model.config)
-
+        patch_output_clone(model.model.transformer.wte)
     return model, processor
 
 
@@ -114,8 +114,8 @@ def get_model_tokenizer_molmo(model_dir: str,
     model_cls = get_class_from_dynamic_module('modeling_molmo.MolmoForCausalLM', model_dir)
     model_cls._no_split_modules = ['MolmoSequentialBlock']
     model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
-
-    patch_output_clone(model.model.transformer.wte)
+    if model is not None:
+        patch_output_clone(model.model.transformer.wte)
     return model, processor
 
 

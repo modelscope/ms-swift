@@ -40,10 +40,8 @@ swift export \
     --model Qwen/Qwen2.5-7B-Instruct \
     --to_mcore true \
     --torch_dtype bfloat16 \
-    --test_convert_precision true \
     --output_dir Qwen2.5-7B-Instruct-mcore
 ```
-- Note: If an OOM (Out Of Memory) error occurs, please remove the --test_convert_precision true parameter.
 
 Next, use the following script to start training. The required GPU memory resources are 2*80GiB:
 
@@ -86,7 +84,6 @@ swift export \
     --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
-    --test_convert_precision true \
     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf
 ```
 
