@@ -75,6 +75,7 @@ class VllmArguments:
     limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_max_lora_rank: int = 16
     enable_prefix_caching: bool = False
+    vllm_quantization: Optional[str] = None
 
     def __post_init__(self):
         self.limit_mm_per_prompt = ModelArguments.parse_to_dict(self.limit_mm_per_prompt)
@@ -96,6 +97,7 @@ class VllmArguments:
             'enable_lora': len(adapters) > 0,
             'max_loras': max(len(adapters), 1),
             'enable_prefix_caching': self.enable_prefix_caching,
+            'quantization': self.vllm_quantization,
         }
         if dist.is_initialized():
             kwargs.update({'device': dist.get_rank()})
