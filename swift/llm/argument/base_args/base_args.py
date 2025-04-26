@@ -218,7 +218,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'model_author',
             'split_dataset_ratio',
             # template_args
-            'tools_prompt',
             'use_chat_template',
         ]
         skip_keys = list(f.name for f in fields(GenerationArguments) + fields(CompatArguments)) + ['adapters']
@@ -252,7 +251,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         template_kwargs = self.get_template_kwargs()
         template_type = template_type or self.template
         template = get_template(template_type, processor, **template_kwargs)
-        logger.info(f'default_system: {template.template_meta.default_system}')
         return template
 
     def get_model_processor(self,

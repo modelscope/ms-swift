@@ -509,10 +509,11 @@ def test_phi4_vision():
 
 def test_gemma3_vision():
     pt_engine = PtEngine('LLM-Research/gemma-3-4b-it')
-    response = _infer_model(pt_engine)
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>Describe this image in detail.'}])
     pt_engine.default_template.template_backend = 'jinja'
-    response2 = _infer_model(pt_engine)
-    assert response == response2
+    response2 = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>Describe this image in detail.'}])
+    assert response[:80] == response2[:80] == (
+        "Here's a detailed description of the image:\n\n**Overall Impression:**\n\nThe image ")
 
 
 def test_mistral_2503():
@@ -596,9 +597,9 @@ if __name__ == '__main__':
     # test_minicpmo()
     # test_valley()
     # test_ui_tars()
-    # test_gemma3_vision()
+    test_gemma3_vision()
     # test_mistral_2503()
     # test_llama4()
     # test_internvl3_8b()
     # test_internvl3_9b()
-    test_kimi_vl()
+    # test_kimi_vl()

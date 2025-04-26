@@ -29,10 +29,6 @@
 <p align="center">
         <a href="https://arxiv.org/abs/2408.05517">论文</a> &nbsp ｜ <a href="https://swift.readthedocs.io/en/latest/">Swift3.x En Doc</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">Swift3.x中文文档</a> &nbsp
 </p>
-<p align="center">
-        <a href="https://swift2x-en.readthedocs.io/en/latest/">Swift2.x En Doc</a> &nbsp ｜ &nbsp <a href="https://swift2x.readthedocs.io/zh-cn/latest/">Swift2.x中文文档</a> &nbsp
-</p>
-
 
 ##  📖 目录
 - [用户群](#-用户群)
@@ -121,7 +117,7 @@ pip install -e .
 | peft | >=0.11,<0.16 | ||
 | trl | >=0.13,<0.17 | 0.16 |RLHF|
 | deepspeed | >=0.14       | 0.14.5 |训练|
-| vllm | >=0.5.1      | 0.7.3/0.8.3 |推理/部署/评测|
+| vllm | >=0.5.1      | 0.7.3/0.8.4 |推理/部署/评测|
 | lmdeploy | >=0.5        | 0.7.2.post1 |推理/部署/评测|
 | evalscope | >=0.11       | |评测|
 

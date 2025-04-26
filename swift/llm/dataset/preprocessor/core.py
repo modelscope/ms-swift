@@ -56,17 +56,11 @@ class RowPreprocessor:
             for key in keys:
                 message.pop(key)
 
-        if messages[0]['role'] == 'system':
-            messages = messages[1:]
-        if messages and messages[0]['role'] == 'assistant':
-            messages = [{'role': 'user', 'content': ''}] + messages  # pretrain
-        for user_message, assistant_message in zip(messages[::2], messages[1::2]):
-            if (user_message['role'] not in {'user', 'tool'} or 'content' not in user_message
-                    or user_message['content'] is None):
-                raise ValueError(f'user_message: {user_message}')
-            if (assistant_message['role'] not in {'assistant'} or 'content' not in assistant_message
-                    or assistant_message['content'] in {'', None}):
-                raise ValueError(f'assistant_message: {assistant_message}')
+        for message in messages:
+            role, content = message['role'], message['content']
+            # The terms 'tool' and 'tool_response' have the same meaning, ensuring compatibility.
+            assert role in {'system', 'user', 'tool_call', 'tool_response', 'tool', 'assistant'}, f'message: {message}'
+            assert content is not None, f'message: {message}'
 
     @staticmethod
     def _cast_images(row: Dict[str, Any]) -> None:
@@ -124,8 +118,9 @@ class RowPreprocessor:
                 if k not in batched:
                     batched[k] = [None] * i
                 batched[k].append(v)
-        # Make all the lengths of v the same.
-        batched = {k: v + [None] * (len(rows) - len(v)) for k, v in batched.items()}
+            # Make all the lengths of v the same.
+            for k in set(batched.keys()) - set(row.keys()):
+                batched[k].append(None)
         return batched
 
     @staticmethod
@@ -395,7 +390,6 @@ class MessagesPreprocessor(RowPreprocessor):
             user_role: Optional[str] = None,  # 'user', 'human'
             assistant_role: Optional[str] = None,  # 'assistant', 'gpt', 'bot'
             system_role: str = 'system',
-            tool_role: str = 'tool',
             # 'conversation', 'conversations' -> 'messages'
             columns: Optional[Dict[str, str]] = None,
             repair_messages: Callable[[Union[str, List[Dict[str, str]]]],
@@ -407,9 +401,10 @@ class MessagesPreprocessor(RowPreprocessor):
         self.content_keys = ['content', 'value'] if content_key is None else [content_key]
         self.user_roles = ['user', 'human'] if user_role is None else [user_role]
         self.assistant_roles = ['assistant', 'gpt', 'bot'] if assistant_role is None else [assistant_role]
+        self.tool_call_roles = ['function_call']
+        self.tool_response_roles = ['function_response', 'observation', 'observations']
 
         self.system_role = system_role
-        self.tool_role = tool_role
         self.repair_messages = repair_messages
         self.inner_key = inner_key
 
@@ -436,32 +431,27 @@ class MessagesPreprocessor(RowPreprocessor):
         if system is not None:
             new_messages.append({'role': 'system', 'content': system})
         for message in messages:
-            if self.tool_role in message:
-                user_message = {'role': 'tool', 'content': message[self.tool_role]}
-            else:
-                user_message = {'role': 'user', 'content': message['user']}
+            user_message = {'role': 'user', 'content': message['user']}
             assistant_message = {'role': 'assistant', 'content': message['assistant']}
             new_messages.append(user_message)
             new_messages.append(assistant_message)
         return new_messages
 
     def to_std_messages(self, messages: List[Dict[str, str]], system: Optional[str]) -> None:
-        start_idx = 0
         if messages[0]['role'] == self.system_role:
             messages[0]['role'] = 'system'
-            start_idx = 1
         elif system is not None:
             messages.insert(0, {'role': 'system', 'content': system})
-            start_idx = 1
-        for user_message, assistant_message in zip(messages[start_idx::2], messages[start_idx + 1::2]):
-            user_role = user_message['role']
-            assistant_role = assistant_message['role']
-            if user_role in self.user_roles:
-                user_message['role'] = 'user'
-            elif user_role == self.tool_role:
-                user_message['role'] = 'tool'
-            if assistant_role in self.assistant_roles:
-                assistant_message['role'] = 'assistant'
+        for message in messages:
+            role = message['role']
+            if role in self.user_roles:
+                message['role'] = 'user'
+            elif role in self.assistant_roles:
+                message['role'] = 'assistant'
+            elif role.replace('-', '_') in self.tool_call_roles:
+                message['role'] = 'tool_call'
+            elif role.replace('-', '_') in self.tool_response_roles:
+                message['role'] = 'tool_response'
 
     @staticmethod
     def _to_std_key(messages: List[Dict[str, str]], std_key: str, optional_keys: List[str]) -> None:

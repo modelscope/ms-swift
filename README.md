@@ -28,10 +28,6 @@
 <p align="center">
         <a href="https://arxiv.org/abs/2408.05517">Paper</a> &nbsp ｜ <a href="https://swift.readthedocs.io/en/latest/">Swift3.x En Doc</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">Swift3.x中文文档</a> &nbsp
 </p>
-<p align="center">
-        <a href="https://swift2x-en.readthedocs.io/en/latest/">Swift2.x En Doc</a> &nbsp ｜ &nbsp <a href="https://swift2x.readthedocs.io/zh-cn/latest/">Swift2.x中文文档</a> &nbsp
-</p>
-
 
 ## 📖 Table of Contents
 - [Groups](#-Groups)
@@ -126,7 +122,7 @@ Running Environment:
 | peft | >=0.11,<0.16 | ||
 | trl | >=0.13,<0.17 | 0.16 |RLHF|
 | deepspeed    | >=0.14       | 0.14.5 | Training                                  |
-| vllm         | >=0.5.1      | 0.7.3/0.8.3       | Inference/Deployment/Evaluation           |
+| vllm         | >=0.5.1      | 0.7.3/0.8.4       | Inference/Deployment/Evaluation           |
 | lmdeploy     | >=0.5        | 0.7.2.post1       | Inference/Deployment/Evaluation           |
 | evalscope | >=0.11       |  | Evaluation |
 

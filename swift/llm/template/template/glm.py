@@ -17,7 +17,23 @@ class GLMTemplateMeta(TemplateMeta):
     auto_add_bos: bool = True
 
 
-class GLM4Z1Template(Template):
+class GLM4Template(Template):
+
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
+        for i, res_context in enumerate(res_context_list):
+            # The last round or is tool_call.
+            if isinstance(res_context, str) and res_context.endswith('<|assistant|>\n') and (
+                    i + 1 >= len(res_context_list) or '<|observation|>' in res_context_list[i + 1]):
+                res_context_list[i] = res_context_list[i][:-len('\n')]
+        return res_context_list, loss_scale_list, answer_len
+
+    def decode(self, *args, **kwargs):
+        response = super().decode(*args, **kwargs)
+        return response.lstrip('\n')
+
+
+class GLM4_0414Template(GLM4Template):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         if not self.is_training:
@@ -43,15 +59,15 @@ class GLM4TemplateMeta(GLMTemplateMeta):
     suffix: Prompt = field(default_factory=lambda: ['<|user|>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|system|>\n{{SYSTEM}}'])
 
-    default_tools_prompt: str = 'glm4'
-    tool_prompt: Optional[Prompt] = field(default_factory=lambda: ['<|observation|>\n{{QUERY}}<|assistant|>\n'])
+    agent_template: str = 'glm4'
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>', '<|user|>', '<|observation|>'])
 
 
 @dataclass
-class GLM4Z1TemplateMeta(GLM4TemplateMeta):
+class GLM4_0414TemplateMeta(GLM4TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ['[gMASK]<sop>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>\n{{SYSTEM}}'])
+    agent_template: str = 'glm4_0414'
 
 
 class GLM4VTemplate(Template):
@@ -91,12 +107,11 @@ class GLM4VTemplate(Template):
         return res
 
 
-# not '<|assistant|>\n'
 register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate, suffix=['<|endoftext|>']))
 
-register_template(GLM4TemplateMeta(LLMTemplateType.glm4))
+register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template))
 
-register_template(GLM4Z1TemplateMeta(LLMTemplateType.glm4_z1, template_cls=GLM4Z1Template))
+register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4_0414Template))
 
 glm4z1rumination_system = (
     '你是一个专业的深度研究助手，通过提供的工具与模拟浏览器交互，来帮助用户完成深度信息调研和报告撰写任务。'
@@ -132,8 +147,8 @@ glm4z1rumination_system = (
     '"parameters": {"type": "object", "properties": {}, "additionalProperties": false}}]')
 
 register_template(
-    GLM4Z1TemplateMeta(
-        LLMTemplateType.glm4_z1_rumination, template_cls=GLM4Z1Template, default_system=glm4z1rumination_system))
+    GLM4_0414TemplateMeta(
+        LLMTemplateType.glm4_z1_rumination, template_cls=GLM4_0414Template, default_system=glm4z1rumination_system))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 

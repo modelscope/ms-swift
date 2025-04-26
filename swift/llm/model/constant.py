@@ -12,6 +12,8 @@ class LLMModelType:
     qwen2_moe = 'qwen2_moe'
     qwq_preview = 'qwq_preview'
     qwq = 'qwq'
+    qwen3 = 'qwen3'
+    qwen3_moe = 'qwen3_moe'
 
     qwen2_gte = 'qwen2_gte'
 
@@ -38,7 +40,7 @@ class LLMModelType:
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
     glm4 = 'glm4'
-    glm4_z1 = 'glm4_z1'
+    glm4_0414 = 'glm4_0414'
     glm4_z1_rumination = 'glm4_z1_rumination'
 
     glm_edge = 'glm_edge'
