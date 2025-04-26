@@ -14,6 +14,7 @@ class ExtraMegatronArguments:
     padded_vocab_size: Optional[int] = None
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
+    model_type: Optional[str] = None
 
 
 @dataclass
@@ -102,6 +103,8 @@ class MegatronArguments(ExtraMegatronArguments):
     add_qkv_bias: bool = True
     attention_dropout: float = 0.
     hidden_dropout: float = 0.
+    kv_channels: Optional[int] = None
+    qk_layernorm: bool = False
     transformer_impl: Literal['local', 'transformer_engine'] = 'transformer_engine'
 
     # mixed precision
@@ -136,6 +139,8 @@ class MegatronArguments(ExtraMegatronArguments):
         ModelArguments._init_mixed_precision(self)
         if self.apply_query_key_layer_scaling is None:
             self.apply_query_key_layer_scaling = self.fp16
+        if self.apply_query_key_layer_scaling:
+            os.environ['NVTE_APPLY_QK_LAYER_SCALING'] = '1'
 
     def __post_init__(self):
         from swift.llm.argument.base_args.model_args import ModelArguments

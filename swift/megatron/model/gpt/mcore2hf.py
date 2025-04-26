@@ -23,6 +23,10 @@ def set_attn_state(args, mg_layer, hf_layer):
         hf_attn.k_proj.bias.data.copy_(mg_attn_bias[:, q_dim:-kv_dim].reshape(-1))
         hf_attn.v_proj.bias.data.copy_(mg_attn_bias[:, -kv_dim:].reshape(-1))
 
+    if args.qk_layernorm:
+        hf_attn.q_norm.weight.data.copy_(mg_attn.q_layernorm.weight)
+        hf_attn.k_norm.weight.data.copy_(mg_attn.k_layernorm.weight)
+
 
 def set_mlp_state(args, mg_layer, hf_layer):
     hf_layer.mlp.gate_proj.weight.data.copy_(mg_layer.mlp.linear_fc1.weight[:args.ffn_hidden_size])
