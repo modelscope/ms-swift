@@ -249,10 +249,7 @@ def patch_automodel_for_sequence_classification(model_meta):
 
     @classmethod
     def _new_from_pretrained(cls, *args, **kwargs):
-        if hasattr(cls, '__init__origin'):
-            return from_pretrained(cls, *args, **kwargs)
         __init__ = cls.__init__
-        cls.__init__origin = __init__
 
         def __new_init__(self, *args, **kwargs):
             __init__(self, *args, **kwargs)
