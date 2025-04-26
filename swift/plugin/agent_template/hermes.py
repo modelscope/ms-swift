@@ -19,7 +19,7 @@ class HermesAgentTemplate(BaseAgentTemplate):
         functions = []
         for res in res_list:
             res = self._parse_json(res)
-            if res is not None:
+            if isinstance(res, dict) and 'name' in res and 'arguments' in res:
                 functions.append(Function(name=res['name'], arguments=res['arguments']))
         if len(functions) == 0:
             # compat react_en

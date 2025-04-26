@@ -142,7 +142,9 @@ def load_by_unsloth(args):
         model_name=args.adapters and args.adapters[0] or args.model_dir,
         dtype=args.torch_dtype,
         max_seq_length=args.max_length,
+        full_finetuning=args.quant_bits is None,
         load_in_4bit=args.quant_bits == 4,
+        load_in_8bit=args.quant_bits == 8,
     )
     if isinstance(model, PeftModel):
         base_model = model.model
@@ -227,6 +229,11 @@ def get_model_tokenizer_from_local(model_dir: str,
         model_meta = kwargs['model_meta']
         if model is None:
             if model_info.task_type == 'seq_cls' and not model_meta.is_reward:
+                context = partial(patch_automodel_for_sequence_classification, model_meta=model_meta)
+            elif model_info.task_type == 'seq_cls' and model_meta.is_reward and model_config.num_labels > 1:
+                logger.warning('You are using a reward model for seq_cls task and num_labels > 1, '
+                               'ignore_mismatched_sizes will be set to True')
+                model_kwargs['ignore_mismatched_sizes'] = True
                 context = partial(patch_automodel_for_sequence_classification, model_meta=model_meta)
             else:
                 context = partial(patch_automodel, automodel_class=automodel_class, model_info=model_info)

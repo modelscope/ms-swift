@@ -176,7 +176,10 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
     @staticmethod
     def _get_toolcall(response: str, template: Template) -> Optional[List[ChatCompletionMessageToolCall]]:
-        functions = template.agent_template.get_toolcall(response)
+        try:
+            functions = template.agent_template.get_toolcall(response)
+        except Exception:
+            functions = None
         if functions:
             return [ChatCompletionMessageToolCall(function=function) for function in functions]
 
