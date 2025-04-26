@@ -123,6 +123,8 @@ class Template(ProcessorMixin):
         logger.info(f'agent_template: {agent_template}')
         self.agent_template = agent_templates[agent_template]()
         self.norm_bbox = norm_bbox or self.norm_bbox
+        logger.info(f'max_length: {self.max_length}')
+        logger.info(f'norm_bbox: {self.norm_bbox}')
         if self.is_encoder_decoder:
             self.skip_prompt = False
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
