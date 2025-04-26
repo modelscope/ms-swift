@@ -316,6 +316,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - enforce_eager: Determines whether vllm uses PyTorch eager mode or constructs a CUDA graph, default is `False`. Setting it to True can save memory but may affect efficiency.
 - 🔥limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--limit_mm_per_prompt '{"image": 5, "video": 2}'`.
 - vllm_max_lora_rank: Default is `16`. This is the parameter supported by vllm for lora.
+- - vllm_quantization: vllm is able to quantize model with this argument，supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 - enable_prefix_caching: Enable the automatic prefix caching of vllm to save processing time for querying repeated prefixes. The default is `False`.
 
 ### Merge Arguments
