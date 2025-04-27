@@ -1,18 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import datetime as dt
+import fnmatch
+import glob
 import importlib
 import os
 import random
 import re
+import shutil
 import socket
 import subprocess
 import sys
 import time
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar
-import os
-import shutil
-import fnmatch
-import glob
+
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -253,10 +253,10 @@ def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> int:
 def copy_files_by_pattern(source_dir, dest_dir, patterns):
     if not os.path.exists(dest_dir):
         os.makedirs(dest_dir)
-    
+
     if isinstance(patterns, str):
         patterns = [patterns]
-    
+
     for pattern in patterns:
         pattern_parts = pattern.split(os.path.sep)
         if len(pattern_parts) > 1:
@@ -267,7 +267,7 @@ def copy_files_by_pattern(source_dir, dest_dir, patterns):
                 rel_path = os.path.relpath(root, source_dir)
                 if rel_path == '.' or (rel_path != '.' and not fnmatch.fnmatch(rel_path, subdir_pattern)):
                     continue
-                
+
                 for file in files:
                     if fnmatch.fnmatch(file, file_pattern):
                         file_path = os.path.join(root, file)
@@ -275,7 +275,7 @@ def copy_files_by_pattern(source_dir, dest_dir, patterns):
                         if not os.path.exists(target_dir):
                             os.makedirs(target_dir)
                         dest_file = os.path.join(target_dir, file)
-                        
+
                         if not os.path.exists(dest_file):
                             shutil.copy2(file_path, dest_file)
         else:

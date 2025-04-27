@@ -4,9 +4,9 @@ import inspect
 import os
 import shutil
 import time
-from functools import partial
 from contextlib import contextmanager
 from copy import copy
+from functools import partial
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -208,13 +208,19 @@ class SwiftMixin:
             if self.model.__class__.__name__ != 'SentenceTransformer':
                 self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
             else:
+
                 @contextmanager
                 def save_context():
                     save_pretrained = self.model[0].auto_model.save_pretrained
-                    _state_dict = {key[len('0.auto_model.'):] if 'auto_model' in key else key: value for key, value in state_dict.items()}
-                    self.model[0].auto_model.save_pretrained = partial(self.model[0].auto_model.save_pretrained, state_dict=_state_dict)
+                    _state_dict = {
+                        key[len('0.auto_model.'):] if 'auto_model' in key else key: value
+                        for key, value in state_dict.items()
+                    }
+                    self.model[0].auto_model.save_pretrained = partial(
+                        self.model[0].auto_model.save_pretrained, state_dict=_state_dict)
                     yield
                     self.model[0].auto_model.save_pretrained = save_pretrained
+
                 with save_context():
                     self.model.save_pretrained(output_dir, safe_serialization=save_safetensors)
                     # copy sentencetransformers files

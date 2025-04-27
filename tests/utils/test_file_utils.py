@@ -21,10 +21,11 @@ class TestFileUtils(unittest.TestCase):
         with open(os.path.join(self.tmp_dir, 'source', '1.txt'), 'w') as f:
             f.write('')
         with open(os.path.join(self.tmp_dir, 'source', 'subfolder', '2.txt'), 'w') as f:
-            f.write('')        
-        copy_files_by_pattern(os.path.join(self.tmp_dir, 'source'), os.path.join(self.tmp_dir, 'target'), ['*.txt', 'subfolder/*.txt'])
+            f.write('')
+        copy_files_by_pattern(
+            os.path.join(self.tmp_dir, 'source'), os.path.join(self.tmp_dir, 'target'), ['*.txt', 'subfolder/*.txt'])
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'target', '1.txt')))
-        self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'target', 'subfolder','2.txt')))
+        self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'target', 'subfolder', '2.txt')))
 
 
 if __name__ == '__main__':

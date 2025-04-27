@@ -231,7 +231,6 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     model_dirs: List[str] = None,
                     additional_saved_files: Optional[List[str]] = None) -> None:
     if model is not None:
-        parameters = inspect.signature(model.save_pretrained).parameters
         if model.__class__.__name__ != 'SentenceTransformer':
             model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
         else:
