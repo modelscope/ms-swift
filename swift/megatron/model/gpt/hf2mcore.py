@@ -44,7 +44,7 @@ def set_mlp_state(args, mg_mlp, hf_mlp):
             _set_mlp_state(mg_mlp.experts.local_experts[expert_idx], hf_mlp.experts[expert_idx])
 
         if mg_mlp.shared_experts is not None:
-            _set_mlp_state(mg_mlp.shared_experts, mg_mlp.shared_experts)
+            _set_mlp_state(mg_mlp.shared_experts, hf_mlp.shared_expert)
     else:
         _set_mlp_state(mg_mlp, hf_mlp)
 

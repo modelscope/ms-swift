@@ -39,7 +39,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
                 hf_v = getattr(config, hf_k)
                 if k == 'rotary_base':
                     megatron_config[k] = int(hf_v)
-                elif k in {'untie_embeddings_and_output_weights', 'disable_bias_linear'}:
+                elif k in {'untie_embeddings_and_output_weights', 'disable_bias_linear', 'moe_router_pre_softmax'}:
                     megatron_config[k] = not hf_v
                 elif k == 'swiglu':
                     if hf_v == 'silu':
