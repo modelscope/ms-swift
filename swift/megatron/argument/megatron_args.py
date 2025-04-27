@@ -90,35 +90,36 @@ class MegatronArguments(ExtraMegatronArguments):
     ffn_hidden_size: Optional[int] = None
     num_attention_heads: Optional[int] = None
     group_query_attention: Optional[bool] = None
-    num_query_groups: int = 1
+    num_query_groups: Optional[int] = None
     max_position_embeddings: Optional[int] = None
     position_embedding_type: Literal['learned_absolute', 'rope', 'relative', 'none'] = 'rope'
-    rotary_base: int = 10000
+    rotary_base: Optional[int] = None
     rotary_percent: float = 1.
     normalization: Literal['LayerNorm', 'RMSNorm'] = 'RMSNorm'
-    norm_epsilon: float = 1e-5
-    swiglu: bool = True
-    untie_embeddings_and_output_weights: bool = True
-    disable_bias_linear: bool = True
-    add_qkv_bias: bool = True
-    attention_dropout: float = 0.
+    norm_epsilon: Optional[float] = None
+    swiglu: Optional[bool] = None
+    untie_embeddings_and_output_weights: Optional[bool] = None
+    disable_bias_linear: Optional[bool] = None
+    add_qkv_bias: Optional[bool] = None
+    attention_dropout: Optional[float] = None
     hidden_dropout: float = 0.
     kv_channels: Optional[int] = None
     qk_layernorm: bool = False
     transformer_impl: Literal['local', 'transformer_engine'] = 'transformer_engine'
 
     # moe
-    expert_model_parallel_size: int = 1
     num_experts: Optional[int] = None
     moe_ffn_hidden_size: Optional[int] = None
     moe_shared_expert_intermediate_size: Optional[int] = None
-    moe_router_topk: int = 2
+    moe_router_topk: Optional[int] = None
+    moe_router_pre_softmax: Optional[bool] = None
+    moe_aux_loss_coeff: Optional[float] = None
+
+    expert_model_parallel_size: int = 1
     moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'alltoall_seq'] = 'alltoall'
     moe_grouped_gemm: bool = False
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = 'aux_loss'
-    moe_aux_loss_coeff: float = 0.
     moe_z_loss_coeff: Optional[float] = None
-    moe_router_pre_softmax: bool = False
     moe_expert_capacity_factor: Optional[float] = None
     moe_shared_expert_overlap: bool = False
 
@@ -149,6 +150,30 @@ class MegatronArguments(ExtraMegatronArguments):
     num_workers: int = 4
     no_create_attention_mask_in_dataloader: bool = True
 
+    def _set_default(self):
+        if self.num_query_groups is None:
+            self.num_query_groups = 1
+        if self.norm_epsilon is None:
+            self.norm_epsilon = 1e-5
+        if self.rotary_base is None:
+            self.rotary_base = 10000
+        if self.attention_dropout is None:
+            self.attention_dropout = 0.
+        if self.untie_embeddings_and_output_weights is None:
+            self.untie_embeddings_and_output_weights = True
+        if self.swiglu is None:
+            self.swiglu = True
+        if self.add_qkv_bias is None:
+            self.add_qkv_bias = True
+        if self.disable_bias_linear is None:
+            self.disable_bias_linear = True
+        if self.moe_router_topk is None:
+            self.moe_router_topk = 2
+        if self.moe_router_pre_softmax is None:
+            self.moe_router_pre_softmax = False
+        if self.moe_aux_loss_coeff is None:
+            self.moe_aux_loss_coeff = 0.
+
     def _init_mixed_precision(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
         ModelArguments._init_mixed_precision(self)
@@ -168,6 +193,7 @@ class MegatronArguments(ExtraMegatronArguments):
     def __post_init__(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
+        self._set_default()
         self.group_query_attention = self.num_query_groups > 1
         if self.rope_scaling is not None:
             self.rope_scaling = ModelArguments.parse_to_dict(self.rope_scaling)
