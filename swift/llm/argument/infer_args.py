@@ -75,7 +75,9 @@ class VllmArguments:
     limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_max_lora_rank: int = 16
     enable_prefix_caching: bool = False
-
+    use_async_engine: bool = True
+    data_parallel_size: int = 1
+    
     def __post_init__(self):
         self.limit_mm_per_prompt = ModelArguments.parse_to_dict(self.limit_mm_per_prompt)
 

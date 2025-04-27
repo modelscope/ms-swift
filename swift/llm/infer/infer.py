@@ -68,7 +68,9 @@ class SwiftInfer(SwiftPipeline):
             if not args.use_async_engine:
                 # used for RL external rollout backend
                 engine_kwargs = kwargs.get('engine_kwargs', {})
+                # for RL rollout model weight sync
                 engine_kwargs.update({'worker_extension_cls': 'trl.scripts.vllm_serve.WeightSyncWorkerExtension'})
+                engine_kwargs.update({'data_parallel_size': args.data_parallel_size})
                 kwargs['engine_kwargs'] = engine_kwargs
         else:
             from .infer_engine import LmdeployEngine

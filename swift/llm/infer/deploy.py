@@ -3,7 +3,11 @@ import asyncio
 import inspect
 import multiprocessing
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
+from itertools import chain
+from multiprocessing import Pipe, Process
+from multiprocessing.connection import Connection
+
 from dataclasses import asdict
 from http import HTTPStatus
 from threading import Thread
@@ -13,7 +17,7 @@ import json
 import torch
 import uvicorn
 from aiohttp import ClientConnectorError
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from swift.llm import AdapterRequest, DeployArguments, InferRequest
@@ -28,7 +32,6 @@ from .protocol import (ChatCompletionRequest, ChatCompletionResponse, Completion
 
 logger = get_logger()
 
-
 class SwiftDeploy(SwiftInfer):
     args_class = DeployArguments
     args: args_class
@@ -38,22 +41,13 @@ class SwiftDeploy(SwiftInfer):
         self.app.post('/v1/chat/completions')(self.create_chat_completion)
         self.app.post('/v1/completions')(self.create_completion)
 
-    def _register_rl_rollout_app(self):
-        self.app.get('/health/')(self.health_check)
-        self.app.get('/get_tensor_parallel_size/')(self.get_tensor_parallel_size)
-        self.app.post('/init_communicator/')(self.init_communicator)
-        self.app.post('/update_named_param/')(self.update_named_param)
-        self.app.post('/reset_prefix_cache/')(self.reset_prefix_cache)
-        self.app.post('/close_communicator/')(self.close_communicator)
-        self.app.post('/infer/', response_model=None)(self.infer)
-
     def __init__(self, args: Union[List[str], DeployArguments, None] = None) -> None:
         super().__init__(args)
+        
         self.infer_engine.strict = True
         self.infer_stats = InferStats()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_app()
-        self._register_rl_rollout_app()
 
     async def _log_stats_hook(self):
         while True:
@@ -201,97 +195,6 @@ class SwiftDeploy(SwiftInfer):
     async def create_completion(self, request: CompletionRequest, raw_request: Request):
         chat_request = ChatCompletionRequest.from_cmpl_request(request)
         return await self.create_chat_completion(chat_request, raw_request, return_cmpl_response=True)
-
-    async def health_check(self):
-        """
-        Health check endpoint to verify that the server is running.
-        """
-        return {'status': 'ok'}
-
-    async def get_tensor_parallel_size(self):
-        """
-        Retrieves the tensor parallel size from the LLM engine.
-
-        Returns:
-            `dict`:
-                A dictionary containing the tensor parallel size.
-
-        Example response:
-        ```json
-        {"tensor_parallel_size": 8}
-        ```
-        """
-        return {'tensor_parallel_size': self.args.tensor_parallel_size}
-
-    async def init_communicator(self, request: InitCommunicatorRequest, background_tasks: BackgroundTasks):
-        """
-        Initializes the communicator for synchronizing model weights between a client and multiple server
-        workers.
-
-        Args:
-            request (`InitCommunicatorRequest`):
-                - `host` (`str`): Hostname or IP address of the master node.
-                - `port` (`int`): Port number to be used for communication.
-                - `world_size` (`int`): Total number of participating processes in the group.
-        """
-        background_tasks.add_task(
-            self.infer_engine.engine.model_executor.collective_rpc,
-            'init_communicator',
-            args=(request.host, request.port, self.args.tensor_parallel_size + 1),
-        )
-        return {'message': 'Request received, initializing communicator'}
-
-    async def update_named_param(self, request: UpdateWeightsRequest, background_tasks: BackgroundTasks):
-        """
-        Updates the model weights with the provided tensor.
-
-        Once this endpoint is called, the client process should broadcast the updated weights to all server workers.
-
-        Args:
-            request (`UpdateWeightsRequest`):
-                - `name` (`str`): Name of the weight tensor being updated.
-                - `dtype` (`str`): Data type of the weight tensor (e.g., `"torch.float32"`).
-                - `shape` (list of `int`): Shape of the weight
-
-        """
-        # The function is called this way: update_named_param(name="name", dtype=torch.float32, shape=(10, 10))
-        # So with collect_rpc we need to call it this way:
-        # self.infer_engine.engine.model_executor.collective_rpc("update_named_param", \
-        # args=("name", torch.float32, (10, 10)))
-        # And with background_tasks.add_task we need to call it this way:
-        # background_tasks.add_task(self.infer_engine.engine.model_executor.collective_rpc, \
-        # "update_named_param", args=("name", torch.float32, (10, 10)))
-        dtype = torch.__getattribute__(request.dtype.split('.')[-1])
-        background_tasks.add_task(
-            self.infer_engine.engine.model_executor.collective_rpc,
-            'update_named_param',
-            args=(request.name, dtype, request.shape))
-
-        return {'message': 'Request received, updating named parameter'}
-
-    async def reset_prefix_cache(self):
-        """
-        Resets the prefix cache for the model.
-        """
-        success = self.infer_engine.engine.reset_prefix_cache()
-        return {'message': 'Request received, resetting prefix cache status: ' + str(success)}
-
-    async def close_communicator(self):
-        """
-        Closes the weight update group and cleans up associated resources.
-        """
-        self.infer_engine.engine.model_executor.collective_rpc('close_communicator')
-        return {'message': 'Request received, closing communicator'}
-
-    async def infer(
-        self,
-        infer_requests: List[RolloutInferRequest],
-        request_config: Optional[RequestConfig] = None,
-        *,
-        use_tqdm: Optional[bool] = None,
-    ):
-        res = self.infer_engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
-        return res
 
     def run(self):
         args = self.args
