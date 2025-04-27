@@ -137,8 +137,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 set_default_ddp_config()
             if self.async_generate or not self.use_vllm:
                 self.sleep_level = 0
-            if self.sleep_level > 0:
-                self.gradient_accumulation_steps = 1
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
             if self.truncation_strategy is None:

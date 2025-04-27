@@ -1033,6 +1033,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 labels[:, -logits_to_keep:] != -100,
                 'truncated_mask':
                 torch.tensor([b['is_truncated'] for b in batch], dtype=torch.bool),
+                'logits_to_keep':
+                logits_to_keep,
                 'advantages':
                 batch_advantages
             })
