@@ -261,7 +261,9 @@ def get_model_tokenizer_qwen2_gte(model_dir: str,
     model_config.torch_dtype = torch_dtype
     HfConfigFactory.compat_zero3(model_config)
     if load_model:
-        model = SentenceTransformer(model_dir, trust_remote_code=True)
+        model = SentenceTransformer(model_dir, trust_remote_code=True, model_kwargs={
+            'torch_dtype': torch_dtype,
+        })
         model.config = model_config
 
         def enable_input_require_grads(self):

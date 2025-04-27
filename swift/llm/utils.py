@@ -232,10 +232,14 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     additional_saved_files: Optional[List[str]] = None) -> None:
     if model is not None:
         parameters = inspect.signature(model.save_pretrained).parameters
-        if 'max_shard_size' in parameters:
+        if model.__class__.__name__ != 'SentenceTransformer':
             model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
         else:
             model.save_pretrained(output_dir, safe_serialization=safe_serialization)
+            # copy sentencetransformers files
+            from swift.utils import copy_files_by_pattern
+            copy_files_by_pattern(model.model_dir, output_dir, '*.py')
+            copy_files_by_pattern(model.model_dir, output_dir, '*.json')
     processor.save_pretrained(output_dir)
 
     if model_dirs is None:

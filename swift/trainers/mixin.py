@@ -4,6 +4,7 @@ import inspect
 import os
 import shutil
 import time
+from functools import partial
 from contextlib import contextmanager
 from copy import copy
 from types import MethodType
@@ -163,10 +164,11 @@ class SwiftMixin:
     def _save_model(self, output_dir: Optional[str] = None, state_dict=None):
         # model
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
+        supported_names = ('SentenceTransformer')
         if AutoModelForCausalLMWithValueHead is not None:
             supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead, )
         save_safetensors = self.args.save_safetensors
-        if not isinstance(self.model, supported_classes):
+        if not isinstance(self.model, supported_classes) and self.model.__class__.__name__ not in supported_names:
             if state_dict is None:
                 state_dict = self.model.state_dict()
 
@@ -203,7 +205,22 @@ class SwiftMixin:
             extra_tuners[self.args.train_type].save_pretrained(
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         else:
-            self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+            if self.model.__class__.__name__ != 'SentenceTransformer':
+                self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+            else:
+                @contextmanager
+                def save_context():
+                    save_pretrained = self.model[0].auto_model.save_pretrained
+                    _state_dict = {key[len('0.auto_model.'):] if 'auto_model' in key else key: value for key, value in state_dict.items()}
+                    self.model[0].auto_model.save_pretrained = partial(self.model[0].auto_model.save_pretrained, state_dict=_state_dict)
+                    yield
+                    self.model[0].auto_model.save_pretrained = save_pretrained
+                with save_context():
+                    self.model.save_pretrained(output_dir, safe_serialization=save_safetensors)
+                    # copy sentencetransformers files
+                    from swift.utils import copy_files_by_pattern
+                    copy_files_by_pattern(self.model.model_dir, output_dir, '*.py')
+                    copy_files_by_pattern(self.model.model_dir, output_dir, '*.json')
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
