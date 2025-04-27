@@ -57,13 +57,12 @@ InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
 OutputsType = List[List[Tuple[List[Dict], str]]]
 
 
-def _batch_split_tensor_dict(tensor_dict_list: List[Dict[str, Optional[torch.Tensor]]],
-                             num_chunks: int) -> List[List[Dict[str, Optional[torch.Tensor]]]]:
-    return [hf_split_tensor_dict(tensor_dict, num_chunks) for tensor_dict in tensor_dict_list]
-
-
 def apply_split_tensor_dict_patch():
     from trl.trainer import grpo_trainer
+
+    def _batch_split_tensor_dict(tensor_dict_list: List[Dict[str, Optional[torch.Tensor]]],
+                                 num_chunks: int) -> List[List[Dict[str, Optional[torch.Tensor]]]]:
+        return [hf_split_tensor_dict(tensor_dict, num_chunks) for tensor_dict in tensor_dict_list]
 
     if not hasattr(grpo_trainer, '_original_split_tensor_dict'):
         grpo_trainer._original_split_tensor_dict = hf_split_tensor_dict
@@ -863,6 +862,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func)
 
         # TODO: Confirm that everything is a tensor.
+        batch_encoded_inputs.pop('logits_to_keep')
         return batch_encoded_inputs
 
     def _score_completions(self, inputs: InputsType) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
