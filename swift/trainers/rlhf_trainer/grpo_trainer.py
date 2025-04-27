@@ -1,5 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
+"""
+TODO LIST:
+    1. generate once https://github.com/huggingface/trl/pull/3283/files
+    2. vllm dp https://github.com/huggingface/trl/pull/3310/files#diff-d9c0de06f37c050a61db7505527468188b3e5334b56afcfe1130a48e0f0e2bab
+    3. reward function prepare deepspeed https://github.com/huggingface/trl/pull/3326/files (repro first)
+"""
 import concurrent.futures
 import inspect
 import os
@@ -297,7 +303,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             'The current model is incompatible - please use vLLM or PyTorch backend instead.')
                 if not self.is_external_vllm:
                     self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
-            self._last_loaded_step = 0  # tag to avoid useless loading during grad accumulation
+            self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
 
             # When using vLLM, the main process is responsible for loading the model weights. This can cause process
             # desynchronization and seems to lead to DeepSpeed hanging during initialization. To prevent this, we
@@ -352,6 +358,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # flag indicating whether the evaluation has started
         self.eval_flag = False
         apply_split_tensor_dict_patch()
+
+    @profiling_decorator
+    def _prepare_inputs(
+            self, accumulated_local_batch: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
+        mode = 'eval' if self.control.should_evaluate else 'train'
+        if mode == 'train':
+            generate_every = self.args.gradient_accumulation_steps * self.num_iterations
+            if self._step % generate_every == 0 or self._buffered_inputs is None:
+                accumulated_local_batch = self._generate_and_score_completions(accumulated_local_batch)
+                self._buffered_inputs = accumulated_local_batch  # < this is the change
+            inputs = self._buffered_inputs[self._step % self.args.gradient_accumulation_steps]
+            self._step += 1
+        else:
+            inputs = self._generate_and_score_completions(accumulated_local_batch)
+        return inputs
 
     def split_batches(self):
         """Sync weights in batches
@@ -859,10 +880,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Log metrics
         messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
 
-        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func)
+        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func)  # TODO
 
-        # TODO: Confirm that everything is a tensor.
-        batch_encoded_inputs.pop('logits_to_keep')
         return batch_encoded_inputs
 
     def _score_completions(self, inputs: InputsType) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
@@ -949,23 +968,40 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return inputs, rewards, rewards_per_func, completions
 
-    def _encode_and_prepare_inputs(self, batch, logits_to_keep=None):
+    def _encode_and_prepare_inputs(self, batch):
+        """Process input batch into model-ready format with gradient accumulation support.
+
+        Args:
+            batch: Input data batch with shape [gas*bs, ...], where gas is gradient
+                accumulation steps and bs is batch size
+
+        Returns:
+            List of encoded inputs with shape [gas, bs, ...] ready for model forward pass
+        """
         template = self.template
+        ga_batch_encoded_inputs = []
+
         with self._template_context(template):
-            batch_encoded_inputs = [template.encode(infer_request) for infer_request in batch]
-            batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
+            gas = self.args.gradient_accumulation_steps
+            mode = 'eval' if self.control.should_evaluate else 'train'
+            bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
+            for i in range(gas):
+                start_idx = i * bs
+                end_idx = (i + 1) * bs
+                batch_encoded_inputs = [template.encode(infer_request) for infer_request in batch[start_idx:end_idx]]
 
-        labels = batch_encoded_inputs.pop('labels')
-        if logits_to_keep is None:
-            logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
-        batch_encoded_inputs['logits_to_keep'] = logits_to_keep
-        batch_encoded_inputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
-        return batch_encoded_inputs
+                batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
+                labels = batch_encoded_inputs.pop('labels')
+                last_non_padding = torch.ne(labels, -100).int().argmax(-1)
+                logits_to_keep = (labels.shape[-1] - last_non_padding).max().item()
+                batch_encoded_inputs.update({'completion_mask': labels[:, -logits_to_keep:] != -100})
 
-    def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> InputsType:
+                ga_batch_encoded_inputs.append(batch_encoded_inputs)
+        return ga_batch_encoded_inputs
+
+    def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> List[InputsType]:
         """Prepare the final batch inputs with advantages and other required fields"""
         # Compute advantages
-        mode = 'eval' if self.control.should_evaluate else 'train'
         grouped_rewards = rewards.view(-1, self.num_generations)
         mean_grouped_rewards = grouped_rewards.mean(dim=1).repeat_interleave(self.num_generations, dim=0)
         std_grouped_rewards = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations, dim=0)
@@ -983,53 +1019,79 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Prepare mini-batches
         mini_batch_inputs = _split_into_mini_batches(inputs, mini_batch_size=self.args.mini_batch_size)
         batch_encoded_inputs = []
+        template = self.template
+
+        # Determine batch size parameters
+        mode = 'eval' if self.control.should_evaluate else 'train'
+        bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
+        gas = self.args.gradient_accumulation_steps
 
         for mini_batch in mini_batch_inputs:
-            mini_batch_encoded_inputs = self._encode_and_prepare_inputs(mini_batch)
+            # Split mini_batch into GAS chunks first
+            mini_batch_chunks = [mini_batch[i*bs:(i+1)*bs] for i in range(gas)]
+            
+            for chunk in mini_batch_chunks:
+                # Encode and collate only this chunk
+                with self._template_context(template):
+                    chunk_encoded_inputs = [template.encode(infer_request) for infer_request in chunk]
+                    chunk_encoded_inputs = to_device(
+                        template.data_collator(chunk_encoded_inputs), 
+                        self.model.device
+                    )
 
-            batch_size = self.args.per_device_train_batch_size if mode == 'train' \
-                else self.args.per_device_eval_batch_size
-            with torch.no_grad():
-                if self.old_policy:
-                    mini_batch_encoded_inputs['old_per_token_logps'] = self._get_per_token_logps(
-                        self.model, mini_batch_encoded_inputs, mini_batch, batch_size)
-                else:
-                    mini_batch_encoded_inputs['old_per_token_logps'] = None
+                # Process labels and masks
+                labels = chunk_encoded_inputs['labels']
+                logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
+                chunk_encoded_inputs['logits_to_keep'] = logits_to_keep
+                chunk_encoded_inputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
-                if self.beta == 0.0:
-                    ref_per_token_logps = None
-                elif self.ref_model is not None:
-                    ref_per_token_logps = \
-                        self._get_per_token_logps(self.ref_model, mini_batch_encoded_inputs, mini_batch, batch_size)
-                else:
-                    with self.accelerator.unwrap_model(self.model).disable_adapter():
-                        ref_per_token_logps = \
-                            self._get_per_token_logps(self.model, mini_batch_encoded_inputs, mini_batch, batch_size)
+                # Compute logps for this chunk only
+                with torch.no_grad():
+                    if self.old_policy:
+                        chunk_encoded_inputs['old_per_token_logps'] = self._get_per_token_logps(
+                            self.model, chunk_encoded_inputs)
+                    else:
+                        chunk_encoded_inputs['old_per_token_logps'] = None
 
-                mini_batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
-                mini_batch_encoded_inputs['truncated_mask'] = \
-                    torch.tensor([mb['is_truncated'] for mb in mini_batch], dtype=torch.bool)
-                batch_encoded_inputs.append(mini_batch_encoded_inputs)
-        # Split advantages into mini-batches
+                    if self.beta == 0.0:
+                        ref_per_token_logps = None
+                    elif self.ref_model is not None:
+                        ref_per_token_logps = self._get_per_token_logps(self.ref_model, chunk_encoded_inputs)
+                    else:
+                        with self.accelerator.unwrap_model(self.model).disable_adapter():
+                            ref_per_token_logps = self._get_per_token_logps(self.model, chunk_encoded_inputs)
+
+                    chunk_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
+                    chunk_encoded_inputs['truncated_mask'] = \
+                        torch.tensor([mb['is_truncated'] for mb in chunk], dtype=torch.bool)
+                
+                batch_encoded_inputs.append(chunk_encoded_inputs)
+
+        # Split advantages into mini-batches and assign to each chunk
         mini_batch_advantages = _split_into_mini_batches(advantages, mini_batch_size=self.args.mini_batch_size)
         for i, mini_batch_advantage in enumerate(mini_batch_advantages):
-            batch_encoded_inputs[i].update({'advantages': mini_batch_advantage})
+            # Split advantages further into GAS chunks
+            advantage_chunks = torch.chunk(mini_batch_advantage, gas)
+            for j in range(gas):
+                batch_idx = i * gas + j
+                if batch_idx < len(batch_encoded_inputs):
+                    batch_encoded_inputs[batch_idx].update({'advantages': advantage_chunks[j]})
 
         return batch_encoded_inputs
 
-    def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func):
+    def _log_metrics(self, batch_inputs, messages, completions, rewards, rewards_per_func):
         """Log training/evaluation metrics"""
         mode = 'eval' if self.control.should_evaluate else 'train'
         device = self.accelerator.device
 
         # Calculate completion length metrics
-        agg_completion_mask = gather(torch.cat([inp['completion_mask'].sum(1) for inp in inputs]))
+        agg_completion_mask = gather(torch.cat([inp['completion_mask'].sum(1) for inputs in batch_inputs for inp in inputs]))
 
         self._metrics[mode]['completions/mean_length'].append(agg_completion_mask.float().mean().item())
         self._metrics[mode]['completions/min_length'].append(agg_completion_mask.float().min().item())
         self._metrics[mode]['completions/max_length'].append(agg_completion_mask.float().max().item())
         # Calculate clip ratio
-        agg_truncated_mask = gather(torch.cat([inp['truncated_mask'] for inp in inputs]).to(device))
+        agg_truncated_mask = gather(torch.cat([inp['truncated_mask'] for inputs in batch_inputs for inp in inputs]).to(device))
 
         term_completion_mask = agg_completion_mask[agg_truncated_mask]
         clipped_completions_ratio = len(term_completion_mask) / len(agg_completion_mask)
@@ -1132,43 +1194,42 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     # Get the per-token log probabilities for the completions for the model and the reference model
     @profiling_decorator
-    def _get_per_token_logps(self, model, encoded_inputs, raw_inputs, batch_size=None):
+    def _get_per_token_logps(self, model, ga_batch_encoded_inputs, batch_size=None):
         # Chunk inputs into smaller batches to reduce memory peak
         # For language models, the chunking logic is handled in `super()._get_per_token_logps`.
         from trl.trainer.utils import selective_log_softmax
-        logits_to_keep = encoded_inputs['logits_to_keep']
-        input_ids = encoded_inputs['input_ids']
-        unwrapped_model = self.accelerator.unwrap_model(model)
-        parameters = inspect.signature(unwrapped_model.forward).parameters
-        if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
-            # save memory
-            return super()._get_per_token_logps(model, input_ids, encoded_inputs['attention_mask'], logits_to_keep,
-                                                batch_size)
-
-        # For multi-modal models, we re-encode the inputs to implement chunking.
-        batch_size = batch_size or input_ids.size(0)
-        effective_batch_size = input_ids.size(0)
-        all_logps = []
-        logits_to_keep = encoded_inputs['logits_to_keep']
-        for i in range(0, effective_batch_size, batch_size):
-            raw_inputs_batch = raw_inputs[i:i + batch_size]
-            encoded_inputs_batch = self._encode_and_prepare_inputs(raw_inputs_batch, logits_to_keep=logits_to_keep)
-            input_ids = encoded_inputs_batch['input_ids']
-            inputs = {
-                k: v
-                for k, v in encoded_inputs_batch.items() if k not in [
-                    'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                    'truncated_mask'
-                ]
-            }
-            with self._template_context(self.template):
-                logits = model(**inputs).logits
-            # exclude the last logit: it corresponds to the next token pred
-            logits = logits[:, -(logits_to_keep + 1):-1, :]
-            logits = logits / self.temperature
-            input_ids = input_ids[:, -logits_to_keep:]
-            logps = selective_log_softmax(logits, input_ids)
-            all_logps.append(logps)
+        for encoded_inputs in ga_batch_encoded_inputs:
+            logits_to_keep = encoded_inputs['logits_to_keep']
+            input_ids = encoded_inputs['input_ids']
+            unwrapped_model = self.accelerator.unwrap_model(model)
+            parameters = inspect.signature(unwrapped_model.forward).parameters
+            if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
+                # save memory
+                logps = super()._get_per_token_logps(model, input_ids, encoded_inputs['attention_mask'], logits_to_keep,
+                                                     batch_size)
+            else:
+                batch_size = batch_size or input_ids.size(0)
+                effective_batch_size = input_ids.size(0)
+                all_logps = []
+                logits_to_keep = encoded_inputs['logits_to_keep']
+                for i in range(0, effective_batch_size, batch_size):
+                    raw_inputs_batch = raw_inputs[i:i + batch_size]
+                    input_ids = encoded_inputs_batch['input_ids']
+                    inputs = {
+                        k: v
+                        for k, v in encoded_inputs_batch.items() if k not in [
+                            'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages',
+                            'old_per_token_logps', 'truncated_mask'
+                        ]
+                    }
+                    with self._template_context(self.template):
+                        logits = model(**inputs).logits
+                    # exclude the last logit: it corresponds to the next token pred
+                    logits = logits[:, -(logits_to_keep + 1):-1, :]
+                    logits = logits / self.temperature
+                    input_ids = input_ids[:, -logits_to_keep:]
+                    logps = selective_log_softmax(logits, input_ids)
+                    all_logps.append(logps)
         return torch.cat(all_logps, dim=0)
 
     def evaluation_loop(self, dataloader, *args, **kwargs):
