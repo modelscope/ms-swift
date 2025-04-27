@@ -1056,21 +1056,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return ga_batch_encoded_inputs
 
-    def _log_metrics(self, batch_inputs, messages, completions, rewards, rewards_per_func):
+    def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func):
         """Log training/evaluation metrics"""
         mode = 'eval' if self.control.should_evaluate else 'train'
         device = self.accelerator.device
 
         # Calculate completion length metrics
-        agg_completion_mask = gather(
-            torch.cat([inp['completion_mask'].sum(1) for inputs in batch_inputs for inp in inputs]))
+        agg_completion_mask = gather(torch.cat([inp['completion_mask'].sum(1) for inp in inputs]))
 
         self._metrics[mode]['completions/mean_length'].append(agg_completion_mask.float().mean().item())
         self._metrics[mode]['completions/min_length'].append(agg_completion_mask.float().min().item())
         self._metrics[mode]['completions/max_length'].append(agg_completion_mask.float().max().item())
         # Calculate clip ratio
-        agg_truncated_mask = gather(
-            torch.cat([inp['truncated_mask'] for inputs in batch_inputs for inp in inputs]).to(device))
+        agg_truncated_mask = gather(torch.cat([inp['truncated_mask'] for inp in inputs]).to(device))
 
         term_completion_mask = agg_completion_mask[agg_truncated_mask]
         clipped_completions_ratio = len(term_completion_mask) / len(agg_completion_mask)
