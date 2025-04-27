@@ -6,7 +6,7 @@
 
 环境安装
 ```bash
-pip install math_verify # reward function
+pip install math_verify==0.5.2 # reward function
 pip install -U trl
 ```
 
@@ -137,7 +137,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 ## 参数与运行脚本
 参数
-- num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_batch_size * nproc_per_node 整除
+- num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_batch_size * gradient_accumulation_steps * nproc_per_node 整除，默认为8
 - max_completion_length: 采样生成的最大长度，默认为512
 - ds3_gather_for_generation: 该参数适用于DeepSpeed ZeRO-3。如果启用，策略模型权重将被收集用于生成，从而提高生成速度。然而，禁用此选项允许训练超出单个GPU VRAM的模型，尽管生成速度会变慢。禁用此选项与vLLM生成不兼容。默认为True
 - reward_funcs: 奖励函数，根据模型生成结果进行打分，内置accuracy、format、cosine和repetition四个rule-based函数，详细见 swift/plugin/orm.py 文件

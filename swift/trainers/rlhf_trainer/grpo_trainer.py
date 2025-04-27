@@ -949,14 +949,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return inputs, rewards, rewards_per_func, completions
 
-    def _encode_and_prepare_inputs(self, batch):
+    def _encode_and_prepare_inputs(self, batch, logits_to_keep=None):
         template = self.template
         with self._template_context(template):
             batch_encoded_inputs = [template.encode(infer_request) for infer_request in batch]
             batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
 
         labels = batch_encoded_inputs.pop('labels')
-        logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
+        if logits_to_keep is None:
+            logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
         batch_encoded_inputs['logits_to_keep'] = logits_to_keep
         batch_encoded_inputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
         return batch_encoded_inputs
@@ -1148,10 +1149,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         batch_size = batch_size or input_ids.size(0)
         effective_batch_size = input_ids.size(0)
         all_logps = []
+        logits_to_keep = encoded_inputs['logits_to_keep']
         for i in range(0, effective_batch_size, batch_size):
             raw_inputs_batch = raw_inputs[i:i + batch_size]
-            encoded_inputs_batch = self._encode_and_prepare_inputs(raw_inputs_batch)
-            logits_to_keep = encoded_inputs_batch['logits_to_keep']
+            encoded_inputs_batch = self._encode_and_prepare_inputs(raw_inputs_batch, logits_to_keep=logits_to_keep)
             input_ids = encoded_inputs_batch['input_ids']
             inputs = {
                 k: v
