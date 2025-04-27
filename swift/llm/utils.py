@@ -231,7 +231,11 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     model_dirs: List[str] = None,
                     additional_saved_files: Optional[List[str]] = None) -> None:
     if model is not None:
-        model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
+        parameters = inspect.signature(model.save_pretrained).parameters
+        if 'max_shard_size' in parameters:
+            model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
+        else:
+            model.save_pretrained(output_dir, safe_serialization=safe_serialization)
     processor.save_pretrained(output_dir)
 
     if model_dirs is None:
