@@ -1010,13 +1010,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
         gas = self.args.gradient_accumulation_steps
 
-        assert len(inputs) == bs * gas
+        assert len(inputs) == bs * gas, f'Expected {bs * gas} inputs, got {len(inputs)}'
         gas_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(gas)]
 
         ga_batch_encoded_inputs = []
         template = self.template
-        for i, batch in enumerate(gas_chunks):
-            # Encode and process each mini-batch (now of size bs)
+
+        # Split advantages by GAS chunks
+        advantage_chunks = torch.chunk(advantages, gas)
+
+        for i, (batch, batch_advantages) in enumerate(zip(gas_chunks, advantage_chunks)):
+            # Encode and process each batch (size=bs)
             with self._template_context(template):
                 batch_encoded_inputs = [template.encode(infer_request) for infer_request in batch]
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
@@ -1024,35 +1028,32 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Process labels and masks
             labels = batch_encoded_inputs['labels']
             logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
-            batch_encoded_inputs['logits_to_keep'] = logits_to_keep
-            batch_encoded_inputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
+            batch_encoded_inputs.update({
+                'completion_mask':
+                labels[:, -logits_to_keep:] != -100,
+                'truncated_mask':
+                torch.tensor([b['is_truncated'] for b in batch], dtype=torch.bool),
+                'advantages':
+                batch_advantages
+            })
 
-            # Compute logps
+            # Compute log probabilities
             with torch.no_grad():
-                if self.old_policy:
-                    batch_encoded_inputs['old_per_token_logps'] = self._get_per_token_logps(
-                        self.model, batch_encoded_inputs)
-                else:
-                    batch_encoded_inputs['old_per_token_logps'] = None
+                # Old policy logps
+                batch_encoded_inputs['old_per_token_logps'] = (
+                    self._get_per_token_logps(self.model, batch_encoded_inputs) if self.old_policy else None)
 
+                # Reference policy logps
                 if self.beta == 0.0:
-                    ref_per_token_logps = None
+                    ref_logps = None
                 elif self.ref_model is not None:
-                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, batch_encoded_inputs)
+                    ref_logps = self._get_per_token_logps(self.ref_model, batch_encoded_inputs)
                 else:
                     with self.accelerator.unwrap_model(self.model).disable_adapter():
-                        ref_per_token_logps = self._get_per_token_logps(self.model, batch_encoded_inputs)
-
-                batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
-                batch_encoded_inputs['truncated_mask'] = \
-                    torch.tensor([b['is_truncated'] for b in inputs[i * bs:(i + 1) * bs]], dtype=torch.bool)
+                        ref_logps = self._get_per_token_logps(self.model, batch_encoded_inputs)
+                batch_encoded_inputs['ref_per_token_logps'] = ref_logps
 
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
-        # Split advantages to match the batch organization
-        # First split by GAS chunks
-        for i in range(gas):
-            batch_advantages = advantages[i * bs:(i + 1) * bs]
-            ga_batch_encoded_inputs.update({'advantages': batch_advantages})
 
         return ga_batch_encoded_inputs
 
