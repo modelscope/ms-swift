@@ -187,7 +187,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - overlap_param_gather: 启用分布式优化器中参数all-gather的重叠（降低DP通信耗时）。默认为False。
 - distributed_timeout_minutes: torch.distributed的timeout时间（单位为分钟），默认为60分钟。
 
-**日志参数**
+**日志参数**:
 - log_params_norm: 记录参数的norm。默认为True。
 - log_throughput: 记录每个GPU的吞吐量。默认为True。
   - 注意：在非packing情况下，log_throughput并不准确，因为`seq_length`并不等于真实序列长度。
@@ -199,11 +199,11 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - log_memory_to_tensorboard: 将内存日志写入tensorboard。默认为True。
 - logging_leval: 日志级别。默认为None。
 
-**评估参数**
+**评估参数**:
 - 🔥eval_iters: 评估的迭代次数，默认为100。
 - 🔥eval_interval: 评估的间隔（steps），默认为None，即设置为save_interval。
 
-**混合精度参数**
+**混合精度参数**:
 - fp16: fp16模式。默认为None，会根据模型的torch_dtype进行设置。torch_dtype默认读取config.json。
 - bf16: bf16模式。默认为None，会根据模型的torch_dtype进行设置。
 - apply_query_key_layer_scaling: 将`Q * K^T` 缩放为 `1 / 层数`（例如：第layer_num层则除以layer_num）。这对fp16训练很有帮助。默认为None，即若使用`--fp16`，则设置为True。
@@ -228,9 +228,29 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - add_qkv_bias: 仅在QKV的linear中增加bias，默认为True。
 - attention_dropout: 默认为0.。
 - hidden_dropout: 默认为0.。
+- kv_channels: 默认为None，设置为`args.hidden_size // args.num_attention_heads`。
+- qk_layernorm: 是否对Q和K进行层归一化。
 - transformer_impl: 使用哪种transformer实现，可选项为'local'和'transformer_engine'。默认为transformer_engine。
 - padded_vocab_size: 完整词表大小，默认为None。
 - rope_scaling: rope_scaling相关参数，默认为None。格式参考[llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1)，传入json字符串。
+- model_type: Huggingface模型权重中config.json中的model_type。
+
+
+**MoE参数**:
+- num_experts: MoE的专家数，默认为None。自动从config.json读取。
+- moe_ffn_hidden_siz: 每个专家的前馈网络（ffn）的隐藏层大小。默认为None，设置为ffn_hidden_size。自动从config.json读取。
+- moe_shared_expert_intermediate_size: 共享专家的总FFN隐藏层大小。如果有多个共享专家，它应等于 `num_shared_experts * ffn_size_of_each_shared_expert`。 默认为None。自动从config.json读取。
+- moe_router_topk: 每个token路由到的专家数量。默认为None。自动从config.json读取。
+- moe_router_pre_softmax: 为MoE启用预softmax路由，这意味着softmax会在top-k选择之前进行。默认为None。自动从config.json读取。
+- moe_aux_loss_coeff: 辅助损失的缩放系数：建议的初始值为 1e-2。默认为None。自动从config.json读取。
+- expert_model_parallel_size: 专家并行数，默认为1。
+- moe_token_dispatcher_type: 要使用的token分发器类型。可选选项包括 'allgather'、'alltoall' 和 'alltoall_seq'。默认值为 'alltoall'。
+- moe_grouped_gemm: 当每个rank包含多个专家时，通过在多个流中启动多个本地 GEMM 内核，利用 TransformerEngine中的GroupedLinear提高利用率和性能。默认为False。
+- moe_router_load_balancing_type: 确定路由器的负载均衡策略。可选项为"aux_loss"、"seq_aux_loss"、"sinkhorn"、"none"。默认值为 "aux_loss"。
+- moe_z_loss_coeff: z-loss 的缩放系数。默认为None。
+- moe_expert_capacity_factor: 每个专家的容量因子，None表示不会丢弃任何token。默认为None。
+- moe_shared_expert_overlap: 启用共享专家计算与调度器通信之间的重叠。如果不启用此选项，共享专家将在路由专家之后执行。仅在设置了`moe_shared_expert_intermediate_size`时有效。默认为False。
+
 
 ### Megatron训练参数
 

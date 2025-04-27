@@ -104,7 +104,7 @@ class MegatronArguments(ExtraMegatronArguments):
     attention_dropout: Optional[float] = None
     hidden_dropout: float = 0.
     kv_channels: Optional[int] = None
-    qk_layernorm: bool = False
+    qk_layernorm: Optional[bool] = None
     transformer_impl: Literal['local', 'transformer_engine'] = 'transformer_engine'
 
     # moe
@@ -173,6 +173,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.moe_router_pre_softmax = False
         if self.moe_aux_loss_coeff is None:
             self.moe_aux_loss_coeff = 0.
+        if self.qk_layernorm is None:
+            self.qk_layernorm = False
 
     def _init_mixed_precision(self):
         from swift.llm.argument.base_args.model_args import ModelArguments

@@ -193,7 +193,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - overlap_param_gather: Overlap all-gather of parameters in the distributed optimizer (to reduce DP communication time). Default is False.
 - distributed_timeout_minutes: Timeout duration for torch.distributed (in minutes), default is 60 minutes.
 
-**Logging Parameters**
+**Logging Parameters**:
 
 - log_params_norm: Logs the norm of parameters. Default is True.
 - log_throughput: Logs throughput per GPU. Default is True.
@@ -206,12 +206,12 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - log_memory_to_tensorboard: Writes memory logs to TensorBoard. Default is True.
 - logging_level: Logging level. Default is None.
 
-**Evaluation Parameters**
+**Evaluation Parameters**:
 
 - 🔥eval_iters: Number of evaluation iterations, default is 100.
 - 🔥eval_interval: Evaluation interval (steps), default is None, meaning it will be set to save_interval.
 
-**Mixed Precision Parameters**
+**Mixed Precision Parameters**:
 
 - fp16: FP16 mode. The default is None, and it will be set according to the model's torch_dtype. The torch_dtype is read from the config.json by default.
 - bf16: BF16 mode. The default is None, and it will be set according to the model's torch_dtype.
@@ -238,9 +238,29 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - add_qkv_bias: Adds bias only to QKV linear layers. Default is True.
 - attention_dropout: Default is 0.
 - hidden_dropout: Default is 0.
+- kv_channels: Defaults to None, set to `args.hidden_size // args.num_attention_heads`.
+- qk_layernorm: Whether to apply layer normalization to Q and K.
 - transformer_impl: Which transformer implementation to use, options are 'local' and 'transformer_engine'. Default is transformer_engine.
 - padded_vocab_size: Full vocabulary size, default is None.
 - rope_scaling: Related parameters for rope_scaling, default is None. Refer to the format in [llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1). Pass the value as a JSON string.
+- model_type: The model_type in the config.json of the Huggingface model weights.
+
+
+**MoE Parameters**:
+
+- num_experts: The number of experts in MoE, default is None. Automatically read from config.json.
+- moe_ffn_hidden_size: The hidden layer size of the feed-forward network (ffn) for each expert. Default is None, set to ffn_hidden_size. Automatically read from config.json.
+- moe_shared_expert_intermediate_size: The total FFN hidden layer size for shared experts. If there are multiple shared experts, it should equal `num_shared_experts * ffn_size_of_each_shared_expert`. Default is None. Automatically read from config.json.
+- moe_router_topk: The number of experts each token is routed to. Default is None. Automatically read from config.json.
+- moe_router_pre_softmax: Enable pre-softmax routing for MoE, meaning that softmax will be applied before top-k selection. Default is None. Automatically read from config.json.
+- moe_aux_loss_coeff: Scaling coefficient for the auxiliary loss: the recommended initial value is 1e-2. Default is None. Automatically read from config.json.
+- expert_model_parallel_size: The degree of expert parallelism, default is 1.
+- moe_token_dispatcher_type: The type of token dispatcher to use. Options include 'allgather', 'alltoall', and 'alltoall_seq'. Default is 'alltoall'.
+- moe_grouped_gemm: When each rank contains multiple experts, improve utilization and performance by launching multiple local GEMM kernels across multiple streams using GroupedLinear in TransformerEngine. Default is False.
+- moe_router_load_balancing_type: Determines the load balancing strategy for the router. Options are "aux_loss", "seq_aux_loss", "sinkhorn", "none". Default is "aux_loss".
+- moe_z_loss_coeff: Scaling coefficient for z-loss. Default is None.
+- moe_expert_capacity_factor: Capacity factor for each expert, None means no tokens will be dropped. Default is None.
+- moe_shared_expert_overlap: Enable overlapping of shared expert computation with scheduler communication. If this option is not enabled, shared experts will execute after the routing experts. Only effective when `moe_shared_expert_intermediate_size` is set. Default is False.
 
 ### Megatron Training Parameters
 
