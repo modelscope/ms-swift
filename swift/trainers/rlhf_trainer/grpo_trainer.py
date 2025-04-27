@@ -40,7 +40,7 @@ from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, 
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import _split_into_mini_batches, patch_lora_merge, patch_lora_unmerge, round_robin
+from .utils import patch_lora_merge, patch_lora_unmerge, round_robin
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
@@ -1005,65 +1005,56 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         )
         advantages = advantages[process_slice]
 
-        # Prepare mini-batches
-        mini_batch_inputs = _split_into_mini_batches(inputs, mini_batch_size=self.args.mini_batch_size)
-        batch_encoded_inputs = []
-        template = self.template
-
-        # Determine batch size parameters
+        # Determine batch parameters
         mode = 'eval' if self.control.should_evaluate else 'train'
         bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
         gas = self.args.gradient_accumulation_steps
 
-        for mini_batch in mini_batch_inputs:
-            # Split mini_batch into GAS chunks first
-            mini_batch_chunks = [mini_batch[i * bs:(i + 1) * bs] for i in range(gas)]
+        assert len(inputs) == bs * gas
+        gas_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(gas)]
 
-            for chunk in mini_batch_chunks:
-                # Encode and collate only this chunk
-                with self._template_context(template):
-                    chunk_encoded_inputs = [template.encode(infer_request) for infer_request in chunk]
-                    chunk_encoded_inputs = to_device(template.data_collator(chunk_encoded_inputs), self.model.device)
+        ga_batch_encoded_inputs = []
+        template = self.template
+        for i, batch in enumerate(gas_chunks):
+            # Encode and process each mini-batch (now of size bs)
+            with self._template_context(template):
+                batch_encoded_inputs = [template.encode(infer_request) for infer_request in batch]
+                batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
 
-                # Process labels and masks
-                labels = chunk_encoded_inputs['labels']
-                logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
-                chunk_encoded_inputs['logits_to_keep'] = logits_to_keep
-                chunk_encoded_inputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
+            # Process labels and masks
+            labels = batch_encoded_inputs['labels']
+            logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
+            batch_encoded_inputs['logits_to_keep'] = logits_to_keep
+            batch_encoded_inputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
-                # Compute logps for this chunk only
-                with torch.no_grad():
-                    if self.old_policy:
-                        chunk_encoded_inputs['old_per_token_logps'] = self._get_per_token_logps(
-                            self.model, chunk_encoded_inputs)
-                    else:
-                        chunk_encoded_inputs['old_per_token_logps'] = None
+            # Compute logps
+            with torch.no_grad():
+                if self.old_policy:
+                    batch_encoded_inputs['old_per_token_logps'] = self._get_per_token_logps(
+                        self.model, batch_encoded_inputs)
+                else:
+                    batch_encoded_inputs['old_per_token_logps'] = None
 
-                    if self.beta == 0.0:
-                        ref_per_token_logps = None
-                    elif self.ref_model is not None:
-                        ref_per_token_logps = self._get_per_token_logps(self.ref_model, chunk_encoded_inputs)
-                    else:
-                        with self.accelerator.unwrap_model(self.model).disable_adapter():
-                            ref_per_token_logps = self._get_per_token_logps(self.model, chunk_encoded_inputs)
+                if self.beta == 0.0:
+                    ref_per_token_logps = None
+                elif self.ref_model is not None:
+                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, batch_encoded_inputs)
+                else:
+                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                        ref_per_token_logps = self._get_per_token_logps(self.model, batch_encoded_inputs)
 
-                    chunk_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
-                    chunk_encoded_inputs['truncated_mask'] = \
-                        torch.tensor([mb['is_truncated'] for mb in chunk], dtype=torch.bool)
+                batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
+                batch_encoded_inputs['truncated_mask'] = \
+                    torch.tensor([b['is_truncated'] for b in inputs[i * bs:(i + 1) * bs]], dtype=torch.bool)
 
-                batch_encoded_inputs.append(chunk_encoded_inputs)
+            ga_batch_encoded_inputs.append(batch_encoded_inputs)
+        # Split advantages to match the batch organization
+        # First split by GAS chunks
+        for i in range(gas):
+            batch_advantages = advantages[i * bs:(i + 1) * bs]
+            ga_batch_encoded_inputs.update({'advantages': batch_advantages})
 
-        # Split advantages into mini-batches and assign to each chunk
-        mini_batch_advantages = _split_into_mini_batches(advantages, mini_batch_size=self.args.mini_batch_size)
-        for i, mini_batch_advantage in enumerate(mini_batch_advantages):
-            # Split advantages further into GAS chunks
-            advantage_chunks = torch.chunk(mini_batch_advantage, gas)
-            for j in range(gas):
-                batch_idx = i * gas + j
-                if batch_idx < len(batch_encoded_inputs):
-                    batch_encoded_inputs[batch_idx].update({'advantages': advantage_chunks[j]})
-
-        return batch_encoded_inputs
+        return ga_batch_encoded_inputs
 
     def _log_metrics(self, batch_inputs, messages, completions, rewards, rewards_per_func):
         """Log training/evaluation metrics"""
@@ -1211,16 +1202,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.args.async_generate:
             while not self.is_async_generate_eval_rollout_done():
                 time.sleep(0.1)
-        # set mini_batch_size None in evaluation
-        mini_batch_size = self.args.mini_batch_size
-        self.args.mini_batch_size = None
         if self._queue.empty() and self.args.async_generate:
             self._prefetch(dataloader)
         metric_key_prefix = kwargs['metric_key_prefix']
         output = super().evaluation_loop(dataloader, *args, **kwargs)
         metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics['eval'].items()}
         output.metrics.update(metrics)
-        self.args.mini_batch_size = mini_batch_size
         self.eval_flag = True
         return output
 
@@ -1229,48 +1216,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Wait for the eval rollout to complete
             while not self.is_async_generate_eval_rollout_done():
                 time.sleep(0.1)
-        if self.args.mini_batch_size is None:
-            return super().training_step(model, inputs, num_items_in_batch)
-        model.train()
-        if hasattr(self.optimizer, 'train') and callable(self.optimizer.train):
-            self.optimizer.train()
-
-        batch_inputs = self._prepare_inputs(inputs)
-
-        total_loss = torch.tensor(0.0, device=batch_inputs[0]['input_ids'].device)
-        # Initialize metrics accumulators
-        total_kl = 0.0
-        total_clip_ratio = 0.0
-        total_completion_length = 0
-        for mini_batch in batch_inputs:
-
-            with self.compute_loss_context_manager():
-                mini_batch_loss, mini_batch_metrics = self.compute_loss(model, mini_batch, return_outputs=True)
-                mb_completion_length = mini_batch_metrics['completions_length']
-
-            self.accelerator.backward(mini_batch_loss)
-            # Token-level metrics are weighted by completion length to ensure a fair average over all tokens.
-            if self.beta != 0.0:
-                total_kl += mini_batch_metrics['kl'] * mb_completion_length
-            total_clip_ratio += mini_batch_metrics['clip_ratio'] * mb_completion_length
-            total_completion_length += mb_completion_length
-            total_loss += mini_batch_loss * mb_completion_length
-
-        mode = 'eval' if self.control.should_evaluate else 'train'
-        if self.beta != 0.0:
-            self._metrics[mode]['kl'].append(
-                self.accelerator.gather_for_metrics(total_kl / total_completion_length).mean().item())
-        self._metrics[mode]['clip_ratio'].append(
-            self.accelerator.gather_for_metrics(total_clip_ratio / total_completion_length).mean().item())
-
-        total_loss = total_loss / total_completion_length
-
-        del inputs, batch_inputs
-        if (self.args.torch_empty_cache_steps is not None
-                and self.state.global_step % self.args.torch_empty_cache_steps == 0):
-            gc_collect()
-
-        return total_loss.detach()
+        return super().training_step(model, inputs, num_items_in_batch)
 
     def _engine_infer(
         self,
