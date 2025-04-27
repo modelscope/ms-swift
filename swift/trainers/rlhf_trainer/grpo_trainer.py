@@ -977,7 +977,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return ga_batch_encoded_inputs
 
     def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> List[InputsType]:
-        """Prepare the final batch inputs with advantages and other required fields"""
+        """
+        Prepare the final batch inputs with advantages, ref/old_policy logps and other fields for RL training.
+
+        Args:
+            inputs (InputsType): List of input samples. Original shape is [gas*bs] where:
+                - gas: gradient accumulation steps
+                - bs: per-device batch size
+            rewards (torch.Tensor): Tensor of rewards corresponding to the inputs.
+                Shape should match the total number of samples (gas*bs*num_generations)
+
+        Returns:
+            List[InputsType]: A list of prepared batch inputs, organized as [gas][bs]
+        """
         # Compute advantages
         grouped_rewards = rewards.view(-1, self.num_generations)
         mean_grouped_rewards = grouped_rewards.mean(dim=1).repeat_interleave(self.num_generations, dim=0)
