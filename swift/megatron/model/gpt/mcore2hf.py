@@ -50,7 +50,12 @@ def set_layer_state(args, mg_model, hf_model, layer_idx):
     hf_layer = hf_model.model.layers[layer_idx]
     set_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
     set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
-    hf_layer.post_attention_layernorm.weight.data.copy_(mg_layer.mlp.linear_fc1.layer_norm_weight)
+
+    post_attention_layernorm_weight = hf_layer.post_attention_layernorm.weight
+    if args.num_experts:
+        post_attention_layernorm_weight.data.copy_(mg_layer.pre_mlp_layernorm.weight)
+    else:
+        post_attention_layernorm_weight.data.copy_(mg_layer.mlp.linear_fc1.layer_norm_weight)
     hf_layer.input_layernorm.weight.data.copy_(mg_layer.self_attention.linear_qkv.layer_norm_weight)
 
 
