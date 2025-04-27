@@ -49,9 +49,6 @@ class GRPOArguments(GRPOArgumentsMixin):
 
     # vLLM in GRPO
     use_vllm: bool = False
-    vllm_device: List[str] = field(default_factory=lambda: ['auto'])
-    vllm_gpu_memory_utilization: float = 0.9
-    vllm_max_model_len: Optional[int] = None
 
     # multi step
     num_iterations: int = 1
