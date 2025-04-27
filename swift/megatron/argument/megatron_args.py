@@ -157,6 +157,14 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.apply_query_key_layer_scaling:
             os.environ['NVTE_APPLY_QK_LAYER_SCALING'] = '1'
 
+    def _init_moe(self):
+        if self.moe_shared_expert_intermediate_size == 0:
+            self.moe_shared_expert_intermediate_size = None
+        if self.moe_ffn_hidden_size is None:
+            self.moe_ffn_hidden_size = self.ffn_hidden_size
+        else:
+            self.ffn_hidden_size = self.moe_ffn_hidden_size
+
     def __post_init__(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
@@ -169,10 +177,7 @@ class MegatronArguments(ExtraMegatronArguments):
             self.seq_length = self.max_position_embeddings
         if self.tensorboard_dir is None and self.save is not None:
             self.tensorboard_dir = f'{self.save}/runs'
-        if self.moe_ffn_hidden_size is None:
-            self.moe_ffn_hidden_size = self.ffn_hidden_size
-        else:
-            self.ffn_hidden_size = self.moe_ffn_hidden_size
+        self._init_moe()
         self._init_mixed_precision()
 
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
