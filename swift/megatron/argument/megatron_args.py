@@ -107,6 +107,21 @@ class MegatronArguments(ExtraMegatronArguments):
     qk_layernorm: bool = False
     transformer_impl: Literal['local', 'transformer_engine'] = 'transformer_engine'
 
+    # moe
+    expert_model_parallel_size: int = 1
+    num_experts: Optional[int] = None
+    moe_ffn_hidden_size: Optional[int] = None
+    moe_shared_expert_intermediate_size: Optional[int] = None
+    moe_router_topk: int = 2
+    moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'alltoall_seq'] = 'alltoall'
+    moe_grouped_gemm: bool = False
+    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = 'aux_loss'
+    moe_aux_loss_coeff: float = 0.
+    moe_z_loss_coeff: Optional[float] = None
+    moe_router_pre_softmax: bool = False
+    moe_expert_capacity_factor: Optional[float] = None
+    moe_shared_expert_overlap: bool = False
+
     # mixed precision
     fp16: Optional[bool] = None
     bf16: Optional[bool] = None
@@ -154,6 +169,10 @@ class MegatronArguments(ExtraMegatronArguments):
             self.seq_length = self.max_position_embeddings
         if self.tensorboard_dir is None and self.save is not None:
             self.tensorboard_dir = f'{self.save}/runs'
+        if self.moe_ffn_hidden_size is None:
+            self.moe_ffn_hidden_size = self.ffn_hidden_size
+        else:
+            self.ffn_hidden_size = self.moe_ffn_hidden_size
         self._init_mixed_precision()
 
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)

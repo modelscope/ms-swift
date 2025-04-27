@@ -35,4 +35,5 @@ register_megatron_model(
         ModelType.ziya,
         ModelType.mengzi3,
         ModelType.qwen3,
+        ModelType.qwen2_moe,
     ], model_provider, convert_gpt_hf_config, convert_mcore2hf, convert_hf2mcore))

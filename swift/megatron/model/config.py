@@ -21,6 +21,13 @@ config_mapping = {
     'disable_bias_linear': ['mlp_bias'],
     'kv_channels': ['head_dim'],
     'model_type': ['model_type'],
+    # moe
+    'moe_ffn_hidden_size': ['moe_intermediate_size'],
+    'moe_shared_expert_intermediate_size': ['shared_expert_intermediate_size'],
+    'moe_router_topk': ['num_experts_per_tok'],
+    'num_experts': ['num_experts'],
+    'moe_router_pre_softmax': ['norm_topk_prob'],
+    'moe_aux_loss_coeff': ['router_aux_loss_coef'],
 }
 
 
