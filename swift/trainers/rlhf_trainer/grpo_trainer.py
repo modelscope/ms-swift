@@ -1,11 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
-"""
-TODO LIST:
-    1. generate once https://github.com/huggingface/trl/pull/3283/files
-    2. vllm dp https://github.com/huggingface/trl/pull/3310/files#diff-d9c0de06f37c050a61db7505527468188b3e5334b56afcfe1130a48e0f0e2bab
-    3. reward function prepare deepspeed https://github.com/huggingface/trl/pull/3326/files (repro first)
-"""
 import concurrent.futures
 import inspect
 import os
@@ -48,10 +42,6 @@ from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import _split_into_mini_batches, patch_lora_merge, patch_lora_unmerge, round_robin
 
-try:
-    from trl.trainer.grpo_trainer import split_tensor_dict as hf_split_tensor_dict
-except ImportError:
-    raise ImportError('Please install trl from source: `pip install git+https://github.com/huggingface/trl.git`')
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
 
@@ -61,18 +51,6 @@ if is_wandb_available():
 
 InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
 OutputsType = List[List[Tuple[List[Dict], str]]]
-
-
-def apply_split_tensor_dict_patch():
-    from trl.trainer import grpo_trainer
-
-    def _batch_split_tensor_dict(tensor_dict_list: List[Dict[str, Optional[torch.Tensor]]],
-                                 num_chunks: int) -> List[List[Dict[str, Optional[torch.Tensor]]]]:
-        return [hf_split_tensor_dict(tensor_dict, num_chunks) for tensor_dict in tensor_dict_list]
-
-    if not hasattr(grpo_trainer, '_original_split_tensor_dict'):
-        grpo_trainer._original_split_tensor_dict = hf_split_tensor_dict
-        grpo_trainer.split_tensor_dict = _batch_split_tensor_dict
 
 
 @contextmanager
@@ -357,7 +335,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.resample_iterator = cyclic_iter(self.get_resample_dataloader())
         # flag indicating whether the evaluation has started
         self.eval_flag = False
-        apply_split_tensor_dict_patch()
 
     @profiling_decorator
     def _prepare_inputs(
@@ -1028,16 +1005,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         for mini_batch in mini_batch_inputs:
             # Split mini_batch into GAS chunks first
-            mini_batch_chunks = [mini_batch[i*bs:(i+1)*bs] for i in range(gas)]
-            
+            mini_batch_chunks = [mini_batch[i * bs:(i + 1) * bs] for i in range(gas)]
+
             for chunk in mini_batch_chunks:
                 # Encode and collate only this chunk
                 with self._template_context(template):
                     chunk_encoded_inputs = [template.encode(infer_request) for infer_request in chunk]
-                    chunk_encoded_inputs = to_device(
-                        template.data_collator(chunk_encoded_inputs), 
-                        self.model.device
-                    )
+                    chunk_encoded_inputs = to_device(template.data_collator(chunk_encoded_inputs), self.model.device)
 
                 # Process labels and masks
                 labels = chunk_encoded_inputs['labels']
@@ -1064,7 +1038,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     chunk_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
                     chunk_encoded_inputs['truncated_mask'] = \
                         torch.tensor([mb['is_truncated'] for mb in chunk], dtype=torch.bool)
-                
+
                 batch_encoded_inputs.append(chunk_encoded_inputs)
 
         # Split advantages into mini-batches and assign to each chunk
@@ -1085,13 +1059,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         device = self.accelerator.device
 
         # Calculate completion length metrics
-        agg_completion_mask = gather(torch.cat([inp['completion_mask'].sum(1) for inputs in batch_inputs for inp in inputs]))
+        agg_completion_mask = gather(
+            torch.cat([inp['completion_mask'].sum(1) for inputs in batch_inputs for inp in inputs]))
 
         self._metrics[mode]['completions/mean_length'].append(agg_completion_mask.float().mean().item())
         self._metrics[mode]['completions/min_length'].append(agg_completion_mask.float().min().item())
         self._metrics[mode]['completions/max_length'].append(agg_completion_mask.float().max().item())
         # Calculate clip ratio
-        agg_truncated_mask = gather(torch.cat([inp['truncated_mask'] for inputs in batch_inputs for inp in inputs]).to(device))
+        agg_truncated_mask = gather(
+            torch.cat([inp['truncated_mask'] for inputs in batch_inputs for inp in inputs]).to(device))
 
         term_completion_mask = agg_completion_mask[agg_truncated_mask]
         clipped_completions_ratio = len(term_completion_mask) / len(agg_completion_mask)
@@ -1194,43 +1170,29 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     # Get the per-token log probabilities for the completions for the model and the reference model
     @profiling_decorator
-    def _get_per_token_logps(self, model, ga_batch_encoded_inputs, batch_size=None):
-        # Chunk inputs into smaller batches to reduce memory peak
-        # For language models, the chunking logic is handled in `super()._get_per_token_logps`.
+    def _get_per_token_logps(self, model, inputs):
         from trl.trainer.utils import selective_log_softmax
-        for encoded_inputs in ga_batch_encoded_inputs:
-            logits_to_keep = encoded_inputs['logits_to_keep']
-            input_ids = encoded_inputs['input_ids']
-            unwrapped_model = self.accelerator.unwrap_model(model)
-            parameters = inspect.signature(unwrapped_model.forward).parameters
-            if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
-                # save memory
-                logps = super()._get_per_token_logps(model, input_ids, encoded_inputs['attention_mask'], logits_to_keep,
-                                                     batch_size)
-            else:
-                batch_size = batch_size or input_ids.size(0)
-                effective_batch_size = input_ids.size(0)
-                all_logps = []
-                logits_to_keep = encoded_inputs['logits_to_keep']
-                for i in range(0, effective_batch_size, batch_size):
-                    raw_inputs_batch = raw_inputs[i:i + batch_size]
-                    input_ids = encoded_inputs_batch['input_ids']
-                    inputs = {
-                        k: v
-                        for k, v in encoded_inputs_batch.items() if k not in [
-                            'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages',
-                            'old_per_token_logps', 'truncated_mask'
-                        ]
-                    }
-                    with self._template_context(self.template):
-                        logits = model(**inputs).logits
-                    # exclude the last logit: it corresponds to the next token pred
-                    logits = logits[:, -(logits_to_keep + 1):-1, :]
-                    logits = logits / self.temperature
-                    input_ids = input_ids[:, -logits_to_keep:]
-                    logps = selective_log_softmax(logits, input_ids)
-                    all_logps.append(logps)
-        return torch.cat(all_logps, dim=0)
+        logits_to_keep = inputs['logits_to_keep']
+        input_ids = inputs['input_ids']
+        unwrapped_model = self.accelerator.unwrap_model(model)
+        parameters = inspect.signature(unwrapped_model.forward).parameters
+        if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
+            # save memory
+            return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
+        inputs = {
+            k: v
+            for k, v in inputs.items() if k not in [
+                'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
+                'truncated_mask'
+            ]
+        }
+        with self._template_context(self.template):
+            logits = model(**inputs).logits
+        # exclude the last logit: it corresponds to the next token pred
+        logits = logits[:, -(logits_to_keep + 1):-1, :]
+        logits = logits / self.temperature
+        input_ids = input_ids[:, -logits_to_keep:]
+        return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
 
     def evaluation_loop(self, dataloader, *args, **kwargs):
         # Wait for the training rollout to complete
