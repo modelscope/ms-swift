@@ -126,7 +126,7 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
 
 |                  | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
 | ---------------- | ----------- | --------------- | --------------- |
-| Training Speed   | 3.53s/it    | 6.02s/it        | 24.30s/it       |
+| Training Speed   | 2.93s/it    | 6.02s/it        | 24.30s/it       |
 | GPU Memory Usage | 8\*66GB      | 8\*72GB          | 8\*50GB          |
 
 ## Command Line Arguments

@@ -120,7 +120,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 |          | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
 | -------- | ----------- | ---------- | ---------- |
-| 训练速度 |      3.53s/it       |  6.02s/it   | 24.30s/it |
+| 训练速度 |      2.93s/it       |  6.02s/it   | 24.30s/it |
 | 显存占用 | 8\*66GB     |  8\*72GB   | 8\*50GB |
 
 
