@@ -3,7 +3,7 @@ import os
 import sys
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-
+from transformers.utils.versions import require_version
 import torch
 
 from swift.llm.argument.base_args import to_abspath
@@ -130,7 +130,7 @@ class MegatronArguments(ExtraMegatronArguments):
     attention_softmax_in_fp32: bool = True
 
     # logging
-    log_params_norm: bool = True
+    log_params_norm: bool = False
     log_throughput: bool = True
     tensorboard_log_interval: int = 1
     tensorboard_queue_size: int = 50
@@ -194,6 +194,8 @@ class MegatronArguments(ExtraMegatronArguments):
 
     def __post_init__(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
+        if self.use_flash_attn:
+            require_version('flash-attn')
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self._set_default()
         self.group_query_attention = self.num_query_groups > 1

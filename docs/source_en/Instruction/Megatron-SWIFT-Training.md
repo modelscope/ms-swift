@@ -17,6 +17,9 @@ pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
 git clone https://github.com/NVIDIA/apex
 cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
+
+# megatron-core
+pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.12.0
 ```
 
 Alternatively, you can also use the image:
@@ -25,7 +28,7 @@ modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubunt
 modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
 ```
 
-The dependency library Megatron-LM will be git cloned and installed by swift, no manual installation by the user is required. You can also use the environment variable `MEGATRON_LM_PATH` to point to the already downloaded repo path (for offline environments, use the [core_r0.11.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.11.0)).
+The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.12.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.12.0)).
 
 
 ## Quick Start Example
@@ -195,7 +198,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 
 **Logging Parameters**:
 
-- log_params_norm: Logs the norm of parameters. Default is True.
+- log_params_norm: Logs the norm of parameters. Default is False.
 - log_throughput: Logs throughput per GPU. Default is True.
   - Note: In non-packing scenarios, log_throughput is not accurate because `seq_length` does not equal the actual sequence length.
 - tensorboard_log_interval: Interval (steps) for logging to TensorBoard, default is 1.

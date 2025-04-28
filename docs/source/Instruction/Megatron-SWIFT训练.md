@@ -16,6 +16,9 @@ pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
 git clone https://github.com/NVIDIA/apex
 cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
+
+# megatron-core
+pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.11.0
 ```
 
 或者你也可以使用镜像：
@@ -24,7 +27,7 @@ modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubunt
 modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
 ```
 
-依赖库Megatron-LM将会由swift进行git clone并安装，不需要用户手动安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.11.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.11.0)）。
+依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.11.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.12.0)）。
 
 
 ## 快速入门案例
@@ -188,7 +191,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - distributed_timeout_minutes: torch.distributed的timeout时间（单位为分钟），默认为60分钟。
 
 **日志参数**:
-- log_params_norm: 记录参数的norm。默认为True。
+- log_params_norm: 记录参数的norm。默认为False。
 - log_throughput: 记录每个GPU的吞吐量。默认为True。
   - 注意：在非packing情况下，log_throughput并不准确，因为`seq_length`并不等于真实序列长度。
 - tensorboard_log_interval: 记录到tensorboard的间隔（steps），默认为1。
