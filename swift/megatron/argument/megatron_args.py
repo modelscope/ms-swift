@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
+from transformers.utils.versions import require_version
 
 from swift.llm.argument.base_args import to_abspath
 
@@ -15,6 +16,8 @@ class ExtraMegatronArguments:
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
     model_type: Optional[str] = None
+    dataloader_persistent_workers: bool = True
+    dataloader_prefetch_factor: int = 10
 
 
 @dataclass
@@ -90,22 +93,38 @@ class MegatronArguments(ExtraMegatronArguments):
     ffn_hidden_size: Optional[int] = None
     num_attention_heads: Optional[int] = None
     group_query_attention: Optional[bool] = None
-    num_query_groups: int = 1
+    num_query_groups: Optional[int] = None
     max_position_embeddings: Optional[int] = None
     position_embedding_type: Literal['learned_absolute', 'rope', 'relative', 'none'] = 'rope'
-    rotary_base: int = 10000
+    rotary_base: Optional[int] = None
     rotary_percent: float = 1.
     normalization: Literal['LayerNorm', 'RMSNorm'] = 'RMSNorm'
-    norm_epsilon: float = 1e-5
-    swiglu: bool = True
-    untie_embeddings_and_output_weights: bool = True
-    disable_bias_linear: bool = True
-    add_qkv_bias: bool = True
-    attention_dropout: float = 0.
+    norm_epsilon: Optional[float] = None
+    swiglu: Optional[bool] = None
+    untie_embeddings_and_output_weights: Optional[bool] = None
+    disable_bias_linear: Optional[bool] = None
+    add_qkv_bias: Optional[bool] = None
+    attention_dropout: Optional[float] = None
     hidden_dropout: float = 0.
     kv_channels: Optional[int] = None
-    qk_layernorm: bool = False
+    qk_layernorm: Optional[bool] = None
     transformer_impl: Literal['local', 'transformer_engine'] = 'transformer_engine'
+
+    # moe
+    num_experts: Optional[int] = None
+    moe_ffn_hidden_size: Optional[int] = None
+    moe_shared_expert_intermediate_size: Optional[int] = None
+    moe_router_topk: Optional[int] = None
+    moe_router_pre_softmax: Optional[bool] = None
+    moe_aux_loss_coeff: Optional[float] = None
+
+    expert_model_parallel_size: int = 1
+    moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'alltoall_seq'] = 'alltoall'
+    moe_grouped_gemm: bool = False
+    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = 'aux_loss'
+    moe_z_loss_coeff: Optional[float] = None
+    moe_expert_capacity_factor: Optional[float] = None
+    moe_shared_expert_overlap: bool = False
 
     # mixed precision
     fp16: Optional[bool] = None
@@ -114,7 +133,7 @@ class MegatronArguments(ExtraMegatronArguments):
     attention_softmax_in_fp32: bool = True
 
     # logging
-    log_params_norm: bool = True
+    log_params_norm: bool = False
     log_throughput: bool = True
     tensorboard_log_interval: int = 1
     tensorboard_queue_size: int = 50
@@ -134,6 +153,32 @@ class MegatronArguments(ExtraMegatronArguments):
     num_workers: int = 4
     no_create_attention_mask_in_dataloader: bool = True
 
+    def _set_default(self):
+        if self.num_query_groups is None:
+            self.num_query_groups = 1
+        if self.norm_epsilon is None:
+            self.norm_epsilon = 1e-5
+        if self.rotary_base is None:
+            self.rotary_base = 10000
+        if self.attention_dropout is None:
+            self.attention_dropout = 0.
+        if self.untie_embeddings_and_output_weights is None:
+            self.untie_embeddings_and_output_weights = True
+        if self.swiglu is None:
+            self.swiglu = True
+        if self.add_qkv_bias is None:
+            self.add_qkv_bias = True
+        if self.disable_bias_linear is None:
+            self.disable_bias_linear = True
+        if self.moe_router_topk is None:
+            self.moe_router_topk = 2
+        if self.moe_router_pre_softmax is None:
+            self.moe_router_pre_softmax = False
+        if self.moe_aux_loss_coeff is None:
+            self.moe_aux_loss_coeff = 0.
+        if self.qk_layernorm is None:
+            self.qk_layernorm = False
+
     def _init_mixed_precision(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
         ModelArguments._init_mixed_precision(self)
@@ -142,9 +187,20 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.apply_query_key_layer_scaling:
             os.environ['NVTE_APPLY_QK_LAYER_SCALING'] = '1'
 
+    def _init_moe(self):
+        if self.moe_shared_expert_intermediate_size == 0:
+            self.moe_shared_expert_intermediate_size = None
+        if self.moe_ffn_hidden_size is None:
+            self.moe_ffn_hidden_size = self.ffn_hidden_size
+        else:
+            self.ffn_hidden_size = self.moe_ffn_hidden_size
+
     def __post_init__(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
+        if self.use_flash_attn:
+            require_version('flash-attn')
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
+        self._set_default()
         self.group_query_attention = self.num_query_groups > 1
         if self.rope_scaling is not None:
             self.rope_scaling = ModelArguments.parse_to_dict(self.rope_scaling)
@@ -154,6 +210,7 @@ class MegatronArguments(ExtraMegatronArguments):
             self.seq_length = self.max_position_embeddings
         if self.tensorboard_dir is None and self.save is not None:
             self.tensorboard_dir = f'{self.save}/runs'
+        self._init_moe()
         self._init_mixed_precision()
 
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)

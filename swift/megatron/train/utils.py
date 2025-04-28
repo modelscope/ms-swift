@@ -40,7 +40,8 @@ def build_streaming_dataloader(args, dataset, collate_fn):
         pin_memory=True,
         collate_fn=collate_fn,
         batch_size=args.micro_batch_size,
-        prefetch_factor=10,
+        prefetch_factor=args.dataloader_prefetch_factor,
+        persistent_workers=args.dataloader_persistent_workers,
     )
     return iter(cyclic_iter(MegatronDataLoaderDispatcher(base_dataloader)))
 
