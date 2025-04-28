@@ -829,9 +829,19 @@ class SelfCognitionPreprocessor(ResponsePreprocessor):
         return super().preprocess(row)
 
 
+class ThinkSelfCognitionPreprocessor(SelfCognitionPreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        row['response'] = '<think>\n\n</think>\n\n' + row['response']
+        return super().preprocess(row)
+
+
 register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/self-cognition',
         hf_dataset_id='modelscope/self-cognition',
-        preprocess_func=SelfCognitionPreprocessor(),
+        subsets=[
+            SubsetDataset(preprocess_func=SelfCognitionPreprocessor()),
+            SubsetDataset('think', preprocess_func=ThinkSelfCognitionPreprocessor()),
+        ],
         tags=['chat', 'self-cognition', '🔥']))
