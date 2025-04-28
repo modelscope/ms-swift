@@ -48,10 +48,15 @@ class TemplateArguments:
     def __post_init__(self):
         if self.template is None and hasattr(self, 'model_meta'):
             self.template = self.model_meta.template
-        if self.system is not None and self.system.endswith('.txt'):
-            assert os.path.isfile(self.system), f'self.system: {self.system}'
-            with open(self.system, 'r') as f:
-                self.system = f.read()
+        if self.system is not None:
+            if self.system.endswith('.txt'):
+                assert os.path.isfile(self.system), f'self.system: {self.system}'
+                with open(self.system, 'r') as f:
+                    self.system = f.read()
+            else:
+                self.system = self.system.replace('\\n', '\n')
+        if self.response_prefix is not None:
+            self.response_prefix = self.response_prefix.replace('\\n', '\n')
         if self.truncation_strategy is None:
             self.truncation_strategy = 'delete'
 
