@@ -107,12 +107,21 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 ## Benchmark
 
-使用`megatron sft`和`swift sft`在单机八卡A800环境下进行14B模型全参数训练的速度对比如下，对应脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/benchmark)。
+使用`megatron sft`和`swift sft`在单机八卡A800环境下进行Dense/MoE模型全参数训练的速度对比如下，对应脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/benchmark)。
+
+**Dense** Qwen2.5-14B:
 
 |          | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
 | -------- | ----------- | ---------- | ---------- |
 | 训练速度 |      9.04s/it       |  10.32s/it   | 10.56s/it |
 | 显存占用 | 8\*64GB     |  8\*80GB   | 8\*58GB |
+
+**MoE** Qwen1.5-MoE-A2.7B:
+
+|          | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
+| -------- | ----------- | ---------- | ---------- |
+| 训练速度 |      3.53s/it       |  6.02s/it   | 24.30s/it |
+| 显存占用 | 8\*66GB     |  8\*72GB   | 8\*50GB |
 
 
 ## 命令行参数

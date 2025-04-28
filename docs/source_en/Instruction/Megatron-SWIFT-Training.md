@@ -112,11 +112,22 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - For pretraining, you can use `megatron pt` instead of `megatron sft`, which will use a generative template for training.
 
 ## Benchmark
+The speed comparison of full-parameter training for Dense/MoE models using `megatron sft` and `swift sft` on a single machine with eight A800 GPUs is shown below. The corresponding scripts can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/benchmark).
 
-|                  | Megatron-LM      | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
-| ---------------- | --------------- | --------------- | --------- |
-| Training Speed   | 9.04s/it        | 10.32s/it       | 10.56s/it |
-| GPU Memory Usage | 8\*64GB          | 8\*80GB          | 8\*58GB    |
+**Dense** Qwen2.5-14B:
+
+
+|                  | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
+| ---------------- | ----------- | --------------- | --------------- |
+| Training Speed   | 9.04s/it    | 10.32s/it       | 10.56s/it       |
+| GPU Memory Usage | 8\*64GB      | 8\*80GB          | 8\*58GB          |
+
+**MoE** Qwen1.5-MoE-A2.7B:
+
+|                  | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
+| ---------------- | ----------- | --------------- | --------------- |
+| Training Speed   | 3.53s/it    | 6.02s/it        | 24.30s/it       |
+| GPU Memory Usage | 8\*66GB      | 8\*72GB          | 8\*50GB          |
 
 ## Command Line Arguments
 
