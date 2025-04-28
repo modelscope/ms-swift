@@ -1047,7 +1047,7 @@ class Template(ProcessorMixin):
                     labels = labels[:self.max_length]
                 if loss_scale is not None:
                     loss_scale = loss_scale[:self.max_length]
-            else:
+            elif self.truncation_strategy == 'left':
                 if len(input_ids) > self.max_length:
                     logger.warning_once(
                         'Input data was left-truncated because its length exceeds `max_length` (input length: '
