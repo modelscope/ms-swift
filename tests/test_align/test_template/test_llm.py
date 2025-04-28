@@ -45,7 +45,7 @@ def test_qwen2_5():
 
 
 def test_qwen3():
-    pt_engine = PtEngine('QwQ/Qwen3-4B-250426')
+    pt_engine = PtEngine('Qwen/Qwen3-4B')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
