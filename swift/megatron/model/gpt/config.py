@@ -8,6 +8,6 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
     model_type = res.get('model_type')
     if model_type in {'qwen3', 'qwen3_moe'}:
         res['qk_layernorm'] = True
-    elif model_type in {'qwen2_moe', 'qwen3_moe'}:
+    if model_type in {'qwen2_moe', 'qwen3_moe'}:
         res.pop('ffn_hidden_size', None)
     return res

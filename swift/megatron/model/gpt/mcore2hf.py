@@ -25,9 +25,10 @@ def set_attn_state(args, mg_attn, hf_attn):
         hf_attn.k_norm.weight.data.copy_(mg_attn.k_layernorm.weight)
 
 
-def _set_mlp_state(args, mg_mlp, hf_mlp):
-    hf_mlp.gate_proj.weight.data.copy_(mg_mlp.linear_fc1.weight[:args.ffn_hidden_size])
-    hf_mlp.up_proj.weight.data.copy_(mg_mlp.linear_fc1.weight[args.ffn_hidden_size:])
+def _set_mlp_state(mg_mlp, hf_mlp):
+    ffn_hidden_size = hf_mlp.gate_proj.weight.shape[0]
+    hf_mlp.gate_proj.weight.data.copy_(mg_mlp.linear_fc1.weight[:ffn_hidden_size])
+    hf_mlp.up_proj.weight.data.copy_(mg_mlp.linear_fc1.weight[ffn_hidden_size:])
     hf_mlp.down_proj.weight.data.copy_(mg_mlp.linear_fc2.weight)
 
 
@@ -37,12 +38,12 @@ def set_mlp_state(args, mg_mlp, hf_mlp):
         if mg_mlp.shared_experts is not None:
             hf_mlp.shared_expert_gate.weight.data.copy_(mg_mlp.shared_experts.gate_weight)
         for expert_idx in range(args.num_experts):
-            _set_mlp_state(args, mg_mlp.experts.local_experts[expert_idx], hf_mlp.experts[expert_idx])
+            _set_mlp_state(mg_mlp.experts.local_experts[expert_idx], hf_mlp.experts[expert_idx])
 
         if mg_mlp.shared_experts is not None:
-            _set_mlp_state(args, mg_mlp.shared_experts, hf_mlp.shared_expert)
+            _set_mlp_state(mg_mlp.shared_experts, hf_mlp.shared_expert)
     else:
-        _set_mlp_state(args, mg_mlp, hf_mlp)
+        _set_mlp_state(mg_mlp, hf_mlp)
 
 
 def set_layer_state(args, mg_model, hf_model, layer_idx):
