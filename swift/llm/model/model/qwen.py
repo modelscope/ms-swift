@@ -494,7 +494,19 @@ register_model(
         LLMModelType.qwen3,
         [
             ModelGroup([
-                # Model('Qwen/Qwen3-0.6B-Base', 'Qwen/Qwen3-0.6B-Base'),
+                Model('Qwen/Qwen3-0.6B-Base', 'Qwen/Qwen3-0.6B-Base'),
+                Model('Qwen/Qwen3-1.7B-Base', 'Qwen/Qwen3-1.7B-Base'),
+                Model('Qwen/Qwen3-4B-Base', 'Qwen/Qwen3-4B-Base'),
+                Model('Qwen/Qwen3-8B-Base', 'Qwen/Qwen3-8B-Base'),
+                Model('Qwen/Qwen3-14B-Base', 'Qwen/Qwen3-14B-Base'),
+                Model('Qwen/Qwen3-32B-Base', 'Qwen/Qwen3-32B-Base'),
+                # instruct
+                Model('Qwen/Qwen3-0.6B', 'Qwen/Qwen3-0.6B'),
+                Model('Qwen/Qwen3-1.7B', 'Qwen/Qwen3-1.7B'),
+                Model('Qwen/Qwen3-4B', 'Qwen/Qwen3-4B'),
+                Model('Qwen/Qwen3-8B', 'Qwen/Qwen3-8B'),
+                Model('Qwen/Qwen3-14B', 'Qwen/Qwen3-14B'),
+                Model('Qwen/Qwen3-32B', 'Qwen/Qwen3-32B'),
             ]),
         ],
         TemplateType.qwen,
@@ -508,7 +520,11 @@ register_model(
         LLMModelType.qwen3_moe,
         [
             ModelGroup([
-                # Model('Qwen/Qwen3-15B-A2B-Base', 'Qwen/Qwen3-15B-A2B-Base'),
+                Model('Qwen/Qwen3-30B-A3B-Base', 'Qwen/Qwen3-30B-A3B-Base'),
+                Model('Qwen/Qwen3-235B-A22B-Base', 'Qwen/Qwen3-235B-A22B-Base'),
+                # instruct
+                Model('Qwen/Qwen3-30B-A3B', 'Qwen/Qwen3-30B-A3B'),
+                Model('Qwen/Qwen3-235B-A22B', 'Qwen/Qwen3-235B-A22B'),
             ]),
         ],
         TemplateType.qwen,
