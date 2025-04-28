@@ -3,8 +3,9 @@ import os
 import sys
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-from transformers.utils.versions import require_version
+
 import torch
+from transformers.utils.versions import require_version
 
 from swift.llm.argument.base_args import to_abspath
 
