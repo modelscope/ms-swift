@@ -16,6 +16,8 @@ class ExtraMegatronArguments:
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
     model_type: Optional[str] = None
+    dataloader_persistent_workers: bool = True
+    dataloader_prefetch_factor: int = 10
 
 
 @dataclass
