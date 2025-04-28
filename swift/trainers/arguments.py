@@ -197,7 +197,7 @@ class GRPOArgumentsMixin:
     # external vllm
     vllm_server_host: Optional[str] = None
     vllm_server_port: int = 8000
-    vllm_server_timeout: float = 120.0
+    vllm_server_timeout: float = 240.0
     vllm_client = None
 
     # dataset

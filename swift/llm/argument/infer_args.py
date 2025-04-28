@@ -77,7 +77,7 @@ class VllmArguments:
     enable_prefix_caching: bool = False
     use_async_engine: bool = True
     data_parallel_size: int = 1
-    
+
     def __post_init__(self):
         self.limit_mm_per_prompt = ModelArguments.parse_to_dict(self.limit_mm_per_prompt)
 

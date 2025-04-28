@@ -191,6 +191,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         if is_master():
             self.vllm_client = VLLMClient(
                 self.vllm_server_host, self.vllm_server_port, connection_timeout=self.vllm_server_timeout)
+            self.vllm_client.init_communicator()
 
     def _set_default(self):
         if self.beta is None:

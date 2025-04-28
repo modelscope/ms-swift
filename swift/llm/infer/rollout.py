@@ -4,14 +4,14 @@
 import asyncio
 import inspect
 import multiprocessing
+import os
 import time
-from contextlib import contextmanager, asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+from dataclasses import asdict
+from http import HTTPStatus
 from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
-
-from dataclasses import asdict
-from http import HTTPStatus
 from threading import Thread
 from typing import List, Optional, Union
 
@@ -22,87 +22,60 @@ from aiohttp import ClientConnectorError
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from swift.llm import AdapterRequest, DeployArguments, InferRequest
+from swift.llm import AdapterRequest, DeployArguments, InferArguments, InferRequest, SwiftPipeline
 from swift.llm.infer.protocol import MultiModalRequestMixin
 from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.plugin import InferStats
 from swift.utils import JsonlWriter, get_logger
 from .deploy import SwiftDeploy
-from .infer_engine import InferClient
+from .infer_engine import InferClient, VllmEngine
 from .protocol import (ChatCompletionRequest, ChatCompletionResponse, CompletionRequest, InitCommunicatorRequest, Model,
                        ModelList, RequestConfig, UpdateWeightsRequest)
 
+try:
+    from vllm.utils import get_open_port
+    from trl.scripts.vllm_serve import chunk_list
+except ImportError:
+    pass
 logger = get_logger()
-import os
 
-
-def chunk_list(lst: list, n: int) -> list[list]:
-    """
-    Split list `lst` into `n` evenly distributed sublists.
-    Example:
-        >>> chunk_list([1, 2, 3, 4, 5, 6], 2)
-        [[1, 2, 3], [4, 5, 6]]
-        >>> chunk_list([1, 2, 3, 4, 5, 6], 4)
-        [[1, 2], [3, 4], [5], [6]]
-        >>> chunk_list([1, 2, 3, 4, 5, 6], 8)
-        [[1], [2], [3], [4], [5], [6], [], []]
-    """
-    k, r = divmod(len(lst), n)
-    return [lst[i * k + min(i, r) : (i + 1) * k + min(i + 1, r)] for i in range(n)]
-
-
-def llm_worker(
-    args: DeployArguments, data_parallel_rank: int, master_port: int, connection: Connection
-) -> None:
+def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
     # Set required environment variables for DP to work with vLLM
-    os.environ["VLLM_DP_RANK"] = str(data_parallel_rank)
-    os.environ["VLLM_DP_RANK_LOCAL"] = str(data_parallel_rank)
-    os.environ["VLLM_DP_SIZE"] = str(args.data_parallel_size)
-    os.environ["VLLM_DP_MASTER_PORT"] = str(master_port)
-
-    llm = Engine(
-        model=args.model,
-        revision=args.revision,
-        tensor_parallel_size=args.tensor_parallel_size,
-        gpu_memory_utilization=args.gpu_memory_utilization,
-        enforce_eager=args.enforce_eager,
-        dtype=args.dtype,
-        # Automatic Prefix Caching caches the KV cache of existing queries, so that a new query can
-        # directly reuse the KV cache if it shares the same prefix with one of the existing queries.
-        # This is particularly useful here because we generate completions from the same prompts.
-        enable_prefix_caching=args.enable_prefix_caching,
-        max_model_len=args.max_model_len,
-        worker_extension_cls="trl.scripts.vllm_serve.WeightSyncWorkerExtension",
-    )
+    os.environ['VLLM_DP_RANK'] = str(data_parallel_rank)
+    os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
+    os.environ['VLLM_DP_SIZE'] = str(args.data_parallel_size)
+    os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
+    engine = SwiftRolloutDeploy.get_infer_engine(args)
 
     # Send ready signal to parent process
-    connection.send({"status": "ready"})
+    connection.send({'status': 'ready'})
 
     while True:
         # Wait for commands from the parent process
         try:
             command = connection.recv()
         except KeyboardInterrupt:
-            llm.collective_rpc(method="close_communicator")
+            engine.inner_model_executor.collective_rpc(method='close_communicator')
             break
 
         # Handle commands
-        if command["type"] in ["call", "fire_and_forget"]:
-            method_name = command["method"]
-            args, kwargs = command.get("args", ()), command.get("kwargs", {})
-            method = getattr(llm, method_name)
+        if command['type'] in ['call', 'fire_and_forget']:
+            method_name = command['method']
+            args, kwargs = command.get('args', ()), command.get('kwargs', {})
+            method = getattr(engine, method_name)
             result = method(*args, **kwargs)
-            if command["type"] == "call":
+            if command['type'] == 'call':
                 connection.send(result)
-        elif command["type"] == "shutdown":
+        elif command['type'] == 'shutdown':
             break
 
-class SwiftRolloutDeploy(SwiftDeploy):
+
+class SwiftRolloutDeploy(SwiftPipeline):
     args_class = DeployArguments
     args: args_class
 
     def _register_rl_rollout_app(self):
-        self.app.get('/health/')(self.health_check)
+        self.app.get('/health/')(self.health)
         self.app.get('/get_world_size/')(self.get_world_size)
         self.app.post('/init_communicator/')(self.init_communicator)
         self.app.post('/update_named_param/')(self.update_named_param)
@@ -110,45 +83,66 @@ class SwiftRolloutDeploy(SwiftDeploy):
         self.app.post('/close_communicator/')(self.close_communicator)
         self.app.post('/infer/', response_model=None)(self.infer)
 
-    def __init__(self, args: Union[List[str], DeployArguments, None] = None) -> None:
-        # TODO: rewrite super init, load more engine
+    def __init__(self, args: Union[List[str], DeployArguments, None] = None):
         super().__init__(args)
         self._register_rl_rollout_app()
+        self.master_port = get_open_port()
+        self.connections = []
+        self.processes = []
+        self._start_data_parallel_workers()
+        self.app = FastAPI(self.lifespan)
 
-    def rollout_main(self):
-        from vllm.utils import get_open_port
-        master_port = get_open_port()
-        connections = []
-        processes = []
-
+    def _start_data_parallel_workers(self):
         for data_parallel_rank in range(self.args.data_parallel_size):
-            parent_connection, child_connection = Pipe()
-            process = Process(target=llm_worker, args=(self.args, data_parallel_rank, master_port, child_connection))
+            parent_conn, child_conn = Pipe()
+            process = Process(target=llm_worker, args=(self.args, data_parallel_rank, self.master_port, child_conn))
             process.start()
-            connections.append(parent_connection)
-            processes.append(process)
+            self.connections.append(parent_conn)
+            self.processes.append(process)
 
-        @asynccontextmanager
-        async def lifespan(app: FastAPI):
-            # Wait for all workers to send "ready"
-            ready_connections = set()
-            while len(ready_connections) < self.args.data_parallel_size:
-                for connection in connections:
-                    msg = connection.recv()
-                    if isinstance(msg, dict) and msg.get("status") == "ready":
-                        ready_connections.add(connection)
+    @asynccontextmanager
+    async def lifespan(self, app: FastAPI):
+        # Wait for all workers to send "ready"
+        ready_connections = set()
+        while len(ready_connections) < self.args.data_parallel_size:
+            for connection in self.connections:
+                msg = connection.recv()
+                if isinstance(msg, dict) and msg.get('status') == 'ready':
+                    ready_connections.add(connection)
 
         yield
 
         # Wait for processes to terminate
-        for process in processes:
+        for process in self.processes:
             process.join(timeout=10)  # Wait for 10 seconds for the process to terminate
             if process.is_alive():
-                logger.warning(f"Process {process} is still alive after 10 seconds, attempting to terminate...")
+                logger.warning(f'Process {process} is still alive after 10 seconds, attempting to terminate...')
                 process.terminate()
                 process.join()  # ensure process termination after calling terminate()
 
-        self.app = FastAPI(lifespan=lifespan)
+    @staticmethod
+    def get_infer_engine(args: InferArguments, **kwargs):
+        kwargs.update({
+            'model_id_or_path': args.model,
+            'model_type': args.model_type,
+            'revision': args.model_revision,
+            'torch_dtype': args.torch_dtype,
+        })
+        infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
+        assert infer_backend == 'vllm', 'Currently, swift rollout only supports the vLLM backend.'
+        use_async_engine = args.use_async_engine
+        if use_async_engine:
+            use_async_engine = False
+            logger.warning("currently rollout don't support async engine, set use_async_engine False")
+        kwargs.update(args.get_vllm_engine_kwargs())
+        kwargs.update({'use_async_engine': use_async_engine})
+        # used for RL external rollout backend
+        engine_kwargs = kwargs.get('engine_kwargs', {})
+        # for RL rollout model weight sync
+        engine_kwargs.update({'worker_extension_cls': 'trl.scripts.vllm_serve.WeightSyncWorkerExtension'})
+        engine_kwargs.update({'data_parallel_size': args.data_parallel_size})
+        kwargs['engine_kwargs'] = engine_kwargs
+        return VllmEngine(**kwargs)
 
     def _get_model_list(self):
         args = self.args
@@ -167,24 +161,6 @@ class SwiftRolloutDeploy(SwiftDeploy):
         model_list = [model.id for model in available_models.data]
         if request.model not in model_list:
             return f'`{request.model}` is not in the model_list: `{model_list}`.'
-
-    def _check_api_key(self, raw_request: Request) -> Optional[str]:
-        api_key = self.args.api_key
-        if api_key is None:
-            return
-        authorization = dict(raw_request.headers).get('authorization')
-        error_msg = 'API key error'
-        if authorization is None or not authorization.startswith('Bearer '):
-            return error_msg
-        request_api_key = authorization[7:]
-        if request_api_key != api_key:
-            return error_msg
-
-    def _check_max_logprobs(self, request):
-        args = self.args
-        if isinstance(request.top_logprobs, int) and request.top_logprobs > args.max_logprobs:
-            return (f'The value of top_logprobs({request.top_logprobs}) is greater than '
-                    f'the server\'s max_logprobs({args.max_logprobs}).')
 
     @staticmethod
     def create_error_response(status_code: Union[int, str, HTTPStatus], message: str) -> JSONResponse:
@@ -228,53 +204,7 @@ class SwiftRolloutDeploy(SwiftDeploy):
             if default_val is not None and (val is None or isinstance(val, (list, tuple)) and len(val) == 0):
                 setattr(request_config, key, default_val)
 
-    async def create_chat_completion(self,
-                                     request: ChatCompletionRequest,
-                                     raw_request: Request,
-                                     *,
-                                     return_cmpl_response: bool = False):
-        args = self.args
-        error_msg = (await self._check_model(request) or self._check_api_key(raw_request)
-                     or self._check_max_logprobs(request))
-        if error_msg:
-            return self.create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
-        infer_kwargs = self.infer_kwargs.copy()
-        adapter_path = args.adapter_mapping.get(request.model)
-        if adapter_path:
-            infer_kwargs['adapter_request'] = AdapterRequest(request.model, adapter_path)
-
-        infer_request, request_config = request.parse()
-        self._set_request_config(request_config)
-        request_info = {'response': '', 'infer_request': infer_request.to_printable()}
-
-        def pre_infer_hook(kwargs):
-            request_info['generation_config'] = kwargs['generation_config']
-            return kwargs
-
-        infer_kwargs['pre_infer_hook'] = pre_infer_hook
-        try:
-            res_or_gen = await self.infer_async(infer_request, request_config, template=self.template, **infer_kwargs)
-        except Exception as e:
-            import traceback
-            logger.info(traceback.format_exc())
-            return self.create_error_response(HTTPStatus.BAD_REQUEST, str(e))
-        if request_config.stream:
-
-            async def _gen_wrapper():
-                async for res in res_or_gen:
-                    res = self._post_process(request_info, res, return_cmpl_response)
-                    yield f'data: {json.dumps(asdict(res), ensure_ascii=False)}\n\n'
-                yield 'data: [DONE]\n\n'
-
-            return StreamingResponse(_gen_wrapper(), media_type='text/event-stream')
-        else:
-            return self._post_process(request_info, res_or_gen, return_cmpl_response)
-
-    async def create_completion(self, request: CompletionRequest, raw_request: Request):
-        chat_request = ChatCompletionRequest.from_cmpl_request(request)
-        return await self.create_chat_completion(chat_request, raw_request, return_cmpl_response=True)
-
-    async def health_check(self):
+    async def health(self):
         """
         Health check endpoint to verify that the server is running.
         """
@@ -311,10 +241,9 @@ class SwiftRolloutDeploy(SwiftDeploy):
         # The function init_communicator is called this way: init_communicator(host, port, world_size)
         # So with collective_rpc we need to call it this way:
         # llm.collective_rpc(method="init_communicator", args=(host, port, world_size))
-        kwargs = {"method": "init_communicator", "args": (request.host, request.port, world_size)}
-        for connection in connections:
-            connection.send({"type": "fire_and_forget", "method": "collective_rpc", "kwargs": kwargs})
-
+        kwargs = {'method': 'init_communicator', 'args': (request.host, request.port, world_size)}
+        for connection in self.connections:
+            connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 
         return {'message': 'Request received, initializing communicator'}
 
@@ -331,18 +260,13 @@ class SwiftRolloutDeploy(SwiftDeploy):
                 - `shape` (list of `int`): Shape of the weight
 
         """
-        # The function is called this way: update_named_param(name="name", dtype=torch.float32, shape=(10, 10))
-        # So with collect_rpc we need to call it this way:
-        # self.infer_engine.engine.model_executor.collective_rpc("update_named_param", \
-        # args=("name", torch.float32, (10, 10)))
-        # And with background_tasks.add_task we need to call it this way:
-        # background_tasks.add_task(self.infer_engine.engine.model_executor.collective_rpc, \
-        # "update_named_param", args=("name", torch.float32, (10, 10)))
+        # The function update_named_param is called this way: update_named_param("name", torch.float32, (10, 10))
+        # So with collective_rpc we need to call it this way:
+        # llm.collective_rpc("update_named_param", args=("name", torch.float32, (10, 10)))
         dtype = torch.__getattribute__(request.dtype.split('.')[-1])
-        background_tasks.add_task(
-            self.infer_engine.engine.model_executor.collective_rpc,
-            'update_named_param',
-            args=(request.name, dtype, request.shape))
+        kwargs = {'method': 'update_named_param', 'args': (request.name, dtype, tuple(request.shape))}
+        for connection in self.connections:
+            connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 
         return {'message': 'Request received, updating named parameter'}
 
@@ -350,14 +274,20 @@ class SwiftRolloutDeploy(SwiftDeploy):
         """
         Resets the prefix cache for the model.
         """
-        success = self.infer_engine.engine.reset_prefix_cache()
+        for connection in self.connections:
+            connection.send({'type': 'call', 'method': 'reset_prefix_cache'})
+        # Wait for and collect all results
+        all_outputs = [connection.recv() for connection in self.connections]
+        success = all(output for output in all_outputs)
         return {'message': 'Request received, resetting prefix cache status: ' + str(success)}
 
     async def close_communicator(self):
         """
         Closes the weight update group and cleans up associated resources.
         """
-        self.infer_engine.engine.model_executor.collective_rpc('close_communicator')
+        kwargs = {'method': 'close_communicator'}
+        for connection in self.connections:
+            connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
         return {'message': 'Request received, closing communicator'}
 
     async def infer(
@@ -371,15 +301,15 @@ class SwiftRolloutDeploy(SwiftDeploy):
         chunked_infer_requests = chunk_list(infer_requests, self.args.data_parallel_size)
 
         # Send the prompts to each worker
-        for connection, prompts in zip(connections, chunked_prompts):
+        for connection, infer_requests in zip(self.connections, chunked_infer_requests):
             # When the number of prompts is less than data_parallel_size, some workers will receive empty prompts.
             # However, vLLM requires that we always send at least one prompt. So we send a placeholder prompt to comply
             # with vLLM's requirement, and we later ignore the result.
             if not prompts:
-                prompts = ["<placeholder>"]
-            kwargs = {"prompts": prompts, "sampling_params": sampling_params}
-            connection.send({"type": "call", "method": "generate", "kwargs": kwargs})
-            
+                prompts = ['<placeholder>']
+            kwargs = {'prompts': prompts, 'request_config': request_config, }
+            connection.send({'type': 'call', 'method': 'infer', 'kwargs': kwargs})
+
         res = self.infer_engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
         return res
 
@@ -389,40 +319,3 @@ class SwiftRolloutDeploy(SwiftDeploy):
         logger.info(f'model_list: {self._get_model_list()}')
         uvicorn.run(
             self.app, host=args.host, port=args.port, ssl_keyfile=args.ssl_keyfile, ssl_certfile=args.ssl_certfile)
-
-
-def deploy_main(args: Union[List[str], DeployArguments, None] = None) -> None:
-    SwiftDeploy(args).main()
-
-
-def is_accessible(port: int):
-    infer_client = InferClient(port=port)
-    try:
-        infer_client.get_model_list()
-    except ClientConnectorError:
-        return False
-    return True
-
-
-@contextmanager
-def run_deploy(args: DeployArguments, return_url: bool = False):
-    if isinstance(args, DeployArguments) and args.__class__.__name__ == 'DeployArguments':
-        deploy_args = args
-    else:
-        args_dict = asdict(args)
-        parameters = inspect.signature(DeployArguments).parameters
-        for k in list(args_dict.keys()):
-            if k not in parameters or args_dict[k] is None:
-                args_dict.pop(k)
-        deploy_args = DeployArguments(**args_dict)
-
-    mp = multiprocessing.get_context('spawn')
-    process = mp.Process(target=deploy_main, args=(deploy_args, ))
-    process.start()
-    try:
-        while not is_accessible(deploy_args.port):
-            time.sleep(1)
-        yield f'http://127.0.0.1:{deploy_args.port}/v1' if return_url else deploy_args.port
-    finally:
-        process.terminate()
-        logger.info('The deployment process has been terminated.')

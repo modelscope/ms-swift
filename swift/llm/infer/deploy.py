@@ -3,13 +3,12 @@ import asyncio
 import inspect
 import multiprocessing
 import time
-from contextlib import contextmanager, asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+from dataclasses import asdict
+from http import HTTPStatus
 from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
-
-from dataclasses import asdict
-from http import HTTPStatus
 from threading import Thread
 from typing import List, Optional, Union
 
@@ -32,6 +31,7 @@ from .protocol import (ChatCompletionRequest, ChatCompletionResponse, Completion
 
 logger = get_logger()
 
+
 class SwiftDeploy(SwiftInfer):
     args_class = DeployArguments
     args: args_class
@@ -43,7 +43,7 @@ class SwiftDeploy(SwiftInfer):
 
     def __init__(self, args: Union[List[str], DeployArguments, None] = None) -> None:
         super().__init__(args)
-        
+
         self.infer_engine.strict = True
         self.infer_stats = InferStats()
         self.app = FastAPI(lifespan=self.lifespan)

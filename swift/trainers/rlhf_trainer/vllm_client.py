@@ -126,10 +126,10 @@ class VLLMClient:
         Initializes the weight update group in a distributed setup for model synchronization.
         """
         # Get the tensor parallel size from the server
-        url = f"http://{self.host}:{self.server_port}/get_world_size/"
+        url = f'http://{self.host}:{self.server_port}/get_world_size/'
         response = requests.get(url)
         if response.status_code == 200:
-            vllm_world_size = response.json()["world_size"]
+            vllm_world_size = response.json()['world_size']
         else:
             raise Exception(f'Request failed: {response.status_code}, {response.text}')
 
@@ -154,7 +154,7 @@ class VLLMClient:
 
         # When the client object is deleted, close the weight update group
         atexit.register(self.close_communicator)
-        
+
     def update_named_param(self, name: str, weights: torch.Tensor):
         """
         Updates a specific named parameter in the model and broadcasts it to other processes.
