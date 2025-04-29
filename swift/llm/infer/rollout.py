@@ -25,10 +25,16 @@ from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsReque
 try:
     from vllm.utils import get_open_port
     from trl.scripts.vllm_serve import chunk_list
+
 except ImportError:
     pass
 
 logger = get_logger()
+
+
+def safe_set_start_method():
+    if multiprocessing.get_start_method(allow_none=True) is None:
+        multiprocessing.set_start_method('spawn')
 
 
 def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
@@ -54,7 +60,7 @@ def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
         if command['type'] in ['call', 'fire_and_forget']:
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
-            method = getattr(engine, method_name) or getattr(engine.engine, method_name)
+            method = getattr(engine, method_name, None) or getattr(engine.engine, method_name, None)
             result = method(*args, **kwargs)
             if command['type'] == 'call':
                 connection.send(result)
@@ -77,12 +83,13 @@ class SwiftRolloutDeploy(SwiftPipeline):
 
     def __init__(self, args: Union[List[str], DeployArguments, None] = None):
         super().__init__(args)
+        safe_set_start_method()
+        self.app = FastAPI(lifespan=self.lifespan)
         self._register_rl_rollout_app()
         self.master_port = get_open_port()
         self.connections = []
         self.processes = []
         self._start_data_parallel_workers()
-        self.app = FastAPI(self.lifespan)
 
     def _start_data_parallel_workers(self):
         for data_parallel_rank in range(self.args.data_parallel_size):
