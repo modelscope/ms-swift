@@ -536,10 +536,10 @@ class Template(ProcessorMixin):
 
     def generate(self, model, *args, **kwargs):
         if isinstance(model, PeftModel):
-            parameters = inspect.signature(model.model.generate).parameters
+            signature = inspect.signature(model.model.generate)
         else:
-            parameters = inspect.signature(model.generate).parameters
-        if 'use_model_defaults' in parameters and 'use_model_defaults' not in kwargs:
+            signature = inspect.signature(model.generate)
+        if 'use_model_defaults' in signature.parameters and 'use_model_defaults' not in kwargs:
             kwargs['use_model_defaults'] = False
         return model.generate(*args, **kwargs)
 
