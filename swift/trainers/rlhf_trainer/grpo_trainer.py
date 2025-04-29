@@ -30,7 +30,9 @@ from transformers.trainer import Trainer
 from transformers.trainer_utils import seed_worker
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.extras.profiling import profiling_decorator
+from trl.import_utils import is_rich_available
 from trl.trainer.grpo_trainer import nanmax, nanmin
+from trl.trainer.utils import print_prompt_completions_sample
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
 from swift.llm.infer.infer_engine import set_device_context
@@ -187,6 +189,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self.log_completions = args.log_completions
+        self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
+        self.num_completions_to_print = args.num_completions_to_print
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
         # maxlen is set to the total number of forward passes per step. This value of `maxlen` ensures we log only the
         # final optimization step.
@@ -341,7 +345,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     @profiling_decorator
     def _prepare_inputs(
             self, accumulated_local_batch: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
-        mode = 'eval' if self.control.should_evaluate else 'train'
+        mode = 'train' if self.model.training else 'eval'
         if mode == 'train':
             generate_every = self.args.gradient_accumulation_steps * self.num_iterations
             if self._step % generate_every == 0 or self._buffered_inputs is None:
@@ -850,7 +854,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         inputs = self._generate_completions(inputs)
         total_rewards_per_func, total_rewards, completions = self._score_completions(inputs)
-        mode = 'eval' if self.control.should_evaluate else 'train'
+        mode = 'train' if self.model.training else 'eval'
 
         if self.args.dynamic_sample and mode == 'train':
             # dynamic sampling for std=0 groups
@@ -965,7 +969,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         with self._template_context(template):
             gas = self.args.gradient_accumulation_steps
-            mode = 'eval' if self.control.should_evaluate else 'train'
+            mode = 'train' if self.model.training else 'eval'
             bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
             for i in range(gas):
                 start_idx = i * bs
@@ -1011,7 +1015,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         advantages = advantages[process_slice]
 
         # Determine batch parameters
-        mode = 'eval' if self.control.should_evaluate else 'train'
+        mode = 'train' if self.model.training else 'eval'
         bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
         gas = self.args.gradient_accumulation_steps
 
@@ -1066,7 +1070,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func):
         """Log training/evaluation metrics"""
-        mode = 'eval' if self.control.should_evaluate else 'train'
+        mode = 'train' if self.model.training else 'eval'
         device = self.accelerator.device
 
         # Calculate completion length metrics
@@ -1400,10 +1404,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return self.accelerator.prepare(DataLoader(resample_dataset, **dataloader_params))
 
     def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
-        # compatible with trl0.16 and trl0.17.0.dev
-        # remove this function when next trl release(0.17.0)
-
-        mode = 'eval' if self.control.should_evaluate else 'train'
+        mode = 'train' if self.model.training else 'eval'
         metrics = {key: sum(val) / len(val) for key, val in self._metrics[mode].items()}  # average the metrics
 
         # This method can be called both in training and evaluation. When called in evaluation, the keys in `logs`
@@ -1413,12 +1414,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         logs = {**logs, **metrics}
         if version.parse(transformers.__version__) >= version.parse('4.47.0.dev0'):
-            super().log(logs, start_time)
+            Trainer.log(self, logs, start_time)
         else:  # transformers<=4.46
-            super().log(logs)
+            Trainer.log(self, logs)
         self._metrics[mode].clear()
 
         if self.accelerator.is_main_process and self.log_completions:
+            if is_rich_available():
+                print_prompt_completions_sample(
+                    self._textual_logs['prompt'],
+                    self._textual_logs['completion'],
+                    self._textual_logs['rewards'],
+                    self.state.global_step,
+                    self.num_completions_to_print,
+                )
             table = {
                 'step': [str(self.state.global_step)] * len(self._textual_logs['prompt']),
                 'prompt': self._textual_logs['prompt'],
@@ -1429,7 +1438,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None:
                 import pandas as pd
                 df = pd.DataFrame(table)
-                if self.args.wandb_log_unique_prompts:
+                if self.wandb_log_unique_prompts:
                     df = df.drop_duplicates(subset=['prompt'])
                 wandb.log({'completions': wandb.Table(dataframe=df)})
 
