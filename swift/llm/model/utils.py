@@ -39,6 +39,7 @@ class AttnImpl:
                          attn_impl_keys: Optional[List[str]] = None) -> None:
         if attn_impl is None:
             return
+        logger.info(f'attn_impl: {attn_impl}')
         use_flash_attn = AttnImpl.to_use_flash_attn(attn_impl)
         if use_flash_attn:
             attn_impl = 'flash_attention_2'

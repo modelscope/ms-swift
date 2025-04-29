@@ -78,6 +78,7 @@ class VllmArguments:
     use_async_engine: bool = True
     data_parallel_size: int = 1
     log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
+    vllm_quantization: Optional[str] = None
 
     def __post_init__(self):
         self.limit_mm_per_prompt = ModelArguments.parse_to_dict(self.limit_mm_per_prompt)
@@ -99,6 +100,7 @@ class VllmArguments:
             'enable_lora': len(adapters) > 0,
             'max_loras': max(len(adapters), 1),
             'enable_prefix_caching': self.enable_prefix_caching,
+            'quantization': self.vllm_quantization,
         }
         if dist.is_initialized():
             kwargs.update({'device': dist.get_rank()})

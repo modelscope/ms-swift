@@ -13,6 +13,9 @@ def model_provider(pre_process=True, post_process=True):
     config.variable_seq_lengths = True
     transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(args.num_experts, args.moe_grouped_gemm,
                                                                         args.qk_layernorm, args.multi_latent_attention)
+    if args.num_experts and args.moe_shared_expert_intermediate_size:
+        # qwen2_moe/qwen3_moe
+        transformer_layer_spec.submodules.mlp.submodules.shared_experts.params = {'gate': True}
     model = GPTModel(
         config=config,
         transformer_layer_spec=transformer_layer_spec,

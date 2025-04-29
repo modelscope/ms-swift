@@ -44,6 +44,14 @@ def test_qwen2_5():
     assert response == response2
 
 
+def test_qwen3():
+    pt_engine = PtEngine('Qwen/Qwen3-4B')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
+
+
 def test_phi4():
     pt_engine = PtEngine('LLM-Research/phi-4')
     response = _infer_model(pt_engine)
@@ -68,20 +76,21 @@ def test_qwen1half():
 
 
 def test_glm4():
-    # The Jinja prompt is missing \n.
     pt_engine = PtEngine('ZhipuAI/glm-4-9b-chat')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_glm4_0414():
     models = ['ZhipuAI/GLM-4-9B-0414', 'ZhipuAI/GLM-Z1-9B-0414', 'ZhipuAI/GLM-Z1-Rumination-32B-0414']
     for model in models:
         pt_engine = PtEngine(model)
-        _infer_model(pt_engine)
+        response = _infer_model(pt_engine)
         pt_engine.default_template.template_backend = 'jinja'
-        _infer_model(pt_engine)
+        response2 = _infer_model(pt_engine)
+        assert response == response2
 
 
 def test_qwq():
@@ -407,4 +416,5 @@ if __name__ == '__main__':
     # test_moonlight()
     # test_ling()
     # test_gemma3()
-    test_glm4_0414()
+    # test_glm4_0414()
+    test_qwen3()

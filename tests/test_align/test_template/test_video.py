@@ -131,10 +131,9 @@ def test_qwen2_5_vl():
 
 
 def test_qwen2_5_omni():
-    os.environ['VIDEO_MAX_PIXELS'] = str(28 * 28 * 64)
-    USE_AUDIO_IN_VIDEO = False
+    USE_AUDIO_IN_VIDEO = True
     os.environ['USE_AUDIO_IN_VIDEO'] = str(USE_AUDIO_IN_VIDEO)
-    pt_engine = PtEngine('Qwen/Qwen2.5-Omni-7B')
+    pt_engine = PtEngine('Qwen/Qwen2.5-Omni-7B', attn_impl='flash_attn')
     system = ('You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, '
               'capable of perceiving auditory and visual inputs, as well as generating text and speech.')
     messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': '<video>'}]
@@ -143,15 +142,11 @@ def test_qwen2_5_omni():
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, videos=videos)
     if USE_AUDIO_IN_VIDEO:
-
-        ground_truth = ('Oh, that sounds like a really cool project! Are you using a specific app on the tablet for '
-                        "drawing? And what kind of details are you adding to the guitar? It'd be interesting to hear "
-                        'more about your creative process.')
+        ground_truth = ("Oh, that's a really cool drawing! It looks like a guitar. You've got the body "
+                        'and the neck drawn in a simple yet effective way. The lines are clean and the '
+                        'shape is well-defined. What made you choose to draw a guitar?')
     else:
-        ground_truth = (
-            "Oh, that sounds like a really cool project! So, you're using a tablet to draw a guitar and a key? "
-            "That's a creative way to combine two different things. Have you thought about what you'll do "
-            'with the final drawing? Maybe could use it for a poster or something? Let me know how it turns out!')
+        ground_truth = ('嗯，你是在用平板画画呢。你画的这把吉他，看起来很简洁明了。你用的笔触也很流畅，线条很清晰。你对颜色的运用也很不错，整体看起来很协调。你要是还有啥想法或者问题，随时跟我说哈。')
     assert response == response2 == ground_truth
 
 
