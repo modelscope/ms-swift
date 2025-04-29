@@ -34,10 +34,25 @@ from .protocol import (ChatCompletionRequest, ChatCompletionResponse, Completion
 
 try:
     from vllm.utils import get_open_port
-    from trl.scripts.vllm_serve import chunk_list
+    from trl.scripts.vllm_serve import chunk_list, WeightSyncWorkerExtension
 except ImportError:
+    WeightSyncWorkerExtension = None
     pass
 logger = get_logger()
+
+
+class vLLMWorkerExtension(WeightSyncWorkerExtension):
+
+    def infer(
+        self,
+        infer_requests: List[RolloutInferRequest],
+        request_config: Optional[RequestConfig] = None,
+        *,
+        use_tqdm: Optional[bool] = None,
+    ):
+        res = self.infer_engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
+        return res
+
 
 def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
     # Set required environment variables for DP to work with vLLM
@@ -62,7 +77,7 @@ def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
         if command['type'] in ['call', 'fire_and_forget']:
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
-            method = getattr(engine, method_name)
+            method = getattr(engine, method_name) or getattr(engine.engine, method_name)
             result = method(*args, **kwargs)
             if command['type'] == 'call':
                 connection.send(result)
@@ -143,66 +158,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
         engine_kwargs.update({'data_parallel_size': args.data_parallel_size})
         kwargs['engine_kwargs'] = engine_kwargs
         return VllmEngine(**kwargs)
-
-    def _get_model_list(self):
-        args = self.args
-        model_list = [args.served_model_name or args.model_suffix]
-        if args.adapter_mapping:
-            model_list += [name for name in args.adapter_mapping.keys()]
-        return model_list
-
-    async def get_available_models(self):
-        model_list = self._get_model_list()
-        data = [Model(id=model_id, owned_by=self.args.owned_by) for model_id in model_list]
-        return ModelList(data=data)
-
-    async def _check_model(self, request: ChatCompletionRequest) -> Optional[str]:
-        available_models = await self.get_available_models()
-        model_list = [model.id for model in available_models.data]
-        if request.model not in model_list:
-            return f'`{request.model}` is not in the model_list: `{model_list}`.'
-
-    @staticmethod
-    def create_error_response(status_code: Union[int, str, HTTPStatus], message: str) -> JSONResponse:
-        status_code = int(status_code)
-        return JSONResponse({'message': message, 'object': 'error'}, status_code)
-
-    def _post_process(self, request_info, response, return_cmpl_response: bool = False):
-        args = self.args
-
-        for i in range(len(response.choices)):
-            if not hasattr(response.choices[i], 'message') or not isinstance(response.choices[i].message.content,
-                                                                             (tuple, list)):
-                continue
-            for j, content in enumerate(response.choices[i].message.content):
-                if content['type'] == 'image':
-                    b64_image = MultiModalRequestMixin.to_base64(content['image'])
-                    response.choices[i].message.content[j]['image'] = f'data:image/jpg;base64,{b64_image}'
-
-        is_finished = all(response.choices[i].finish_reason for i in range(len(response.choices)))
-        if 'stream' in response.__class__.__name__.lower():
-            request_info['response'] += response.choices[0].delta.content
-        else:
-            request_info['response'] = response.choices[0].message.content
-        if return_cmpl_response:
-            response = response.to_cmpl_response()
-        if is_finished:
-            if args.log_interval > 0:
-                self.infer_stats.update(response)
-            if self.jsonl_writer:
-                self.jsonl_writer.append(request_info)
-            if self.args.verbose:
-                logger.info(request_info)
-        return response
-
-    def _set_request_config(self, request_config) -> None:
-        default_request_config = self.args.get_request_config()
-        if default_request_config is None:
-            return
-        for key, val in asdict(request_config).items():
-            default_val = getattr(default_request_config, key)
-            if default_val is not None and (val is None or isinstance(val, (list, tuple)) and len(val) == 0):
-                setattr(request_config, key, default_val)
 
     async def health(self):
         """
@@ -305,17 +260,17 @@ class SwiftRolloutDeploy(SwiftPipeline):
             # When the number of prompts is less than data_parallel_size, some workers will receive empty prompts.
             # However, vLLM requires that we always send at least one prompt. So we send a placeholder prompt to comply
             # with vLLM's requirement, and we later ignore the result.
-            if not prompts:
-                prompts = ['<placeholder>']
-            kwargs = {'prompts': prompts, 'request_config': request_config, }
+            if not infer_requests:
+                infer_requests = RolloutInferRequest(messages=None)
+            kwargs = {'infer_requests': infer_requests, 'request_config': request_config, 'use_tqdm': use_tqdm}
             connection.send({'type': 'call', 'method': 'infer', 'kwargs': kwargs})
 
-        res = self.infer_engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
-        return res
+        all_outputs = [connection.recv() for connection in self.connections]
+        # Handle empty prompts (see above)
+        all_outputs = [output for output, prompts in zip(all_outputs, chunked_infer_requests) if infer_requests]
+
+        return all_outputs
 
     def run(self):
         args = self.args
-        self.jsonl_writer = JsonlWriter(args.result_path) if args.result_path else None
-        logger.info(f'model_list: {self._get_model_list()}')
-        uvicorn.run(
-            self.app, host=args.host, port=args.port, ssl_keyfile=args.ssl_keyfile, ssl_certfile=args.ssl_certfile)
+        uvicorn.run(self.app, host=args.host, port=args.port, log_level=args.log_level)
