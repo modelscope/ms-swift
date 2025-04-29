@@ -1,20 +1,25 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Code partially sourced from Hugging Face TRL
 
+import inspect
+import multiprocessing
 import os
-from contextlib import asynccontextmanager
+import time
+from contextlib import asynccontextmanager, contextmanager
+from dataclasses import asdict
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
 from typing import List, Optional, Union
 
 import torch
 import uvicorn
+from aiohttp import ClientConnectorError
 from fastapi import FastAPI
 
 from swift.llm import DeployArguments, InferArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.utils import get_logger
-from .infer_engine import VllmEngine
+from .infer_engine import InferClient, VllmEngine
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
 
 try:
@@ -246,3 +251,40 @@ class SwiftRolloutDeploy(SwiftPipeline):
     def run(self):
         args = self.args
         uvicorn.run(self.app, host=args.host, port=args.port, log_level=args.log_level)
+
+
+def rollout_main(args: Union[List[str], DeployArguments, None] = None) -> None:
+    SwiftRolloutDeploy(args).main()
+
+
+def is_accessible(port: int):
+    infer_client = InferClient(port=port)
+    try:
+        infer_client.get_model_list()
+    except ClientConnectorError:
+        return False
+    return True
+
+
+@contextmanager
+def run_rollout(args: DeployArguments, return_url: bool = False):
+    if isinstance(args, DeployArguments) and args.__class__.__name__ == 'DeployArguments':
+        deploy_args = args
+    else:
+        args_dict = asdict(args)
+        parameters = inspect.signature(DeployArguments).parameters
+        for k in list(args_dict.keys()):
+            if k not in parameters or args_dict[k] is None:
+                args_dict.pop(k)
+        deploy_args = DeployArguments(**args_dict)
+
+    mp = multiprocessing.get_context('spawn')
+    process = mp.Process(target=rollout_main, args=(deploy_args, ))
+    process.start()
+    try:
+        while not is_accessible(deploy_args.port):
+            time.sleep(1)
+        yield f'http://127.0.0.1:{deploy_args.port}/v1' if return_url else deploy_args.port
+    finally:
+        process.terminate()
+        logger.info('The deployment process has been terminated.')
