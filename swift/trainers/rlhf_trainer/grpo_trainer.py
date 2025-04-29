@@ -800,7 +800,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         outputs = gather_object(outputs)
         if self.args.tensor_parallel_size > 1:
             outputs = [[item] for output in outputs for item in output]
-        outputs = self.reorder_outputs(outputs, distributed_idx)
+        if not self.is_external_vllm:
+            outputs = self.reorder_outputs(outputs, distributed_idx)
         if not self.is_external_vllm and self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
             if self.args.gc_collect_after_offload:
@@ -890,7 +891,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # reward model
             if isinstance(reward_func, nn.Module):
                 with self._template_context(reward_template):
-                    batched_inputs = [reward_template.encode(infer_request) for infer_request in inputs]
+                    batched_inputs = [reward_template.encode(deepcopy(infer_request)) for infer_request in inputs]
                     reward_inputs = to_device(reward_template.data_collator(batched_inputs), reward_func.device)
 
                 with torch.inference_mode():
