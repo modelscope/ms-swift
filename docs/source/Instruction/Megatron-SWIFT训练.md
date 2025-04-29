@@ -1,7 +1,7 @@
 
 # Megatron-SWIFT训练
 
-SWIFT引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行，专家并行。支持Qwen3、Qwen3-MoE、Llama3、Deepseek-R1蒸馏系等模型的预训练和微调。完整支持的模型可以参考[支持的模型与数据集文档](./支持的模型和数据集.md)。
+SWIFT引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行，专家并行。支持Qwen3、[Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/train/megatron/qwen3_moe.sh)、Qwen2.5、Llama3、Deepseek-R1蒸馏系等模型的预训练和微调。完整支持的模型可以参考[支持的模型与数据集文档](./支持的模型和数据集.md)。
 
 ## 环境准备
 使用Megatron-SWIFT，除了安装swift依赖外，还需要安装以下内容：
@@ -174,6 +174,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 **checkpoint参数**:
 - 🔥save: checkpoint的输出目录，默认None。在训练中，若未设置该参数，则默认为`f'megatron_output/{model_suffix}'`，例如`'megatron_output/Qwen2.5-7B-Instruct'`。
+  - 注意：若在多机训练时，请确保每个节点的保存路径指向相同位置。否则你需要在训练后手动集中这些权重。
 - 🔥save_interval: checkpoint保存的间隔（steps），默认为500。
   - 注意：训练结束时一定会保存权重。
 - 🔥no_save_optim: 不保存optimizer，默认为False。
