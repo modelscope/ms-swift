@@ -178,9 +178,6 @@ class GRPOArgumentsMixin:
     gc_collect_after_offload: bool = False
     multi_turn_func: Optional[str] = None
 
-    # mini-batch
-    mini_batch_size: Optional[int] = None
-
     # DAPO, https://arxiv.org/abs/2503.14476
     dynamic_sample: bool = False
     max_resample_times: int = 3

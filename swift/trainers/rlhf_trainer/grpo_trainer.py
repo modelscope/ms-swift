@@ -30,9 +30,7 @@ from transformers.trainer import Trainer
 from transformers.trainer_utils import seed_worker
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.extras.profiling import profiling_decorator
-from trl.import_utils import is_rich_available
 from trl.trainer.grpo_trainer import nanmax, nanmin
-from trl.trainer.utils import print_prompt_completions_sample
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
 from swift.llm.infer.infer_engine import set_device_context
@@ -1057,13 +1055,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
                 # Reference policy logps
                 if self.beta == 0.0:
-                    ref_logps = None
+                    ref_per_token_logps = None
                 elif self.ref_model is not None:
-                    ref_logps = self._get_per_token_logps(self.ref_model, batch_encoded_inputs)
+                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, batch_encoded_inputs)
                 else:
                     with self.accelerator.unwrap_model(self.model).disable_adapter():
-                        ref_logps = self._get_per_token_logps(self.model, batch_encoded_inputs)
-                batch_encoded_inputs['ref_per_token_logps'] = ref_logps
+                        ref_per_token_logps = self._get_per_token_logps(self.model, batch_encoded_inputs)
+                batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
 
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
@@ -1421,14 +1419,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics[mode].clear()
 
         if self.accelerator.is_main_process and self.log_completions:
-            if is_rich_available():
-                print_prompt_completions_sample(
-                    self._textual_logs['prompt'],
-                    self._textual_logs['completion'],
-                    self._textual_logs['rewards'],
-                    self.state.global_step,
-                    self.num_completions_to_print,
-                )
             table = {
                 'step': [str(self.state.global_step)] * len(self._textual_logs['prompt']),
                 'prompt': self._textual_logs['prompt'],
