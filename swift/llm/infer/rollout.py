@@ -1,57 +1,29 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Code partially sourced from Hugging Face TRL
 
-import asyncio
-import inspect
-import multiprocessing
 import os
-import time
-from contextlib import asynccontextmanager, contextmanager
-from dataclasses import asdict
-from http import HTTPStatus
-from itertools import chain
+from contextlib import asynccontextmanager
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
-from threading import Thread
 from typing import List, Optional, Union
 
-import json
 import torch
 import uvicorn
-from aiohttp import ClientConnectorError
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import FastAPI
 
-from swift.llm import AdapterRequest, DeployArguments, InferArguments, InferRequest, SwiftPipeline
-from swift.llm.infer.protocol import MultiModalRequestMixin
+from swift.llm import DeployArguments, InferArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
-from swift.plugin import InferStats
-from swift.utils import JsonlWriter, get_logger
-from .deploy import SwiftDeploy
-from .infer_engine import InferClient, VllmEngine
-from .protocol import (ChatCompletionRequest, ChatCompletionResponse, CompletionRequest, InitCommunicatorRequest, Model,
-                       ModelList, RequestConfig, UpdateWeightsRequest)
+from swift.utils import get_logger
+from .infer_engine import VllmEngine
+from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
 
 try:
     from vllm.utils import get_open_port
-    from trl.scripts.vllm_serve import chunk_list, WeightSyncWorkerExtension
+    from trl.scripts.vllm_serve import chunk_list
 except ImportError:
-    WeightSyncWorkerExtension = None
     pass
+
 logger = get_logger()
-
-
-class vLLMWorkerExtension(WeightSyncWorkerExtension):
-
-    def infer(
-        self,
-        infer_requests: List[RolloutInferRequest],
-        request_config: Optional[RequestConfig] = None,
-        *,
-        use_tqdm: Optional[bool] = None,
-    ):
-        res = self.infer_engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
-        return res
 
 
 def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
