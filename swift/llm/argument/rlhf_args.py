@@ -259,10 +259,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
                 assert self.tensor_parallel_size == 1, ('async mode do not support tensor parallel right now')
 
-        if self.mini_batch_size:
-            assert self.per_device_train_batch_size % self.mini_batch_size == 0,\
-                'per_device_train_batch_size needs be divisible by mini_batch_size'
-
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
             return
