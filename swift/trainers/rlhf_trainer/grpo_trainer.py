@@ -30,6 +30,7 @@ from transformers.trainer import Trainer
 from transformers.trainer_utils import seed_worker
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.extras.profiling import profiling_decorator
+from trl.trainer.grpo_trainer import nanmax, nanmin
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
 from swift.llm.infer.infer_engine import set_device_context
@@ -166,6 +167,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.num_generations = args.num_generations
         self.temperature = args.temperature
+        self.loss_type = args.loss_type
         model.warnings_issued['estimate_tokens'] = True
         kwargs['data_collator'] = lambda features: features
         self.shuffle_dataset = args.shuffle_dataset
@@ -1145,35 +1147,41 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
-        completions_length = completion_mask.sum()
-        if completions_length == 0:
-            # Prevent division by zero issues after all completions are filtered by the overlong filter
-            completions_length = completions_length.float() + 1e-4
-        loss = (per_token_loss * completion_mask).sum() / completions_length
+        if self.loss_type == 'grpo':
+            loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
+        elif self.loss_type == 'bnpo':
+            loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
+        elif self.loss_type == 'dr_grpo':
+            loss = (per_token_loss * completion_mask).sum() / (per_token_loss.size(0) * self.max_completion_length)
+        else:
+            raise ValueError(f'Unknown loss type: {self.loss_type}')
 
         # Log the metrics
-        metrics = {}
-        mode = 'eval' if self.control.should_evaluate else 'train'
+        mode = 'train' if self.model.training else 'eval'
 
         if self.beta != 0.0:
-            mean_kl = (per_token_kl * completion_mask).sum() / completions_length
-            metrics['kl'] = mean_kl
+            mean_kl = (per_token_kl * completion_mask).sum() / completion_mask.sum()
+            self._metrics[mode]['kl'].append(self.accelerator.gather_for_metrics(mean_kl).nanmean().item())
 
-        is_clipped = ((coef_1 < 1 - self.epsilon_low) &
-                      (advantages.unsqueeze(1) < 0)) | ((coef_1 > 1 + self.epsilon_high) &
-                                                        (advantages.unsqueeze(1) > 0))
+        # Compute the clipped probability ratios
+        is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages.unsqueeze(1) < 0)
+        is_high_clipped = (coef_1 > 1 + self.epsilon_high) & (advantages.unsqueeze(1) > 0)
+        is_region_clipped = is_low_clipped | is_high_clipped
 
-        clip_ratio = (is_clipped * completion_mask).sum() / completions_length
-        metrics['clip_ratio'] = clip_ratio
+        low_clip = (is_low_clipped * completion_mask).sum() / completion_mask.sum()
+        high_clip = (is_high_clipped * completion_mask).sum() / completion_mask.sum()
+        clip_ratio = (is_region_clipped * completion_mask).sum() / completion_mask.sum()
 
-        # Log metrics or return them
-        if return_outputs:
-            metrics['completions_length'] = completions_length.item()
-            return loss, metrics
-        else:
-            for key, value in metrics.items():
-                self._metrics[mode][key].append(self.accelerator.gather_for_metrics(value).mean().item())
-            return loss
+        gathered_low_clip = self.accelerator.gather_for_metrics(low_clip)
+        self._metrics[mode]['clip_ratio/low_mean'].append(gathered_low_clip.nanmean().item())
+        self._metrics[mode]['clip_ratio/low_min'].append(nanmin(gathered_low_clip).item())
+        gathered_high_clip = self.accelerator.gather_for_metrics(high_clip)
+        self._metrics[mode]['clip_ratio/high_mean'].append(gathered_high_clip.nanmean().item())
+        self._metrics[mode]['clip_ratio/high_max'].append(nanmax(gathered_high_clip).item())
+        gathered_clip_ratio = self.accelerator.gather_for_metrics(clip_ratio)
+        self._metrics[mode]['clip_ratio/region_mean'].append(gathered_clip_ratio.nanmean().item())
+
+        return loss
 
     # Get the per-token log probabilities for the completions for the model and the reference model
     @profiling_decorator
