@@ -535,7 +535,11 @@ class Template(ProcessorMixin):
         raise NotImplementedError
 
     def generate(self, model, *args, **kwargs):
-        if 'use_model_defaults' in inspect.signature(model.generate).parameters and 'use_model_defaults' not in kwargs:
+        if isinstance(model, PeftModel):
+            parameters = inspect.signature(model.model.generate).parameters
+        else:
+            parameters = inspect.signature(model.generate).parameters
+        if 'use_model_defaults' in parameters and 'use_model_defaults' not in kwargs:
             kwargs['use_model_defaults'] = False
         return model.generate(*args, **kwargs)
 
