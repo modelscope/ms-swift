@@ -475,6 +475,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @property
     def infer_rank(self):
+        if self.is_external_vllm:
+            # When using external vLLM, only the main process (rank=0) acts as the client.
+            return 1 if self.accelerator.is_main_process else -1
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         node_rank = get_node_setting()[0]
         for _vllm_rank in range(self.args.num_infer_workers):

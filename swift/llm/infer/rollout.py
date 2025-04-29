@@ -7,6 +7,7 @@ import os
 import time
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import asdict
+from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
 from typing import List, Optional, Union
@@ -236,7 +237,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
         *,
         use_tqdm: Optional[bool] = None,
     ):
-        # TODO: split infer_requests into DP size chunks
         chunked_infer_requests = chunk_list(infer_requests, self.args.data_parallel_size)
 
         # Send the prompts to each worker
@@ -252,6 +252,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         all_outputs = [connection.recv() for connection in self.connections]
         # Handle empty prompts (see above)
         all_outputs = [output for output, prompts in zip(all_outputs, chunked_infer_requests) if infer_requests]
+        all_outputs = list(chain.from_iterable(all_outputs))  # from list of list to single list
 
         return all_outputs
 
