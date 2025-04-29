@@ -8,7 +8,7 @@
 
 # NODE1 for vLLM Server
 CUDA_VISIBLE_DEVICES=0,1 \
-swift deploy \
+swift rollout \
     --model Qwen/Qwen2.5-32B-Instruct \
     --infer_backend vllm \
     --use_async_engine false \

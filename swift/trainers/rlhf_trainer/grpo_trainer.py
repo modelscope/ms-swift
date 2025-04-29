@@ -771,7 +771,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # for example, 2 workers, 6 inputs, 0/2/4 dispatch to the first worker
         # 1/3/5 dispatch to the second worker
         # trying to shuffle and average the length
-        distributed_idx = round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
+        nnodes = get_node_setting()[1]
+        num_workers = 1 if self.is_external_vllm else nnodes
+        distributed_idx = round_robin(len(all_inputs), num_workers * self.args.num_infer_workers)
         if self.infer_rank >= 0:
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
             if self.args.async_generate:
@@ -865,7 +867,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Log metrics
         messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
 
-        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func)  # TODO
+        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func)
 
         return batch_encoded_inputs
 
@@ -1047,13 +1049,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 batch_advantages
             })
 
-            # Compute log probabilities
             with torch.no_grad():
-                # Old policy logps
                 batch_encoded_inputs['old_per_token_logps'] = (
                     self._get_per_token_logps(self.model, batch_encoded_inputs) if self.old_policy else None)
 
-                # Reference policy logps
                 if self.beta == 0.0:
                     ref_per_token_logps = None
                 elif self.ref_model is not None:
@@ -1413,9 +1412,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         logs = {**logs, **metrics}
         if version.parse(transformers.__version__) >= version.parse('4.47.0.dev0'):
-            Trainer.log(self, logs, start_time)
+            super().log(logs, start_time)
         else:  # transformers<=4.46
-            Trainer.log(self, logs)
+            super().log(logs)
         self._metrics[mode].clear()
 
         if self.accelerator.is_main_process and self.log_completions:
