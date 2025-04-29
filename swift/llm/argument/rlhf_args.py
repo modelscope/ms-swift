@@ -201,6 +201,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 self.loss_type = 'sigmoid'  # else None
             elif self.rlhf_type in ['kto']:
                 self.loss_type = 'kto'
+            elif self.rlhf_type == 'grpo':
+                self.loss_type = 'grpo'
 
     def _check_rlhf(self):
         if self.sequence_parallel_size > 1:
