@@ -195,7 +195,12 @@ class SwiftDeploy(SwiftInfer):
         self.jsonl_writer = JsonlWriter(args.result_path) if args.result_path else None
         logger.info(f'model_list: {self._get_model_list()}')
         uvicorn.run(
-            self.app, host=args.host, port=args.port, ssl_keyfile=args.ssl_keyfile, ssl_certfile=args.ssl_certfile)
+            self.app,
+            host=args.host,
+            port=args.port,
+            ssl_keyfile=args.ssl_keyfile,
+            ssl_certfile=args.ssl_certfile,
+            log_level=args.log_level)
 
 
 def deploy_main(args: Union[List[str], DeployArguments, None] = None) -> None:
