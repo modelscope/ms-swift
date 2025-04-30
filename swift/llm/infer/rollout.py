@@ -131,7 +131,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
         if infer_backend != 'vllm':
-            infer_backend == 'vllm'
+            infer_backend = 'vllm'
             logger.info('Currently, rollout only supports the vLLM backend. Set vLLM backend')
         use_async_engine = args.use_async_engine
         if use_async_engine:
