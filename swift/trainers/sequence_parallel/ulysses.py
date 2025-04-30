@@ -73,9 +73,9 @@ class Ulysses(SequenceParallel):
                              value_states, 0, None, *args, **kwargs), None
 
         ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = partial(local_flash_attn, dist_attn=
-        DistributedAttention(None, self.group))
+        DistributedAttention(None, self.group, 2, 2))
         ALL_ATTENTION_FUNCTIONS['sdpa'] = partial(local_sdpa_attn, dist_attn=
-        DistributedAttention(None, self.group))
+        DistributedAttention(None, self.group, 2, 2))
 
     @staticmethod
     def _pad_tensor(x: Tensor, dim: int, padding_size: int) -> Tensor:
@@ -114,30 +114,112 @@ class Ulysses(SequenceParallel):
         slc[dim] = slice(sp_rank * parts, (sp_rank + 1) * parts)
         return x[slc].contiguous()
 
-    def pad_and_split_inputs(self, tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale):
-        from xtuner.parallel.sequence import (pad_for_sequence_parallel, split_for_sequence_parallel,
-                                              get_sequence_parallel_group)
-        input_ids = pad_for_sequence_parallel(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
-        labels = pad_for_sequence_parallel(labels, padding_value=-100, dim=-1)
-        position_ids = pad_for_sequence_parallel(position_ids, padding_value=0, dim=-1)
-        attention_mask = pad_for_sequence_parallel(attention_mask, padding_value=0, dim=-1)
+    def pad_for_sequence_parallel(self, tensor, padding_value, dim=-1):
+        length = tensor.shape[dim]
+        seq_parallel_world_size = self.world_size()
+        if length % seq_parallel_world_size == 0:
+            return tensor
 
-        sp_group = get_sequence_parallel_group()
-        input_ids = split_for_sequence_parallel(input_ids, dim=1, sp_group=sp_group)
-        labels = split_for_sequence_parallel(labels, dim=1, sp_group=sp_group)
-        position_ids = split_for_sequence_parallel(position_ids, dim=1, sp_group=sp_group)
-        attention_mask = split_for_sequence_parallel(attention_mask, dim=-1, sp_group=sp_group)
+        pad_num = seq_parallel_world_size - (length % seq_parallel_world_size)
+        pad_shape = (
+            (*tensor.shape[:dim], pad_num, *tensor.shape[dim + 1 :])
+            if dim != -1
+            else (*tensor.shape[:dim], pad_num)
+        )
+        pad = torch.full(pad_shape, padding_value, dtype=tensor.dtype, device=tensor.device)
+        tensor = torch.cat([tensor, pad], dim=dim)
+        return tensor
+
+    def pad_for_sequence_parallel(self, tensor, padding_value, dim=-1):
+        length = tensor.shape[dim]
+        seq_parallel_world_size = self.world_size()
+        if length % seq_parallel_world_size == 0:
+            return tensor
+
+        pad_num = seq_parallel_world_size - (length % seq_parallel_world_size)
+        pad_shape = (
+            (*tensor.shape[:dim], pad_num, *tensor.shape[dim + 1:])
+            if dim != -1
+            else (*tensor.shape[:dim], pad_num)
+        )
+        pad = torch.full(pad_shape, padding_value, dtype=tensor.dtype, device=tensor.device)
+        tensor = torch.cat([tensor, pad], dim=dim)
+        return tensor
+
+    def split_for_sequence_parallel(self, input, dim: int, sp_group: dist.ProcessGroup):
+        """Splits the input tensor along a given dimension for sequence parallel.
+
+        Args:
+            input: The input tensor to be split.
+            dim: The dimension along which the tensor should be split.
+            sp_group: The sequence parallel process group.
+
+        Returns:
+            The split tensor corresponding to the current rank's chunk.
+        """
+        world_size = dist.get_world_size(sp_group)
+        if world_size == 1:
+            return input
+
+        rank = dist.get_rank(sp_group)
+        dim_size = input.size(dim)
+        assert dim_size % world_size == 0, (
+            f'The dimension to split ({dim_size}) is not a multiple of '
+            f'world size ({world_size}), cannot split tensor evenly')
+
+        tensor_list = torch.split(input, dim_size // world_size, dim=dim)
+        output = tensor_list[rank].contiguous()
+
+        return output
+
+    def pad_and_split_inputs(self, tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale):
+        input_ids = self.pad_for_sequence_parallel(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
+        labels = self.pad_for_sequence_parallel(labels, padding_value=-100, dim=-1)
+        position_ids = self.pad_for_sequence_parallel(position_ids, padding_value=0, dim=-1)
+        attention_mask = self.pad_for_sequence_parallel(attention_mask, padding_value=0, dim=-1)
+
+        sp_group = self.group
+        input_ids = self.split_for_sequence_parallel(input_ids, dim=1, sp_group=sp_group)
+        labels = self.split_for_sequence_parallel(labels, dim=1, sp_group=sp_group)
+        position_ids = self.split_for_sequence_parallel(position_ids, dim=1, sp_group=sp_group)
+        attention_mask = self.split_for_sequence_parallel(attention_mask, dim=-1, sp_group=sp_group)
         if loss_scale is not None:
-            loss_scale = pad_for_sequence_parallel(loss_scale, padding_value=0., dim=-1)
-            loss_scale = split_for_sequence_parallel(loss_scale, dim=1, sp_group=sp_group)
+            loss_scale = self.pad_for_sequence_parallel(loss_scale, padding_value=0., dim=-1)
+            loss_scale = self.split_for_sequence_parallel(loss_scale, dim=1, sp_group=sp_group)
 
         return input_ids, labels, position_ids, attention_mask, loss_scale
 
     def reduce_outputs(self, loss, labels):
-        from xtuner.parallel.sequence import (reduce_sequence_parallel_loss, get_sequence_parallel_group)
+        class _ReduceLoss(torch.autograd.Function):
+
+            @staticmethod
+            def forward(ctx, mean_loss, loss_scale, process_group):
+                ctx.mode = process_group
+                if loss_scale == 0:
+                    # convert nan to 0 just for logging
+                    mean_loss = torch.nan_to_num(mean_loss)
+                loss_sum = mean_loss * loss_scale
+                dist.all_reduce(loss_sum, group=process_group)
+                dist.all_reduce(loss_scale, group=process_group)
+                loss = loss_sum / loss_scale
+                return loss
+
+            @staticmethod
+            def backward(ctx, grad_output):
+                return grad_output, None, None
+
+        def reduce_sequence_parallel_loss(mean_loss,
+                                          loss_scale,
+                                          sp_group: dist.ProcessGroup = None):
+            if dist.get_world_size(sp_group) == 1:
+                return mean_loss
+            if sp_group is None:
+                # avoid bc breaking
+                sp_group = self.group
+            return _ReduceLoss.apply(mean_loss, loss_scale, sp_group)
         # reduce loss for logging correctly
         num_tokens = (labels != -100).sum()
-        return reduce_sequence_parallel_loss(loss, num_tokens, get_sequence_parallel_group())
+        return reduce_sequence_parallel_loss(loss, num_tokens, self.group)
 
     def world_size(self):
         return self.sequence_parallel_size

@@ -1416,7 +1416,7 @@ class Template(ProcessorMixin):
             if sequence_parallel.world_size() > 1:
                 from swift.trainers.sequence_parallel import sequence_parallel
                 input_ids, labels, position_ids, attention_mask, loss_scale = \
-                    sequence_parallel.slice_input_tensor(
+                    sequence_parallel.pad_and_split_inputs(
                         tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
             res['position_ids'] = position_ids
         _local_var = locals()

@@ -125,6 +125,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             logger.info(f'args.problem_type: {args.problem_type}')
         args.save_args()
 
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            sequence_parallel.init_sequence_parallel(self.template.sequence_parallel_size)
+
         data_collator = self._get_data_collator()
         # Some tuners require train_dataset and data_collator for preparation: LoRA-GA
         self.model = self.prepare_model(self.args, self.model, template=self.template, train_dataset=train_dataset)

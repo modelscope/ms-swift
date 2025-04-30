@@ -77,9 +77,6 @@ class SwiftMixin:
         self.template = template
         self.max_memory = 0
         self.hub = get_hub()
-        if template.sequence_parallel_size > 1:
-            from .sequence_parallel import sequence_parallel
-            sequence_parallel.init_sequence_parallel(template.sequence_parallel_size)
 
         self.model_meta = model.model_meta
         with self.hub.patch_hub():
