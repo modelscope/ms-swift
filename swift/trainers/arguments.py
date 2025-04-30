@@ -198,7 +198,7 @@ class GRPOArgumentsMixin:
     vllm_client = None
 
     # dataset
-    shuffle_dataset: Optional[bool] = True
+    dataset_shuffle: Optional[bool] = True
 
 
 @dataclass

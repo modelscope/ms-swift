@@ -130,11 +130,13 @@ class SwiftRolloutDeploy(SwiftPipeline):
             'torch_dtype': args.torch_dtype,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
-        assert infer_backend == 'vllm', 'Currently, swift rollout only supports the vLLM backend.'
+        if infer_backend != 'vllm':
+            infer_backend == 'vllm'
+            logger.info('Currently, rollout only supports the vLLM backend. Set vLLM backend')
         use_async_engine = args.use_async_engine
         if use_async_engine:
             use_async_engine = False
-            logger.warning("currently rollout don't support async engine, set use_async_engine False")
+            logger.info("currently, rollout don't support async engine, set use_async_engine False")
         kwargs.update(args.get_vllm_engine_kwargs())
         kwargs.update({'use_async_engine': use_async_engine})
         # used for RL external rollout backend

@@ -3,31 +3,25 @@ import asyncio
 import inspect
 import multiprocessing
 import time
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import contextmanager
 from dataclasses import asdict
 from http import HTTPStatus
-from itertools import chain
-from multiprocessing import Pipe, Process
-from multiprocessing.connection import Connection
 from threading import Thread
 from typing import List, Optional, Union
 
 import json
-import torch
 import uvicorn
 from aiohttp import ClientConnectorError
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from swift.llm import AdapterRequest, DeployArguments, InferRequest
+from swift.llm import AdapterRequest, DeployArguments
 from swift.llm.infer.protocol import MultiModalRequestMixin
-from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.plugin import InferStats
 from swift.utils import JsonlWriter, get_logger
 from .infer import SwiftInfer
 from .infer_engine import InferClient
-from .protocol import (ChatCompletionRequest, ChatCompletionResponse, CompletionRequest, InitCommunicatorRequest, Model,
-                       ModelList, RequestConfig, UpdateWeightsRequest)
+from .protocol import ChatCompletionRequest, CompletionRequest, Model, ModelList
 
 logger = get_logger()
 

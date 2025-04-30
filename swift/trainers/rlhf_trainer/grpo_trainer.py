@@ -170,7 +170,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.loss_type = args.loss_type
         model.warnings_issued['estimate_tokens'] = True
         kwargs['data_collator'] = lambda features: features
-        self.shuffle_dataset = args.shuffle_dataset
+        self.shuffle_dataset = args.dataset_shuffle
 
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
