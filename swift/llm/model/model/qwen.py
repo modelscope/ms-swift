@@ -679,6 +679,7 @@ register_model(
         MLLMModelType.qwen2_5_omni,
         [
             ModelGroup([
+                Model('Qwen/Qwen2.5-Omni-3B', 'Qwen/Qwen2.5-Omni-3B'),
                 Model('Qwen/Qwen2.5-Omni-7B', 'Qwen/Qwen2.5-Omni-7B'),
             ]),
         ],
