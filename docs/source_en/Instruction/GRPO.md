@@ -58,8 +58,6 @@ Deploy the vLLM server using the `swift rollout` command. Currently, only the vL
 CUDA_VISIBLE_DEVICES=2 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --infer_backend vllm \
-  --use_async_engine \
   --tensor_parallel_size 2 \
 ```
 The complete script can be found [here](../../../examples/train/grpo/multi_node/Qwen2_5_32B_full.sh) .
