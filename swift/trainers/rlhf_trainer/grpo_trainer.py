@@ -1019,7 +1019,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         )
         advantages = advantages[process_slice]
 
-        # Determine batch parameters
         mode = 'train' if self.model.training else 'eval'
         bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
         gas = self.args.gradient_accumulation_steps
