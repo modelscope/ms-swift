@@ -822,6 +822,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             Modified inputs with generated completions added to the last message
             and truncation flag set in 'is_truncated' field.
         """
+        mode = 'train' if self.model.training else 'eval'
         if self.use_fast_infer:
             inputs, outputs = self._fast_infer(inputs)
             # Slice to keep only the local part of the data
@@ -839,7 +840,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
             ), self.multi_turn_completion_length_context():
                 outputs = self._infer_multi_turn(inputs, self.request_config)
-                self.model.train()
+                if mode == 'train':
+                    # In training mode, ensure the model is returned to train() mode after inference
+                    # This is necessary as pt engines set the model to eval mode during generation
+                    self.model.train()
             if is_multimodal:
                 self.template.register_post_encode_hook(models)
             if isinstance(outputs[0][0], list):

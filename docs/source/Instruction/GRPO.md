@@ -52,8 +52,6 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 CUDA_VISIBLE_DEVICES=2 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --infer_backend vllm \
-  --use_async_engine \
   --tensor_parallel_size 2 \
 ```
 完整脚本可以参考[这里](../../../examples/train/grpo/multi_node/Qwen2_5_32B_full.sh)
