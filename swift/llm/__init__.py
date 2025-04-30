@@ -6,7 +6,7 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .infer import (VllmEngine, RequestConfig, LmdeployEngine, PtEngine, InferEngine, infer_main, deploy_main,
-                        InferClient, run_deploy, AdapterRequest, prepare_model_template, BaseInferEngine)
+                        InferClient, run_deploy, AdapterRequest, prepare_model_template, BaseInferEngine, rollout_main)
     from .export import (export_main, merge_lora, quantize_model, export_to_ollama)
     from .eval import eval_main
     from .app import app_main
@@ -36,7 +36,7 @@ else:
         'rlhf': ['rlhf_main'],
         'infer': [
             'deploy_main', 'VllmEngine', 'RequestConfig', 'LmdeployEngine', 'PtEngine', 'infer_main', 'InferClient',
-            'run_deploy', 'InferEngine', 'AdapterRequest', 'prepare_model_template', 'BaseInferEngine'
+            'run_deploy', 'InferEngine', 'AdapterRequest', 'prepare_model_template', 'BaseInferEngine', 'rollout_main'
         ],
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
         'app': ['app_main'],

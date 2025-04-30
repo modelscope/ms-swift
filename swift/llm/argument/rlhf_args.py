@@ -49,9 +49,6 @@ class GRPOArguments(GRPOArgumentsMixin):
 
     # vLLM in GRPO
     use_vllm: bool = False
-    vllm_device: List[str] = field(default_factory=lambda: ['auto'])
-    vllm_gpu_memory_utilization: float = 0.9
-    vllm_max_model_len: Optional[int] = None
 
     # multi step
     num_iterations: int = 1
@@ -140,8 +137,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 set_default_ddp_config()
             if self.async_generate or not self.use_vllm:
                 self.sleep_level = 0
-            if self.sleep_level > 0:
-                self.gradient_accumulation_steps = 1
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
             if self.truncation_strategy is None:
@@ -196,6 +191,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         if is_master():
             self.vllm_client = VLLMClient(
                 self.vllm_server_host, self.vllm_server_port, connection_timeout=self.vllm_server_timeout)
+            self.vllm_client.init_communicator()
 
     def _set_default(self):
         if self.beta is None:
@@ -205,6 +201,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 self.loss_type = 'sigmoid'  # else None
             elif self.rlhf_type in ['kto']:
                 self.loss_type = 'kto'
+            elif self.rlhf_type == 'grpo':
+                self.loss_type = 'grpo'
 
     def _check_rlhf(self):
         if self.sequence_parallel_size > 1:
@@ -213,6 +211,17 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     def _check_grpo(self):
         if self.rlhf_type != 'grpo':
             return
+
+        from packaging import version
+        import trl
+        trl_version = version.parse(trl.__version__)
+        assert trl_version >= version.parse('0.17'), ('Your current version of `trl` is outdated. '
+                                                      'Please update it by running: pip install -U trl')
+
+        if self.num_generations < 2:
+            raise ValueError(
+                'GRPO requires at least 2 generations per prompt to calculate the advantages. You provided '
+                f'{self.num_generations}, which is less than the minimum required.')
         from swift.utils import get_device_count, get_dist_setting
         device_count = get_device_count()
         _, _, _, local_world_size = get_dist_setting()
@@ -249,10 +258,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                                    'so you do not need to use sleep_level > 0')
 
                 assert self.tensor_parallel_size == 1, ('async mode do not support tensor parallel right now')
-
-        if self.mini_batch_size:
-            assert self.per_device_train_batch_size % self.mini_batch_size == 0,\
-                'per_device_train_batch_size needs be divisible by mini_batch_size'
 
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
