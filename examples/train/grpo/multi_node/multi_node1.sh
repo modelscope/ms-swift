@@ -1,5 +1,8 @@
+# Internal vLLM
+
 # pip install math_verify # reward function
 # pip install -U trl
+# note: Note: The parameters of each node need to be consistent.
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 export NNODES=2
 export NODE_RANK=0

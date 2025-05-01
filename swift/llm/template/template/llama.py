@@ -43,11 +43,7 @@ class Llama3TemplateMeta(TemplateMeta):
     suffix: Prompt = field(default_factory=lambda: ['<|eot_id|>'])
     system_prefix: Optional[Prompt] = field(
         default_factory=lambda: ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
-    tool_prompt: Optional[Prompt] = field(default_factory=lambda: [
-        '<|start_header_id|>tool<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-        '<|start_header_id|>assistant<|end_header_id|>\n\n'
-    ])
-    default_tools_prompt: str = 'toolbench'
+    agent_template: str = 'llama3'
 
 
 register_template(Llama3TemplateMeta(LLMTemplateType.llama3))
@@ -157,6 +153,7 @@ class Llama4TemplateMeta(TemplateMeta):
     stop_words: List[Word] = field(default_factory=lambda: ['<|end_of_text|>', '<|eom|>'])
     system_prefix: Optional[Prompt] = field(
         default_factory=lambda: ['<|begin_of_text|><|header_start|>system<|header_end|>\n\n{{SYSTEM}}<|eot|>'])
+    agent_template: str = 'llama4'
 
 
 register_template(Llama4TemplateMeta(MLLMTemplateType.llama4, template_cls=Llama4Template))

@@ -9,11 +9,11 @@ from collections import defaultdict, deque
 from concurrent.futures import Future
 from contextlib import contextmanager
 from copy import copy, deepcopy
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from math import ceil
 from queue import Queue
 from types import MethodType
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeAlias, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import datasets
 import numpy as np
@@ -29,6 +29,8 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.trainer import Trainer
 from transformers.trainer_utils import seed_worker
 from trl import GRPOTrainer as HFGRPOTrainer
+from trl.extras.profiling import profiling_decorator
+from trl.trainer.grpo_trainer import nanmax, nanmin
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
 from swift.llm.infer.infer_engine import set_device_context
@@ -40,12 +42,7 @@ from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, 
                          is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import _ForwardRedirection, _split_into_mini_batches, patch_lora_merge, patch_lora_unmerge, round_robin
-
-try:
-    from trl.extras.profiling import profiling_decorator
-except ImportError:
-    raise ImportError('Please install trl: `pip install -U trl`')
+from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge, round_robin
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
@@ -54,8 +51,8 @@ logger = get_logger()
 if is_wandb_available():
     import wandb
 
-InputsType: TypeAlias = List[Dict[str, Union[torch.Tensor, Any]]]
-OutputsType: TypeAlias = List[List[Tuple[List[Dict], str]]]
+InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
+OutputsType = List[List[Tuple[List[Dict], str]]]
 
 
 @contextmanager
@@ -171,12 +168,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.num_generations = args.num_generations
         self.temperature = args.temperature
+        self.loss_type = args.loss_type
+        model.warnings_issued['estimate_tokens'] = True
+        kwargs['data_collator'] = lambda features: features
+        self.shuffle_dataset = args.dataset_shuffle
+
+        use_vllm = args.use_vllm
+        use_lmdeploy = args.use_lmdeploy
+        vllm_client = kwargs.pop('vllm_client')  # for external vllm
         self.use_vllm = args.use_vllm
         self.use_lmdeploy = args.use_lmdeploy
         self.epsilon_low = args.epsilon
         self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
         self.log_completions = args.log_completions
-
         if self.args.tensor_parallel_size > 1 and self.multi_turn_func:
             import torch.distributed as dist
             rank, _, _, _ = get_dist_setting()
@@ -209,6 +213,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self._forward_redirection = _ForwardRedirection()
 
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
+        self.log_completions = args.log_completions
+        self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
+        self.num_completions_to_print = args.num_completions_to_print
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
         # maxlen is set to the total number of forward passes per step. This value of `maxlen` ensures we log only the
         # final optimization step.
@@ -220,21 +227,27 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         }
 
         num_processes = self.accelerator.num_processes
-        self.global_train_batch_size = global_batch_size = args.per_device_train_batch_size * num_processes
-        possible_values = [n_gen for n_gen in range(2, global_batch_size + 1) if (global_batch_size) % n_gen == 0]
+        self.effective_train_batch_size = effective_batch_size = \
+            args.per_device_train_batch_size * num_processes * args.gradient_accumulation_steps
+        possible_values = [n_gen for n_gen in range(2, effective_batch_size + 1) if (effective_batch_size) % n_gen == 0]
+
         if self.num_generations not in possible_values:
             raise ValueError(
-                f'The global train batch size ({num_processes} x {args.per_device_train_batch_size}) must be evenly '
-                f'divisible by the number of generations per prompt ({self.num_generations}). Given the current train '
-                f'batch size, the valid values for the number of generations are: {possible_values}.')
+                f'The effective train batch size ({num_processes} x {args.per_device_train_batch_size} x '
+                f'{args.gradient_accumulation_steps}) must be evenly divisible by the number of generations per '
+                f'prompt ({self.num_generations}). Given the current effective train batch size, the valid values for '
+                f'the number of generations are: {possible_values}.')
         if self.args.eval_strategy != 'no':
-            global_batch_size = args.per_device_eval_batch_size * num_processes
-            possible_values = [n_gen for n_gen in range(2, global_batch_size + 1) if (global_batch_size) % n_gen == 0]
+            effective_batch_size = args.per_device_eval_batch_size * num_processes
+            possible_values = [
+                n_gen for n_gen in range(2, effective_batch_size + 1) if (effective_batch_size) % n_gen == 0
+            ]
             if self.num_generations not in possible_values:
                 raise ValueError(
-                    f'The global eval batch size ({num_processes} x {args.per_device_eval_batch_size}) must be evenly '
-                    f'divisible by the number of generations per prompt ({self.num_generations}). Given the current '
-                    f'eval batch size, the valid values for the number of generations are: {possible_values}.')
+                    f'The effective eval batch size ({num_processes} x {args.per_device_eval_batch_size}) must be '
+                    f'evenly divisible by the number of generations per prompt ({self.num_generations}). Given the '
+                    'current effective eval batch size, the valid values for the number of generations are: '
+                    f'{possible_values}.')
 
         # Ensure each process receives a unique seed to prevent duplicate completions when generating with
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
@@ -242,7 +255,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.infer_device = None
-        self.use_fast_infer = self.use_vllm or self.use_lmdeploy  # whether to use the PT backend
+        self.use_fast_infer = use_vllm or use_lmdeploy  # whether to use the PT backend
+        self.is_external_vllm = use_vllm and args.vllm_server_host is not None
         if self.use_fast_infer:
             if self.infer_rank >= 0:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
@@ -269,7 +283,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     if not is_vllm_available():
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                           'Please install vLLM with `pip install vllm -U` to use it.')
-                    self.prepare_vllm(model, fast_infer_device)
+                    if self.is_external_vllm:
+                        self.vllm_client = vllm_client
+                    else:
+                        self.engine = self.prepare_vllm(model, fast_infer_device)
                     self.infer_device = fast_infer_device[self.local_infer_rank]
                 elif self.use_lmdeploy:
                     if not is_lmdeploy_available():
@@ -293,8 +310,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         assert isinstance(lmdeploy_engine, TurboMind), (
                             "Currently only LMDeploy's TurboMind backend is supported. "
                             'The current model is incompatible - please use vLLM or PyTorch backend instead.')
-                self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
-            self._last_loaded_step = 0  # tag to avoid useless loading during grad accumulation
+                if not self.is_external_vllm:
+                    self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
+            self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
 
             # When using vLLM, the main process is responsible for loading the model weights. This can cause process
             # desynchronization and seems to lead to DeepSpeed hanging during initialization. To prevent this, we
@@ -331,7 +349,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._step = 0
         # Buffer the batch to reuse generated outputs across multiple updates. For more details, see
         # `_get_train_sampler` and `_prepare_inputs`.
-        self._buffered_inputs = [None] * args.gradient_accumulation_steps
+        self._buffered_inputs = None
         if self.args.async_generate:
             self.add_callback(GRPOCallback(self))
 
@@ -346,6 +364,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.resample_iterator = cyclic_iter(self.get_resample_dataloader())
         # flag indicating whether the evaluation has started
         self.eval_flag = False
+
+    @profiling_decorator
+    def _prepare_inputs(
+            self, accumulated_local_batch: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
+        mode = 'train' if self.model.training else 'eval'
+        if mode == 'train':
+            generate_every = self.args.gradient_accumulation_steps * self.num_iterations
+            if self._step % generate_every == 0 or self._buffered_inputs is None:
+                accumulated_local_batch = self._generate_and_score_completions(accumulated_local_batch)
+                self._buffered_inputs = accumulated_local_batch  # < this is the change
+            inputs = self._buffered_inputs[self._step % self.args.gradient_accumulation_steps]
+            self._step += 1
+        else:
+            inputs = self._generate_and_score_completions(accumulated_local_batch)
+        return inputs
 
     def split_batches(self):
         """Sync weights in batches
@@ -449,7 +482,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             cls = VllmEngine
             engine_kwargs = {}
         with Swift.grpo_context(model, self.template.processor):
-            self.engine = cls(
+            engine = cls(
                 model.model_dir,
                 model.model_info.torch_dtype,
                 model_type=model.model_meta.model_type,
@@ -466,10 +499,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 max_model_len=self.args.vllm_max_model_len,
                 engine_kwargs=engine_kwargs,
                 **vllm_kwargs)
-            self.engine.default_template = self.template
+            engine.default_template = self.template
+        return engine
 
     @property
     def infer_rank(self):
+        if self.is_external_vllm:
+            # When using external vLLM, only the main process (rank=0) acts as the client.
+            return 0 if self.accelerator.is_main_process else -1
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         node_rank = get_node_setting()[0]
         for _vllm_rank in range(self.args.num_infer_workers):
@@ -528,6 +565,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @profiling_decorator
     def _move_model_to_vllm_lmdeploy(self):
+        if self.is_external_vllm:
+            return super()._move_model_to_vllm()
+
         from accelerate.utils.other import is_compiled_module
 
         for i, parameter_group in enumerate(self.parameter_groups):
@@ -611,7 +651,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.llm.infer.protocol import ChatCompletionResponse
         rank, _, _, _ = get_dist_setting()
         request_config = copy(request_config)
-        results: List[ChatCompletionResponse] = self.engine.infer(
+        results: List[ChatCompletionResponse] = self._engine_infer(
             infer_requests=inputs_slice, request_config=request_config, use_tqdm=False)
         prompt_lens = len(inputs_slice)
         messages_list = [None] * (len(inputs_slice) * self.args.tensor_parallel_size)
@@ -658,7 +698,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     for _input in inputs_slice:
                         _input_std.append(StdTemplateInputs.from_dict(_input))
                         # StdTemplateInputs will not remove responses in infer
-                    results = self.engine.infer(
+                    results = self._engine_infer(
                         infer_requests=_input_std, request_config=request_config, use_tqdm=False)
                 # concat responses from the second loop
                 remove_response = False
@@ -736,7 +776,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         inputs: local inputs
         """
 
-        if self.args.sleep_level > 0 and self.infer_rank >= 0:
+        if not self.is_external_vllm and self.args.sleep_level > 0 and self.infer_rank >= 0:
             if self.args.offload_model:
                 self.offload_model()
             if self.args.offload_optimizer:
@@ -756,7 +796,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # for example, 2 workers, 6 inputs, 0/2/4 dispatch to the first worker
         # 1/3/5 dispatch to the second worker
         # trying to shuffle and average the length
-        distributed_idx = round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
+        nnodes = get_node_setting()[1]
+        num_workers = 1 if self.is_external_vllm else nnodes
+        distributed_idx = round_robin(len(all_inputs), num_workers * self.args.num_infer_workers)
         if self.infer_rank >= 0:
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
             if self.args.async_generate:
@@ -783,8 +825,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         outputs = gather_object(outputs)
         if self.args.tensor_parallel_size > 1:
             outputs = [[item] for output in outputs for item in output]
-        outputs = self.reorder_outputs(outputs, distributed_idx)
-        if self.args.sleep_level > 0 and self.infer_rank >= 0:
+        if not self.is_external_vllm:
+            outputs = self.reorder_outputs(outputs, distributed_idx)
+        if not self.is_external_vllm and self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
             if self.args.gc_collect_after_offload:
                 gc_collect()
@@ -804,6 +847,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             Modified inputs with generated completions added to the last message
             and truncation flag set in 'is_truncated' field.
         """
+        mode = 'train' if self.model.training else 'eval'
         if self.use_fast_infer:
             inputs, outputs = self._fast_infer(inputs)
             # Slice to keep only the local part of the data
@@ -821,7 +865,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
             ), self.multi_turn_completion_length_context():
                 outputs = self._infer_multi_turn(inputs, self.request_config)
-                self.model.train()
+                if mode == 'train':
+                    # In training mode, ensure the model is returned to train() mode after inference
+                    # This is necessary as pt engines set the model to eval mode during generation
+                    self.model.train()
             if is_multimodal:
                 self.template.register_post_encode_hook(models)
             if isinstance(outputs[0][0], list):
@@ -837,7 +884,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         inputs = self._generate_completions(inputs)
         total_rewards_per_func, total_rewards, completions = self._score_completions(inputs)
-        mode = 'eval' if self.control.should_evaluate else 'train'
+        mode = 'train' if self.model.training else 'eval'
 
         if self.args.dynamic_sample and mode == 'train':
             # dynamic sampling for std=0 groups
@@ -873,7 +920,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # reward model
             if isinstance(reward_func, nn.Module):
                 with self._template_context(reward_template):
-                    batched_inputs = [reward_template.encode(infer_request) for infer_request in inputs]
+                    batched_inputs = [reward_template.encode(deepcopy(infer_request)) for infer_request in inputs]
                     reward_inputs = to_device(reward_template.data_collator(batched_inputs), reward_func.device)
 
                 with torch.inference_mode():
@@ -913,7 +960,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             valid_completions.extend(
                 [inp['messages'][-1]['content'] for inp, mask in zip(all_inputs, valid_mask) if mask])
 
-            if len(valid_samples) >= self.global_train_batch_size:
+            if len(valid_samples) >= self.effective_train_batch_size:
                 break
 
             inputs = next(self.resample_iterator)
@@ -922,23 +969,66 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             rewards_per_func, rewards, completions = self._score_completions(inputs)
             resample_count += 1
 
-        if len(valid_samples) >= self.global_train_batch_size:
+        if len(valid_samples) >= self.effective_train_batch_size:
             process_slice = slice(
                 self.accelerator.process_index * len(inputs),
                 (self.accelerator.process_index + 1) * len(inputs),
             )
-            inputs = valid_samples[:self.global_train_batch_size][process_slice]
-            rewards = torch.cat(valid_rewards)[:self.global_train_batch_size]
-            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.global_train_batch_size]
-            completions = valid_completions[:self.global_train_batch_size][process_slice]
+            inputs = valid_samples[:self.effective_train_batch_size][process_slice]
+            rewards = torch.cat(valid_rewards)[:self.effective_train_batch_size]
+            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.effective_train_batch_size]
+            completions = valid_completions[:self.effective_train_batch_size][process_slice]
         else:
             logger.warning(f'There are still std=0 groups present after {self.args.max_resample_times} retries.')
             inputs, rewards, rewards_per_func, completions = origin_data
 
         return inputs, rewards, rewards_per_func, completions
 
-    def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> InputsType:
-        """Prepare the final batch inputs with advantages and other required fields"""
+    def _encode_and_prepare_inputs(self, batch):
+        """Process input batch into model-ready format with gradient accumulation support.
+
+        Args:
+            batch: Input data batch with shape [gas*bs, ...], where gas is gradient
+                accumulation steps and bs is batch size
+
+        Returns:
+            List of encoded inputs with shape [gas, bs, ...] ready for model forward pass
+        """
+        template = self.template
+        ga_batch_encoded_inputs = []
+
+        with self._template_context(template):
+            gas = self.args.gradient_accumulation_steps
+            mode = 'train' if self.model.training else 'eval'
+            bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
+            for i in range(gas):
+                start_idx = i * bs
+                end_idx = (i + 1) * bs
+                batch_encoded_inputs = [template.encode(infer_request) for infer_request in batch[start_idx:end_idx]]
+
+                batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
+                labels = batch_encoded_inputs.pop('labels')
+                last_non_padding = torch.ne(labels, -100).int().argmax(-1)
+                logits_to_keep = (labels.shape[-1] - last_non_padding).max().item()
+                batch_encoded_inputs.update({'completion_mask': labels[:, -logits_to_keep:] != -100})
+
+                ga_batch_encoded_inputs.append(batch_encoded_inputs)
+        return ga_batch_encoded_inputs
+
+    def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> List[InputsType]:
+        """
+        Prepare the final batch inputs with advantages, ref/old_policy logps and other fields for RL training.
+
+        Args:
+            inputs (InputsType): List of input samples. Original shape is [gas*bs] where:
+                - gas: gradient accumulation steps
+                - bs: per-device batch size
+            rewards (torch.Tensor): Tensor of rewards corresponding to the inputs.
+                Shape should match the total number of samples (gas*bs*num_generations)
+
+        Returns:
+            List[InputsType]: A list of prepared batch inputs, organized as [gas][bs]
+        """
         # Compute advantages
         grouped_rewards = rewards.view(-1, self.num_generations)
         mean_grouped_rewards = grouped_rewards.mean(dim=1).repeat_interleave(self.num_generations, dim=0)
@@ -954,51 +1044,59 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         )
         advantages = advantages[process_slice]
 
-        # Prepare mini-batches
-        mini_batch_inputs = _split_into_mini_batches(inputs, mini_batch_size=self.args.mini_batch_size)
-        batch_encoded_inputs = []
+        mode = 'train' if self.model.training else 'eval'
+        bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
+        gas = self.args.gradient_accumulation_steps
+
+        assert len(inputs) == bs * gas, f'Expected {bs * gas} inputs, got {len(inputs)}'
+        gas_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(gas)]
+
+        ga_batch_encoded_inputs = []
         template = self.template
 
-        for mini_batch in mini_batch_inputs:
-            with self._template_context(template):
-                mini_batch_encoded_inputs = [template.encode(infer_request) for infer_request in mini_batch]
-                mini_batch_encoded_inputs = to_device(
-                    template.data_collator(mini_batch_encoded_inputs), self.model.device)
+        # Split advantages by GAS chunks
+        advantage_chunks = torch.chunk(advantages, gas)
 
-            labels = mini_batch_encoded_inputs.pop('labels')
+        for i, (batch, batch_advantages) in enumerate(zip(gas_chunks, advantage_chunks)):
+            # Encode and process each batch (size=bs)
+            with self._template_context(template):
+                batch_encoded_inputs = [template.encode(infer_request) for infer_request in batch]
+                batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
+
+            # Process labels and masks
+            labels = batch_encoded_inputs['labels']
             logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
-            mini_batch_encoded_inputs['logits_to_keep'] = logits_to_keep
-            mini_batch_encoded_inputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
+            batch_encoded_inputs.update({
+                'completion_mask':
+                labels[:, -logits_to_keep:] != -100,
+                'truncated_mask':
+                torch.tensor([b['is_truncated'] for b in batch], dtype=torch.bool),
+                'logits_to_keep':
+                logits_to_keep,
+                'advantages':
+                batch_advantages
+            })
 
             with torch.no_grad():
-                if self.old_policy:
-                    mini_batch_encoded_inputs['old_per_token_logps'] = self._get_per_token_logps(
-                        self.model, mini_batch_encoded_inputs)
-                else:
-                    mini_batch_encoded_inputs['old_per_token_logps'] = None
+                batch_encoded_inputs['old_per_token_logps'] = (
+                    self._get_per_token_logps(self.model, batch_encoded_inputs) if self.old_policy else None)
 
                 if self.beta == 0.0:
                     ref_per_token_logps = None
                 elif self.ref_model is not None:
-                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, mini_batch_encoded_inputs)
+                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, batch_encoded_inputs)
                 else:
                     with self.accelerator.unwrap_model(self.model).disable_adapter():
-                        ref_per_token_logps = self._get_per_token_logps(self.model, mini_batch_encoded_inputs)
+                        ref_per_token_logps = self._get_per_token_logps(self.model, batch_encoded_inputs)
+                batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
 
-                mini_batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
-                mini_batch_encoded_inputs['truncated_mask'] = \
-                    torch.tensor([mb['is_truncated'] for mb in mini_batch], dtype=torch.bool)
-                batch_encoded_inputs.append(mini_batch_encoded_inputs)
-        # Split advantages into mini-batches
-        mini_batch_advantages = _split_into_mini_batches(advantages, mini_batch_size=self.args.mini_batch_size)
-        for i, mini_batch_advantage in enumerate(mini_batch_advantages):
-            batch_encoded_inputs[i].update({'advantages': mini_batch_advantage})
+            ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
-        return batch_encoded_inputs
+        return ga_batch_encoded_inputs
 
     def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func):
         """Log training/evaluation metrics"""
-        mode = 'eval' if self.control.should_evaluate else 'train'
+        mode = 'train' if self.model.training else 'eval'
         device = self.accelerator.device
 
         # Calculate completion length metrics
@@ -1083,35 +1181,41 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
-        completions_length = completion_mask.sum()
-        if completions_length == 0:
-            # Prevent division by zero issues after all completions are filtered by the overlong filter
-            completions_length = completions_length.float() + 1e-4
-        loss = (per_token_loss * completion_mask).sum() / completions_length
+        if self.loss_type == 'grpo':
+            loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
+        elif self.loss_type == 'bnpo':
+            loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
+        elif self.loss_type == 'dr_grpo':
+            loss = (per_token_loss * completion_mask).sum() / (per_token_loss.size(0) * self.max_completion_length)
+        else:
+            raise ValueError(f'Unknown loss type: {self.loss_type}')
 
         # Log the metrics
-        metrics = {}
-        mode = 'eval' if self.control.should_evaluate else 'train'
+        mode = 'train' if self.model.training else 'eval'
 
         if self.beta != 0.0:
-            mean_kl = (per_token_kl * completion_mask).sum() / completions_length
-            metrics['kl'] = mean_kl
+            mean_kl = (per_token_kl * completion_mask).sum() / completion_mask.sum()
+            self._metrics[mode]['kl'].append(self.accelerator.gather_for_metrics(mean_kl).nanmean().item())
 
-        is_clipped = ((coef_1 < 1 - self.epsilon_low) &
-                      (advantages.unsqueeze(1) < 0)) | ((coef_1 > 1 + self.epsilon_high) &
-                                                        (advantages.unsqueeze(1) > 0))
+        # Compute the clipped probability ratios
+        is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages.unsqueeze(1) < 0)
+        is_high_clipped = (coef_1 > 1 + self.epsilon_high) & (advantages.unsqueeze(1) > 0)
+        is_region_clipped = is_low_clipped | is_high_clipped
 
-        clip_ratio = (is_clipped * completion_mask).sum() / completions_length
-        metrics['clip_ratio'] = clip_ratio
+        low_clip = (is_low_clipped * completion_mask).sum() / completion_mask.sum()
+        high_clip = (is_high_clipped * completion_mask).sum() / completion_mask.sum()
+        clip_ratio = (is_region_clipped * completion_mask).sum() / completion_mask.sum()
 
-        # Log metrics or return them
-        if return_outputs:
-            metrics['completions_length'] = completions_length.item()
-            return loss, metrics
-        else:
-            for key, value in metrics.items():
-                self._metrics[mode][key].append(self.accelerator.gather_for_metrics(value).mean().item())
-            return loss
+        gathered_low_clip = self.accelerator.gather_for_metrics(low_clip)
+        self._metrics[mode]['clip_ratio/low_mean'].append(gathered_low_clip.nanmean().item())
+        self._metrics[mode]['clip_ratio/low_min'].append(nanmin(gathered_low_clip).item())
+        gathered_high_clip = self.accelerator.gather_for_metrics(high_clip)
+        self._metrics[mode]['clip_ratio/high_mean'].append(gathered_high_clip.nanmean().item())
+        self._metrics[mode]['clip_ratio/high_max'].append(nanmax(gathered_high_clip).item())
+        gathered_clip_ratio = self.accelerator.gather_for_metrics(clip_ratio)
+        self._metrics[mode]['clip_ratio/region_mean'].append(gathered_clip_ratio.nanmean().item())
+
+        return loss
 
     # Get the per-token log probabilities for the completions for the model and the reference model
     @profiling_decorator
@@ -1198,16 +1302,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.args.async_generate:
             while not self.is_async_generate_eval_rollout_done():
                 time.sleep(0.1)
-        # set mini_batch_size None in evaluation
-        mini_batch_size = self.args.mini_batch_size
-        self.args.mini_batch_size = None
         if self._queue.empty() and self.args.async_generate:
             self._prefetch(dataloader)
         metric_key_prefix = kwargs['metric_key_prefix']
         output = super().evaluation_loop(dataloader, *args, **kwargs)
         metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics['eval'].items()}
         output.metrics.update(metrics)
-        self.args.mini_batch_size = mini_batch_size
         self.eval_flag = True
         return output
 
@@ -1216,48 +1316,32 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Wait for the eval rollout to complete
             while not self.is_async_generate_eval_rollout_done():
                 time.sleep(0.1)
-        if self.args.mini_batch_size is None:
-            return super().training_step(model, inputs, num_items_in_batch)
-        model.train()
-        if hasattr(self.optimizer, 'train') and callable(self.optimizer.train):
-            self.optimizer.train()
+        return super().training_step(model, inputs, num_items_in_batch)
 
-        batch_inputs = self._prepare_inputs(inputs)
+    def _engine_infer(
+        self,
+        infer_requests: List[InferRequest],
+        request_config: Optional[RequestConfig] = None,
+        *,
+        use_tqdm: Optional[bool] = None,
+    ):
+        if self.is_external_vllm:
+            self._process_infer_requests_images(infer_requests)
+            return self.vllm_client.infer(infer_requests.tolist(), asdict(request_config), use_tqdm=use_tqdm)
+        else:
+            return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
 
-        total_loss = torch.tensor(0.0, device=batch_inputs[0]['input_ids'].device)
-        # Initialize metrics accumulators
-        total_kl = 0.0
-        total_clip_ratio = 0.0
-        total_completion_length = 0
-        for mini_batch in batch_inputs:
-
-            with self.compute_loss_context_manager():
-                mini_batch_loss, mini_batch_metrics = self.compute_loss(model, mini_batch, return_outputs=True)
-                mb_completion_length = mini_batch_metrics['completions_length']
-
-            self.accelerator.backward(mini_batch_loss)
-            # Token-level metrics are weighted by completion length to ensure a fair average over all tokens.
-            if self.beta != 0.0:
-                total_kl += mini_batch_metrics['kl'] * mb_completion_length
-            total_clip_ratio += mini_batch_metrics['clip_ratio'] * mb_completion_length
-            total_completion_length += mb_completion_length
-            total_loss += mini_batch_loss * mb_completion_length
-
-        mode = 'eval' if self.control.should_evaluate else 'train'
-        if self.beta != 0.0:
-            self._metrics[mode]['kl'].append(
-                self.accelerator.gather_for_metrics(total_kl / total_completion_length).mean().item())
-        self._metrics[mode]['clip_ratio'].append(
-            self.accelerator.gather_for_metrics(total_clip_ratio / total_completion_length).mean().item())
-
-        total_loss = total_loss / total_completion_length
-
-        del inputs, batch_inputs
-        if (self.args.torch_empty_cache_steps is not None
-                and self.state.global_step % self.args.torch_empty_cache_steps == 0):
-            gc_collect()
-
-        return total_loss.detach()
+    def _process_infer_requests_images(self, infer_requests: List[InferRequest]):
+        import base64
+        if not any('images' in request for request in infer_requests):
+            return
+        for request in infer_requests:
+            if 'images' not in request:
+                continue
+            for i, img in enumerate(request['images']):
+                if 'bytes' in img and img['bytes']:
+                    request['images'][i] = base64.b64encode(img['bytes']).decode('utf-8')
+        return
 
     @property
     def old_policy(self):
@@ -1335,7 +1419,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         Ensures the total sequence length (prompt + completion) never exceeds:
             min(original_max_len, prompt_tokens + max_completion_length)
         """
-        if not (self.multi_turn_func and self.infer_rank >= 0):
+        if not (self.multi_turn_func and self.infer_rank >= 0) or self.is_external_vllm:
             yield
             return
 
@@ -1380,7 +1464,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             data_collator = self._get_collator_with_removed_columns(data_collator, description='training')
 
         dataloader_params = {
-            'batch_size': self._train_batch_size,
+            'batch_size': self._train_batch_size * self.args.gradient_accumulation_steps,
             'collate_fn': data_collator,
             'num_workers': self.args.dataloader_num_workers,
             'pin_memory': self.args.dataloader_pin_memory,
@@ -1404,10 +1488,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return self.accelerator.prepare(DataLoader(resample_dataset, **dataloader_params))
 
     def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
-        # compatible with trl0.16 and trl0.17.0.dev
-        # remove this function when next trl release(0.17.0)
-
-        mode = 'eval' if self.control.should_evaluate else 'train'
+        mode = 'train' if self.model.training else 'eval'
         metrics = {key: sum(val) / len(val) for key, val in self._metrics[mode].items()}  # average the metrics
 
         # This method can be called both in training and evaluation. When called in evaluation, the keys in `logs`
@@ -1433,7 +1514,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None:
                 import pandas as pd
                 df = pd.DataFrame(table)
-                if self.args.wandb_log_unique_prompts:
+                if self.wandb_log_unique_prompts:
                     df = df.drop_duplicates(subset=['prompt'])
                 wandb.log({'completions': wandb.Table(dataframe=df)})
 

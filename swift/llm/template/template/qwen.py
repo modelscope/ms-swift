@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional, Tuple
@@ -25,6 +24,7 @@ class QwenTemplateMeta(ChatmlTemplateMeta):
     default_system: Optional[str] = DEFAULT_SYSTEM
     auto_add_bos: bool = False
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>'])
+    agent_template: str = 'hermes'
 
 
 @dataclass
@@ -45,7 +45,7 @@ register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=qwq_preview_system))
 
 
-class QwQTemplate(Template):
+class ThinkingTemplate(Template):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         if not self.is_training:
@@ -56,7 +56,11 @@ class QwQTemplate(Template):
 
 
 register_template(
-    QwenTemplateMeta(LLMTemplateType.qwq, default_system=None, response_prefix='<think>\n', template_cls=QwQTemplate))
+    QwenTemplateMeta(
+        LLMTemplateType.qwq, default_system=None, response_prefix='<think>\n', template_cls=ThinkingTemplate))
+
+# '<think>\n\n</think>\n\n'
+register_template(QwenTemplateMeta(LLMTemplateType.qwen3, default_system=None, template_cls=ThinkingTemplate))
 
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 
@@ -383,34 +387,52 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
     version = 'omni'
     placeholder_tokens = ['<|IMAGE|>', '<|AUDIO|>', '<|VIDEO|>']
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from transformers.models.qwen2_5_omni.processing_qwen2_5_omni import Qwen2_5OmniProcessorKwargs
+        default = Qwen2_5OmniProcessorKwargs._defaults
+        self.seconds_per_chunk = default['videos_kwargs']['seconds_per_chunk']
+        self.position_id_per_seconds = default['videos_kwargs']['position_id_per_seconds']
+        self.use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
+        self.sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         from qwen_omni_utils import fetch_image, fetch_video
-        sampling_rate = self.processor.feature_extractor.sampling_rate
         if media_type == 'image':
             inputs.images[index] = fetch_image({'image': inputs.images[index]})
             return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
         elif media_type == 'audio':
-            sampling_rate = get_env_args('sampling_rate', int, sampling_rate)
-            inputs.audios[index] = load_audio(inputs.audios[index], sampling_rate)
+            inputs.audios[index] = load_audio(inputs.audios[index], self.sampling_rate)
             return ['<|audio_bos|><|AUDIO|><|audio_eos|>']
         elif media_type == 'video':
             video = inputs.videos[index]
             inputs.videos[index] = fetch_video({'video': video}).to(torch.uint8)
-            use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
-            if use_audio_in_video:
+            if self.use_audio_in_video:
                 import librosa
-                sampling_rate = get_env_args('sampling_rate', int, sampling_rate)
-                video = librosa.load(video, sr=sampling_rate)[0]
-                inputs.audios.insert(inputs.audio_idx, video)
+                if video.startswith('http://') or video.startswith('https://'):
+                    import audioread
+                    video = audioread.ffdec.FFmpegAudioFile(video)
+                video = librosa.load(video, sr=self.sampling_rate)[0]
+                inputs.audios.insert(inputs.audio_idx, (video, 'video'))
                 inputs.audio_idx += 1
+                return ['<|vision_bos|><|audio_bos|><|VIDEO|><|audio_eos|><|vision_eos|>']
             return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)
-        media_inputs = self.processor(
+        processor = self.processor
+        video_audios_mask = []
+        for i, audio in enumerate(inputs.audios):
+            if isinstance(audio, tuple) and audio[1] == 'video':
+                inputs.audios[i] = audio[0]
+                video_audios_mask.append(True)
+            else:
+                video_audios_mask.append(False)
+        video_audios_mask = torch.tensor(video_audios_mask)
+        media_inputs = processor(
             text='',
-            audios=inputs.audios or None,
+            audio=inputs.audios or None,
             images=inputs.images or None,
             videos=inputs.videos or None,
             return_tensors='pt')
@@ -419,31 +441,70 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         media_inputs = to_float_dtype(media_inputs, self.model_info.torch_dtype)
         input_ids = encoded['input_ids']
         labels = encoded['labels']
+        # audio
+        audio_token_id = self._tokenize('<|AUDIO|>')
+        idx_list = findall(input_ids, audio_token_id)
+        feature_attention_mask = media_inputs.get('feature_attention_mask')
+        if feature_attention_mask is not None:
+            audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
+            audio_lengths = (((audio_feature_lengths - 1) // 2 + 1 - 2) // 2 + 1)
+        else:
+            audio_lengths = None
+        audio_lengths_origin = audio_lengths
+        if idx_list:
+            if self.use_audio_in_video:
+                audio_lengths = audio_lengths[~video_audios_mask]
+
+            def _get_new_audio_tokens(i):
+                return audio_token_id * audio_lengths[i]
+
+            input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_audio_tokens)
+
         for media_type in ['image', 'video']:
             token = f'<|{media_type.upper()}|>'
             token_id = self._tokenize(token)
             idx_list = findall(input_ids, token_id)
             if idx_list:
-                merge_length = self.processor.omni_processor.merge_size**2
+                merge_size = processor.image_processor.merge_size
                 media_grid_thw = media_inputs.get(f'{media_type}_grid_thw')
+                if media_type == 'video' and self.use_audio_in_video:
+                    audio_lengths = audio_lengths_origin[video_audios_mask]
+                    video_second_per_grid = media_inputs['video_second_per_grid']
 
-                def _get_new_tokens(i):
-                    token_len = (media_grid_thw[i].prod() // merge_length)
-                    return token_id * token_len
+                    def _get_new_tokens_use_audio_in_video(i):
+                        audio_token_indices = torch.arange(audio_lengths[i])
+                        grid_thw = media_grid_thw[i]
+                        height = grid_thw[1] // merge_size
+                        width = grid_thw[2] // merge_size
+                        video_token_indices = torch.arange(grid_thw[0]).reshape(-1, 1, 1)
+                        video_token_indices = torch.broadcast_to(
+                            video_token_indices, (video_token_indices.shape[0], height, width)).reshape(-1)
+                        video_token_indices = (
+                            video_token_indices * video_second_per_grid[i] * self.position_id_per_seconds)
+                        tokens_per_chunk = int(self.position_id_per_seconds * self.seconds_per_chunk)
+                        video_chunk_indexes = processor.get_chunked_index(video_token_indices, tokens_per_chunk)
+                        audio_chunk_indexes = processor.get_chunked_index(audio_token_indices, tokens_per_chunk)
 
-                input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
-        # audio
-        feature_attention_mask = media_inputs.get('feature_attention_mask')
-        if feature_attention_mask is not None:
-            audio_feature_lengths = torch.sum(feature_attention_mask, dim=1).tolist()
-            token_id = self._tokenize('<|AUDIO|>')
-            idx_list = findall(input_ids, token_id)
+                        res = []
+                        for j in range(max(len(video_chunk_indexes), len(audio_chunk_indexes))):
+                            if j < len(video_chunk_indexes):
+                                video_seq_length = video_chunk_indexes[j][1] - video_chunk_indexes[j][0]
+                                res += token_id * video_seq_length
+                            if j < len(audio_chunk_indexes):
+                                audio_seq_length = audio_chunk_indexes[j][1] - audio_chunk_indexes[j][0]
+                                res += audio_token_id * audio_seq_length
+                        return res
 
-            def _get_new_tokens(i):
-                place_num = ((audio_feature_lengths[i] - 1) // 2 + 1 - 2) // 2 + 1
-                return token_id * place_num
+                    input_ids, labels = self._extend_tokens(input_ids, labels, idx_list,
+                                                            _get_new_tokens_use_audio_in_video)
 
-            input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
+                else:
+
+                    def _get_new_tokens(i):
+                        token_len = (media_grid_thw[i].prod() // (merge_size**2))
+                        return token_id * token_len
+
+                    input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
@@ -459,7 +520,6 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
         else:
             audio_feature_lengths = None
-        use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
         video_second_per_grid = inputs.pop('video_second_per_grid', None)
         input_ids = inputs['input_ids']
         attention_mask = inputs.get('attention_mask')
@@ -470,7 +530,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             inputs.get('image_grid_thw'),
             inputs.get('video_grid_thw'),
             attention_mask,
-            use_audio_in_video,
+            self.use_audio_in_video,
             audio_feature_lengths,
             video_second_per_grid,
         )
@@ -492,7 +552,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
 
     def generate(self, model, *args, **kwargs):
         if kwargs.get('video_grid_thw') is not None:
-            kwargs['use_audio_in_video'] = get_env_args('use_audio_in_video', bool, False)
+            kwargs['use_audio_in_video'] = self.use_audio_in_video
         return super().generate(model, *args, **kwargs)
 
 

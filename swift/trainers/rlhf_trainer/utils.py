@@ -133,31 +133,13 @@ def patch_lora_unmerge(model):
                 del module._cache_pop_origin
 
 
-def _split_into_mini_batches(batch: List, mini_batch_size: int) -> List[List]:
-    """
-    Splits a full batch into multiple mini-batches based on the specified mini_batch_size.
-
-    Args:
-        batch (List): The full batch.
-        mini_batch_size (int): The size of each mini-batch.
-
-    Returns:
-        List[List]: A list of mini-batches.
-    """
-    if mini_batch_size is None or mini_batch_size >= len(batch):
-        # If mini_batch_size is not specified or larger than the batch size,
-        # return the full batch as a single mini-batch
-        return [batch]
-
-    mini_batches = []
-    for i in range(0, len(batch), mini_batch_size):
-        mini_batch = batch[i:i + mini_batch_size]
-        mini_batches.append(mini_batch)
-    return mini_batches
-
-
 class _ForwardRedirection:
-    # Code adapted from https://github.com/huggingface/trl/pull/3260
+    """Implements the `forward-redirection`.
+    Taken from Pytorch-lightning:
+    https://github.com/Lightning-AI/pytorch-lightning/blob/02311d03fb982560246eead7c08104481fac9579/src/lightning/pytorch/strategies/strategy.py#L602
+    A method call to a wrapped module gets rerouted through the wrapper's `forward` method instead.
+    """
+
     def __call__(self, wrapper_module: nn.Module, original_module: nn.Module, method: callable, *args: Any,
                  **kwargs: Any):
         """Reroutes a method call through the `wrapper_module`'s `forward` method.

@@ -6,7 +6,7 @@ from typing import List, Union
 from datasets import Dataset as HfDataset
 
 from swift.plugin import extra_callbacks, get_loss_func, get_metric
-from swift.trainers import IntervalStrategy, TrainerFactory
+from swift.trainers import TrainerFactory
 from swift.utils import (append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array,
                          use_torchacc)
 from ..argument import TrainArguments
@@ -108,7 +108,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     @staticmethod
     def _save_val_dataset(output_dir: str, val_dataset):
-        if isinstance(val_dataset, HfDataset):
+        if is_master() and isinstance(val_dataset, HfDataset):
             os.makedirs(output_dir, exist_ok=True)
             val_dataset_path = os.path.join(output_dir, 'val_dataset.jsonl')
             append_to_jsonl(val_dataset_path, val_dataset.to_list())
@@ -118,8 +118,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
 
         train_dataset, val_dataset = self._get_dataset()
-        self._save_val_dataset(args.output_dir, val_dataset)
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
+
+        if args.task_type == 'seq_cls':
+            args.problem_type = args.problem_type or getattr(self.model.config, 'problem_type', None)
+            logger.info(f'args.problem_type: {args.problem_type}')
         args.save_args()
 
         data_collator = self._get_data_collator()
@@ -239,6 +242,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def _encode_dataset(self, train_dataset, val_dataset):
         template = self.template
         args = self.args
+        output_dir = getattr(args, 'output_dir', None) or getattr(args, 'save')
+        self._save_val_dataset(output_dir, val_dataset)
         is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
         predict_with_generate = getattr(args, 'predict_with_generate', False)
         if not is_grpo:
@@ -269,13 +274,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 if val_dataset is not None and not predict_with_generate:
                     self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
 
-        if val_dataset is None and hasattr(args, 'training_args'):
-            args.training_args.evaluation_strategy = IntervalStrategy.NO
-            args.training_args.eval_strategy = IntervalStrategy.NO
-
-        if args.task_type == 'seq_cls':
-            args.problem_type = args.problem_type or getattr(self.model.config, 'problem_type', None)
-            logger.info(f'args.problem_type: {args.problem_type}')
         return train_dataset, val_dataset
 
 

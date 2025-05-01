@@ -21,7 +21,8 @@ from peft.tuners.tuners_utils import BaseTunerLayer
 from peft.utils import _get_submodules, get_quantization_config
 from transformers import Conv1D
 
-from swift import LoraConfig, get_logger
+from swift.utils import get_logger
+from .peft import LoraConfig
 from .utils import ActivationMixin, ModulesToSaveWrapper, SwiftAdapter
 
 logger = get_logger()

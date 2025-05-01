@@ -143,8 +143,11 @@ class GRPOArgumentsMixin:
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
-    # vllm_device, vllm_gpu_memory_utilization, and vllm_max_model_len are defined in HfGRPOConfig.
     num_infer_workers: int = 1
+    # vllm
+    vllm_device: List[str] = field(default_factory=lambda: ['auto'])
+    vllm_gpu_memory_utilization: float = 0.9
+    vllm_max_model_len: Optional[int] = None
     vllm_max_num_seqs: int = 256
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
@@ -175,9 +178,6 @@ class GRPOArgumentsMixin:
     gc_collect_after_offload: bool = False
     multi_turn_func: Optional[str] = None
 
-    # mini-batch
-    mini_batch_size: Optional[int] = None
-
     # DAPO, https://arxiv.org/abs/2503.14476
     dynamic_sample: bool = False
     max_resample_times: int = 3
@@ -190,6 +190,15 @@ class GRPOArgumentsMixin:
 
     # compatible with trl main branch(0.17.0.dev0)
     wandb_log_unique_prompts: Optional[bool] = None
+
+    # external vllm
+    vllm_server_host: Optional[str] = None
+    vllm_server_port: int = 8000
+    vllm_server_timeout: float = 240.0
+    vllm_client = None
+
+    # dataset
+    dataset_shuffle: Optional[bool] = True
 
     use_liger_loss: bool = False
 

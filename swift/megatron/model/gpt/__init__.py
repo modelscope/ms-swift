@@ -1,8 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from swift.llm import ModelType
-from ..config import convert_hf_config
 from ..constant import MegatronModelType
 from ..register import MegatronModelMeta, register_megatron_model
+from .config import convert_gpt_hf_config
 from .hf2mcore import convert_hf2mcore
 from .mcore2hf import convert_mcore2hf
 from .model import model_provider
@@ -34,4 +34,7 @@ register_megatron_model(
         ModelType.numina,
         ModelType.ziya,
         ModelType.mengzi3,
-    ], model_provider, convert_hf_config, convert_mcore2hf, convert_hf2mcore))
+        ModelType.qwen3,
+        ModelType.qwen2_moe,
+        ModelType.qwen3_moe,
+    ], model_provider, convert_gpt_hf_config, convert_mcore2hf, convert_hf2mcore))

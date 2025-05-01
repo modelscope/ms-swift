@@ -352,7 +352,7 @@ def test_agent():
             model='Qwen/Qwen2-7B-Instruct',
             dataset=['swift/ToolBench#500'],
             loss_scale='react',
-            tools_prompt='react_zh',
+            agent_template='toolbench',
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))

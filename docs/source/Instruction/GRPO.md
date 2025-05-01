@@ -6,23 +6,56 @@
 
 环境安装
 ```bash
-pip install math_verify # reward function
+pip install math_verify==0.5.2 # reward function
 pip install -U trl
 ```
 
-**注意**：训练过程中 loss 接近0 是正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
+**FAQ**
+1. 训练过程中 loss 接近0 是正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
+2. 训练的steps怎么计算? 参考[issue](https://github.com/modelscope/ms-swift/issues/3912)
+3. clip_ratio为什么总是1? 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
+
 
 ## 集群支持
 
 ![](../../resources/grpo.png)
 
-SWIFT的GRPO训练中，训练模型尽量使用可见显卡的前部分，而rollout尽量使用可见显卡的后部分。这意味着
+GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样过程，提供以下两种部署模式：
 
-- 如果命令中NPROC_PER_NODE和num_infer_workers相等，都是可见显卡数量，训练和推理放在了相同显卡上，这时需要配置sleep_level
-- 如果命令中NPROC_PER_NODE加上num_infer_workers等于可见显卡数量，则训练使用前部分卡，rollout使用后部分卡，这时可以配置async_generate
+### 1. 内部集成模式 (Internal)
 
-> async_generate实际上使用了step-1的policy model，因此`clip`操作实际上不生效。如果训练中不稳定或者无法收敛，可以尝试关掉此参数。
-> 在我们的实际实验中，即使开启async_generate后不稳定或不收敛的情况较少出现。
+- 在Trainer内部直接启动推理服务
+- 提供两种资源分配策略：
+  - **协同模式 (Colocate)**: 训练与推理共享GPU资源
+  - **异步模式 (Async)**: 训练与推理使用独立GPU资源
+
+### GRPO训练资源配置方案
+| 配置场景                 | NPROC_PER_NODE | num_infer_workers | 资源分配说明             |
+|--------------------------|----------------|------------------|------------------------|
+| **Colocate**   | =总GPU数      | =总GPU数          | 训练和推理共享全部GPU资源              |
+| **Async**      | =训练卡数      | =推理卡数         | 必须满足：训练卡数 + 推理卡数 = 总GPU数 |
+
+**注：**
+1. 在Colocate模式下推荐设置`sleep_level=1`, 在模型训练时释放vLLM占用显存
+2. 总GPU数指可见的GPU设备总数
+
+### 2. 外部服务模式 (External)
+连接外部的 vLLM 推理服务器
+使用时，使用以下参数配置外部 vLLM 服务器
+```bash
+--vllm_server_host <服务器IP> \
+--vllm_server_port <服务端口> \
+--vllm_server_timeout <超时时间> \
+```
+使用`swift rollout`命令部署vLLM 服务器, 现仅支持vLLM backend
+```bash
+CUDA_VISIBLE_DEVICES=2 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+```
+完整脚本可以参考[这里](../../../examples/train/grpo/multi_node/Qwen2_5_32B_full.sh)
+
 
 ## 奖励函数
 ### 自定义奖励函数
@@ -112,18 +145,29 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 ## 参数与运行脚本
 参数
-- num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_eval_batch_size * nproc_per_node 整除
+- per_device_train_batch_size: 每个设备训练批量大小，在GRPO中，指 completion 的批次大小。
+- per_device_eval_batch_size: 每个设备评估批量大小，在GRPO中，指 completion 的批次大小。
+- num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_batch_size * gradient_accumulation_steps * nproc_per_node 整除，默认为8
 - max_completion_length: 采样生成的最大长度，默认为512
 - ds3_gather_for_generation: 该参数适用于DeepSpeed ZeRO-3。如果启用，策略模型权重将被收集用于生成，从而提高生成速度。然而，禁用此选项允许训练超出单个GPU VRAM的模型，尽管生成速度会变慢。禁用此选项与vLLM生成不兼容。默认为True
 - reward_funcs: 奖励函数，根据模型生成结果进行打分，内置accuracy、format、cosine和repetition四个rule-based函数，详细见 swift/plugin/orm.py 文件
 - reward_weights: 每个奖励函数的权重。必须与奖励函数的数量匹配。如果为 None，则所有奖励的权重都相等，为`1.0`
   - 提示：如果GRPO训练中包含`--reward_model`，则其加在奖励函数的最后位置
+- dataset_shuffle: 是否对dataset进行随机操作，默认为True
+- loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo'], 默认为'grpo', 具体查看该[pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)
 - log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb` 使用。默认为False
   - 提示：若没有设置`--report_to wandb`，则会在checkpoint中创建`completions.jsonl`来存储生成内容
 - use_vllm: 是否使用vLLM作为采样的生成后端，默认为False，建议使用加快训练速度
 - vllm_device: 设置vLLM部署的设备，默认为`auto`, 即未被使用的第一张显卡，使用`cuda:x`来设置特定的卡。
-- vllm_gpu_memory_utilization: vLLM透传参数
-- vllm_max_model_len: vLLM透传参数
+- vllm_gpu_memory_utilization: vllm透传参数，默认为0.9
+- vllm_max_model_len: vllm透传参数，默认为None
+- vllm_max_num_seqs: vllm透传参数，默认为256
+- vllm_enforce_eager: vllm透传参数，默认为False
+- vllm_limit_mm_per_prompt: vllm透传参数，默认为None
+- vllm_enable_prefix_caching: vllm透传参数，默认为True
+- vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用
+- vllm_server_port vLLM server 服务端口，默认为8000
+- vllm_server_timeout 连接vLLM server的超时时间，默认为120s
 - reward_model: 同model, 使用奖励模型作为奖励函数，与reward_funcs至少需要指定一个
 - num_iterations: 每个批次代更新次数，默认为1.
 - epsilon: clip 系数，默认为0.2.
@@ -136,10 +180,13 @@ A conversation between User and Assistant. The user asks a question, and the Ass
   - 注意：若该参数设置为True，训练时grad_norm一直为0，请安装`vllm==0.7.3`
 - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False
 - multi_turn_func: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现
-- mini_batch_size：用于将每个设备上的批次大小（per_device_batch）进一步切分为更小的子批次。为确保切分有效，per_device_batch 需要能够被 mini_batch_size 整除
 - dynamic_sample：筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
 - max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。
 - overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。
+- vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用 \
+- vllm_server_port vLLM server 服务端口，默认为8000 \
+- vllm_server_timeout 连接vLLM server的超时时间，默认为120s \
+
 
 奖励函数参数，见[内置奖励函数](#内置奖励函数)
 
@@ -299,6 +346,12 @@ swift rlhf \
     --system 'examples/train/grpo/prompt.txt' \
     --log_completions true
 ```
+多机训练参考[这里](../../../examples/train/grpo/multi_node/)
+
+注：内部集成模式下，需要不同节点的GPU配置以及训练参数相同
+
+
+
 
 ## DAPO
 [Decoupled Clip and Dynamic sAmpling Policy Optimization (DAPO)](https://arxiv.org/abs/2503.14476)在GRPO的基础上设置了几种trick，分别是

@@ -8,6 +8,19 @@ from swift.plugin import ORM, orms
 from swift.utils import get_logger
 
 logger = get_logger()
+"""
+Step 1: Define a Reward Class
+    Implement your custom reward calculation logic within the __call__ method.
+    The method accepts the model's output completions and dataset columns (passed as kwargs) as input parameters.
+
+Step 2: Register the Reward Class in orms
+    For example:
+    python orms['external_math_acc'] = MathAccuracy
+
+Step 3: Configure the Arguments
+    Use the following arguments when running the script:
+    bash --plugin /path/to/plugin.py --reward_funcs external_math_acc
+"""
 
 
 # Code borrowed from plugin/orm.py

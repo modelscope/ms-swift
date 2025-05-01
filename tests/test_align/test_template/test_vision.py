@@ -509,10 +509,11 @@ def test_phi4_vision():
 
 def test_gemma3_vision():
     pt_engine = PtEngine('LLM-Research/gemma-3-4b-it')
-    response = _infer_model(pt_engine)
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>Describe this image in detail.'}])
     pt_engine.default_template.template_backend = 'jinja'
-    response2 = _infer_model(pt_engine)
-    assert response == response2
+    response2 = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>Describe this image in detail.'}])
+    assert response[:80] == response2[:80] == (
+        "Here's a detailed description of the image:\n\n**Overall Impression:**\n\nThe image ")
 
 
 def test_mistral_2503():
@@ -535,6 +536,18 @@ def test_llama4():
     response = _infer_model(pt_engine, messages=messages, images=images)
     assert response[:128] == ('The two images are distinct in their subject matter and style. The first image features '
                               'a realistic depiction of a kitten, while') and len(response) == 654
+
+
+def test_kimi_vl():
+    pt_engine = PtEngine('moonshotai/Kimi-VL-A3B-Instruct')
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == ('The first image is a close-up of a kitten with a blurred background, '
+                        'while the second image is a cartoon of four sheep standing in a field.')
 
 
 if __name__ == '__main__':
@@ -584,8 +597,9 @@ if __name__ == '__main__':
     # test_minicpmo()
     # test_valley()
     # test_ui_tars()
-    # test_gemma3_vision()
+    test_gemma3_vision()
     # test_mistral_2503()
     # test_llama4()
-    test_internvl3_8b()
-    test_internvl3_9b()
+    # test_internvl3_8b()
+    # test_internvl3_9b()
+    # test_kimi_vl()
