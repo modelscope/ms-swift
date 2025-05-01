@@ -203,15 +203,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if not is_liger_available():
                 raise ImportError(
                     'Liger is required to use `liger_loss` as the GRPO loss. Run `pip install liger-kernel`.')
-            if is_peft_model(model):
-                raise ValueError('Liger loss is not supported with a PEFT model.')
 
             self.liger_grpo_loss = LigerFusedLinearGRPOLoss(
                 beta=self.beta,
                 epsilon_low=self.epsilon_low,
                 epsilon_high=self.epsilon_high,
                 temperature=self.temperature,
-                use_ref_model=self.ref_model is not None,
+                use_ref_model=self.beta != 0.0,
                 loss_type=self.loss_type,
                 max_completion_length=self.max_completion_length,
             )
@@ -1086,15 +1084,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 batch_encoded_inputs['old_per_token_logps'] = (
                     self._get_per_token_logps(self.model, batch_encoded_inputs) if self.old_policy else None)
 
-                if self.beta == 0.0:
-                    ref_per_token_logps = None
-                elif self.ref_model is not None:
-                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, batch_encoded_inputs)
-                else:
-                    with self.accelerator.unwrap_model(self.model).disable_adapter():
-                        ref_per_token_logps = self._get_per_token_logps(self.model, batch_encoded_inputs)
-                batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
-
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
         return ga_batch_encoded_inputs
@@ -1175,7 +1164,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Compute the KL divergence between the model and the reference model
         if self.beta != 0.0:
-            ref_per_token_logps = inputs['ref_per_token_logps']
+            with torch.no_grad():
+                if self.ref_model is not None:
+                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, inputs)
+                else:
+                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                        ref_per_token_logps = self._get_per_token_logps(self.model, inputs)
+
             per_token_kl = (
                 torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
@@ -1254,6 +1249,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     @profiling_decorator
     def _get_last_hidden_state(self, unwrapped_model, inputs, logits_to_keep):
         # unwrap the model to access the model.model
+        if is_peft_model(unwrapped_model):
+            unwrapped_model = unwrapped_model.base_model.model
         if not unwrapped_model.model_meta.is_multimodal:
             last_hidden_state = unwrapped_model.model(
                 input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask']).last_hidden_state

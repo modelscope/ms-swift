@@ -213,17 +213,15 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             return
         from packaging import version
 
-        if self.use_liger_loss:
-            import liger_kernel
-            liger_kernel_version = version.parse(liger_kernel.__version__)
-            assert liger_kernel_version >= version.parse('0.5.8'), (
-                'Your current version of `liger-kernel` is outdated. '
-                'Please update it by running: pip install -U liger-kernel')
-
         import trl
         trl_version = version.parse(trl.__version__)
         assert trl_version >= version.parse('0.17'), ('Your current version of `trl` is outdated. '
                                                       'Please update it by running: pip install -U trl')
+
+        if self.use_liger_loss:
+            from trl.import_utils import is_liger_kernel_available
+            assert is_liger_kernel_available(), (
+                'Please install/update liger-kernel by running: pip install -U liger-kernel')
 
         if self.num_generations < 2:
             raise ValueError(
