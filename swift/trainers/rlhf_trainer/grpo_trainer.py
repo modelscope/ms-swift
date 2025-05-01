@@ -959,37 +959,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return inputs, rewards, rewards_per_func, completions
 
-    def _encode_and_prepare_inputs(self, batch):
-        """Process input batch into model-ready format with gradient accumulation support.
-
-        Args:
-            batch: Input data batch with shape [gas*bs, ...], where gas is gradient
-                accumulation steps and bs is batch size
-
-        Returns:
-            List of encoded inputs with shape [gas, bs, ...] ready for model forward pass
-        """
-        template = self.template
-        ga_batch_encoded_inputs = []
-
-        with self._template_context(template):
-            gas = self.args.gradient_accumulation_steps
-            mode = 'train' if self.model.training else 'eval'
-            bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-            for i in range(gas):
-                start_idx = i * bs
-                end_idx = (i + 1) * bs
-                batch_encoded_inputs = [template.encode(infer_request) for infer_request in batch[start_idx:end_idx]]
-
-                batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
-                labels = batch_encoded_inputs.pop('labels')
-                last_non_padding = torch.ne(labels, -100).int().argmax(-1)
-                logits_to_keep = (labels.shape[-1] - last_non_padding).max().item()
-                batch_encoded_inputs.update({'completion_mask': labels[:, -logits_to_keep:] != -100})
-
-                ga_batch_encoded_inputs.append(batch_encoded_inputs)
-        return ga_batch_encoded_inputs
-
     def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> List[InputsType]:
         """
         Prepare the final batch inputs with advantages, ref/old_policy logps and other fields for RL training.
