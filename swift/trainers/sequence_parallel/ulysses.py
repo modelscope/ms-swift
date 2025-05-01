@@ -34,7 +34,47 @@ class Ulysses(SequenceParallel):
         _sequence_parallel_size = self.sequence_parallel_size
 
         from functools import partial
-        from deepspeed.sequence.layer import DistributedAttention
+        class DistributedAttention(torch.nn.Module):
+            def __init__(
+                    self,
+                    local_attention,
+                    sequence_process_group: dist.ProcessGroup,
+                    scatter_idx: int = 2,
+                    gather_idx: int = 0,
+            ) -> None:
+
+                super(DistributedAttention, self).__init__()
+                self.local_attn = local_attention
+                self.spg = sequence_process_group
+                self.scatter_idx = scatter_idx
+                self.gather_idx = gather_idx
+                self.overlap_handles = None
+                self.sp_stream = None
+                self.causal_mask_func = None
+
+            def forward(self,
+                        query: Tensor,
+                        key: Tensor,
+                        value: Tensor,
+                        attention_mask: Tensor,
+                        batch_dim_idx: int,
+                        *args: Any,
+                        **kwargs) -> Tensor:
+                from deepspeed.sequence.layer import _SeqAllToAll
+                query_layer = _SeqAllToAll.apply(self.spg, query, self.scatter_idx, self.gather_idx, batch_dim_idx,
+                                                 None,
+                                                 self.overlap_handles, 'q')
+                key_layer = _SeqAllToAll.apply(self.spg, key, self.scatter_idx, self.gather_idx, batch_dim_idx, None,
+                                               self.overlap_handles, 'k')
+                value_layer = _SeqAllToAll.apply(self.spg, value, self.scatter_idx, self.gather_idx, batch_dim_idx,
+                                                 None,
+                                                 self.overlap_handles, 'v')
+                context_layer = self.local_attn(query_layer, key_layer, value_layer, attention_mask, *args, **kwargs)
+
+                output = _SeqAllToAll.apply(self.spg, context_layer, self.gather_idx, self.scatter_idx, batch_dim_idx,
+                                            self.sp_stream, self.overlap_handles, 'o')
+                return output
+
         from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 
         ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'] = ALL_ATTENTION_FUNCTIONS['flash_attention_2']
@@ -44,45 +84,46 @@ class Ulysses(SequenceParallel):
                              query_states,
                              key_states,
                              value_states,
+                             attention_mask,
                              *args, dist_attn, **kwargs):
             if dist_attn.local_attn is None:
-                def _attention(*args, **kwargs):
-                    return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, *args, **kwargs)[0]
+                def _attention(query, key, value, *args, **kwargs):
+                    query = query.transpose(1, 2)
+                    key = key.transpose(1, 2)
+                    value = value.transpose(1, 2)
+                    return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query, key, value, *args, **kwargs)[0]
 
                 dist_attn.local_attn = _attention
 
-            return dist_attn(query_states,
-                             key_states,
-                             value_states, 0, None, *args, **kwargs), None
+            return dist_attn(query_states.transpose(1,2),
+                             key_states.transpose(1,2),
+                             value_states.transpose(1,2), attention_mask, 0, *args, **kwargs), None
 
         def local_sdpa_attn(module: torch.nn.Module,
                             query_states,
                             key_states,
                             value_states,
+                            attention_mask,
                             *args, dist_attn, **kwargs):
             if dist_attn.local_attn is None:
                 def _attention(query, key, value, *args, **kwargs):
                     query = query.transpose(1, 2)
                     key = key.transpose(1, 2)
                     value = value.transpose(1, 2)
-                    print('before attention query', query.shape, flush=True)
-                    print('before attention key', key.shape, flush=True)
-                    print('before attention value', value.shape, flush=True)
                     return ALL_ATTENTION_FUNCTIONS['sdpa_origin'](module, query, key, value, *args, **kwargs)[0]
 
                 dist_attn.local_attn = _attention
-            # print(query_states.shape)
-            print('before transpose query', query_states.shape, flush=True)
-            print('before transpose key', key_states.shape, flush=True)
-            print('before transpose value', value_states.shape, flush=True)
             return dist_attn(query_states.transpose(1,2),
                              key_states.transpose(1,2),
-                             value_states.transpose(1,2), 0, None, *args, **kwargs), None
+                             value_states.transpose(1,2), attention_mask, 0, *args, **kwargs), None
 
         ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = partial(local_flash_attn, dist_attn=
         DistributedAttention(None, self.group, 2, 1))
         ALL_ATTENTION_FUNCTIONS['sdpa'] = partial(local_sdpa_attn, dist_attn=
         DistributedAttention(None, self.group, 2, 1))
+
+        self.causal_mask_func = model.model.model._update_causal_mask
+        self.model_dtype = next(model.parameters()).dtype
 
     @staticmethod
     def _pad_tensor(x: Tensor, dim: int, padding_size: int) -> Tensor:
@@ -186,44 +227,50 @@ class Ulysses(SequenceParallel):
         attention_mask = self.pad_for_sequence_parallel(attention_mask, padding_value=0, dim=-1)
 
         sp_group = self.group
+        cache_position = torch.arange(
+            0, input_ids.shape[1], device=input_ids.device
+        )
+        attention_mask = self.causal_mask_func(attention_mask, input_ids.to(self.model_dtype), cache_position, None, None)
         input_ids = self.split_for_sequence_parallel(input_ids, dim=1, sp_group=sp_group)
+        labels = torch.roll(labels, shifts=-1, dims=1)
         labels = self.split_for_sequence_parallel(labels, dim=1, sp_group=sp_group)
         position_ids = self.split_for_sequence_parallel(position_ids, dim=1, sp_group=sp_group)
-        attention_mask = self.split_for_sequence_parallel(attention_mask, dim=-1, sp_group=sp_group)
+
         if loss_scale is not None:
             loss_scale = self.pad_for_sequence_parallel(loss_scale, padding_value=0., dim=-1)
+            loss_scale = torch.roll(loss_scale, shifts=-1, dims=1)
             loss_scale = self.split_for_sequence_parallel(loss_scale, dim=1, sp_group=sp_group)
 
         return input_ids, labels, position_ids, attention_mask, loss_scale
 
     def reduce_outputs(self, loss, labels):
+
         class _ReduceLoss(torch.autograd.Function):
 
             @staticmethod
-            def forward(ctx, mean_loss, loss_scale, process_group):
+            def forward(ctx, total_loss, loss_scale, process_group):
                 ctx.mode = process_group
                 if loss_scale == 0:
                     # convert nan to 0 just for logging
-                    mean_loss = torch.nan_to_num(mean_loss)
-                loss_sum = mean_loss * loss_scale
-                dist.all_reduce(loss_sum, group=process_group)
+                    total_loss = torch.nan_to_num(total_loss)
+                dist.all_reduce(total_loss, group=process_group)
                 dist.all_reduce(loss_scale, group=process_group)
-                loss = loss_sum / loss_scale
+                loss = total_loss / loss_scale
                 return loss
 
             @staticmethod
             def backward(ctx, grad_output):
                 return grad_output, None, None
 
-        def reduce_sequence_parallel_loss(mean_loss,
+        def reduce_sequence_parallel_loss(total_loss,
                                           loss_scale,
                                           sp_group: dist.ProcessGroup = None):
             if dist.get_world_size(sp_group) == 1:
-                return mean_loss
+                return total_loss
             if sp_group is None:
                 # avoid bc breaking
                 sp_group = self.group
-            return _ReduceLoss.apply(mean_loss, loss_scale, sp_group)
+            return _ReduceLoss.apply(total_loss, loss_scale, sp_group)
         # reduce loss for logging correctly
         num_tokens = (labels != -100).sum()
         return reduce_sequence_parallel_loss(loss, num_tokens, self.group)
@@ -231,12 +278,29 @@ class Ulysses(SequenceParallel):
     def world_size(self):
         return self.sequence_parallel_size
 
+    @property
+    def is_last_sequence(self):
+        return dist.get_rank(self.device_mesh['sequence'].get_group()) == self.world_size() - 1
+
     def get_dataloader(self, trainer):
-        # modified from HFTrainer.get_train_dataloader
-        # RandomSampler -> SequenceParallelSampler
         if trainer.train_dataset is None:
             raise ValueError('Trainer: training requires a train_dataset.')
 
+        def compute_loss_func(outputs, labels, loss_scale=None, num_items_in_batch=None):
+            labels = torch.cat((torch.ones((labels.shape[0], 1)).to(labels.dtype).to(labels.device), labels), dim=1)
+            if not self.is_last_sequence:
+                outputs.logits = torch.cat((outputs.logits,
+                                            torch.ones((outputs.logits.shape[0], 1, outputs.logits.shape[2])).to(
+                                                outputs.logits.dtype).to(outputs.logits.device)), dim=1)
+            else:
+                labels = labels[:, :-1]
+            from swift.plugin.loss import loss_scale_func
+            return loss_scale_func(outputs, labels,
+                                             loss_scale=loss_scale,
+                                             num_items_in_batch=1,
+                                             reduction='none')
+
+        trainer.compute_loss_func = compute_loss_func
         train_dataset = trainer.train_dataset
         data_collator = trainer.data_collator
         import datasets

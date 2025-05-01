@@ -39,7 +39,7 @@ def register_loss_func(loss_type: str, loss_func: Optional[Callable] = None):
     return _register_loss_func
 
 
-def ce_loss_func(outputs, labels):
+def ce_loss_func(outputs, labels, reduction='none'):
     logits = outputs.logits
     device = logits.device
     # Shift so that tokens < n predict n
@@ -50,14 +50,14 @@ def ce_loss_func(outputs, labels):
     shift_logits = shift_logits[masks]
     shift_labels = shift_labels[masks]
     # Flatten the tokens
-    loss_fct = CrossEntropyLoss(reduction='none')
+    loss_fct = CrossEntropyLoss(reduction=reduction)
     loss = loss_fct(shift_logits, shift_labels)
     return loss, masks
 
 
 # Use @register_loss_func to decorate your own loss, use --loss_type xxx to train
 @register_loss_func(LossType.loss_scale)
-def loss_scale_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+def loss_scale_func(outputs, labels, loss_scale=None, num_items_in_batch=None, reduction='none') -> torch.Tensor:
     """Loss func
 
     Args:
@@ -69,7 +69,7 @@ def loss_scale_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -
     Returns:
 
     """
-    loss, masks = ce_loss_func(outputs, labels)
+    loss, masks = ce_loss_func(outputs, labels, reduction)
     if loss_scale is not None:
         shift_scale = loss_scale[..., 1:].to(masks.device)
         shift_scale = shift_scale[masks]
