@@ -211,8 +211,15 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     def _check_grpo(self):
         if self.rlhf_type != 'grpo':
             return
-
         from packaging import version
+
+        if self.use_liger_loss:
+            import liger_kernel
+            liger_kernel_version = version.parse(liger_kernel.__version__)
+            assert liger_kernel_version >= version.parse('0.5.8'), (
+                'Your current version of `liger-kernel` is outdated. '
+                'Please update it by running: pip install -U liger-kernel')
+
         import trl
         trl_version = version.parse(trl.__version__)
         assert trl_version >= version.parse('0.17'), ('Your current version of `trl` is outdated. '
@@ -278,10 +285,3 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 "Configuration conflict: 'vllm_max_model_len=%s' is ignored for external vLLM. "
                 'Please specify it when launching the inference service: '
                 '`swift deploy --max_model_len <value>`', self.vllm_max_model_len)
-
-        if self.use_liger_loss:
-            assert self.mini_batch_size is None, 'liger loss is not compatible with mini batch currently'
-            try:
-                from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
-            except ImportError:
-                raise ImportError('liger_kernel is not available. Run `pip install -U liger-kernel`.')

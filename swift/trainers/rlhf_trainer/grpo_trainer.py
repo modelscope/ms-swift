@@ -166,7 +166,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         else:
             self.reward_weights = torch.ones(len(reward_funcs), dtype=torch.float32)
 
-        self.num_generations = args.num_generations
+        self.num_generations = args.num_generations  # = G in the GRPO paper
+        self.max_completion_length = args.max_completion_length  # = |o_i| in the GRPO paper
         self.temperature = args.temperature
         self.loss_type = args.loss_type
         model.warnings_issued['estimate_tokens'] = True
@@ -175,6 +176,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
+
+        # we initialize vllm_client in RLHFArguments._init_external_vllm (swift/llm/rlhf_args)
         vllm_client = kwargs.pop('vllm_client')  # for external vllm
         self.use_vllm = args.use_vllm
         self.use_lmdeploy = args.use_lmdeploy
@@ -209,6 +212,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 epsilon_high=self.epsilon_high,
                 temperature=self.temperature,
                 use_ref_model=self.ref_model is not None,
+                loss_type=self.loss_type,
+                max_completion_length=self.max_completion_length,
             )
             self._forward_redirection = _ForwardRedirection()
 
