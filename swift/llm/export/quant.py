@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from swift.llm import (ExportArguments, HfConfigFactory, MaxLengthError, ProcessorMixin, deep_getattr, get_model_arch,
                        is_moe_model, load_dataset, prepare_model_template, save_checkpoint, to_device)
-from swift.utils import get_logger, get_model_parameter_info
+from swift.utils import find_layers, get_logger, get_model_parameter_info
 
 logger = get_logger()
 
@@ -136,6 +136,19 @@ class QuantEngine(ProcessorMixin):
         finally:
             awq_model.move_embed = _origin_move_embed
 
+    def get_awq_modules_to_not_convert(self):
+        block_name = self.get_block_name_to_quantize(self.model)
+        block = deep_getattr(self.model, block_name)[-1]
+        prefix, experts = self._get_experts(block)
+        num_experts = len(experts)
+
+        def cond(name, module):
+            if isinstance(module, nn.Linear) and module.out_features == num_experts:
+                return True
+            return False
+
+        return find_layers(self.model, cond, min_name_len=2)  # min_name_len: fix Qwen3-MoE
+
     def awq_model_quantize(self) -> None:
         from awq.quantize import quantizer
         from transformers import AwqConfig
@@ -150,6 +163,9 @@ class QuantEngine(ProcessorMixin):
             'w_bit': args.quant_bits,
             'version': 'GEMM'
         }
+        if is_moe_model(self.model):
+            quant_config['modules_to_not_convert'] = self.get_awq_modules_to_not_convert()
+        logger.info(f'quant_config: {quant_config}')
         logger.info('Start quantizing the model...')
         with self._patch_awq_move_embed(self.model):
             self.model.quantize(
@@ -224,6 +240,9 @@ class QuantEngine(ProcessorMixin):
         args = self.args
         logger.info(f'Quantization dataset: {args.dataset}')
         block_name_to_quantize = self.get_block_name_to_quantize(self.model)
+        modules_in_block_to_quantize = self.get_modules_in_block_to_quantize(self.model, block_name_to_quantize)
+        logger.info(f'block_name_to_quantize: {block_name_to_quantize}')
+        logger.info(f'modules_in_block_to_quantize: {modules_in_block_to_quantize}')
         with self._patch_gptq():
             gptq_quantizer = GPTQQuantizer(
                 bits=args.quant_bits,
@@ -231,7 +250,7 @@ class QuantEngine(ProcessorMixin):
                 dataset=','.join(args.dataset),
                 batch_size=args.quant_batch_size,
                 block_name_to_quantize=block_name_to_quantize,
-                modules_in_block_to_quantize=self.get_modules_in_block_to_quantize(self.model, block_name_to_quantize))
+                modules_in_block_to_quantize=modules_in_block_to_quantize)
             gptq_quantizer.serialization_keys.append('block_name_to_quantize')
             logger.info('Start quantizing the model...')
             logger.warning('The process of packing the model takes a long time and there is no progress bar. '
