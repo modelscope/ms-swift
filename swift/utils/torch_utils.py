@@ -154,9 +154,12 @@ def _sync_max_memory(max_memory: Dict[Union[int, str], int]) -> Dict[Union[int, 
     return new_max_memory
 
 
-def find_layers(model: nn.Module,
-                cond: Callable[[str, nn.Module], bool],
-                sub_module: Optional[str] = None) -> List[str]:
+def find_layers(
+    model: nn.Module,
+    cond: Callable[[str, nn.Module], bool],
+    sub_module: Optional[str] = None,
+    min_name_len: Optional[int] = None,
+) -> List[str]:
     # The content of target_module_names cannot exist in inner_nodes.
     sub_module_str = sub_module
     if sub_module is None:
@@ -170,13 +173,17 @@ def find_layers(model: nn.Module,
             inner_nodes.add(name)
     target_module_names = set()
     for name, module in sub_module.named_modules():
-        name = f'{sub_module_str}.{name}'
+        if sub_module_str:
+            name = f'{sub_module_str}.{name}'
         if cond(name, module):
             module_name_list = name.split('.')
             module_name = module_name_list.pop()
+            i = 1
             for inner_node in inner_nodes:
-                while module_name_list and inner_node.endswith(re.sub(r'\d+\.', '{}.', module_name)):
+                while module_name_list and inner_node.endswith(re.sub(
+                        r'\d+\.', '{}.', module_name)) or min_name_len and i < min_name_len:
                     module_name = f'{module_name_list.pop()}.{module_name}'
+                    i += 1
             target_module_names.add(module_name)
     return list(target_module_names)
 
