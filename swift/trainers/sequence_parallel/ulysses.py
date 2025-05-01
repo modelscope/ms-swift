@@ -2,7 +2,10 @@ from typing import Optional, Any
 
 import torch
 import torch.distributed as dist
+from torch.distributed.device_mesh import init_device_mesh
 from torch import Tensor
+from torch.utils.data import DataLoader
+from transformers.trainer_utils import seed_worker
 
 from swift.trainers.sequence_parallel.base import SequenceParallel
 from swift.utils import get_dist_setting
@@ -23,14 +26,9 @@ class Ulysses(SequenceParallel):
     def init_sequence_parallel(self, size):
         self.sequence_parallel_size = size
         rank, local_rank, world_size, local_world_size = get_dist_setting()
-        num_sequence_parallel_groups: int = world_size // size
-
-        for i in range(num_sequence_parallel_groups):
-            ranks = list(range(i * size,
-                               (i + 1) * size))
-            group = torch.distributed.new_group(ranks)
-            if rank in ranks:
-                self.group = group
+        self.device_mesh = init_device_mesh(
+            "cuda", mesh_shape=(world_size // size, size), mesh_dim_names=["data", "sequence"]
+        )
 
     def prepare_model(self, model):
         _sequence_parallel_size = self.sequence_parallel_size
@@ -63,19 +61,28 @@ class Ulysses(SequenceParallel):
                             value_states,
                             *args, dist_attn, **kwargs):
             if dist_attn.local_attn is None:
-                def _attention(*args, **kwargs):
-                    return ALL_ATTENTION_FUNCTIONS['sdpa_origin'](module, *args, **kwargs)[0]
+                def _attention(query, key, value, *args, **kwargs):
+                    query = query.transpose(1, 2)
+                    key = key.transpose(1, 2)
+                    value = value.transpose(1, 2)
+                    print('before attention query', query.shape, flush=True)
+                    print('before attention key', key.shape, flush=True)
+                    print('before attention value', value.shape, flush=True)
+                    return ALL_ATTENTION_FUNCTIONS['sdpa_origin'](module, query, key, value, *args, **kwargs)[0]
 
                 dist_attn.local_attn = _attention
-
-            return dist_attn(query_states,
-                             key_states,
-                             value_states, 0, None, *args, **kwargs), None
+            # print(query_states.shape)
+            print('before transpose query', query_states.shape, flush=True)
+            print('before transpose key', key_states.shape, flush=True)
+            print('before transpose value', value_states.shape, flush=True)
+            return dist_attn(query_states.transpose(1,2),
+                             key_states.transpose(1,2),
+                             value_states.transpose(1,2), 0, None, *args, **kwargs), None
 
         ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = partial(local_flash_attn, dist_attn=
-        DistributedAttention(None, self.group, 2, 2))
+        DistributedAttention(None, self.group, 2, 1))
         ALL_ATTENTION_FUNCTIONS['sdpa'] = partial(local_sdpa_attn, dist_attn=
-        DistributedAttention(None, self.group, 2, 2))
+        DistributedAttention(None, self.group, 2, 1))
 
     @staticmethod
     def _pad_tensor(x: Tensor, dim: int, padding_size: int) -> Tensor:
@@ -225,4 +232,61 @@ class Ulysses(SequenceParallel):
         return self.sequence_parallel_size
 
     def get_dataloader(self, trainer):
-        pass
+        # modified from HFTrainer.get_train_dataloader
+        # RandomSampler -> SequenceParallelSampler
+        if trainer.train_dataset is None:
+            raise ValueError('Trainer: training requires a train_dataset.')
+
+        train_dataset = trainer.train_dataset
+        data_collator = trainer.data_collator
+        import datasets
+        if isinstance(train_dataset, datasets.Dataset):
+            train_dataset = trainer._remove_unused_columns(train_dataset, description='training')
+        else:
+            data_collator = trainer._get_collator_with_removed_columns(data_collator, description='training')
+
+        dataloader_params = {
+            'batch_size': trainer._train_batch_size,
+            'collate_fn': data_collator,
+            'num_workers': trainer.args.dataloader_num_workers,
+            'pin_memory': trainer.args.dataloader_pin_memory,
+            'persistent_workers': trainer.args.dataloader_persistent_workers,
+        }
+
+        if not isinstance(train_dataset, torch.utils.data.IterableDataset):
+            from mmengine.dataset import DefaultSampler
+            ulysses = self
+            class SequenceParallelSampler(DefaultSampler):
+
+                def __init__(self,
+                             dataset,
+                             shuffle: bool = True,
+                             seed=None,
+                             round_up: bool = True) -> None:
+                    rank = ulysses.device_mesh['data'].get_coordinate()[0]
+                    world_size = ulysses.device_mesh['data'].size()
+                    self.rank = rank
+                    self.world_size = world_size
+
+                    self.dataset = dataset
+                    self.shuffle = shuffle
+                    assert seed is not None
+                    self.seed = seed
+                    self.epoch = 0
+                    self.round_up = round_up
+
+                    if self.round_up:
+                        import math
+                        self.num_samples = math.ceil(len(self.dataset) / world_size)
+                        self.total_size = self.num_samples * self.world_size
+                    else:
+                        import math
+                        self.num_samples = math.ceil(
+                            (len(self.dataset) - rank) / world_size)
+                        self.total_size = len(self.dataset)
+
+            dataloader_params['sampler'] = SequenceParallelSampler(train_dataset, seed=1024)
+            dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
+            dataloader_params['worker_init_fn'] = seed_worker
+
+        return DataLoader(train_dataset, **dataloader_params)
