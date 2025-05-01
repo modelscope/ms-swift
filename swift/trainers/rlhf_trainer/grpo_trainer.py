@@ -1021,7 +1021,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         mode = 'train' if self.model.training else 'eval'
         bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-        gas = self.args.gradient_accumulation_steps
+        gas = self.args.gradient_accumulation_steps if mode == 'train' else 1
 
         assert len(inputs) == bs * gas, f'Expected {bs * gas} inputs, got {len(inputs)}'
         gas_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(gas)]
