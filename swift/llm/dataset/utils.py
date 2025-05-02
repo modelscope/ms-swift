@@ -138,14 +138,14 @@ class BasePackingDataset:
             res.append(packed)
         return res, ret_sequences
 
-    def _encode_data(self, data):
+    def _encode_data(self, data) -> Dict[str, Any]:
         res = None
         try:
             res = self.template.encode(data)
         except Exception as e:
             if self.strict and not isinstance(e, MaxLengthError):
                 raise
-        return res
+        return res or {}
 
 
 class PackingDataset(BasePackingDataset, Dataset):
@@ -231,18 +231,28 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
     def _processor(self):
         while True:
             data = self._in_queue.get()
-            encoded_data = self._encode_data(data)
+            if data is None:
+                encoded_data = None
+            else:
+                encoded_data = self._encode_data(data)
             self._out_queue.put(encoded_data)
 
     def _put_data_in_queue(self, iterator):
         for _ in range(self.packing_interval):
-            data = next(iterator)
+            try:
+                data = next(iterator)
+            except StopIteration:
+                self._in_queue.put(None)
+                return True
             self._in_queue.put(data)
+        return False
 
     def _fetch_data_out_queue(self, res):
         for _ in range(self.packing_interval):
             data = self._out_queue.get()
             if data is None:
+                break
+            elif len(data) == 0:
                 continue
             res.append((data, len(data['input_ids'])))
         return res
@@ -264,10 +274,12 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
             iterator = iter(self.dataset)
         data = []
         while True:
-            self._put_data_in_queue(iterator)
+            finished = self._put_data_in_queue(iterator)
             data = self._fetch_data_out_queue(data)
-            res, data = self.calculate_matched_group(self.template, data, is_finished=False)
+            res, data = self.calculate_matched_group(self.template, data, is_finished=finished)
             yield from res
+            if finished:
+                break
 
 
 class EncodePreprocessor(RowPreprocessor):
