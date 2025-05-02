@@ -1,5 +1,6 @@
 # use `--loss_scale ignore_empty_think`
 # Avoid losing the think capability by ignoring the loss of empty `<think>\n\n</think>\n\n`
+# This method is also applicable to the Deepseek-R1 series of models.
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3-8B \
