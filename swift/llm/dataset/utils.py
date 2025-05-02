@@ -194,7 +194,7 @@ class PackingDataset(BasePackingDataset, Dataset):
 
     def _producer(self, shard_dataset):
         for data in shard_dataset:
-            encoded_data = self._encode_data(data) or {}  # ignore
+            encoded_data = self._encode_data(data)  # ignore
             self._queue.put(encoded_data)
         self._queue.put(None)
         while True:
@@ -252,7 +252,7 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
             data = self._out_queue.get()
             if data is None:
                 break
-            elif len(data) == 0:
+            elif not data:
                 continue
             res.append((data, len(data['input_ids'])))
         return res
