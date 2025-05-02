@@ -4,7 +4,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model deepseek-ai/DeepSeek-R1-Distill-Qwen-7B \
     --train_type lora \
-    --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT#2000' \
+    --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT#1500' \
               'swift/self-cognition:empty_think#600' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
