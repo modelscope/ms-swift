@@ -194,6 +194,10 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/Qwen3-8B](https://modelscope.cn/models/Qwen/Qwen3-8B)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B)|
 |[Qwen/Qwen3-14B](https://modelscope.cn/models/Qwen/Qwen3-14B)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-14B](https://huggingface.co/Qwen/Qwen3-14B)|
 |[Qwen/Qwen3-32B](https://modelscope.cn/models/Qwen/Qwen3-32B)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-32B](https://huggingface.co/Qwen/Qwen3-32B)|
+|[Qwen/Qwen3-14B-AWQ](https://modelscope.cn/models/Qwen/Qwen3-14B-AWQ)|qwen3|qwen3|transformers>=4.51|&#x2718;|-|[Qwen/Qwen3-14B-AWQ](https://huggingface.co/Qwen/Qwen3-14B-AWQ)|
+|[Qwen/Qwen3-32B-AWQ](https://modelscope.cn/models/Qwen/Qwen3-32B-AWQ)|qwen3|qwen3|transformers>=4.51|&#x2718;|-|[Qwen/Qwen3-32B-AWQ](https://huggingface.co/Qwen/Qwen3-32B-AWQ)|
+|[swift/Qwen3-32B-AWQ](https://modelscope.cn/models/swift/Qwen3-32B-AWQ)|qwen3|qwen3|transformers>=4.51|&#x2718;|-|-|
+|[swift/Qwen3-30B-A3B-AWQ](https://modelscope.cn/models/swift/Qwen3-30B-A3B-AWQ)|qwen3|qwen3|transformers>=4.51|&#x2718;|-|-|
 |[Qwen/Qwen3-30B-A3B-Base](https://modelscope.cn/models/Qwen/Qwen3-30B-A3B-Base)|qwen3_moe|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-30B-A3B-Base](https://huggingface.co/Qwen/Qwen3-30B-A3B-Base)|
 |[Qwen/Qwen3-235B-A22B-Base](https://modelscope.cn/models/Qwen/Qwen3-235B-A22B-Base)|qwen3_moe|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-235B-A22B-Base](https://huggingface.co/Qwen/Qwen3-235B-A22B-Base)|
 |[Qwen/Qwen3-30B-A3B](https://modelscope.cn/models/Qwen/Qwen3-30B-A3B)|qwen3_moe|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-30B-A3B](https://huggingface.co/Qwen/Qwen3-30B-A3B)|
@@ -942,7 +946,7 @@ The table below introduces information about the datasets integrated with ms-swi
 |[swift/pixelprose](https://modelscope.cn/datasets/swift/pixelprose)|default|huge dataset|-|caption, multi-modal, vision|[tomg-group-umd/pixelprose](https://huggingface.co/datasets/tomg-group-umd/pixelprose)|
 |[swift/refcoco](https://modelscope.cn/datasets/swift/refcoco)|caption<br>grounding|92430|45.4±3.0, min=37, max=63|multi-modal, en, grounding|[jxu124/refcoco](https://huggingface.co/datasets/jxu124/refcoco)|
 |[swift/refcocog](https://modelscope.cn/datasets/swift/refcocog)|caption<br>grounding|89598|50.3±4.6, min=39, max=91|multi-modal, en, grounding|[jxu124/refcocog](https://huggingface.co/datasets/jxu124/refcocog)|
-|[swift/self-cognition](https://modelscope.cn/datasets/swift/self-cognition)|default|108|58.9±20.3, min=32, max=131|chat, self-cognition, 🔥|[modelscope/self-cognition](https://huggingface.co/datasets/modelscope/self-cognition)|
+|[swift/self-cognition](https://modelscope.cn/datasets/swift/self-cognition)|default<br>qwen3<br>empty_think|108|58.9±20.3, min=32, max=131|chat, self-cognition, 🔥|[modelscope/self-cognition](https://huggingface.co/datasets/modelscope/self-cognition)|
 |[swift/sharegpt](https://modelscope.cn/datasets/swift/sharegpt)|common-zh<br>unknow-zh<br>common-en|194063|820.5±366.1, min=25, max=2221|chat, general, multi-round|-|
 |[swift/swift-sft-mixture](https://modelscope.cn/datasets/swift/swift-sft-mixture)|sharegpt<br>firefly<br>codefuse<br>metamathqa|huge dataset|-|chat, sft, general, 🔥|-|
 |[swift/tagengo-gpt4](https://modelscope.cn/datasets/swift/tagengo-gpt4)|default|76437|468.1±276.8, min=28, max=1726|chat, multi-lingual, quality|[lightblue/tagengo-gpt4](https://huggingface.co/datasets/lightblue/tagengo-gpt4)|
