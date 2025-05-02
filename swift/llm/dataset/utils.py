@@ -210,19 +210,23 @@ class PackingDataset(BasePackingDataset, Dataset):
 
 class IterablePackingDataset(BasePackingDataset, IterableDataset):
 
-    def __init__(
-        self,
-        template,
-        dataset,
-        num_workers: int = 1,
-        *,
-        packing_interval: int = 128,
-        strict: bool = False,
-    ):
+    def __init__(self,
+                 template,
+                 dataset,
+                 num_workers: int = 1,
+                 *,
+                 packing_interval: int = 128,
+                 strict: bool = False,
+                 cyclic: bool = False):
         super().__init__(template, dataset, num_workers, packing_interval=packing_interval, strict=strict)
         self._in_queue = mp.Queue()
         self._out_queue = mp.Queue()
         self.workers = []
+        self.cyclic = cyclic
+        for _ in range(self.num_workers):
+            worker = mp.Process(target=self._processor, daemon=True)
+            worker.start()
+            self.workers.append(worker)
 
     def _processor(self):
         while True:
@@ -250,16 +254,14 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
                 yield x
 
     def __iter__(self):
-        if not self.workers:
-            for _ in range(self.num_workers):
-                worker = mp.Process(target=self._processor, daemon=True)
-                worker.start()
-                self.workers.append(worker)
-        try:
-            next(iter(self.dataset))
-        except StopIteration:
-            return
-        iterator = self.cyclic_iter(self.dataset)
+        if self.cyclic:
+            try:
+                next(iter(self.dataset))
+            except StopIteration:
+                return
+            iterator = self.cyclic_iter(self.dataset)
+        else:
+            iterator = iter(self.dataset)
         data = []
         while True:
             self._put_data_in_queue(iterator)
