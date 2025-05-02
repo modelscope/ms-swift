@@ -838,6 +838,7 @@ class Template(ProcessorMixin):
         tokenizer_kwargs = {}
         if loss_scale_list is None:
             loss_scale_list = [0.] * len(context_list)
+        ignore_loss_scale = all(loss_scale in {0, 1} for loss_scale in loss_scale_list)
         for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
             if isinstance(context, str):
                 # tokenizer_kwargs is the returned tokenizer_kwargs,
@@ -850,7 +851,10 @@ class Template(ProcessorMixin):
                 labels += token_list
             else:
                 labels += [-100] * len(token_list)
-            loss_scale.extend([loss_weight] * len(token_list))
+            if not ignore_loss_scale:
+                loss_scale.extend([loss_weight] * len(token_list))
+        if ignore_loss_scale:
+            loss_scale = None
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
     @staticmethod
@@ -1070,11 +1074,7 @@ class Template(ProcessorMixin):
         encoded['loss_scale'] = loss_scale
         if not self.is_training:
             for k in list(encoded.keys()):
-                if k.endswith('labels'):
-                    encoded[k] = None
-        if not self.is_training or self.loss_scale in {'default', 'all', 'last_round'}:
-            for k in list(encoded.keys()):
-                if k.endswith('loss_scale'):
+                if k.endswith('labels') or k.endswith('loss_scale'):
                     encoded[k] = None
         return encoded
 

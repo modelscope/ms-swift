@@ -117,6 +117,10 @@ class TrainAllLossScale(LossScale):
         return [context], [1.]
 
 
+class IgnoreEmptyThink(REACTLossScale):
+    loss_scale_config = 'ignore_empty_think.json'
+
+
 # Add your loss scale here, use --loss_scale xxx to train
 loss_scale_map = {
     'last_round': LastRoundLossScale(),
@@ -127,5 +131,6 @@ loss_scale_map = {
     'react': REACTLossScale(),
     'alpha_umi': AlphaUmiLossScale(),
     'qwen': QwenLossScale(),
-    'hermes': HermesLossScale()
+    'hermes': HermesLossScale(),
+    'ignore_empty_think': IgnoreEmptyThink()
 }
