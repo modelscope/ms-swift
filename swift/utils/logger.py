@@ -12,7 +12,7 @@ from modelscope.utils.logger import get_logger as get_ms_logger
 # Avoid circular reference
 def _is_local_master():
     local_rank = int(os.getenv('LOCAL_RANK', -1))
-    return local_rank in {-1, 0}
+    return True
 
 
 init_loggers = {}
