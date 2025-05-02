@@ -80,7 +80,6 @@ class LLMTemplateType:
     bluelm = 'bluelm'
     orion = 'orion'
     moonlight = 'moonlight'
-    mimo = 'mimo'
 
     aya = 'aya'
     c4ai = 'c4ai'

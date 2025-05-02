@@ -312,7 +312,7 @@ register_model(
                 Model('XiaomiMiMo/MiMo-7B-RL', 'XiaomiMiMo/MiMo-7B-RL'),
             ])
         ],
-        TemplateType.mimo,
+        TemplateType.qwen,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['MiMoForCausalLM'],
