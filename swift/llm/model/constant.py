@@ -113,6 +113,7 @@ class LLMModelType:
     polylm = 'polylm'
     aya = 'aya'
     moonlight = 'moonlight'
+    mimo = 'mimo'
 
 
 class BertModelType:

@@ -272,3 +272,5 @@ register_template(
         chat_sep=[],
         suffix=['<|endoftext|>'],
     ))
+
+register_template(QwenTemplateMeta(LLMTemplateType.mimo, default_system=''))
