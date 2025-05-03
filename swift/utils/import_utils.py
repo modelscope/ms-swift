@@ -36,10 +36,6 @@ def is_xtuner_available():
     return importlib.util.find_spec('xtuner') is not None
 
 
-def is_deepspeed_available():
-    return importlib.util.find_spec('deepspeed') is not None
-
-
 def is_megatron_available():
     return importlib.util.find_spec('megatron') is not None
 
