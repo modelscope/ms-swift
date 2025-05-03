@@ -1,6 +1,7 @@
 from typing import Optional, Any, Tuple
 
 import torch
+from functools import partial
 import torch.distributed as dist
 from torch.distributed.device_mesh import init_device_mesh
 from torch import Tensor
@@ -344,6 +345,7 @@ class Ulysses(SequenceParallel):
     def pad_and_split_inputs(self, tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale):
         input_ids = self.pad_for_sequence_parallel(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
         labels = self.pad_for_sequence_parallel(labels, padding_value=-100, dim=-1)
+        labels[:, 0] = -100
         position_ids = self.pad_for_sequence_parallel(position_ids, padding_value=0, dim=-1)
         attention_mask = self.pad_for_sequence_parallel(attention_mask, padding_value=0, dim=-1)
 
@@ -365,36 +367,7 @@ class Ulysses(SequenceParallel):
         return input_ids, labels, position_ids, attention_mask, loss_scale
 
     def reduce_outputs(self, loss, labels):
-
-        class _ReduceLoss(torch.autograd.Function):
-
-            @staticmethod
-            def forward(ctx, total_loss, loss_scale, process_group):
-                ctx.mode = process_group
-                if loss_scale == 0:
-                    # convert nan to 0 just for logging
-                    total_loss = torch.nan_to_num(total_loss)
-                dist.all_reduce(total_loss, group=process_group)
-                dist.all_reduce(loss_scale, group=process_group)
-                loss = total_loss / loss_scale
-                return loss
-
-            @staticmethod
-            def backward(ctx, grad_output):
-                return grad_output, None, None
-
-        def reduce_sequence_parallel_loss(total_loss,
-                                          loss_scale,
-                                          sp_group: dist.ProcessGroup = None):
-            if dist.get_world_size(sp_group) == 1:
-                return total_loss
-            if sp_group is None:
-                # avoid bc breaking
-                sp_group = self.group
-            return _ReduceLoss.apply(total_loss, loss_scale, sp_group)
-        # reduce loss for logging correctly
-        num_tokens = (labels != -100).sum()
-        return reduce_sequence_parallel_loss(loss, num_tokens, self.group)
+        return loss
 
     def world_size(self):
         return self.sequence_parallel_size
@@ -407,23 +380,36 @@ class Ulysses(SequenceParallel):
         if trainer.train_dataset is None:
             raise ValueError('Trainer: training requires a train_dataset.')
 
-        def compute_loss_func(outputs, labels, loss_scale=None, num_items_in_batch=None):
-            labels = torch.cat((torch.ones((labels.shape[0], 1)).to(labels.dtype).to(labels.device), labels), dim=1)
-            if not self.is_last_sequence:
-                outputs.logits = torch.cat((outputs.logits,
-                                            torch.ones((outputs.logits.shape[0], 1, outputs.logits.shape[2])).to(
-                                                outputs.logits.dtype).to(outputs.logits.device)), dim=1)
-            else:
-                labels = labels[:, :-1]
-            from swift.plugin.loss import loss_scale_func
-            return loss_scale_func(outputs, labels,
-                                             loss_scale=loss_scale,
-                                             num_items_in_batch=1,
-                                             reduction='none')
-
-        trainer.compute_loss_func = compute_loss_func
+        from swift.plugin.loss import loss_scale_sp_func
+        trainer.compute_loss_func = partial(loss_scale_sp_func, process_group=self.device_mesh['sequence'].get_group())
         train_dataset = trainer.train_dataset
         data_collator = trainer.data_collator
+
+        def _compute_acc(trainer, outputs, labels) -> None:
+            args = trainer.args
+            acc_steps = args.acc_steps
+            preds = outputs.logits.argmax(dim=-1)
+            if trainer.state.global_step % acc_steps == 0:
+                import torch.distributed as dist
+                world_size = dist.get_world_size(group=self.device_mesh['sequence'].get_group())
+                preds_output = torch.empty((preds.shape[0] * world_size, preds.shape[1]), dtype=preds.dtype, device=preds.device)
+                dist.all_gather_into_tensor(preds_output, preds, group=self.device_mesh['sequence'].get_group())
+                preds_output = torch.cat(preds_output.split(preds.shape[0], dim=0), dim=1)
+                labels_output = torch.empty((labels.shape[0] * world_size, labels.shape[1]), dtype=labels.dtype, device=labels.device)
+                dist.all_gather_into_tensor(labels_output, labels, group=self.device_mesh['sequence'].get_group())
+                labels_output = torch.cat(labels_output.split(labels.shape[0], dim=0), dim=1)
+                labels_output = torch.roll(labels_output, shifts=1, dims=1)
+                from swift.plugin import MeanMetric, compute_acc, extra_tuners
+                metrics = compute_acc(
+                    preds_output, labels_output, acc_strategy=args.acc_strategy, is_encoder_decoder=trainer.template.is_encoder_decoder)
+                for k, v in metrics.items():
+                    if k not in trainer._custom_metrics:
+                        trainer._custom_metrics[k] = MeanMetric(nan_value=None)
+                    trainer._custom_metrics[k].update(v)
+
+        from types import MethodType
+        trainer._compute_acc = MethodType(_compute_acc, trainer)
+
         import datasets
         if isinstance(train_dataset, datasets.Dataset):
             train_dataset = trainer._remove_unused_columns(train_dataset, description='training')
