@@ -225,7 +225,10 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
         self.logging_dir = to_abspath(self.logging_dir)
         if is_master():
             os.makedirs(self.output_dir, exist_ok=True)
+        
+        if self.run_name is None:
+            self.run_name = self.output_dir
 
         self.training_args.output_dir = self.output_dir
-        self.training_args.run_name = self.output_dir
+        self.training_args.run_name = self.run_name
         self.training_args.logging_dir = self.logging_dir
