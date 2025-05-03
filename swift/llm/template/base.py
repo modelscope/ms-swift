@@ -423,9 +423,6 @@ class Template(ProcessorMixin):
             if length > self.max_length:
                 raise MaxLengthError(f'Current length of row({length}) is larger'
                                      f' than the max_length({self.max_length}).')
-        if self.use_megatron:
-            encoded['labels'] = encoded['labels'][1:] + [-100]
-            encoded['position_ids'] = list(range(len(encoded['labels'])))
         return encoded
 
     def packing_row(self, row: List[Tuple[Dict[str, Any], int]]) -> Dict[str, Any]:
@@ -434,15 +431,7 @@ class Template(ProcessorMixin):
         for r in row:
             keys.update(r[0].keys())
         for key in keys:
-            if key == 'labels':
-                labels_list = []
-                for x in row:
-                    labels = x[0][key]
-                    # https://github.com/huggingface/transformers/pull/31629
-                    labels[0] = -100
-                    labels_list.append(labels)
-                packed[key] = sum(labels_list, start=[])
-            elif key in {'input_ids', 'loss_scale'}:
+            if key in {'input_ids', 'labels', 'loss_scale'}:
                 packed[key] = sum((x[0][key] for x in row), start=[])
         if 'position_ids' not in packed:
             packed['position_ids'] = sum((list(range(x[1])) for x in row), start=[])
@@ -1072,6 +1061,11 @@ class Template(ProcessorMixin):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
+        if self.use_megatron:
+            encoded['labels'] = encoded['labels'][1:] + [-100]
+            encoded['position_ids'] = list(range(len(encoded['labels'])))
+        elif encoded.get('labels') is not None:
+            encoded['labels'][0] = -100
         if not self.is_training:
             for k in list(encoded.keys()):
                 if k.endswith('labels') or k.endswith('loss_scale'):
