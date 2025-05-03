@@ -27,4 +27,3 @@ class SequenceParallel(abc.ABC):
     @abstractmethod
     def get_dataloader(self, trainer):
         pass
-
