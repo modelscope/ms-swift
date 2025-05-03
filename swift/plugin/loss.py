@@ -82,45 +82,6 @@ def loss_scale_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -
     return loss
 
 
-class ReduceLoss(torch.autograd.Function):
-
-    @staticmethod
-    def forward(ctx, loss, labels, process_group):
-        import torch.distributed as dist
-        ctx.process_group = process_group
-        ctx.shapes = labels.shape[0]
-        world_size = dist.get_world_size(group=process_group)
-        output = torch.empty((loss.shape[0] * world_size), dtype=loss.dtype, device=loss.device)
-        dist.all_gather_into_tensor(output, loss, group=process_group)
-        labels_output = torch.empty((labels.shape[0] * world_size), dtype=labels.dtype, device=labels.device)
-        dist.all_gather_into_tensor(labels_output, labels, group=process_group)
-        return output, labels_output
-
-    @staticmethod
-    def backward(ctx, grad_output, _):
-        import torch.distributed as dist
-        grad_output = grad_output * dist.get_world_size(group=ctx.process_group)
-        return grad_output.split(ctx.shapes, dim=0)[dist.get_rank(ctx.process_group)].contiguous(), None, None
-
-
-def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None, process_group=None) -> torch.Tensor:
-    logits = outputs.logits
-    device = logits.device
-    masks = labels != -100
-    logits = logits.view(-1, logits.shape[-1])
-    labels = labels.flatten().to(device)
-    # Flatten the tokens
-    loss_fct = CrossEntropyLoss(reduction='none')
-    loss = loss_fct(logits, labels)
-
-    if loss_scale is not None:
-        loss_scale = loss_scale.flatten().to(logits.device)
-        loss = (loss_scale * loss)
-    loss, labels = ReduceLoss.apply(loss, labels, process_group)
-    loss = loss[labels != -100].sum()/(labels != -100).sum()
-    return loss
-
-
 def _parse_pair_sentence(outputs):
     if isinstance(outputs, dict):
         last_hidden_state = outputs['last_hidden_state']
