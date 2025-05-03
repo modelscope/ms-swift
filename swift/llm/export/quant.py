@@ -171,8 +171,10 @@ class QuantEngine(ProcessorMixin):
             self.model.quantize(
                 self.tokenizer, quant_config=quant_config, n_parallel_calib_samples=args.quant_batch_size)
         quantizer.get_calib_dataset = _origin_get_calib_dataset  # recover
-        self.model.model.config.quantization_config = AwqConfig(
-            bits=args.quant_bits, group_size=args.group_size, zero_point=True, version='GEMM')
+        if self.model.quant_config.modules_to_not_convert:
+            model_arch = get_model_arch(args.model_meta.model_arch)
+            lm_head_key = model_arch.lm_head or 'lm_head'
+            self.model.quant_config.modules_to_not_convert.append(lm_head_key)
 
     @contextmanager
     def _patch_gptq(self):
