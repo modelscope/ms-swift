@@ -12,6 +12,7 @@ class LLMTemplateType:
     qwen2_5 = 'qwen2_5'
     qwen2_5_math = 'qwen2_5_math'
     qwen2_5_math_prm = 'qwen2_5_math_prm'
+    qwen3 = 'qwen3'
     qwq_preview = 'qwq_preview'
     qwq = 'qwq'
     marco_o1 = 'marco_o1'

@@ -67,7 +67,10 @@ class InferStreamer(InferTools):
 
     def _get_response(self, response: str, is_finished: bool, token_len: int) -> str:
         # After the symbol for a new line, we flush the cache.
-        if response.endswith('\n') or is_finished:
+        if self.first_token:
+            printable_text = response
+            self.first_token = False
+        elif response.endswith('\n') or is_finished:
             printable_text = response[self.print_idx:]
             self.cache_idx += token_len
             self.first_num_space = -1
@@ -85,9 +88,10 @@ class InferStreamer(InferTools):
 
     def get_printable_text(self, raw_tokens: List[int], is_finished: bool) -> str:
         raw_tokens = raw_tokens[self.cache_idx:]
+        if self.first_token:
+            raw_tokens = []
         response = self.template.decode(
             raw_tokens, is_finished=is_finished, tokenizer_kwargs=self.decode_kwargs, first_token=self.first_token)
-        self.first_token = False
         response = self._align_blank_suffix(response)
         return self._get_response(response, is_finished, len(raw_tokens))
 

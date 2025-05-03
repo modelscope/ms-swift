@@ -35,6 +35,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.config = self.model_info.config
         if getattr(self, 'default_template', None) is None:
             ckpt_dir = get_ckpt_dir(self.model_dir, getattr(self, 'adapters', None))
+            logger.info('Create the default_template for the infer_engine')
             if ckpt_dir:
                 from swift.llm import BaseArguments
                 args = BaseArguments.from_pretrained(ckpt_dir)

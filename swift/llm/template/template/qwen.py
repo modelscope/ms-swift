@@ -45,7 +45,7 @@ register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=qwq_preview_system))
 
 
-class QwQTemplate(Template):
+class ThinkingTemplate(Template):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         if not self.is_training:
@@ -56,7 +56,11 @@ class QwQTemplate(Template):
 
 
 register_template(
-    QwenTemplateMeta(LLMTemplateType.qwq, default_system=None, response_prefix='<think>\n', template_cls=QwQTemplate))
+    QwenTemplateMeta(
+        LLMTemplateType.qwq, default_system=None, response_prefix='<think>\n', template_cls=ThinkingTemplate))
+
+# '<think>\n\n</think>\n\n'
+register_template(QwenTemplateMeta(LLMTemplateType.qwen3, default_system=None, template_cls=ThinkingTemplate))
 
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 
