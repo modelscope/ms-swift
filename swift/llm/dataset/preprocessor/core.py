@@ -11,7 +11,7 @@ from datasets import IterableDataset as HfIterableDataset
 from datasets import Sequence, Value
 
 from swift.llm import history_to_messages
-from swift.utils import get_logger
+from swift.utils import get_logger, is_dist, is_master, safe_ddp_context
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
@@ -291,6 +291,8 @@ class RowPreprocessor:
 
         map_kwargs = {'batched': True, 'batch_size': batch_size}
         if isinstance(dataset, HfDataset):
+            if is_dist() and not is_master():
+                load_from_cache_file = True
             map_kwargs.update({
                 'num_proc': num_proc,
                 'load_from_cache_file': load_from_cache_file,
@@ -298,13 +300,14 @@ class RowPreprocessor:
         # compat GRPO: The solution field will be retained.
         dataset = RowPreprocessor.get_features_dataset(dataset)
         if 'solution' in dataset.features:
-            dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
+            with safe_ddp_context('dataset_map_solution', True):
+                dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
         dataset = self._rename_columns(dataset)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
 
         ignore_max_length_error = True if isinstance(dataset, HfDataset) and num_proc > 1 else False
-        with self._patch_arrow_writer():
+        with self._patch_arrow_writer(), safe_ddp_context('dataset_map', True):
             try:
                 dataset_mapped = dataset.map(
                     self.batched_preprocess,
