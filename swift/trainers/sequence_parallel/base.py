@@ -9,7 +9,7 @@ class SequenceParallel(abc.ABC):
         pass
 
     @abstractmethod
-    def prepare_model(self, model):
+    def prepare_model(self, model, tokenizer, split_in_forward):
         pass
 
     @abstractmethod

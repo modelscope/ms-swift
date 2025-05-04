@@ -1414,14 +1414,17 @@ class Template(ProcessorMixin):
                 padding_right=padding_side == 'right')
         if self.sequence_parallel_size > 1 and input_ids is not None:
             bs, seq_len = input_ids.shape
-            position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
+            if 'position_ids' not in res:
+                position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
+            else:
+                position_ids = res['position_ids']
             assert padding_side == 'right' or bs == 1, 'Sequence parallel only support padding_side=right'
             from swift.trainers.sequence_parallel import sequence_parallel
             if sequence_parallel.world_size() > 1:
                 from swift.trainers.sequence_parallel import sequence_parallel
-                input_ids, labels, position_ids, attention_mask, loss_scale = \
+                input_ids, _, labels, position_ids, attention_mask, loss_scale = \
                     sequence_parallel.pad_and_split_inputs(
-                        tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
+                        tokenizer, input_ids, None, labels, position_ids, attention_mask, loss_scale)
             res['position_ids'] = position_ids
         _local_var = locals()
         for key in ['input_ids', 'attention_mask', 'labels', 'loss_scale']:

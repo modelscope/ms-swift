@@ -405,6 +405,11 @@ class TunerMixin:
 
         if args.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
-            sequence_parallel.prepare_model(model)
+            if hasattr(model, 'model_meta'):
+                is_multimodal = model.model_meta.is_multimodal
+            else:
+                is_multimodal = model.model.model_meta.is_multimodal
+            sequence_parallel.prepare_model(model, template.tokenizer,
+                                            split_in_forward=is_multimodal)
 
         return model

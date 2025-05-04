@@ -46,7 +46,7 @@ class XTuner(SequenceParallel):
         from xtuner.parallel.sequence import init_sequence_parallel
         init_sequence_parallel(size)
 
-    def prepare_model(self, model):
+    def prepare_model(self, model, tokenizer, split_in_forward):
         self.assert_xtuner_runtime_condition()
         from xtuner.model.modules.dispatch import dispatch_modules
         dispatch_modules(model)
