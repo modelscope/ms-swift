@@ -5,6 +5,7 @@ from typing import Any, Iterator, Optional, Sized, Tuple
 import inspect
 import torch
 import torch.distributed as dist
+from swift.llm import get_model_arch
 from torch import Tensor
 from contextlib import contextmanager
 from torch.distributed.device_mesh import init_device_mesh
@@ -237,7 +238,6 @@ class Ulysses(SequenceParallel):
         self.model_dtype = None
         self.causal_mask_func = None
         self.device_mesh = None
-        self._llm_attn = False
 
     def init_sequence_parallel(self, size):
         self.sp_world_size = size
@@ -293,39 +293,8 @@ class Ulysses(SequenceParallel):
                                         attention_mask: Optional[torch.Tensor],
                                         q_len,
                                         *args, **kwargs):
-                if self._llm_attn:
-                    return _distributed_flash_attention(query_states, key_states, value_states, attention_mask, q_len*self.sp_world_size, *args, **kwargs)
-                else:
-                    return _flash_attention_forward(query_states, key_states, value_states, attention_mask, q_len, *args, **kwargs)
+                return _distributed_flash_attention(query_states, key_states, value_states, attention_mask, q_len*self.sp_world_size, *args, **kwargs)
             modeling_flash_attention_utils._flash_attention_forward = flash_attention_forward
-
-        from torch.nn import functional
-        from torch.nn.functional import scaled_dot_product_attention
-        def _scaled_dot_product_attention_wrap(query_states,
-            key_states,
-            value_states,
-            attn_mask, *args, position_ids, **kwargs):
-            return scaled_dot_product_attention(query_states.transpose(1, 2), key_states.transpose(1, 2), value_states.transpose(1, 2), attn_mask, *args, **kwargs)
-        _distributed_attention = DistributedAttention(_scaled_dot_product_attention_wrap, self.sp_group)
-        def _scaled_dot_product_attention(query_states,
-            key_states,
-            value_states,
-            attn_mask, *args, **kwargs):
-            if self._llm_attn:
-                if attn_mask.shape[2] != attn_mask.shape[3]:
-                    attn_mask = self.attention_mask
-                return _distributed_attention(query_states.transpose(1, 2), key_states.transpose(1, 2), value_states.transpose(1, 2), attn_mask, *args, **kwargs)
-            else:
-                return scaled_dot_product_attention(query_states, key_states, value_states, attn_mask, *args, **kwargs)
-
-        functional.scaled_dot_product_attention = _scaled_dot_product_attention
-
-    @contextmanager
-    def sp_context(self):
-        self._llm_attn = True
-        yield
-        self._llm_attn = False
-
 
     def prepare_model(self, model, tokenizer, split_in_forward):
         self.split_in_forward = split_in_forward
@@ -339,19 +308,27 @@ class Ulysses(SequenceParallel):
             kwargs['inputs_embeds'] = inputs_embeds
             kwargs['position_ids'] = position_ids
             kwargs['attention_mask'] = attention_mask
-            with self.sp_context():
-                return _self.forward_origin(**kwargs)
+            return _self.forward_origin(**kwargs)
 
-        if hasattr(model.model, '_update_causal_mask'):
-            self.causal_mask_func = model.model._update_causal_mask
-            if self.split_in_forward:
-                model.model.forward_origin = model.model.forward
-                model.model.forward = MethodType(forward, model.model)
+        model_meta = model.model_meta
+        llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
+        if llm_prefix:
+            llm_model = getattr(model, llm_prefix[0])
         else:
-            self.causal_mask_func = model.model.model._update_causal_mask
-            if self.split_in_forward:
-                model.model.model.forward_origin = model.model.model.forward
-                model.model.model.forward = MethodType(forward, model.model.model)
+            llm_model = model
+
+        if 'CausalLM' not in llm_model.__class__.__name__:
+            llm_model = model
+        
+        base_model = llm_model.model
+        if hasattr(llm_model.model.model, '_update_causal_mask'):
+            base_model = llm_model.model.model
+
+        self.causal_mask_func = base_model._update_causal_mask
+        if self.split_in_forward:
+            base_model.forward_origin = base_model.forward
+            base_model.forward = MethodType(forward, base_model)
+
         self.model_dtype = next(model.parameters()).dtype
 
     def _pad_sp(self, tensor, padding_value, dim=-1):
