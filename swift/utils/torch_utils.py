@@ -230,7 +230,7 @@ def find_all_linears(model, model_arch=None, extra_layers=None, sub_module=None)
 
 
 @contextmanager
-def safe_ddp_context(hash_id: str, use_barrier: bool = False):
+def safe_ddp_context(hash_id: Optional[str], use_barrier: bool = False):
     if use_barrier and dist.is_initialized():
         if (is_dist() or is_dist_ta()) and not is_master():
             dist.barrier()
@@ -238,6 +238,7 @@ def safe_ddp_context(hash_id: str, use_barrier: bool = False):
         if (is_dist() or is_dist_ta()) and is_master():
             dist.barrier()
     else:
+        assert hash_id is not None
         lock_dir = os.path.join(get_cache_dir(), 'lockers')
         os.makedirs(lock_dir, exist_ok=True)
         file_path = hashlib.sha256(hash_id.encode('utf-8')).hexdigest() + '.lock'
