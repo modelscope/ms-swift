@@ -251,11 +251,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
                 dataset_kwargs = {'cyclic': True} if args.streaming else {}
                 train_dataset = packing_dataset_cls(
-                    self.template,
-                    train_dataset,
-                    num_proc=args.dataset_num_proc,
-                    strict=args.strict,
-                    **dataset_kwargs)
+                    self.template, train_dataset, num_proc=args.dataset_num_proc, strict=args.strict, **dataset_kwargs)
                 if val_dataset is not None:
                     val_dataset = packing_dataset_cls(
                         self.template, val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)

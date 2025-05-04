@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
 from collections import Counter
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -279,7 +279,7 @@ class RowPreprocessor:
         dataset: DATASET_TYPE,
         *,
         num_proc: int = 1,
-        load_from_cache_file: bool = False,
+        load_from_cache_file: bool = True,
         strict: bool = False,
         batch_size: Optional[int] = None,
     ) -> DATASET_TYPE:
@@ -290,9 +290,12 @@ class RowPreprocessor:
             dataset = sample_dataset(dataset, self.dataset_sample, True, self.random_state)
 
         map_kwargs = {'batched': True, 'batch_size': batch_size}
+        map_context = nullcontext()
         if isinstance(dataset, HfDataset):
-            if is_dist() and not is_master():
-                load_from_cache_file = True
+            if not load_from_cache_file:
+                map_context = safe_ddp_context(None, True)
+                if is_dist() and not is_master():
+                    load_from_cache_file = True
             map_kwargs.update({
                 'num_proc': num_proc,
                 'load_from_cache_file': load_from_cache_file,
@@ -300,14 +303,14 @@ class RowPreprocessor:
         # compat GRPO: The solution field will be retained.
         dataset = RowPreprocessor.get_features_dataset(dataset)
         if 'solution' in dataset.features:
-            with safe_ddp_context('dataset_map_solution', True):
+            with map_context:
                 dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
         dataset = self._rename_columns(dataset)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
 
         ignore_max_length_error = True if isinstance(dataset, HfDataset) and num_proc > 1 else False
-        with self._patch_arrow_writer(), safe_ddp_context('dataset_map', True):
+        with self._patch_arrow_writer(), map_context:
             try:
                 dataset_mapped = dataset.map(
                     self.batched_preprocess,
@@ -516,7 +519,7 @@ class AutoPreprocessor:
         dataset: DATASET_TYPE,
         *,
         num_proc: int = 1,
-        load_from_cache_file: bool = False,
+        load_from_cache_file: bool = True,
         strict: bool = False,
     ) -> DATASET_TYPE:
         dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns)
