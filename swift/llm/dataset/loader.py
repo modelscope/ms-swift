@@ -198,6 +198,7 @@ class DatasetLoader:
         dataset_meta: DatasetMeta,
         *,
         num_proc: int = 1,
+        load_from_cache_file: bool = False,
         strict: bool = False,
         streaming: bool = False,
         columns: Optional[Dict[str, str]] = None,
@@ -211,7 +212,8 @@ class DatasetLoader:
         dataset = hf_load_dataset(file_type, data_files=dataset_path, **kwargs)
         if columns:
             dataset = RowPreprocessor.safe_rename_columns(dataset, columns)
-        dataset = dataset_meta.preprocess_func(dataset, num_proc=num_proc, strict=strict)
+        dataset = dataset_meta.preprocess_func(
+            dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)
         if remove_unused_columns:
             dataset = RowPreprocessor.remove_useless_columns(dataset)
         return dataset
@@ -222,6 +224,7 @@ class DatasetLoader:
         subset: SubsetDataset,
         *,
         num_proc: int = 1,
+        load_from_cache_file: bool = False,
         streaming: bool = False,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
@@ -282,7 +285,8 @@ class DatasetLoader:
                     dataset = dataset.to_iterable_dataset()
             if columns:
                 dataset = RowPreprocessor.safe_rename_columns(dataset, columns)
-            dataset = subset.preprocess_func(dataset, num_proc=num_proc, strict=strict)
+            dataset = subset.preprocess_func(
+                dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)
             if remove_unused_columns:
                 dataset = RowPreprocessor.remove_useless_columns(dataset)
             datasets.append(dataset)
@@ -373,6 +377,7 @@ class DatasetLoader:
         dataset_meta: Optional[DatasetMeta] = None,
         *,
         num_proc: int = 1,
+        load_from_cache_file: bool = False,
         streaming: bool = False,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
@@ -386,6 +391,7 @@ class DatasetLoader:
                 dataset_syntax.dataset,
                 dataset_meta=dataset_meta,
                 num_proc=num_proc,
+                load_from_cache_file=load_from_cache_file,
                 strict=strict,
                 streaming=streaming,
                 columns=columns,
@@ -402,6 +408,7 @@ class DatasetLoader:
                     use_hf=use_hf,
                     hub_token=hub_token,
                     num_proc=num_proc,
+                    load_from_cache_file=load_from_cache_file,
                     strict=strict,
                     revision=revision,
                     streaming=streaming,
@@ -435,6 +442,7 @@ def load_dataset(
     split_dataset_ratio: float = 0.,
     seed: Union[int, np.random.RandomState, None] = None,
     num_proc: int = 1,
+    load_from_cache_file: bool = False,
     shuffle: bool = False,
     streaming: bool = False,
     interleave_prob: Optional[List[float]] = None,
@@ -444,7 +452,7 @@ def load_dataset(
     hub_token: Optional[str] = None,
     strict: bool = False,
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
-    columns: Optional[Dict[str, str]] = None,
+    columns: Optional[Dict[str, str]] = None,  # columns_mapping
     remove_unused_columns: bool = True,
     # self-cognition
     model_name: Union[Tuple[str, str], List[str], None] = None,  # zh, en
@@ -482,6 +490,7 @@ def load_dataset(
     val_datasets = []
     load_kwargs = {
         'num_proc': num_proc,
+        'load_from_cache_file': load_from_cache_file,
         'strict': strict,
         'download_mode': download_mode,
         'columns': columns,

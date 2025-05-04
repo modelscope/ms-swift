@@ -279,6 +279,7 @@ class RowPreprocessor:
         dataset: DATASET_TYPE,
         *,
         num_proc: int = 1,
+        load_from_cache_file: bool = False,
         strict: bool = False,
         batch_size: Optional[int] = None,
     ) -> DATASET_TYPE:
@@ -290,7 +291,10 @@ class RowPreprocessor:
 
         map_kwargs = {'batched': True, 'batch_size': batch_size}
         if isinstance(dataset, HfDataset):
-            map_kwargs['num_proc'] = num_proc
+            map_kwargs.update({
+                'num_proc': num_proc,
+                'load_from_cache_file': load_from_cache_file,
+            })
         # compat GRPO: The solution field will be retained.
         dataset = RowPreprocessor.get_features_dataset(dataset)
         if 'solution' in dataset.features:
@@ -509,8 +513,9 @@ class AutoPreprocessor:
         dataset: DATASET_TYPE,
         *,
         num_proc: int = 1,
+        load_from_cache_file: bool = False,
         strict: bool = False,
     ) -> DATASET_TYPE:
         dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns)
         preprocessor = self._get_preprocessor(dataset)
-        return preprocessor(dataset, num_proc=num_proc, strict=strict)
+        return preprocessor(dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)
