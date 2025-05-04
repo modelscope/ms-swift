@@ -59,6 +59,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_model_tokenizer(self):
         args = self.args
+        if args.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            sequence_parallel.init_sequence_parallel(args.sequence_parallel_size)
         self.model, self.processor = args.get_model_processor()
 
         if hasattr(self.model, 'hf_device_map'):
@@ -124,10 +127,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             args.problem_type = args.problem_type or getattr(self.model.config, 'problem_type', None)
             logger.info(f'args.problem_type: {args.problem_type}')
         args.save_args()
-
-        if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            sequence_parallel.init_sequence_parallel(self.template.sequence_parallel_size)
 
         data_collator = self._get_data_collator()
         # Some tuners require train_dataset and data_collator for preparation: LoRA-GA

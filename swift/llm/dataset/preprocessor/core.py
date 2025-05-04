@@ -3,7 +3,7 @@ import ast
 from collections import Counter
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
-
+import os
 import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import Image
@@ -339,8 +339,12 @@ class ResponsePreprocessor(RowPreprocessor):
         response = row.pop('response', None)
         if response is not None:
             if isinstance(response, (list, tuple)):
+                from transformers.utils import strtobool
                 # sometimes response is a list, pick one randomly
-                response = self.random_state.choice(response)
+                if strtobool(os.environ.get('RANDOM_DATASET_RESPONSE', 'True')):
+                    response = self.random_state.choice(response)
+                else:
+                    response = response[0]
         history = row.pop('history', None) or []
         query = row.pop('query', None)
         system = row.pop('system', None)
