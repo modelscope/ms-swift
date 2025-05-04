@@ -142,6 +142,9 @@ class MegatronArguments(ExtraMegatronArguments):
     log_validation_ppl_to_tensorboard: bool = True
     log_memory_to_tensorboard: bool = True
     logging_leval: Optional[str] = None
+    wandb_project: Optional[str] = None
+    wandb_exp_name: Optional[str] = None
+    wandb_save_dir: Optional[str] = None
 
     # evaluate
     eval_iters: int = 100
