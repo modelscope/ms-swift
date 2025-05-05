@@ -41,37 +41,24 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
             from swift.trainers.sequence_parallel import sequence_parallel
             dataloader = sequence_parallel.get_dataloader(self)
         if dataloader is None:
-            # Higher efficiency
-            if self.train_dataset is None:
-                raise ValueError('Trainer: training requires a train_dataset.')
-            args = self.args
-            train_dataset = self.train_dataset
-
-            dataloader_params = {
-                'collate_fn': self.data_collator,
-                'num_workers': args.dataloader_num_workers,
-                'pin_memory': args.dataloader_pin_memory,
-                'persistent_workers': args.dataloader_persistent_workers,
-                'prefetch_factor': args.dataloader_prefetch_factor
-            }
-            batch_sampler_params = {
-                'drop_last': args.dataloader_drop_last,
-                'shuffle': args.train_dataloader_shuffle,
-                'data_seed': args.data_seed,
-            }
-
-            if hasattr(train_dataset, '__len__'):
-                batch_sampler = BatchSamplerShard(
-                    len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
-                dataloader = DataLoaderShard(train_dataset, batch_sampler, **dataloader_params)
-            else:
-                # IterableDataset
-                if dist.is_initialized():
-                    dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
-                dataloader = DataLoader(train_dataset, batch_size=self._train_batch_size, **dataloader_params)
-                dataloader = DataLoaderDispatcher(dataloader)
-
+            return super().get_train_dataloader()
         return dataloader
+
+    def get_nll_loss(self, logits, labels):
+        def cross_entropy_loss(logits, labels):
+            if not self.is_encoder_decoder:
+                # Shift so that tokens < n predict n
+                logits = logits[..., :-1, :].contiguous()
+                labels = labels[..., 1:].contiguous()
+            # Flatten the tokens
+            loss_fct = nn.CrossEntropyLoss(ignore_index=self.label_pad_token_id)
+            logits = logits.view(-1, logits.shape[-1])
+            labels = labels.view(-1)
+            # Enable model parallelism
+            labels = labels.to(logits.device)
+            loss = loss_fct(logits, labels)
+            return loss
+        return cross_entropy_loss(logits, labels)
 
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
@@ -114,23 +101,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
 
         output = {}
 
-        def cross_entropy_loss(logits, labels):
-            if not self.is_encoder_decoder:
-                # Shift so that tokens < n predict n
-                logits = logits[..., :-1, :].contiguous()
-                labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = nn.CrossEntropyLoss(ignore_index=self.label_pad_token_id)
-            logits = logits.view(-1, logits.shape[-1])
-            labels = labels.view(-1)
-            # Enable model parallelism
-            labels = labels.to(logits.device)
-            loss = loss_fct(logits, labels)
-            return loss
-
         if self.args.rpo_alpha is not None:
             labels = batch['concatenated_labels'].clone()
-            output['nll_loss'] = cross_entropy_loss(all_logits[:num_examples], labels[:num_examples])
+            output['nll_loss'] = self.get_nll_loss(all_logits[:num_examples], labels[:num_examples])
 
         if self.loss_type == 'ipo':
             all_logps = all_logps / size_completion

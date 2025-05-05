@@ -64,6 +64,21 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
     return loss
 
 
+def get_batch_logps(
+    logits: torch.FloatTensor,
+    labels: torch.LongTensor,
+    label_pad_token_id: int = -100,
+    is_encoder_decoder: bool = False,
+    process_group=None
+) -> Tuple[torch.FloatTensor, torch.LongTensor]:
+    labels = labels.clone()
+    loss_mask = labels != label_pad_token_id
+    labels[labels == label_pad_token_id] = 0
+    per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
+    total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, process_group)
+    return (total_per_token_logps * total_loss_mask).sum(-1), total_loss_mask.sum(-1)
+
+
 class UlyssesSampler(Sampler):
 
     # Code borrwoed from mmengine
@@ -443,8 +458,13 @@ class Ulysses(SequenceParallel):
             raise ValueError('Trainer: training requires a train_dataset.')
 
         trainer.compute_loss_func = partial(loss_scale_sp_func, process_group=self.sp_group)
+        if hasattr(trainer, 'get_batch_logps'):
+            trainer.get_batch_logps = get_batch_logps
+        if hasattr(trainer, 'get_nll_loss'):
+            def rlhf_loss_scale_sp_func(self, *args, **kwargs):
+                return loss_scale_sp_func(*args, process_group=self.sp_group, **kwargs)
+            trainer.get_nll_loss = MethodType(rlhf_loss_scale_sp_func, trainer)
         train_dataset = trainer.train_dataset
-        data_collator = trainer.data_collator
 
         def _compute_acc(trainer, outputs, labels) -> None:
             args = trainer.args
