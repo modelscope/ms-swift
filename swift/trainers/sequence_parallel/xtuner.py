@@ -77,7 +77,7 @@ class XTuner(SequenceParallel):
             loss_scale = pad_for_sequence_parallel(loss_scale, padding_value=0., dim=-1)
             loss_scale = split_for_sequence_parallel(loss_scale, dim=1, sp_group=sp_group)
 
-        return input_ids, labels, position_ids, attention_mask, loss_scale
+        return input_ids, None, labels, position_ids, attention_mask, loss_scale
 
     def reduce_outputs(self, loss, labels):
         from xtuner.parallel.sequence import (reduce_sequence_parallel_loss, get_sequence_parallel_group)

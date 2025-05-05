@@ -6,6 +6,7 @@ from typing import Any, Iterator, Optional, Tuple
 import datasets
 import torch
 import torch.distributed as dist
+from peft import PeftModel
 from torch import Tensor
 from torch.distributed.device_mesh import init_device_mesh
 from torch.nn import CrossEntropyLoss
@@ -15,6 +16,7 @@ from transformers.trainer_utils import seed_worker
 
 from swift.llm import get_model_arch
 from swift.trainers.sequence_parallel.base import SequenceParallel
+from swift.tuners import SwiftModel
 from swift.utils import get_device, get_dist_setting
 
 
@@ -352,6 +354,8 @@ class Ulysses(SequenceParallel):
             kwargs['attention_mask'] = attention_mask
             return _self.forward_origin(**kwargs)
 
+        if isinstance(model, (SwiftModel, PeftModel)):
+            model = model.model
         model_meta = model.model_meta
         llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
         if llm_prefix:
@@ -363,10 +367,6 @@ class Ulysses(SequenceParallel):
             llm_model = model
 
         base_model = llm_model.model
-        # Get the base model
-        if hasattr(llm_model.model.model, '_update_causal_mask'):
-            base_model = llm_model.model.model
-
         self.causal_mask_func = base_model._update_causal_mask
         if self.split_in_forward:
             # for multi modal models
