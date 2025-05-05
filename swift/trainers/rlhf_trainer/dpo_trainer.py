@@ -71,8 +71,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
 
         if self.aux_loss_enabled:
             batch['output_router_logits'] = True
-        import torch.distributed as dist
-        print(dist.get_rank(), batch['input_ids'].shape, flush=True)
         outputs = model(**batch, use_cache=False)
         batch['labels'] = labels
         if outputs.logits.shape[1] != labels.shape[1]:
