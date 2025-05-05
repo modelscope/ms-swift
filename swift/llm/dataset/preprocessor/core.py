@@ -1,9 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
+import os
 from collections import Counter
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
-import os
+
 import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import Image

@@ -45,6 +45,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
         return dataloader
 
     def get_nll_loss(self, logits, labels):
+
         def cross_entropy_loss(logits, labels):
             if not self.is_encoder_decoder:
                 # Shift so that tokens < n predict n
@@ -58,6 +59,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
             labels = labels.to(logits.device)
             loss = loss_fct(logits, labels)
             return loss
+
         return cross_entropy_loss(logits, labels)
 
     def concatenated_forward(

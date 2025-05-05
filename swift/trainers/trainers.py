@@ -118,7 +118,7 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
         dataloader = None
         if self.template.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
-            dataloader = sequence_parallel.get_dataloader(self)
+            dataloader = sequence_parallel.prepare_trainer_and_get_dataloader(self)
         if dataloader is None:
             # Higher efficiency
             if self.train_dataset is None:

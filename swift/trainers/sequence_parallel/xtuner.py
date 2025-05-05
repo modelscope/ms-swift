@@ -51,7 +51,15 @@ class XTuner(SequenceParallel):
         from xtuner.model.modules.dispatch import dispatch_modules
         dispatch_modules(model)
 
-    def pad_and_split_inputs(self, tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale):
+    def pad_and_split_inputs(self,
+                             tokenizer,
+                             input_ids,
+                             input_embeds,
+                             labels,
+                             position_ids,
+                             attention_mask,
+                             loss_scale,
+                             embed_tokens=None):
         self.assert_xtuner_runtime_condition()
         from xtuner.parallel.sequence import (pad_for_sequence_parallel, split_for_sequence_parallel,
                                               get_sequence_parallel_group)
@@ -82,7 +90,7 @@ class XTuner(SequenceParallel):
         from xtuner.parallel.sequence import get_sequence_parallel_world_size
         return get_sequence_parallel_world_size()
 
-    def get_dataloader(self, trainer):
+    def prepare_trainer_and_get_dataloader(self, trainer):
         # modified from HFTrainer.get_train_dataloader
         # RandomSampler -> SequenceParallelSampler
         self.assert_xtuner_runtime_condition()

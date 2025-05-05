@@ -13,7 +13,15 @@ class SequenceParallel(abc.ABC):
         pass
 
     @abstractmethod
-    def pad_and_split_inputs(self, tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale):
+    def pad_and_split_inputs(self,
+                             tokenizer,
+                             input_ids,
+                             input_embeds,
+                             labels,
+                             position_ids,
+                             attention_mask,
+                             loss_scale,
+                             embed_tokens=None):
         pass
 
     @abstractmethod
@@ -25,5 +33,5 @@ class SequenceParallel(abc.ABC):
         pass
 
     @abstractmethod
-    def get_dataloader(self, trainer):
+    def prepare_trainer_and_get_dataloader(self, trainer):
         pass

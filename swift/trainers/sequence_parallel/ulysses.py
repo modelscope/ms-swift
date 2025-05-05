@@ -1,8 +1,9 @@
+import math
 from functools import partial
 from types import MethodType
 from typing import Any, Iterator, Optional, Tuple
 
-import math
+import datasets
 import torch
 import torch.distributed as dist
 from torch import Tensor
@@ -27,6 +28,7 @@ class GatherLoss(torch.autograd.Function):
             loss: loss tensor after splitting
             labels: labels tensor after splitting
             process_group: the sequence parallel group
+            gather_idx: gather the tensors on this dim
         """
         ctx.process_group = process_group
         shape0 = labels.shape[0]
@@ -47,9 +49,11 @@ class GatherLoss(torch.autograd.Function):
     @staticmethod
     def backward(ctx, *grad_output):
         _grad = grad_output[0] * dist.get_world_size(group=ctx.process_group)
-        return _grad.split(ctx.scatter_shape, dim=ctx.gather_idx)[dist.get_rank(ctx.process_group)].contiguous(), None, None, None
+        return _grad.split(
+            ctx.scatter_shape, dim=ctx.gather_idx)[dist.get_rank(ctx.process_group)].contiguous(), None, None, None
 
 
+# For nll loss
 def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None, process_group=None) -> torch.Tensor:
     if hasattr(outputs, 'logits'):
         logits = outputs.logits
@@ -71,14 +75,13 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
     return loss
 
 
-def get_batch_logps(
-    logits: torch.FloatTensor,
-    labels: torch.LongTensor,
-    label_pad_token_id: int = -100,
-    is_encoder_decoder: bool = False,
-    process_group=None
-) -> Tuple[torch.FloatTensor, torch.LongTensor]:
-    labels = labels.clone()
+# For DPO
+def get_batch_logps(logits: torch.FloatTensor,
+                    labels: torch.LongTensor,
+                    label_pad_token_id: int = -100,
+                    is_encoder_decoder: bool = False,
+                    process_group=None) -> Tuple[torch.FloatTensor, torch.LongTensor]:
+    labels = labels.clone()  # No need to shift, pad and split has shifted the inputs.
     loss_mask = labels != label_pad_token_id
     labels[labels == label_pad_token_id] = 0
     per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
@@ -88,7 +91,7 @@ def get_batch_logps(
 
 class UlyssesSampler(Sampler):
 
-    # Code borrwoed from mmengine
+    # Code borrowed from mmengine
     def __init__(self, ulysses, dataset, shuffle: bool = True, seed=None, round_up: bool = True) -> None:
         self.ulysses = ulysses
         rank = dist.get_rank(ulysses.device_mesh['data'].get_group())
@@ -203,11 +206,11 @@ class _SeqAllToAll(torch.autograd.Function):
 
     @staticmethod
     def forward(
-            ctx: Any,
-            group: dist.ProcessGroup,
-            input: Tensor,
-            scatter_idx: int,
-            gather_idx: int,
+        ctx: Any,
+        group: dist.ProcessGroup,
+        input: Tensor,
+        scatter_idx: int,
+        gather_idx: int,
     ) -> Tensor:
         ctx.group = group
         ctx.scatter_idx = scatter_idx
@@ -217,24 +220,23 @@ class _SeqAllToAll(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx: Any, *grad_output: Tensor) -> Tuple[None, Tensor, None, None]:
-        return (None, _SeqAllToAll.apply(ctx.group, *grad_output, ctx.gather_idx, ctx.scatter_idx), None, None)
+        return None, _SeqAllToAll.apply(ctx.group, *grad_output, ctx.gather_idx, ctx.scatter_idx), None, None
 
 
 class DistributedAttention(torch.nn.Module):
 
     def __init__(
-            self,
-            local_attention,
-            sequence_process_group: dist.ProcessGroup,
-            scatter_idx: int = 2,
-            gather_idx: int = 1,
+        self,
+        local_attention,
+        sequence_process_group: dist.ProcessGroup,
+        scatter_idx: int = 2,
+        gather_idx: int = 1,
     ) -> None:
         super(DistributedAttention, self).__init__()
         self.local_attn = local_attention
         self.spg = sequence_process_group
         self.scatter_idx = scatter_idx
         self.gather_idx = gather_idx
-        self.causal_mask_func = None
 
     def forward(self, query: Tensor, key: Tensor, value: Tensor, attention_mask: Tensor, *args: Any,
                 **kwargs) -> Tensor:
@@ -243,13 +245,14 @@ class DistributedAttention(torch.nn.Module):
         value_layer = _SeqAllToAll.apply(self.spg, value, self.scatter_idx, self.gather_idx)
         position_ids = kwargs.pop('position_ids', None)
         if position_ids is not None:
-            position_ids_output = torch.empty(
-                (position_ids.shape[0] * dist.get_world_size(self.spg), position_ids.shape[1]),
-                dtype=position_ids.dtype, device=position_ids.device)
+            shape0 = position_ids.shape[0]
+            position_ids_output = torch.empty((shape0 * dist.get_world_size(self.spg), position_ids.shape[1]),
+                                              dtype=position_ids.dtype,
+                                              device=position_ids.device)
             dist.all_gather_into_tensor(position_ids_output, position_ids, group=self.spg)
-            position_ids = torch.cat(position_ids_output.split(1, dim=0), dim=1)
-        context_layer = self.local_attn(query_layer, key_layer, value_layer, attention_mask, *args,
-                                        position_ids=position_ids, **kwargs)
+            position_ids = torch.cat(position_ids_output.split(shape0, dim=0), dim=1)
+        context_layer = self.local_attn(
+            query_layer, key_layer, value_layer, attention_mask, *args, position_ids=position_ids, **kwargs)
         output = _SeqAllToAll.apply(self.spg, context_layer, self.gather_idx, self.scatter_idx)
         return output
 
@@ -257,6 +260,9 @@ class DistributedAttention(torch.nn.Module):
 class Ulysses(SequenceParallel):
 
     def __init__(self):
+        self.split_in_forward = None
+        self.dp_world_size = None
+        self.sp_world_size = None
         self.model_dtype = None
         self.causal_mask_func = None
         self.device_mesh = None
@@ -275,6 +281,7 @@ class Ulysses(SequenceParallel):
         def local_flash_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
                              dist_attn, **kwargs):
             if dist_attn.local_attn is None:
+
                 def _attention(query, key, value, *args, **kwargs):
                     query = query.transpose(1, 2)
                     key = key.transpose(1, 2)
@@ -291,6 +298,7 @@ class Ulysses(SequenceParallel):
         def local_sdpa_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
                             dist_attn, **kwargs):
             if dist_attn.local_attn is None:
+
                 def _attention(query, key, value, *args, **kwargs):
                     query = query.transpose(1, 2)
                     key = key.transpose(1, 2)
@@ -307,14 +315,15 @@ class Ulysses(SequenceParallel):
         ALL_ATTENTION_FUNCTIONS['sdpa'] = partial(local_sdpa_attn, dist_attn=DistributedAttention(None, self.sp_group))
 
         if is_flash_attn_available():
+            # TODO this works for multi-modal models like qwen2.5-vl
+            # SDPA is not supported, because we need to copy the code to our project, which will bring
+            # more works for maintaining.
             from transformers import modeling_flash_attention_utils
             from transformers.modeling_flash_attention_utils import _flash_attention_forward
             _distributed_flash_attention = DistributedAttention(_flash_attention_forward, self.sp_group)
 
             def flash_attention_forward(query_states: torch.Tensor, key_states: torch.Tensor,
-                                        value_states: torch.Tensor,
-                                        attention_mask: Optional[torch.Tensor],
-                                        q_len,
+                                        value_states: torch.Tensor, attention_mask: Optional[torch.Tensor], q_len,
                                         *args, **kwargs):
                 return _distributed_flash_attention(query_states, key_states, value_states, attention_mask,
                                                     q_len * self.sp_world_size, *args, **kwargs)
@@ -325,12 +334,19 @@ class Ulysses(SequenceParallel):
         self.split_in_forward = split_in_forward
 
         def forward(_self, **kwargs):
+            # Split embedding here for multi-modal
             inputs_embeds = kwargs['inputs_embeds']
             position_ids = kwargs['position_ids']
             attention_mask = kwargs['attention_mask']
             _, inputs_embeds, _, position_ids, attention_mask, _ = self.pad_and_split_inputs(
-                tokenizer, None, inputs_embeds, None,
-                position_ids, attention_mask, None, embed_tokens=_self.embed_tokens)
+                tokenizer,
+                None,
+                inputs_embeds,
+                None,
+                position_ids,
+                attention_mask,
+                None,
+                embed_tokens=_self.embed_tokens)
             kwargs['inputs_embeds'] = inputs_embeds
             kwargs['position_ids'] = position_ids
             kwargs['attention_mask'] = attention_mask
@@ -347,11 +363,13 @@ class Ulysses(SequenceParallel):
             llm_model = model
 
         base_model = llm_model.model
+        # Get the base model
         if hasattr(llm_model.model.model, '_update_causal_mask'):
             base_model = llm_model.model.model
 
         self.causal_mask_func = base_model._update_causal_mask
         if self.split_in_forward:
+            # for multi modal models
             base_model.forward_origin = base_model.forward
             base_model.forward = MethodType(forward, base_model)
 
@@ -365,11 +383,13 @@ class Ulysses(SequenceParallel):
 
         pad_num = self.sp_world_size - (length % self.sp_world_size)
         if not isinstance(padding_value, torch.Tensor):
+            # ids
             pad_shape = ((*tensor.shape[:dim], pad_num, *tensor.shape[dim + 1:]) if dim != -1 else
                          (*tensor.shape[:dim], pad_num))
             pad = torch.full(pad_shape, padding_value, dtype=tensor.dtype, device=tensor.device)
             tensor = torch.cat([tensor, pad], dim=dim)
         else:
+            # For embeddings
             tensor = torch.cat([tensor, padding_value.unsqueeze(0).repeat(tensor.shape[0], pad_num, 1)], dim=dim)
         return tensor
 
@@ -391,14 +411,20 @@ class Ulysses(SequenceParallel):
 
         return output
 
-    def pad_and_split_inputs(self, tokenizer, input_ids, input_embeds,
-                             labels, position_ids, attention_mask, loss_scale,
+    def pad_and_split_inputs(self,
+                             tokenizer,
+                             input_ids,
+                             input_embeds,
+                             labels,
+                             position_ids,
+                             attention_mask,
+                             loss_scale,
                              embed_tokens=None):
         sp_group = self.sp_group
         split_inputs = False
         if (input_ids is not None and not self.split_in_forward) or input_embeds is not None:
             # Whether split the model inputs
-            # cannot split input_ids when multi modal
+            # cannot split input_ids for multi-modal models
             split_inputs = True
         if input_ids is not None and split_inputs:
             input_ids = self._pad_sp(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
@@ -409,7 +435,7 @@ class Ulysses(SequenceParallel):
             position_ids = self._pad_sp(position_ids, padding_value=0, dim=-1)
         if split_inputs:
             inputs = input_ids if input_ids is not None else input_embeds
-            attn_shape = inputs.shape[1]
+            attn_shape = inputs.shape[1]  # The sequence length
             if attention_mask is None:
                 attention_mask = torch.ones_like(position_ids)
             attention_mask = self._pad_sp(attention_mask, padding_value=0, dim=-1)
@@ -417,7 +443,6 @@ class Ulysses(SequenceParallel):
             # pad attention mask to 4d to avoid calculation errors
             attention_mask = self.causal_mask_func(attention_mask, inputs.to(self.model_dtype), cache_position, None,
                                                    None)
-            self.attention_mask = attention_mask
         if input_ids is not None and split_inputs:
             input_ids = self._split_sp(input_ids, dim=1, sp_group=sp_group)
         if input_embeds is not None:
@@ -460,7 +485,7 @@ class Ulysses(SequenceParallel):
     def is_last_sequence(self):
         return dist.get_rank(self.sp_rank) == self.sp_world_size - 1
 
-    def prepare_trainer(self, trainer, **kwargs):
+    def prepare_trainer_and_get_dataloader(self, trainer):
         if trainer.train_dataset is None:
             raise ValueError('Trainer: training requires a train_dataset.')
 
@@ -468,8 +493,10 @@ class Ulysses(SequenceParallel):
         if hasattr(trainer, 'get_batch_logps'):
             trainer.get_batch_logps = partial(get_batch_logps, process_group=self.sp_group)
         if hasattr(trainer, 'get_nll_loss'):
+
             def rlhf_loss_scale_sp_func(_, *args, **kwargs):
                 return loss_scale_sp_func(*args, process_group=self.sp_group, **kwargs)
+
             trainer.get_nll_loss = MethodType(rlhf_loss_scale_sp_func, trainer)
         train_dataset = trainer.train_dataset
 
@@ -479,16 +506,18 @@ class Ulysses(SequenceParallel):
             preds = outputs.logits.argmax(dim=-1)
             if trainer.state.global_step % acc_steps == 0:
                 # Gather preds and labels across the sp group
-                preds_output = torch.empty((preds.shape[0] * self.sp_world_size, preds.shape[1]),
+                shape0 = preds.shape[0]
+                preds_output = torch.empty((shape0 * self.sp_world_size, preds.shape[1]),
                                            dtype=preds.dtype,
                                            device=preds.device)
                 dist.all_gather_into_tensor(preds_output, preds, group=self.sp_group)
-                preds_output = torch.cat(preds_output.split(preds.shape[0], dim=0), dim=1)
-                labels_output = torch.empty((labels.shape[0] * self.sp_world_size, labels.shape[1]),
+                preds_output = torch.cat(preds_output.split(shape0, dim=0), dim=1)
+                shape0 = labels.shape[0]
+                labels_output = torch.empty((shape0 * self.sp_world_size, labels.shape[1]),
                                             dtype=labels.dtype,
                                             device=labels.device)
                 dist.all_gather_into_tensor(labels_output, labels, group=self.sp_group)
-                labels_output = torch.cat(labels_output.split(labels.shape[0], dim=0), dim=1)
+                labels_output = torch.cat(labels_output.split(shape0, dim=0), dim=1)
                 # roll back to fit compute_acc
                 labels_output = torch.roll(labels_output, shifts=1, dims=1)
                 from swift.plugin import MeanMetric, compute_acc
@@ -503,11 +532,8 @@ class Ulysses(SequenceParallel):
                     trainer._custom_metrics[k].update(v)
 
         trainer._compute_acc = MethodType(_compute_acc, trainer)
-        return UlyssesSampler(self, train_dataset, seed=42, **kwargs)
+        sampler = UlyssesSampler(self, train_dataset, seed=42)
 
-    def get_dataloader(self, trainer):
-        sampler = self.prepare_trainer(trainer)
-        import datasets
         train_dataset = trainer.train_dataset
         data_collator = trainer.data_collator
         if isinstance(train_dataset, datasets.Dataset):

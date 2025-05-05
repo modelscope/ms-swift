@@ -51,7 +51,7 @@ class RLHFTrainerMixin:
                 raise ImportError('Please install trl>=0.14 via `pip install "trl>=0.14"`') from e
             prepare_deepspeed(self.ref_model, self.accelerator)  # Does not wrap DeepSpeedEngine
         self.padding_value = self.tokenizer.pad_token_id
-    
+
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
