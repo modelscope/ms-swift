@@ -35,6 +35,28 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
 
         super().__init__(model, ref_model, *_args, **kwargs)
 
+    def get_train_dataloader(self):
+        dataloader = None
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            dataloader = sequence_parallel.prepare_trainer_and_get_dataloader(self)
+        if dataloader is None:
+            return super().get_train_dataloader()
+        return dataloader
+
+    def get_nll_loss(self, logits, labels):
+        if not self.is_encoder_decoder:
+            # Shift so that tokens < n predict n
+            logits = logits[..., :-1, :].contiguous()
+            labels = labels[..., 1:].contiguous()
+        # Flatten the tokens
+        loss_fct = nn.CrossEntropyLoss(ignore_index=self.label_pad_token_id)
+        logits = logits.view(-1, logits.shape[-1])
+        labels = labels.view(-1)
+        # Enable model parallelism
+        labels = labels.to(logits.device)
+        return loss_fct(logits, labels)
+
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
@@ -74,23 +96,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
 
         output = {}
 
-        def cross_entropy_loss(logits, labels):
-            if not self.is_encoder_decoder:
-                # Shift so that tokens < n predict n
-                logits = logits[..., :-1, :].contiguous()
-                labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = nn.CrossEntropyLoss(ignore_index=self.label_pad_token_id)
-            logits = logits.view(-1, logits.shape[-1])
-            labels = labels.view(-1)
-            # Enable model parallelism
-            labels = labels.to(logits.device)
-            loss = loss_fct(logits, labels)
-            return loss
-
         if self.args.rpo_alpha is not None:
             labels = batch['concatenated_labels'].clone()
-            output['nll_loss'] = cross_entropy_loss(all_logits[:num_examples], labels[:num_examples])
+            output['nll_loss'] = self.get_nll_loss(all_logits[:num_examples], labels[:num_examples])
 
         if self.loss_type == 'ipo':
             all_logps = all_logps / size_completion
