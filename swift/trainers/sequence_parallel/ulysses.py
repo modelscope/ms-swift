@@ -69,7 +69,7 @@ class UlyssesSampler(Sampler):
     # Code borrwoed from mmengine
     def __init__(self, ulysses, dataset, shuffle: bool = True, seed=None, round_up: bool = True) -> None:
         self.ulysses = ulysses
-        rank = ulysses.device_mesh['data'].get_coordinate()[0]
+        rank = dist.get_rank(ulysses.device_mesh['data'].get_group())
         world_size = ulysses.device_mesh['data'].size()
         self.rank = rank
         self.world_size = world_size
@@ -283,21 +283,25 @@ class Ulysses(SequenceParallel):
         ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = partial(
             local_flash_attn, dist_attn=DistributedAttention(None, self.sp_group))
         ALL_ATTENTION_FUNCTIONS['sdpa'] = partial(local_sdpa_attn, dist_attn=DistributedAttention(None, self.sp_group))
-        
+
         if is_flash_attn_available():
             from transformers import modeling_flash_attention_utils
             from transformers.modeling_flash_attention_utils import _flash_attention_forward
             _distributed_flash_attention = DistributedAttention(_flash_attention_forward, self.sp_group)
+
             def flash_attention_forward(query_states: torch.Tensor, key_states: torch.Tensor,
                                         value_states: torch.Tensor,
                                         attention_mask: Optional[torch.Tensor],
                                         q_len,
                                         *args, **kwargs):
-                return _distributed_flash_attention(query_states, key_states, value_states, attention_mask, q_len*self.sp_world_size, *args, **kwargs)
+                return _distributed_flash_attention(query_states, key_states, value_states, attention_mask,
+                                                    q_len * self.sp_world_size, *args, **kwargs)
+
             modeling_flash_attention_utils._flash_attention_forward = flash_attention_forward
 
     def prepare_model(self, model, tokenizer, split_in_forward):
         self.split_in_forward = split_in_forward
+
         def forward(_self, **kwargs):
             inputs_embeds = kwargs['inputs_embeds']
             position_ids = kwargs['position_ids']
@@ -319,7 +323,7 @@ class Ulysses(SequenceParallel):
 
         if 'CausalLM' not in llm_model.__class__.__name__:
             llm_model = model
-        
+
         base_model = llm_model.model
         if hasattr(llm_model.model.model, '_update_causal_mask'):
             base_model = llm_model.model.model
@@ -434,7 +438,7 @@ class Ulysses(SequenceParallel):
     def is_last_sequence(self):
         return dist.get_rank(self.sp_rank) == self.sp_world_size - 1
 
-    def get_dataloader(self, trainer):
+    def prepare_trainer(self, trainer, **kwargs):
         if trainer.train_dataset is None:
             raise ValueError('Trainer: training requires a train_dataset.')
 
@@ -472,8 +476,13 @@ class Ulysses(SequenceParallel):
                     trainer._custom_metrics[k].update(v)
 
         trainer._compute_acc = MethodType(_compute_acc, trainer)
+        return UlyssesSampler(self, train_dataset, seed=42, **kwargs)
 
+    def get_dataloader(self, trainer):
+        sampler = self.prepare_trainer(trainer)
         import datasets
+        train_dataset = trainer.train_dataset
+        data_collator = trainer.data_collator
         if isinstance(train_dataset, datasets.Dataset):
             train_dataset = trainer._remove_unused_columns(train_dataset, description='training')
         else:
@@ -488,7 +497,7 @@ class Ulysses(SequenceParallel):
         }
 
         if not isinstance(train_dataset, torch.utils.data.IterableDataset):
-            dataloader_params['sampler'] = UlyssesSampler(self, train_dataset, seed=42)
+            dataloader_params['sampler'] = sampler
             dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
             dataloader_params['worker_init_fn'] = seed_worker
 

@@ -208,7 +208,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
     def _check_rlhf(self):
         if self.sequence_parallel_size > 1:
-            raise ValueError('RLHF do not support sequence parallel')
+            pass
+            # raise ValueError('RLHF do not support sequence parallel')
 
     def _check_grpo(self):
         if self.rlhf_type != 'grpo':
