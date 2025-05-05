@@ -8,7 +8,7 @@ from datasets import Dataset
 from torch.utils.data import DataLoader
 from transformers.trainer_utils import seed_worker
 
-from swift.trainers.sequence_parallel.base import SequenceParallel
+from .base import SequenceParallel
 
 
 class XTuner(SequenceParallel):

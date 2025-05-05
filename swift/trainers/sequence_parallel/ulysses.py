@@ -11,13 +11,12 @@ from torch import Tensor
 from torch.distributed.device_mesh import init_device_mesh
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
-from transformers.modeling_flash_attention_utils import is_flash_attn_available
 from transformers.trainer_utils import seed_worker
 
 from swift.llm import get_model_arch
-from swift.trainers.sequence_parallel.base import SequenceParallel
 from swift.tuners import SwiftModel
 from swift.utils import get_device, get_dist_setting
+from .base import SequenceParallel
 
 
 class GatherLoss(torch.autograd.Function):
@@ -316,6 +315,7 @@ class Ulysses(SequenceParallel):
             local_flash_attn, dist_attn=DistributedAttention(None, self.sp_group))
         ALL_ATTENTION_FUNCTIONS['sdpa'] = partial(local_sdpa_attn, dist_attn=DistributedAttention(None, self.sp_group))
 
+        from transformers.modeling_flash_attention_utils import is_flash_attn_available
         if is_flash_attn_available():
             # TODO this works for multi-modal models like qwen2.5-vl
             # SDPA is not supported, because we need to copy the code to our project, which will bring

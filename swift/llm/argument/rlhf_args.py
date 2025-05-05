@@ -113,7 +113,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         self._set_default()
         self._init_external_vllm()
         super().__post_init__()
-        self._check_rlhf()
         self._check_grpo()
         self._external_vllm_warning()
 
@@ -205,9 +204,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 self.loss_type = 'sigmoid'  # else None
             elif self.rlhf_type in ['kto']:
                 self.loss_type = 'kto'
-
-    def _check_rlhf(self):
-        pass
 
     def _check_grpo(self):
         if self.rlhf_type != 'grpo':

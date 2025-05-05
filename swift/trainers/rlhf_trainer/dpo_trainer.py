@@ -45,22 +45,17 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
         return dataloader
 
     def get_nll_loss(self, logits, labels):
-
-        def cross_entropy_loss(logits, labels):
-            if not self.is_encoder_decoder:
-                # Shift so that tokens < n predict n
-                logits = logits[..., :-1, :].contiguous()
-                labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = nn.CrossEntropyLoss(ignore_index=self.label_pad_token_id)
-            logits = logits.view(-1, logits.shape[-1])
-            labels = labels.view(-1)
-            # Enable model parallelism
-            labels = labels.to(logits.device)
-            loss = loss_fct(logits, labels)
-            return loss
-
-        return cross_entropy_loss(logits, labels)
+        if not self.is_encoder_decoder:
+            # Shift so that tokens < n predict n
+            logits = logits[..., :-1, :].contiguous()
+            labels = labels[..., 1:].contiguous()
+        # Flatten the tokens
+        loss_fct = nn.CrossEntropyLoss(ignore_index=self.label_pad_token_id)
+        logits = logits.view(-1, logits.shape[-1])
+        labels = labels.view(-1)
+        # Enable model parallelism
+        labels = labels.to(logits.device)
+        return loss_fct(logits, labels)
 
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
