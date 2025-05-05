@@ -1,19 +1,18 @@
-import math
 from functools import partial
 from types import MethodType
-from typing import Any, Iterator, Optional, Sized, Tuple
-import inspect
+from typing import Any, Iterator, Optional, Tuple
+
+import math
 import torch
 import torch.distributed as dist
-from swift.llm import get_model_arch
 from torch import Tensor
-from contextlib import contextmanager
 from torch.distributed.device_mesh import init_device_mesh
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
 from transformers.modeling_flash_attention_utils import is_flash_attn_available
 from transformers.trainer_utils import seed_worker
 
+from swift.llm import get_model_arch
 from swift.trainers.sequence_parallel.base import SequenceParallel
 from swift.utils import get_device, get_dist_setting
 
