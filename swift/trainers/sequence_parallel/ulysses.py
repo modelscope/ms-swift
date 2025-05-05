@@ -21,32 +21,40 @@ class GatherLoss(torch.autograd.Function):
     """Gather loss from sequence group"""
 
     @staticmethod
-    def forward(ctx, loss, labels, process_group):
+    def forward(ctx, loss, labels, process_group, gather_idx=None):
         """
         Args:
             loss: loss tensor after splitting
             labels: labels tensor after splitting
             process_group: the sequence parallel group
         """
-
         ctx.process_group = process_group
-        ctx.shapes = labels.shape[0]  # flatten
+        shape0 = labels.shape[0]
+        ctx.scatter_shape = labels.shape[gather_idx or 0]
+        ctx.gather_idx = gather_idx or 0
         world_size = dist.get_world_size(group=process_group)  # the sp world size
-        output = torch.empty((loss.shape[0] * world_size), dtype=loss.dtype, device=loss.device)
+        output = torch.empty((shape0 * world_size, *loss.shape[1:]), dtype=loss.dtype, device=loss.device)
         # gather all from sp group
         dist.all_gather_into_tensor(output, loss, group=process_group)
-        labels_output = torch.empty((labels.shape[0] * world_size), dtype=labels.dtype, device=labels.device)
+        if gather_idx is not None:
+            output = torch.cat(output.split(shape0, dim=0), dim=gather_idx)
+        labels_output = torch.empty((shape0 * world_size, *labels.shape[1:]), dtype=labels.dtype, device=labels.device)
         dist.all_gather_into_tensor(labels_output, labels, group=process_group)
+        if gather_idx is not None:
+            labels_output = torch.cat(labels_output.split(shape0, dim=0), dim=gather_idx)
         return output, labels_output
 
     @staticmethod
     def backward(ctx, *grad_output):
         _grad = grad_output[0] * dist.get_world_size(group=ctx.process_group)
-        return _grad.split(ctx.shapes, dim=0)[dist.get_rank(ctx.process_group)].contiguous(), None, None
+        return _grad.split(ctx.scatter_shape, dim=ctx.gather_idx)[dist.get_rank(ctx.process_group)].contiguous(), None, None, None
 
 
 def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None, process_group=None) -> torch.Tensor:
-    logits = outputs.logits
+    if hasattr(outputs, 'logits'):
+        logits = outputs.logits
+    else:
+        logits = outputs
     device = logits.device
     logits = logits.view(-1, logits.shape[-1])
     labels = labels.flatten().to(device)
@@ -74,7 +82,7 @@ def get_batch_logps(
     loss_mask = labels != label_pad_token_id
     labels[labels == label_pad_token_id] = 0
     per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
-    total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, process_group)
+    total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, process_group, 1)
     return (total_per_token_logps * total_loss_mask).sum(-1), total_loss_mask.sum(-1)
 
 
@@ -458,9 +466,9 @@ class Ulysses(SequenceParallel):
 
         trainer.compute_loss_func = partial(loss_scale_sp_func, process_group=self.sp_group)
         if hasattr(trainer, 'get_batch_logps'):
-            trainer.get_batch_logps = get_batch_logps
+            trainer.get_batch_logps = partial(get_batch_logps, process_group=self.sp_group)
         if hasattr(trainer, 'get_nll_loss'):
-            def rlhf_loss_scale_sp_func(self, *args, **kwargs):
+            def rlhf_loss_scale_sp_func(_, *args, **kwargs):
                 return loss_scale_sp_func(*args, process_group=self.sp_group, **kwargs)
             trainer.get_nll_loss = MethodType(rlhf_loss_scale_sp_func, trainer)
         train_dataset = trainer.train_dataset
