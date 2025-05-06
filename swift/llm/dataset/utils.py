@@ -111,14 +111,14 @@ class LazyLLMDataset(Dataset):
 
 class BasePackingDataset:
 
-    def __init__(self, template, dataset, num_workers: int = 1, *, packing_interval: int = 128, strict: bool = False):
+    def __init__(self, template, dataset, num_proc: int = 1, *, packing_interval: int = 128, strict: bool = False):
         template._packing = True
         self.template = template
         self.dataset = dataset
-        self.num_workers = num_workers
+        self.num_proc = num_proc
         self.packing_interval = packing_interval
         self.strict = strict
-        assert num_workers >= 1, f'num_workers: {num_workers}'
+        assert num_proc >= 1, f'num_proc: {num_proc}'
         self.workers = []
 
     @staticmethod
@@ -150,13 +150,13 @@ class BasePackingDataset:
 
 class PackingDataset(BasePackingDataset, Dataset):
 
-    def __init__(self, template, dataset, num_workers: int = 1, *, packing_interval: int = 128, strict: bool = False):
-        super().__init__(template, dataset, num_workers, packing_interval=packing_interval, strict=strict)
+    def __init__(self, template, dataset, num_proc: int = 1, *, packing_interval: int = 128, strict: bool = False):
+        super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
         self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc='Packing')
         self._queue = mp.Queue()
         self._terminated_workers = 0
-        for i in range(self.num_workers):
-            shard_dataset = self.dataset.shard(self.num_workers, i)
+        for i in range(self.num_proc):
+            shard_dataset = self.dataset.shard(self.num_proc, i)
             worker = mp.Process(target=self._producer, args=(shard_dataset, ), daemon=True)
             worker.start()
             self.workers.append(worker)
@@ -172,7 +172,7 @@ class PackingDataset(BasePackingDataset, Dataset):
             data = self._queue.get()
             if data is None:
                 self._terminated_workers += 1
-                if self._terminated_workers == self.num_workers:
+                if self._terminated_workers == self.num_proc:
                     break
                 continue
             self.prog_bar.update(1)
@@ -185,7 +185,7 @@ class PackingDataset(BasePackingDataset, Dataset):
         result = []
         while True:
             data = self.fetch_packing_data(data)
-            is_finished = self._terminated_workers == self.num_workers
+            is_finished = self._terminated_workers == self.num_proc
             res, data = self.calculate_matched_group(self.template, data, is_finished=is_finished)
             result += res
             if is_finished:
@@ -213,17 +213,17 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
     def __init__(self,
                  template,
                  dataset,
-                 num_workers: int = 1,
+                 num_proc: int = 1,
                  *,
                  packing_interval: int = 128,
                  strict: bool = False,
                  cyclic: bool = False):
-        super().__init__(template, dataset, num_workers, packing_interval=packing_interval, strict=strict)
+        super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
         self._in_queue = mp.Queue()
         self._out_queue = mp.Queue()
         self.workers = []
         self.cyclic = cyclic
-        for _ in range(self.num_workers):
+        for _ in range(self.num_proc):
             worker = mp.Process(target=self._processor, daemon=True)
             worker.start()
             self.workers.append(worker)
