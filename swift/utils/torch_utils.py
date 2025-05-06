@@ -237,14 +237,15 @@ def safe_ddp_context(hash_id: Optional[str], use_barrier: bool = False):
         yield
         if (is_dist() or is_dist_ta()) and is_master():
             dist.barrier()
-    else:
-        assert hash_id is not None
+    elif hash_id is not None:
         lock_dir = os.path.join(get_cache_dir(), 'lockers')
         os.makedirs(lock_dir, exist_ok=True)
         file_path = hashlib.sha256(hash_id.encode('utf-8')).hexdigest() + '.lock'
         file_path = os.path.join(lock_dir, file_path)
         with FileLock(file_path):
             yield
+    else:
+        yield
 
 
 def get_device(local_rank: Optional[Union[str, int]] = None) -> str:
