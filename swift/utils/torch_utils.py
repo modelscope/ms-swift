@@ -232,7 +232,7 @@ def find_all_linears(model, model_arch=None, extra_layers=None, sub_module=None)
 @contextmanager
 def safe_ddp_context(hash_id: Optional[str], use_barrier: bool = False):
     if use_barrier and dist.is_initialized():
-        if (is_dist() or is_dist_ta()):
+        if is_dist() or is_dist_ta():
             if not is_master():
                 dist.barrier()
             if not is_local_master():
@@ -240,7 +240,7 @@ def safe_ddp_context(hash_id: Optional[str], use_barrier: bool = False):
                 # where each machine uses different storage hardware.
                 dist.barrier()
         yield
-        if (is_dist() or is_dist_ta()):
+        if is_dist() or is_dist_ta():
             if is_master():
                 dist.barrier()
             if is_local_master():
