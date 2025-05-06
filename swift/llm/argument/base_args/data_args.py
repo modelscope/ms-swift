@@ -38,6 +38,7 @@ class DataArguments:
 
     data_seed: Optional[int] = None
     dataset_num_proc: int = 1
+    load_from_cache_file: bool = True
     dataset_shuffle: bool = True
     val_dataset_shuffle: bool = False
     streaming: bool = False
@@ -80,6 +81,7 @@ class DataArguments:
         return {
             'seed': self.data_seed,
             'num_proc': self.dataset_num_proc,
+            'load_from_cache_file': self.load_from_cache_file,
             'streaming': self.streaming,
             'interleave_prob': self.interleave_prob,
             'stopping_strategy': self.stopping_strategy,

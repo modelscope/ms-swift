@@ -1,4 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
+
 import datasets.fingerprint
 from datasets import Dataset as HfDataset
 
@@ -16,8 +18,13 @@ update_fingerprint_origin = datasets.fingerprint.update_fingerprint
 
 
 def update_fingerprint(fingerprint, transform, transform_args):
-    if 'function' in transform_args and hasattr(transform_args['function'], '__self__'):
-        transform_args['function'] = str(transform_args['function'].__self__.__class__)
+    if 'function' in transform_args:
+        # Calculate the hash using the source code.
+        if hasattr(transform_args['function'], '__self__'):
+            function = inspect.getsource(transform_args['function'].__self__.__class__)
+        else:
+            function = inspect.getsource(transform_args['function'])
+        transform_args['function'] = function
     return update_fingerprint_origin(fingerprint, transform, transform_args)
 
 
