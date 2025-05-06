@@ -207,11 +207,11 @@ class _SeqAllToAll(torch.autograd.Function):
 
     @staticmethod
     def forward(
-        ctx: Any,
-        group: dist.ProcessGroup,
-        input: Tensor,
-        scatter_idx: int,
-        gather_idx: int,
+            ctx: Any,
+            group: dist.ProcessGroup,
+            input: Tensor,
+            scatter_idx: int,
+            gather_idx: int,
     ) -> Tensor:
         ctx.group = group
         ctx.scatter_idx = scatter_idx
@@ -227,11 +227,11 @@ class _SeqAllToAll(torch.autograd.Function):
 class DistributedAttention(torch.nn.Module):
 
     def __init__(
-        self,
-        local_attention,
-        sequence_process_group: dist.ProcessGroup,
-        scatter_idx: int = 2,
-        gather_idx: int = 1,
+            self,
+            local_attention,
+            sequence_process_group: dist.ProcessGroup,
+            scatter_idx: int = 2,
+            gather_idx: int = 1,
     ) -> None:
         super(DistributedAttention, self).__init__()
         self.local_attn = local_attention
@@ -282,7 +282,6 @@ class Ulysses(SequenceParallel):
         def local_flash_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
                              dist_attn, **kwargs):
             if dist_attn.local_attn is None:
-
                 def _attention(query, key, value, *args, **kwargs):
                     query = query.transpose(1, 2)
                     key = key.transpose(1, 2)
@@ -299,7 +298,6 @@ class Ulysses(SequenceParallel):
         def local_sdpa_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
                             dist_attn, **kwargs):
             if dist_attn.local_attn is None:
-
                 def _attention(query, key, value, *args, **kwargs):
                     query = query.transpose(1, 2)
                     key = key.transpose(1, 2)
@@ -481,11 +479,31 @@ class Ulysses(SequenceParallel):
     def dp_group(self):
         return self.device_mesh['data'].get_group()
 
-    @property
-    def is_last_sequence(self):
-        return dist.get_rank(self.sp_rank) == self.sp_world_size - 1
+    @staticmethod
+    def get_dataloader(self, trainer, dataset, batch_size):
+        sampler = UlyssesSampler(self, dataset, seed=42)
+        data_collator = trainer.data_collator
+        if isinstance(dataset, datasets.Dataset):
+            dataset = trainer._remove_unused_columns(dataset, description='training')
+        else:
+            data_collator = trainer._get_collator_with_removed_columns(data_collator, description='training')
 
-    def prepare_trainer_and_get_dataloader(self, trainer):
+        dataloader_params = {
+            'batch_size': batch_size,
+            'collate_fn': data_collator,
+            'num_workers': trainer.args.dataloader_num_workers,
+            'pin_memory': trainer.args.dataloader_pin_memory,
+            'persistent_workers': trainer.args.dataloader_persistent_workers,
+        }
+
+        if not isinstance(dataset, torch.utils.data.IterableDataset):
+            dataloader_params['sampler'] = sampler
+            dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
+            dataloader_params['worker_init_fn'] = seed_worker
+
+        return DataLoader(dataset, **dataloader_params)
+
+    def prepare_trainer(self, trainer):
         if trainer.train_dataset is None:
             raise ValueError('Trainer: training requires a train_dataset.')
 
@@ -493,12 +511,10 @@ class Ulysses(SequenceParallel):
         if hasattr(trainer, 'get_batch_logps'):
             trainer.get_batch_logps = partial(get_batch_logps, process_group=self.sp_group)
         if hasattr(trainer, 'get_nll_loss'):
-
             def rlhf_loss_scale_sp_func(_, *args, **kwargs):
                 return loss_scale_sp_func(*args, process_group=self.sp_group, **kwargs)
 
             trainer.get_nll_loss = MethodType(rlhf_loss_scale_sp_func, trainer)
-        train_dataset = trainer.train_dataset
 
         def _compute_acc(trainer, outputs, labels) -> None:
             args = trainer.args
@@ -532,26 +548,3 @@ class Ulysses(SequenceParallel):
                     trainer._custom_metrics[k].update(v)
 
         trainer._compute_acc = MethodType(_compute_acc, trainer)
-        sampler = UlyssesSampler(self, train_dataset, seed=42)
-
-        train_dataset = trainer.train_dataset
-        data_collator = trainer.data_collator
-        if isinstance(train_dataset, datasets.Dataset):
-            train_dataset = trainer._remove_unused_columns(train_dataset, description='training')
-        else:
-            data_collator = trainer._get_collator_with_removed_columns(data_collator, description='training')
-
-        dataloader_params = {
-            'batch_size': trainer._train_batch_size,
-            'collate_fn': data_collator,
-            'num_workers': trainer.args.dataloader_num_workers,
-            'pin_memory': trainer.args.dataloader_pin_memory,
-            'persistent_workers': trainer.args.dataloader_persistent_workers,
-        }
-
-        if not isinstance(train_dataset, torch.utils.data.IterableDataset):
-            dataloader_params['sampler'] = sampler
-            dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
-            dataloader_params['worker_init_fn'] = seed_worker
-
-        return DataLoader(train_dataset, **dataloader_params)
