@@ -708,5 +708,14 @@
             "problem_statement": "query"
         },
         "tags": ["grpo", "code"]
+    },
+    {
+        "hf_dataset_id": "battleMaster/RLHF-V-ms-swift",
+        "columns": {
+            "question": "query",
+            "chosen": "response",
+            "rejected": "rejected_response"
+        },
+        "tags": ["rlhf", "dpo", "multi-modal", "en"]
     }
 ]
