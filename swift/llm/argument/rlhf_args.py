@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
@@ -103,6 +104,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             training_args['world_size'] = self.global_world_size
 
     def __post_init__(self):
+        self._deprecated_warning()
         self._init_grpo()
         self._init_rm()
         self._init_simpo()
@@ -236,7 +238,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                     'If you encounter an Out-of-Memory (OOM) error, it is recommended to set the `sleep_level`, '
                     '`offload_model`, and `offload_optimizer` parameters.')
                 assert not self.async_generate, 'async_generate requires async mode, but you are under colocate mode'
-                if self.use_lmdeploy and self.tensor_parallel_size > 1:
+                if self.use_lmdeploy and self.vllm_tensor_parallel_size > 1:
                     raise ValueError('Currently LMDeploy do not support tensor parallel')
                 if self.use_vllm and self.sleep_level:
                     logger.warning('It is highly recommended to use `sleep_level==1` in colocate mode,'
@@ -252,7 +254,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                     logger.warning('You are using different GPUs for training and rollout, '
                                    'so you do not need to use sleep_level > 0')
 
-                assert self.tensor_parallel_size == 1, ('async mode do not support tensor parallel right now')
+                assert self.vllm_tensor_parallel_size == 1, ('async mode do not support tensor parallel right now')
 
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
@@ -273,3 +275,22 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 "Configuration conflict: 'vllm_max_model_len=%s' is ignored for external vLLM. "
                 'Please specify it when launching the inference service: '
                 '`swift deploy --max_model_len <value>`', self.vllm_max_model_len)
+
+    def _deprecated_warning(self):
+        if self.rlhf_type != 'grpo':
+            return
+
+        if self.tensor_parallel_size is not None:
+            warnings.warn(
+                "The parameter 'tensor_parallel_size' has been deprecated and will be removed in version 3.6. "
+                "It is recommended to use 'vllm_tensor_parallel_size' instead.", DeprecationWarning)
+            self.vllm_tensor_parallel_size = self.tensor_parallel_size
+
+        if self.vllm_device is not None:
+            warnings.warn("The parameter 'vllm_device' has been deprecated and will be removed in version 3.6. ",
+                          DeprecationWarning)
+
+        if self.vllm_enable_prefix_caching is not None:
+            warnings.warn(
+                "The parameter 'vllm_enable_prefix_caching' has been deprecated and will be removed in version 3.6. ",
+                DeprecationWarning)
