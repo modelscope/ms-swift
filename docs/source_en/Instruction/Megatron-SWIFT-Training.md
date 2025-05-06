@@ -220,6 +220,9 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - log_validation_ppl_to_tensorboard: Writes validation perplexity to TensorBoard. Default is True.
 - log_memory_to_tensorboard: Writes memory logs to TensorBoard. Default is True.
 - logging_level: Logging level. Default is None.
+- wandb_project: The name of the wandb project. Defaults to '', which means ignoring wandb.
+- wandb_exp_name: The name of the wandb experiment. Defaults to ''.
+- wandb_save_dir: The local path to save wandb results. Defaults to ''.
 
 **Evaluation Parameters**:
 
