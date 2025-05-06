@@ -43,7 +43,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
         dataloader = None
         if self.template.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
-            dataloader = sequence_parallel.get_dataloader(self)
+            dataloader = sequence_parallel.get_dataloader(self, self.train_dataset, self._train_batch_size)
         if dataloader is None:
             return super().get_train_dataloader()
         return dataloader
@@ -53,9 +53,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
             raise ValueError("Trainer: evaluation requires an eval_dataset.")
         eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
         dataloader = None
-        if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            dataloader = sequence_parallel.get_dataloader(self, eval_dataset, self.args.eval_batch_size)
+        # if self.template.sequence_parallel_size > 1:
+        #    from swift.trainers.sequence_parallel import sequence_parallel
+        #    dataloader = sequence_parallel.get_dataloader(self, eval_dataset, self.args.eval_batch_size)
         if dataloader is None:
             return super().get_eval_dataloader(eval_dataset=eval_dataset)
         return dataloader
