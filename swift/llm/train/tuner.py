@@ -21,7 +21,8 @@ logger = get_logger()
 def apply_liger(model_type: str):
     from liger_kernel.transformers import (apply_liger_kernel_to_llama, apply_liger_kernel_to_mistral,
                                            apply_liger_kernel_to_mixtral, apply_liger_kernel_to_gemma,
-                                           apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen2_vl,
+                                           apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen3,
+                                           apply_liger_kernel_to_qwen2_vl, apply_liger_kernel_to_qwen2_5_vl,
                                            apply_liger_kernel_to_phi3, apply_liger_kernel_to_mllama)
     from swift.llm import ModelType
     if model_type in (ModelType.llama, ModelType.llama3, ModelType.llama3_1, ModelType.llama3_2):
@@ -34,12 +35,16 @@ def apply_liger(model_type: str):
         apply_liger_kernel_to_gemma()
     elif model_type in (ModelType.qwen2, ModelType.qwen2_5):
         apply_liger_kernel_to_qwen2()
+    elif model_type in (ModelType.qwen3):
+        apply_liger_kernel_to_qwen3()
     elif model_type in (ModelType.phi3):
         apply_liger_kernel_to_phi3()
     elif model_type in (ModelType.llama3_2_vision):
         apply_liger_kernel_to_mllama()
     elif model_type in (ModelType.qwen2_vl):
         apply_liger_kernel_to_qwen2_vl()
+    elif model_type in (ModelType.qwen2_5_vl):
+        apply_liger_kernel_to_qwen2_5_vl()
     else:
         raise ValueError(f'Unsupported liger model_type: {model_type}')
 
