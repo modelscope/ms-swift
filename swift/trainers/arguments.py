@@ -143,9 +143,9 @@ class GRPOArgumentsMixin:
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
-    num_infer_workers: int = 1
+    num_infer_workers: Optional[int] = None  # deprecated
     # vllm
-    vllm_mode: Literal['server', 'colocate']
+    vllm_mode: Literal['server', 'colocate'] = 'colocate'
     # internal vllm (colocate)
     vllm_device: Optional[List[str]] = None  # deprecated
     vllm_gpu_memory_utilization: float = 0.9

@@ -219,42 +219,9 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             raise ValueError(
                 'GRPO requires at least 2 generations per prompt to calculate the advantages. You provided '
                 f'{self.num_generations}, which is less than the minimum required.')
-        from swift.utils import get_device_count, get_dist_setting
-        device_count = get_device_count()
-        _, _, _, local_world_size = get_dist_setting()
-        num_infer_workers = self.num_infer_workers
-        fast_infer = self.use_vllm or self.use_lmdeploy
-        if fast_infer and self.vllm_server_host is None:
-            is_colocate_mode = (device_count == num_infer_workers)
 
-            if is_colocate_mode:
-                # colocate mode
-                assert device_count == local_world_size, (
-                    f'Colocate mode requires device_count({device_count}) == num_infer_workers({num_infer_workers}). '
-                    'Please check if your device count matches NPROC_PER_NODE setting.')
-                logger.info(
-                    'You are using colocate mode because you have set num_infer_workers to be the same as '
-                    'NPROC_PER_NODE, where model training and sampling will be performed on a single GPU. '
-                    'If you encounter an Out-of-Memory (OOM) error, it is recommended to set the `sleep_level`, '
-                    '`offload_model`, and `offload_optimizer` parameters.')
-                assert not self.async_generate, 'async_generate requires async mode, but you are under colocate mode'
-                if self.use_lmdeploy and self.vllm_tensor_parallel_size > 1:
-                    raise ValueError('Currently LMDeploy do not support tensor parallel')
-                if self.use_vllm and self.sleep_level:
-                    logger.warning('It is highly recommended to use `sleep_level==1` in colocate mode,'
-                                   'otherwise it may lead to an OOM (Out of Memory) error.')
-            else:
-                # async mode
-                assert device_count == (local_world_size + num_infer_workers), (
-                    f'Async mode requires total GPUs({device_count}) = training GPUs({local_world_size}) + '
-                    f'inference workers({num_infer_workers}). Please adjust your GPU allocation.')
-                logger.info(
-                    'You are using async mode, where model training and sampling will be performed on different GPUs.')
-                if self.sleep_level > 0:
-                    logger.warning('You are using different GPUs for training and rollout, '
-                                   'so you do not need to use sleep_level > 0')
-
-                assert self.vllm_tensor_parallel_size == 1, ('async mode do not support tensor parallel right now')
+        if self.vllm_mode == 'server':
+            assert not self.use_vllm or self.vllm_server_host is not None
 
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
@@ -294,3 +261,13 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             warnings.warn(
                 "The parameter 'vllm_enable_prefix_caching' has been deprecated and will be removed in version 3.6. ",
                 DeprecationWarning)
+
+        if self.num_infer_workers is not None:
+            warnings.warn(
+                "The parameter 'num_infer_workers' has been deprecated and will be removed in version 3.6. "
+                'If you wish to use colocate mode, please use `vllm_mode colocate` instead. '
+                'If you wish to use async mode, please use `vllm_mode server` and external vLLM server instead.',
+                DeprecationWarning)
+            if self.use_vllm and self.vllm_server_host is None:
+                logger.info('set vllm_mode to colocate since vllm_server_host is not provided')
+                self.vllm_mode = 'colocate'

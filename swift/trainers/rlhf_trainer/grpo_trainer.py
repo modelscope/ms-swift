@@ -413,9 +413,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         cls = GRPOVllmEngine
         engine_kwargs = {'seed': self.accelerator.process_index // self.vllm_tensor_parallel_size}
 
-        max_num_seqs = self.args.per_device_train_batch_size \
-                                        * self.vllm_tensor_parallel_size \
-                                        * self.args.gradient_accumulation_steps,
+        max_num_seqs = (
+            self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size
+            * self.args.gradient_accumulation_steps)
+
         with Swift.grpo_context(model, self.template.processor):
             engine = cls(
                 model.model_dir,
