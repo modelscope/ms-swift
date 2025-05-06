@@ -38,10 +38,11 @@ from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import orms
 from swift.plugin.multi_turn import multi_turns
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
-                         get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
+                         get_node_setting, is_liger_available, is_lmdeploy_available, is_vllm_available,
+                         is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import patch_lora_merge, patch_lora_unmerge, round_robin
+from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge, round_robin
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
@@ -165,7 +166,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         else:
             self.reward_weights = torch.ones(len(reward_funcs), dtype=torch.float32)
 
-        self.num_generations = args.num_generations
+        self.num_generations = args.num_generations  # = G in the GRPO paper
+        self.max_completion_length = args.max_completion_length  # = |o_i| in the GRPO paper
         self.temperature = args.temperature
         self.loss_type = args.loss_type
         model.warnings_issued['estimate_tokens'] = True
@@ -174,7 +176,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
+
+        # we initialize vllm_client in RLHFArguments._init_external_vllm (swift/llm/rlhf_args)
         vllm_client = kwargs.pop('vllm_client')  # for external vllm
+        self.use_vllm = args.use_vllm
+        self.use_lmdeploy = args.use_lmdeploy
+        self.epsilon_low = args.epsilon
+        self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
+        self.log_completions = args.log_completions
         if self.args.tensor_parallel_size > 1 and self.multi_turn_func:
             import torch.distributed as dist
             rank, _, _, _ = get_dist_setting()
@@ -183,7 +192,28 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if rank in tp_group:
                     self.group = group
 
+        model.warnings_issued['estimate_tokens'] = True
+        kwargs['data_collator'] = lambda features: features
+
         super().__init__(model, ref_model, *_args, **kwargs)
+
+        self.use_liger_loss = self.args.use_liger_loss
+        if self.use_liger_loss:
+            from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
+            if not is_liger_available():
+                raise ImportError(
+                    'Liger is required to use `liger_loss` as the GRPO loss. Run `pip install liger-kernel`.')
+
+            self.liger_grpo_loss = LigerFusedLinearGRPOLoss(
+                beta=self.beta,
+                epsilon_low=self.epsilon_low,
+                epsilon_high=self.epsilon_high,
+                temperature=self.temperature,
+                use_ref_model=self.beta != 0.0,
+                loss_type=self.loss_type,
+                max_completion_length=self.max_completion_length,
+            )
+            self._forward_redirection = _ForwardRedirection()
 
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self.log_completions = args.log_completions
@@ -252,7 +282,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                          'reducing it by one is sufficient. '
                                          f'In your case: `--num_processes {get_device_count() - 1}`.')
 
-                if use_vllm:
+                if self.use_vllm:
                     if not is_vllm_available():
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                           'Please install vLLM with `pip install vllm -U` to use it.')
@@ -261,7 +291,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     else:
                         self.engine = self.prepare_vllm(model, fast_infer_device)
                     self.infer_device = fast_infer_device[self.local_infer_rank]
-                elif use_lmdeploy:
+                elif self.use_lmdeploy:
                     if not is_lmdeploy_available():
                         raise ImportError('LMDeploy is not available and `use_lmdeploy` is set to True.'
                                           'Please install LMDeploy with `pip install lmdeploy -U` to use it.')
@@ -317,8 +347,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
-        self.epsilon_low = args.epsilon
-        self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
 
         # Tracks the number of iterations (forward + backward passes), including those within a gradient accumulation cycle. # noqa
         self._step = 0
@@ -580,7 +608,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if self.infer_rank >= 0:
                     if self.args.async_generate:
                         self._wait_queue()
-                    if self.args.use_vllm:
+                    if self.use_vllm:
                         llm_model = self.engine.inner_model
                     else:
                         llm_model = self.engine.engine.engine
@@ -593,7 +621,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     with patch_lora_unmerge(unwrapped_model):
                         unwrapped_model.unmerge_adapter()
 
-        if self.infer_rank >= 0 and self.args.use_vllm and self.args.vllm_enable_prefix_caching:
+        if self.infer_rank >= 0 and self.use_vllm and self.args.vllm_enable_prefix_caching:
             self.engine.engine.reset_prefix_cache()
 
     def _wait_queue(self):
@@ -1025,15 +1053,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 batch_encoded_inputs['old_per_token_logps'] = (
                     self._get_per_token_logps(self.model, batch_encoded_inputs) if self.old_policy else None)
 
-                if self.beta == 0.0:
-                    ref_per_token_logps = None
-                elif self.ref_model is not None:
-                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, batch_encoded_inputs)
-                else:
-                    with self.accelerator.unwrap_model(self.model).disable_adapter():
-                        ref_per_token_logps = self._get_per_token_logps(self.model, batch_encoded_inputs)
-                batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
-
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
         return ga_batch_encoded_inputs
@@ -1094,6 +1113,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if isinstance(inputs, list):
             assert len(inputs) == 1
             inputs = inputs[0]
+        if self.use_liger_loss:
+            unwrapped_model = self.accelerator.unwrap_model(model)
+            return self._forward_redirection(model, unwrapped_model, self.compute_liger_loss, unwrapped_model, inputs)
+        else:
+            return self._compute_loss(model, inputs)
+
+    def _compute_loss(self, model, inputs):
         completion_mask = inputs['completion_mask']
         truncated_mask = inputs['truncated_mask']
         # apply the completion_mask to exclude loss and metrics for overlong completions
@@ -1107,7 +1133,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Compute the KL divergence between the model and the reference model
         if self.beta != 0.0:
-            ref_per_token_logps = inputs['ref_per_token_logps']
+            with torch.no_grad():
+                if self.ref_model is not None:
+                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, inputs)
+                else:
+                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                        ref_per_token_logps = self._get_per_token_logps(self.model, inputs)
+
             per_token_kl = (
                 torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
@@ -1182,6 +1214,72 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         logits = logits / self.temperature
         input_ids = input_ids[:, -logits_to_keep:]
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
+
+    @profiling_decorator
+    def _get_last_hidden_state(self, unwrapped_model, inputs, logits_to_keep):
+        # unwrap the model to access the model.model
+        if is_peft_model(unwrapped_model):
+            unwrapped_model = unwrapped_model.base_model.model
+        if not unwrapped_model.model_meta.is_multimodal:
+            last_hidden_state = unwrapped_model.model(
+                input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask']).last_hidden_state
+        else:
+            inputs = {
+                k: v
+                for k, v in inputs.items() if k not in [
+                    'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
+                    'truncated_mask'
+                ]
+            }
+            with self._template_context(self.template):
+                outputs = unwrapped_model(**inputs, output_hidden_states=True)
+                last_hidden_state = outputs.hidden_states[-1]
+
+        last_hidden_state = last_hidden_state[:, :-1, :]  # (B, L-1, H)
+        if logits_to_keep is not None:
+            last_hidden_state = last_hidden_state[:, -logits_to_keep:, :]  # (B, logits_to_keep, H)
+        return last_hidden_state
+
+    def compute_liger_loss(self, unwrapped_model, inputs):
+        # Compute the per-token log probabilities for the model
+        input_ids = inputs['input_ids']
+        logits_to_keep = inputs['logits_to_keep']
+        completion_ids = input_ids[:, -logits_to_keep:]
+        completion_mask = inputs['completion_mask']
+
+        # Compute the KL divergence between the model and the reference model
+        ref_per_token_logps = None
+        if self.beta != 0.0:
+            with torch.no_grad():
+                if self.ref_model is not None:
+                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, inputs)
+                else:
+                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                        ref_per_token_logps = self._get_per_token_logps(self.model, inputs)
+
+        # get the last hidden state of the model
+        last_hidden_state = self._get_last_hidden_state(unwrapped_model, inputs, logits_to_keep)
+        # compute loss and metrics using liger grpo loss
+        loss, metrics = self.liger_grpo_loss(
+            _input=last_hidden_state,
+            lin_weight=unwrapped_model.lm_head.weight,
+            selected_token_ids=completion_ids,
+            attention_mask=completion_mask,
+            advantages=inputs['advantages'],
+            bias=unwrapped_model.lm_head.bias,
+            old_per_token_logps=inputs['old_per_token_logps'],
+            ref_per_token_logps=ref_per_token_logps,
+        )
+        # Extract metrics from the liger_grpo_loss output
+        # KL divergence is the first metric when beta is non-zero
+        mean_kl = metrics[0] if self.beta != 0.0 else None
+        clip_ratio = metrics[-1]
+
+        mode = 'eval' if self.control.should_evaluate else 'train'
+        if self.beta != 0.0:
+            self._metrics[mode]['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
+        self._metrics[mode]['clip_ratio'].append(self.accelerator.gather_for_metrics(clip_ratio).mean().item())
+        return loss
 
     def evaluation_loop(self, dataloader, *args, **kwargs):
         # Wait for the training rollout to complete
