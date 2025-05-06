@@ -2,7 +2,7 @@
 import ast
 import os
 from collections import Counter
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -291,12 +291,9 @@ class RowPreprocessor:
             dataset = sample_dataset(dataset, self.dataset_sample, True, self.random_state)
 
         map_kwargs = {'batched': True, 'batch_size': batch_size}
-        map_context = nullcontext()
         if isinstance(dataset, HfDataset):
-            if not load_from_cache_file:
-                map_context = safe_ddp_context(None, True)
-                if is_dist() and not is_master():
-                    load_from_cache_file = True
+            if not load_from_cache_file and is_dist() and not is_master():
+                load_from_cache_file = True
             map_kwargs.update({
                 'num_proc': num_proc,
                 'load_from_cache_file': load_from_cache_file,
@@ -304,14 +301,14 @@ class RowPreprocessor:
         # compat GRPO: The solution field will be retained.
         dataset = RowPreprocessor.get_features_dataset(dataset)
         if 'solution' in dataset.features:
-            with map_context:
+            with safe_ddp_context(None, True):
                 dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
         dataset = self._rename_columns(dataset)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
 
         ignore_max_length_error = True if isinstance(dataset, HfDataset) and num_proc > 1 else False
-        with self._patch_arrow_writer(), map_context:
+        with self._patch_arrow_writer(), safe_ddp_context(None, True):
             try:
                 dataset_mapped = dataset.map(
                     self.batched_preprocess,
