@@ -110,7 +110,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         self._set_default()
         self._init_external_vllm()
         super().__post_init__()
-        self._check_rlhf()
         self._check_grpo()
         self._external_vllm_warning()
 
@@ -203,10 +202,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 self.loss_type = 'kto'
             elif self.rlhf_type == 'grpo':
                 self.loss_type = 'grpo'
-
-    def _check_rlhf(self):
-        if self.sequence_parallel_size > 1:
-            raise ValueError('RLHF do not support sequence parallel')
 
     def _check_grpo(self):
         if self.rlhf_type != 'grpo':

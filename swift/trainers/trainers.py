@@ -115,7 +115,11 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
             self.template.set_mode(origin_mode)
 
     def get_train_dataloader(self):
-        if self.template.sequence_parallel_size == 1:
+        dataloader = None
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            dataloader = sequence_parallel.prepare_trainer_and_get_dataloader(self)
+        if dataloader is None:
             # Higher efficiency
             if self.train_dataset is None:
                 raise ValueError('Trainer: training requires a train_dataset.')
@@ -146,10 +150,7 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
                 dataloader = DataLoader(train_dataset, batch_size=self._train_batch_size, **dataloader_params)
                 dataloader = DataLoaderDispatcher(dataloader)
 
-            return dataloader
-        else:
-            from swift.trainers.xtuner import get_xtuner_train_dataloader
-            return get_xtuner_train_dataloader(self)
+        return dataloader
 
     def evaluate(self, *args, **kwargs):
         context = self._patch_predict_with_generate() if self.args.predict_with_generate else nullcontext()
@@ -236,8 +237,8 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
                 loss = self.label_smoother(outputs, labels)
 
         if self.template.sequence_parallel_size > 1:
-            from swift.trainers.xtuner import reduce_xtuner_sequence_parallel_loss
-            loss = reduce_xtuner_sequence_parallel_loss(loss, labels)
+            from swift.trainers.sequence_parallel import sequence_parallel
+            loss = sequence_parallel.reduce_outputs(loss, labels)
 
         if getattr(self.args, 'average_tokens_across_devices', False) and self.model_accepts_loss_kwargs:
             loss *= self.accelerator.num_processes
