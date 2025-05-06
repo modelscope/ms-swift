@@ -19,7 +19,7 @@ from modelscope.hub.utils.utils import get_cache_dir
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 
-from .env import get_dist_setting, is_dist, is_dist_ta, is_master
+from .env import get_dist_setting, is_dist, is_dist_ta, is_local_master, is_master
 from .logger import get_logger
 from .utils import deep_getattr
 
@@ -154,9 +154,12 @@ def _sync_max_memory(max_memory: Dict[Union[int, str], int]) -> Dict[Union[int, 
     return new_max_memory
 
 
-def find_layers(model: nn.Module,
-                cond: Callable[[str, nn.Module], bool],
-                sub_module: Optional[str] = None) -> List[str]:
+def find_layers(
+    model: nn.Module,
+    cond: Callable[[str, nn.Module], bool],
+    sub_module: Optional[str] = None,
+    min_name_len: Optional[int] = None,
+) -> List[str]:
     # The content of target_module_names cannot exist in inner_nodes.
     sub_module_str = sub_module
     if sub_module is None:
@@ -170,13 +173,17 @@ def find_layers(model: nn.Module,
             inner_nodes.add(name)
     target_module_names = set()
     for name, module in sub_module.named_modules():
-        name = f'{sub_module_str}.{name}'
+        if sub_module_str:
+            name = f'{sub_module_str}.{name}'
         if cond(name, module):
             module_name_list = name.split('.')
             module_name = module_name_list.pop()
+            i = 1
             for inner_node in inner_nodes:
-                while module_name_list and inner_node.endswith(re.sub(r'\d+\.', '{}.', module_name)):
+                while module_name_list and inner_node.endswith(re.sub(
+                        r'\d+\.', '{}.', module_name)) or min_name_len and i < min_name_len:
                     module_name = f'{module_name_list.pop()}.{module_name}'
+                    i += 1
             target_module_names.add(module_name)
     return list(target_module_names)
 
@@ -223,20 +230,30 @@ def find_all_linears(model, model_arch=None, extra_layers=None, sub_module=None)
 
 
 @contextmanager
-def safe_ddp_context(hash_id: str, use_barrier: bool = False):
+def safe_ddp_context(hash_id: Optional[str], use_barrier: bool = False):
     if use_barrier and dist.is_initialized():
-        if (is_dist() or is_dist_ta()) and not is_master():
-            dist.barrier()
+        if is_dist() or is_dist_ta():
+            if not is_master():
+                dist.barrier()
+            if not is_local_master():
+                # Compatible with multi-machine scenarios,
+                # where each machine uses different storage hardware.
+                dist.barrier()
         yield
-        if (is_dist() or is_dist_ta()) and is_master():
-            dist.barrier()
-    else:
+        if is_dist() or is_dist_ta():
+            if is_master():
+                dist.barrier()
+            if is_local_master():
+                dist.barrier()
+    elif hash_id is not None:
         lock_dir = os.path.join(get_cache_dir(), 'lockers')
         os.makedirs(lock_dir, exist_ok=True)
         file_path = hashlib.sha256(hash_id.encode('utf-8')).hexdigest() + '.lock'
         file_path = os.path.join(lock_dir, file_path)
         with FileLock(file_path):
             yield
+    else:
+        yield
 
 
 def get_device(local_rank: Optional[Union[str, int]] = None) -> str:

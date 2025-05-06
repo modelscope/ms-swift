@@ -210,7 +210,10 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - no_log_learning_rate_to_tensorboard: 不记录学习率到tensorboard。默认为False。
 - log_validation_ppl_to_tensorboard: 将验证困惑度写入tensorboard。默认为True。
 - log_memory_to_tensorboard: 将内存日志写入tensorboard。默认为True。
-- logging_leval: 日志级别。默认为None。
+- logging_level: 日志级别。默认为None。
+- wandb_project: wandb 项目名称。默认为''，即忽略wandb。
+- wandb_exp_name: wandb 实验名称。默认为''。
+- wandb_save_dir: 本地保存 wandb 结果的路径。默认为''。
 
 **评估参数**:
 - 🔥eval_iters: 评估的迭代次数，默认为100。

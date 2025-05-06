@@ -6,7 +6,7 @@
 
 环境安装
 ```bash
-pip install math_verify # reward function
+pip install math_verify==0.5.2 # reward function
 pip install -U trl
 ```
 
@@ -47,6 +47,14 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 --vllm_server_port <服务端口> \
 --vllm_server_timeout <超时时间> \
 ```
+使用`swift rollout`命令部署vLLM 服务器, 现仅支持vLLM backend
+```bash
+CUDA_VISIBLE_DEVICES=2 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+```
+完整脚本可以参考[这里](../../../examples/train/grpo/multi_node/Qwen2_5_32B_full.sh)
 
 
 ## 奖励函数
@@ -137,12 +145,16 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 ## 参数与运行脚本
 参数
-- num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_batch_size * nproc_per_node 整除
+- per_device_train_batch_size: 每个设备训练批量大小，在GRPO中，指 completion 的批次大小。
+- per_device_eval_batch_size: 每个设备评估批量大小，在GRPO中，指 completion 的批次大小。
+- num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_batch_size * gradient_accumulation_steps * nproc_per_node 整除，默认为8
 - max_completion_length: 采样生成的最大长度，默认为512
 - ds3_gather_for_generation: 该参数适用于DeepSpeed ZeRO-3。如果启用，策略模型权重将被收集用于生成，从而提高生成速度。然而，禁用此选项允许训练超出单个GPU VRAM的模型，尽管生成速度会变慢。禁用此选项与vLLM生成不兼容。默认为True
 - reward_funcs: 奖励函数，根据模型生成结果进行打分，内置accuracy、format、cosine和repetition四个rule-based函数，详细见 swift/plugin/orm.py 文件
 - reward_weights: 每个奖励函数的权重。必须与奖励函数的数量匹配。如果为 None，则所有奖励的权重都相等，为`1.0`
   - 提示：如果GRPO训练中包含`--reward_model`，则其加在奖励函数的最后位置
+- dataset_shuffle: 是否对dataset进行随机操作，默认为True
+- loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo'], 默认为'grpo', 具体查看该[pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)
 - log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb` 使用。默认为False
   - 提示：若没有设置`--report_to wandb`，则会在checkpoint中创建`completions.jsonl`来存储生成内容
 - use_vllm: 是否使用vLLM作为采样的生成后端，默认为False，建议使用加快训练速度
@@ -168,7 +180,6 @@ A conversation between User and Assistant. The user asks a question, and the Ass
   - 注意：若该参数设置为True，训练时grad_norm一直为0，请安装`vllm==0.7.3`
 - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False
 - multi_turn_func: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现
-- mini_batch_size：用于将每个设备上的批次大小（per_device_batch）进一步切分为更小的子批次。为确保切分有效，per_device_batch 需要能够被 mini_batch_size 整除
 - dynamic_sample：筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
 - max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。
 - overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。

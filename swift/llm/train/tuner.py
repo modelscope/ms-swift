@@ -23,8 +23,7 @@ def apply_liger(model_type: str):
                                            apply_liger_kernel_to_mixtral, apply_liger_kernel_to_gemma,
                                            apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen3,
                                            apply_liger_kernel_to_qwen2_vl, apply_liger_kernel_to_qwen2_5_vl,
-                                           apply_liger_kernel_to_gemma2, apply_liger_kernel_to_phi3,
-                                           apply_liger_kernel_to_mllama)
+                                           apply_liger_kernel_to_phi3, apply_liger_kernel_to_mllama)
     from swift.llm import ModelType
     if model_type in (ModelType.llama, ModelType.llama3, ModelType.llama3_1, ModelType.llama3_2):
         apply_liger_kernel_to_llama()
@@ -410,7 +409,13 @@ class TunerMixin:
             args.training_args.galore_config = args.galore_config
 
         if args.sequence_parallel_size > 1:
-            from swift.trainers.xtuner import dispatch_module_xtuner
-            dispatch_module_xtuner(model)
+            from swift.trainers.sequence_parallel import sequence_parallel
+            if hasattr(model, 'model_meta'):
+                is_multimodal = model.model_meta.is_multimodal
+            else:
+                is_multimodal = model.model.model_meta.is_multimodal
+            # multimodal model must do split in basemodel's forward
+            # or the media embedding may occur error
+            sequence_parallel.prepare_model(model, template.tokenizer, split_in_forward=is_multimodal)
 
         return model

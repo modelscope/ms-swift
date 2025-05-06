@@ -71,15 +71,15 @@
 
 ## 🎉 新闻
 - 🎁 2025.04.15: SWIFT论文已经被AAAI 2025接收, 论文地址在[这里](https://ojs.aaai.org/index.php/AAAI/article/view/35383).
-- 🎁 2025.03.23: SWIFT支持了多轮GRPO, 用于构建多轮对话场景的训练(例如agent tool calling), 请查看[训练脚本](examples/train/grpo/train_multi_round.sh).
+- 🎁 2025.03.23: SWIFT支持了多轮GRPO, 用于构建多轮对话场景的训练(例如agent tool calling), 请查看[训练脚本](examples/train/grpo/internal/train_multi_round.sh).
 - 🎁 2025.03.16: SWIFT支持了Megatron的并行技术进行训练，请查看[Megatron-SWIFT训练文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Megatron-SWIFT训练.html)。
 - 🎁 2025.03.15: SWIFT支持了gme（多模态）embedding模型的微调，请查看[训练脚本](examples/train/embedding/train_gme.sh)。
-- 🎁 2025.03.13: 我们提供了一个仅使用4GPU(4*80G)来训练72B模型的脚本, 请查看[这里](examples/train/grpo/train_72b_4gpu.sh)
-- 🎁 2025.03.05: 支持GRPO的hybrid模式(rollout和actor在同一GPU上, rollout可以进行offload), 同时支持了vllm的tensor parallel, 查看[训练脚本](examples/train/grpo/multi_gpu_mp_colocate.sh)
-- 🎁 2025.02.21: 我们测试了GRPO算法的性能，并且使用一些tricks使[训练速度提高到300%](examples/train/grpo/full_lmdeploy.sh). WanDB表格请查看[这里](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz)
+- 🎁 2025.03.13: 我们提供了一个仅使用4GPU(4*80G)来训练72B模型的脚本, 请查看[这里](examples/train/grpo/internal/train_72b_4gpu.sh)
+- 🎁 2025.03.05: 支持GRPO的hybrid模式(rollout和actor在同一GPU上, rollout可以进行offload), 同时支持了vllm的tensor parallel, 查看[训练脚本](examples/train/grpo/internal/multi_gpu_mp_colocate.sh)
+- 🎁 2025.02.21: 我们测试了GRPO算法的性能，并且使用一些tricks使[训练速度提高到300%](examples/train/grpo/internal/full_lmdeploy.sh). WanDB表格请查看[这里](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz)
 - 🎁 2025.02.21: 支持大模型API蒸馏采样，请查看[示例](examples/sampler/distill/distill.sh)
 - 🎁 2025.02.17: 支持SwanLab, 仅需添加[几个新的参数](docs/source/Instruction/命令行参数.md#swanlab)就可以在swanlab上验证你的训练效果
-- 🎁 2025.02.16: 在GRPO算法中支持LMDeploy, 请查看`--use_lmdeploy true`. 具体参考[这个脚本](examples/train/grpo/full_lmdeploy.sh)
+- 🎁 2025.02.16: 在GRPO算法中支持LMDeploy, 请查看`--use_lmdeploy true`. 具体参考[这个脚本](examples/train/grpo/internal/full_lmdeploy.sh)
 - 🔥 2025.02.12: 支持GRPO(Group Relative Policy Optimization) 训练算法，训练脚本可以在[这里](docs/source/Instruction/GRPO.md)找到
 - 🎁 2025.02.10: SWIFT支持了embedding模型的微调，请查看[训练脚本](examples/train/embedding/train_gte.sh)。
 - 🎁 2025.01.23: SWIFT支持了`sample`命令, 这是一个对CoT和RFT非常重要的命令。同时, 我们支持了一个[强化微调脚本](docs/source/Instruction/强化微调.md)。
@@ -115,10 +115,10 @@ pip install -e .
 | transformers | >=4.33       | 4.51 ||
 | modelscope | >=1.19       |  ||
 | peft | >=0.11,<0.16 | ||
-| trl | >=0.13,<0.17 | 0.16 |RLHF|
+| trl | >=0.13,<0.18 | 0.17 |RLHF|
 | deepspeed | >=0.14       | 0.14.5 |训练|
-| vllm | >=0.5.1      | 0.7.3/0.8.4 |推理/部署/评测|
-| lmdeploy | >=0.5        | 0.7.2.post1 |推理/部署/评测|
+| vllm | >=0.5.1      | 0.7.3/0.8 |推理/部署/评测|
+| lmdeploy | >=0.5        | 0.8 |推理/部署/评测|
 | evalscope | >=0.11       | |评测|
 
 更多可选依赖可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh)。
@@ -270,7 +270,7 @@ print(f'response: {resp_list[0].choices[0].message.content}')
 | 预训练 | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/pretrain/train.sh) | ✅                                                                                           | ✅ | ✅ | ✅ | ✅                                                                                            |
 | 指令监督微调 | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/full/train.sh) | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/lora_sft.sh)            | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/qlora) | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-gpu/deepspeed) | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node) | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal)              |
 | DPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/dpo.sh)            | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/dpo.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/dpo.sh)  |
-| GRPO训练 | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/grpo_zero2.sh) | ✅                                                                                           | ✅ | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/multi_node) | ✅                                                                                            |
+| GRPO训练 | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/internal/grpo_zero2.sh) | ✅                                                                                           | ✅ | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/internal/multi_node) | ✅                                                                                            |
 | 奖励模型训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/rm.sh)             | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/rm.sh) | ✅ | ✅                                                                                            |
 | PPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/ppo.sh)            | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/ppo.sh) | ✅ | ❌                                                                                            |
 | KTO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/kto.sh)            | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/kto.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/kto.sh)  |

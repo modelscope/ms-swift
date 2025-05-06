@@ -507,6 +507,11 @@ register_model(
                 Model('Qwen/Qwen3-8B', 'Qwen/Qwen3-8B'),
                 Model('Qwen/Qwen3-14B', 'Qwen/Qwen3-14B'),
                 Model('Qwen/Qwen3-32B', 'Qwen/Qwen3-32B'),
+                # awq
+                Model('Qwen/Qwen3-14B-AWQ', 'Qwen/Qwen3-14B-AWQ'),
+                Model('Qwen/Qwen3-32B-AWQ', 'Qwen/Qwen3-32B-AWQ'),
+                Model('swift/Qwen3-32B-AWQ'),
+                Model('swift/Qwen3-30B-A3B-AWQ'),
             ]),
         ],
         TemplateType.qwen3,
@@ -679,6 +684,7 @@ register_model(
         MLLMModelType.qwen2_5_omni,
         [
             ModelGroup([
+                Model('Qwen/Qwen2.5-Omni-3B', 'Qwen/Qwen2.5-Omni-3B'),
                 Model('Qwen/Qwen2.5-Omni-7B', 'Qwen/Qwen2.5-Omni-7B'),
             ]),
         ],

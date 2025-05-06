@@ -423,9 +423,6 @@ class Template(ProcessorMixin):
             if length > self.max_length:
                 raise MaxLengthError(f'Current length of row({length}) is larger'
                                      f' than the max_length({self.max_length}).')
-        if self.use_megatron:
-            encoded['labels'] = encoded['labels'][1:] + [-100]
-            encoded['position_ids'] = list(range(len(encoded['labels'])))
         return encoded
 
     def packing_row(self, row: List[Tuple[Dict[str, Any], int]]) -> Dict[str, Any]:
@@ -434,15 +431,7 @@ class Template(ProcessorMixin):
         for r in row:
             keys.update(r[0].keys())
         for key in keys:
-            if key == 'labels':
-                labels_list = []
-                for x in row:
-                    labels = x[0][key]
-                    # https://github.com/huggingface/transformers/pull/31629
-                    labels[0] = -100
-                    labels_list.append(labels)
-                packed[key] = sum(labels_list, start=[])
-            elif key in {'input_ids', 'loss_scale'}:
+            if key in {'input_ids', 'labels', 'loss_scale'}:
                 packed[key] = sum((x[0][key] for x in row), start=[])
         if 'position_ids' not in packed:
             packed['position_ids'] = sum((list(range(x[1])) for x in row), start=[])
@@ -838,6 +827,7 @@ class Template(ProcessorMixin):
         tokenizer_kwargs = {}
         if loss_scale_list is None:
             loss_scale_list = [0.] * len(context_list)
+        ignore_loss_scale = all(loss_scale in {0, 1} for loss_scale in loss_scale_list)
         for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
             if isinstance(context, str):
                 # tokenizer_kwargs is the returned tokenizer_kwargs,
@@ -850,7 +840,10 @@ class Template(ProcessorMixin):
                 labels += token_list
             else:
                 labels += [-100] * len(token_list)
-            loss_scale.extend([loss_weight] * len(token_list))
+            if not ignore_loss_scale:
+                loss_scale.extend([loss_weight] * len(token_list))
+        if ignore_loss_scale:
+            loss_scale = None
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
     @staticmethod
@@ -1068,13 +1061,14 @@ class Template(ProcessorMixin):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
+        if self.use_megatron:
+            encoded['labels'] = encoded['labels'][1:] + [-100]
+            encoded['position_ids'] = list(range(len(encoded['labels'])))
+        elif encoded.get('labels') is not None:
+            encoded['labels'][0] = -100
         if not self.is_training:
             for k in list(encoded.keys()):
-                if k.endswith('labels'):
-                    encoded[k] = None
-        if not self.is_training or self.loss_scale in {'default', 'all', 'last_round'}:
-            for k in list(encoded.keys()):
-                if k.endswith('loss_scale'):
+                if k.endswith('labels') or k.endswith('loss_scale'):
                     encoded[k] = None
         return encoded
 
@@ -1414,14 +1408,17 @@ class Template(ProcessorMixin):
                 padding_right=padding_side == 'right')
         if self.sequence_parallel_size > 1 and input_ids is not None:
             bs, seq_len = input_ids.shape
-            position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
+            if 'position_ids' not in res:
+                position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
+            else:
+                position_ids = res['position_ids']
             assert padding_side == 'right' or bs == 1, 'Sequence parallel only support padding_side=right'
-            from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
-            if get_xtuner_sequence_parallel_world_size() > 1:
-                from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
-                input_ids, labels, position_ids, attention_mask, loss_scale = \
-                    pad_and_split_for_sequence_parallel(
-                        tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
+            from swift.trainers.sequence_parallel import sequence_parallel
+            if sequence_parallel.world_size() > 1:
+                from swift.trainers.sequence_parallel import sequence_parallel
+                input_ids, _, labels, position_ids, attention_mask, loss_scale = \
+                    sequence_parallel.pad_and_split_inputs(
+                        tokenizer, input_ids, None, labels, position_ids, attention_mask, loss_scale)
             res['position_ids'] = position_ids
         _local_var = locals()
         for key in ['input_ids', 'attention_mask', 'labels', 'loss_scale']:

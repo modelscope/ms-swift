@@ -75,6 +75,9 @@ class VllmArguments:
     limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_max_lora_rank: int = 16
     enable_prefix_caching: bool = False
+    use_async_engine: bool = True
+    data_parallel_size: int = 1
+    log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
     vllm_quantization: Optional[str] = None
 
     def __post_init__(self):
@@ -128,8 +131,6 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
 
     # only for inference
     val_dataset_sample: Optional[int] = None
-
-    use_async_engine: bool = True
 
     def _get_result_path(self, folder_name: str) -> str:
         result_dir = self.ckpt_dir or f'result/{self.model_suffix}'
