@@ -510,7 +510,6 @@ class Ulysses(SequenceParallel):
         if trainer.train_dataset is None:
             raise ValueError('Trainer: training requires a train_dataset.')
 
-        trainer.compute_loss_func = partial(loss_scale_sp_func, process_group=self.sp_group)
         if hasattr(trainer, 'get_batch_logps'):
             trainer.get_batch_logps = partial(get_batch_logps, process_group=self.sp_group)
         if hasattr(trainer, 'get_nll_loss'):
@@ -519,36 +518,3 @@ class Ulysses(SequenceParallel):
                 return loss_scale_sp_func(*args, process_group=self.sp_group, **kwargs)
 
             trainer.get_nll_loss = MethodType(rlhf_loss_scale_sp_func, trainer)
-
-        def _compute_acc(trainer, outputs, labels) -> None:
-            args = trainer.args
-            acc_steps = args.acc_steps
-            preds = outputs.logits.argmax(dim=-1)
-            if trainer.state.global_step % acc_steps == 0:
-                # Gather preds and labels across the sp group
-                shape0 = preds.shape[0]
-                preds_output = torch.empty((shape0 * self.sp_world_size, preds.shape[1]),
-                                           dtype=preds.dtype,
-                                           device=preds.device)
-                dist.all_gather_into_tensor(preds_output, preds, group=self.sp_group)
-                preds_output = torch.cat(preds_output.split(shape0, dim=0), dim=1)
-                shape0 = labels.shape[0]
-                labels_output = torch.empty((shape0 * self.sp_world_size, labels.shape[1]),
-                                            dtype=labels.dtype,
-                                            device=labels.device)
-                dist.all_gather_into_tensor(labels_output, labels, group=self.sp_group)
-                labels_output = torch.cat(labels_output.split(shape0, dim=0), dim=1)
-                # roll back to fit compute_acc
-                labels_output = torch.roll(labels_output, shifts=1, dims=1)
-                from swift.plugin import MeanMetric, compute_acc
-                metrics = compute_acc(
-                    preds_output,
-                    labels_output,
-                    acc_strategy=args.acc_strategy,
-                    is_encoder_decoder=trainer.template.is_encoder_decoder)
-                for k, v in metrics.items():
-                    if k not in trainer._custom_metrics:
-                        trainer._custom_metrics[k] = MeanMetric(nan_value=None)
-                    trainer._custom_metrics[k].update(v)
-
-        trainer._compute_acc = MethodType(_compute_acc, trainer)

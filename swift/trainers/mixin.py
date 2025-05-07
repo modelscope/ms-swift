@@ -12,6 +12,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import safetensors
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import transformers
 from datasets import Dataset as HfDataset
@@ -431,3 +432,11 @@ class SwiftMixin:
 
         self.model.train()
         return eval_dict
+
+    def get_batch_samples(self, *args, **kwargs):
+        res = super().get_batch_samples(*args, **kwargs)
+        if self.template.sequence_parallel_size == 1:
+            return res
+        batch_samples, num_items_in_batch = res
+        dist.all_reduce(num_items_in_batch, dist.ReduceOp.SUM)
+        return batch_samples, num_items_in_batch
