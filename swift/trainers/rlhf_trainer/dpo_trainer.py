@@ -43,7 +43,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
         dataloader = None
         if self.template.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
-            dataloader = sequence_parallel.get_dataloader(self)
+            dataloader = sequence_parallel.get_dataloader(self, self.train_dataset, self._train_batch_size)
         if dataloader is None:
             return super().get_train_dataloader()
         return dataloader

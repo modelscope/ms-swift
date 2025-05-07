@@ -207,11 +207,11 @@ class _SeqAllToAll(torch.autograd.Function):
 
     @staticmethod
     def forward(
-            ctx: Any,
-            group: dist.ProcessGroup,
-            input: Tensor,
-            scatter_idx: int,
-            gather_idx: int,
+        ctx: Any,
+        group: dist.ProcessGroup,
+        input: Tensor,
+        scatter_idx: int,
+        gather_idx: int,
     ) -> Tensor:
         ctx.group = group
         ctx.scatter_idx = scatter_idx
@@ -227,11 +227,11 @@ class _SeqAllToAll(torch.autograd.Function):
 class DistributedAttention(torch.nn.Module):
 
     def __init__(
-            self,
-            local_attention,
-            sequence_process_group: dist.ProcessGroup,
-            scatter_idx: int = 2,
-            gather_idx: int = 1,
+        self,
+        local_attention,
+        sequence_process_group: dist.ProcessGroup,
+        scatter_idx: int = 2,
+        gather_idx: int = 1,
     ) -> None:
         super(DistributedAttention, self).__init__()
         self.local_attn = local_attention
@@ -282,6 +282,7 @@ class Ulysses(SequenceParallel):
         def local_flash_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
                              dist_attn, **kwargs):
             if dist_attn.local_attn is None:
+
                 def _attention(query, key, value, *args, **kwargs):
                     query = query.transpose(1, 2)
                     key = key.transpose(1, 2)
@@ -298,6 +299,7 @@ class Ulysses(SequenceParallel):
         def local_sdpa_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
                             dist_attn, **kwargs):
             if dist_attn.local_attn is None:
+
                 def _attention(query, key, value, *args, **kwargs):
                     query = query.transpose(1, 2)
                     key = key.transpose(1, 2)
@@ -479,7 +481,6 @@ class Ulysses(SequenceParallel):
     def dp_group(self):
         return self.device_mesh['data'].get_group()
 
-    @staticmethod
     def get_dataloader(self, trainer, dataset, batch_size):
         sampler = UlyssesSampler(self, dataset, seed=42)
         data_collator = trainer.data_collator
@@ -511,6 +512,7 @@ class Ulysses(SequenceParallel):
         if hasattr(trainer, 'get_batch_logps'):
             trainer.get_batch_logps = partial(get_batch_logps, process_group=self.sp_group)
         if hasattr(trainer, 'get_nll_loss'):
+
             def rlhf_loss_scale_sp_func(_, *args, **kwargs):
                 return loss_scale_sp_func(*args, process_group=self.sp_group, **kwargs)
 
