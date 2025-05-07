@@ -568,7 +568,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _infer_single_or_multi_turn(self, inputs: InputsType,
                                     request_config: RequestConfig) -> Union[OutputsType, List]:
-        """Perform multi-turn or single-turn inference with support for tensor parallelism.
+        """Perform multi-turn or single-turn inference
 
         Args:
             inputs: list of input requests
@@ -576,7 +576,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         Returns:
             List of outputs where each entry contains:
-            - List of responses per prompt (length = vllm_tensor_parallel_size)
+            - List of responses per prompt
             - Each response is a tuple of (message_history, finish_reason)
         """
         results = self._infer(inputs, request_config)
@@ -594,7 +594,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs.append(_choices)
             assert len(outputs) == len(inputs)
         else:
-            # Multi-turn: continue to rollout until finished."
+            # Multi-turn: continue to rollout until finished.
             orig_size = len(inputs)
             outputs = [None] * orig_size
             # we remove origin response in first turn
@@ -630,7 +630,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 inputs = [r for r in results if not r['finished']]
 
                 # Save the finished messages to the results
-                for idx, r in enumerate(results):
+                for r in results:
                     if r['finished'] or r['finish_reason'] == 'length':
                         outputs[r['index']] = (r['messages'], r['finish_reason'])
 
