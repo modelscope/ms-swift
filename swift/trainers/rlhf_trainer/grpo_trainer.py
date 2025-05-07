@@ -36,7 +36,8 @@ from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocess
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import orms
 from swift.plugin.multi_turn import multi_turns
-from swift.utils import (JsonlWriter, gc_collect, get_logger, get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
+from swift.utils import (JsonlWriter, gc_collect, get_device, get_logger, get_node_setting, is_lmdeploy_available,
+                         is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import patch_lora_merge, patch_lora_unmerge, round_robin, unwrap_model_for_generation
@@ -410,7 +411,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         max_num_seqs = (
             self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size
             * self.args.gradient_accumulation_steps)
-
+        current_device = get_device()
         with Swift.grpo_context(model, self.template.processor):
             engine = cls(
                 model.model_dir,
@@ -424,6 +425,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 limit_mm_per_prompt=self.args.vllm_limit_mm_per_prompt,
                 enable_sleep_mode=self.args.sleep_level > 0,
                 use_async_engine=False,
+                device=current_device,
                 max_model_len=self.args.vllm_max_model_len,
                 engine_kwargs=engine_kwargs,
                 **vllm_kwargs)
@@ -550,7 +552,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 gathered_inputs = [None for _ in range(self.vllm_tensor_parallel_size)]
                 torch.distributed.all_gather_object(gathered_inputs, inputs, group=self.tp_group)
                 inputs = [p for sublist in gathered_inputs for p in sublist]
-
+            # confirm that the seed is same in tp group
+            request_config.seed = self.accelerator.process_index // self.vllm_tensor_parallel_size
             results: List[ChatCompletionResponse] = self._engine_infer(
                 infer_requests=inputs, request_config=request_config, use_tqdm=False)
 
@@ -649,7 +652,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     _choices.append((_input['messages'], choice.finish_reason))
                 outputs.append(_choices)
             assert len(outputs) == len(inputs)
-            assert all([len(o) == self.vllm_tensor_parallel_size for o in outputs])
 
         return outputs
 
