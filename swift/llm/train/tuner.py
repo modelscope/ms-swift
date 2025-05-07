@@ -9,7 +9,7 @@ import transformers
 from packaging import version
 from transformers import TrainingArguments
 
-from swift.llm import TrainArguments, get_model_arch
+from swift.llm import TrainArguments, deep_getattr, get_model_arch
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
 from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
@@ -59,30 +59,33 @@ def get_multimodal_target_regex(
 ) -> str:
     model_arch = get_model_arch(model.model_meta.model_arch)
     modules = []
-    rejected_modules = []
     if not freeze_llm:
         modules += model_arch.language_model
     if not freeze_vit:
         modules += model_arch.vision_tower
     if not freeze_aligner:
         modules += model_arch.aligner
-    elif not freeze_vit:
-        rejected_modules += model_arch.aligner
-
     assert len(modules) > 0, f'modules: {modules}'
-    prefix_pattern = '|'.join(modules)
-    rejected_pattern = '|'.join(rejected_modules)
 
     extra_layers = []
     if include_embedding:
         extra_layers.append(nn.Embedding)
-    target_modules = []
+    res = []
     for module in modules:
-        target_modules += find_all_linears(model, model_arch, extra_layers, sub_module=module)
-    target_regex = rf'^({prefix_pattern}).*\.({"|".join(target_modules)})$'
-    if rejected_pattern:
-        target_regex = rf'(?!^({rejected_pattern}))' + target_regex
-    return target_regex
+        rejected_modules = []
+        if not freeze_vit:
+            for aligner in model_arch.aligner:
+                if aligner.startswith(f'{module}.'):
+                    rejected_modules.append(aligner)
+
+        sub_module = deep_getattr(model, module)
+        target_modules = find_all_linears(sub_module, model_arch, extra_layers)
+        target_modules = [tm for tm in target_modules if tm]
+        target_pattern = rf'.*\.({"|".join(target_modules)})' if target_modules else ''
+        rejected_pattern = rf'(?!({"|".join(rejected_modules)}))' if rejected_modules else ''
+        res.append(rf'{rejected_pattern}{module}{target_pattern}')
+
+    return rf'^({"|".join(res)})$'
 
 
 def get_target_modules(args, model) -> Union[str, List[str]]:

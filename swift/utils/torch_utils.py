@@ -174,7 +174,7 @@ def find_layers(
     target_module_names = set()
     for name, module in sub_module.named_modules():
         if sub_module_str:
-            name = f'{sub_module_str}.{name}'
+            name = f'{sub_module_str}.{name}' if name else sub_module_str
         if cond(name, module):
             module_name_list = name.split('.')
             module_name = module_name_list.pop()
