@@ -581,66 +581,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         results = self._get_first_turn_results(inputs, request_config)
 
-        if self.multi_turn_func:
-            pass
-            # TODO
-            # we remove response in first turn
-            # messages_list = [None] * (len(inputs) * self.vllm_tensor_parallel_size)
-            # remove_response = True
-            # while len(inputs) > 0:
-            #     if not self.use_fast_infer:
-            #         inputs = []
-            #         cnt = 0
-            #         for i, output in enumerate(results):
-            #             for choice in output.choices:
-            #                 _input: Dict = deepcopy(inputs[i])
-            #                 if remove_response or _input['messages'][-1]['role'] != 'assistant' or not \
-            #                         _input['messages'][-1]['content']:
-            #                     InferRequest.remove_response(_input['messages'])
-            #                     _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
-            #                 else:
-            #                     _input['messages'][-1]['content'] += choice.message.content
-            #                 if 'index' not in _input:
-            #                     _input['index'] = cnt
-            #                 _input['finish_reason'] = choice.finish_reason
-            #                 cnt += 1
-            #                 inputs.append(_input)
-            #         results: List[Dict] = self.multi_turn_func(inputs)  # noqa
-            #     else:
-            #         length = sum([len(results[i].choices) for i in range(len(results))])
-            #         results = [None] * length
-
-            #     if self.vllm_tensor_parallel_size > 1:
-            #         # avoid duplicate calling in the same tensor parallel group
-            #         import torch.distributed as dist
-            #         if 'group_src' in inspect.signature(dist.broadcast_object_list).parameters:
-            #             dist.broadcast_object_list(results, group_src=0, group=self.group)
-            #         else:
-            #             global_src = dist.get_global_rank(self.group, 0)
-            #             dist.broadcast_object_list(results, src=global_src, group=self.group)
-            #     inputs = [r for r in results if not r['finished']]
-            #     for idx, r in enumerate(results):
-            #         if r['finished'] or r['finish_reason'] == 'length':
-            #             messages_list[r['index']] = (r['messages'], r['finish_reason'])
-            #     if len(inputs) > 0:
-            #         _input_std = []
-            #         for _input in inputs:
-            #             _input_std.append(StdTemplateInputs.from_dict(_input))
-            #             # StdTemplateInputs will not remove responses in infer
-            #         results = self._engine_infer(
-            #             infer_requests=_input_std, request_config=request_config, use_tqdm=False)
-            #     # concat responses from the second loop
-            #     remove_response = False
-
-            # outputs = []
-            # assert not any([m is None for m in messages_list])
-            # for i in range(0, len(messages_list), self.vllm_tensor_parallel_size):
-            #     # reformat to [[x, x, x, x] [x, x, x, x]]
-            #     # this is the same format of sampling_params.n > 1
-            #     outputs.append(messages_list[i:i + self.vllm_tensor_parallel_size])
-            # assert len(outputs) == prompt_lens
-            # assert all([len(o) == self.vllm_tensor_parallel_size for o in outputs])
-        else:
+        if not self.multi_turn_func:
             # single turn
             outputs = []
             for i, output in enumerate(results):
@@ -652,7 +593,94 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     _choices.append((_input['messages'], choice.finish_reason))
                 outputs.append(_choices)
             assert len(outputs) == len(inputs)
+        else:
+            # multi turn
+            orig_size = len(inputs)
+            messages_list = [None] * orig_size
+            # we remove origin response in first turn
+            first_turn = True
+            while len(inputs) > 0:
+                if not self.use_fast_infer:
+                    inputs = []
+                    cnt = 0
+                    for i, output in enumerate(results):
+                        for choice in output.choices:
+                            current_input = deepcopy(inputs[i])
+                            messages = current_input['messages']
+                            last_message = messages[-1]
+                            
+                            # Determine if we need to append or update the last message
+                            if first_turn or last_message['role'] != 'assistant' or not last_message['content']:
+                                InferRequest.remove_response(messages)
+                                messages.append({
+                                    'role': 'assistant',
+                                    'content': choice.message.content
+                                })
+                            else:
+                                last_message['content'] += choice.message.content
+                            
+                            if 'index' not in current_input:
+                                current_input['index'] = cnt
+                            _input['finish_reason'] = choice.finish_reason
+                            cnt += 1
+                            inputs.append(_input)
 
+                    for i, output in enumerate(results):
+                        for choice_idx, choice in enumerate(output.choices):
+                            # Create a deep copy of the input
+                            current_input = deepcopy(inputs[i])
+                            messages = current_input['messages']
+                            last_message = messages[-1]
+                            
+                            # Determine if we need to append or update the last message
+                            if first_turn or last_message['role'] != 'assistant' or not last_message['content']:
+                                InferRequest.remove_response(messages)
+                                messages.append({
+                                    'role': 'assistant',
+                                    'content': choice.message.content
+                                })
+                            else:
+                                last_message['content'] += choice.message.content
+                            
+                            # Set additional fields
+                            current_input.setdefault('index', len(inputs))
+                            current_input['finish_reason'] = choice.finish_reason
+                            
+                            inputs.append(current_input)
+                    results: List[Dict] = self.multi_turn_func(inputs)
+                else:
+                    length = sum([len(results[i].choices) for i in range(len(results))])
+                    results = [None] * length
+
+                if self.vllm_tensor_parallel_size > 1:
+                    # avoid duplicate calling in the same tensor parallel group
+                    import torch.distributed as dist
+                    if 'group_src' in inspect.signature(dist.broadcast_object_list).parameters:
+                        dist.broadcast_object_list(results, group_src=0, group=self.group)
+                    else:
+                        global_src = dist.get_global_rank(self.group, 0)
+                        dist.broadcast_object_list(results, src=global_src, group=self.group)
+                inputs = [r for r in results if not r['finished']]
+                for idx, r in enumerate(results):
+                    if r['finished'] or r['finish_reason'] == 'length':
+                        messages_list[r['index']] = (r['messages'], r['finish_reason'])
+                if len(inputs) > 0:
+                    _input_std = []
+                    for _input in inputs:
+                        _input_std.append(StdTemplateInputs.from_dict(_input))
+                        # StdTemplateInputs will not remove responses in infer
+                    results = self._engine_infer(
+                        infer_requests=_input_std, request_config=request_config, use_tqdm=False)
+                # concat responses from the second loop
+                first_turn = False
+
+            outputs = []
+            assert not any([m is None for m in messages_list])
+            for i in range(0, len(messages_list), self.vllm_tensor_parallel_size):
+                # reformat to [[x, x, x, x] [x, x, x, x]]
+                # this is the same format of sampling_params.n > 1
+                outputs.append(messages_list[i:i + self.vllm_tensor_parallel_size])
+            assert len(outputs) == len(inputs)
         return outputs
 
     def async_infer(self, inputs, inputs_slice, distributed_idx):
