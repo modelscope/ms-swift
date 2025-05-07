@@ -50,7 +50,7 @@ if is_wandb_available():
     import wandb
 
 InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
-OutputsType = List[List[Tuple[List[Dict], str]]]
+OutputsType = List[Tuple[List[Dict], str]]
 
 
 class GRPOCallback(TrainerCallback):
@@ -522,7 +522,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
-    def _infer(self, inputs: InputsType, request_config: RequestConfig) -> Union[OutputsType, List]:
+    def _infer(self, inputs: InputsType, request_config: RequestConfig) -> OutputsType:
         # inputs: local inputs
         from swift.llm.infer.protocol import ChatCompletionResponse
         request_config = copy(request_config)
@@ -565,8 +565,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return results
 
-    def _infer_single_or_multi_turn(self, inputs: InputsType,
-                                    request_config: RequestConfig) -> Union[OutputsType, List]:
+    def _infer_single_or_multi_turn(self, inputs: InputsType, request_config: RequestConfig) -> OutputsType:
         """Perform multi-turn or single-turn inference
 
         Args:
@@ -578,6 +577,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             - List of responses per prompt
             - Each response is a tuple of (message_history, finish_reason)
         """
+
+        # infer first turn
         results = self._infer(inputs, request_config)
 
         if not self.multi_turn_func:
@@ -591,6 +592,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
                     _choices.append((_input['messages'], choice.finish_reason))
                 outputs.append(_choices)
+            # flatten 2D list to 1D list
+            outputs = [item for sublist in outputs for item in sublist]
             assert len(outputs) == len(inputs)
         else:
             # Multi-turn: continue to rollout until finished.
@@ -598,7 +601,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs = [None] * orig_size
             # we remove origin response in first turn
             first_turn = True
-            while len(inputs) > 0:
+            next_turn_inputs = inputs.copy()
+            while len(next_turn_inputs) > 0:
                 # inputs for current turn
                 current_inputs = []
                 cnt = 0
@@ -623,26 +627,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         current_inputs.append(current_input)
 
                 # Process messages in the multi-turn function
-                results: List[Dict] = self.multi_turn_func(inputs)
+                results: List[Dict] = self.multi_turn_func(current_inputs)
 
                 # Retain messages that are not yet finished for the next round of rollout
-                inputs = [r for r in results if not r['finished']]
-
-                # Save the finished messages to the results
+                next_turn_inputs = []
                 for r in results:
                     if r['finished'] or r['finish_reason'] == 'length':
                         outputs[r['index']] = (r['messages'], r['finish_reason'])
+                    else:
+                        next_turn_inputs.append(r)
+                if next_turn_inputs:
+                    # TODO: StdTemplateInputs will not remove responses in infer
+                    results = self._infer(infer_requests=next_turn_inputs, request_config=request_config, use_tqdm=False)
 
-                if len(inputs) > 0:
-                    _input_std = []
-                    for _input in inputs:
-                        _input_std.append(StdTemplateInputs.from_dict(_input))
-                        # StdTemplateInputs will not remove responses in infer
-                    results = self._infer(infer_requests=_input_std, request_config=request_config, use_tqdm=False)
                 # concat responses from the second loop
                 first_turn = False
 
-        assert not any([o is None for o in outputs])
+            assert not any([o is None for o in outputs])
         return outputs
 
     def async_infer(self, inputs, inputs_slice, distributed_idx):
