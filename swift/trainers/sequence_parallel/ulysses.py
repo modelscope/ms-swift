@@ -85,6 +85,8 @@ def get_batch_logps(logits: torch.FloatTensor,
     labels = labels.clone()  # No need to shift, pad and split has shifted the inputs.
     loss_mask = labels != label_pad_token_id
     labels[labels == label_pad_token_id] = 0
+    labels = labels.to(logits.device)
+    loss_mask = loss_mask.to(logits.device)
     per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
     total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, process_group, 1)
     return (total_per_token_logps * total_loss_mask).sum(-1), total_loss_mask.sum(-1)
@@ -481,11 +483,30 @@ class Ulysses(SequenceParallel):
     def dp_group(self):
         return self.device_mesh['data'].get_group()
 
-    @property
-    def is_last_sequence(self):
-        return dist.get_rank(self.sp_rank) == self.sp_world_size - 1
+    def get_dataloader(self, trainer, dataset, batch_size):
+        sampler = UlyssesSampler(self, dataset, seed=42)
+        data_collator = trainer.data_collator
+        if isinstance(dataset, datasets.Dataset):
+            dataset = trainer._remove_unused_columns(dataset, description='training')
+        else:
+            data_collator = trainer._get_collator_with_removed_columns(data_collator, description='training')
 
-    def prepare_trainer_and_get_dataloader(self, trainer):
+        dataloader_params = {
+            'batch_size': batch_size,
+            'collate_fn': data_collator,
+            'num_workers': trainer.args.dataloader_num_workers,
+            'pin_memory': trainer.args.dataloader_pin_memory,
+            'persistent_workers': trainer.args.dataloader_persistent_workers,
+        }
+
+        if not isinstance(dataset, torch.utils.data.IterableDataset):
+            dataloader_params['sampler'] = sampler
+            dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
+            dataloader_params['worker_init_fn'] = seed_worker
+
+        return DataLoader(dataset, **dataloader_params)
+
+    def prepare_trainer(self, trainer):
         if trainer.train_dataset is None:
             raise ValueError('Trainer: training requires a train_dataset.')
 
@@ -498,7 +519,6 @@ class Ulysses(SequenceParallel):
                 return loss_scale_sp_func(*args, process_group=self.sp_group, **kwargs)
 
             trainer.get_nll_loss = MethodType(rlhf_loss_scale_sp_func, trainer)
-        train_dataset = trainer.train_dataset
 
         def _compute_acc(trainer, outputs, labels) -> None:
             args = trainer.args
@@ -532,26 +552,3 @@ class Ulysses(SequenceParallel):
                     trainer._custom_metrics[k].update(v)
 
         trainer._compute_acc = MethodType(_compute_acc, trainer)
-        sampler = UlyssesSampler(self, train_dataset, seed=42)
-
-        train_dataset = trainer.train_dataset
-        data_collator = trainer.data_collator
-        if isinstance(train_dataset, datasets.Dataset):
-            train_dataset = trainer._remove_unused_columns(train_dataset, description='training')
-        else:
-            data_collator = trainer._get_collator_with_removed_columns(data_collator, description='training')
-
-        dataloader_params = {
-            'batch_size': trainer._train_batch_size,
-            'collate_fn': data_collator,
-            'num_workers': trainer.args.dataloader_num_workers,
-            'pin_memory': trainer.args.dataloader_pin_memory,
-            'persistent_workers': trainer.args.dataloader_persistent_workers,
-        }
-
-        if not isinstance(train_dataset, torch.utils.data.IterableDataset):
-            dataloader_params['sampler'] = sampler
-            dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
-            dataloader_params['worker_init_fn'] = seed_worker
-
-        return DataLoader(train_dataset, **dataloader_params)

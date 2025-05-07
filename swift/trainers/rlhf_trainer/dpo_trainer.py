@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 from peft import PeftModel
+from torch.utils.data import Dataset
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
 
@@ -34,14 +35,29 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
         self.use_weighting = False
 
         super().__init__(model, ref_model, *_args, **kwargs)
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            sequence_parallel.prepare_trainer(self)
 
     def get_train_dataloader(self):
         dataloader = None
         if self.template.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
-            dataloader = sequence_parallel.prepare_trainer_and_get_dataloader(self)
+            dataloader = sequence_parallel.get_dataloader(self, self.train_dataset, self._train_batch_size)
         if dataloader is None:
             return super().get_train_dataloader()
+        return dataloader
+
+    def get_eval_dataloader(self, eval_dataset: Optional[Dataset] = None):
+        if eval_dataset is None and self.eval_dataset is None:
+            raise ValueError('Trainer: evaluation requires an eval_dataset.')
+        eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+        dataloader = None
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            dataloader = sequence_parallel.get_dataloader(self, eval_dataset, self.args.eval_batch_size)
+        if dataloader is None:
+            return super().get_eval_dataloader(eval_dataset=eval_dataset)
         return dataloader
 
     def get_nll_loss(self, logits, labels):

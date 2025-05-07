@@ -90,32 +90,31 @@ class XTuner(SequenceParallel):
         from xtuner.parallel.sequence import get_sequence_parallel_world_size
         return get_sequence_parallel_world_size()
 
-    def prepare_trainer_and_get_dataloader(self, trainer):
+    def prepare_trainer(self, trainer):
+        pass
+
+    def get_dataloader(self, trainer, dataset, batch_size):
         # modified from HFTrainer.get_train_dataloader
         # RandomSampler -> SequenceParallelSampler
         self.assert_xtuner_runtime_condition()
-        if trainer.train_dataset is None:
-            raise ValueError('Trainer: training requires a train_dataset.')
-
-        train_dataset = trainer.train_dataset
         data_collator = trainer.data_collator
-        if isinstance(train_dataset, datasets.Dataset):
-            train_dataset = trainer._remove_unused_columns(train_dataset, description='training')
+        if isinstance(dataset, datasets.Dataset):
+            dataset = trainer._remove_unused_columns(dataset, description='training')
         else:
             data_collator = trainer._get_collator_with_removed_columns(data_collator, description='training')
 
         dataloader_params = {
-            'batch_size': trainer._train_batch_size,
+            'batch_size': batch_size,
             'collate_fn': data_collator,
             'num_workers': trainer.args.dataloader_num_workers,
             'pin_memory': trainer.args.dataloader_pin_memory,
             'persistent_workers': trainer.args.dataloader_persistent_workers,
         }
 
-        if not isinstance(train_dataset, torch.utils.data.IterableDataset):
+        if not isinstance(dataset, torch.utils.data.IterableDataset):
             from xtuner.parallel import SequenceParallelSampler
-            dataloader_params['sampler'] = SequenceParallelSampler(train_dataset, seed=1024)
+            dataloader_params['sampler'] = SequenceParallelSampler(dataset, seed=1024)
             dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
             dataloader_params['worker_init_fn'] = seed_worker
 
-        return DataLoader(train_dataset, **dataloader_params)
+        return DataLoader(dataset, **dataloader_params)

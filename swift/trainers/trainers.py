@@ -91,6 +91,9 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
             self.infer_engine = PtEngine.from_model_template(
                 self.model, self.template, max_batch_size=self.args.per_device_eval_batch_size)
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            sequence_parallel.prepare_trainer(self)
 
     @staticmethod
     def _predict_data_collator(batch):
@@ -114,11 +117,20 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
             self.data_collator = origin_data_collator
             self.template.set_mode(origin_mode)
 
+    def get_eval_dataloader(self, eval_dataset=None):
+        dataloader = None
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            dataloader = sequence_parallel.get_dataloader(self, eval_dataset, self.args.eval_batch_size)
+        if dataloader is None:
+            return super().get_eval_dataloader(eval_dataset)
+        return dataloader
+
     def get_train_dataloader(self):
         dataloader = None
         if self.template.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
-            dataloader = sequence_parallel.prepare_trainer_and_get_dataloader(self)
+            dataloader = sequence_parallel.get_dataloader(self, self.train_dataset, self._train_batch_size)
         if dataloader is None:
             # Higher efficiency
             if self.train_dataset is None:

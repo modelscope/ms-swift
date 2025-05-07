@@ -33,5 +33,9 @@ class SequenceParallel(abc.ABC):
         pass
 
     @abstractmethod
-    def prepare_trainer_and_get_dataloader(self, trainer):
+    def prepare_trainer(self, trainer):
+        pass
+
+    @abstractmethod
+    def get_dataloader(self, trainer, dataset, batch_size):
         pass
