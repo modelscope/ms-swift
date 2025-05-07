@@ -4,7 +4,6 @@ from typing import Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 from peft import PeftModel
-from torch.utils.data import Dataset
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
 
