@@ -1,7 +1,7 @@
 import math
 from functools import partial
 from types import MethodType
-from typing import Any, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import datasets
 import torch
@@ -72,7 +72,11 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
         loss_scale = loss_scale.flatten().to(loss.device)
         loss = (loss_scale * loss)
     loss, labels = GatherLoss.apply(loss, labels, process_group)
-    loss = loss[labels != -100].sum() / (labels != -100).sum()
+    loss = loss[labels != -100].sum()
+    if num_items_in_batch is None:
+        loss = loss / (labels != -100).sum()
+    else:
+        loss = loss / num_items_in_batch
     return loss
 
 
@@ -520,35 +524,28 @@ class Ulysses(SequenceParallel):
 
             trainer.get_nll_loss = MethodType(rlhf_loss_scale_sp_func, trainer)
 
-        def _compute_acc(trainer, outputs, labels) -> None:
-            args = trainer.args
-            acc_steps = args.acc_steps
-            preds = outputs.logits.argmax(dim=-1)
-            if trainer.state.global_step % acc_steps == 0:
-                # Gather preds and labels across the sp group
-                shape0 = preds.shape[0]
-                preds_output = torch.empty((shape0 * self.sp_world_size, preds.shape[1]),
-                                           dtype=preds.dtype,
-                                           device=preds.device)
-                dist.all_gather_into_tensor(preds_output, preds, group=self.sp_group)
-                preds_output = torch.cat(preds_output.split(shape0, dim=0), dim=1)
-                shape0 = labels.shape[0]
-                labels_output = torch.empty((shape0 * self.sp_world_size, labels.shape[1]),
-                                            dtype=labels.dtype,
-                                            device=labels.device)
-                dist.all_gather_into_tensor(labels_output, labels, group=self.sp_group)
-                labels_output = torch.cat(labels_output.split(shape0, dim=0), dim=1)
-                # roll back to fit compute_acc
-                labels_output = torch.roll(labels_output, shifts=1, dims=1)
-                from swift.plugin import MeanMetric, compute_acc
-                metrics = compute_acc(
-                    preds_output,
-                    labels_output,
-                    acc_strategy=args.acc_strategy,
-                    is_encoder_decoder=trainer.template.is_encoder_decoder)
-                for k, v in metrics.items():
-                    if k not in trainer._custom_metrics:
-                        trainer._custom_metrics[k] = MeanMetric(nan_value=None)
-                    trainer._custom_metrics[k].update(v)
+        from swift.plugin import metric
+        from swift.trainers import mixin
+        compute_acc_origin = metric.compute_acc
 
-        trainer._compute_acc = MethodType(_compute_acc, trainer)
+        def compute_acc(preds, labels, *args, **kwargs) -> Dict[str, List[float]]:
+
+            # Gather preds and labels across the sp group
+            shape0 = preds.shape[0]
+            preds_output = torch.empty((shape0 * self.sp_world_size, preds.shape[1]),
+                                       dtype=preds.dtype,
+                                       device=preds.device)
+            dist.all_gather_into_tensor(preds_output, preds, group=self.sp_group)
+            preds_output = torch.cat(preds_output.split(shape0, dim=0), dim=1)
+            shape0 = labels.shape[0]
+            labels_output = torch.empty((shape0 * self.sp_world_size, labels.shape[1]),
+                                        dtype=labels.dtype,
+                                        device=labels.device)
+            dist.all_gather_into_tensor(labels_output, labels, group=self.sp_group)
+            labels_output = torch.cat(labels_output.split(shape0, dim=0), dim=1)
+            # roll back to fit compute_acc
+            labels_output = torch.roll(labels_output, shifts=1, dims=1)
+            return compute_acc_origin(preds_output, labels_output, *args, **kwargs)
+
+        metric.compute_acc = compute_acc
+        mixin.compute_acc = compute_acc
