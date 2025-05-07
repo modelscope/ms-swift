@@ -80,51 +80,7 @@ class EmbeddingTrainer(Trainer):
             return calculate_paired_metrics(eval_prediction.predictions, eval_prediction.label_ids)
 
 
-class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
-    args: Seq2SeqTrainingArguments
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.model_accepts_loss_kwargs = True  # fix transformers>=4.46.2
-        if self.args.predict_with_generate:
-            from swift.llm import PtEngine
-            self.infer_engine = PtEngine.from_model_template(
-                self.model, self.template, max_batch_size=self.args.per_device_eval_batch_size)
-        self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
-        if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            sequence_parallel.prepare_trainer(self)
-
-    @staticmethod
-    def _predict_data_collator(batch):
-        return {'_data': batch}
-
-    @contextmanager
-    def _patch_predict_with_generate(self):
-        origin_mode = self.template.mode
-        self.template.set_mode('pt')
-        is_multimodal = self.model.model_meta.is_multimodal
-        origin_data_collator = self.data_collator
-
-        if is_multimodal:
-            models = self.template.remove_post_encode_hook()
-        self.data_collator = self._predict_data_collator
-        try:
-            yield
-        finally:
-            if is_multimodal:
-                self.template.register_post_encode_hook(models)
-            self.data_collator = origin_data_collator
-            self.template.set_mode(origin_mode)
-
-    def get_eval_dataloader(self, eval_dataset=None):
-        dataloader = None
-        if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            dataloader = sequence_parallel.get_dataloader(self, eval_dataset, self.args.eval_batch_size)
-        if dataloader is None:
-            return super().get_eval_dataloader(eval_dataset)
-        return dataloader
+class DataLoaderMixin:
 
     def get_train_dataloader(self):
         dataloader = None
@@ -163,6 +119,56 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
                 dataloader = DataLoaderDispatcher(dataloader)
 
         return dataloader
+
+    def get_eval_dataloader(self, eval_dataset=None):
+        dataloader = None
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            if eval_dataset is None and self.eval_dataset is None:
+                raise ValueError('Trainer: evaluation requires an eval_dataset.')
+            eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+            dataloader = sequence_parallel.get_dataloader(self, eval_dataset, self.args.eval_batch_size)
+        if dataloader is None:
+            return super().get_eval_dataloader(eval_dataset=eval_dataset)
+        return dataloader
+
+
+class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
+    args: Seq2SeqTrainingArguments
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.model_accepts_loss_kwargs = True  # fix transformers>=4.46.2
+        if self.args.predict_with_generate:
+            from swift.llm import PtEngine
+            self.infer_engine = PtEngine.from_model_template(
+                self.model, self.template, max_batch_size=self.args.per_device_eval_batch_size)
+        self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            sequence_parallel.prepare_trainer(self)
+
+    @staticmethod
+    def _predict_data_collator(batch):
+        return {'_data': batch}
+
+    @contextmanager
+    def _patch_predict_with_generate(self):
+        origin_mode = self.template.mode
+        self.template.set_mode('pt')
+        is_multimodal = self.model.model_meta.is_multimodal
+        origin_data_collator = self.data_collator
+
+        if is_multimodal:
+            models = self.template.remove_post_encode_hook()
+        self.data_collator = self._predict_data_collator
+        try:
+            yield
+        finally:
+            if is_multimodal:
+                self.template.register_post_encode_hook(models)
+            self.data_collator = origin_data_collator
+            self.template.set_mode(origin_mode)
 
     def evaluate(self, *args, **kwargs):
         context = self._patch_predict_with_generate() if self.args.predict_with_generate else nullcontext()
