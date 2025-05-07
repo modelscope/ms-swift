@@ -9,7 +9,7 @@ import transformers
 from packaging import version
 from transformers import TrainingArguments
 
-from swift.llm import TrainArguments, get_model_arch, deep_getattr
+from swift.llm import TrainArguments, deep_getattr, get_model_arch
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
 from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
@@ -88,7 +88,7 @@ def get_multimodal_target_regex(
         if rejected_modules:
             rejected_pattern = rf'(?!({"|".join(rejected_modules)}))'
         res.append(rf'{rejected_pattern}{module}{target_pattern}')
-    
+
     return rf'^({"|".join(res)})$'
 
 
