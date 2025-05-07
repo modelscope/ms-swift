@@ -108,8 +108,8 @@ The inference results are as follows:
 I am a language model developed by swift, you can call me swift-robot. How can I assist you?
 ```
 
-- More examples: such as packing and multi-machine, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
 - For pretraining, you can use `megatron pt` instead of `megatron sft`, which will use a generative template for training.
+- **More examples**: Including packing, multi-node training, 32K context, MoE models, and pre-training, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
 
 ## Benchmark
 The speed comparison of full-parameter training for Dense/MoE models using `megatron sft` and `swift sft` on a single machine with eight A800 GPUs is shown below. The corresponding scripts can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/benchmark).
