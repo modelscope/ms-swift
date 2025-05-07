@@ -7,6 +7,7 @@ SWIFT引入了Megatron的并行技术来加速大模型的训练，包括数据�
 使用Megatron-SWIFT，除了安装swift依赖外，还需要安装以下内容：
 
 ```shell
+# 推荐torch版本：2.5 / 2.6
 pip install pybind11
 # transformer_engine
 # 若出现安装错误，可以参考该issue解决: https://github.com/modelscope/ms-swift/issues/3793
