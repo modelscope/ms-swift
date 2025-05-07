@@ -8,7 +8,7 @@ from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
 
-from swift.utils import get_logger
+from swift.utils import get_logger, is_master
 from ..template import MaxLengthError
 from .preprocessor import RowPreprocessor
 
@@ -152,7 +152,7 @@ class PackingDataset(BasePackingDataset, Dataset):
 
     def __init__(self, template, dataset, num_proc: int = 1, *, packing_interval: int = 128, strict: bool = False):
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
-        self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc='Packing')
+        self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
         self._queue = mp.Queue()
         self._terminated_workers = 0
         for i in range(self.num_proc):
@@ -223,10 +223,11 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
         self._out_queue = mp.Queue()
         self.workers = []
         self.cyclic = cyclic
-        for _ in range(self.num_proc):
-            worker = mp.Process(target=self._processor, daemon=True)
-            worker.start()
-            self.workers.append(worker)
+        if is_master():
+            for _ in range(self.num_proc):
+                worker = mp.Process(target=self._processor, daemon=True)
+                worker.start()
+                self.workers.append(worker)
 
     def _processor(self):
         while True:
@@ -264,11 +265,13 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
                 yield x
 
     def __iter__(self):
+        try:
+            next(iter(self.dataset))
+        except StopIteration:
+            return
+
+        assert len(self.workers) > 0, f'self.workers: {self.workers}'
         if self.cyclic:
-            try:
-                next(iter(self.dataset))
-            except StopIteration:
-                return
             iterator = self.cyclic_iter(self.dataset)
         else:
             iterator = iter(self.dataset)

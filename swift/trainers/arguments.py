@@ -39,17 +39,18 @@ class TrainArgumentsMixin:
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     dataloader_num_workers: Optional[int] = None
     dataloader_prefetch_factor: Optional[int] = None
+    use_liger_kernel: bool = False
 
     # extra
     check_model: bool = True
     acc_strategy: Literal['token', 'seq'] = 'token'
     train_dataloader_shuffle: bool = True
+    max_epochs: Optional[int] = None
 
     # torchacc
     metric_warmup_step: Optional[float] = 0
     fsdp_num: int = 1
     acc_steps: int = 1
-    use_liger_kernel: bool = False
 
     # train-eval loop args
     eval_use_evalscope: bool = False
