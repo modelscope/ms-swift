@@ -620,7 +620,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             current_input['index'] = cnt
                         current_input['finish_reason'] = choice.finish_reason
                         cnt += 1
-                        current_inputs.append(_input)
+                        current_inputs.append(current_input)
 
                 # Process messages in the multi-turn function
                 results: List[Dict] = self.multi_turn_func(inputs)
