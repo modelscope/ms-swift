@@ -445,6 +445,7 @@ class SwiftMixin:
         dist.all_reduce(num_items_in_batch, dist.ReduceOp.SUM)
         return batch_samples, num_items_in_batch
 
+
 class DataLoaderMixin:
 
     def get_train_dataloader(self):
