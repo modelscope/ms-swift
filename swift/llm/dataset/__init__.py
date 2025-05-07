@@ -24,7 +24,7 @@ def update_fingerprint(fingerprint, transform, transform_args):
             function = inspect.getsource(transform_args['function'].__self__.__class__)
         else:
             function = inspect.getsource(transform_args['function'])
-        transform_args['function'] = function
+        transform_args['function'] = (transform_args['function'], function)
     return update_fingerprint_origin(fingerprint, transform, transform_args)
 
 

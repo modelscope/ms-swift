@@ -26,7 +26,7 @@ class RowPreprocessor:
                  *,
                  columns: Optional[Dict[str, str]] = None,
                  dataset_sample: Optional[int] = None,
-                 random_state: Union[np.random.RandomState, int, None] = None,
+                 random_state: Union[np.random.RandomState, int, None] = 42,
                  traceback_limit: int = 10) -> None:
         self.columns = columns or {}
         self.origin_columns = self.columns.copy()  # Higher priority and raise Error

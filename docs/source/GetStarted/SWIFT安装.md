@@ -68,7 +68,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | cuda |              | cuda12 |使用cpu、npu、mps则无需安装|
 | torch | >=2.0        |  ||
 | transformers | >=4.33       | 4.51 ||
-| modelscope | >=1.19       |  ||
+| modelscope | >=1.23       |  ||
 | peft | >=0.11,<0.16 | ||
 | trl | >=0.13,<0.18 | 0.17 |RLHF|
 | deepspeed | >=0.14       | 0.14.5 |训练|
