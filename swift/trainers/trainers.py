@@ -116,6 +116,15 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
                 self.template.register_post_encode_hook(models)
             self.data_collator = origin_data_collator
             self.template.set_mode(origin_mode)
+    
+    def get_eval_dataloader(self, eval_dataset=None):
+        dataloader = None
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            dataloader = sequence_parallel.get_dataloader(self, eval_dataset, self.args.eval_batch_size)
+        if dataloader is None:
+            return super().get_eval_dataloader(eval_dataset)
+        return dataloader
 
     def get_train_dataloader(self):
         dataloader = None
