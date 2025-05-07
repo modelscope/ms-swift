@@ -9,7 +9,7 @@ from copy import deepcopy
 from dataclasses import asdict
 from functools import partial, wraps
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
-
+import torch.distributed as dist
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -1331,7 +1331,7 @@ class Template(ProcessorMixin):
         keys = [
             'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'
         ]
-        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]
+        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
@@ -1352,8 +1352,18 @@ class Template(ProcessorMixin):
 
         if self.use_megatron:
             padding_to = math.ceil(max(seq_lens) / 128) * 128
+        elif self.sequence_parallel_size > 1:
+            seq_len = max(seq_lens)
+            sp_seq_len =  math.ceil(max(seq_lens) / self.sequence_parallel_size)
+            from swift.trainers.sequence_parallel import sequence_parallel
+            for k, v in res.items():
+                sp_rank = dist.get_rank(sequence_parallel.sp_group)
+                new_v = torch.split(v, sp_seq_len, dim=1)
+                res[k] = new_v[sp_rank].contiguous()
 
-        for key, pad_value in zip(keys, pad_value):
+            padding_to = sp_seq_len + 1
+
+        for key, pad_value in zip(keys, pad_values):
             if key not in res:
                 continue
             if padding_to is not None:
@@ -1365,9 +1375,6 @@ class Template(ProcessorMixin):
 
         # multimodal
         res.update(self._data_collator_mm_data(batch))
-        if use_torchacc() or self.sequence_parallel_size > 1:
-            res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
-
         return res
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
