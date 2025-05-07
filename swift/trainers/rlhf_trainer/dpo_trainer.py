@@ -50,7 +50,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
 
     def get_eval_dataloader(self, eval_dataset: Optional[Dataset] = None):
         if eval_dataset is None and self.eval_dataset is None:
-            raise ValueError("Trainer: evaluation requires an eval_dataset.")
+            raise ValueError('Trainer: evaluation requires an eval_dataset.')
         eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
         dataloader = None
         if self.template.sequence_parallel_size > 1:
