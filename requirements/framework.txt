@@ -13,7 +13,7 @@ gradio>=3.40.0
 importlib_metadata
 jieba
 matplotlib
-modelscope[datasets]>=1.19
+modelscope[datasets]>=1.23
 nltk
 numpy<2.0
 openai

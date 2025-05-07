@@ -69,7 +69,7 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 | cuda         |              | cuda12      | No need to install if using CPU, NPU, MPS |
 | torch        | >=2.0        |             |                                           |
 | transformers | >=4.33       | 4.51      |                                           |
-| modelscope   | >=1.19       |             |                                           |
+| modelscope   | >=1.23       |             |                                           |
 | peft         | >=0.11,<0.16 |             |                                           |
 | trl          | >=0.13,<0.18 | 0.17      | RLHF                                      |
 | deepspeed    | >=0.14       | 0.14.5 | Training                                  |
