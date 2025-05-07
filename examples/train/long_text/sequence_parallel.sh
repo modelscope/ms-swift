@@ -1,7 +1,6 @@
 # Env: 4 * A100
-# https://github.com/modelscope/ms-swift/blob/main/examples/train/megatron/long_text.sh
 # Max Length: 16K
-# GPU Memory: 4 * 56GB, Training Speed 10s/it
+# GPU Memory: 4 * 43GiB, Training Speed 12s/it
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
@@ -12,7 +11,7 @@ swift sft \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --learning_rate 1e-5 \
-    --gradient_accumulation_steps 2 \
+    --gradient_accumulation_steps 8 \
     --packing true \
     --eval_steps 200 \
     --save_steps 200 \
@@ -25,5 +24,5 @@ swift sft \
     --save_only_model true \
     --output_dir output/Qwen2.5-7B \
     --deepspeed zero3 \
-    --use_liger_kernel true \
-    --attn_impl flash_attn
+    --attn_impl flash_attn \
+    --sequence_parallel_size 4

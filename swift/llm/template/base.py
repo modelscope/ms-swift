@@ -1331,7 +1331,7 @@ class Template(ProcessorMixin):
         keys = [
             'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'
         ]
-        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]
+        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
@@ -1353,7 +1353,7 @@ class Template(ProcessorMixin):
         if self.use_megatron:
             padding_to = math.ceil(max(seq_lens) / 128) * 128
 
-        for key, pad_value in zip(keys, pad_value):
+        for key, pad_value in zip(keys, pad_values):
             if key not in res:
                 continue
             if padding_to is not None:

@@ -8,6 +8,7 @@ SWIFT incorporates Megatron's parallelization techniques to accelerate the train
 To use Megatron-SWIFT, in addition to installing the `swift` dependencies, you also need to install the following:
 
 ```shell
+# Recommended PyTorch version: 2.5 / 2.6
 pip install pybind11
 # transformer_engine
 # If an installation error occurs, you can refer to this issue for resolution: https://github.com/modelscope/ms-swift/issues/3793
