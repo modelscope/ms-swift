@@ -4,11 +4,12 @@ import time
 from typing import Any, Callable, Dict, Optional, Union
 
 import numpy as np
+import torch.distributed as dist
 from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
 
-from swift.utils import get_logger, is_master
+from swift.utils import get_logger, is_dist, is_master
 from ..template import MaxLengthError
 from .preprocessor import RowPreprocessor
 
@@ -155,16 +156,25 @@ class PackingDataset(BasePackingDataset, Dataset):
         self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
         self._queue = mp.Queue()
         self._terminated_workers = 0
-        for i in range(self.num_proc):
-            shard_dataset = self.dataset.shard(self.num_proc, i)
-            worker = mp.Process(target=self._producer, args=(shard_dataset, ), daemon=True)
-            worker.start()
-            self.workers.append(worker)
+        if is_master():
+            for i in range(self.num_proc):
+                shard_dataset = self.dataset.shard(self.num_proc, i)
+                worker = mp.Process(target=self._producer, args=(shard_dataset, ), daemon=True)
+                worker.start()
+                self.workers.append(worker)
 
-        self.packed_dataset = self.get_packed_dataset()
-        self.prog_bar.close()
-        for worker in self.workers:
-            worker.terminate()
+            self.packed_dataset = self.get_packed_dataset()
+            self.prog_bar.close()
+            for worker in self.workers:
+                worker.terminate()
+            if is_dist():
+                obj_list = [self.packed_dataset]
+                dist.broadcast_object_list(obj_list)
+                self.packed_dataset = obj_list[0]
+        elif is_dist():
+            obj_list = [None]
+            dist.broadcast_object_list(obj_list)
+            self.packed_dataset = obj_list[0]
 
     def fetch_packing_data(self, res: Optional[list] = None):
         res = res or []
