@@ -66,13 +66,15 @@ class XTuner(SequenceParallel):
         input_ids = pad_for_sequence_parallel(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
         labels = pad_for_sequence_parallel(labels, padding_value=-100, dim=-1)
         position_ids = pad_for_sequence_parallel(position_ids, padding_value=0, dim=-1)
-        attention_mask = pad_for_sequence_parallel(attention_mask, padding_value=0, dim=-1)
+        if attention_mask is not None:
+            attention_mask = pad_for_sequence_parallel(attention_mask, padding_value=0, dim=-1)
 
         sp_group = get_sequence_parallel_group()
         input_ids = split_for_sequence_parallel(input_ids, dim=1, sp_group=sp_group)
         labels = split_for_sequence_parallel(labels, dim=1, sp_group=sp_group)
         position_ids = split_for_sequence_parallel(position_ids, dim=1, sp_group=sp_group)
-        attention_mask = split_for_sequence_parallel(attention_mask, dim=-1, sp_group=sp_group)
+        if attention_mask is not None:
+            attention_mask = split_for_sequence_parallel(attention_mask, dim=-1, sp_group=sp_group)
         if loss_scale is not None:
             loss_scale = pad_for_sequence_parallel(loss_scale, padding_value=0., dim=-1)
             loss_scale = split_for_sequence_parallel(loss_scale, dim=1, sp_group=sp_group)

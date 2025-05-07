@@ -4,10 +4,10 @@ from types import MethodType
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import datasets
+import numpy as np
 import torch
 import torch.distributed as dist
 from peft import PeftModel
-from torch import Tensor
 from torch.distributed.device_mesh import init_device_mesh
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
@@ -15,7 +15,7 @@ from transformers.trainer_utils import seed_worker
 
 from swift.llm import get_model_arch
 from swift.tuners import SwiftModel
-from swift.utils import get_device, get_dist_setting
+from swift.utils import get_current_device, get_device, get_dist_setting
 from .base import SequenceParallel
 
 
@@ -215,10 +215,10 @@ class _SeqAllToAll(torch.autograd.Function):
     def forward(
         ctx: Any,
         group: dist.ProcessGroup,
-        input: Tensor,
+        input: torch.Tensor,
         scatter_idx: int,
         gather_idx: int,
-    ) -> Tensor:
+    ) -> torch.Tensor:
         ctx.group = group
         ctx.scatter_idx = scatter_idx
         ctx.gather_idx = gather_idx
@@ -226,7 +226,7 @@ class _SeqAllToAll(torch.autograd.Function):
         return res
 
     @staticmethod
-    def backward(ctx: Any, *grad_output: Tensor) -> Tuple[None, Tensor, None, None]:
+    def backward(ctx: Any, *grad_output: torch.Tensor) -> Tuple[None, torch.Tensor, None, None]:
         return None, _SeqAllToAll.apply(ctx.group, *grad_output, ctx.gather_idx, ctx.scatter_idx), None, None
 
 
@@ -245,8 +245,8 @@ class DistributedAttention(torch.nn.Module):
         self.scatter_idx = scatter_idx
         self.gather_idx = gather_idx
 
-    def forward(self, query: Tensor, key: Tensor, value: Tensor, attention_mask: Tensor, *args: Any,
-                **kwargs) -> Tensor:
+    def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, attention_mask: torch.Tensor,
+                *args: Any, **kwargs) -> torch.Tensor:
         query_layer = _SeqAllToAll.apply(self.spg, query, self.scatter_idx, self.gather_idx)
         key_layer = _SeqAllToAll.apply(self.spg, key, self.scatter_idx, self.gather_idx)
         value_layer = _SeqAllToAll.apply(self.spg, value, self.scatter_idx, self.gather_idx)
@@ -531,6 +531,10 @@ class Ulysses(SequenceParallel):
         def compute_acc(preds, labels, *args, **kwargs) -> Dict[str, List[float]]:
 
             # Gather preds and labels across the sp group
+            if isinstance(preds, np.ndarray):
+                preds = torch.from_numpy(preds).to(get_current_device())
+            if isinstance(labels, np.ndarray):
+                labels = torch.from_numpy(labels).to(get_current_device())
             shape0 = preds.shape[0]
             preds_output = torch.empty((shape0 * self.sp_world_size, preds.shape[1]),
                                        dtype=preds.dtype,
