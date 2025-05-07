@@ -85,6 +85,8 @@ def get_batch_logps(logits: torch.FloatTensor,
     labels = labels.clone()  # No need to shift, pad and split has shifted the inputs.
     loss_mask = labels != label_pad_token_id
     labels[labels == label_pad_token_id] = 0
+    labels = labels.to(logits.device)
+    loss_mask = loss_mask.to(logits.device)
     per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
     total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, process_group, 1)
     return (total_per_token_logps * total_loss_mask).sum(-1), total_loss_mask.sum(-1)
