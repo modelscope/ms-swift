@@ -621,7 +621,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             
                             if 'index' not in current_input:
                                 current_input['index'] = cnt
-                            _input['finish_reason'] = choice.finish_reason
+                            current_input['finish_reason'] = choice.finish_reason
                             cnt += 1
                             inputs.append(_input)
 
