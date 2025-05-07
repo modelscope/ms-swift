@@ -138,11 +138,11 @@ class GRPOVllmEngine(VllmEngine):
             prompts.append(llm_inputs)
 
         generation_configs = []
-        seed = request_config.seed
-        assert seed >= 0, 'Seed is needed for GRPOVllmEngine.'
+        # seed = request_config.seed
+        # assert seed >= 0, 'Seed is needed for GRPOVllmEngine.'
         for i, _ in enumerate(prompts):
             request_config = copy(request_config)
-            request_config.seed = seed + i
+            # request_config.seed = seed + i
             generation_config = self._prepare_generation_config(request_config)
             self._add_stop_words(generation_config, request_config, template.template_meta)
             generation_configs.append(generation_config)

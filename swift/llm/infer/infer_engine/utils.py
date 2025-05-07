@@ -473,16 +473,6 @@ def patch_npu_vllm(vllm_device: str):
 
 
 @contextmanager
-def set_device_context(device: Union[str, int]):
-    origin_device = get_current_device()
-    set_device(device)
-    try:
-        yield
-    finally:
-        set_device(origin_device)
-
-
-@contextmanager
 def restore_torch_device_after_vllm_init():
     """
     A context manager to restore the original CUDA device after potential modifications.

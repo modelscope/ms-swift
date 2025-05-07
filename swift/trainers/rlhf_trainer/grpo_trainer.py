@@ -33,12 +33,10 @@ from trl.extras.profiling import profiling_decorator
 from trl.trainer.grpo_trainer import nanmax, nanmin
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
-from swift.llm.infer.infer_engine import set_device_context
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import orms
 from swift.plugin.multi_turn import multi_turns
-from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
-                         get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
+from swift.utils import (JsonlWriter, gc_collect, get_logger, get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import patch_lora_merge, patch_lora_unmerge, round_robin, unwrap_model_for_generation
@@ -200,7 +198,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # it's safer to set it in all cases.
         set_seed(args.seed, device_specific=True)
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
-        self.infer_device = None
         self.use_fast_infer = self.use_vllm or self.use_lmdeploy  # whether to use the PT backend
         # self.is_external_vllm = use_vllm and args.vllm_server_host is not None
         if self.use_vllm:
@@ -263,9 +260,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             repetition_penalty=args.repetition_penalty,
             stop=args.stop_words,
         )
-
-        # if local_world_size == self.args.num_infer_workers == get_device_count() and local_world_size > 1:
-        #     self.request_config.n = self.vllm_tensor_parallel_size
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
@@ -422,7 +416,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 model.model_dir,
                 model.model_info.torch_dtype,
                 model_type=model.model_meta.model_type,
-                vllm_tensor_parallel_size=self.vllm_tensor_parallel_size,
+                tensor_parallel_size=self.vllm_tensor_parallel_size,
                 gpu_memory_utilization=self.vllm_gpu_memory_utilization,
                 enable_prefix_caching=self.args.vllm_enable_prefix_caching,
                 max_num_seqs=max_num_seqs,
@@ -662,7 +656,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def async_infer(self, inputs, inputs_slice, distributed_idx):
         # TODO: compatible with external server
         def infer_task():
-            with set_device_context(self.infer_device), self.multi_turn_completion_length_context():
+            with self.multi_turn_completion_length_context():
                 return self._infer_single_or_multi_turn(inputs_slice, self.request_config)
 
         future: Future = self.executor.submit(infer_task)
