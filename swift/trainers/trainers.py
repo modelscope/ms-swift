@@ -6,21 +6,18 @@ from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-import torch.distributed as dist
 from peft import PeftModel
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader
 from transformers import EvalPrediction
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
 from swift.utils import JsonlWriter, Serializer, gc_collect
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
-from .mixin import SwiftMixin
+from .mixin import DataLoaderMixin, SwiftMixin
 
 
 class Trainer(SwiftMixin, HfTrainer):
@@ -80,59 +77,6 @@ class EmbeddingTrainer(Trainer):
             return calculate_paired_metrics(eval_prediction.predictions, eval_prediction.label_ids)
 
 
-class DataLoaderMixin:
-
-    def get_train_dataloader(self):
-        dataloader = None
-        if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            dataloader = sequence_parallel.get_dataloader(self, self.train_dataset, self._train_batch_size)
-        if dataloader is None:
-            # Higher efficiency
-            if self.train_dataset is None:
-                raise ValueError('Trainer: training requires a train_dataset.')
-            args = self.args
-            train_dataset = self.train_dataset
-
-            dataloader_params = {
-                'collate_fn': self.data_collator,
-                'num_workers': args.dataloader_num_workers,
-                'pin_memory': args.dataloader_pin_memory,
-                'persistent_workers': args.dataloader_persistent_workers,
-                'prefetch_factor': args.dataloader_prefetch_factor
-            }
-            batch_sampler_params = {
-                'drop_last': args.dataloader_drop_last,
-                'shuffle': args.train_dataloader_shuffle,
-                'data_seed': args.data_seed,
-            }
-
-            if hasattr(train_dataset, '__len__'):
-                batch_sampler = BatchSamplerShard(
-                    len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
-                dataloader = DataLoaderShard(train_dataset, batch_sampler, **dataloader_params)
-            else:
-                # IterableDataset
-                if dist.is_initialized():
-                    dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
-                dataloader = DataLoader(train_dataset, batch_size=self._train_batch_size, **dataloader_params)
-                dataloader = DataLoaderDispatcher(dataloader)
-
-        return dataloader
-
-    def get_eval_dataloader(self, eval_dataset=None):
-        dataloader = None
-        if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            if eval_dataset is None and self.eval_dataset is None:
-                raise ValueError('Trainer: evaluation requires an eval_dataset.')
-            eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
-            dataloader = sequence_parallel.get_dataloader(self, eval_dataset, self.args.eval_batch_size)
-        if dataloader is None:
-            return super().get_eval_dataloader(eval_dataset=eval_dataset)
-        return dataloader
-
-
 class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
     args: Seq2SeqTrainingArguments
 
@@ -144,9 +88,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             self.infer_engine = PtEngine.from_model_template(
                 self.model, self.template, max_batch_size=self.args.per_device_eval_batch_size)
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
-        if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            sequence_parallel.prepare_trainer(self)
 
     @staticmethod
     def _predict_data_collator(batch):

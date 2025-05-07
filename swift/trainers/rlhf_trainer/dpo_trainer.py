@@ -35,9 +35,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         self.use_weighting = False
 
         super().__init__(model, ref_model, *_args, **kwargs)
-        if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            sequence_parallel.prepare_trainer(self)
 
     def get_nll_loss(self, logits, labels):
         if not self.is_encoder_decoder:
