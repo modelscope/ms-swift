@@ -137,8 +137,8 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
 
     def __post_init__(self) -> None:
         if self.packing and self.attn_impl != 'flash_attn':
-            logger.warning('The "packing" feature needs to be used in conjunction with "flash_attn". '
-                           'Please specify `--attn_impl flash_attn`.')
+            raise ValueError('The "packing" feature needs to be used in conjunction with "flash_attn". '
+                             'Please specify `--attn_impl flash_attn`.')
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
             if self.resume_only_model:

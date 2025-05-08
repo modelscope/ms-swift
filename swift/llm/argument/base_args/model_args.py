@@ -135,10 +135,6 @@ class ModelArguments:
         self.rope_scaling = rope_scaling
         logger.info(f'rope_scaling is set to type: {self.rope_scaling}')
 
-    def _check_attn_impl(self):
-        if getattr(self, 'packing', False) and self.attn_impl != 'flash_attn':
-            raise ValueError('`--packing true` must be used together with `--attn_impl flash_attn`.')
-
     def _init_model_info(self) -> torch.dtype:
         self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
         self.task_type = self.model_info.task_type
@@ -153,7 +149,6 @@ class ModelArguments:
     def __post_init__(self):
         if self.model is None:
             raise ValueError(f'Please set --model <model_id_or_path>`, model: {self.model}')
-        self._check_attn_impl()
         self.model_suffix = get_model_name(self.model)
         self._init_device_map()
         self._init_max_memory()
