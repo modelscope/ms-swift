@@ -602,14 +602,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # we remove origin response in first turn
             first_turn = True
             next_turn_inputs = inputs.copy()
+            last_turn_results = results
             while len(next_turn_inputs) > 0:
                 # inputs for current turn
                 current_inputs = []
                 cnt = 0
                 # combine completions from results with messages
-                for i, output in enumerate(results):
+                for i, output in enumerate(last_turn_results):
                     for choice in output.choices:
-                        current_input = deepcopy(inputs[i])
+                        current_input = deepcopy(next_turn_inputs[i])
                         messages = current_input['messages']
                         last_message = messages[-1]
 
@@ -627,11 +628,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         current_inputs.append(current_input)
 
                 # Process messages in the multi-turn function
-                results: List[Dict] = self.multi_turn_func(current_inputs)
+                current_results: List[Dict] = self.multi_turn_func(current_inputs)
 
                 # Retain messages that are not yet finished for the next round of rollout
                 next_turn_inputs = []
-                for r in results:
+                for r in current_results:
                     if r['finished'] or r['finish_reason'] == 'length':
                         outputs[r['index']] = (r['messages'], r['finish_reason'])
                     else:
@@ -640,9 +641,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             r['messages'].append({'role': 'assistant', 'content': None})
                         next_turn_inputs.append(r)
                 if next_turn_inputs:
-                    results = self._infer(
-                        infer_requests=next_turn_inputs, request_config=request_config, use_tqdm=False)
+                    current_results = self._infer(next_turn_inputs, request_config)
 
+                last_turn_results = current_results
                 # concat responses from the second loop
                 first_turn = False
 

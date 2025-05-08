@@ -248,26 +248,23 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             return
 
         if self.tensor_parallel_size is not None:
-            warnings.warn(
+            logger.warning(
                 "The parameter 'tensor_parallel_size' has been deprecated and will be removed in version 3.6. "
-                "It is recommended to use 'vllm_tensor_parallel_size' instead.", DeprecationWarning)
+                "It is recommended to use 'vllm_tensor_parallel_size' instead.")
             self.vllm_tensor_parallel_size = self.tensor_parallel_size
 
         if self.vllm_device is not None:
-            warnings.warn("The parameter 'vllm_device' has been deprecated and will be removed in version 3.6. ",
-                          DeprecationWarning)
+            logger.warning("The parameter 'vllm_device' has been deprecated and will be removed in version 3.6. ")
 
         if self.vllm_enable_prefix_caching is not None:
-            warnings.warn(
-                "The parameter 'vllm_enable_prefix_caching' has been deprecated and will be removed in version 3.6. ",
-                DeprecationWarning)
+            logger.warning(
+                "The parameter 'vllm_enable_prefix_caching' has been deprecated and will be removed in version 3.6. ")
 
         if self.num_infer_workers is not None:
-            warnings.warn(
+            logger.warning(
                 "The parameter 'num_infer_workers' has been deprecated and will be removed in version 3.6. "
                 'If you wish to use colocate mode, please use `vllm_mode colocate` instead. '
-                'If you wish to use async mode, please use `vllm_mode server` and external vLLM server instead.',
-                DeprecationWarning)
+                'If you wish to use async mode, please use `vllm_mode server` and external vLLM server instead.')
             if self.use_vllm and self.vllm_server_host is None:
                 logger.info('set vllm_mode to colocate since vllm_server_host is not provided')
                 self.vllm_mode = 'colocate'
