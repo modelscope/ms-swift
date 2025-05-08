@@ -70,7 +70,6 @@ class GRPOCallback(TrainerCallback):
 class DataCache:
     inputs: List[Dict] = field(default_factory=list)
     outputs: List[Dict] = field(default_factory=list)
-    distributed_idx: List[List] = field(default_factory=list)
 
 
 class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
@@ -153,6 +152,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.use_vllm = args.use_vllm
         self.use_lmdeploy = args.use_lmdeploy
+        self.async_generate = args.async_generate
         vllm_client = kwargs.pop('vllm_client')  # for external vllm
 
         super().__init__(model, ref_model, *_args, **kwargs)
@@ -281,7 +281,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Buffer the batch to reuse generated outputs across multiple updates. For more details, see
         # `_get_train_sampler` and `_prepare_inputs`.
         self._buffered_inputs = None
-        if self.args.async_generate:
+        if self.async_generate:
             self.add_callback(GRPOCallback(self))
 
         if self.args.dynamic_sample:
@@ -491,6 +491,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 assert len(state_dict) > 0 and all([state.shape != torch.Size([0]) for state in state_dict.values()])
                 if self.use_fast_infer:
                     if self.args.async_generate:
+                        # before sync weight, we should wait async generate finish
                         self._wait_queue()
                     if self.args.use_vllm:
                         llm_model = self.engine.inner_model
@@ -654,34 +655,31 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             assert not any([o is None for o in outputs])
         return outputs
 
-    def async_infer(self, inputs, inputs_slice, distributed_idx):
-        # TODO: compatible with external server
+    def async_infer(self, inputs):
+
         def infer_task():
             with self.multi_turn_completion_length_context():
-                return self._infer_single_or_multi_turn(inputs_slice, self.request_config)
+                return self._infer_single_or_multi_turn(inputs, self.request_config)
 
         future: Future = self.executor.submit(infer_task)
         # pre-fetch the queue to avoid switching back to eval_queue at the end of training sample sampling
         current_queue = self._queue
 
         def done(_self):
-            current_queue.put(DataCache(inputs, _self.result(), distributed_idx))
+            current_queue.put(DataCache(inputs, _self.result()))
 
         future.add_done_callback(done)
 
     def _prefetch(self, dataloader: DataLoader):
-        # TODO: compatible with external server
+        # TODO: asyncio
         inputs = next(iter(dataloader))
         all_inputs = gather_object(inputs)
-        nnodes = get_node_setting()[1]
-        distributed_idx = round_robin(len(all_inputs), nnodes * self.args.num_infer_workers)
-        if self.infer_rank >= 0:
-            _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
+        if self.accelerator.is_main_process:
             with self.multi_turn_completion_length_context():
-                outputs = self._infer_single_or_multi_turn(_input_slice, self.request_config)
-            self._queue.put(DataCache(inputs, outputs, distributed_idx))
+                outputs = self._infer_single_or_multi_turn(all_inputs, self.request_config)
+            self._queue.put(DataCache(inputs, outputs))
         else:
-            self._queue.put(DataCache(inputs, [], distributed_idx))
+            self._queue.put(DataCache(inputs, []))
         if self.accelerator.num_processes > 1:
             self.accelerator.wait_for_everyone()
 
@@ -701,8 +699,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self._move_model_to_vllm_lmdeploy()
             self._last_loaded_step = self.state.global_step
 
-        with self.multi_turn_completion_length_context():
-            outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
+        if self.async_generate:
+            # send this step data to server
+            self.async_infer(inputs)
+            # get last step data from cache
+            data_cache = self._queue.get()
+            inputs = data_cache.inputs
+            outputs = data_cache.outputs
+        else:
+            with self.multi_turn_completion_length_context():
+                outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
 
         if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
             self.engine.engine.sleep(level=self.args.sleep_level)

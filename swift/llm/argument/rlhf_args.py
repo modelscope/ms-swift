@@ -223,6 +223,9 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         if self.vllm_mode == 'server':
             assert not self.use_vllm or self.vllm_server_host is not None
 
+        if self.async_generate:
+            assert self.vllm_mode == 'server', 'async generate require vllm_mode == server'
+
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
             return
