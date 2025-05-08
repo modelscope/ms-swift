@@ -21,10 +21,6 @@ def _patch_transformer_engine():
             pass
 
 
-class MaxEpochsStopIteration(StopIteration):
-    pass
-
-
 def new_cyclic_iter(iter):
     from megatron.training import get_args
     args = get_args()
@@ -32,9 +28,9 @@ def new_cyclic_iter(iter):
     i = 0
     while True:
         if getattr(args, 'is_training', False):
-            logger.info(f'The training of Epoch {i} starts.')
-        if max_epochs and getattr(args, 'is_training', False) and i >= max_epochs:
-            raise MaxEpochsStopIteration()
+            if max_epochs and i >= max_epochs:
+                break
+            logger.info(f'The training of Epoch {i} starts...')
         for x in iter:
             yield x
         i += 1
@@ -60,7 +56,7 @@ def _patch_max_epochs():
         with _training_context():
             try:
                 return train_step_origin(*args, **kwargs)
-            except MaxEpochsStopIteration:
+            except StopIteration:
                 return {}, True, False, True, 0, None, None
 
     training.train_step = train_step
