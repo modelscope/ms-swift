@@ -523,18 +523,24 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
-    def _infer(self, inputs: InputsType, request_config: RequestConfig) -> OutputsType:
+    def _infer(self, inputs: InputsType, request_config: RequestConfig, is_global_inputs: bool = False) -> OutputsType:
         # inputs: local inputs
         from swift.llm.infer.protocol import ChatCompletionResponse
         request_config = copy(request_config)
         # keys from InferRequest
+        per_device_size = len(inputs)
+        if is_global_inputs:
+            per_device_size / self.accelerator.num_processes
         infer_inputs = [{
             k: v
             for k, v in inp.items() if k in ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
         } for inp in inputs]
         if self.vllm_mode == 'server':
             # for server mode, we gather all the inputs and send to remote vllm server in main process
-            all_inputs = gather_object(infer_inputs)
+            if is_global_inputs:
+                all_inputs = infer_inputs
+            else:
+                all_inputs = gather_object(infer_inputs)
             if self.accelerator.is_main_process:
                 results: List[ChatCompletionResponse] = self._engine_infer(
                     infer_requests=all_inputs, request_config=request_config)
@@ -544,8 +550,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # ensuring each process receives its corresponding slice.
             results = broadcast_object_list(results, from_process=0)
             process_slice = slice(
-                self.accelerator.process_index * len(inputs),
-                (self.accelerator.process_index + 1) * len(inputs),
+                self.accelerator.process_index * per_device_size,
+                (self.accelerator.process_index + 1) * per_device_size,
             )
             results = results[process_slice]
         else:
@@ -571,7 +577,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return results
 
-    def _infer_single_or_multi_turn(self, inputs: InputsType, request_config: RequestConfig) -> OutputsType:
+    def _infer_single_or_multi_turn(self,
+                                    inputs: InputsType,
+                                    request_config: RequestConfig,
+                                    is_global_inputs: bool = False) -> OutputsType:
         """Perform multi-turn or single-turn inference
 
         Args:
@@ -585,7 +594,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
 
         # infer first turn
-        results = self._infer(inputs, request_config)
+        results = self._infer(inputs, request_config, is_global_inputs)
 
         if not self.multi_turn_func:
             # Single-turn: combine completions with messages and retain the finish reason.
@@ -659,13 +668,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             assert not any([o is None for o in outputs])
         return outputs
 
-    def async_infer(self, inputs):
+    def async_infer(self, all_inputs):
         current_queue = self._queue
 
         def infer_task():
             try:
                 with self.multi_turn_completion_length_context():
-                    return self._infer_single_or_multi_turn(inputs, self.request_config)
+                    return self._infer_single_or_multi_turn(all_inputs, self.request_config, is_global_inputs=True)
             except Exception as e:
                 logger.error('Inference task failed: %s', str(e))
                 raise
@@ -706,7 +715,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if self.async_generate:
             # send this step data to server
-            self.async_infer(inputs)
+            all_inputs = gather_object(inputs)
+            self.async_infer(all_inputs)
             # get last step data from cache
             data_cache = self._queue.get()
             inputs = data_cache.inputs
