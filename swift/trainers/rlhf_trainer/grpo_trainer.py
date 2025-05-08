@@ -16,7 +16,6 @@ from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import datasets
-import numpy as np
 import torch
 import torch.nn as nn
 import transformers
@@ -33,14 +32,13 @@ from trl.extras.profiling import profiling_decorator
 from trl.trainer.grpo_trainer import nanmax, nanmin
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
-from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import orms
 from swift.plugin.multi_turn import multi_turns
-from swift.utils import (JsonlWriter, gc_collect, get_device, get_logger, get_node_setting, is_lmdeploy_available,
-                         is_vllm_available, is_wandb_available)
+from swift.utils import (JsonlWriter, gc_collect, get_device, get_logger, is_lmdeploy_available, is_vllm_available,
+                         is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import patch_lora_merge, patch_lora_unmerge, round_robin, unwrap_model_for_generation
+from .utils import patch_lora_merge, patch_lora_unmerge, unwrap_model_for_generation
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
@@ -533,7 +531,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             all_inputs = gather_object(inputs)
             if self.accelerator.is_main_process:
                 results = List[ChatCompletionResponse] = self._engine_infer(
-                    infer_requests=all_inputs, request_config=request_config, use_tqdm=False)
+                    infer_requests=all_inputs, request_config=request_config)
             else:
                 results = [None] * len(all_inputs)
             # Broadcast the results from the main process to all processes,
@@ -556,7 +554,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # confirm that the seed is same in tp group
             request_config.seed = self.accelerator.process_index // self.vllm_tensor_parallel_size
             results: List[ChatCompletionResponse] = self._engine_infer(
-                infer_requests=inputs, request_config=request_config, use_tqdm=False)
+                infer_requests=inputs, request_config=request_config)
 
             if self.vllm_tensor_parallel_size > 1:
                 # Slice completions for this rank within its TP group.
@@ -1106,11 +1104,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         infer_requests: List[InferRequest],
         request_config: Optional[RequestConfig] = None,
         *,
-        use_tqdm: Optional[bool] = None,
+        use_tqdm: Optional[bool] = False,
     ):
         if self.vllm_mode == 'server':
             self._process_infer_requests_images(infer_requests)
-            return self.vllm_client.infer(infer_requests.tolist(), asdict(request_config), use_tqdm=use_tqdm)
+            return self.vllm_client.infer(infer_requests, asdict(request_config), use_tqdm=use_tqdm)
         else:
             return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
 
