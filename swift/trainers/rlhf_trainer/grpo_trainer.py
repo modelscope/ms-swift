@@ -614,12 +614,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         messages = current_input['messages']
                         last_message = messages[-1]
 
-                        # Determine if we need to append or update the last message
-                        if first_turn or last_message['role'] != 'assistant' or not last_message['content']:
+                        # Determine whether to append a new message or update the last one based on the current state
+                        if first_turn or not last_message['content']:
+                            # If it's the first turn or the last message content is empty(dummy), remove the response
                             InferRequest.remove_response(messages)
-                            messages.append({'role': 'assistant', 'content': choice.message.content})
-                        else:
+                        if last_message['role'] == 'assistant':
+                            # If the last message was assistant, concatenate the new content to it
                             last_message['content'] += choice.message.content
+                        else:
+                            # append a new message from the assistant
+                            messages.append({'role': 'assistant', 'content': choice.message.content})
 
                         if 'index' not in current_input:
                             current_input['index'] = cnt
@@ -636,7 +640,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     if r['finished'] or r['finish_reason'] == 'length':
                         outputs[r['index']] = (r['messages'], r['finish_reason'])
                     else:
-                        if r['messages'][-1]['content'] == 'assistant':
+                        if r['messages'][-1]['role'] == 'assistant':
                             # infer will remove response, so we add dummy response here
                             r['messages'].append({'role': 'assistant', 'content': None})
                         next_turn_inputs.append(r)
