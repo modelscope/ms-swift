@@ -158,6 +158,16 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 if self.soft_max_length is None:
                     self.soft_max_length = self.max_completion_length
                     logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
+            if self.use_vllm:
+                # set vllm mode
+                if self.vllm_server_host is not None:
+                    if self.vllm_mode != 'server':
+                        self.vllm_mode = 'server'
+                        logger.warning('set vllm_mode to `server` since vllm_server_host is provided')
+                else:
+                    if self.vllm_mode != 'colocate':
+                        self.vllm_mode = 'colocate'
+                        logger.warning('set vllm_mode to `colocate` since vllm_server_host is not provided')
 
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':
@@ -224,7 +234,9 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             assert not self.use_vllm or self.vllm_server_host is not None
 
         if self.async_generate:
-            assert self.vllm_mode == 'server', 'async generate require vllm_mode == server'
+            assert self.vllm_mode == 'server', 'async generate require vllm_mode == server, '
+            'please deploy vLLM server by `swift rollout` and assign with `vllm_server_host` '
+            'for more infomations, please check https://swift.readthedocs.io/en/latest/Instruction/GRPO.html'
 
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
@@ -268,6 +280,3 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 "The parameter 'num_infer_workers' has been deprecated and will be removed in version 3.6. "
                 'If you wish to use colocate mode, please use `vllm_mode colocate` instead. '
                 'If you wish to use async mode, please use `vllm_mode server` and external vLLM server instead.')
-            if self.use_vllm and self.vllm_server_host is None:
-                logger.info('set vllm_mode to colocate since vllm_server_host is not provided')
-                self.vllm_mode = 'colocate'
