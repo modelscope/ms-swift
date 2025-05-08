@@ -29,7 +29,6 @@ def get_supported_tuners():
 class CompatArguments:
     #
     ckpt_dir: Optional[str] = None
-    load_dataset_config: Optional[bool] = None
     lora_modules: List[str] = field(default_factory=list)
 
     def _handle_ckpt_dir(self: 'BaseArguments'):
@@ -43,8 +42,6 @@ class CompatArguments:
         else:
             self.model = self.ckpt_dir
         self.ckpt_dir = None
-        logger.warning('The `--ckpt_dir` parameter will be removed in `ms-swift>=3.4`. '
-                       'Please use `--model`, `--adapters`.')
 
     def __post_init__(self: 'BaseArguments'):
         if self.ckpt_dir is not None:
@@ -52,8 +49,6 @@ class CompatArguments:
 
         if len(self.lora_modules) > 0:
             self.adapters += self.lora_modules
-            logger.warning('The `--lora_modules` parameter will be removed in `ms-swift>=3.4`. '
-                           'Please use `--adapters`.')
 
 
 @dataclass
