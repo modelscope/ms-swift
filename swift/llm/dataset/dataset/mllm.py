@@ -989,6 +989,14 @@ register_dataset(
         preprocess_func=ScienceQAPreprocessor(),
         tags=['multi-modal', 'science', 'vqa', 'quality']))
 
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='lmms-lab/ScienceQA-IMG',
+        hf_dataset_id='lmms-lab/ScienceQA-IMG',
+        split=['train', 'validation'],
+        preprocess_func=ScienceQAPreprocessor(),
+        tags=['multi-modal', 'science', 'vqa', 'quality']))
+
 
 class GritPreprocessor(RowPreprocessor, GroundingMixin):
 
@@ -1213,3 +1221,21 @@ register_dataset(
         hf_dataset_id='leonardPKU/clevr_cogen_a_train',
         preprocess_func=ClevrPreprocessor(),
         tags=['qa', 'math', 'vision', 'grpo']))
+
+
+class OpenVLPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            'query': 'What is the caption of this image?',
+            'response': row['caption'],
+            'images': row['url'],
+        }
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='swift/Open-Qwen2VL-Data',
+        hf_dataset_id='weizhiwang/Open-Qwen2VL-Data',
+        preprocess_func=OpenVLPreprocessor(),
+        tags=['caption', 'pretrain', 'vision']))
