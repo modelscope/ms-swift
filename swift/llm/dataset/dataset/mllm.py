@@ -1226,16 +1226,16 @@ register_dataset(
 class OpenVLPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        return {
-            'query': 'What is the caption of this image?',
-            'response': row['caption'],
-            'images': row['url'],
-        }
+        row['query'] = 'What is the caption of this image?'
+        return super().preprocess(row)
 
 
 register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/Open-Qwen2VL-Data',
         hf_dataset_id='weizhiwang/Open-Qwen2VL-Data',
-        preprocess_func=OpenVLPreprocessor(),
+        preprocess_func=OpenVLPreprocessor(columns={
+            'caption': 'response',
+            'url': 'images'
+        }),
         tags=['caption', 'pretrain', 'vision']))
