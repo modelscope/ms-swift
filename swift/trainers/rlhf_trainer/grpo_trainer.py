@@ -530,7 +530,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # keys from InferRequest
         per_device_size = len(inputs)
         if is_global_inputs:
-            per_device_size / self.accelerator.num_processes
+            per_device_size /= self.accelerator.num_processes
         infer_inputs = [{
             k: v
             for k, v in inp.items() if k in ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
@@ -715,6 +715,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if self.async_generate:
             # send this step data to server
+            # we gather inputs outside the thread for prevent potential gather deadlock
             all_inputs = gather_object(inputs)
             self.async_infer(all_inputs)
             # get last step data from cache
