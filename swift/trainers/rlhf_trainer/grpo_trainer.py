@@ -528,10 +528,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.llm.infer.protocol import ChatCompletionResponse
         request_config = copy(request_config)
         # keys from InferRequest
-        infer_inputs = {
+        infer_inputs = [{
             k: v
-            for k, v in inputs.items() if k in ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
-        }
+            for k, v in inp.items() if k in ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
+        } for inp in inputs]
         if self.vllm_mode == 'server':
             # for server mode, we gather all the inputs and send to remote vllm server in main process
             all_inputs = gather_object(infer_inputs)
