@@ -27,7 +27,6 @@ def get_supported_tuners():
 
 @dataclass
 class CompatArguments:
-    #
     ckpt_dir: Optional[str] = None
     lora_modules: List[str] = field(default_factory=list)
 

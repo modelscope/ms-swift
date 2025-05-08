@@ -29,6 +29,7 @@ def new_cyclic_iter(iter):
     while True:
         if getattr(args, 'is_training', False):
             if max_epochs and i >= max_epochs:
+                logger.info(f'Training of {i} epochs has been completed, the training has finished.')
                 break
             logger.info(f'The training of Epoch {i} starts...')
         for x in iter:
