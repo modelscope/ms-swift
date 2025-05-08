@@ -612,15 +612,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     for choice in output.choices:
                         current_input = deepcopy(next_turn_inputs[i])
                         messages = current_input['messages']
-                        last_message = messages[-1]
 
                         # Determine whether to append a new message or update the last one based on the current state
-                        if first_turn or not last_message['content']:
+                        if first_turn or not messages[-1]['content']:
                             # If it's the first turn or the last message content is empty(dummy), remove the response
                             InferRequest.remove_response(messages)
-                        if last_message['role'] == 'assistant':
+                        if messages[-1]['role'] == 'assistant':
                             # If the last message was assistant, concatenate the new content to it
-                            last_message['content'] += choice.message.content
+                            messages[-1]['content'] += choice.message.content
                         else:
                             # append a new message from the assistant
                             messages.append({'role': 'assistant', 'content': choice.message.content})
