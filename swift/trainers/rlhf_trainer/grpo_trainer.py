@@ -635,10 +635,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     if r['finished'] or r['finish_reason'] == 'length':
                         outputs[r['index']] = (r['messages'], r['finish_reason'])
                     else:
+                        if r['messages'][-1]['content'] == 'assistant':
+                            # infer will remove response, so we add dummy response here
+                            r['messages'].append({'role': 'assistant', 'content': None})
                         next_turn_inputs.append(r)
                 if next_turn_inputs:
-                    # TODO: StdTemplateInputs will not remove responses in infer
-                    results = self._infer(infer_requests=next_turn_inputs, request_config=request_config, use_tqdm=False)
+                    results = self._infer(
+                        infer_requests=next_turn_inputs, request_config=request_config, use_tqdm=False)
 
                 # concat responses from the second loop
                 first_turn = False
