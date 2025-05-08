@@ -19,7 +19,7 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
-pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.11.0
+pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.12.0
 ```
 
 或者你也可以使用镜像：
@@ -28,7 +28,7 @@ modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubunt
 modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
 ```
 
-依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.11.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.11.0)）。
+依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.12.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.12.0)）。
 
 
 ## 快速入门案例
@@ -146,7 +146,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - no_rope_fusion: 默认为False。指定`--no_rope_fusion true`用于禁止rope融合。
 - no_gradient_accumulation_fusion: 默认为False。指定`--no_gradient_accumulation_fusion true`用于禁用梯度累加融合。
 - 🔥cross_entropy_loss_fusion: 启动交叉熵损失计算融合。默认为False。
-- 🔥use_flash_attn: 使用 FlashAttention 注意力机制实现，默认为False。
+- attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 auto。
 - optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
 - dataloader_type: 默认为'cyclic'，可选为'single', 'cyclic', 'external'。若开启`--streaming`，则设置为`external`。
 - manual_gc: 禁用默认垃圾回收器，手动触发垃圾回收。默认为False。
