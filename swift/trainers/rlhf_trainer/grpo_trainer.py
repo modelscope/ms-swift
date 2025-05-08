@@ -144,6 +144,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.vllm_gpu_memory_utilization = args.vllm_gpu_memory_utilization  # only applies to colocation mode
         self.vllm_tensor_parallel_size = args.vllm_tensor_parallel_size  # only applies to colocation mode
         self.loss_type = args.loss_type
+        self.max_completion_length = args.max_completion_length
         model.warnings_issued['estimate_tokens'] = True
         kwargs['data_collator'] = lambda features: features
         self.shuffle_dataset = args.dataset_shuffle
@@ -526,9 +527,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # inputs: local inputs
         from swift.llm.infer.protocol import ChatCompletionResponse
         request_config = copy(request_config)
+        # keys from InferRequest
+        infer_inputs = {
+            k: v
+            for k, v in inputs.items() if k in ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
+        }
         if self.vllm_mode == 'server':
             # for server mode, we gather all the inputs and send to remote vllm server in main process
-            all_inputs = gather_object(inputs)
+            all_inputs = gather_object(infer_inputs)
             if self.accelerator.is_main_process:
                 results: List[ChatCompletionResponse] = self._engine_infer(
                     infer_requests=all_inputs, request_config=request_config)
@@ -654,17 +660,26 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return outputs
 
     def async_infer(self, inputs):
-
-        def infer_task():
-            with self.multi_turn_completion_length_context():
-                return self._infer_single_or_multi_turn(inputs, self.request_config)
-
-        future: Future = self.executor.submit(infer_task)
-        # pre-fetch the queue to avoid switching back to eval_queue at the end of training sample sampling
         current_queue = self._queue
 
-        def done(_self):
-            current_queue.put(DataCache(inputs, _self.result()))
+        def infer_task():
+            try:
+                with self.multi_turn_completion_length_context():
+                    return self._infer_single_or_multi_turn(inputs, self.request_config)
+            except Exception as e:
+                logger.error('Inference task failed: %s', str(e))
+                raise
+
+        future: Future = self.executor.submit(infer_task)
+
+        # pre-fetch the queue to avoid switching back to eval_queue at the end of training sample sampling
+
+        def done(future):
+            try:
+                result = future.result()
+                current_queue.put(DataCache(inputs, result))
+            except Exception as e:
+                logger.error('Error in async_infer callback: %s', str(e))
 
         future.add_done_callback(done)
 
