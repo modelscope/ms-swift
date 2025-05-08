@@ -530,7 +530,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # for server mode, we gather all the inputs and send to remote vllm server in main process
             all_inputs = gather_object(inputs)
             if self.accelerator.is_main_process:
-                results = List[ChatCompletionResponse] = self._engine_infer(
+                results: List[ChatCompletionResponse] = self._engine_infer(
                     infer_requests=all_inputs, request_config=request_config)
             else:
                 results = [None] * len(all_inputs)
