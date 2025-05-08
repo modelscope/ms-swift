@@ -39,6 +39,7 @@ class AttnImpl:
                          attn_impl_keys: Optional[List[str]] = None) -> None:
         if attn_impl is None:
             return
+        logger.info(f'attn_impl: {attn_impl}')
         use_flash_attn = AttnImpl.to_use_flash_attn(attn_impl)
         if use_flash_attn:
             attn_impl = 'flash_attention_2'
@@ -88,19 +89,27 @@ class HfConfigFactory:
 
     @staticmethod
     def _get_config_attrs(config: Union[PretrainedConfig, Dict[str, Any]],
-                          attr_name: str) -> List[Tuple[PretrainedConfig, Any]]:
+                          attr_name: str,
+                          parent_key: Optional[str] = None) -> List[Tuple[PretrainedConfig, Any]]:
         res = []
-        for key in [None, 'language_config', 'llm_config', 'text_config']:
-            if key is not None:
+        if isinstance(config, dict):
+            keys = config.keys()
+        elif isinstance(config, PretrainedConfig):
+            keys = dir(config)
+        else:
+            return []
+
+        value = deep_getattr(config, attr_name, None)
+        if value is not None and parent_key in [None, 'language_config', 'llm_config', 'text_config']:
+            res.append((config, value))
+
+        for k in keys:
+            if k.endswith('_config'):
                 if isinstance(config, dict):
-                    llm_config = config.get(key)
+                    v = config[k]
                 else:
-                    llm_config = getattr(config, key, None)
-            else:
-                llm_config = config
-            value = deep_getattr(llm_config, attr_name, None)
-            if value is not None:
-                res.append((llm_config, value))
+                    v = getattr(config, k)
+                res += HfConfigFactory._get_config_attrs(v, attr_name, k)
         return res
 
     @staticmethod
@@ -237,11 +246,10 @@ def safe_snapshot_download(model_id_or_path: str,
             logger.info(f'Loading the model using local model_dir: {model_dir}')
             return model_dir
     if ignore_patterns is None:
-        ignore_patterns = []
-    ignore_patterns += [
-        '*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx/*', '*.safetensors.md', '*.msgpack', '*.onnx',
-        '*.ot', '*.h5'
-    ]
+        ignore_patterns = [
+            '*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx/*', '*.safetensors.md', '*.msgpack', '*.onnx',
+            '*.ot', '*.h5'
+        ]
     if not download_model:
         ignore_patterns += ['*.bin', '*.safetensors']
     hub = get_hub(use_hf)

@@ -109,13 +109,13 @@ class Gemma3VisionTemplate(Gemma3Template):
             input_ids = encoded['input_ids']
             labels = encoded['labels']
             idx_list = findall(input_ids, self.boi_token_id)
-            img_tokens = self.tokenizer.encode(self.processor.full_image_sequence)
+            img_tokens = self._tokenize(self.processor.full_image_sequence)
             input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, lambda _: img_tokens)
 
             # TODO: customize
             processor_kwargs = Gemma3ProcessorKwargs._defaults['images_kwargs']
             image_inputs = self.processor.image_processor(inputs.images, **processor_kwargs)
-            image_inputs['pixel_values'] = torch.as_tensor(image_inputs['pixel_values'])
+            image_inputs['pixel_values'] = torch.as_tensor(np.array(image_inputs['pixel_values']))
             image_inputs.pop('num_crops')
 
             array_ids = np.array(input_ids)

@@ -6,11 +6,13 @@ import shutil
 import time
 from contextlib import contextmanager
 from copy import copy
+from functools import partial
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import safetensors
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import transformers
 from datasets import Dataset as HfDataset
@@ -18,16 +20,17 @@ from modelscope import check_local_model_is_latest
 from packaging import version
 from peft import PeftModel
 from torch.nn import Module
+from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import TrainerCallback
-from transformers.trainer_utils import EvalPrediction
+from transformers.trainer_utils import EvalPrediction, IntervalStrategy
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
-from swift.llm import Template
+from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
 from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_mp_ddp, use_torchacc
@@ -68,13 +71,14 @@ class SwiftMixin:
                         'invoked_by': 'local_trainer',
                         'third_party': 'swift',
                     })
+        if eval_dataset is None and args:
+            args.evaluation_strategy = IntervalStrategy.NO
+            args.eval_strategy = IntervalStrategy.NO
+
         self._custom_metrics = {}
         self.template = template
         self.max_memory = 0
         self.hub = get_hub()
-        if template.sequence_parallel_size > 1:
-            from swift.trainers.xtuner import init_sequence_parallel_xtuner
-            init_sequence_parallel_xtuner(template.sequence_parallel_size)
 
         self.model_meta = model.model_meta
         with self.hub.patch_hub():
@@ -98,6 +102,9 @@ class SwiftMixin:
             self.can_return_loss = can_return_loss(model)
         self.label_names = self.label_names or ['labels']
         self.start_time = time.time()
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            sequence_parallel.prepare_trainer(self)
 
     def _save_initial_model(self, output_dir):
         # pissa/olora/lora-ga
@@ -159,10 +166,11 @@ class SwiftMixin:
     def _save_model(self, output_dir: Optional[str] = None, state_dict=None):
         # model
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
+        supported_names = ('SentenceTransformer')
         if AutoModelForCausalLMWithValueHead is not None:
             supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead, )
         save_safetensors = self.args.save_safetensors
-        if not isinstance(self.model, supported_classes):
+        if not isinstance(self.model, supported_classes) and self.model.__class__.__name__ not in supported_names:
             if state_dict is None:
                 state_dict = self.model.state_dict()
 
@@ -199,7 +207,28 @@ class SwiftMixin:
             extra_tuners[self.args.train_type].save_pretrained(
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         else:
-            self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+            if self.model.__class__.__name__ != 'SentenceTransformer':
+                self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+            else:
+
+                @contextmanager
+                def save_context():
+                    save_pretrained = self.model[0].auto_model.save_pretrained
+                    _state_dict = {
+                        key[len('0.auto_model.'):] if 'auto_model' in key else key: value
+                        for key, value in state_dict.items()
+                    }
+                    self.model[0].auto_model.save_pretrained = partial(
+                        self.model[0].auto_model.save_pretrained, state_dict=_state_dict)
+                    yield
+                    self.model[0].auto_model.save_pretrained = save_pretrained
+
+                with save_context():
+                    self.model.save_pretrained(output_dir, safe_serialization=save_safetensors)
+                    # copy sentencetransformers files
+                    from swift.utils import copy_files_by_pattern
+                    copy_files_by_pattern(self.model.model_dir, output_dir, '*.py')
+                    copy_files_by_pattern(self.model.model_dir, output_dir, '*.json')
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
@@ -224,7 +253,12 @@ class SwiftMixin:
         if not is_adapter:
             from swift.llm import save_checkpoint
             additional_saved_files = self.model_meta.additional_saved_files
-            save_checkpoint(None, self.template.processor, output_dir, additional_saved_files=additional_saved_files)
+            save_checkpoint(
+                None,
+                self.template.processor,
+                output_dir,
+                model_dirs=[self.model.model_dir],
+                additional_saved_files=additional_saved_files)
             if getattr(self.model, 'origin_generation_config', None):
                 self.model.origin_generation_config.save_pretrained(output_dir)
 
@@ -358,19 +392,6 @@ class SwiftMixin:
         else:
             super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
 
-    def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
-        if self.args.train_sampler_random:
-            return super()._get_train_sampler()
-        else:
-            return self._get_eval_sampler(self.train_dataset)
-
-    def get_train_dataloader(self):
-        if self.template.sequence_parallel_size == 1:
-            return super().get_train_dataloader()
-        else:
-            from swift.trainers.xtuner import get_xtuner_train_dataloader
-            return get_xtuner_train_dataloader(self)
-
     def _compute_acc(self, outputs, labels) -> None:
         args = self.args
         acc_steps = args.acc_steps
@@ -415,3 +436,64 @@ class SwiftMixin:
 
         self.model.train()
         return eval_dict
+
+    def get_batch_samples(self, *args, **kwargs):
+        res = super().get_batch_samples(*args, **kwargs)
+        if self.template.sequence_parallel_size == 1:
+            return res
+        batch_samples, num_items_in_batch = res
+        dist.all_reduce(num_items_in_batch, dist.ReduceOp.SUM)
+        return batch_samples, num_items_in_batch
+
+
+class DataLoaderMixin:
+
+    def get_train_dataloader(self):
+        dataloader = None
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            dataloader = sequence_parallel.get_dataloader(self, self.train_dataset, self._train_batch_size)
+        if dataloader is None:
+            # Higher efficiency
+            if self.train_dataset is None:
+                raise ValueError('Trainer: training requires a train_dataset.')
+            args = self.args
+            train_dataset = self.train_dataset
+
+            dataloader_params = {
+                'collate_fn': self.data_collator,
+                'num_workers': args.dataloader_num_workers,
+                'pin_memory': args.dataloader_pin_memory,
+                'persistent_workers': args.dataloader_persistent_workers,
+                'prefetch_factor': args.dataloader_prefetch_factor
+            }
+            batch_sampler_params = {
+                'drop_last': args.dataloader_drop_last,
+                'shuffle': args.train_dataloader_shuffle,
+                'data_seed': args.data_seed,
+            }
+
+            if hasattr(train_dataset, '__len__'):
+                batch_sampler = BatchSamplerShard(
+                    len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
+                dataloader = DataLoaderShard(train_dataset, batch_sampler, **dataloader_params)
+            else:
+                # IterableDataset
+                if dist.is_initialized():
+                    dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
+                dataloader = DataLoader(train_dataset, batch_size=self._train_batch_size, **dataloader_params)
+                dataloader = DataLoaderDispatcher(dataloader)
+
+        return dataloader
+
+    def get_eval_dataloader(self, eval_dataset=None):
+        dataloader = None
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            if eval_dataset is None and self.eval_dataset is None:
+                raise ValueError('Trainer: evaluation requires an eval_dataset.')
+            eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+            dataloader = sequence_parallel.get_dataloader(self, eval_dataset, self.args.eval_batch_size)
+        if dataloader is None:
+            return super().get_eval_dataloader(eval_dataset=eval_dataset)
+        return dataloader

@@ -9,8 +9,8 @@ from transformers.utils.versions import require_version
 from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
 from swift.trainers.arguments import TrainArgumentsMixin
-from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir,
-                         is_liger_available, is_master, is_mp, is_pai_training_job, is_swanlab_available)
+from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
+                         is_mp, is_pai_training_job, is_swanlab_available)
 from .base_args import BaseArguments, to_abspath
 from .tuner_args import TunerArguments
 
@@ -23,6 +23,8 @@ class Seq2SeqTrainingOverrideArguments(TrainArgumentsMixin, Seq2SeqTrainingArgum
     output_dir: Optional[str] = None
     learning_rate: Optional[float] = None
     eval_strategy: Optional[str] = None  # steps, epoch
+    fp16: Optional[bool] = None
+    bf16: Optional[bool] = None
 
     def _init_output_dir(self):
         if self.output_dir is None:
@@ -134,12 +136,16 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
 
     def __post_init__(self) -> None:
+        if self.packing and self.attn_impl != 'flash_attn':
+            logger.warning('The "packing" feature needs to be used in conjunction with "flash_attn". '
+                           'Please specify `--attn_impl flash_attn`.')
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
-            if self.train_type == 'full':
-                self.model = self.resume_from_checkpoint
-            else:
-                self.adapters = [self.resume_from_checkpoint]
+            if self.resume_only_model:
+                if self.train_type == 'full':
+                    self.model = self.resume_from_checkpoint
+                else:
+                    self.adapters = [self.resume_from_checkpoint]
         BaseArguments.__post_init__(self)
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
         TunerArguments.__post_init__(self)
@@ -154,7 +160,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
             raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
 
         self._handle_pai_compat()
-        self._init_liger()
 
         self._init_deepspeed()
         self._init_device()
@@ -196,13 +201,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
                             ' try `--torch_dtype float16`')
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
-    def _init_liger(self):
-        if self.use_liger:
-            assert is_liger_available(), 'use_liger requires liger_kernels, try `pip install liger-kernel`'
-            if self.loss_scale != 'default':
-                logger.warning('use_liger is not compatible with `loss_scale`, setting to default...')
-                self.loss_scale = 'default'
-
     def _handle_pai_compat(self) -> None:
         if not is_pai_training_job():
             return
@@ -228,6 +226,9 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
         if is_master():
             os.makedirs(self.output_dir, exist_ok=True)
 
+        if self.run_name is None:
+            self.run_name = self.output_dir
+
         self.training_args.output_dir = self.output_dir
-        self.training_args.run_name = self.output_dir
+        self.training_args.run_name = self.run_name
         self.training_args.logging_dir = self.logging_dir

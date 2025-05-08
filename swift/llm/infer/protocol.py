@@ -8,7 +8,9 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import json
 from PIL import Image
+from pydantic import BaseModel
 
 from ..template import InferRequest
 from ..utils import Messages, Tool
@@ -213,6 +215,12 @@ class Function:
     name: str
     arguments: Optional[str]
 
+    def __post_init__(self):
+        if not isinstance(self.arguments, str):
+            self.arguments = json.dumps(self.arguments)
+        self.name = self.name.strip()
+        self.arguments = self.arguments.strip()
+
 
 @dataclass
 class ChatCompletionMessageToolCall:
@@ -224,7 +232,7 @@ class ChatCompletionMessageToolCall:
 @dataclass
 class ChatMessage:
     role: Literal['system', 'user', 'assistant']
-    content: Union[str, List[Dict[str, Any]]]
+    content: Union[str, List[Dict[str, Any]], int, float]
     tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
 
 
@@ -327,3 +335,15 @@ class CompletionStreamResponse:
     id: str = field(default_factory=lambda: f'cmpl-{random_uuid()}')
     object: str = 'text_completion.chunk'
     created: int = field(default_factory=lambda: int(time.time()))
+
+
+class InitCommunicatorRequest(BaseModel):
+    host: str
+    port: int
+    world_size: int
+
+
+class UpdateWeightsRequest(BaseModel):
+    name: str
+    dtype: str
+    shape: list[int]

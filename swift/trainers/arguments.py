@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import math
 import os
+import platform
 from dataclasses import dataclass, field
 from functools import wraps
 from typing import List, Literal, Optional, Union
@@ -10,7 +11,7 @@ import torch.utils.checkpoint
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
-from swift.utils import get_dist_setting, get_logger, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_liger_available, use_torchacc
 from .optimizers.galore import GaLoreConfig
 
 logger = get_logger()
@@ -36,11 +37,15 @@ class TrainArgumentsMixin:
     lr_scheduler_type: str = 'cosine'
     lr_scheduler_kwargs: Optional[Union[dict, str]] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
+    dataloader_num_workers: Optional[int] = None
+    dataloader_prefetch_factor: Optional[int] = None
+    use_liger_kernel: bool = False
 
     # extra
     check_model: bool = True
     acc_strategy: Literal['token', 'seq'] = 'token'
-    train_sampler_random: bool = True
+    train_dataloader_shuffle: bool = True
+    max_epochs: Optional[int] = None
 
     # torchacc
     metric_warmup_step: Optional[float] = 0
@@ -77,6 +82,10 @@ class TrainArgumentsMixin:
         except (ImportError, AttributeError):
             pass
 
+    def _init_liger(self):
+        if self.use_liger_kernel:
+            assert is_liger_available(), 'use_liger_kernel requires liger_kernels, try `pip install liger-kernel`'
+
     def __post_init__(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
         if use_torchacc():
@@ -90,7 +99,15 @@ class TrainArgumentsMixin:
         if self.gradient_checkpointing_kwargs:
             self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
         self._fix_gradient_checkpointing()
-
+        self._init_liger()
+        if self.dataloader_num_workers is None:
+            if platform.system() == 'Windows':
+                self.dataloader_num_workers = 0
+            else:
+                self.dataloader_num_workers = 1
+            logger.info(f'Setting args.dataloader_num_workers: {self.dataloader_num_workers}')
+        if self.dataloader_prefetch_factor is None and self.dataloader_num_workers > 0:
+            self.dataloader_prefetch_factor = 10
         if self.eval_use_evalscope:
             try:
                 import evalscope
@@ -127,8 +144,11 @@ class GRPOArgumentsMixin:
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
-    # vllm_device, vllm_gpu_memory_utilization, and vllm_max_model_len are defined in HfGRPOConfig.
     num_infer_workers: int = 1
+    # vllm
+    vllm_device: List[str] = field(default_factory=lambda: ['auto'])
+    vllm_gpu_memory_utilization: float = 0.9
+    vllm_max_model_len: Optional[int] = None
     vllm_max_num_seqs: int = 256
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
@@ -159,8 +179,27 @@ class GRPOArgumentsMixin:
     gc_collect_after_offload: bool = False
     multi_turn_func: Optional[str] = None
 
-    # mini-batch
-    mini_batch_size: Optional[int] = None
+    # DAPO, https://arxiv.org/abs/2503.14476
+    dynamic_sample: bool = False
+    max_resample_times: int = 3
+    overlong_filter: bool = False
+    soft_max_length: Optional[int] = None
+    soft_cache_length: Optional[int] = None
+
+    # Dr. GRPO, https://arxiv.org/abs/2503.20783
+    scale_rewards: bool = True
+
+    # compatible with trl main branch(0.17.0.dev0)
+    wandb_log_unique_prompts: Optional[bool] = None
+
+    # external vllm
+    vllm_server_host: Optional[str] = None
+    vllm_server_port: int = 8000
+    vllm_server_timeout: float = 240.0
+    vllm_client = None
+
+    # dataset
+    dataset_shuffle: Optional[bool] = True
 
 
 @dataclass

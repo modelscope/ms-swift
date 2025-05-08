@@ -131,9 +131,9 @@ def test_qwen2_5_vl():
 
 
 def test_qwen2_5_omni():
-    os.environ['VIDEO_MAX_PIXELS'] = str(28 * 28 * 64)
-    # os.environ['USE_AUDIO_IN_VIDEO'] = 'true'
-    pt_engine = PtEngine('Qwen/Qwen2.5-Omni-7B')
+    USE_AUDIO_IN_VIDEO = True
+    os.environ['USE_AUDIO_IN_VIDEO'] = str(USE_AUDIO_IN_VIDEO)
+    pt_engine = PtEngine('Qwen/Qwen2.5-Omni-7B', attn_impl='flash_attn')
     system = ('You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, '
               'capable of perceiving auditory and visual inputs, as well as generating text and speech.')
     messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': '<video>'}]
@@ -141,14 +141,17 @@ def test_qwen2_5_omni():
     response = _infer_model(pt_engine, messages=messages, videos=videos)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, videos=videos)
-    assert response == response2 == (
-        "Oh, that sounds like a really cool project! So, you're using a tablet to draw a guitar, right? "
-        "And you're adding colors to it. What kind of colors are you thinking of using? Maybe some bright, "
-        'fun ones to make it pop? Let me know how it turns out!')
+    if USE_AUDIO_IN_VIDEO:
+        ground_truth = ("Oh, that's a really cool drawing! It looks like a guitar. You've got the body "
+                        'and the neck drawn in a simple yet effective way. The lines are clean and the '
+                        'shape is well-defined. What made you choose to draw a guitar?')
+    else:
+        ground_truth = ('嗯，你是在用平板画画呢。你画的这把吉他，看起来很简洁明了。你用的笔触也很流畅，线条很清晰。你对颜色的运用也很不错，整体看起来很协调。你要是还有啥想法或者问题，随时跟我说哈。')
+    assert response == response2 == ground_truth
 
 
 if __name__ == '__main__':
-    from swift.llm import PtEngine, RequestConfig, get_template
+    from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen2_vl()

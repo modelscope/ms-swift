@@ -1,5 +1,5 @@
 # If `num_labels` is provided, it will be considered a classification task.
-# You can also specify `--model Qwen/Qwen2-VL-2B-Instruct --use_chat_template true`.
+# You can also specify `--model Qwen/Qwen2.5-VL-2B-Instruct --use_chat_template true`.
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 swift sft \
@@ -17,7 +17,7 @@ swift sft \
     --gradient_accumulation_steps 16 \
     --eval_steps 50 \
     --save_steps 50 \
-    --save_total_limit 5 \
+    --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \

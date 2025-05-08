@@ -36,13 +36,20 @@ register_dataset(
 ```
 
 The purpose of redefining the dataset preprocessor here is to modify the query. A sample dataset entry is as follows, including `messages`, `images`, and `solution` fields. The `solution` is used in the reward function, while `messages` and `images` serve as model input.
+- Note: `{'role': 'assistant', 'content': '<answer> 3 </answer>'}` will be removed in GRPOTrainer and can be ignored. The 'solution' field will be passed directly into the ORM. When creating a custom dataset, the 'images' field should be organized as `["image_path1", "image_path2"]`.
 
 ```json
 {
-    'images': [{'bytes': b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x01\xe0\x00\x00\x01@\x08\x06\x00\x00\x00d\xc8\xafB`\x82 ...', 'path': 'CLEVR_trainA_000000.png'}],
-    'messages': [{'role': 'user', 'content': 'How many items are there in the image? Output the thinking process in <think> </think> and\n final answer (number) in <answer> </answer> tags.'}, {'role': 'assistant', 'content': '<answer> 3 </answer>'}],
-    'solution': '<answer> 3 </answer>'
+    "images": ["image_path1", "image_path2"],
+    "messages": [
+        {
+            "role": "user",
+            "content": "How many items are there in the image? Output the thinking process in <think> </think> and\n final answer (number) in <answer> </answer> tags."
+        }
+    ],
+    "solution": "<answer> 3 </answer>"
 }
+
 ```
 
 ---

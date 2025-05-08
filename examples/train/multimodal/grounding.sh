@@ -1,5 +1,5 @@
 # 20GiB
-# You can refer to `https://github.com/QwenLM/Qwen2-VL` for the meaning of the `MAX_PIXELS` parameter.
+# You can refer to `https://github.com/QwenLM/Qwen2.5-VL` for the meaning of the `MAX_PIXELS` parameter.
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 swift sft \
@@ -18,7 +18,7 @@ swift sft \
     --gradient_accumulation_steps 16 \
     --eval_steps 100 \
     --save_steps 100 \
-    --save_total_limit 5 \
+    --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \

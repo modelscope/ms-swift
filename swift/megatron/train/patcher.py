@@ -26,9 +26,10 @@ def patch_training_log():
                 if isinstance(v, torch.Tensor):
                     v = v.item()
                 logs[k] = round(v, 8)
-            logs['grad_norm'] = round(grad_norm, 8)
-            logs['params_norm'] = round(params_norm, 8)
-            logs['learning_rate'] = round(learning_rate, 8)
+            for k in {'grad_norm', 'params_norm', 'learning_rate'}:
+                v = locals()[k]
+                if v is not None:
+                    logs[k] = round(v, 8)
             logs['consumed_samples'] = args.consumed_train_samples
             logs['global_step/max_steps'] = f'{iteration}/{args.train_iters}'
             if jsonl_writer is None:

@@ -1,8 +1,8 @@
 # Quick Start
 
-ms-swift is a comprehensive training and deployment framework for large language models and multimodal large models, provided by the ModelScope Community. It currently supports the training (CPT, SFT, RLHF), inference, evaluation, quantization, and deployment of 450+ LLM and 150+ MLLM. Model developers can fulfill all kinds of needs related to large models in a single platform within the ms-swift framework. The main capabilities of ms-swift include:
+ms-swift is a comprehensive training and deployment framework for large language models and multimodal large models, provided by the ModelScope Community. It currently supports the training (CPT, SFT, RLHF), inference, evaluation, quantization, and deployment of 500+ LLM and 200+ MLLM. Model developers can fulfill all kinds of needs related to large models in a single platform within the ms-swift framework. The main capabilities of ms-swift include:
 
-- 🍎 Model Types: Supports 450+ pure text large models, 150+ multi-modal large models, as well as All-to-All multi-modal models, sequence classification models, and embedding models, covering the entire process from training to deployment.
+- 🍎 Model Types: Supports 500+ pure text large models, 200+ multi-modal large models, as well as All-to-All multi-modal models, sequence classification models, and embedding models, covering the entire process from training to deployment.
 - Dataset Types: Comes with more than 150 pre-built datasets for pre-training, fine-tuning, human alignment, multimodal, and supports custom datasets.
 - Hardware Support: Compatible with CPU, RTX series, T4/V100, A10/A100/H100, Ascend NPU, MPS and others.
 - 🍊 Lightweight Training: Supports lightweight fine-tuning methods like LoRA, QLoRA, DoRA, LoRA+, ReFT, RS-LoRA, LLaMAPro, Adapter, GaLore, Q-Galore, LISA, UnSloth, Liger-Kernel, and more.
@@ -45,7 +45,7 @@ swift sft \
     --gradient_accumulation_steps 16 \
     --eval_steps 50 \
     --save_steps 50 \
-    --save_total_limit 5 \
+    --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \

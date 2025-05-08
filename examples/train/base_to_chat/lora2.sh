@@ -1,4 +1,4 @@
-# Use `--target_modules all-linear all-embedding lm_head`
+# Use `--target_modules all-linear embed_tokens lm_head`
 # Please adjust the `lm_head` according to the model.
 nproc_per_node=2
 
@@ -17,11 +17,11 @@ swift sft \
     --learning_rate 1e-4 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --target_modules all-linear all-embedding lm_head \
+    --target_modules all-linear embed_tokens lm_head \
     --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
     --eval_steps 50 \
     --save_steps 50 \
-    --save_total_limit 5 \
+    --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \

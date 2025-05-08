@@ -1,24 +1,35 @@
 
 # Megatron-SWIFT Training
 
-SWIFT incorporates Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, and context parallelism. For models that support Megatron training, please refer to the [Supported Models and Datasets documentation](./Supported-models-and-datasets.md).
+SWIFT incorporates Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, context parallelism, and expert parallelism. It supports the pre-training and fine-tuning of models such as Qwen3, [Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/train/megatron/qwen3_moe.sh), Qwen2.5, Llama3, and the Deepseek-R1 distillation series. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](./Supported-models-and-datasets.md).
 
 ## Environment Setup
 
 To use Megatron-SWIFT, in addition to installing the `swift` dependencies, you also need to install the following:
 
 ```shell
+# Recommended PyTorch version: 2.5 / 2.6
 pip install pybind11
 # transformer_engine
+# If an installation error occurs, you can refer to this issue for resolution: https://github.com/modelscope/ms-swift/issues/3793
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
 
 # apex
 git clone https://github.com/NVIDIA/apex
 cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
+
+# megatron-core
+pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.11.0
 ```
 
-The dependency library Megatron-LM will be git cloned and installed by swift, no manual installation by the user is required. You can also use the environment variable `MEGATRON_LM_PATH` to point to the already downloaded repo path (for offline environments, use the [core_r0.11.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.11.0)).
+Alternatively, you can also use the image:
+```
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
+```
+
+The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.11.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.11.0)).
 
 
 ## Quick Start Example
@@ -33,7 +44,6 @@ swift export \
     --model Qwen/Qwen2.5-7B-Instruct \
     --to_mcore true \
     --torch_dtype bfloat16 \
-    --test_convert_precision true \
     --output_dir Qwen2.5-7B-Instruct-mcore
 ```
 
@@ -78,7 +88,6 @@ swift export \
     --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
-    --test_convert_precision true \
     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf
 ```
 
@@ -100,15 +109,26 @@ The inference results are as follows:
 I am a language model developed by swift, you can call me swift-robot. How can I assist you?
 ```
 
-- More examples: such as packing and multi-machine, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
 - For pretraining, you can use `megatron pt` instead of `megatron sft`, which will use a generative template for training.
+- **More examples**: Including packing, multi-node training, 32K context, MoE models, and pre-training, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
 
 ## Benchmark
+The speed comparison of full-parameter training for Dense/MoE models using `megatron sft` and `swift sft` on a single machine with eight A800 GPUs is shown below. The corresponding scripts can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/benchmark).
 
-|                  | Megatron-LM      | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
-| ---------------- | --------------- | --------------- | --------- |
-| Training Speed   | 9.04s/it        | 10.32s/it       | 10.56s/it |
-| GPU Memory Usage | 8\*64GB          | 8\*80GB          | 8\*58GB    |
+**Dense** Qwen2.5-14B:
+
+
+|                  | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
+| ---------------- | ----------- | --------------- | --------------- |
+| Training Speed   | 9.04s/it    | 10.32s/it       | 10.56s/it       |
+| GPU Memory Usage | 8\*64GB      | 8\*80GB          | 8\*58GB          |
+
+**MoE** Qwen1.5-MoE-A2.7B:
+
+|                  | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
+| ---------------- | ----------- | --------------- | --------------- |
+| Training Speed   | 2.93s/it    | 6.02s/it        | 24.30s/it       |
+| GPU Memory Usage | 8\*66GB      | 8\*72GB          | 8\*50GB          |
 
 ## Command Line Arguments
 
@@ -162,6 +182,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 **Checkpoint Parameters**:
 
 - 🔥save: Output directory for checkpoints, default is None. During training, if this parameter is not set, it defaults to `f'megatron_output/{model_suffix}'`, e.g., `'megatron_output/Qwen2.5-7B-Instruct'`.
+  - Note: When training on multiple machines, ensure that the save paths on each node point to the same location. Otherwise, you will need to manually consolidate these weights after training.
 - 🔥save_interval: Checkpoint saving interval (steps), default is 500.
   - Note: Weights will always be saved at the end of training.
 - 🔥no_save_optim: Do not save optimizer, default is False.
@@ -188,9 +209,9 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - overlap_param_gather: Overlap all-gather of parameters in the distributed optimizer (to reduce DP communication time). Default is False.
 - distributed_timeout_minutes: Timeout duration for torch.distributed (in minutes), default is 60 minutes.
 
-**Logging Parameters**
+**Logging Parameters**:
 
-- log_params_norm: Logs the norm of parameters. Default is True.
+- log_params_norm: Logs the norm of parameters. Default is False.
 - log_throughput: Logs throughput per GPU. Default is True.
   - Note: In non-packing scenarios, log_throughput is not accurate because `seq_length` does not equal the actual sequence length.
 - tensorboard_log_interval: Interval (steps) for logging to TensorBoard, default is 1.
@@ -200,16 +221,19 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - log_validation_ppl_to_tensorboard: Writes validation perplexity to TensorBoard. Default is True.
 - log_memory_to_tensorboard: Writes memory logs to TensorBoard. Default is True.
 - logging_level: Logging level. Default is None.
+- wandb_project: The name of the wandb project. Defaults to '', which means ignoring wandb.
+- wandb_exp_name: The name of the wandb experiment. Defaults to ''.
+- wandb_save_dir: The local path to save wandb results. Defaults to ''.
 
-**Evaluation Parameters**
+**Evaluation Parameters**:
 
 - 🔥eval_iters: Number of evaluation iterations, default is 100.
 - 🔥eval_interval: Evaluation interval (steps), default is None, meaning it will be set to save_interval.
 
-**Mixed Precision Parameters**
+**Mixed Precision Parameters**:
 
-- fp16: FP16 mode. Default is False. Set according to the model's torch_dtype. Please use `--torch_dtype` to set it. By default, it reads from config.json.
-- bf16: BF16 mode. Default is False. Set according to the model's torch_dtype.
+- fp16: FP16 mode. The default is None, and it will be set according to the model's torch_dtype. The torch_dtype is read from the config.json by default.
+- bf16: BF16 mode. The default is None, and it will be set according to the model's torch_dtype.
 - apply_query_key_layer_scaling: Scales `Q * K^T` by `1 / layer number` (e.g., divide by layer_num for layer_num-th layer). This is helpful for FP16 training. Default is None, meaning that if `--fp16` is used, it will be set to True.
 - attention_softmax_in_fp32: Uses FP32 for computations in attention_mask and softmax. Default is True.
 
@@ -233,9 +257,29 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - add_qkv_bias: Adds bias only to QKV linear layers. Default is True.
 - attention_dropout: Default is 0.
 - hidden_dropout: Default is 0.
+- kv_channels: Defaults to None, set to `args.hidden_size // args.num_attention_heads`.
+- qk_layernorm: Whether to apply layer normalization to Q and K.
 - transformer_impl: Which transformer implementation to use, options are 'local' and 'transformer_engine'. Default is transformer_engine.
 - padded_vocab_size: Full vocabulary size, default is None.
 - rope_scaling: Related parameters for rope_scaling, default is None. Refer to the format in [llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1). Pass the value as a JSON string.
+- model_type: The model_type in the config.json of the Huggingface model weights.
+
+
+**MoE Parameters**:
+
+- num_experts: The number of experts in MoE, default is None. Automatically read from config.json.
+- moe_ffn_hidden_size: The hidden layer size of the feed-forward network (ffn) for each expert. Default is None, set to ffn_hidden_size. Automatically read from config.json.
+- moe_shared_expert_intermediate_size: The total FFN hidden layer size for shared experts. If there are multiple shared experts, it should equal `num_shared_experts * ffn_size_of_each_shared_expert`. Default is None. Automatically read from config.json.
+- moe_router_topk: The number of experts each token is routed to. Default is None. Automatically read from config.json.
+- moe_router_pre_softmax: Enable pre-softmax routing for MoE, meaning that softmax will be applied before top-k selection. Default is None. Automatically read from config.json.
+- moe_aux_loss_coeff: Scaling coefficient for the auxiliary loss: the recommended initial value is 1e-2. Default is None. Automatically read from config.json.
+- expert_model_parallel_size: The degree of expert parallelism, default is 1.
+- moe_token_dispatcher_type: The type of token dispatcher to use. Options include 'allgather', 'alltoall', and 'alltoall_seq'. Default is 'alltoall'.
+- moe_grouped_gemm: When each rank contains multiple experts, improve utilization and performance by launching multiple local GEMM kernels across multiple streams using GroupedLinear in TransformerEngine. Default is False.
+- moe_router_load_balancing_type: Determines the load balancing strategy for the router. Options are "aux_loss", "seq_aux_loss", "sinkhorn", "none". Default is "aux_loss".
+- moe_z_loss_coeff: Scaling coefficient for z-loss. Default is None.
+- moe_expert_capacity_factor: Capacity factor for each expert, None means no tokens will be dropped. Default is None.
+- moe_shared_expert_overlap: Enable overlapping of shared expert computation with scheduler communication. If this option is not enabled, shared experts will execute after the routing experts. Only effective when `moe_shared_expert_intermediate_size` is set. Default is False.
 
 ### Megatron Training Parameters
 
@@ -243,5 +287,7 @@ Megatron training parameters inherit from Megatron parameters and basic paramete
 
 - add_version: Adds a directory `<version>-<timestamp>` to `save` to prevent overwriting weights, default is True.
 - 🔥packing: Whether to use sequence packing, defaults to False.
-- 🔥streaming: Stream reading and processing of the dataset, default is False. It is typically set to True when handling large datasets.
+- 🔥streaming: Stream reading and processing of the dataset, default is False. It is typically set to True when handling large datasets. For more information on streaming parameters, refer to the command-line parameters documentation.
 - lazy_tokenize: Default is False. If this parameter is set to False, all dataset samples are tokenized before training (this avoids errors during training); if set to True, tokenization occurs during training (this saves memory).
+- dataloader_persistent_workers: A parameter passed directly to the dataloader, with a default value of True.
+- dataloader_prefetch_factor: A parameter passed directly to the dataloader, with a default value of 10.

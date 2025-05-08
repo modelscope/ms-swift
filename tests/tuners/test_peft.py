@@ -121,7 +121,7 @@ class TestPeft(unittest.TestCase):
     def test_peft_adalora_injection(self):
         model = SbertForSequenceClassification(SbertConfig())
         model2 = copy.deepcopy(model)
-        adalora_config = AdaLoraConfig(target_modules=['query', 'key', 'value'])
+        adalora_config = AdaLoraConfig(target_modules=['query', 'key', 'value'], total_step=1)
         model = Swift.prepare_model(model, adalora_config)
         model.save_pretrained(self.tmp_dir, safe_serialization=False)
         with open(os.path.join(self.tmp_dir, 'configuration.json'), 'w') as f:

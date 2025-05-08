@@ -180,7 +180,7 @@ class LLMTrain(BaseUI):
                 'en': 'The tuner backend'
             }
         },
-        'use_liger': {
+        'use_liger_kernel': {
             'label': {
                 'zh': '使用Liger kernel',
                 'en': 'Use Liger kernel'
@@ -188,16 +188,6 @@ class LLMTrain(BaseUI):
             'info': {
                 'zh': 'Liger kernel可以有效降低显存使用',
                 'en': 'Liger kernel can reduce memory usage'
-            }
-        },
-        'sequence_parallel_size': {
-            'label': {
-                'zh': '序列并行分段',
-                'en': 'Sequence parallel size'
-            },
-            'info': {
-                'zh': 'DDP条件下的序列并行（减小显存），需要安装ms-swift[seq_parallel]',
-                'en': 'Sequence parallel when ddp, need to install ms-swift[seq_parallel]'
             }
         },
         'train_param': {
@@ -227,11 +217,10 @@ class LLMTrain(BaseUI):
                         gr.Dropdown(elem_id='train_stage', choices=['pt', 'sft', 'rlhf'], value='sft', scale=3)
                         gr.Dropdown(elem_id='train_type', scale=2, choices=list(get_supported_tuners()))
                         gr.Dropdown(elem_id='tuner_backend', scale=2)
-                        gr.Textbox(elem_id='sequence_parallel_size', scale=3)
                     with gr.Row():
                         gr.Textbox(elem_id='seed', scale=4)
                         gr.Dropdown(elem_id='torch_dtype', scale=4)
-                        gr.Checkbox(elem_id='use_liger', scale=4)
+                        gr.Checkbox(elem_id='use_liger_kernel', scale=4)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                         gr.Textbox(elem_id='ddp_num', value='2', scale=4)
                 Hyper.build_ui(base_tab)
@@ -329,11 +318,22 @@ class LLMTrain(BaseUI):
         cmd = train_stage
         if kwargs.get('deepspeed'):
             more_params_cmd += f' --deepspeed {kwargs.pop("deepspeed")} '
-        sft_args = RLHFArguments(
-            **{
-                key: value.split(' ') if kwargs_is_list.get(key, False) and isinstance(value, str) else value
-                for key, value in kwargs.items()
-            })
+        try:
+            sft_args = RLHFArguments(
+                **{
+                    key: value.split(' ') if kwargs_is_list.get(key, False) and isinstance(value, str) else value
+                    for key, value in kwargs.items()
+                })
+        except Exception as e:
+            if 'using `--model`' in str(e):  # TODO a dirty fix
+                kwargs['model'] = kwargs.pop('resume_from_checkpoint')
+                sft_args = RLHFArguments(
+                    **{
+                        key: value.split(' ') if kwargs_is_list.get(key, False) and isinstance(value, str) else value
+                        for key, value in kwargs.items()
+                    })
+            else:
+                raise e
         params = ''
 
         sep = f'{cls.quote} {cls.quote}'

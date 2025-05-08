@@ -64,6 +64,7 @@ class VllmEngine(InferEngine):
         num_infer_workers: int = 1,
         enable_sleep_mode: bool = False,
         distributed_executor_backend: Optional[str] = None,
+        quantization: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.use_async_engine = use_async_engine
@@ -94,10 +95,12 @@ class VllmEngine(InferEngine):
             device=device,
             distributed_executor_backend=distributed_executor_backend,
             enable_sleep_mode=enable_sleep_mode,
+            quantization=quantization,
             engine_kwargs=engine_kwargs,
         )
-        context, npu_context = patch_vllm(num_infer_workers * get_node_setting()[1],
-                                          self.engine_args.device), nullcontext()
+        nnodes = get_node_setting()[1]
+        total_infer_workers = num_infer_workers * nnodes
+        context, npu_context = patch_vllm(world_size=total_infer_workers), nullcontext()
         if tensor_parallel_size == 1 or pipeline_parallel_size == 1:
             npu_context = patch_npu_vllm(self.engine_args.device)
         with context, npu_context:
@@ -129,6 +132,7 @@ class VllmEngine(InferEngine):
         enable_prefix_caching: bool = False,
         distributed_executor_backend: Optional[str] = None,
         enable_sleep_mode: bool = False,
+        quantization: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         if engine_kwargs is None:
@@ -155,6 +159,7 @@ class VllmEngine(InferEngine):
         if 'enable_sleep_mode' in parameters:
             engine_kwargs['enable_sleep_mode'] = enable_sleep_mode
 
+        engine_kwargs['quantization'] = quantization
         model_info = self.model_info
         if self.config.architectures is None:
             architectures = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM']}[self.model_meta.model_type]
@@ -186,8 +191,7 @@ class VllmEngine(InferEngine):
     def _fix_vllm_bug(self) -> None:
         # fix vllm==0.4 bug (very slow)
         tokenizer = self.tokenizer
-        if version.parse(
-                vllm.__version__) >= version.parse('0.4') and not tokenizer.__class__.__name__.startswith('Cached'):
+        if self._version_ge('0.4') and not tokenizer.__class__.__name__.startswith('Cached'):
             _tokenizer_len = len(tokenizer)
             __old_len__ = tokenizer.__class__.__len__
 
@@ -223,6 +227,13 @@ class VllmEngine(InferEngine):
         stop_words = (request_config.stop or []) + (self.generation_config.stop or []) + template_meta.stop_words
         generation_config.stop = self._get_stop_words(stop_words)
 
+    @staticmethod
+    def _version_ge(base_version: str):
+        vllm_version = vllm.__version__
+        if vllm_version is None or 'dev' in vllm_version:
+            return True
+        return version.parse(vllm_version) >= version.parse(base_version)
+
     def _add_request(self,
                      inputs: Dict[str, Any],
                      generation_config: SamplingParams,
@@ -240,18 +251,18 @@ class VllmEngine(InferEngine):
                     lora_name=adapter_name, lora_path=adapter_path, lora_int_id=len(self._adapters_pool) + 1)
                 self._adapters_pool[adapter_name] = kwargs['lora_request']
         input_ids = inputs['input_ids']
-        if version.parse(vllm.__version__) >= version.parse('0.4.3'):
+        if self._version_ge('0.4.3'):
             llm_inputs = {'prompt_token_ids': input_ids}
             mm_data = {}
             for key in ['images', 'audios', 'videos']:
                 media_data = inputs.get(key) or []
                 if media_data:
-                    if version.parse(vllm.__version__) < version.parse('0.6'):
+                    if self._version_ge('0.6'):
+                        mm_data = {key.rstrip('s'): media_data[0] if len(media_data) == 1 else media_data}
+                    else:
                         assert len(media_data) == 1, (
                             f'The current version of vllm only supports single {key}. Please upgrade to vllm >= 0.6.0')
                         mm_data = {key.rstrip('s'): media_data[0]}
-                    else:
-                        mm_data = {key.rstrip('s'): media_data[0] if len(media_data) == 1 else media_data}
             if mm_data:
                 llm_inputs['multi_modal_data'] = mm_data
             if self.use_async_engine:
@@ -338,7 +349,7 @@ class VllmEngine(InferEngine):
                 token_idxs[output.index] = len(output.token_ids)
                 toolcall = None
                 if output.is_finished:
-                    toolcall = self._get_toolcall(template.decode(output.token_ids), template.tools_prompt)
+                    toolcall = self._get_toolcall(template.decode(output.token_ids), template)
                 choice = ChatCompletionResponseStreamChoice(
                     index=output.index,
                     delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
@@ -356,7 +367,7 @@ class VllmEngine(InferEngine):
             output.token_ids = list(output.token_ids)
             response = template.decode(output.token_ids)
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
-            toolcall = self._get_toolcall(response, template.tools_prompt)
+            toolcall = self._get_toolcall(response, template)
             choice = ChatCompletionResponseChoice(
                 index=output.index,
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),

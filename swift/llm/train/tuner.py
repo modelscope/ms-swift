@@ -1,12 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import os
 from typing import List, Union
 
 import torch
+import torch.nn as nn
 import transformers
 from packaging import version
+from transformers import TrainingArguments
 
-from swift.llm import TrainArguments, get_model_arch
+from swift.llm import TrainArguments, deep_getattr, get_model_arch
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
 from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
@@ -18,9 +21,9 @@ logger = get_logger()
 def apply_liger(model_type: str):
     from liger_kernel.transformers import (apply_liger_kernel_to_llama, apply_liger_kernel_to_mistral,
                                            apply_liger_kernel_to_mixtral, apply_liger_kernel_to_gemma,
-                                           apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen2_vl,
-                                           apply_liger_kernel_to_gemma2, apply_liger_kernel_to_phi3,
-                                           apply_liger_kernel_to_mllama)
+                                           apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen3,
+                                           apply_liger_kernel_to_qwen2_vl, apply_liger_kernel_to_qwen2_5_vl,
+                                           apply_liger_kernel_to_phi3, apply_liger_kernel_to_mllama)
     from swift.llm import ModelType
     if model_type in (ModelType.llama, ModelType.llama3, ModelType.llama3_1, ModelType.llama3_2):
         apply_liger_kernel_to_llama()
@@ -32,54 +35,57 @@ def apply_liger(model_type: str):
         apply_liger_kernel_to_gemma()
     elif model_type in (ModelType.qwen2, ModelType.qwen2_5):
         apply_liger_kernel_to_qwen2()
+    elif model_type in (ModelType.qwen3):
+        apply_liger_kernel_to_qwen3()
     elif model_type in (ModelType.phi3):
         apply_liger_kernel_to_phi3()
     elif model_type in (ModelType.llama3_2_vision):
         apply_liger_kernel_to_mllama()
     elif model_type in (ModelType.qwen2_vl):
         apply_liger_kernel_to_qwen2_vl()
+    elif model_type in (ModelType.qwen2_5_vl):
+        apply_liger_kernel_to_qwen2_5_vl()
     else:
         raise ValueError(f'Unsupported liger model_type: {model_type}')
 
 
 def get_multimodal_target_regex(
-    model_arch,
+    model,
     *,
     freeze_llm: bool = False,
     freeze_vit: bool = True,
     freeze_aligner: bool = True,
-    ignore_embedding: bool = True,
+    include_embedding: bool = False,
 ) -> str:
+    model_arch = get_model_arch(model.model_meta.model_arch)
     modules = []
-    rejected_modules = []
     if not freeze_llm:
         modules += model_arch.language_model
     if not freeze_vit:
         modules += model_arch.vision_tower
-    if freeze_aligner:
-        rejected_modules += model_arch.aligner
-    else:
+    if not freeze_aligner:
         modules += model_arch.aligner
-
     assert len(modules) > 0, f'modules: {modules}'
-    prefix_pattern = '|'.join(modules)
-    rejected_pattern = '|'.join(rejected_modules)
 
-    ignore_pattern = ['lora_A', 'lora_B', 'base_layer']
-    if ignore_embedding:
-        ignore_pattern += ['emb', 'wte', 'shared']
-        ignore_pattern += model_arch.embedding or []
-    # lm_head
-    ignore_pattern += ['lm_head', 'output', 'score', 'v_head', 'classifier']
-    ignore_pattern += model_arch.lm_head or []
-    ignore_pattern = '|'.join(ignore_pattern)
+    extra_layers = []
+    if include_embedding:
+        extra_layers.append(nn.Embedding)
+    res = []
+    for module in modules:
+        rejected_modules = []
+        if not freeze_vit:
+            for aligner in model_arch.aligner:
+                if aligner.startswith(f'{module}.'):
+                    rejected_modules.append(aligner)
 
-    target_regex = f'^({prefix_pattern})'
-    if ignore_pattern:
-        target_regex += f'(?!.*({ignore_pattern})).*'
-    if rejected_pattern:
-        target_regex = f'(?!^({rejected_pattern}))' + target_regex
-    return target_regex
+        sub_module = deep_getattr(model, module)
+        target_modules = find_all_linears(sub_module, model_arch, extra_layers)
+        target_modules = [tm for tm in target_modules if tm]
+        target_pattern = rf'.*\.({"|".join(target_modules)})' if target_modules else ''
+        rejected_pattern = rf'(?!({"|".join(rejected_modules)}))' if rejected_modules else ''
+        res.append(rf'{rejected_pattern}{module}{target_pattern}')
+
+    return rf'^({"|".join(res)})$'
 
 
 def get_target_modules(args, model) -> Union[str, List[str]]:
@@ -89,14 +95,13 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
         return args.target_modules
     target_modules = args.target_modules.copy()
     if 'all-linear' in target_modules:
-        model_arch = get_model_arch(args.model_meta.model_arch)
-        if model_meta.is_multimodal and model_arch:
+        if model_meta.is_multimodal:
             return get_multimodal_target_regex(
-                model_arch,
+                model,
                 freeze_llm=args.freeze_llm,
                 freeze_vit=args.freeze_vit,
                 freeze_aligner=args.freeze_aligner,
-                ignore_embedding='all-embedding' not in target_modules)
+                include_embedding='all-embedding' in target_modules)
         else:
             target_modules.remove('all-linear')
             target_modules += find_all_linears(model)
@@ -215,6 +220,7 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
     elif args.train_type == 'adalora':
         lora_kwargs.pop('lorap_lr_ratio', None)
         lora_kwargs['rank_pattern'] = None
+        from swift.plugin.optimizer import calculate_max_steps
         adalora_config = AdaLoraConfig(
             task_type=task_type,
             **lora_kwargs,
@@ -226,6 +232,7 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
             beta1=args.adalora_beta1,
             beta2=args.adalora_beta2,
             orth_reg_weight=args.adalora_orth_reg_weight,
+            total_step=calculate_max_steps(args.training_args, train_dataset),
         )
         model = Swift.prepare_model(model, adalora_config)
         logger.info(f'adalora_config: {adalora_config}')
@@ -335,7 +342,7 @@ class TunerMixin:
 
     @classmethod
     def prepare_model(cls, args, model, *, template=None, train_dataset=None, task_type=None):
-        if args.use_liger:
+        if args.use_liger_kernel and 'use_liger_kernel' not in inspect.signature(TrainingArguments).parameters:
             # Apply liger
             apply_liger(args.model_type)
 
@@ -405,7 +412,13 @@ class TunerMixin:
             args.training_args.galore_config = args.galore_config
 
         if args.sequence_parallel_size > 1:
-            from swift.trainers.xtuner import dispatch_module_xtuner
-            dispatch_module_xtuner(model)
+            from swift.trainers.sequence_parallel import sequence_parallel
+            if hasattr(model, 'model_meta'):
+                is_multimodal = model.model_meta.is_multimodal
+            else:
+                is_multimodal = model.model.model_meta.is_multimodal
+            # multimodal model must do split in basemodel's forward
+            # or the media embedding may occur error
+            sequence_parallel.prepare_model(model, template.tokenizer, split_in_forward=is_multimodal)
 
         return model

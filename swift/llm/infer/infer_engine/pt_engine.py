@@ -91,9 +91,8 @@ class PtEngine(InferEngine):
         self._task_thread = None
 
     def _start_infer_worker(self):
-        if self._task_thread is None:
-            self._task_thread = Thread(target=self._infer_worker, daemon=True)
-            self._task_thread.start()
+        self._task_thread = Thread(target=self._infer_worker, daemon=True)
+        self._task_thread.start()
 
     def _fetch_infer_requests(self):
         while not self._queue.empty():
@@ -287,7 +286,7 @@ class PtEngine(InferEngine):
                 usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
                 toolcall = None
                 if is_finished[i]:
-                    toolcall = self._get_toolcall(template.decode(generate_ids), template.tools_prompt)
+                    toolcall = self._get_toolcall(template.decode(generate_ids), template)
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens,
                                                         is_finished[i])
 
@@ -393,7 +392,7 @@ class PtEngine(InferEngine):
                 usage_info = self._update_usage_info(usage_info, len(generate_ids))
                 response = template.decode(generate_ids, template_inputs=template_inputs[i])
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens, True)
-                toolcall = self._get_toolcall(response, template.tools_prompt)
+                toolcall = self._get_toolcall(response, template)
                 choices.append(
                     ChatCompletionResponseChoice(
                         index=j,
@@ -422,7 +421,8 @@ class PtEngine(InferEngine):
             'pre_infer_hook': pre_infer_hook
         }, (queue, asyncio.get_event_loop())))
         await asyncio.sleep(0)
-        self._start_infer_worker()
+        if self._task_thread is None:
+            self._start_infer_worker()
         if request_config.stream:
 
             async def _gen_wrapper():

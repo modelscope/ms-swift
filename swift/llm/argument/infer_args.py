@@ -75,6 +75,10 @@ class VllmArguments:
     limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_max_lora_rank: int = 16
     enable_prefix_caching: bool = False
+    use_async_engine: bool = True
+    data_parallel_size: int = 1
+    log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
+    vllm_quantization: Optional[str] = None
 
     def __post_init__(self):
         self.limit_mm_per_prompt = ModelArguments.parse_to_dict(self.limit_mm_per_prompt)
@@ -96,6 +100,7 @@ class VllmArguments:
             'enable_lora': len(adapters) > 0,
             'max_loras': max(len(adapters), 1),
             'enable_prefix_caching': self.enable_prefix_caching,
+            'quantization': self.vllm_quantization,
         }
         if dist.is_initialized():
             kwargs.update({'device': dist.get_rank()})
@@ -152,7 +157,8 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     def _init_ddp(self):
         if not is_dist():
             return
-        assert not self.eval_human and not self.stream
+        assert not self.eval_human and not self.stream, (
+            f'args.eval_human: {self.eval_human}, args.stream: {self.stream}')
         self._init_device()
         init_process_group(self.ddp_backend)
 

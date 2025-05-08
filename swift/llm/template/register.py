@@ -26,7 +26,7 @@ def get_template(
         template_backend: Literal['swift', 'jinja'] = 'swift',
         truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
         max_pixels: Optional[int] = None,  # h * w
-        tools_prompt: str = 'react_en',
+        agent_template: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
         response_prefix: Optional[str] = None,
         # train
@@ -44,7 +44,7 @@ def get_template(
         template_backend=template_backend,
         truncation_strategy=truncation_strategy,
         max_pixels=max_pixels,
-        tools_prompt=tools_prompt,
+        agent_template=agent_template,
         norm_bbox=norm_bbox,
         response_prefix=response_prefix,
         padding_side=padding_side,

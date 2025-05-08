@@ -12,6 +12,8 @@ class LLMModelType:
     qwen2_moe = 'qwen2_moe'
     qwq_preview = 'qwq_preview'
     qwq = 'qwq'
+    qwen3 = 'qwen3'
+    qwen3_moe = 'qwen3_moe'
 
     qwen2_gte = 'qwen2_gte'
 
@@ -38,6 +40,9 @@ class LLMModelType:
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
     glm4 = 'glm4'
+    glm4_0414 = 'glm4_0414'
+    glm4_z1_rumination = 'glm4_z1_rumination'
+
     glm_edge = 'glm_edge'
     codefuse_codegeex2 = 'codefuse_codegeex2'
     codegeex4 = 'codegeex4'
@@ -108,6 +113,7 @@ class LLMModelType:
     polylm = 'polylm'
     aya = 'aya'
     moonlight = 'moonlight'
+    mimo = 'mimo'
 
 
 class BertModelType:
@@ -151,12 +157,14 @@ class MLLMModelType:
     internvl2 = 'internvl2'
     internvl2_phi3 = 'internvl2_phi3'
     internvl2_5 = 'internvl2_5'
+    internvl3 = 'internvl3'
     xcomposer2 = 'xcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
     xcomposer2_5 = 'xcomposer2_5'
     xcomposer2_5_ol_audio = 'xcomposer2_5_ol_audio'
 
     llama3_2_vision = 'llama3_2_vision'
+    llama4 = 'llama4'
     llama3_1_omni = 'llama3_1_omni'
 
     llava1_5_hf = 'llava1_5_hf'
@@ -201,6 +209,7 @@ class MLLMModelType:
     got_ocr2 = 'got_ocr2'
     got_ocr2_hf = 'got_ocr2_hf'
     step_audio = 'step_audio'
+    kimi_vl = 'kimi_vl'
 
     phi3_vision = 'phi3_vision'
     phi4_multimodal = 'phi4_multimodal'

@@ -4,7 +4,9 @@
 from dataclasses import asdict, dataclass, field
 from functools import reduce
 
+import peft
 import torch
+from packaging import version
 from transformers import Trainer
 
 from .lora_layers import *  # noqa

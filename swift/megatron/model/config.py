@@ -18,7 +18,16 @@ config_mapping = {
     'untie_embeddings_and_output_weights': ['tie_word_embeddings'],
     'swiglu': ['hidden_act'],
     'add_qkv_bias': ['attention_bias'],
-    'disable_bias_linear': ['mlp_bias']
+    'disable_bias_linear': ['mlp_bias'],
+    'kv_channels': ['head_dim'],
+    'model_type': ['model_type'],
+    # moe
+    'moe_ffn_hidden_size': ['moe_intermediate_size'],
+    'moe_shared_expert_intermediate_size': ['shared_expert_intermediate_size'],
+    'moe_router_topk': ['num_experts_per_tok'],
+    'num_experts': ['num_experts'],
+    'moe_router_pre_softmax': ['norm_topk_prob'],
+    'moe_aux_loss_coeff': ['router_aux_loss_coef'],
 }
 
 
@@ -30,7 +39,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
                 hf_v = getattr(config, hf_k)
                 if k == 'rotary_base':
                     megatron_config[k] = int(hf_v)
-                elif k in {'untie_embeddings_and_output_weights', 'disable_bias_linear'}:
+                elif k in {'untie_embeddings_and_output_weights', 'disable_bias_linear', 'moe_router_pre_softmax'}:
                     megatron_config[k] = not hf_v
                 elif k == 'swiglu':
                     if hf_v == 'silu':

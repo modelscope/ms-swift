@@ -2,7 +2,7 @@
 CUDA_VISIBLE_DEVICES=0,1 \
 MAX_PIXELS=1003520 \
 swift sft \
-    --model Qwen/Qwen2-VL-72B-Instruct-GPTQ-Int4 \
+    --model Qwen/Qwen2.5-VL-72B-Instruct-GPTQ-Int4 \
     --dataset 'modelscope/coco_2014_caption:validation#20000' \
     --train_type lora \
     --torch_dtype bfloat16 \
@@ -17,7 +17,7 @@ swift sft \
     --gradient_accumulation_steps 16 \
     --eval_steps 100 \
     --save_steps 100 \
-    --save_total_limit 5 \
+    --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \

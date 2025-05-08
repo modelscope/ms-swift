@@ -40,7 +40,7 @@ class ModelArguments:
     torch_dtype: Literal['bfloat16', 'float16', 'float32', None] = None
     # flash_attn: It will automatically convert names based on the model.
     # None: It will be automatically selected between sdpa and eager.
-    attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None
+    attn_impl: Literal['flash_attn', 'sdpa', 'eager', 'flex_attention', None] = None
 
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
@@ -98,23 +98,26 @@ class ModelArguments:
     def _init_torch_dtype(self) -> None:
         """"If torch_dtype is None, find a proper dtype by the train_type/GPU"""
         from swift.llm import TrainArguments
-        if self.torch_dtype is None and isinstance(self, TrainArguments):
-            # Compatible with --fp16/--bf16
-            for key in ['fp16', 'bf16']:
-                value = getattr(self, key)
-                if value:
-                    self.torch_dtype = {'fp16': 'float16', 'bf16': 'bfloat16'}[key]
 
         self.torch_dtype: Optional[torch.dtype] = HfConfigFactory.to_torch_dtype(self.torch_dtype)
         self.torch_dtype: torch.dtype = self._init_model_info()
         # Mixed Precision Training
-        if isinstance(self, TrainArguments) and not is_torch_mps_available():
-            if self.torch_dtype in {torch.float16, torch.float32}:
-                self.fp16, self.bf16 = True, False
-            elif self.torch_dtype == torch.bfloat16:
-                self.fp16, self.bf16 = False, True
-            else:
-                raise ValueError(f'args.torch_dtype: {self.torch_dtype}')
+        if isinstance(self, TrainArguments):
+            self._init_mixed_precision()
+
+    def _init_mixed_precision(self):
+        if is_torch_mps_available():
+            fp16, bf16 = False, False
+        elif self.torch_dtype in {torch.float16, torch.float32}:
+            fp16, bf16 = True, False
+        elif self.torch_dtype == torch.bfloat16:
+            fp16, bf16 = False, True
+        else:
+            raise ValueError(f'args.torch_dtype: {self.torch_dtype}')
+        if self.fp16 is None:
+            self.fp16 = fp16
+        if self.bf16 is None:
+            self.bf16 = bf16
 
     def _init_rope_scaling(self):
         assert self.max_length is not None, 'Use max_model_len together with rope_scaling'

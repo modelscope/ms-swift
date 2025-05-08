@@ -1,5 +1,5 @@
 # 4*80GB
-# You can refer to `https://github.com/QwenLM/Qwen2-VL` for the meaning of the `VIDEO_MAX_PIXELS` parameter.
+# You can refer to `https://github.com/QwenLM/Qwen2.5-VL` for the meaning of the `VIDEO_MAX_PIXELS` parameter.
 nproc_per_node=4
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -22,7 +22,7 @@ swift sft \
     --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
     --eval_steps 50 \
     --save_steps 50 \
-    --save_total_limit 5 \
+    --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \

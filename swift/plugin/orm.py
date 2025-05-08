@@ -214,7 +214,7 @@ class MathORM(ORM):
     def __call__(self, infer_requests: List[Union[InferRequest, Dict]], ground_truths: List[str],
                  **kwargs) -> List[float]:
         rewards = []
-        predictions = [request['messages'][-1]['content'] for request in infer_requests]
+        predictions = [request.messages[-1]['content'] for request in infer_requests]
         for prediction, ground_truth in zip(predictions, ground_truths):
             if '# Answer' in prediction:
                 prediction = prediction.split('# Answer')[1]
@@ -244,7 +244,7 @@ class MathAccuracy(ORM):
         from math_verify import LatexExtractionConfig, parse, verify
         rewards = []
         for content, sol in zip(completions, solution):
-            gold_parsed = parse(sol, extraction_mode='first_match', extraction_config=[LatexExtractionConfig()])
+            gold_parsed = parse(sol, extraction_mode='first_match')
             if len(gold_parsed) != 0:
                 # We require the answer to be provided in correct latex (no malformed operators)
                 answer_parsed = parse(
@@ -268,12 +268,12 @@ class MathAccuracy(ORM):
                 )
                 # edge case
                 try:
-                    reward = float(verify(answer_parsed, gold_parsed))
+                    reward = float(verify(gold_parsed, answer_parsed))
                 except Exception:
                     reward = 0.0
             else:
-                # If the gold solution is not parseable, we reward 1 to skip this example
-                reward = 1.0
+                # If the gold solution is not parseable, we reward 0 to skip this example
+                reward = 0.0
             rewards.append(reward)
         return rewards
 
@@ -376,6 +376,24 @@ class RepetitionPenalty(ORM):
         return rewards
 
 
+class SoftOverlong(ORM):
+
+    def __init__(self, tokenizer, soft_max_length, soft_cache_length):
+        self.tokenizer = tokenizer
+        assert soft_cache_length < soft_max_length
+        self.soft_max_length = soft_max_length
+        self.soft_cache_length = soft_cache_length
+
+    def __call__(self, completions, **kwargs) -> List[float]:
+        rewards = []
+        for completion in completions:
+            completion_length = len(self.tokenizer.encode(completion))
+            expected_len = self.soft_max_length - self.soft_cache_length
+            exceed_len = completion_length - expected_len
+            rewards.append(min(-exceed_len / self.soft_cache_length, 0))
+        return rewards
+
+
 orms = {
     'toolbench': ReactORM,
     'math': MathORM,
@@ -384,4 +402,5 @@ orms = {
     'react_format': ReActFormat,
     'cosine': CosineReward,
     'repetition': RepetitionPenalty,
+    'soft_overlong': SoftOverlong,
 }

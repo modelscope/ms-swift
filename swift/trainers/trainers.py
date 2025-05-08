@@ -5,7 +5,6 @@ from contextlib import contextmanager, nullcontext
 from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
 from peft import PeftModel
 from torch import nn
@@ -18,7 +17,7 @@ from transformers.utils import is_peft_available
 
 from swift.utils import JsonlWriter, Serializer, gc_collect
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
-from .mixin import SwiftMixin
+from .mixin import DataLoaderMixin, SwiftMixin
 
 
 class Trainer(SwiftMixin, HfTrainer):
@@ -78,7 +77,7 @@ class EmbeddingTrainer(Trainer):
             return calculate_paired_metrics(eval_prediction.predictions, eval_prediction.label_ids)
 
 
-class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
+class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
     args: Seq2SeqTrainingArguments
 
     def __init__(self, *args, **kwargs):
@@ -162,7 +161,8 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
         if loss_scale is not None:
             loss_kwargs['loss_scale'] = loss_scale
 
-        outputs = model(**inputs)
+        with self.template.compute_loss_context(self.model, inputs):
+            outputs = model(**inputs)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
         if self.args.past_index >= 0:
@@ -196,8 +196,8 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
                 loss = self.label_smoother(outputs, labels)
 
         if self.template.sequence_parallel_size > 1:
-            from swift.trainers.xtuner import reduce_xtuner_sequence_parallel_loss
-            loss = reduce_xtuner_sequence_parallel_loss(loss, labels)
+            from swift.trainers.sequence_parallel import sequence_parallel
+            loss = sequence_parallel.reduce_outputs(loss, labels)
 
         if getattr(self.args, 'average_tokens_across_devices', False) and self.model_accepts_loss_kwargs:
             loss *= self.accelerator.num_processes

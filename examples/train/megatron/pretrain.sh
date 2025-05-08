@@ -21,7 +21,7 @@ megatron pt \
     --eval_interval 500 \
     --save_interval 500 \
     --max_length 8192 \
-    --num_workers 8 \
+    --num_workers 4 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

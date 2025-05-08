@@ -3,7 +3,7 @@ import asyncio
 import inspect
 import multiprocessing
 import time
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from dataclasses import asdict
 from http import HTTPStatus
 from threading import Thread
@@ -37,6 +37,7 @@ class SwiftDeploy(SwiftInfer):
 
     def __init__(self, args: Union[List[str], DeployArguments, None] = None) -> None:
         super().__init__(args)
+
         self.infer_engine.strict = True
         self.infer_stats = InferStats()
         self.app = FastAPI(lifespan=self.lifespan)
@@ -194,7 +195,12 @@ class SwiftDeploy(SwiftInfer):
         self.jsonl_writer = JsonlWriter(args.result_path) if args.result_path else None
         logger.info(f'model_list: {self._get_model_list()}')
         uvicorn.run(
-            self.app, host=args.host, port=args.port, ssl_keyfile=args.ssl_keyfile, ssl_certfile=args.ssl_certfile)
+            self.app,
+            host=args.host,
+            port=args.port,
+            ssl_keyfile=args.ssl_keyfile,
+            ssl_certfile=args.ssl_certfile,
+            log_level=args.log_level)
 
 
 def deploy_main(args: Union[List[str], DeployArguments, None] = None) -> None:

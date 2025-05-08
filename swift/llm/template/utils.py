@@ -114,7 +114,20 @@ def align_image_inputs(input_ids: List[int], labels: List[int], new_input_ids,
     return input_ids, labels
 
 
-def split_str_parts_by(text: str, delimiters: List[str]) -> List[Dict[str, str]]:
+def _split_str_by_regex(text: str, regex_delimiters: List[str]) -> List[str]:
+    combined_pattern = '|'.join(f'({pattern})' for pattern in regex_delimiters)
+    parts = re.split(combined_pattern, text, flags=re.DOTALL)
+    parts = [part for part in parts if part is not None]
+    if parts[0] == '':
+        parts.pop(0)
+    else:
+        parts.insert(0, '')
+    assert len(parts) % 2 == 0, f'result: {parts}'
+    assert ''.join(parts) == text, f'split_result: {parts}, text: {text}'
+    return parts
+
+
+def split_str_parts_by(text: str, delimiters: List[str], regex_mode: bool = False) -> List[Dict[str, str]]:
     """Split the text field into parts.
 
     Args:
@@ -125,86 +138,20 @@ def split_str_parts_by(text: str, delimiters: List[str]) -> List[Dict[str, str]]
         The split text in list of dicts.
     """
     assert isinstance(text, str), f'text: {text}'
-    all_start_chars = [d[0] for d in delimiters]
-    all_length = [len(d) for d in delimiters]
-
-    text_list = []
-    last_words = ''
-
-    while len(text) > 0:
-        for char_idx, char in enumerate(text):
-            match_index = [idx for idx, start_char in enumerate(all_start_chars) if start_char == char]
-            is_delimiter = False
-            for index in match_index:
-                if text[char_idx:char_idx + all_length[index]] == delimiters[index]:
-                    if text_list:
-                        text_list[-1]['content'] = last_words
-                    elif last_words:
-                        text_list.append({'key': '', 'content': last_words})
-                    last_words = ''
-                    text_list.append({'key': delimiters[index]})
-                    text = text[char_idx + all_length[index]:]
-                    is_delimiter = True
+    delimiters_origin = delimiters
+    delimiters = [re.escape(delimiter) for delimiter in delimiters]
+    parts = _split_str_by_regex(text, delimiters) if delimiters else ['', text]
+    res = []
+    if regex_mode:
+        parts = [part for part in parts if part]
+        for part in parts:
+            for delimiter, delimiter_origin in zip(delimiters, delimiters_origin):
+                if re.match(delimiter, part, re.DOTALL):
                     break
-            if not is_delimiter:
-                last_words += char
             else:
-                break
-        if last_words == text:
-            text = ''
-
-    if len(text_list):
-        text_list[-1]['content'] = last_words
+                delimiter_origin = ''
+            res.append({'key': delimiter_origin, 'content': part})
     else:
-        text_list.append({'key': '', 'content': last_words})
-    return text_list
-
-
-def split_parts_by_regex(text_list: list, regex_delimiters: Dict[str, List[float]]) -> None:
-    compiled_patterns = [(re.compile(pattern), scale) for pattern, scale in regex_delimiters.items()]
-    for i in range(len(text_list) - 1, -1, -1):
-        item = text_list[i]
-        if item.get('key') == '':
-            res_text = item['content']
-            last_idx = 0
-            segments = []
-
-            for pattern, scale in compiled_patterns:
-                matches = list(re.finditer(pattern, res_text))
-                for match in matches:
-                    if match.start() > last_idx:
-                        segments.append({'key': '', 'content': res_text[last_idx:match.start()]})
-                    segments.append({'key': scale[0], 'content': match.group(0)})
-                    last_idx = match.end()
-
-            if last_idx < len(res_text):
-                segments.insert(0, {'key': '', 'content': res_text[last_idx:]})
-
-            if segments:
-                text_list[i:i + 1] = segments
-
-
-def split_action_action_input(response: str, tools_prompt='react_en') -> Tuple[Optional[str], Optional[str]]:
-
-    agent_keyword = [
-        'action:', 'Action:', 'ACTION:', 'action input:', 'Action Input:', 'Action input:', 'ACTION INPUT:', 'Thought:',
-        'Final Answer:', 'Observation:'
-    ]
-    from swift.plugin import get_tools_keyword
-    keyword = get_tools_keyword(tools_prompt)
-    for key in keyword.values():
-        if key not in agent_keyword:
-            agent_keyword.append(key)
-    agent_parts = split_str_parts_by(response, agent_keyword)
-    action = None
-    action_input = None
-    for c in agent_parts:
-        if c['key'].lower() == keyword['action'].lower():
-            action = c['content']
-        elif c['key'].lower() == keyword['action_input'].lower():
-            action_input = c['content']
-    if action:
-        action = action.strip().replace('\n', '')
-    if action_input:
-        action_input.strip().replace('\n', '')
-    return action, action_input
+        for key, content in zip(parts[::2], parts[1::2]):
+            res.append({'key': key, 'content': content})
+    return res

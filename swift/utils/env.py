@@ -27,7 +27,7 @@ def get_dist_setting() -> Tuple[int, int, int, int]:
     """return rank, local_rank, world_size, local_world_size"""
     rank = int(os.getenv('RANK', -1))
     local_rank = int(os.getenv('LOCAL_RANK', -1))
-    world_size = int(os.getenv('WORLD_SIZE', 1))
+    world_size = int(os.getenv('WORLD_SIZE') or os.getenv('_PATCH_WORLD_SIZE') or 1)
     # compat deepspeed launch
     local_world_size = int(os.getenv('LOCAL_WORLD_SIZE', None) or os.getenv('LOCAL_SIZE', 1))
     return rank, local_rank, world_size, local_world_size

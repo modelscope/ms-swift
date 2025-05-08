@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
 from swift.trainers.arguments import GRPOArgumentsMixin
-from swift.utils import get_logger, set_default_ddp_config
+from swift.utils import get_logger, is_master, set_default_ddp_config
 from .train_args import TrainArguments
 
 logger = get_logger()
@@ -49,12 +49,11 @@ class GRPOArguments(GRPOArgumentsMixin):
 
     # vLLM in GRPO
     use_vllm: bool = False
-    vllm_device: List[str] = field(default_factory=lambda: ['auto'])
-    vllm_gpu_memory_utilization: float = 0.9
-    vllm_max_model_len: Optional[int] = None
 
     # multi step
     num_iterations: int = 1
+
+    truncation_strategy: Literal['delete', 'left', 'right', None] = None
 
 
 @dataclass
@@ -96,6 +95,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     undesirable_weight: float = 1.0
     # PPO/GRPO
     temperature: float = 0.9
+    # RM
+    center_rewards_coefficient: Optional[float] = None
 
     def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
         if self.rlhf_type == 'ppo':
@@ -107,10 +108,10 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         self._init_simpo()
         self._init_ppo()
         self._set_default()
+        self._init_external_vllm()
         super().__post_init__()
-        self._init_grpo_ds3()
-        self._check_rlhf()
         self._check_grpo()
+        self._external_vllm_warning()
 
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
@@ -135,11 +136,13 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 set_default_ddp_config()
             if self.async_generate or not self.use_vllm:
                 self.sleep_level = 0
-            if self.sleep_level > 0:
-                self.gradient_accumulation_steps = 1
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
-            self.truncation_strategy = 'left'  # Used for trimming the excessively long parts of a prompt.
+            if self.truncation_strategy is None:
+                self.truncation_strategy = 'left'
+            assert self.truncation_strategy == 'left', \
+                "GRPO requires `truncation_strategy='left'`," \
+                f"Current value: `truncation_strategy='{self.truncation_strategy}'`."
             if self.beta is None:
                 self.beta = 0.04  # https://arxiv.org/abs/2402.03300
             if self.async_generate:
@@ -147,6 +150,12 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                             'will use the old weights to generate responses to accelerate. '
                             'This will ignore the `CLIP` of advantages, if you found the training '
                             'is unstable, you may consider using --async_generate false.')
+            if 'soft_overlong' in self.reward_funcs:
+                assert self.soft_cache_length is not None, \
+                    'The soft_cache_length must be set when using soft overlong rewards.'
+                if self.soft_max_length is None:
+                    self.soft_max_length = self.max_completion_length
+                    logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
 
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':
@@ -174,6 +183,15 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             self.task_type = 'seq_cls'
             self.num_labels = 1
 
+    def _init_external_vllm(self):
+        if self.rlhf_type != 'grpo' or self.vllm_server_host is None:
+            return
+        from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
+        if is_master():
+            self.vllm_client = VLLMClient(
+                self.vllm_server_host, self.vllm_server_port, connection_timeout=self.vllm_server_timeout)
+            self.vllm_client.init_communicator()
+
     def _set_default(self):
         if self.beta is None:
             self.beta = 0.1
@@ -182,25 +200,29 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 self.loss_type = 'sigmoid'  # else None
             elif self.rlhf_type in ['kto']:
                 self.loss_type = 'kto'
-
-    def _init_grpo_ds3(self):
-        if self.rlhf_type == 'grpo' and self.deepspeed:
-            if 'zero_optimization' in self.deepspeed and self.deepspeed['zero_optimization']['stage'] == 3:
-                self.deepspeed['zero_optimization']['stage3_prefetch_bucket_size'] = 0
-
-    def _check_rlhf(self):
-        if self.sequence_parallel_size > 1:
-            raise ValueError('RLHF do not support sequence parallel')
+            elif self.rlhf_type == 'grpo':
+                self.loss_type = 'grpo'
 
     def _check_grpo(self):
         if self.rlhf_type != 'grpo':
             return
+
+        from packaging import version
+        import trl
+        trl_version = version.parse(trl.__version__)
+        assert trl_version >= version.parse('0.17'), ('Your current version of `trl` is outdated. '
+                                                      'Please update it by running: pip install -U trl')
+
+        if self.num_generations < 2:
+            raise ValueError(
+                'GRPO requires at least 2 generations per prompt to calculate the advantages. You provided '
+                f'{self.num_generations}, which is less than the minimum required.')
         from swift.utils import get_device_count, get_dist_setting
         device_count = get_device_count()
         _, _, _, local_world_size = get_dist_setting()
         num_infer_workers = self.num_infer_workers
         fast_infer = self.use_vllm or self.use_lmdeploy
-        if fast_infer:
+        if fast_infer and self.vllm_server_host is None:
             is_colocate_mode = (device_count == num_infer_workers)
 
             if is_colocate_mode:
@@ -209,7 +231,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                     f'Colocate mode requires device_count({device_count}) == num_infer_workers({num_infer_workers}). '
                     'Please check if your device count matches NPROC_PER_NODE setting.')
                 logger.info(
-                    'You are using colocate mode because you have set num_infer_workers to be the same as'
+                    'You are using colocate mode because you have set num_infer_workers to be the same as '
                     'NPROC_PER_NODE, where model training and sampling will be performed on a single GPU. '
                     'If you encounter an Out-of-Memory (OOM) error, it is recommended to set the `sleep_level`, '
                     '`offload_model`, and `offload_optimizer` parameters.')
@@ -232,6 +254,22 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
                 assert self.tensor_parallel_size == 1, ('async mode do not support tensor parallel right now')
 
-        if self.mini_batch_size:
-            assert self.per_device_train_batch_size % self.mini_batch_size == 0,\
-                'per_device_train_batch_size needs be divisible by mini_batch_size'
+    def _external_vllm_warning(self):
+        if self.rlhf_type != 'grpo' or not self.vllm_server_host:
+            return
+
+        if self.vllm_device != 'auto':
+            logger.warning("Configuration conflict: External vLLM engine detected, but 'vllm_device' is set to '%s'. ",
+                           self.vllm_device)
+
+        if self.num_infer_workers != 1:
+            logger.warning(
+                "Auto-adjustment: Changing 'num_infer_workers' from %s to 1 because external vLLM engine is detected",
+                self.num_infer_workers)
+            self.num_infer_workers = 1
+
+        if self.vllm_max_model_len is not None:
+            logger.warning(
+                "Configuration conflict: 'vllm_max_model_len=%s' is ignored for external vLLM. "
+                'Please specify it when launching the inference service: '
+                '`swift deploy --max_model_len <value>`', self.vllm_max_model_len)
