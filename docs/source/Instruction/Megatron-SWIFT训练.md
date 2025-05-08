@@ -146,13 +146,14 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - no_rope_fusion: 默认为False。指定`--no_rope_fusion true`用于禁止rope融合。
 - no_gradient_accumulation_fusion: 默认为False。指定`--no_gradient_accumulation_fusion true`用于禁用梯度累加融合。
 - 🔥cross_entropy_loss_fusion: 启动交叉熵损失计算融合。默认为False。
-- attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 auto。
+- 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 auto。
 - optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
 - dataloader_type: 默认为'cyclic'，可选为'single', 'cyclic', 'external'。若开启`--streaming`，则设置为`external`。
 - manual_gc: 禁用默认垃圾回收器，手动触发垃圾回收。默认为False。
 - manual_gc_interval: 触发垃圾回收的间隔。默认为0。
 - seed: python、numpy、pytorch和cuda的随机种子，默认为42。
 - 🔥num_workers: dataloder的workers数量，默认为4。
+  - 注意：若设置`--streaming true`，则设置为1。
 - seq_length: 默认为None，即设置为`max_length`。对数据集长度进行限制请使用基本参数中的`--max_length`控制，无需设置此参数。
 - use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。
 - no_create_attention_mask_in_dataloader: 在dataloader中不创建attention mask，默认为True。

@@ -43,7 +43,7 @@ class MegatronArguments(ExtraMegatronArguments):
     no_gradient_accumulation_fusion: bool = False
     cross_entropy_loss_fusion: bool = False
     use_flash_attn: bool = False
-    attention_backend: str = 'auto'
+    attention_backend: str = 'auto'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
     dataloader_type: Literal['single', 'cyclic', 'external'] = 'cyclic'
     manual_gc: bool = False

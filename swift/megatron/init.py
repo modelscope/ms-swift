@@ -57,7 +57,7 @@ def _patch_max_epochs():
             try:
                 return train_step_origin(*args, **kwargs)
             except StopIteration:
-                return {}, True, False, True, 0, None, None
+                return {}, True, True, True, 0, None, None
 
     training.train_step = train_step
 
