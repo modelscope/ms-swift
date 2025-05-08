@@ -671,17 +671,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         future.add_done_callback(done)
 
     def _prefetch(self, dataloader: DataLoader):
-        # TODO: asyncio
         inputs = next(iter(dataloader))
-        all_inputs = gather_object(inputs)
-        if self.accelerator.is_main_process:
-            with self.multi_turn_completion_length_context():
-                outputs = self._infer_single_or_multi_turn(all_inputs, self.request_config)
-            self._queue.put(DataCache(inputs, outputs))
-        else:
-            self._queue.put(DataCache(inputs, []))
-        if self.accelerator.num_processes > 1:
-            self.accelerator.wait_for_everyone()
+        outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
+        self._queue.put(DataCache(inputs, outputs))
 
     def _fast_infer(self, inputs: InputsType) -> Tuple[InputsType, OutputsType]:
         if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
