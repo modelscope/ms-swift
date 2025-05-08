@@ -50,6 +50,7 @@ if is_wandb_available():
     import wandb
 
 InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
+# tuple: (messages, finish_reason)
 OutputsType = List[Tuple[List[Dict], str]]
 
 
@@ -745,8 +746,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs = [output[0] for output in outputs]
 
         for i, output in enumerate(outputs):
-            inputs[i]['messages'] = output[0][0]
-            inputs[i]['is_truncated'] = output[0][1] == 'length'
+            inputs[i]['messages'] = output[0]
+            inputs[i]['is_truncated'] = output[1] == 'length'
 
         return inputs
 
