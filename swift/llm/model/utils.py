@@ -6,6 +6,7 @@ from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import torch
+from torch import nn
 from accelerate.utils import find_device
 from modelscope.hub.utils.utils import get_cache_dir
 from transformers import PretrainedConfig
@@ -13,6 +14,7 @@ from transformers import PretrainedConfig
 from swift.hub import get_hub
 from swift.llm import to_device
 from swift.utils import deep_getattr, get_logger, safe_ddp_context, subprocess_run
+import sys
 
 logger = get_logger()
 
@@ -348,3 +350,96 @@ def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] 
             submodel.__class__.device = model.device
         if key == 'forward' and 'generate' in func_list:
             setattr(submodel, key, MethodType(_get_new_func(key), submodel))  # fix device_map
+
+class InitModelStrategy():    
+    @staticmethod
+    def is_uninitialized(param: torch.Tensor) -> bool:
+        """Check if a parameter is uninitialized based on its statistics."""
+        if param.numel() == 0:
+            return False
+        max_threshold = sys.maxsize*2
+        with torch.no_grad():
+            mean_abs = param.abs().mean()
+            std = param.std()
+            is_nan_inf = ~torch.isfinite(mean_abs) | ~torch.isfinite(std)
+            is_exceed_thd = (mean_abs > max_threshold) | (std > max_threshold)
+            return is_nan_inf.item() or is_exceed_thd.item()
+
+    @staticmethod
+    def constant_init(param: torch.Tensor, c: float = 0) -> None:
+        nn.init.constant_(param, c)
+
+    @staticmethod
+    def uniform_init(param: torch.Tensor, a: float = -0.1, b: float = 0.1) -> None:
+        nn.init.uniform_(param, a, b)
+
+    @staticmethod
+    def normal_init(param: torch.Tensor, mean: float = 0.0, std: float = 0.01) -> None:
+        nn.init.normal_(param, mean, std)
+
+    @staticmethod
+    def _init_high_dim(param: torch.Tensor, init_func, *args, **kwargs) -> None:
+        """Helper for high-dimensional initialization methods."""
+        if param.dim() > 1:
+            init_func(param, *args, **kwargs)
+        elif param.dim() == 1 and param.size(0) > 0:
+            InitModelStrategy.constant_init(param)
+
+    @staticmethod
+    def xavier_uniform_init(param: torch.Tensor) -> None:
+        InitModelStrategy._init_high_dim(param, nn.init.xavier_uniform_)
+
+    @staticmethod
+    def xavier_normal_init(param: torch.Tensor) -> None:
+        InitModelStrategy._init_high_dim(param, nn.init.xavier_normal_)
+
+    @staticmethod
+    def kaiming_uniform_init(param: torch.Tensor) -> None:
+        InitModelStrategy._init_high_dim(
+            param, 
+            nn.init.kaiming_uniform_, 
+            mode='fan_out', 
+            nonlinearity='leaky_relu', 
+            a=0.1
+        )
+
+    @staticmethod
+    def kaiming_normal_init(param: torch.Tensor) -> None:
+        InitModelStrategy._init_high_dim(
+            param, 
+            nn.init.kaiming_normal_, 
+            mode='fan_in', 
+            nonlinearity='relu'
+        )
+
+    @staticmethod
+    def orthogonal_init(param: torch.Tensor) -> None:
+        nn.init.orthogonal_(param, gain=1.0)
+
+    _INIT_STRATEGY_MAP = {
+        'zero': constant_init,
+        'uniform': uniform_init,
+        'normal': normal_init,
+        'xavier_uniform': xavier_uniform_init,
+        'xavier_normal': xavier_normal_init,
+        'kaiming_uniform': kaiming_uniform_init,
+        'kaiming_normal': kaiming_normal_init,
+        'orthogona': orthogonal_init,
+    }
+
+    @staticmethod
+    def init_parameters(model: nn.Module, init_strategy: str) -> None:
+        """Initialize model parameters using the specified strategy.
+        Args:
+            model: The model whose parameters to initialize
+            init_strategy: Name of initialization strategy
+        """
+        if init_strategy not in InitModelStrategy._INIT_STRATEGY_MAP:
+            raise ValueError(f"Unknown initialization strategy: {init_strategy}")
+            
+        init_func = InitModelStrategy._INIT_STRATEGY_MAP[init_strategy]
+        
+        for name, param in model.named_parameters():
+            if InitModelStrategy.is_uninitialized(param):
+                logger.info(f'Initializing parameters: {name}.')
+                init_func(param)
