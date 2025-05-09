@@ -74,21 +74,16 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
-- 🎁 2025.04.15: SWIFT paper has been accepted by AAAI 2025, you can find the paper [here](https://ojs.aaai.org/index.php/AAAI/article/view/35383).
-- 🎁 2025.03.23: SWIFT supports multi round GRPO, this is used to construct multi turn conversations(use cases like agent tool calling), check script [here](examples/train/grpo/internal/train_multi_round.sh).
-- 🎁 2025.03.16: SWIFT supports training with Megatron's parallel technology. Please refer to the [Megatron-SWIFT Training Documentation](https://swift.readthedocs.io/en/latest/Instruction/Megatron-SWIFT-Training.html).
-- 🎁 2025.03.15: SWIFT support the fine-tuning of gme(multi-modal) embedding models，please check the [training script](examples/train/embedding/train_gme.sh)。
-- 🎁 2025.03.13: We provide a script of GRPO to train a 72B model with only 4 GPUs(4*80G), please check [here](examples/train/grpo/internal/train_72b_4gpu.sh)
-- 🎁 2025.03.05: We support the hybrid mode of GRPO(rollout and actor on the same GPU, rollout sleep when actor training), meanwhile tensor parallel for GRPO, check [training script here](examples/train/grpo/internal/multi_gpu_mp_colocate.sh)
-- 🎁 2025.02.21: We test the speed performance of GRPO，and with some tricks to [speed up to 300%](examples/train/grpo/internal/full_lmdeploy.sh). WanDB charts can be found [here](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz)
-- 🎁 2025.02.21: Support distill from LLM API，Please check [this example](examples/sampler/distill/distill.sh)
-- 🎁 2025.02.17: Support SwanLab, just add [a few of arguments](docs/source_en/Instruction/Command-line-parameters.md#swanlab) you can use swanlab to analysis your training results
-- 🎁 2025.02.16: Support LMDeploy in GRPO, use `--use_lmdeploy true`. Please check [this script](examples/train/grpo/internal/full_lmdeploy.sh)
-- 🔥 2025.02.12: Support for GRPO(Group Relative Policy Optimization) algorithm for llm and mllm, document can be found in [here](docs/source_en/Instruction/GRPO.md)
-- 🎁 2025.02.10: SWIFT support the fine-tuning of embedding models，please check the [training script](examples/train/embedding/train_gte.sh)。
-- 🎁 2025.01.23: SWIFT support the `sample` command, this is a very important feature for complex CoT and RFT. Meanwhile, we support an [Reinforced Fine-tuning script](docs/source_en/Instruction/Reinforced_Fine_tuning.md).
-- 🎁 2024.12.04: **SWIFT3.0** major version update. Please check the [Release Notes and Changes](https://swift.readthedocs.io/en/latest/Instruction/ReleaseNote3.0.html).
-- 🎉 2024.08.12: The SWIFT paper has been published on arXiv, and you can read it [here](https://arxiv.org/abs/2408.05517).
+- 🎁 2025.04.15: The ms-swift paper has been accepted by AAAI 2025. You can find the paper at [this link](https://ojs.aaai.org/index.php/AAAI/article/view/35383).
+- 🎁 2025.03.23: Multi-round GRPO is now supported for training multi-turn dialogue scenarios (e.g., agent tool calling). Please refer to the [training script](https://idealab.alibaba-inc.com/examples/train/grpo/internal/train_multi_round.sh).
+- 🎁 2025.03.16: Support for Megatron's parallel training techniques is now available. Please see the [Megatron-SWIFT training documentation](https://swift.readthedocs.io/zh-cn/latest/Instruction/Megatron-SWIFT训练.html).
+- 🎁 2025.03.15: Fine-tuning of embedding models for both pure text and multimodal models is supported. Please check the [training script](https://idealab.alibaba-inc.com/examples/train/embedding).
+- 🎁 2025.03.05: The hybrid mode for GRPO is supported, with a script for training a 72B model on 4 GPUs (4*80G) available [here](https://idealab.alibaba-inc.com/examples/train/grpo/internal/train_72b_4gpu.sh). Tensor parallelism with vllm is also supported, with the training script available [here](https://idealab.alibaba-inc.com/examples/train/grpo/internal/multi_gpu_mp_colocate.sh).
+- 🎁 2025.02.21: The GRPO algorithm now supports LMDeploy, with the training script available [here](https://idealab.alibaba-inc.com/examples/train/grpo/internal/full_lmdeploy.sh). Additionally, the performance of the GRPO algorithm has been tested, achieving a training speed increase of up to 300% using various tricks. Please check the WanDB table [here](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz).
+- 🎁 2025.02.21: The `swift sample` command is now supported. The reinforcement fine-tuning script can be found [here](https://idealab.alibaba-inc.com/docs/source/Instruction/强化微调.md), and the large model API distillation sampling script is available [here](https://idealab.alibaba-inc.com/examples/sampler/distill/distill.sh).
+- 🔥 2025.02.12: Support for the GRPO (Group Relative Policy Optimization) training algorithm has been added. Documentation is available [here](https://idealab.alibaba-inc.com/docs/source/Instruction/GRPO.md).
+- 🎁 2024.12.04: Major update to **ms-swift 3.0**. Please refer to the [release notes and changes](https://swift.readthedocs.io/zh-cn/latest/Instruction/ReleaseNote3.0.html).
+- 🎉 2024.08.12: The ms-swift paper has been published on arXiv and can be read [here](https://arxiv.org/abs/2408.05517).
 - 🔥 2024.08.05: Support for using [evalscope](https://github.com/modelscope/evalscope/) as a backend for evaluating large models and multimodal models.
 - 🔥 2024.07.29: Support for using [vllm](https://github.com/vllm-project/vllm) and [lmdeploy](https://github.com/InternLM/lmdeploy) to accelerate inference for large models and multimodal models. When performing infer/deploy/eval, you can specify `--infer_backend vllm/lmdeploy`.
 - 🔥 2024.07.24: Support for human preference alignment training for multimodal large models, including DPO/ORPO/SimPO/CPO/KTO/RM/PPO.
