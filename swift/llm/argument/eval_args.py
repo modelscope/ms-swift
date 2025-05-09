@@ -31,7 +31,7 @@ class EvalArguments(DeployArguments):
     eval_dataset: List[str] = field(default_factory=list)
     eval_limit: Optional[int] = None
     dataset_args: Optional[Union[Dict, str]] = None
-    eval_generation_config: Optional[Union[Dict, str]] = None
+    eval_generation_config: Optional[Union[Dict, str]] = field(default_factory=dict)
     eval_output_dir: str = 'eval_output'
     eval_backend: Literal['Native', 'OpenCompass', 'VLMEvalKit'] = 'Native'
     local_dataset: bool = False

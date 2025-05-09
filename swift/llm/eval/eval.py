@@ -142,6 +142,7 @@ class SwiftEval(SwiftPipeline):
                     'name': 'CustomAPIModel',
                     'api_base': url,
                     'key': args.api_key or 'EMPTY',
+                    **args.eval_generation_config
                 }],
                 'nproc':
                 args.eval_num_proc,
