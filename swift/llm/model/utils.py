@@ -6,9 +6,9 @@ from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import torch
-from torch import nn
 from accelerate.utils import find_device
 from modelscope.hub.utils.utils import get_cache_dir
+from torch import nn
 from transformers import PretrainedConfig
 
 from swift.hub import get_hub
@@ -350,7 +350,9 @@ def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] 
         if key == 'forward' and 'generate' in func_list:
             setattr(submodel, key, MethodType(_get_new_func(key), submodel))  # fix device_map
 
-class InitModelStrategy():    
+
+class InitModelStrategy():
+
     @staticmethod
     def is_uninitialized(param: torch.Tensor) -> bool:
         """
@@ -369,12 +371,12 @@ class InitModelStrategy():
             # NaN or Inf
             if not torch.isfinite(mean_abs) or not torch.isfinite(std):
                 return True
-            
+
             # Use empirically safe threshold
             MAX_THRESHOLD = 1e7
             if mean_abs > MAX_THRESHOLD or std > MAX_THRESHOLD:
                 return True
-            
+
             return False
 
     @staticmethod
@@ -408,21 +410,11 @@ class InitModelStrategy():
     @staticmethod
     def kaiming_uniform_init(param: torch.Tensor) -> None:
         InitModelStrategy._init_high_dim(
-            param, 
-            nn.init.kaiming_uniform_, 
-            mode='fan_out', 
-            nonlinearity='leaky_relu', 
-            a=0.1
-        )
+            param, nn.init.kaiming_uniform_, mode='fan_out', nonlinearity='leaky_relu', a=0.1)
 
     @staticmethod
     def kaiming_normal_init(param: torch.Tensor) -> None:
-        InitModelStrategy._init_high_dim(
-            param, 
-            nn.init.kaiming_normal_, 
-            mode='fan_in', 
-            nonlinearity='relu'
-        )
+        InitModelStrategy._init_high_dim(param, nn.init.kaiming_normal_, mode='fan_in', nonlinearity='relu')
 
     @staticmethod
     def orthogonal_init(param: torch.Tensor) -> None:
@@ -447,12 +439,12 @@ class InitModelStrategy():
             init_strategy: Name of initialization strategy
         """
         if init_strategy not in InitModelStrategy._INIT_STRATEGY_MAP:
-            raise ValueError(f"Unknown initialization strategy: {init_strategy}")
-        
+            raise ValueError(f'Unknown initialization strategy: {init_strategy}')
+
         logger.info(f'initialization strategy: {init_strategy}')
 
         init_func = InitModelStrategy._INIT_STRATEGY_MAP[init_strategy]
-        
+
         for name, param in model.named_parameters():
             if InitModelStrategy.is_uninitialized(param):
                 logger.info(f'Initializing parameters: {name}.')

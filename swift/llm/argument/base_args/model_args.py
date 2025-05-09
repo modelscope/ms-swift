@@ -51,7 +51,8 @@ class ModelArguments:
     # When some model code needs to be downloaded from GitHub,
     # this parameter specifies the path to the locally downloaded repository.
     local_repo_path: Optional[str] = None
-    init_strategy: Literal['zero', 'uniform', 'normal', 'xavier_uniform', 'xavier_normal', 'kaiming_uniform', 'kaiming_normal', 'orthogonal'] = None
+    init_strategy: Literal['zero', 'uniform', 'normal', 'xavier_uniform', 'xavier_normal', 'kaiming_uniform',
+                           'kaiming_normal', 'orthogonal'] = None
 
     @staticmethod
     def parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Union[str, Dict]:

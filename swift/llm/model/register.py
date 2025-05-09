@@ -22,7 +22,7 @@ from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_availabl
 from .constant import ModelType
 from .patcher import (patch_automodel, patch_automodel_for_sequence_classification, patch_get_dynamic_module,
                       patch_mp_ddp, patch_tp_plan)
-from .utils import AttnImpl, HfConfigFactory, ModelInfo, InitModelStrategy, safe_snapshot_download
+from .utils import AttnImpl, HfConfigFactory, InitModelStrategy, ModelInfo, safe_snapshot_download
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 logger = get_logger()
@@ -250,8 +250,8 @@ def get_model_tokenizer_from_local(model_dir: str,
         if model_info.task_type == 'embedding' and automodel_class.__name__ != 'AutoModel':
             from swift.llm.model.patcher import patch_output_normalizer
             patch_output_normalizer(model, model_meta=model_meta)
-        
-        init_strategy=kwargs.get('init_strategy')
+
+        init_strategy = kwargs.get('init_strategy')
         if init_strategy is not None:
             InitModelStrategy.init_parameters(model, init_strategy)
 
