@@ -163,6 +163,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # Set max_length to None to disable truncation, as the input length has already been truncated earlier.
                 rm_template.set_mode('train')
                 rm_template.max_length = None
+                if rm_plugin not in rm_plugins:
+                    raise ValueError(f'rm_plugin {rm_plugin} is not implemented in swift.llm.plugin')
                 self.reward_model_plugins.append(rm_plugins[rm_plugin](model=rm, template=rm_template))
                 self.reward_funcs.append(rm)
         if not self.reward_funcs:

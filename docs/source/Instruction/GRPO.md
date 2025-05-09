@@ -12,8 +12,8 @@ pip install -U trl
 
 **更新日志**
 
-- **2025-05-09** — 支持生成式奖励模型，并通过reward_model_plugin自定义奖励模型逻辑。有关更多详细信息，请参阅[自定义奖励模型](#自定义奖励模型)部分。
-
+- **2025-05-09** — 支持生成式奖励模型，通过 reward_model_plugin 自定义奖励模型逻辑。有关更多详细信息，请参阅[自定义奖励模型](#自定义奖励模型)部分。
+- **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`
 
 **FAQ**
 1. 训练过程中 loss 接近0 是正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)

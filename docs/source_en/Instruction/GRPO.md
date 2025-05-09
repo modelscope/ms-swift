@@ -13,8 +13,8 @@ pip install -U trl
 
 **Dev Log**
 
-- **2025-05-09** — Implemented support for the **Generative Reward Model** and enabled customized reward model logic through the reward plugin. For more details, refer to the [Customized Reward Models](#customized-reward-models) section.
-
+- **2025-05-09** — Implemented support for the **Generative Reward Model** and enabled customized reward model processing logic through the reward plugin. For more details, refer to the [Customized Reward Models](#customized-reward-models) section.
+- **2025-04-30** — The startup command for the external vLLM server has been changed to swift rollout.
 
 **FAQ**
 1. It is normal for the loss to approach zero during training. Refer to this [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851) for more details.
