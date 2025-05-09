@@ -1,13 +1,16 @@
+import re
+import textwrap
+from copy import deepcopy
+from typing import Dict, List
 
-from swift.llm import PtEngine,Template,to_device, RequestConfig
+import torch
+
+from swift.llm import PtEngine, RequestConfig, Template, to_device
 from swift.llm.infer.protocol import ChatCompletionResponse
 from swift.utils import get_logger
-from copy import deepcopy
-import torch
-import re
-from typing import List, Dict
 
 logger = get_logger()
+
 
 class DefaultRMPlugin:
     """
@@ -31,23 +34,54 @@ class DefaultRMPlugin:
 
 
 class GenRMPlugin(DefaultRMPlugin):
+
     def __init__(self, model, template):
+        """
+        Generation Reward Model Plugin Example.
+
+        This method sets up the reward model plugin by initializing the PtEngine for efficient inference,
+        configuring the request parameters, and defining the system prompt that guides the reward model in
+        evaluating responses.
+
+        Args:
+            model (torch.nn.Module): The reward model, expected to be a classification model
+                with a single output dimension.
+            template (Template): The template used for encoding input data.
+    """
+
         super().__init__(model, template)
         # initilize PTEngine to infer
         self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
-        self.request_config = RequestConfig() # customise your request config here
-        self.system = """
-Based on the dialogue history, evaluate whether the model's response is accurate, complete, and relevant.
-Assign a reward score between 0 and 1, where 0 indicates completely incorrect and 1 indicates fully correct.
-Please adhere strictly to the following output format without providing any additional explanations or information:
+        self.request_config = RequestConfig()  # customise your request config here
+        self.system = textwrap.dedent("""
+            Based on the dialogue history, evaluate whether the model's response is accurate, complete, and relevant.
+            Assign a reward score between 0 and 1, where 0 indicates completely incorrect and 1 indicates fully correct.
+            Please adhere strictly to the following output format without providing any additional explanations or information:
 
-Reward: {reward}
+            Reward: {reward}
 
-For example:
-Reward: 0.85
-"""
+            For example:
+            Reward: 0.85
+        """)  # noqa
 
     def __call__(self, inputs):
+        """
+        Compute reward scores for the provided inputs.
+
+        This method processes each input by converting dialogue messages into a query, sending the query to the
+        reward model for inference, and extracting the reward scores from the model's responses. The final reward
+        for each input is the average of all extracted scores.
+        Args:
+            inputs (List[Dict]): A list of input requests. Each input request is a dictionary containing:
+                - 'messages' (List[Dict]): messages from the training model. Each message dictionary includes:
+                    - 'role' (str): The role of the speaker (e.g., 'user', 'assistant').
+                    - 'content' (str): The content of the message.
+                - Additional dataset columns as key-value pairs (e.g., 'solutions', 'images').
+        Returns:
+            torch.Tensor: A tensor containing the average reward scores for each input. The tensor has a shape of (N,),
+            where N is the number of input requests.
+        """
+
         rm_inputs = self.prepare_rm_inputs(inputs)
         results = self.engine.infer(rm_inputs, self.request_config)
         rewards = self.compute_rewards(results)
@@ -56,10 +90,10 @@ Reward: 0.85
     def prepare_rm_inputs(self, inputs: List[Dict]) -> List[Dict]:
         """
         Prepare inputs for the reward model by converting messages into queries.
-        
+
         Args:
             inputs (List[Dict]): A list of input requests.
-        
+
         Returns:
             List[Dict]: Processed inputs for the reward model.
         """
@@ -67,22 +101,19 @@ Reward: 0.85
         for idx, infer_request in enumerate(inputs):
             # Deep copy to prevent modification of original input
             rm_infer_request = deepcopy(infer_request)
-            
+
             # Extract and convert messages to a single query string
             messages = rm_infer_request.get('messages')
             query = self.messages_to_query(messages)
-            
+
             # Construct new messages tailored for the reward model
-            rm_messages = [
-                {'role': 'system', 'content': self.system},
-                {'role': 'user', 'content': query}
-            ]
-            
+            rm_messages = [{'role': 'system', 'content': self.system}, {'role': 'user', 'content': query}]
+
             # Update the messages in the reward infer request
             rm_infer_request['messages'] = rm_messages
             rm_inputs.append(rm_infer_request)
         return rm_inputs
-    
+
     @staticmethod
     def extract_reward(model_output: str) -> float:
         """
@@ -101,7 +132,7 @@ Reward: 0.85
         if match:
             return float(match.group(1))
         else:
-            logger.warning("Unable to extract reward score from the model's output, set reward to 0" )
+            logger.warning("Unable to extract reward score from the model's output, set reward to 0")
             return None
 
     @staticmethod
@@ -130,7 +161,7 @@ Reward: 0.85
         """
         # Initialize an empty list to hold formatted messages
         formatted_messages = []
-        
+
         # Define a mapping for role capitalization if needed
         role_mapping = {
             'user': 'User',
@@ -138,11 +169,11 @@ Reward: 0.85
             'system': 'System'
             # Add more roles here as needed
         }
-        
+
         for idx, message in enumerate(messages):
             if not isinstance(message, dict):
-                raise TypeError(f"Each message must be a dictionary. Found {type(message)} at index {idx}.")
-            
+                raise TypeError(f'Each message must be a dictionary. Found {type(message)} at index {idx}.')
+
             # Extract 'role' and 'content' from each message
             role = message.get('role')
             content = message.get('content')
@@ -151,22 +182,22 @@ Reward: 0.85
 
             # Capitalize the role using the mapping, default to capitalized original role
             role_formatted = role_mapping.get(role.lower(), role.capitalize())
-            
+
             # Append the formatted message to the list
-            formatted_messages.append(f"{role_formatted}: {content}")
-        
+            formatted_messages.append(f'{role_formatted}: {content}')
+
         # Join all formatted messages with newline characters
-        query = "\n".join(formatted_messages)
-        
+        query = '\n'.join(formatted_messages)
+
         return query
 
     def compute_rewards(self, results: List[ChatCompletionResponse]) -> List[float]:
         """
         Compute average reward scores from the reward model's outputs.
-        
+
         Args:
             results (List[ChatCompletionResponse]): A list of results from the reward model.
-        
+
         Returns:
             List[float]: A list of average reward scores.
         """
@@ -178,19 +209,19 @@ Reward: 0.85
                     response = choice.message.content
                     reward = self.extract_reward(response)
                     cur_rewards.append(reward)
-                
+
                 if cur_rewards:
                     average_reward = sum(cur_rewards) / len(cur_rewards)
                 else:
                     average_reward = 0.0
-                    logger.warning(f"No valid rewards extracted. Assigning reward score of 0.0.")
-                
+                    logger.warning('No valid rewards extracted. Assigning reward score of 0.0.')
+
                 rewards.append(average_reward)
             except Exception as e:
-                logger.error(f"Error computing reward for index {idx}: {e}")
+                logger.error(f'Error computing reward for index {idx}: {e}')
                 rewards.append(0.0)  # Assign default reward score on failure
         return rewards
-    
+
 
 rm_plugins = {
     'default': DefaultRMPlugin,
