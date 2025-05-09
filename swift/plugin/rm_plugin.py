@@ -84,7 +84,7 @@ class GenRMPlugin(DefaultRMPlugin):
         """
 
         rm_inputs = self.prepare_rm_inputs(inputs)
-        results = self.engine.infer(rm_inputs, self.request_config)
+        results = self.engine.infer(rm_inputs, self.request_config, use_tqdm=False)
         rewards = self.compute_rewards(results)
         return torch.tensor(rewards, dtype=torch.float32)
 
