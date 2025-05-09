@@ -84,7 +84,10 @@ def show_layers(model: nn.Module, max_lines: Optional[int] = 20) -> None:
         logger.info(f'[{n}]: requires_grad={p.requires_grad}, dtype={p.dtype}, device={p.device}')
 
 
-def freeze_parameters(model: nn.Module, freeze_parameters_ratio: float, freeze_parameters: List[str]) -> None:
+def freeze_parameters(model: nn.Module,
+                      freeze_parameters_ratio: float,
+                      freeze_parameters: List[str],
+                      freeze_parameters_regex: Optional[str] = None) -> None:
     if freeze_parameters_ratio > 0:
         n_parameters = get_n_params_grads(model)[0]
         n_parameters = np.array(n_parameters, dtype=np.int64)
@@ -100,19 +103,48 @@ def freeze_parameters(model: nn.Module, freeze_parameters_ratio: float, freeze_p
                 if n.startswith(freeze_p):
                     p.requires_grad = False
 
+    if freeze_parameters_regex is not None:
+        try:
+            pattern = re.compile(freeze_parameters_regex)
+        except re.error as e:
+            logger.warning(f"Invalid freeze_parameters_regex '{freeze_parameters_regex}': {e}")
+            return
 
-def activate_parameters(model: nn.Module, additional_trainable_parameters: List[str]) -> None:
-    if len(additional_trainable_parameters) == 0:
-        return
+        for n, p in model.named_parameters():
+            if pattern.search(n):
+                p.requires_grad = False
+
+
+def activate_parameters(model: nn.Module,
+                        additional_trainable_parameters: List[str],
+                        trainable_parameters_regex: Optional[str] = None) -> None:
     has_activate = False
-    for n, p in model.named_parameters():
-        for additional_tp in additional_trainable_parameters:
-            if n.startswith(additional_tp):
+    if len(additional_trainable_parameters) > 0:
+        for n, p in model.named_parameters():
+            for additional_tp in additional_trainable_parameters:
+                if n.startswith(additional_tp):
+                    p.requires_grad = True
+                    has_activate = True
+        if not has_activate:
+            logger.warning('len(additional_trainable_parameters) > 0 but no parameters are activated. '
+                           f'additional_trainable_parameters: {additional_trainable_parameters}')
+
+    has_activate = False
+    if trainable_parameters_regex is not None:
+        try:
+            pattern = re.compile(trainable_parameters_regex)
+        except re.error as e:
+            logger.warning(f"Invalid trainable_parameters_regex '{trainable_parameters_regex}': {e}")
+            return
+
+        for n, p in model.named_parameters():
+            if pattern.search(n):
                 p.requires_grad = True
                 has_activate = True
-    if not has_activate:
-        logger.warning('len(additional_trainable_parameters) > 0 but no parameters are activated. '
-                       f'additional_trainable_parameters: {additional_trainable_parameters}')
+
+        if not has_activate:
+            logger.warning('trainable_parameters_regex is provided but no parameters are activated. '
+                           f'trainable_parameters_regex: {trainable_parameters_regex}')
 
 
 def time_synchronize() -> float:

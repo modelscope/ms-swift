@@ -15,9 +15,12 @@ class ExtraMegatronArguments:
     padded_vocab_size: Optional[int] = None
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
-    model_type: Optional[str] = None
+
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 10
+
+    model_type: Optional[str] = None
+    max_epochs: Optional[int] = None
 
 
 @dataclass
@@ -40,6 +43,7 @@ class MegatronArguments(ExtraMegatronArguments):
     no_gradient_accumulation_fusion: bool = False
     cross_entropy_loss_fusion: bool = False
     use_flash_attn: bool = False
+    attention_backend: str = 'auto'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
     dataloader_type: Literal['single', 'cyclic', 'external'] = 'cyclic'
     manual_gc: bool = False
@@ -200,7 +204,7 @@ class MegatronArguments(ExtraMegatronArguments):
 
     def __post_init__(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
-        if self.use_flash_attn:
+        if self.use_flash_attn or self.attention_backend == 'flash':
             require_version('flash-attn')
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self._set_default()
