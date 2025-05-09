@@ -1,10 +1,13 @@
 import asyncio
 import re
+from copy import deepcopy
 from typing import List
 
 import json
+import torch
 
-from swift.plugin import ORM, orms
+from swift.llm import Template, to_device
+from swift.plugin import ORM, orms, rm_plugins
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -448,3 +451,28 @@ orms['external_r1v_acc'] = MultiModalAccuracyORM
 orms['external_code_reward'] = CodeReward
 orms['external_code_format'] = CodeFormat
 orms['external_code_reward_by_judge0'] = CodeRewardByJudge0
+
+
+# For genrm you can refer to swift/llm/plugin/rm_plugin/GenRMPlugin
+class CustomizedRMPlugin:
+    """
+    Customized Reward Model Plugin, same to DefaultRMPlugin
+
+    It assumes that `self.model` is a classification model with a value head(output dimmension 1).
+    The first logits value from the model's output is used as the reward score.
+    """
+
+    def __init__(self, model, template):
+        self.model = model
+        self.template: Template = template
+
+    def __call__(self, inputs):
+        batched_inputs = [self.template.encode(deepcopy(infer_request)) for infer_request in inputs]
+        reward_inputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
+        reward_inputs.pop('labels')
+
+        with torch.inference_mode():
+            return self.model(**reward_inputs).logits[:, 0]
+
+
+rm_plugins['my_rmplugin'] = CustomizedRMPlugin

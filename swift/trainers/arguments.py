@@ -164,6 +164,8 @@ class GRPOArgumentsMixin:
     repetition_n_grams: int = 3
     repetition_max_penalty: float = -1.0
 
+    reward_model: Optional[List[str]] = None
+    reward_model_plugin: Optional[List[str]] = None
     # LMDeploy in GRPO
     use_lmdeploy: bool = False
     lmdeploy_device: Optional[str] = 'auto'

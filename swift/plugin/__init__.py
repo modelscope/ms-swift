@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from .tuner import Tuner, extra_tuners, PeftTuner
     from .prm import prms, PRM
     from .orm import orms, ORM
+    from .multi_turn import multi_turns
+    from .rm_plugin import rm_plugins
 
 else:
     _import_structure = {
@@ -24,7 +26,9 @@ else:
         'agent_template': ['agent_templates'],
         'tuner': ['Tuner', 'extra_tuners', 'PeftTuner'],
         'prm': ['prms', 'PRM'],
-        'orm': ['orms', 'ORM']
+        'orm': ['orms', 'ORM'],
+        'multi_turn': ['multi_turns'],
+        'rm_plugin': ['rm_plugins']
     }
 
     import sys
