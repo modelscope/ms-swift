@@ -120,7 +120,7 @@ swift rlhf \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'okwinds/clevr_cogen_a_train' \
-    --max_length 8192 \
+    --vllm_max_model_len 8192 \
     --max_completion_length 1024 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 8 \
@@ -141,7 +141,6 @@ swift rlhf \
     --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero3 \
     --log_completions true \
-    --vllm_max_model_len 1024 \
     --report_to wandb \
     --num_iterations 1 \
     --num_infer_workers 2 \
@@ -196,7 +195,7 @@ swift rlhf \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'AI-ModelScope/GEOQA_R1V_Train_8K' \
-    --max_length 8192 \
+    --vllm_max_model_len 8192 \
     --max_completion_length 1024 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 8 \
@@ -263,7 +262,7 @@ swift rlhf \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'lmms-lab/multimodal-open-r1-8k-verified' \
-    --max_length 8192 \
+    --vllm_max_model_len 8192
     --max_completion_length 1024 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 8 \
