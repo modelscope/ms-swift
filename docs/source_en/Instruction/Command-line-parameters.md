@@ -580,7 +580,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - process_reward_rate: The proportion of process reward used in calculating value during selection, default is `0.0`, meaning PRM is not used.
 - exploration_rate: A parameter in the UCT algorithm that balances exploration; a higher value gives more weight to nodes with fewer explorations, default is `0.5`.
 - api_key: Required when using the client as an inference engine, default is `EMPTY`.
-- base_url: Required when using the client as an inference engine, default is 'https://dashscope.aliyuncs.com/compatible-mode/v1'.
+- base_url: Required when using the client as an inference engine, default is 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 
 ## Specific Model Arguments
 
