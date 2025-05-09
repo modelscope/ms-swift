@@ -2,8 +2,10 @@
 import os
 from typing import List, Union
 
+from swift.llm import get_matched_model_meta, safe_snapshot_download
 from swift.utils import get_logger, get_model_parameter_info
 from ..argument import BaseArguments, RLHFArguments
+from ..argument.base_args.model_args import ModelArguments
 from ..model import HfConfigFactory
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft
@@ -33,14 +35,18 @@ class SwiftRLHF(SwiftSft):
 
             model_type = getattr(args, f'{key}_model_type')
             model_revision = getattr(args, f'{key}_model_revision')
-            adapters = args.adapters if key == 'ref' else args.reward_adapters
+            model_dir = safe_snapshot_download(
+                model_id_or_path=model_id_or_path,
+                revision=model_revision,
+                download_model=False,
+                use_hf=args.use_hf,
+                hub_token=args.hub_token,
+            )
             task_type = None
             num_labels = None
-            if os.path.exists(os.path.join(model_id_or_path, 'args.json')):
-                # local output reward model, read task_type from args.json
-                model_args = BaseArguments.from_pretrained(model_id_or_path)
-                if hasattr(model_args, task_type):
-                    task_type = model_args.task_type
+            model_args = BaseArguments.from_pretrained(model_dir)
+            if hasattr(model_args, task_type):
+                task_type = model_args.task_type
             if task_type == 'seq_cls':
                 num_labels = 1
 
@@ -51,6 +57,7 @@ class SwiftRLHF(SwiftSft):
                 task_type=task_type,
                 num_labels=num_labels)
 
+            adapters = args.adapters if key == 'ref' else args.reward_adapters
             model = prepare_adapter(args, model, adapters)
             if origin_key in {'ref', 'reward'}:
                 if self.args.sequence_parallel_size > 1:
