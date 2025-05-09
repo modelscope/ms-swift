@@ -10,6 +10,7 @@ import torch
 from packaging import version
 from tqdm import tqdm
 from transformers import GenerationConfig
+from transformers.utils import is_torch_npu_available
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
@@ -98,12 +99,10 @@ class VllmEngine(InferEngine):
             quantization=quantization,
             engine_kwargs=engine_kwargs,
         )
-        nnodes = get_node_setting()[1]
-        total_infer_workers = num_infer_workers * nnodes
-        context, npu_context = patch_vllm(world_size=total_infer_workers), nullcontext()
-        if tensor_parallel_size == 1 or pipeline_parallel_size == 1:
-            npu_context = patch_npu_vllm(self.engine_args.device)
-        with context, npu_context:
+        context = nullcontext()
+        if is_torch_npu_available() and (tensor_parallel_size == 1 or pipeline_parallel_size == 1):
+            context = patch_npu_vllm(self.engine_args.device)
+        with context:
             self._prepare_engine()
         self._load_generation_config()
         self._fix_vllm_bug()
