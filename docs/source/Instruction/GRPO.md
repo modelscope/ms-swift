@@ -391,7 +391,7 @@ swift rlhf \
     --offload_optimizer true \
     --gc_collect_after_offload true \
     --log_completions true \
-    --deepspeed zero3
+    --deepspeed zero2
 ```
 
 注意：
