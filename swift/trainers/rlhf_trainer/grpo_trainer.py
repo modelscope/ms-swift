@@ -139,17 +139,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
 
         self.reward_funcs = reward_funcs
-
-        self.multi_turn_func = None
-        if self.args.multi_turn_func:
-            if isinstance(self.args.multi_turn_func, str):
-                assert self.args.multi_turn_func in multi_turns
-                multi_turn_func = multi_turns[self.args.multi_turn_func]
-                self.multi_turn_func = multi_turn_func
+        self.reward_func_names = []
+        for reward_func in reward_funcs:
+            if inspect.isfunction(reward_func):
+                reward_func_name = reward_func.__name__
             else:
-                self.multi_turn_func = self.args.multi_turn_func
+                reward_func_name = reward_func.__class__.__name__
+            self.reward_func_names.append(reward_func_name)
 
         self.reward_model_plugins = [None] * len(self.reward_funcs)
+
         if reward_model is not None:
             reward_template = kwargs.pop('reward_template')
             reward_plugins = args.reward_model_plugin
@@ -168,6 +167,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     raise ValueError(f'rm_plugin {rm_plugin} is not implemented in swift.llm.plugin')
                 self.reward_model_plugins.append(rm_plugins[rm_plugin](model=rm, template=rm_template))
                 self.reward_funcs.append(rm)
+                self.reward_func_names.append(rm.config._name_or_path.split('/')[-1])
+
         if not self.reward_funcs:
             raise ValueError('You must specify reward_funcs or reward_model')
 
@@ -179,6 +180,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.reward_weights = torch.tensor(args.reward_weights, dtype=torch.float32)
         else:
             self.reward_weights = torch.ones(len(reward_funcs), dtype=torch.float32)
+
+        self.multi_turn_func = None
+        if self.args.multi_turn_func:
+            if isinstance(self.args.multi_turn_func, str):
+                assert self.args.multi_turn_func in multi_turns
+                multi_turn_func = multi_turns[self.args.multi_turn_func]
+                self.multi_turn_func = multi_turn_func
+            else:
+                self.multi_turn_func = self.args.multi_turn_func
 
         self.num_generations = args.num_generations
         self.temperature = args.temperature
@@ -325,6 +335,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.request_config.seed = self.infer_rank // self.args.tensor_parallel_size
 
         self.model_accepts_loss_kwargs = False
+
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 if self.is_deepspeed_enabled:
@@ -1070,20 +1081,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self._metrics[mode]['completions/clipped_ratio'].append(clipped_completions_ratio)
 
-        # Get the names of the reward functions
-        reward_func_names = []
-        for reward_func in self.reward_funcs:
-            if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
-                reward_func_name = reward_func.config._name_or_path.split('/')[-1]
-            else:
-                if inspect.isfunction(reward_func):
-                    reward_func_name = reward_func.__name__
-                else:
-                    reward_func_name = reward_func.__class__.__name__
-
-            reward_func_names.append(reward_func_name)
-
-        for i, reward_func_name in enumerate(reward_func_names):
+        for i, reward_func_name in enumerate(self.reward_func_names):
             mean_rewards = rewards_per_func[:, i].mean().item()
             self._metrics[mode][f'rewards/{reward_func_name}/mean'].append(mean_rewards)
             std_rewards = rewards_per_func[:, i].std().item()
@@ -1097,8 +1095,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Log prompt and completion texts
         self._textual_logs['prompt'].extend(gather_object(messages))
         self._textual_logs['completion'].extend(gather_object(completions))
-
-        for i, name in enumerate(reward_func_names):
+        for i, name in enumerate(self.reward_func_names):
             self._textual_logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
 
     @profiling_decorator
