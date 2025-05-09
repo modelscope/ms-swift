@@ -33,8 +33,8 @@ class SwiftRLHF(SwiftSft):
             model_type = getattr(args, f'{key}_model_type')
             model_revision = getattr(args, f'{key}_model_revision')
             adapters = args.adapters if key == 'ref' else args.reward_adapters
-            task_type = 'seq_cls' if origin_key != 'ref' else args.task_type
-            num_labels = 1 if origin_key != 'ref' else None
+            task_type = args.task_type
+            num_labels = None
 
             model, processor = args.get_model_processor(
                 model=model_id_or_path,
