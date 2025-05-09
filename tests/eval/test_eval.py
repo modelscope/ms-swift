@@ -25,8 +25,8 @@ def test_eval_native():
             extra_eval_args={
                 'stream': True,
                 'ignore_errors': True
-                },
-            ))
+            },
+        ))
 
 
 def test_eval_llm():
