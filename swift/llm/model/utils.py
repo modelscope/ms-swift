@@ -354,16 +354,29 @@ def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] 
 class InitModelStrategy():    
     @staticmethod
     def is_uninitialized(param: torch.Tensor) -> bool:
-        """Check if a parameter is uninitialized based on its statistics."""
+        """
+        Check if a parameter is uninitialized or has numerically unstable values.
+        Criteria:
+            - Tensor has NaN or Inf values
+            - Tensor stats (mean or std) are outside reasonable range
+        """
         if param.numel() == 0:
             return False
-        max_threshold = sys.maxsize*2
+
         with torch.no_grad():
             mean_abs = param.abs().mean()
             std = param.std()
-            is_nan_inf = ~torch.isfinite(mean_abs) | ~torch.isfinite(std)
-            is_exceed_thd = (mean_abs > max_threshold) | (std > max_threshold)
-            return is_nan_inf.item() or is_exceed_thd.item()
+
+            # NaN or Inf
+            if not torch.isfinite(mean_abs) or not torch.isfinite(std):
+                return True
+            
+            # Use empirically safe threshold
+            MAX_THRESHOLD = 1e7
+            if mean_abs > MAX_THRESHOLD or std > MAX_THRESHOLD:
+                return True
+            
+            return False
 
     @staticmethod
     def constant_init(param: torch.Tensor, c: float = 0) -> None:
@@ -436,7 +449,9 @@ class InitModelStrategy():
         """
         if init_strategy not in InitModelStrategy._INIT_STRATEGY_MAP:
             raise ValueError(f"Unknown initialization strategy: {init_strategy}")
-            
+        
+        logger.info(f'initialization strategy: {init_strategy}')
+
         init_func = InitModelStrategy._INIT_STRATEGY_MAP[init_strategy]
         
         for name, param in model.named_parameters():

@@ -253,7 +253,6 @@ def get_model_tokenizer_from_local(model_dir: str,
         
         init_strategy=kwargs.get('init_strategy')
         if init_strategy is not None:
-            logger.info(f'init_strategy: {init_strategy}')
             InitModelStrategy.init_parameters(model, init_strategy)
 
     model_info.config = model_config if model is None else model.config
