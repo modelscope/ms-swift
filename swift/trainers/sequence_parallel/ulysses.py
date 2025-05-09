@@ -113,27 +113,36 @@ class UlyssesSampler(Sampler):
         self.epoch = 0
         self.round_up = round_up
 
-        if self.round_up:
-            self.num_samples = math.ceil(len(self.dataset) / world_size)
-            self.total_size = self.num_samples * self.world_size
+        if hasattr(self.dataset, '__len__'):
+            if self.round_up:
+                self.num_samples = math.ceil(len(self.dataset) / world_size)
+                self.total_size = self.num_samples * self.world_size
+            else:
+                self.num_samples = math.ceil((len(self.dataset) - rank) / world_size)
+                self.total_size = len(self.dataset)
         else:
-            self.num_samples = math.ceil((len(self.dataset) - rank) / world_size)
-            self.total_size = len(self.dataset)
+            del self.__len__
 
     def __iter__(self) -> Iterator[int]:
-        if self.shuffle:
-            g = torch.Generator()
-            g.manual_seed(self.seed + self.epoch)
-            indices = torch.randperm(len(self.dataset), generator=g).tolist()
+        if hasattr(self.dataset, '__len__'):
+            if self.shuffle:
+                g = torch.Generator()
+                g.manual_seed(self.seed + self.epoch)
+                indices = torch.randperm(len(self.dataset), generator=g).tolist()
+            else:
+                indices = torch.arange(len(self.dataset)).tolist()
+
+            if self.round_up:
+                indices = (indices * int(self.total_size / len(indices) + 1))[:self.total_size]
+
+            indices = indices[self.rank:self.total_size:self.world_size]
+
+            return iter(indices)
         else:
-            indices = torch.arange(len(self.dataset)).tolist()
-
-        if self.round_up:
-            indices = (indices * int(self.total_size / len(indices) + 1))[:self.total_size]
-
-        indices = indices[self.rank:self.total_size:self.world_size]
-
-        return iter(indices)
+            index = self.rank // self.world_size
+            while True:
+                yield index
+                index += self.world_size
 
     def __len__(self) -> int:
         return self.num_samples
