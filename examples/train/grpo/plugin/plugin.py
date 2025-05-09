@@ -308,23 +308,61 @@ class CodeFormat(ORM):
 
 
 class CodeRewardByJudge0(ORM):
-    LANGUAGE_ID_MAP = {'assembly': 45, 'bash': 46, 'basic': 47, 'c': 50, 'c++': 54, 'clojure': 86, 'c#': 51, 'cobol': 77, 'common lisp': 55, 'd': 56,
-                    'elixir': 57, 'erlang': 58, 'executable': 44, 'f#': 87, 'fortran': 59, 'go': 60, 'groovy': 88, 'haskell': 61, 'java': 62,
-                    'javascript': 63, 'kotlin': 78, 'lua': 64, 'multi-file program': 89, 'objective-c': 79, 'ocaml': 65, 'octave': 66, 'pascal': 67,
-                    'perl': 85, 'php': 68, 'plain text': 43, 'prolog': 69, 'python': 71, 'python2': 70, 'python3': 71, 'r': 80, 'ruby': 72,
-                    'rust': 73, 'scala': 81, 'sql': 82, 'swift': 83, 'typescript': 74, 'visual basic.net': 84}
+    LANGUAGE_ID_MAP = {
+        'assembly': 45,
+        'bash': 46,
+        'basic': 47,
+        'c': 50,
+        'c++': 54,
+        'clojure': 86,
+        'c#': 51,
+        'cobol': 77,
+        'common lisp': 55,
+        'd': 56,
+        'elixir': 57,
+        'erlang': 58,
+        'executable': 44,
+        'f#': 87,
+        'fortran': 59,
+        'go': 60,
+        'groovy': 88,
+        'haskell': 61,
+        'java': 62,
+        'javascript': 63,
+        'kotlin': 78,
+        'lua': 64,
+        'multi-file program': 89,
+        'objective-c': 79,
+        'ocaml': 65,
+        'octave': 66,
+        'pascal': 67,
+        'perl': 85,
+        'php': 68,
+        'plain text': 43,
+        'prolog': 69,
+        'python': 71,
+        'python2': 70,
+        'python3': 71,
+        'r': 80,
+        'ruby': 72,
+        'rust': 73,
+        'scala': 81,
+        'sql': 82,
+        'swift': 83,
+        'typescript': 74,
+        'visual basic.net': 84
+    }
     PYTHON_ID = 71
 
     def __init__(self):
         import os
-        self.endpoint = os.getenv("JUDGE0_ENDPOINT")
+        self.endpoint = os.getenv('JUDGE0_ENDPOINT')
         assert self.endpoint is not None, (
-            "Judge0 endpoint is not set. Please set the JUDGE0_ENDPOINT environment variable."
-        )
-        x_auth_token = os.getenv("JUDGE0_X_AUTH_TOKEN")
-        self.headers = {"Content-Type": "application/json"}
+            'Judge0 endpoint is not set. Please set the JUDGE0_ENDPOINT environment variable.')
+        x_auth_token = os.getenv('JUDGE0_X_AUTH_TOKEN')
+        self.headers = {'Content-Type': 'application/json'}
         if x_auth_token is not None:
-            self.headers["X-Auth-Token"] = x_auth_token
+            self.headers['X-Auth-Token'] = x_auth_token
 
     @staticmethod
     def extract_code(completion: str, language: str) -> str:
@@ -346,19 +384,21 @@ class CodeRewardByJudge0(ORM):
             total = len(test_cases)
 
             for case in test_cases:
-                if code is not None and code != "":
+                if code is not None and code != '':
                     async with aiohttp.ClientSession() as session:
                         payload = {
-                            "source_code": code,
-                            "language_id": language_id,
-                            "stdin": case["input"],
-                            "expected_output": case["output"]
+                            'source_code': code,
+                            'language_id': language_id,
+                            'stdin': case['input'],
+                            'expected_output': case['output']
                         }
-                        logger.debug(f"Payload: {payload}")
-                        async with session.post(self.endpoint + "/submissions/?wait=true", json=payload, headers=self.headers) as response:
+                        logger.debug(f'Payload: {payload}')
+                        async with session.post(
+                                self.endpoint + '/submissions/?wait=true', json=payload,
+                                headers=self.headers) as response:
                             response_json = await response.json()
-                            logger.debug(f"Response: {response_json}")
-                            if response_json["status"]["description"] == "Accepted":
+                            logger.debug(f'Response: {response_json}')
+                            if response_json['status']['description'] == 'Accepted':
                                 passed += 1
 
             success_rate = (passed / total)
@@ -377,8 +417,10 @@ class CodeRewardByJudge0(ORM):
         return rewards
 
     async def run_async(self):
-        tasks = [self._evaluate_code(code, info['test_cases'], CodeRewardByJudge0.get_language_id(info['language'])) for code, info in zip(
-            self.code_snippets, self.verification_info)]
+        tasks = [
+            self._evaluate_code(code, info['test_cases'], CodeRewardByJudge0.get_language_id(info['language']))
+            for code, info in zip(self.code_snippets, self.verification_info)
+        ]
         results = await asyncio.gather(*tasks)
         rewards = list(results)
         return rewards
