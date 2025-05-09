@@ -84,7 +84,8 @@ def show_layers(model: nn.Module, max_lines: Optional[int] = 20) -> None:
         logger.info(f'[{n}]: requires_grad={p.requires_grad}, dtype={p.dtype}, device={p.device}')
 
 
-def freeze_parameters(model: nn.Module, freeze_parameters_ratio: float, freeze_parameters: List[str], freeze_parameters_patterns: Optional[List[Union[str, re.Pattern]]]) -> None:
+def freeze_parameters(model: nn.Module, freeze_parameters_ratio: float, freeze_parameters: List[str],
+                      freeze_parameters_patterns: Optional[List[Union[str, re.Pattern]]]) -> None:
     if freeze_parameters_ratio > 0:
         n_parameters = get_n_params_grads(model)[0]
         n_parameters = np.array(n_parameters, dtype=np.int64)
@@ -99,7 +100,7 @@ def freeze_parameters(model: nn.Module, freeze_parameters_ratio: float, freeze_p
             for freeze_p in freeze_parameters:
                 if n.startswith(freeze_p):
                     p.requires_grad = False
-    
+
     if len(freeze_parameters_patterns) > 0:
         compiled_patterns = []
         for pattern in freeze_parameters_patterns:
@@ -117,7 +118,9 @@ def freeze_parameters(model: nn.Module, freeze_parameters_ratio: float, freeze_p
                     p.requires_grad = False
                     break
 
-def activate_parameters(model: nn.Module, additional_trainable_parameters: List[str], trainable_parameters_patterns: Optional[List[Union[str, re.Pattern]]]) -> None:
+
+def activate_parameters(model: nn.Module, additional_trainable_parameters: List[str],
+                        trainable_parameters_patterns: Optional[List[Union[str, re.Pattern]]]) -> None:
     has_activate = False
     if len(additional_trainable_parameters) > 0:
         for n, p in model.named_parameters():
@@ -127,7 +130,7 @@ def activate_parameters(model: nn.Module, additional_trainable_parameters: List[
                     has_activate = True
         if not has_activate:
             logger.warning('len(additional_trainable_parameters) > 0 but no parameters are activated. '
-                        f'additional_trainable_parameters: {additional_trainable_parameters}')
+                           f'additional_trainable_parameters: {additional_trainable_parameters}')
     has_activate = False
     if len(trainable_parameters_patterns) > 0:
         compiled_patterns = []
@@ -148,7 +151,7 @@ def activate_parameters(model: nn.Module, additional_trainable_parameters: List[
                     break
         if not has_activate:
             logger.warning('len(trainable_parameters_patterns) > 0 but no parameters are activated. '
-                        f'trainable_parameters_patterns: {trainable_parameters_patterns}')
+                           f'trainable_parameters_patterns: {trainable_parameters_patterns}')
 
 
 def time_synchronize() -> float:

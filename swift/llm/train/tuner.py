@@ -378,7 +378,8 @@ class TunerMixin:
             model.train()
             model.requires_grad_(True)
 
-            freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_patterns)
+            freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters,
+                              args.freeze_parameters_patterns)
             if len(args.trainable_parameters) > 0 or len(args.trainable_parameters_patterns) > 0:
                 activate_parameters(model, args.trainable_parameters, args.trainable_parameters_patterns)
             if use_torchacc() and args.resume_from_checkpoint:
