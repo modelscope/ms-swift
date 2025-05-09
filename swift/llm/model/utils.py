@@ -14,7 +14,6 @@ from transformers import PretrainedConfig
 from swift.hub import get_hub
 from swift.llm import to_device
 from swift.utils import deep_getattr, get_logger, safe_ddp_context, subprocess_run
-import sys
 
 logger = get_logger()
 

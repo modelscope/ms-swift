@@ -30,7 +30,7 @@ class ModelArguments:
         rope_scaling (Literal): Type of rope scaling to use. Default is None.
         device_map (Optional[str]): Configuration for device mapping. Default is None.
         local_repo_path (Optional[str]): Path to the local github repository for model. Default is None.
-        init_strategy (Literal): Strategy to initial the uninitialized model weights. Default is None.
+        init_strategy (Literal): Strategy to initialize all uninitialized parameters. Default is None.
     """
     model: Optional[str] = None  # model id or model path
     model_type: Optional[str] = field(
