@@ -211,7 +211,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         try:
             trainer.train(trainer.args.resume_from_checkpoint)
         finally:
-            return self._save_trainer_state(trainer)
+            res = self._save_trainer_state(trainer)
+        return res
 
     def _prepare_callbacks(self):
         from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback
