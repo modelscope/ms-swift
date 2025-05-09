@@ -84,7 +84,9 @@ def show_layers(model: nn.Module, max_lines: Optional[int] = 20) -> None:
         logger.info(f'[{n}]: requires_grad={p.requires_grad}, dtype={p.dtype}, device={p.device}')
 
 
-def freeze_parameters(model: nn.Module, freeze_parameters_ratio: float, freeze_parameters: List[str],
+def freeze_parameters(model: nn.Module,
+                      freeze_parameters_ratio: float,
+                      freeze_parameters: List[str],
                       freeze_parameters_regex: Optional[str] = None) -> None:
     if freeze_parameters_ratio > 0:
         n_parameters = get_n_params_grads(model)[0]
@@ -113,7 +115,8 @@ def freeze_parameters(model: nn.Module, freeze_parameters_ratio: float, freeze_p
                 p.requires_grad = False
 
 
-def activate_parameters(model: nn.Module, additional_trainable_parameters: List[str],
+def activate_parameters(model: nn.Module,
+                        additional_trainable_parameters: List[str],
                         trainable_parameters_regex: Optional[str] = None) -> None:
     has_activate = False
     if len(additional_trainable_parameters) > 0:
@@ -124,7 +127,7 @@ def activate_parameters(model: nn.Module, additional_trainable_parameters: List[
                     has_activate = True
         if not has_activate:
             logger.warning('len(additional_trainable_parameters) > 0 but no parameters are activated. '
-                f'additional_trainable_parameters: {additional_trainable_parameters}')
+                           f'additional_trainable_parameters: {additional_trainable_parameters}')
 
     has_activate = False
     if trainable_parameters_regex is not None:
@@ -140,8 +143,8 @@ def activate_parameters(model: nn.Module, additional_trainable_parameters: List[
                 has_activate = True
 
         if not has_activate:
-            logger.warning("trainable_parameters_regex is provided but no parameters are activated. "
-                f"trainable_parameters_regex: {trainable_parameters_regex}")
+            logger.warning('trainable_parameters_regex is provided but no parameters are activated. '
+                           f'trainable_parameters_regex: {trainable_parameters_regex}')
 
 
 def time_synchronize() -> float:
