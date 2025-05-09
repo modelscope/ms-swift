@@ -123,10 +123,8 @@ def activate_parameters(model: nn.Module, additional_trainable_parameters: List[
                     p.requires_grad = True
                     has_activate = True
         if not has_activate:
-            logger.warning(
-                "len(additional_trainable_parameters) > 0 but no parameters are activated. "
-                f"additional_trainable_parameters: {additional_trainable_parameters}"
-            )
+            logger.warning('len(additional_trainable_parameters) > 0 but no parameters are activated. '
+                f'additional_trainable_parameters: {additional_trainable_parameters}')
 
     has_activate = False
     if trainable_parameters_regex is not None:
