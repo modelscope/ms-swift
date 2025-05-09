@@ -70,6 +70,7 @@
 - **模型量化**：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
+- 🎁 2025.05.09: GRPO中的奖励模型支持自定义处理逻辑，GenRM的例子参考[这里](./docs/source/Instruction/GRPO.md#自定义奖励模型)
 - 🎁 2025.04.15: SWIFT论文已经被AAAI 2025接收, 论文地址在[这里](https://ojs.aaai.org/index.php/AAAI/article/view/35383).
 - 🎁 2025.03.23: SWIFT支持了多轮GRPO, 用于构建多轮对话场景的训练(例如agent tool calling), 请查看[训练脚本](examples/train/grpo/internal/train_multi_round.sh).
 - 🎁 2025.03.16: SWIFT支持了Megatron的并行技术进行训练，请查看[Megatron-SWIFT训练文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Megatron-SWIFT训练.html)。
