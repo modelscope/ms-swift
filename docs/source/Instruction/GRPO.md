@@ -10,6 +10,11 @@ pip install math_verify==0.5.2 # reward function
 pip install -U trl
 ```
 
+**更新日志**
+
+- **2025-05-09** — 支持生成式奖励模型，并通过reward_model_plugin自定义奖励模型逻辑。有关更多详细信息，请参阅[自定义奖励模型](#自定义奖励模型)部分。
+
+
 **FAQ**
 1. 训练过程中 loss 接近0 是正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
 2. 训练的steps怎么计算? 参考[issue](https://github.com/modelscope/ms-swift/issues/3912)

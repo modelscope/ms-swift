@@ -317,9 +317,8 @@ orms['external_r1v_acc'] = MultiModalAccuracyORM
 orms['external_code_reward'] = CodeReward
 orms['external_code_format'] = CodeFormat
 
+
 # For genrm you can refer to swift/llm/plugin/rm_plugin/GenRMPlugin
-
-
 class CustomizedRMPlugin:
     """
     Customized Reward Model Plugin, same to DefaultRMPlugin

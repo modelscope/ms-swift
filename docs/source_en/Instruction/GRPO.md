@@ -11,6 +11,11 @@ pip install math_verify # reward function
 pip install -U trl
 ```
 
+**Dev Log**
+
+- **2025-05-09** — Implemented support for the **Generative Reward Model** and enabled customized reward model logic through the reward plugin. For more details, refer to the [Customized Reward Models](#customized-reward-models) section.
+
+
 **FAQ**
 1. It is normal for the loss to approach zero during training. Refer to this [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851) for more details.
 2. How to calculate the training steps? Refer to this [issue](https://github.com/modelscope/ms-swift/issues/3912) for more details.
@@ -351,6 +356,51 @@ For multi-node training, refer to [here](../../../examples/train/grpo/multi_node
 
 Note : In the internal integration mode, the GPU configurations and training parameters must be identical across different nodes.
 
+## Customized Reward Models
+By default, a reward model refers to classification models that include a value head (commonly known as Output Reward Model (ORM)). These models score the outputs of other models, producing a scalar value that represents the quality of the response.
+
+Currently, we can leverage the **reward_model_plugin** to flexibly customize the processing logic of these reward models. This enables the implementation of advanced techniques such as Generative Reward Models, which include:
+
+- Customizing the Model's System Prompt: Defining specific instructions and context to guide the evaluation process.
+- Handling Model Interaction History: Managing the conversational context to provide meaningful and contextually aware evaluations.
+- Defining Custom Evaluation Criteria: Setting unique standards and metrics for assessing the model's responses beyond default accuracy and relevance measures.
+
+Through the **reward_model_plugin**, developers can tailor the reward evaluation process to meet the specific requirements of their applications. This flexibility allows for more nuanced and effective reward-based training strategies.
+
+We provide a simple generative reward model example (GenRMPlugin) in [rm_plugin.py](../../../swift/plugin/rm_plugin.py)
+
+You can also customized your reward model plugin in [plugin.py](../../../examples/train/grpo/plugin/plugin.py), and register with `external_plugins` argument
+
+Here is an example training script to train GRPO with two reward models: one ORM and one Gen-RM (using qwen2.5-3B-Instruct in this case):
+
+```
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=8 \
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen2.5-7B \
+    --dataset AI-MO/NuminaMath-TIR#5000 \
+    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --reward_funcs format \
+    --reward_model Qwen/Qwen2.5-3B-Instruct Shanghai_AI_Laboratory/internlm2-7b-reward \
+    --reward_model_plugin genrm my_rmplugin \
+    --reward_weights 0.1 1 1 \
+    --num_infer_workers 8 \
+    --vllm_gpu_memory_utilization 0.5 \
+    --sleep_level 1 \
+    --offload_model true \
+    --offload_optimizer true \
+    --gc_collect_after_offload true \
+    --log_completions true \
+    --deepspeed zero3
+```
+
+Notes:
+
+1. In the GRPOTrainer, reward_model instances are appended sequentially to reward_funcs. Therefore, the order of reward_weights corresponds to [reward_funcs, reward_model].
+2. The default value for reward_model_plugin is default, which uses the ORM processing logic.
+
+
 ## DAPO
 Decoupled Clip and Dynamic Sampling Policy Optimization (DAPO) introduces several tricks based on GRPO, which are:
 - Clip Higher
@@ -412,4 +462,9 @@ swift rlhf \
     --num_iterations 1 \
     --report_to tensorboard wandb \
     --beta 0.0 \
+    --sleep_level 1 \
+    --offload_model true \
+    --offload_optimizer true \
+    --gc_collect_after_offload true \
+    --log_completions true
 ```
