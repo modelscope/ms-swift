@@ -1,8 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from typing import List, Union
 
 from swift.utils import get_logger, get_model_parameter_info
-from ..argument import RLHFArguments
+from ..argument import BaseArguments, RLHFArguments
 from ..model import HfConfigFactory
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft
@@ -33,8 +34,15 @@ class SwiftRLHF(SwiftSft):
             model_type = getattr(args, f'{key}_model_type')
             model_revision = getattr(args, f'{key}_model_revision')
             adapters = args.adapters if key == 'ref' else args.reward_adapters
-            task_type = args.task_type
+            task_type = None
             num_labels = None
+            if os.path.exists(os.path.join(model_id_or_path, 'args.json')):
+                # local output reward model, read task_type from args.json
+                model_args = BaseArguments.from_pretrained(model_id_or_path)
+                if hasattr(model_args, task_type):
+                    task_type = model_args.task_type
+            if task_type == 'seq_cls':
+                num_labels = 1
 
             model, processor = args.get_model_processor(
                 model=model_id_or_path,
