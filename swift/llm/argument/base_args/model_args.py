@@ -174,4 +174,5 @@ class ModelArguments:
             'task_type': self.task_type,
             'num_labels': self.num_labels,
             'problem_type': self.problem_type,
+            'init_strategy': self.init_strategy,
         }
