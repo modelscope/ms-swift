@@ -45,19 +45,20 @@ class MegatronSft(SwiftSft):
 
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
-        with patch_training_log(), patch_megatron_data_collator(data_collator):
-            pretrain(
-                datasets_provider,
-                args.megatron_model_meta.model_provider,
-                ModelType.encoder_or_decoder,
-                forward_step,
-                args_defaults=args.extra_args)
-
-        # Visualization
-        if is_master():
-            images_dir = os.path.join(args.save, 'images')
-            logger.info(f'images_dir: {images_dir}')
-            plot_images(images_dir, args.tensorboard_dir)
+        try:
+            with patch_training_log(), patch_megatron_data_collator(data_collator):
+                pretrain(
+                    datasets_provider,
+                    args.megatron_model_meta.model_provider,
+                    ModelType.encoder_or_decoder,
+                    forward_step,
+                    args_defaults=args.extra_args)
+        finally:
+            # Visualization
+            if is_master():
+                images_dir = os.path.join(args.save, 'images')
+                logger.info(f'images_dir: {images_dir}')
+                plot_images(images_dir, args.tensorboard_dir)
 
 
 def megatron_sft_main(args: Union[List[str], MegatronTrainArguments, None] = None):

@@ -41,9 +41,15 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
             os.makedirs(self.save, exist_ok=True)
 
     def __post_init__(self):
+        if self.sequence_parallel_size > 1:
+            # please use `--sequence_parallel` or `--context_parallel_size`.
+            self.sequence_parallel_size = 1
         self.load = to_abspath(self.load, check_path_exist=True)
         BaseArguments.__post_init__(self)
         self._init_save()
         self.seq_length = self.seq_length or self.max_length
         if self.streaming:
             self.dataloader_type = 'external'
+            if self.num_workers > 1:
+                self.num_workers = 1
+                logger.info('Using streaming dataset, setting args.num_workers to 1.')
