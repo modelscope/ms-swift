@@ -311,11 +311,20 @@ class SwiftMixin:
 
     def train(self, *args, **kwargs):
         if self.model_meta.is_multimodal:
-            models = list(
-                set([
-                    v for k, v in self.__dict__.items()
-                    if isinstance(v, nn.Module) and k in {'model', 'ref_model', 'reward_model', 'value_model'}
-                ]))
+            models = []
+            for model_name in ['model', 'ref_model', 'value_model']:
+                model = getattr(self, model_name, None)
+                if isinstance(model, nn.Module):
+                    models.append(model)
+
+            reward_model = getattr(self, 'reward_model', None)
+            if reward_model is not None:
+                if isinstance(reward_model, list):
+                    models.extend([m for m in reward_model if isinstance(m, nn.Module)])
+                elif isinstance(reward_model, nn.Module):
+                    models.append(reward_model)
+
+            models = list(set(models))  # Deduplicate
             self.template.register_post_encode_hook(models)
             logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}.')
         self._save_initial_model(self.args.output_dir)
