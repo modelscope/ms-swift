@@ -20,7 +20,7 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
-pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.11.0
+pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.12.0
 ```
 
 Alternatively, you can also use the image:
@@ -29,7 +29,7 @@ modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubunt
 modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
 ```
 
-The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.11.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.11.0)).
+The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.12.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.12.0)).
 
 
 ## Quick Start Example
@@ -151,13 +151,14 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
 - no_rope_fusion: Default is False. Specify `--no_rope_fusion true` to disable rope fusion.
 - no_gradient_accumulation_fusion: Default is False. Specify `--no_gradient_accumulation_fusion true` to disable gradient accumulation fusion.
 - 🔥cross_entropy_loss_fusion: Enables cross-entropy loss calculation fusion. Default is False.
-- 🔥use_flash_attn: Uses FlashAttention mechanism implementation, default is False.
+- 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Defaults to auto.
 - optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
 - dataloader_type: Default is 'cyclic', options are 'single', 'cyclic', 'external'. If `--streaming` is enabled, set it to external.
 - manual_gc: Disables the default garbage collector and manually triggers garbage collection. Default is False.
 - manual_gc_interval: Interval at which garbage collection is triggered. Default is 0.
 - seed: Random seed for python, numpy, pytorch, and cuda, default is 42.
 - 🔥num_workers: Number of workers for the dataloader, default is 4.
+  - Note: If `--streaming true` is set, it will be set to 1.
 seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the dataset length, please use the `--max_length` parameter in the basic arguments; there is no need to set this parameter.
 - use_cpu_initialization: Initializes weights on the CPU, default is False. Used during HF and MCore weight conversion.
 - no_create_attention_mask_in_dataloader: Does not create an attention mask in the dataloader, default is True.

@@ -126,11 +126,11 @@ loss_scale_map = {
     'last_round': LastRoundLossScale(),
     'default': LossScale(),
     'all': TrainAllLossScale(),
+    'ignore_empty_think': IgnoreEmptyThink(),
     # agent
-    'agentflan': AgentFlanLossScale(),
     'react': REACTLossScale(),
-    'alpha_umi': AlphaUmiLossScale(),
-    'qwen': QwenLossScale(),
     'hermes': HermesLossScale(),
-    'ignore_empty_think': IgnoreEmptyThink()
+    'qwen': QwenLossScale(),
+    'agentflan': AgentFlanLossScale(),
+    'alpha_umi': AlphaUmiLossScale(),
 }
