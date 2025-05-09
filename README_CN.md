@@ -70,25 +70,23 @@
 - **模型量化**：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
-- 🎁 2025.04.15: SWIFT论文已经被AAAI 2025接收, 论文地址在[这里](https://ojs.aaai.org/index.php/AAAI/article/view/35383).
-- 🎁 2025.03.23: SWIFT支持了多轮GRPO, 用于构建多轮对话场景的训练(例如agent tool calling), 请查看[训练脚本](examples/train/grpo/internal/train_multi_round.sh).
-- 🎁 2025.03.16: SWIFT支持了Megatron的并行技术进行训练，请查看[Megatron-SWIFT训练文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Megatron-SWIFT训练.html)。
-- 🎁 2025.03.15: SWIFT支持了gme（多模态）embedding模型的微调，请查看[训练脚本](examples/train/embedding/train_gme.sh)。
-- 🎁 2025.03.13: 我们提供了一个仅使用4GPU(4*80G)来训练72B模型的脚本, 请查看[这里](examples/train/grpo/internal/train_72b_4gpu.sh)
-- 🎁 2025.03.05: 支持GRPO的hybrid模式(rollout和actor在同一GPU上, rollout可以进行offload), 同时支持了vllm的tensor parallel, 查看[训练脚本](examples/train/grpo/internal/multi_gpu_mp_colocate.sh)
-- 🎁 2025.02.21: 我们测试了GRPO算法的性能，并且使用一些tricks使[训练速度提高到300%](examples/train/grpo/internal/full_lmdeploy.sh). WanDB表格请查看[这里](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz)
-- 🎁 2025.02.21: 支持大模型API蒸馏采样，请查看[示例](examples/sampler/distill/distill.sh)
-- 🎁 2025.02.17: 支持SwanLab, 仅需添加[几个新的参数](docs/source/Instruction/命令行参数.md#swanlab)就可以在swanlab上验证你的训练效果
-- 🎁 2025.02.16: 在GRPO算法中支持LMDeploy, 请查看`--use_lmdeploy true`. 具体参考[这个脚本](examples/train/grpo/internal/full_lmdeploy.sh)
-- 🔥 2025.02.12: 支持GRPO(Group Relative Policy Optimization) 训练算法，训练脚本可以在[这里](docs/source/Instruction/GRPO.md)找到
-- 🎁 2025.02.10: SWIFT支持了embedding模型的微调，请查看[训练脚本](examples/train/embedding/train_gte.sh)。
-- 🎁 2025.01.23: SWIFT支持了`sample`命令, 这是一个对CoT和RFT非常重要的命令。同时, 我们支持了一个[强化微调脚本](docs/source/Instruction/强化微调.md)。
-- 🎁 2024.12.04: **SWIFT3.0**大版本更新。请查看[发布说明和更改](https://swift.readthedocs.io/zh-cn/latest/Instruction/ReleaseNote3.0.html)。
-- 🎉 2024.08.12: SWIFT论文已经发布到arXiv上，可以点击[这里](https://arxiv.org/abs/2408.05517)阅读。
+- 🎁 2025.04.15: ms-swift论文已经被AAAI 2025接收，论文地址在[这里](https://ojs.aaai.org/index.php/AAAI/article/view/35383)。
+- 🎁 2025.03.23: 支持了多轮GRPO，用于构建多轮对话场景的训练(例如agent tool calling)，请查看[训练脚本](examples/train/grpo/internal/train_multi_round.sh)。
+- 🎁 2025.03.16: 支持了Megatron的并行技术进行训练，请查看[Megatron-SWIFT训练文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Megatron-SWIFT训练.html)。
+- 🎁 2025.03.15: 支持纯文本和多模态模型的embedding模型的微调，请查看[训练脚本](examples/train/embedding)。
+- 🎁 2025.03.05: 支持GRPO的hybrid模式，4GPU(4*80G)训练72B模型的脚本参考[这里](examples/train/grpo/internal/train_72b_4gpu.sh)。同时支持vllm的tensor并行，训练脚本参考[这里](examples/train/grpo/internal/multi_gpu_mp_colocate.sh)。
+- 🎁 2025.02.21: GRPO算法支持使用LMDeploy，训练脚本参考[这里](examples/train/grpo/internal/full_lmdeploy.sh)。此外测试了GRPO算法的性能，使用一些tricks使训练速度提高到300%。WanDB表格请查看[这里](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz)。
+- 🎁 2025.02.21: 支持`swift sample`命令。强化微调脚本参考[这里](docs/source/Instruction/强化微调.md)，大模型API蒸馏采样脚本参考[这里](examples/sampler/distill/distill.sh)。
+- 🔥 2025.02.12: 支持GRPO (Group Relative Policy Optimization) 训练算法，文档参考[这里](docs/source/Instruction/GRPO.md)。
+- 🎁 2024.12.04: **ms-swift3.0**大版本更新。请查看[发布说明和更改](https://swift.readthedocs.io/zh-cn/latest/Instruction/ReleaseNote3.0.html)。
+<details><summary>更多</summary>
+
+- 🎉 2024.08.12: ms-swift论文已经发布到arXiv上，可以点击[这里](https://arxiv.org/abs/2408.05517)阅读。
 - 🔥 2024.08.05: 支持使用[evalscope](https://github.com/modelscope/evalscope/)作为后端进行大模型和多模态模型的评测。
 - 🔥 2024.07.29: 支持使用[vllm](https://github.com/vllm-project/vllm), [lmdeploy](https://github.com/InternLM/lmdeploy)对大模型和多模态大模型进行推理加速，在infer/deploy/eval时额外指定`--infer_backend vllm/lmdeploy`即可。
 - 🔥 2024.07.24: 支持对多模态大模型进行人类偏好对齐训练，包括DPO/ORPO/SimPO/CPO/KTO/RM/PPO。
 - 🔥 2024.02.01: 支持Agent训练！训练算法源自这篇[论文](https://arxiv.org/pdf/2309.00986.pdf)。
+</details>
 
 ## 🛠️ 安装
 使用pip进行安装：
