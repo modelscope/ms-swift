@@ -210,7 +210,7 @@ class GenRMPlugin(DefaultRMPlugin):
                     response = choice.message.content
                     reward = self.extract_reward(response)
                     cur_rewards.append(reward)
-
+                cur_rewards = [r for r in cur_rewards if r is not None]
                 if cur_rewards:
                     average_reward = sum(cur_rewards) / len(cur_rewards)
                 else:
@@ -219,7 +219,7 @@ class GenRMPlugin(DefaultRMPlugin):
 
                 rewards.append(average_reward)
             except Exception as e:
-                logger.error(f'Error computing reward for index {idx}: {e}')
+                logger.error(f'Error computing reward: {e}')
                 rewards.append(0.0)  # Assign default reward score on failure
         return rewards
 
