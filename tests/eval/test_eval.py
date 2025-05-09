@@ -13,7 +13,20 @@ def test_eval_native():
             eval_dataset='arc',
             infer_backend=infer_backend,
             eval_backend='Native',
-            eval_limit=10))
+            eval_limit=10,
+            eval_generation_config={
+                'max_new_tokens': 128,
+                'temperature': 0.1,
+                'top_p': 0.95,
+                'top_k': 50,
+                'repetition_penalty': 1.2,
+                'do_sample': True
+            },
+            extra_eval_args={
+                'stream': True,
+                'ignore_errors': True
+                },
+            ))
 
 
 def test_eval_llm():
