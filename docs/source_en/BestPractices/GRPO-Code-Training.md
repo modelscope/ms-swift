@@ -31,15 +31,16 @@ dataset example
 The training process utilizes two reward functions: `code_reward` and `code_format`. For implementation details, refer to the [code]((../../../examples/train/grpo/plugin/plugin.py)).
 
 
-- `code_reward` Executes the generated code using [e2b](https://e2b.dev/). Validates the code against the test cases in the dataset and assigns a reward value based on correctness.
+- `code_reward` Executes the generated code using [e2b](https://e2b.dev/) or [judge0](https://judge0.com/). Validates the code against the test cases in the dataset and assigns a reward value based on correctness.
 - `code_format` Requires the model to produce formatted responses that include code blocks.
 
-Note: the current implementation supports only Python data. You can extend support to other programming languages by modifying the `CodeReward.__call__ ` method.
+Note: Currently, executing code through E2B only supports the Python language. If you need to execute code in other languages, you can use Judge0([judge0 supported languages](https://github.com/judge0/judge0?tab=readme-ov-file#supported-languages)).
 
 ## Training Script
 
-Register on [e2b](https://e2b.dev/dashboard) and obtain your E2B_API_KEY.
-
+- Register on [e2b](https://e2b.dev/dashboard) to obtain your E2B_API_KEY and set it as an environment variable.
+- Add `external_code_reward` as a reward function with `--reward_funcs`.
+- Set `--external_plugins` to the path of plugin.py.
 
 ```bash
 E2B_API_KEY=xxx \
@@ -82,6 +83,54 @@ swift rlhf \
     --log_completions true \
     --report_to wandb
 ```
+### judge0
+- Set environment variables:
+    - (Required) JUDGE0_ENDPOINT: The endpoint address for accessing Judge0.
+    - (Optional) JUDGE0_X_AUTH_TOKEN: The access token for Judge0.
+- Add `external_code_reward_by_judge0` as a reward function with `--reward_funcs`.
+- Set `--external_plugins` to the path of `plugin.py`.
 
+```bash
+JUDGE0_ENDPOINT=xxx \
+JUDGE0_X_AUTH_TOKEN=xxx \
+WANDB_API_KEY=xxx \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=7 \
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --reward_funcs external_code_reward_by_judge0 external_code_format \
+    --reward_weights 1.0 0.1 \
+    --use_vllm true \
+    --vllm_device auto \
+    --vllm_gpu_memory_utilization 0.7 \
+    --vllm_max_model_len 8192 \
+    --train_type lora \
+    --torch_dtype bfloat16 \
+    --dataset 'open-r1/verifiable-coding-problems-python-10k' \
+    --max_completion_length 2048 \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
+    --learning_rate 1e-6 \
+    --gradient_accumulation_steps 1 \
+    --eval_steps 200 \
+    --save_steps 200 \
+    --save_total_limit 2 \
+    --logging_steps 5 \
+    --max_length 4096 \
+    --output_dir output \
+    --warmup_ratio 0.05 \
+    --dataloader_num_workers 4 \
+    --dataset_num_proc 4 \
+    --num_generations 14 \
+    --temperature 0.9 \
+    --num_infer_workers 1 \
+    --system 'examples/train/grpo/prompt.txt' \
+    --deepspeed zero2 \
+    --log_completions true \
+    --report_to wandb
+```
 Training Reward Curve
 ![Training Reward Curve](../../resources/grpo_code.png)
