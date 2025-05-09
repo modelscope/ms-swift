@@ -351,7 +351,7 @@ def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] 
             setattr(submodel, key, MethodType(_get_new_func(key), submodel))  # fix device_map
 
 
-class InitModelStrategy():
+class InitModelStrategy:
 
     @staticmethod
     def is_uninitialized(param: torch.Tensor) -> bool:
