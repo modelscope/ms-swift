@@ -15,6 +15,11 @@ class SwiftRLHF(SwiftSft):
     args: args_class
 
     def _prepare_model_tokenizer(self):
+        if self.args.sequence_parallel_size > 1:
+            # Duplicate calling is allowd to promise this function will
+            # be called before model initializing.
+            from swift.trainers.sequence_parallel import sequence_parallel
+            sequence_parallel.init_sequence_parallel(self.args.sequence_parallel_size)
         from swift.llm.infer.utils import prepare_adapter
         args = self.args
         for key in ['ref', 'reward', 'value']:
@@ -47,6 +52,13 @@ class SwiftRLHF(SwiftSft):
 
             model = prepare_adapter(args, model, adapters)
             if origin_key in {'ref', 'reward'}:
+                if self.args.sequence_parallel_size > 1:
+                    from swift.trainers.sequence_parallel import sequence_parallel
+                    if hasattr(model, 'model_meta'):
+                        is_multimodal = model.model_meta.is_multimodal
+                    else:
+                        is_multimodal = model.model.model_meta.is_multimodal
+                    sequence_parallel.prepare_model(model, processor, split_in_forward=is_multimodal)
                 model.requires_grad_(False).eval()
             else:
                 model = self.prepare_model(args, model, task_type=task_type)
