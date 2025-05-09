@@ -28,6 +28,7 @@ class DefaultRMPlugin:
     def __call__(self, inputs):
         batched_inputs = [self.template.encode(deepcopy(infer_request)) for infer_request in inputs]
         reward_inputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
+        reward_inputs.pop('labels')
 
         with torch.inference_mode():
             return self.model(**reward_inputs).logits[:, 0]

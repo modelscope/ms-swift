@@ -151,7 +151,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.reward_model_plugins = [None] * len(self.reward_funcs)
         if reward_model is not None:
             reward_template = kwargs.pop('reward_template')
-            reward_plugins = kwargs.pop('reward_model_plugin', None)
+            reward_plugins = args.reward_model_plugin
             if reward_plugins is None:
                 reward_plugins = ['default'] * len(reward_model)
             assert len(reward_plugins) == len(reward_model), (

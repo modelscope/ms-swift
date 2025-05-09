@@ -355,7 +355,47 @@ swift rlhf \
 
 注：内部集成模式下，需要不同节点的GPU配置以及训练参数相同
 
+## 自定义奖励模型
+默认情况下，奖励模型指的是包含数值头的分类模型（通常称为输出奖励模型（ORM））。这些模型对其他模型的输出进行评分，产生一个标量值，表示模型响应的质量。
 
+目前，我们可以利用reward_model_plugin灵活地自定义奖励模型的处理逻辑。这使得实现诸如生成式奖励模型等技术成为可能，包括：
+- 自定义模型的系统提示：定义特定的指令和上下文以指导评估过程。
+- 处理模型交互历史：管理对话上下文，以提供有意义且具有上下文感知的评估。
+- 定义自定义评估标准：设置独特的标准和度量，用于评估模型的响应，超越默认的准确性和相关性衡量标准。
+
+通过reward_model_plugin，开发者可以针对其应用的特定需求定制奖励评估过程。这种灵活性允许更细致和有效的基于奖励的训练策略。
+
+我们在 [rm_plugin.py](../../../swift/plugin/rm_plugin.py) 中提供了一个简单的生成式奖励模型示例（GenRMPlugin）。
+
+您还可以在 [plugin.py](../../../examples/train/grpo/plugin/plugin.py) 中自定义您的奖励模型插件，并使用 `external_plugins` 参数进行注册。
+
+以下是一个训练脚本示例，用于使用两个奖励模型，包括一个 ORM 和一个 Gen-RM（此处使用 qwen2.5-3B-Instruct）进行 GRPO 训练：
+
+```
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=8 \
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen2.5-7B \
+    --dataset AI-MO/NuminaMath-TIR#5000 \
+    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --reward_funcs format \
+    --reward_model Qwen/Qwen2.5-3B-Instruct Shanghai_AI_Laboratory/internlm2-7b-reward \
+    --reward_model_plugin genrm my_rmplugin \
+    --reward_weights 0.1 1 1 \
+    --num_infer_workers 8 \
+    --vllm_gpu_memory_utilization 0.5 \
+    --sleep_level 1 \
+    --offload_model true \
+    --offload_optimizer true \
+    --gc_collect_after_offload true \
+    --log_completions true \
+    --deepspeed zero3
+```
+
+注意：
+1. 在 GRPOTrainer 中，reward_model 会依次append到 reward_funcs 中。因此，reward_weights 的顺序对应 [reward_funcs, reward_model]。
+2. reward_model_plugin 默认为 default，即使用 ORM 处理逻辑。
 
 
 ## DAPO
