@@ -114,7 +114,7 @@ def freeze_parameters(model: nn.Module, freeze_parameters_ratio: float, freeze_p
 
 
 def activate_parameters(model: nn.Module, additional_trainable_parameters: List[str],
-                        trainable_parameters_regex: Optional[str] = None,) -> None:
+                        trainable_parameters_regex: Optional[str] = None) -> None:
     has_activate = False
     if len(additional_trainable_parameters) > 0:
         for n, p in model.named_parameters():
