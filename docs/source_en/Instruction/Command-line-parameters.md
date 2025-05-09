@@ -186,11 +186,11 @@ Other important parameters:
 #### Full Arguments
 
 - freeze_parameters: Prefix of the parameters to be frozen, default is `[]`.
-- freeze_parameters_patterns: Regex for matching the parameters to be frozen，default is `[]`.
+- freeze_parameters_regex: Regex for matching the parameters to be frozen，default is None.
 - freeze_parameters_ratio: Ratio of parameters to freeze from bottom to top, default is 0. It can be set to 1 to freeze all parameters, and trainable parameters can be set in conjunction with this.
 - trainable_parameters: Prefix of additional trainable parameters, default is `[]`.
-- trainable_parameters_patterns: Regex for matching additional trainable parameters, default is `[]`.
-  - Note: `trainable_parameters`, `trainable_parameters_patterns` takes precedence over `freeze_parameters`, `freeze_parameters_patterns` and `freeze_parameters_ratio`. When full parameter training is specified, all modules are set to trainable, then some parameters are frozen according to `freeze_parameters`, `freeze_parameters_patterns` and `freeze_parameters_ratio`, and finally, some parameters are reopened for training according to `trainable_parameters`,`trainable_parameters_patterns`.
+- trainable_parameters_regex: Regex for matching additional trainable parameters, default is None.
+  - Note: `trainable_parameters`, `trainable_parameters_regex` takes precedence over `freeze_parameters`, `freeze_parameters_regex` and `freeze_parameters_ratio`. When full parameter training is specified, all modules are set to trainable, then some parameters are frozen according to `freeze_parameters`, `freeze_parameters_regex` and `freeze_parameters_ratio`, and finally, some parameters are reopened for training according to `trainable_parameters`,`trainable_parameters_regex`.
 
 #### LoRA
 
