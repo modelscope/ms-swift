@@ -45,7 +45,7 @@ Hints:
 - 🔥split_dataset_ratio: Ratio for splitting the training set and validation set when val_dataset is not specified, default is 0.01. Set to 0 if no validation set split is needed.
 - data_seed: Random seed for the dataset, default is 42.
 - 🔥dataset_num_proc: Number of processes for dataset preprocessing, default is 1.
-- 🔥load_from_cache_file: Whether to load the dataset from the cache, default is True.
+- 🔥load_from_cache_file: Whether to load the dataset from the cache, default is False.
 - dataset_shuffle: Whether to shuffle the dataset. Defaults to True.
   - Note: The shuffling in CPT/SFT consists of two parts: dataset shuffling, controlled by `dataset_shuffle`; and shuffling in the train_dataloader, controlled by `train_dataloader_shuffle`.
 - val_dataset_shuffle: Whether to perform shuffling on the val_dataset. Default is False.
@@ -76,7 +76,11 @@ Hints:
 - response_prefix: The prefix character for the response, for example, setting the response_prefix to `'<think>\n'` for QwQ-32B. The default is None, and it is automatically set according to the model.
   - Note: If you are training the deepseek-r1/qwq model with a dataset that does not include `<think>...</think>`, please pass `--response_prefix ''` additionally when inferring after training.
 - padding_side: Padding side when `batch_size>=2` during training. Options are 'left' and 'right', with 'right' as the default. (For inference with batch_size>=2, only left padding is applied.)
-- loss_scale: Setting for the loss weight of training tokens. Default is `'default'`, meaning all responses (including history) are calculated with a cross-entropy loss of 1. Options are 'default', 'last_round', 'all', and agent-specific loss scales: 'react', 'agentflan', 'alpha_umi', and 'qwen'. 'last_round' means calculating only the loss of the last round's response, and 'all' calculates the loss for all tokens. For agent parts, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
+- loss_scale: Weight setting for the loss of training tokens. Default is `'default'`, which means that all responses (including history) are used with a weight of 1 in cross-entropy loss, and the loss from the corresponding `tool_response` in the agent_template is ignored. Possible values include: 'default', 'last_round', 'all', 'ignore_empty_think', and agent-specific options: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi'. For more details about the agent part, please refer to [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
+  - 'last_round': Only calculate the loss for the last round of response.
+  - 'all': Calculate the loss for all tokens.
+  - 'ignore_empty_think': On top of 'default', ignore the loss calculation for empty `'<think>\n\n</think>\n\n'`. See [this issue](https://github.com/modelscope/ms-swift/issues/4030) for more details.
+  - `'react'`, `'hermes'`, `'qwen'`: On top of `'default'`, set the loss weight of the `tool_call` part to 2.
 - sequence_parallel_size: Sequence parallelism size, default is 1. Currently supported in pt/sft. The training script refers to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/long_text/sequence_parallel.sh).
 - use_chat_template: Use chat template or generation template, default is `True`. `swift pt` is automatically set to the generation template.
 - template_backend: Selection of the template backend. Options are 'swift' and 'jinja', with 'swift' as the default. If using jinja, it applies transformer's `apply_chat_template`.

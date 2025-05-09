@@ -63,6 +63,10 @@ class SwiftMixin:
                  optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
                  preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
                  **kwargs) -> None:
+        if not hasattr(train_dataset, '__len__') and args.dataloader_num_workers > 1:
+            args.dataloader_num_workers = 1
+            logger.warning('Using IterableDataset, setting args.dataloader_num_workers to 1.')
+
         if args.check_model and hasattr(model, 'model_dir'):
             from swift.utils.logger import ms_logger_ignore_error
             with ms_logger_ignore_error():
