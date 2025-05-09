@@ -98,8 +98,10 @@ class TunerArguments:
     """
     # full
     freeze_parameters: List[str] = field(default_factory=list)
+    freeze_parameters_patterns: List[str] = field(default_factory=list)
     freeze_parameters_ratio: float = 0.  # 0 ~ 1
     trainable_parameters: List[str] = field(default_factory=list)
+    trainable_parameters_patterns: List[str] = field(default_factory=list)
     # lora or full
     freeze_llm: bool = False
     freeze_vit: bool = True
