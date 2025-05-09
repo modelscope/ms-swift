@@ -82,7 +82,7 @@ Hints:
   - 'all': Calculate the loss for all tokens.
   - 'ignore_empty_think': On top of 'default', ignore the loss calculation for empty `'<think>\n\n</think>\n\n'`. See [this issue](https://github.com/modelscope/ms-swift/issues/4030) for more details.
   - `'react'`, `'hermes'`, `'qwen'`: On top of `'default'`, set the loss weight of the `tool_call` part to 2.
-- sequence_parallel_size: Sequence parallelism size, default is 1. Currently supported in pt/sft. The training script refers to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/long_text/sequence_parallel.sh).
+- sequence_parallel_size: Sequence parallelism size, default is 1. Currently supported in pt/sft/dpo. The training script refers to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/long_text/sequence_parallel.sh).
 - use_chat_template: Use chat template or generation template, default is `True`. `swift pt` is automatically set to the generation template.
 - template_backend: Selection of the template backend. Options are 'swift' and 'jinja', with 'swift' as the default. If using jinja, it applies transformer's `apply_chat_template`.
   - Note: The jinja template backend supports only inference, not training.

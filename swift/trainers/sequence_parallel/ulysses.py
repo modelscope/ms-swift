@@ -273,8 +273,12 @@ class Ulysses(SequenceParallel):
         self.model_dtype = None
         self.causal_mask_func = None
         self.device_mesh = None
+        self._inited = False
 
     def init_sequence_parallel(self, size):
+        if self._inited:
+            return
+        self._inited = True
         self.sp_world_size = size
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         self.dp_world_size = world_size // size
