@@ -1062,6 +1062,7 @@ class Template(ProcessorMixin):
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
         if self.use_megatron:
+            self._handle_megatron_cp(encoded)
             encoded['labels'] = encoded['labels'][1:] + [-100]
             encoded['position_ids'] = list(range(len(encoded['labels'])))
         elif encoded.get('labels') is not None:
@@ -1071,6 +1072,16 @@ class Template(ProcessorMixin):
                 if k.endswith('labels') or k.endswith('loss_scale'):
                     encoded[k] = None
         return encoded
+
+    def _handle_megatron_cp(self, encoded: Dict[str, Any]) -> None:
+        cp_size = self.sequence_parallel_size
+        if cp_size == 1:
+            return
+        input_ids = encoded['input_ids']
+        cp_size *= 2
+        padding_len = math.ceil(len(input_ids) / cp_size) * cp_size - len(input_ids)
+        input_ids += [self.tokenizer.pad_token_id] * padding_len
+        encoded['labels'] += [-100] * padding_len
 
     def debug_logger(self, inputs):
         if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):
@@ -1365,7 +1376,7 @@ class Template(ProcessorMixin):
 
         # multimodal
         res.update(self._data_collator_mm_data(batch))
-        if use_torchacc() or self.sequence_parallel_size > 1:
+        if not self.use_megatron and (use_torchacc() or self.sequence_parallel_size > 1):
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
 
         return res

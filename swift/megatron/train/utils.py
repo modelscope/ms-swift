@@ -8,6 +8,7 @@ from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import StragglerDetector
 from megatron.training import get_args, get_timers
 from megatron.training.training import cyclic_iter
+from megatron.training.utils import get_batch_on_this_cp_rank
 
 from swift.llm import DataLoaderDispatcher
 
@@ -152,11 +153,27 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> Optional[PackedSeqParam
         qkv_format='thd')
 
 
+def get_batch(data_iterator):
+    """Generate a batch."""
+
+    # TODO: this is pretty hacky, find a better way
+    if (not mpu.is_pipeline_first_stage()) and (not mpu.is_pipeline_last_stage()):
+        return None, None, None, None, None
+
+    # get batches based on the TP rank you are on
+    batch = get_batch_on_this_tp_rank(data_iterator)
+    if not batch:
+        return batch
+    packed_seq_params = get_packed_seq_params(batch['position_ids'])
+    # slice batch along sequence dimension for context parallelism
+    batch = get_batch_on_this_cp_rank(batch)
+
+    return *batch.values(), packed_seq_params
+
+
 def forward_step(data_iterator, model):
     import pretrain_gpt
-    from pretrain_gpt import loss_func, get_batch
-    # patch get_batch_on_this_tp_rank
-    pretrain_gpt.get_batch_on_this_tp_rank = get_batch_on_this_tp_rank
+    from pretrain_gpt import loss_func
 
     timers = get_timers()
 
@@ -167,9 +184,7 @@ def forward_step(data_iterator, model):
         data = get_batch(data_iterator)
     if not data:
         raise StopIteration
-    tokens, labels, attention_mask, position_ids = data
-    packed_seq_params = None if position_ids is None else get_packed_seq_params(position_ids)
-
+    tokens, labels, attention_mask, position_ids, packed_seq_params = data
     timers('batch-generator').stop()
 
     with stimer:
