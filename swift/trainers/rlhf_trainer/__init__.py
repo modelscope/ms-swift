@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from .ppo_trainer import PPOTrainer
     from .reward_trainer import RewardTrainer
     from .rlhf_mixin import RLHFTrainerMixin
-    from .utils import _split_into_mini_batches, patch_lora_merge, patch_lora_unmerge, round_robin
+    from .utils import patch_lora_merge, patch_lora_unmerge, round_robin
 else:
     _import_structure = {
         'cpo_trainer': ['CPOTrainer'],
@@ -23,7 +23,7 @@ else:
         'ppo_trainer': ['PPOTrainer'],
         'reward_trainer': ['RewardTrainer'],
         'rlhf_mixin': ['RLHFTrainerMixin'],
-        'utils': ['_split_into_mini_batches', 'patch_lora_merge', 'patch_lora_unmerge', 'round_robin'],
+        'utils': ['patch_lora_merge', 'patch_lora_unmerge', 'round_robin'],
     }
 
     import sys
