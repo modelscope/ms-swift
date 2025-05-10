@@ -445,8 +445,12 @@ class SwiftMixin:
         res = super().get_batch_samples(*args, **kwargs)
         if self.template.sequence_parallel_size == 1:
             return res
+
         batch_samples, num_items_in_batch = res
-        dist.all_reduce(num_items_in_batch, dist.ReduceOp.SUM)
+        if num_items_in_batch is None:
+            num_items_in_batch = torch.tensor(0).to(args[2])
+        from swift.trainers.sequence_parallel import sequence_parallel
+        dist.all_reduce(num_items_in_batch, dist.ReduceOp.SUM, sequence_parallel.sp_group)
         return batch_samples, num_items_in_batch
 
 
@@ -483,7 +487,7 @@ class DataLoaderMixin:
                 dataloader = DataLoaderShard(train_dataset, batch_sampler, **dataloader_params)
             else:
                 # IterableDataset
-                if dist.is_initialized():
+                if dist.is_initialized() and dataloader_params['prefetch_factor']:
                     dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
                 dataloader = DataLoader(train_dataset, batch_size=self._train_batch_size, **dataloader_params)
                 dataloader = DataLoaderDispatcher(dataloader)
