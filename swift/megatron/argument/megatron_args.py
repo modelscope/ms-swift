@@ -42,6 +42,7 @@ class MegatronArguments(ExtraMegatronArguments):
     no_rope_fusion: bool = False
     no_gradient_accumulation_fusion: bool = False
     cross_entropy_loss_fusion: bool = False
+    calculate_per_token_loss: bool = True
     use_flash_attn: bool = False
     attention_backend: str = 'auto'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
