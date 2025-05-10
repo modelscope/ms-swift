@@ -151,17 +151,14 @@ class UlyssesDispatcher(DataLoaderDispatcher):
     def __iter__(self):
         base_iter = iter(self.base_dataloader)
         while True:
-            if self.rank == self.src_rank:
-                _, _, world_size, _ = get_dist_setting()
-                try:
-                    data = []
-                    for i in range(0, world_size, self.ulysses.device_mesh.mesh.shape[0]):
-                        data.extend([next(base_iter)] * self.ulysses.device_mesh.mesh.shape[1])
-                except StopIteration:
-                    data = [None] * self.world_size
-                data = self._scatter_object_list(data)
-            else:
-                data = self._scatter_object_list(None)
+            data = None
+            try:
+                for i in range(self.ulysses.dp_world_size):
+                    data = next(base_iter)
+                    if i == self.ulysses.dp_rank: 
+                        break
+            except StopIteration:
+                pass
             if data is None:
                 break
             yield data
@@ -502,11 +499,11 @@ class Ulysses(SequenceParallel):
 
     @property
     def sp_rank(self):
-        return dist.get_rank(self.device_mesh['sequence'])
+        return dist.get_rank(self.device_mesh['sequence'].get_group())
 
     @property
     def dp_rank(self):
-        return dist.get_rank(self.device_mesh['data'])
+        return dist.get_rank(self.device_mesh['data'].get_group())
 
     @property
     def sp_group(self):
@@ -546,10 +543,10 @@ class Ulysses(SequenceParallel):
                 'persistent_workers': trainer.args.dataloader_persistent_workers,
                 'prefetch_factor': trainer.args.dataloader_prefetch_factor
             }
-            if dist.is_initialized():
+            if dist.is_initialized() and dataloader_params['prefetch_factor']:
                 dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
             dataloader = DataLoader(dataset, batch_size=batch_size, **dataloader_params)
-            dataloader = UlyssesDispatcher(dataloader)
+            dataloader = UlyssesDispatcher(dataloader, self)
             return dataloader
 
     def prepare_trainer(self, trainer):

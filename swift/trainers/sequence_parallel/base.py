@@ -28,6 +28,10 @@ class SequenceParallel(abc.ABC):
     def reduce_outputs(self, loss, labels):
         pass
 
+    @property
+    def sp_group(self):
+        return None
+        
     @abstractmethod
     def world_size(self):
         pass
