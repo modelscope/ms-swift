@@ -13,7 +13,7 @@ from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
 from transformers.trainer_utils import seed_worker
 
-from swift.llm import get_model_arch, DataLoaderDispatcher
+from swift.llm import DataLoaderDispatcher, get_model_arch
 from swift.tuners import SwiftModel
 from swift.utils import get_current_device, get_device, get_dist_setting
 from .base import SequenceParallel
@@ -155,7 +155,7 @@ class UlyssesDispatcher(DataLoaderDispatcher):
             try:
                 for i in range(self.ulysses.dp_world_size):
                     data = next(base_iter)
-                    if i == self.ulysses.dp_rank: 
+                    if i == self.ulysses.dp_rank:
                         break
             except StopIteration:
                 pass

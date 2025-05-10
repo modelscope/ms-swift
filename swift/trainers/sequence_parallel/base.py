@@ -31,7 +31,7 @@ class SequenceParallel(abc.ABC):
     @property
     def sp_group(self):
         return None
-        
+
     @abstractmethod
     def world_size(self):
         pass

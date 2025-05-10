@@ -445,7 +445,7 @@ class SwiftMixin:
         res = super().get_batch_samples(*args, **kwargs)
         if self.template.sequence_parallel_size == 1:
             return res
-        
+
         batch_samples, num_items_in_batch = res
         if num_items_in_batch is None:
             num_items_in_batch = torch.tensor(0).to(args[2])
