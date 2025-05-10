@@ -92,7 +92,7 @@ class DefaultFlowCallbackNew(DefaultFlowCallback):
     def on_epoch_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
         control = super().on_epoch_end(args, state, control, **kwargs)
         evaluation_strategy = args.eval_strategy if hasattr(args, 'eval_strategy') else args.evaluation_strategy
-        if (args.max_epochs is not None and args.max_epochs <= math.ceil(state.epoch)) or control.should_training_stop:
+        if args.max_epochs is not None and args.max_epochs <= math.ceil(state.epoch):
             if evaluation_strategy != IntervalStrategy.NO:
                 control.should_evaluate = True
             if args.save_strategy != IntervalStrategy.NO:
