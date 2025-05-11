@@ -310,7 +310,7 @@ register_model(
                 Model('OpenGVLab/InternVL3-38B', 'OpenGVLab/InternVL3-38B'),
                 Model('OpenGVLab/InternVL3-78B', 'OpenGVLab/InternVL3-78B'),
             ]),
-            # awq
+            # awq (Use lmdeploy for inference.)
             ModelGroup([
                 Model('OpenGVLab/InternVL3-1B-AWQ', 'OpenGVLab/InternVL3-1B-AWQ'),
                 Model('OpenGVLab/InternVL3-2B-AWQ', 'OpenGVLab/InternVL3-2B-AWQ'),
