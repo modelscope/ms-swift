@@ -279,7 +279,28 @@ register_model(
 register_model(
     ModelMeta(
         MLLMModelType.internvl3,
-        [
+        [   
+            # pretrain
+            ModelGroup([
+                Model('OpenGVLab/InternVL3-1B-Pretrained', 'OpenGVLab/InternVL3-1B-Pretrained'),
+                Model('OpenGVLab/InternVL3-2B-Pretrained', 'OpenGVLab/InternVL3-2B-Pretrained'),
+                Model('OpenGVLab/InternVL3-8B-Pretrained', 'OpenGVLab/InternVL3-8B-Pretrained'),
+                Model('OpenGVLab/InternVL3-9B-Pretrained', 'OpenGVLab/InternVL3-9B-Pretrained'),
+                Model('OpenGVLab/InternVL3-14B-Pretrained', 'OpenGVLab/InternVL3-14B-Pretrained'),
+                Model('OpenGVLab/InternVL3-38B-Pretrained', 'OpenGVLab/InternVL3-38B-Pretrained'),
+                Model('OpenGVLab/InternVL3-78B-Pretrained', 'OpenGVLab/InternVL3-78B-Pretrained'),
+            ]),
+            # instruct
+            ModelGroup([
+                Model('OpenGVLab/InternVL3-1B-Instruct', 'OpenGVLab/InternVL3-1B-Instruct'),
+                Model('OpenGVLab/InternVL3-2B-Instruct', 'OpenGVLab/InternVL3-2B-Instruct'),
+                Model('OpenGVLab/InternVL3-8B-Instruct', 'OpenGVLab/InternVL3-8B-Instruct'),
+                Model('OpenGVLab/InternVL3-9B-Instruct', 'OpenGVLab/InternVL3-9B-Instruct'),
+                Model('OpenGVLab/InternVL3-14B-Instruct', 'OpenGVLab/InternVL3-14B-Instruct'),
+                Model('OpenGVLab/InternVL3-38B-Instruct', 'OpenGVLab/InternVL3-38B-Instruct'),
+                Model('OpenGVLab/InternVL3-78B-Instruct', 'OpenGVLab/InternVL3-78B-Instruct'),
+            ]),
+            # mpo
             ModelGroup([
                 Model('OpenGVLab/InternVL3-1B', 'OpenGVLab/InternVL3-1B'),
                 Model('OpenGVLab/InternVL3-2B', 'OpenGVLab/InternVL3-2B'),
@@ -288,6 +309,16 @@ register_model(
                 Model('OpenGVLab/InternVL3-14B', 'OpenGVLab/InternVL3-14B'),
                 Model('OpenGVLab/InternVL3-38B', 'OpenGVLab/InternVL3-38B'),
                 Model('OpenGVLab/InternVL3-78B', 'OpenGVLab/InternVL3-78B'),
+            ]),
+            # awq
+            ModelGroup([
+                Model('OpenGVLab/InternVL3-1B-AWQ', 'OpenGVLab/InternVL3-1B-AWQ'),
+                Model('OpenGVLab/InternVL3-2B-AWQ', 'OpenGVLab/InternVL3-2B-AWQ'),
+                Model('OpenGVLab/InternVL3-8B-AWQ', 'OpenGVLab/InternVL3-8B-AWQ'),
+                Model('OpenGVLab/InternVL3-9B-AWQ', 'OpenGVLab/InternVL3-9B-AWQ'),
+                Model('OpenGVLab/InternVL3-14B-AWQ', 'OpenGVLab/InternVL3-14B-AWQ'),
+                Model('OpenGVLab/InternVL3-38B-AWQ', 'OpenGVLab/InternVL3-38B-AWQ'),
+                Model('OpenGVLab/InternVL3-78B-AWQ', 'OpenGVLab/InternVL3-78B-AWQ'),
             ]),
         ],
         TemplateType.internvl2_5,
