@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from functools import partial
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import torch
 from megatron.core import mpu
@@ -90,6 +90,7 @@ def get_batch_on_this_tp_rank(data_iterator):
         elif mpu.is_pipeline_last_stage():
             _broadcast(batch['labels'])
             _broadcast(batch['attention_mask'])
+            _broadcast(batch['position_ids'])
 
     else:
         seq_length = torch.empty((), dtype=torch.int64, device=torch.cuda.current_device())
@@ -124,10 +125,10 @@ def get_batch_on_this_tp_rank(data_iterator):
 
         elif mpu.is_pipeline_last_stage():
             tokens = None
-            position_ids = None
 
             _broadcast(labels)
             _broadcast(attention_mask)
+            _broadcast(position_ids)  # compat packing & cp
 
         batch = {'tokens': tokens, 'labels': labels, 'attention_mask': attention_mask, 'position_ids': position_ids}
 
@@ -152,11 +153,68 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> Optional[PackedSeqParam
         qkv_format='thd')
 
 
+def _split_tokens(tokens, cu_seqlens):
+    assert tokens.shape[0] == 1, f'tokens.shape: {tokens.shape}'
+    new_tokens = []
+    tokens = tokens[0]
+    cu_seqlens = cu_seqlens.tolist()
+    cp_size = mpu.get_context_parallel_world_size()
+    cp_rank = mpu.get_context_parallel_rank()
+    for i in range(len(cu_seqlens) - 1):
+        val = tokens[cu_seqlens[i]:cu_seqlens[i + 1]]
+        val = val.view(
+            2 * cp_size,
+            val.shape[0] // (2 * cp_size),
+        )
+        index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device='cpu',
+                             pin_memory=True).cuda(non_blocking=True)
+        val = val.index_select(0, index)
+        new_tokens.append(val.view(-1))
+    return torch.cat(new_tokens, dim=0)[None]
+
+
+def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
+    """Slice batch input along sequence dimension into multiple chunks,
+    which are parallelized across GPUs in a context parallel group.
+    """
+
+    # With causal masking, each token only attends to its prior tokens. Simply split
+    # sequence into CP chunks can result in severe load imbalance. That's to say, chunks
+    # at the end of sequence have bigger workload than others. To address this issue,
+    # we split sequence into 2*CP ranks. Assuming CP=2, we then get 4 chunks, chunk_0
+    # and chunk_3 are assigned to GPU0, chunk_1 and chunk_2 are assigned to GPU1, so
+    # that we can get balanced workload among GPUs in a context parallel group.
+    cp_size = mpu.get_context_parallel_world_size()
+    if cp_size > 1:
+        packed_seq_params = batch['packed_seq_params']
+        for key, val in batch.items():
+            if key == 'packed_seq_params':
+                continue
+            if val is not None:
+                batch[key] = _split_tokens(val, packed_seq_params.cu_seqlens_q)
+
+    return batch
+
+
+def get_batch(data_iterator):
+    """Generate a batch."""
+
+    # TODO: this is pretty hacky, find a better way
+    if (not mpu.is_pipeline_first_stage()) and (not mpu.is_pipeline_last_stage()):
+        return None, None, None, None, None
+
+    # get batches based on the TP rank you are on
+    batch = get_batch_on_this_tp_rank(data_iterator)
+    if not batch:
+        return batch
+    batch['packed_seq_params'] = get_packed_seq_params(batch['position_ids'])
+    # slice batch along sequence dimension for context parallelism
+    batch = get_batch_on_this_cp_rank(batch)
+    return batch.values()
+
+
 def forward_step(data_iterator, model):
-    import pretrain_gpt
-    from pretrain_gpt import loss_func, get_batch
-    # patch get_batch_on_this_tp_rank
-    pretrain_gpt.get_batch_on_this_tp_rank = get_batch_on_this_tp_rank
+    from pretrain_gpt import loss_func
 
     timers = get_timers()
 
@@ -167,9 +225,7 @@ def forward_step(data_iterator, model):
         data = get_batch(data_iterator)
     if not data:
         raise StopIteration
-    tokens, labels, attention_mask, position_ids = data
-    packed_seq_params = None if position_ids is None else get_packed_seq_params(position_ids)
-
+    tokens, labels, attention_mask, position_ids, packed_seq_params = data
     timers('batch-generator').stop()
 
     with stimer:

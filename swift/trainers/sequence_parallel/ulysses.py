@@ -13,7 +13,7 @@ from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
 from transformers.trainer_utils import seed_worker
 
-from swift.llm import get_model_arch
+from swift.llm import DataLoaderDispatcher, get_model_arch
 from swift.tuners import SwiftModel
 from swift.utils import get_current_device, get_device, get_dist_setting
 from .base import SequenceParallel
@@ -140,6 +140,28 @@ class UlyssesSampler(Sampler):
 
     def set_epoch(self, epoch: int) -> None:
         self.epoch = epoch
+
+
+class UlyssesDispatcher(DataLoaderDispatcher):
+
+    def __init__(self, base_dataloader, ulysses):
+        super().__init__(base_dataloader)
+        self.ulysses = ulysses
+
+    def __iter__(self):
+        base_iter = iter(self.base_dataloader)
+        while True:
+            data = None
+            try:
+                for i in range(self.ulysses.dp_world_size):
+                    data = next(base_iter)
+                    if i == self.ulysses.dp_rank:
+                        break
+            except StopIteration:
+                pass
+            if data is None:
+                break
+            yield data
 
 
 # Code borrowed from deepspeed, here is why:
@@ -477,11 +499,11 @@ class Ulysses(SequenceParallel):
 
     @property
     def sp_rank(self):
-        return dist.get_rank(self.device_mesh['sequence'])
+        return dist.get_rank(self.device_mesh['sequence'].get_group())
 
     @property
     def dp_rank(self):
-        return dist.get_rank(self.device_mesh['data'])
+        return dist.get_rank(self.device_mesh['data'].get_group())
 
     @property
     def sp_group(self):
@@ -492,27 +514,40 @@ class Ulysses(SequenceParallel):
         return self.device_mesh['data'].get_group()
 
     def get_dataloader(self, trainer, dataset, batch_size):
-        sampler = UlyssesSampler(self, dataset, seed=42)
         data_collator = trainer.data_collator
         if isinstance(dataset, datasets.Dataset):
             dataset = trainer._remove_unused_columns(dataset, description='training')
         else:
             data_collator = trainer._get_collator_with_removed_columns(data_collator, description='training')
+        if hasattr(dataset, '__len__'):
+            sampler = UlyssesSampler(self, dataset, seed=42)
+            dataloader_params = {
+                'batch_size': batch_size,
+                'collate_fn': data_collator,
+                'num_workers': trainer.args.dataloader_num_workers,
+                'pin_memory': trainer.args.dataloader_pin_memory,
+                'persistent_workers': trainer.args.dataloader_persistent_workers,
+            }
 
-        dataloader_params = {
-            'batch_size': batch_size,
-            'collate_fn': data_collator,
-            'num_workers': trainer.args.dataloader_num_workers,
-            'pin_memory': trainer.args.dataloader_pin_memory,
-            'persistent_workers': trainer.args.dataloader_persistent_workers,
-        }
+            if not isinstance(dataset, torch.utils.data.IterableDataset):
+                dataloader_params['sampler'] = sampler
+                dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
+                dataloader_params['worker_init_fn'] = seed_worker
 
-        if not isinstance(dataset, torch.utils.data.IterableDataset):
-            dataloader_params['sampler'] = sampler
-            dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
-            dataloader_params['worker_init_fn'] = seed_worker
-
-        return DataLoader(dataset, **dataloader_params)
+            return DataLoader(dataset, **dataloader_params)
+        else:
+            dataloader_params = {
+                'collate_fn': data_collator,
+                'num_workers': trainer.args.dataloader_num_workers,
+                'pin_memory': trainer.args.dataloader_pin_memory,
+                'persistent_workers': trainer.args.dataloader_persistent_workers,
+                'prefetch_factor': trainer.args.dataloader_prefetch_factor
+            }
+            if dist.is_initialized() and dataloader_params['prefetch_factor']:
+                dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
+            dataloader = DataLoader(dataset, batch_size=batch_size, **dataloader_params)
+            dataloader = UlyssesDispatcher(dataloader, self)
+            return dataloader
 
     def prepare_trainer(self, trainer):
         if trainer.train_dataset is None:
