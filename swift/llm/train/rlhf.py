@@ -50,8 +50,8 @@ class SwiftRLHF(SwiftSft):
             else:
                 from transformers import AutoConfig
                 model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-                if hasattr(model_config, 'task_type'):
-                    task_type = model_config.task_type
+                if hasattr(model_config, 'num_labels'):
+                    num_labels = model_config.num_labels
             if task_type == 'seq_cls':
                 num_labels = 1
 
