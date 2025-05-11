@@ -44,7 +44,7 @@ class SwiftRLHF(SwiftSft):
             )
             task_type = None
             num_labels = None
-            if not os.path.exists(os.path.join(model_dir, 'args.json')):
+            if os.path.exists(os.path.join(model_dir, 'args.json')):
                 model_args = BaseArguments.from_pretrained(model_dir)
                 if hasattr(model_args, 'task_type'):
                     task_type = model_args.task_type
