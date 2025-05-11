@@ -279,7 +279,10 @@ def patch_automodel(automodel_class, model_info):
             kwargs.pop('use_cache', None)
         if model_info.quant_method == 'gptq':
             cls.main_input_name = 'input_ids'
-        return from_pretrained(cls, *args, **kwargs)
+        if hasattr(cls, '_tp_plan'):  # fix tp_plan
+            cls._tp_plan = cls._tp_plan or {}
+        model = from_pretrained(cls, *args, **kwargs)
+        return model
 
     PreTrainedModel.from_pretrained = _new_from_pretrained
 
