@@ -523,15 +523,17 @@ App parameters inherit from [deployment arguments](#deployment-arguments) and [W
 
 Evaluation Arguments inherit from the [deployment arguments](#deployment-arguments).
 
-- 🔥eval_backend: Evaluation backend, default is 'Native', but can also be specified as 'OpenCompass' or 'VLMEvalKit'
-- 🔥eval_dataset: Evaluation dataset, refer to [Evaluation documentation](./Evaluation.md).
-- eval_limit: Number of samples for each evaluation set, default is None.
-- eval_output_dir: Folder for storing evaluation results, default is 'eval_output'.
-- 🔥local_dataset: Some evaluation sets, such as `CMB`, cannot be directly used and require downloading additional data packages. Setting this parameter to `true` will automatically download the full data package, create a `data` folder in the current directory, and start the evaluation. The data package will only be downloaded once and will be cached for future use. This parameter defaults to `false`.
-  - Note: By default, the evaluation will use datasets from `~/.cache/opencompass`. Specifying this parameter will directly use the data folder in the current directory.
-- temperature: Overrides the generation arguments, with a default value of 0.
-- eval_num_proc: Maximum number of concurrent clients during evaluation, default is 16.
-- 🔥eval_url: The evaluation URL, for example, `http://localhost:8000/v1`. Examples can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/eval/eval_url). The default value is None, which means using local deployment for evaluation.
+- 🔥eval_backend: Evaluation backend, defaults to 'Native'. It can also be specified as 'OpenCompass' or 'VLMEvalKit'.
+- 🔥eval_dataset: Evaluation dataset, please refer to the [evaluation documentation](./评测.md).
+- eval_limit: Number of samples per evaluation set, defaults to None.
+- eval_output_dir: Directory to store evaluation results, defaults to 'eval_output'.
+- temperature: Override generation parameters, defaults to 0.
+- eval_num_proc: Maximum client concurrency during evaluation, defaults to 16.
+- eval_url: Evaluation URL, e.g., `http://localhost:8000/v1`. Examples can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/eval/eval_url). Defaults to None for local deployment evaluation.
+- eval_generation_config: Model inference configuration during evaluation, should be passed as a JSON string, e.g., `'{"max_new_tokens": 512}'`; defaults to None.
+- extra_eval_args: Additional evaluation parameters, should be passed as a JSON string, defaults to empty. Only effective for Native evaluation. For more parameter descriptions, please refer to [here](https://evalscope.readthedocs.io/en/latest/get_started/parameters.html).
+- local_dataset: Some evaluation sets, such as `CMB`, require additional data packages to be downloaded for utilization. Setting this parameter to `true` will automatically download the full data package, create a `data` folder in the current directory, and start the evaluation. The data package will only be downloaded once, and future evaluations will use the cache. This parameter defaults to `false`.
+  - Note: By default, evaluation uses the dataset under `~/.cache/opencompass`. After specifying this parameter, it will directly use the data folder in the current directory.
 
 
 ### Export Arguments

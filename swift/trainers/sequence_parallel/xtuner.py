@@ -41,6 +41,11 @@ class XTuner(SequenceParallel):
         train_dataset = objects[0]
         return train_dataset
 
+    @property
+    def sp_group(self):
+        from xtuner.parallel.sequence import get_sequence_parallel_group
+        return get_sequence_parallel_group()
+
     def init_sequence_parallel(self, size):
         self.assert_xtuner_runtime_condition()
         from xtuner.parallel.sequence import init_sequence_parallel
