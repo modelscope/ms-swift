@@ -2,10 +2,9 @@
 import os
 from typing import List, Union
 
-from swift.llm import get_matched_model_meta, safe_snapshot_download
+from swift.llm import safe_snapshot_download
 from swift.utils import get_logger, get_model_parameter_info
 from ..argument import BaseArguments, RLHFArguments
-from ..argument.base_args.model_args import ModelArguments
 from ..model import HfConfigFactory
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft

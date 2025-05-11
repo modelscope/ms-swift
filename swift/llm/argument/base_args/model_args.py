@@ -176,5 +176,3 @@ class ModelArguments:
             'problem_type': self.problem_type,
             'init_strategy': self.init_strategy,
         }
-
-    # def get_hub_kwargs(self):
