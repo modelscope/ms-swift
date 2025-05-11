@@ -1,11 +1,14 @@
 
-本文档提供从零开始快速训练视觉语言(Vision-Language, VL)模型的最佳实践方法。
+本文档提供从零开始快速训练视觉语言(Vision-Language, VL)模型的最佳实践。
 
 大致思路：基于Qwen2.5-VL-7B-Instruct模型，将LLM部分替换为Qwen3-8B模型权重进行训练。
 
 涉及到的模型链接：
 [Qwen2.5-VL-7B-Instruct](https://www.modelscope.cn/models/Qwen/Qwen2.5-VL-7B-Instruct)
 [Qwen3-8B](https://www.modelscope.cn/models/Qwen/Qwen3-8B)
+
+最终训练的模型链接：
+[Simple-VL-8B](https://www.modelscope.cn/models/swift/Simple-VL-8B/summary)
 
 1. 模型修改
 2. 训练
