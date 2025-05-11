@@ -1078,8 +1078,7 @@ class Template(ProcessorMixin):
         if cp_size == 1:
             return
         input_ids = encoded['input_ids']
-        cp_size *= 2
-        padding_len = math.ceil(len(input_ids) / cp_size) * cp_size - len(input_ids)
+        padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
         input_ids += [self.tokenizer.pad_token_id] * padding_len
         encoded['labels'] += [-100] * padding_len
 
@@ -1363,11 +1362,19 @@ class Template(ProcessorMixin):
 
         if self.use_megatron:
             padding_to = math.ceil(max(seq_lens) / 128) * 128
+            cp_size = self.sequence_parallel_size
+            if cp_size > 1:
+                padding_len = padding_to - seq_lens[0]
+                position_ids = res['position_ids'][0].tolist()
+                position_ids += list(range(cp_size * 2)) * (padding_len // (cp_size * 2))
+                res['position_ids'][0] = torch.tensor(position_ids)
 
         for key, pad_value in zip(keys, pad_values):
             if key not in res:
                 continue
-            if padding_to is not None:
+            if self.use_megatron and key == 'position_ids' and self.sequence_parallel_size > 1:
+                pass
+            elif padding_to is not None:
                 padding_len = padding_to - seq_lens[0]
                 if padding_len > 0:
                     res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),

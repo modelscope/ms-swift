@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -31,6 +31,7 @@ class MegatronArguments(ExtraMegatronArguments):
     recompute_granularity: Literal['selective', 'full'] = 'selective'
     recompute_method: Literal['uniform', 'block'] = None
     recompute_num_layers: Optional[int] = None
+    recompute_modules: List[str] = field(default_factory=lambda: ['core_attn'])
     use_cpu_initialization: bool = False
     deterministic_mode: bool = False
     train_iters: Optional[int] = None
@@ -85,6 +86,8 @@ class MegatronArguments(ExtraMegatronArguments):
     use_distributed_optimizer: bool = True
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
+    decoder_first_pipeline_num_layers: Optional[int] = None
+    decoder_last_pipeline_num_layers: Optional[int] = None
     sequence_parallel: bool = False
     context_parallel_size: int = 1
     tp_comm_overlap: bool = False
