@@ -38,15 +38,14 @@ class GenRMPlugin(DefaultRMPlugin):
 
     def __init__(self, model, template):
         """
-        Generation Reward Model Plugin Example.
+        Generative Reward Model Plugin Example.
 
         This method sets up the reward model plugin by initializing the PtEngine for efficient inference,
         configuring the request parameters, and defining the system prompt that guides the reward model in
         evaluating responses.
 
         Args:
-            model (torch.nn.Module): The reward model, expected to be a classification model
-                with a single output dimension.
+            model (torch.nn.Module): The generative reward model.
             template (Template): The template used for encoding input data.
     """
 
@@ -55,9 +54,9 @@ class GenRMPlugin(DefaultRMPlugin):
         self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
         self.request_config = RequestConfig()  # customise your request config here
         self.system = textwrap.dedent("""
-            Based on the dialogue history, evaluate whether the model's response is accurate, complete, and relevant.
+            Based on the dialogue history, analyze in detail whether the model's response is accurate, complete, and relevant.
             Assign a reward score between 0 and 1, where 0 indicates completely incorrect and 1 indicates fully correct.
-            Please adhere strictly to the following output format without providing any additional explanations or information:
+            Before finishing your response, please assign a reward using the following format:
 
             Reward: {reward}
 
