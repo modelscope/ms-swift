@@ -279,7 +279,7 @@ register_model(
 register_model(
     ModelMeta(
         MLLMModelType.internvl3,
-        [   
+        [
             # pretrain
             ModelGroup([
                 Model('OpenGVLab/InternVL3-1B-Pretrained', 'OpenGVLab/InternVL3-1B-Pretrained'),
