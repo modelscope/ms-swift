@@ -44,9 +44,15 @@ class SwiftRLHF(SwiftSft):
             )
             task_type = None
             num_labels = None
-            model_args = BaseArguments.from_pretrained(model_dir)
-            if hasattr(model_args, task_type):
-                task_type = model_args.task_type
+            if not os.path.exists(os.path.join(model_dir, 'args.json')):
+                model_args = BaseArguments.from_pretrained(model_dir)
+                if hasattr(model_args, 'task_type'):
+                    task_type = model_args.task_type
+            else:
+                from transformers import AutoConfig
+                model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+                if hasattr(model_config, 'task_type'):
+                    task_type = model_config.task_type
             if task_type == 'seq_cls':
                 num_labels = 1
 
