@@ -13,7 +13,7 @@ pip install -U trl
 
 **Dev Log**
 
-- **2025-05-09** — Implemented support for the **Generative Reward Model** and enabled customized reward model processing logic through the reward plugin. For more details, refer to the [Customized Reward Models](#customized-reward-models) section.
+- **2025-05-11** — Implemented support for the **Generative Reward Model** and enabled customized reward model processing logic through the reward plugin. For more details, refer to the [Customized Reward Models](#customized-reward-models) section.
 - **2025-04-30** — The startup command for the external vLLM server has been changed to swift rollout.
 
 **FAQ**

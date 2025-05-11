@@ -74,7 +74,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
-- 🎁 2025.05.09: GRPO now supports custom processing logic for reward models. See the GenRM example [here](./docs/source_en/Instruction/GRPO.md#customized-reward-models) .
+- 🎁 2025.05.11: GRPO now supports custom processing logic for reward models. See the GenRM example [here](./docs/source_en/Instruction/GRPO.md#customized-reward-models) .
 - 🎁 2025.04.15: SWIFT paper has been accepted by AAAI 2025, you can find the paper [here](https://ojs.aaai.org/index.php/AAAI/article/view/35383).
 - 🎁 2025.03.23: SWIFT supports multi round GRPO, this is used to construct multi turn conversations(use cases like agent tool calling), check script [here](examples/train/grpo/internal/train_multi_round.sh).
 - 🎁 2025.03.16: SWIFT supports training with Megatron's parallel technology. Please refer to the [Megatron-SWIFT Training Documentation](https://swift.readthedocs.io/en/latest/Instruction/Megatron-SWIFT-Training.html).
