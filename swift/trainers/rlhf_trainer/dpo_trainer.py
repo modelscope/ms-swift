@@ -7,13 +7,13 @@ from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
 
-from ..mixin import SwiftMixin
+from ..mixin import DataLoaderMixin, SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
 del HFDPOTrainer.__init__
 
 
-class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
+class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
     def __init__(self,
                  model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,
@@ -34,15 +34,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
         self.use_weighting = False
 
         super().__init__(model, ref_model, *_args, **kwargs)
-
-    def get_train_dataloader(self):
-        dataloader = None
-        if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            dataloader = sequence_parallel.prepare_trainer_and_get_dataloader(self)
-        if dataloader is None:
-            return super().get_train_dataloader()
-        return dataloader
 
     def get_nll_loss(self, logits, labels):
         if not self.is_encoder_decoder:

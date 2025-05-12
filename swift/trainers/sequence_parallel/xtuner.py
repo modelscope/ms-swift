@@ -41,6 +41,11 @@ class XTuner(SequenceParallel):
         train_dataset = objects[0]
         return train_dataset
 
+    @property
+    def sp_group(self):
+        from xtuner.parallel.sequence import get_sequence_parallel_group
+        return get_sequence_parallel_group()
+
     def init_sequence_parallel(self, size):
         self.assert_xtuner_runtime_condition()
         from xtuner.parallel.sequence import init_sequence_parallel
@@ -66,13 +71,15 @@ class XTuner(SequenceParallel):
         input_ids = pad_for_sequence_parallel(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
         labels = pad_for_sequence_parallel(labels, padding_value=-100, dim=-1)
         position_ids = pad_for_sequence_parallel(position_ids, padding_value=0, dim=-1)
-        attention_mask = pad_for_sequence_parallel(attention_mask, padding_value=0, dim=-1)
+        if attention_mask is not None:
+            attention_mask = pad_for_sequence_parallel(attention_mask, padding_value=0, dim=-1)
 
         sp_group = get_sequence_parallel_group()
         input_ids = split_for_sequence_parallel(input_ids, dim=1, sp_group=sp_group)
         labels = split_for_sequence_parallel(labels, dim=1, sp_group=sp_group)
         position_ids = split_for_sequence_parallel(position_ids, dim=1, sp_group=sp_group)
-        attention_mask = split_for_sequence_parallel(attention_mask, dim=-1, sp_group=sp_group)
+        if attention_mask is not None:
+            attention_mask = split_for_sequence_parallel(attention_mask, dim=-1, sp_group=sp_group)
         if loss_scale is not None:
             loss_scale = pad_for_sequence_parallel(loss_scale, padding_value=0., dim=-1)
             loss_scale = split_for_sequence_parallel(loss_scale, dim=1, sp_group=sp_group)
@@ -90,32 +97,31 @@ class XTuner(SequenceParallel):
         from xtuner.parallel.sequence import get_sequence_parallel_world_size
         return get_sequence_parallel_world_size()
 
-    def prepare_trainer_and_get_dataloader(self, trainer):
+    def prepare_trainer(self, trainer):
+        pass
+
+    def get_dataloader(self, trainer, dataset, batch_size):
         # modified from HFTrainer.get_train_dataloader
         # RandomSampler -> SequenceParallelSampler
         self.assert_xtuner_runtime_condition()
-        if trainer.train_dataset is None:
-            raise ValueError('Trainer: training requires a train_dataset.')
-
-        train_dataset = trainer.train_dataset
         data_collator = trainer.data_collator
-        if isinstance(train_dataset, datasets.Dataset):
-            train_dataset = trainer._remove_unused_columns(train_dataset, description='training')
+        if isinstance(dataset, datasets.Dataset):
+            dataset = trainer._remove_unused_columns(dataset, description='training')
         else:
             data_collator = trainer._get_collator_with_removed_columns(data_collator, description='training')
 
         dataloader_params = {
-            'batch_size': trainer._train_batch_size,
+            'batch_size': batch_size,
             'collate_fn': data_collator,
             'num_workers': trainer.args.dataloader_num_workers,
             'pin_memory': trainer.args.dataloader_pin_memory,
             'persistent_workers': trainer.args.dataloader_persistent_workers,
         }
 
-        if not isinstance(train_dataset, torch.utils.data.IterableDataset):
+        if not isinstance(dataset, torch.utils.data.IterableDataset):
             from xtuner.parallel import SequenceParallelSampler
-            dataloader_params['sampler'] = SequenceParallelSampler(train_dataset, seed=1024)
+            dataloader_params['sampler'] = SequenceParallelSampler(dataset, seed=1024)
             dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
             dataloader_params['worker_init_fn'] = seed_worker
 
-        return DataLoader(train_dataset, **dataloader_params)
+        return DataLoader(dataset, **dataloader_params)

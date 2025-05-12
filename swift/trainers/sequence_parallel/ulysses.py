@@ -1,21 +1,21 @@
 import math
 from functools import partial
 from types import MethodType
-from typing import Any, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import datasets
+import numpy as np
 import torch
 import torch.distributed as dist
 from peft import PeftModel
-from torch import Tensor
 from torch.distributed.device_mesh import init_device_mesh
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
 from transformers.trainer_utils import seed_worker
 
-from swift.llm import get_model_arch
+from swift.llm import DataLoaderDispatcher, get_model_arch
 from swift.tuners import SwiftModel
-from swift.utils import get_device, get_dist_setting
+from swift.utils import get_current_device, get_device, get_dist_setting
 from .base import SequenceParallel
 
 
@@ -72,7 +72,11 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
         loss_scale = loss_scale.flatten().to(loss.device)
         loss = (loss_scale * loss)
     loss, labels = GatherLoss.apply(loss, labels, process_group)
-    loss = loss[labels != -100].sum() / (labels != -100).sum()
+    loss = loss[labels != -100].sum()
+    if num_items_in_batch is None:
+        loss = loss / (labels != -100).sum()
+    else:
+        loss = loss / num_items_in_batch
     return loss
 
 
@@ -85,6 +89,8 @@ def get_batch_logps(logits: torch.FloatTensor,
     labels = labels.clone()  # No need to shift, pad and split has shifted the inputs.
     loss_mask = labels != label_pad_token_id
     labels[labels == label_pad_token_id] = 0
+    labels = labels.to(logits.device)
+    loss_mask = loss_mask.to(logits.device)
     per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
     total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, process_group, 1)
     return (total_per_token_logps * total_loss_mask).sum(-1), total_loss_mask.sum(-1)
@@ -134,6 +140,28 @@ class UlyssesSampler(Sampler):
 
     def set_epoch(self, epoch: int) -> None:
         self.epoch = epoch
+
+
+class UlyssesDispatcher(DataLoaderDispatcher):
+
+    def __init__(self, base_dataloader, ulysses):
+        super().__init__(base_dataloader)
+        self.ulysses = ulysses
+
+    def __iter__(self):
+        base_iter = iter(self.base_dataloader)
+        while True:
+            data = None
+            try:
+                for i in range(self.ulysses.dp_world_size):
+                    data = next(base_iter)
+                    if i == self.ulysses.dp_rank:
+                        break
+            except StopIteration:
+                pass
+            if data is None:
+                break
+            yield data
 
 
 # Code borrowed from deepspeed, here is why:
@@ -209,10 +237,10 @@ class _SeqAllToAll(torch.autograd.Function):
     def forward(
         ctx: Any,
         group: dist.ProcessGroup,
-        input: Tensor,
+        input: torch.Tensor,
         scatter_idx: int,
         gather_idx: int,
-    ) -> Tensor:
+    ) -> torch.Tensor:
         ctx.group = group
         ctx.scatter_idx = scatter_idx
         ctx.gather_idx = gather_idx
@@ -220,7 +248,7 @@ class _SeqAllToAll(torch.autograd.Function):
         return res
 
     @staticmethod
-    def backward(ctx: Any, *grad_output: Tensor) -> Tuple[None, Tensor, None, None]:
+    def backward(ctx: Any, *grad_output: torch.Tensor) -> Tuple[None, torch.Tensor, None, None]:
         return None, _SeqAllToAll.apply(ctx.group, *grad_output, ctx.gather_idx, ctx.scatter_idx), None, None
 
 
@@ -239,8 +267,8 @@ class DistributedAttention(torch.nn.Module):
         self.scatter_idx = scatter_idx
         self.gather_idx = gather_idx
 
-    def forward(self, query: Tensor, key: Tensor, value: Tensor, attention_mask: Tensor, *args: Any,
-                **kwargs) -> Tensor:
+    def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, attention_mask: torch.Tensor,
+                *args: Any, **kwargs) -> torch.Tensor:
         query_layer = _SeqAllToAll.apply(self.spg, query, self.scatter_idx, self.gather_idx)
         key_layer = _SeqAllToAll.apply(self.spg, key, self.scatter_idx, self.gather_idx)
         value_layer = _SeqAllToAll.apply(self.spg, value, self.scatter_idx, self.gather_idx)
@@ -267,8 +295,12 @@ class Ulysses(SequenceParallel):
         self.model_dtype = None
         self.causal_mask_func = None
         self.device_mesh = None
+        self._inited = False
 
     def init_sequence_parallel(self, size):
+        if self._inited:
+            return
+        self._inited = True
         self.sp_world_size = size
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         self.dp_world_size = world_size // size
@@ -467,11 +499,11 @@ class Ulysses(SequenceParallel):
 
     @property
     def sp_rank(self):
-        return dist.get_rank(self.device_mesh['sequence'])
+        return dist.get_rank(self.device_mesh['sequence'].get_group())
 
     @property
     def dp_rank(self):
-        return dist.get_rank(self.device_mesh['data'])
+        return dist.get_rank(self.device_mesh['data'].get_group())
 
     @property
     def sp_group(self):
@@ -481,11 +513,43 @@ class Ulysses(SequenceParallel):
     def dp_group(self):
         return self.device_mesh['data'].get_group()
 
-    @property
-    def is_last_sequence(self):
-        return dist.get_rank(self.sp_rank) == self.sp_world_size - 1
+    def get_dataloader(self, trainer, dataset, batch_size):
+        data_collator = trainer.data_collator
+        if isinstance(dataset, datasets.Dataset):
+            dataset = trainer._remove_unused_columns(dataset, description='training')
+        else:
+            data_collator = trainer._get_collator_with_removed_columns(data_collator, description='training')
+        if hasattr(dataset, '__len__'):
+            sampler = UlyssesSampler(self, dataset, seed=42)
+            dataloader_params = {
+                'batch_size': batch_size,
+                'collate_fn': data_collator,
+                'num_workers': trainer.args.dataloader_num_workers,
+                'pin_memory': trainer.args.dataloader_pin_memory,
+                'persistent_workers': trainer.args.dataloader_persistent_workers,
+            }
 
-    def prepare_trainer_and_get_dataloader(self, trainer):
+            if not isinstance(dataset, torch.utils.data.IterableDataset):
+                dataloader_params['sampler'] = sampler
+                dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
+                dataloader_params['worker_init_fn'] = seed_worker
+
+            return DataLoader(dataset, **dataloader_params)
+        else:
+            dataloader_params = {
+                'collate_fn': data_collator,
+                'num_workers': trainer.args.dataloader_num_workers,
+                'pin_memory': trainer.args.dataloader_pin_memory,
+                'persistent_workers': trainer.args.dataloader_persistent_workers,
+                'prefetch_factor': trainer.args.dataloader_prefetch_factor
+            }
+            if dist.is_initialized() and dataloader_params['prefetch_factor']:
+                dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
+            dataloader = DataLoader(dataset, batch_size=batch_size, **dataloader_params)
+            dataloader = UlyssesDispatcher(dataloader, self)
+            return dataloader
+
+    def prepare_trainer(self, trainer):
         if trainer.train_dataset is None:
             raise ValueError('Trainer: training requires a train_dataset.')
 
@@ -498,60 +562,33 @@ class Ulysses(SequenceParallel):
                 return loss_scale_sp_func(*args, process_group=self.sp_group, **kwargs)
 
             trainer.get_nll_loss = MethodType(rlhf_loss_scale_sp_func, trainer)
-        train_dataset = trainer.train_dataset
 
-        def _compute_acc(trainer, outputs, labels) -> None:
-            args = trainer.args
-            acc_steps = args.acc_steps
-            preds = outputs.logits.argmax(dim=-1)
-            if trainer.state.global_step % acc_steps == 0:
-                # Gather preds and labels across the sp group
-                shape0 = preds.shape[0]
-                preds_output = torch.empty((shape0 * self.sp_world_size, preds.shape[1]),
-                                           dtype=preds.dtype,
-                                           device=preds.device)
-                dist.all_gather_into_tensor(preds_output, preds, group=self.sp_group)
-                preds_output = torch.cat(preds_output.split(shape0, dim=0), dim=1)
-                shape0 = labels.shape[0]
-                labels_output = torch.empty((shape0 * self.sp_world_size, labels.shape[1]),
-                                            dtype=labels.dtype,
-                                            device=labels.device)
-                dist.all_gather_into_tensor(labels_output, labels, group=self.sp_group)
-                labels_output = torch.cat(labels_output.split(shape0, dim=0), dim=1)
-                # roll back to fit compute_acc
-                labels_output = torch.roll(labels_output, shifts=1, dims=1)
-                from swift.plugin import MeanMetric, compute_acc
-                metrics = compute_acc(
-                    preds_output,
-                    labels_output,
-                    acc_strategy=args.acc_strategy,
-                    is_encoder_decoder=trainer.template.is_encoder_decoder)
-                for k, v in metrics.items():
-                    if k not in trainer._custom_metrics:
-                        trainer._custom_metrics[k] = MeanMetric(nan_value=None)
-                    trainer._custom_metrics[k].update(v)
+        from swift.plugin import metric
+        from swift.trainers import mixin
+        compute_acc_origin = metric.compute_acc
 
-        trainer._compute_acc = MethodType(_compute_acc, trainer)
-        sampler = UlyssesSampler(self, train_dataset, seed=42)
+        def compute_acc(preds, labels, *args, **kwargs) -> Dict[str, List[float]]:
 
-        train_dataset = trainer.train_dataset
-        data_collator = trainer.data_collator
-        if isinstance(train_dataset, datasets.Dataset):
-            train_dataset = trainer._remove_unused_columns(train_dataset, description='training')
-        else:
-            data_collator = trainer._get_collator_with_removed_columns(data_collator, description='training')
+            # Gather preds and labels across the sp group
+            if isinstance(preds, np.ndarray):
+                preds = torch.from_numpy(preds).to(get_current_device())
+            if isinstance(labels, np.ndarray):
+                labels = torch.from_numpy(labels).to(get_current_device())
+            shape0 = preds.shape[0]
+            preds_output = torch.empty((shape0 * self.sp_world_size, preds.shape[1]),
+                                       dtype=preds.dtype,
+                                       device=preds.device)
+            dist.all_gather_into_tensor(preds_output, preds, group=self.sp_group)
+            preds_output = torch.cat(preds_output.split(shape0, dim=0), dim=1)
+            shape0 = labels.shape[0]
+            labels_output = torch.empty((shape0 * self.sp_world_size, labels.shape[1]),
+                                        dtype=labels.dtype,
+                                        device=labels.device)
+            dist.all_gather_into_tensor(labels_output, labels, group=self.sp_group)
+            labels_output = torch.cat(labels_output.split(shape0, dim=0), dim=1)
+            # roll back to fit compute_acc
+            labels_output = torch.roll(labels_output, shifts=1, dims=1)
+            return compute_acc_origin(preds_output, labels_output, *args, **kwargs)
 
-        dataloader_params = {
-            'batch_size': trainer._train_batch_size,
-            'collate_fn': data_collator,
-            'num_workers': trainer.args.dataloader_num_workers,
-            'pin_memory': trainer.args.dataloader_pin_memory,
-            'persistent_workers': trainer.args.dataloader_persistent_workers,
-        }
-
-        if not isinstance(train_dataset, torch.utils.data.IterableDataset):
-            dataloader_params['sampler'] = sampler
-            dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
-            dataloader_params['worker_init_fn'] = seed_worker
-
-        return DataLoader(train_dataset, **dataloader_params)
+        metric.compute_acc = compute_acc
+        mixin.compute_acc = compute_acc

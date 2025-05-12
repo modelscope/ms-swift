@@ -168,17 +168,18 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def _save_trainer_state(self, trainer):
         training_args = trainer.args
         state = trainer.state
-        if not hasattr(state, 'last_model_checkpoint'):
+        if hasattr(state, 'last_model_checkpoint'):
+            if self.args.create_checkpoint_symlink:
+                last_checkpoint = os.path.join(self.args.output_dir, 'last')
+                best_checkpoint = os.path.join(self.args.output_dir, 'best')
+                os.symlink(state.last_model_checkpoint, last_checkpoint)
+                os.symlink(state.best_model_checkpoint, best_checkpoint)
+                state.last_model_checkpoint = last_checkpoint
+                state.best_model_checkpoint = best_checkpoint
+        else:
+            state.last_model_checkpoint = None
             logger.warning('No training was carried out, which may be due to the dataset being too small '
                            'or incorrect usage of resume_from_checkpoint.')
-            return
-        if self.args.create_checkpoint_symlink:
-            last_checkpoint = os.path.join(self.args.output_dir, 'last')
-            best_checkpoint = os.path.join(self.args.output_dir, 'best')
-            os.symlink(state.last_model_checkpoint, last_checkpoint)
-            os.symlink(state.best_model_checkpoint, best_checkpoint)
-            state.last_model_checkpoint = last_checkpoint
-            state.best_model_checkpoint = best_checkpoint
         logger.info(f'last_model_checkpoint: {state.last_model_checkpoint}')
         logger.info(f'best_model_checkpoint: {state.best_model_checkpoint}')
 
@@ -207,9 +208,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def train(self, trainer):
         logging_path = os.path.join(trainer.args.output_dir, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
-        trainer.train(trainer.args.resume_from_checkpoint)
-
-        return self._save_trainer_state(trainer)
+        try:
+            trainer.train(trainer.args.resume_from_checkpoint)
+        finally:
+            res = self._save_trainer_state(trainer)
+        return res
 
     def _prepare_callbacks(self):
         from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback
@@ -252,16 +255,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         if not is_grpo:
             if args.packing:
                 packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
-                dataset_kwargs = {'cyclic': True} if args.streaming else {}
                 train_dataset = packing_dataset_cls(
-                    self.template,
-                    train_dataset,
-                    num_workers=args.dataset_num_proc,
-                    strict=args.strict,
-                    **dataset_kwargs)
+                    self.template, train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
                 if val_dataset is not None:
                     val_dataset = packing_dataset_cls(
-                        self.template, val_dataset, num_workers=args.dataset_num_proc, strict=args.strict)
+                        self.template, val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
             elif args.lazy_tokenize:
                 train_dataset = LazyLLMDataset(
                     train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
