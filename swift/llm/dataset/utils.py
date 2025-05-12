@@ -152,11 +152,9 @@ class BasePackingDataset:
 class PackingDataset(BasePackingDataset, Dataset):
 
     def __init__(self, template, dataset, num_proc: int = 1, *, packing_interval: int = 128, strict: bool = False):
-        dataset_len = len(dataset) if hasattr(dataset, '__len__') else None
-        if dataset_len:
-            num_proc = min(dataset_len, num_proc)
+        num_proc = min(len(dataset), num_proc)
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
-        self.prog_bar = tqdm(total=dataset_len, dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
+        self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
         self._queue = mp.Queue()
         self._terminated_workers = 0
         if is_master():
@@ -236,11 +234,10 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
         self._out_queue = mp.Queue()
         self.workers = []
         self.cyclic = cyclic
-        if is_master():
-            for _ in range(self.num_proc):
-                worker = mp.Process(target=self._processor, daemon=True)
-                worker.start()
-                self.workers.append(worker)
+        for _ in range(self.num_proc):
+            worker = mp.Process(target=self._processor, daemon=True)
+            worker.start()
+            self.workers.append(worker)
 
     def _processor(self):
         while True:
@@ -283,7 +280,6 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
         except StopIteration:
             return
 
-        assert len(self.workers) > 0, f'self.workers: {self.workers}'
         if self.cyclic:
             iterator = self.cyclic_iter(self.dataset)
         else:
