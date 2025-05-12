@@ -172,8 +172,8 @@ swift sft \
 ### 推理
 通过`swift infer`来推理训练得到的模型
 ```bash
-swift infer \\
-    --ckpt_dir /path/to/stage2_checkpoint
+swift infer \
+    --model /path/to/stage2_checkpoint
 
 ```
 
@@ -208,7 +208,7 @@ task_cfg_dict = TaskConfig(
     eval_config={
         'data': ['MMMU_DEV_VAL'],
         'mode': 'all',
-        'model': [ 
+        'model': [
             {'api_base': 'http://localhost:8000/v1/chat/completions',
             'key': 'EMPTY',
             'name': 'CustomAPIModel',

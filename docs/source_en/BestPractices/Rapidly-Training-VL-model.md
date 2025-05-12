@@ -173,7 +173,7 @@ swift sft \
 Perform inference using `swift infer`:
 ```bash
 swift infer \
-    --ckpt_dir /path/to/stage2_checkpoint
+    --model /path/to/stage2_checkpoint
 ```
 
 ### Deoloyment
@@ -226,8 +226,3 @@ task_cfg_dict = TaskConfig(
 
 run_task(task_cfg=task_cfg_dict)
 ```
-
-
-
-
-
