@@ -588,7 +588,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.vllm_tensor_parallel_size > 1:
                 # Gather prompts from all ranks in the TP group and flatten.
                 # Each rank starts with its own prompts; after gathering, all ranks see the full group set.
-                orig_size = len(inputs)
+                # Note: The input sizes may differ across ranks (e.g., in multi-turn scenarios,
+                # the amount of data each rank continues to process may vary).
+                local_rank_in_group = torch.distributed.get_rank(group=self.tp_group)
+                local_input_length = len(inputs)
+                all_input_lengths = [None] * self.vllm_tensor_parallel_size
+                torch.distributed.all_gather_object(all_input_lengths, local_input_length, group=self.tp_group)
+                start_idx = sum(all_input_lengths[:local_rank_in_group])
+                end_idx = start_idx + all_input_lengths[local_rank_in_group]
+
+                # orig_size = len(inputs)/
                 gathered_inputs = [None for _ in range(self.vllm_tensor_parallel_size)]
                 torch.distributed.all_gather_object(gathered_inputs, inputs, group=self.tp_group)
                 inputs = [p for sublist in gathered_inputs for p in sublist]
@@ -600,9 +609,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.vllm_tensor_parallel_size > 1:
                 # Slice completions for this rank within its TP group.
                 # Each rank generates all outputs — we keep only our share.
-                local_rank_in_group = torch.distributed.get_rank(group=self.tp_group)
-                tp_slice = slice(local_rank_in_group * orig_size, (local_rank_in_group + 1) * orig_size)
-                results = results[tp_slice]
+                results = results[start_idx:end_idx]
 
         return results
 
@@ -793,8 +800,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     self.model.train()
             if is_multimodal:
                 self.template.register_post_encode_hook(models)
-            if isinstance(outputs[0][0], list):
-                outputs = [output[0] for output in outputs]
 
         for i, output in enumerate(outputs):
             inputs[i]['messages'] = output[0]
