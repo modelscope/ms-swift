@@ -11,7 +11,7 @@ pip install -U trl
 ```
 
 **更新日志**
-- **2025-05-13** — Internal部分重构，支持vLLM>=0.8
+- **2025-05-13** — Internal部分代码重构，支持vLLM>=0.8
 - **2025-05-11** — 支持生成式奖励模型，通过 reward_model_plugin 自定义奖励模型逻辑。有关更多详细信息，请参阅[自定义奖励模型](#自定义奖励模型)部分。
 - **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`
 
@@ -60,6 +60,7 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 ```
 
 4. 分批 Gather 模型权重（zero3下同步 vLLM 权重时）：
+
 ```bash
 --move_model_batches [批次数量]
 ```
@@ -202,12 +203,11 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - num_iterations: 每个批次代更新次数，默认为1.
 - epsilon: clip 系数，默认为0.2.
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围.
-- async_generate: 异步rollout以提高训练速度，默认`false`.
+- async_generate: 异步rollout以提高训练速度，仅支持async mode，默认`false`.
 - sleep_level: vllm特有参数，在训练和rollout复用卡的时候，可以选择vllm进行offload.
-- move_model_batches: 在模型向vLLM/LMDeploy等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个
+- move_model_batches: 在模型向vLLM/LMDeploy等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个.
 - offload_optimizer: 是否在vLLM/LMDeploy推理时offload optimizer参数，默认为False
 - offload_model: 是否在vLLM/LMDeploy推理时offload 模型本身，默认为False
-  - 注意：若该参数设置为True，训练时grad_norm一直为0，请安装`vllm==0.7.3`
 - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False
 - multi_turn_func: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现
 - dynamic_sample：筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
@@ -220,165 +220,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 奖励函数参数，见[内置奖励函数](#内置奖励函数)
 
-可以使用vLLM、LMDeploy作为采样后端加速训练
-多卡vLLM
-```bash
-# async mode
-# 要求 num_infer_workers(部署) + NPROC_PER_NODE(训练) = device_count
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=7 \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B \
-    --reward_funcs accuracy format \
-    --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.7 \
-    --vllm_max_model_len 8192 \
-    --num_infer_workers 1 \
-    --train_type full \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#5000' \
-    --max_completion_length 2048 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 1 \
-    --learning_rate 1e-6 \
-    --gradient_accumulation_steps 2 \
-    --eval_steps 200 \
-    --save_steps 200 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 4096 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 7 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero2 \
-    --log_completions true
-
-# colocate mode
-# 要求 num_infer_workers(部署) = NPROC_PER_NODE(训练) = device_count
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=8 \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-1.5B \
-    --reward_funcs accuracy format \
-    --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.5 \
-    --vllm_max_model_len 8192 \
-    --num_infer_workers 8 \
-    --train_type full \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#5000' \
-    --max_completion_length 2048 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 1 \
-    --learning_rate 1e-6 \
-    --gradient_accumulation_steps 2 \
-    --eval_steps 200 \
-    --save_steps 200 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 4096 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 8 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero2 \
-    --log_completions true \
-    --sleep_level 1 \
-    --offload_model true \
-    --offload_optimizer true \
-    --gc_collect_after_offload true \
-    --log_completions true
-```
-
-
-单卡
-```bash
-# PT backend
-CUDA_VISIBLE_DEVICES=0 \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B \
-    --reward_funcs accuracy format \
-    --train_type lora \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --target_modules all-linear \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#1000' \
-    --max_completion_length 1024 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --learning_rate 1e-5 \
-    --gradient_accumulation_steps 1 \
-    --eval_steps 100 \
-    --save_steps 100 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 2048 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 4 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --log_completions true
-
-# vLLM backend
-CUDA_VISIBLE_DEVICES=0 \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B \
-    --vllm_gpu_memory_utilization 0.5 \
-    --use_vllm true \
-    --sleep_level 1 \
-    --offload_model true \
-    --offload_optimizer true \
-    --gc_collect_after_offload true \
-    --reward_funcs accuracy format \
-    --train_type lora \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --target_modules all-linear \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#1000' \
-    --max_completion_length 1024 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --learning_rate 1e-5 \
-    --gradient_accumulation_steps 1 \
-    --eval_steps 100 \
-    --save_steps 100 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 2048 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 4 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --log_completions true
-```
-多机训练参考[这里](../../../examples/train/grpo/multi_node/)
-
-注：内部集成模式下，需要不同节点的GPU配置以及训练参数相同
+运行脚本参考[这里](../../../examples/train/grpo/)
 
 ## 自定义奖励模型
 默认情况下，奖励模型指的是包含数值头的分类模型（通常称为输出奖励模型（ORM））。这些模型对其他模型的输出进行评分，产生一个标量值，表示模型响应的质量。
@@ -408,7 +250,6 @@ swift rlhf \
     --reward_model Qwen/Qwen2.5-3B-Instruct Shanghai_AI_Laboratory/internlm2-7b-reward \
     --reward_model_plugin genrm my_rmplugin \
     --reward_weights 0.1 1 1 \
-    --num_infer_workers 8 \
     --vllm_gpu_memory_utilization 0.5 \
     --sleep_level 1 \
     --offload_model true \
@@ -431,55 +272,15 @@ swift rlhf \
 - Token level Loss
 - Soft Overlong Punishment
 
-其中Token level Loss是默认实现，不用额外设置。对于其余trick，我们可以基于GRPOTrainer，设置以下参数实现。
+以上trick，我们可以基于GRPOTrainer，设置以下参数实现。
+
+其中Token level Loss是通过使用参数 loss type `bnpo` 实现
 
 | 参数                 | 类型      | 值      |
 |----------------------|-----------|-------------|
+｜`--loss_type`        | `str`      |   `bnpo`   |
 | `--epsilon_high`     | `float`   | `0.28`      |
 | `--dynamic_sample`   | `bool`    | `true`      |
 | `--overlong_filter`  | `bool`    | `true`      |
 | `--reward_funcs`     | `str`     | `soft_overlong`|
 | `--max_resample_times` | `int`    | `3`        |
-
-参考训练脚本(八卡colocate mode)
-```bash
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=8 \
-WANDB_API_KEY=xxx \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-1.5B \
-    --reward_funcs accuracy soft_overlong \
-    --max_completion_length 4096 \
-    --soft_cache_length 819 \
-    --epsilon 0.2 \
-    --epsilon_high 0.28 \
-    --dynamic_sample true \
-    --overlong_filter true \
-    --max_resample_times 3 \
-    --use_vllm true \
-    --vllm_gpu_memory_utilization 0.6 \
-    --num_infer_workers 8 \
-    --train_type full \
-    --torch_dtype bfloat16 \
-    --dataset AI-MO/NuminaMath-TIR#5000 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --learning_rate 1e-6 \
-    --eval_steps 1000 \
-    --save_steps 1000 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 8 \
-    --temperature 1.0 \
-    --top_p 1.0 \
-    --deepspeed zero2 \
-    --log_completions true \
-    --num_iterations 1 \
-    --report_to tensorboard wandb \
-    --beta 0.0 \
-```

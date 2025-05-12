@@ -151,15 +151,16 @@ class GRPOArgumentsMixin:
     vllm_device: Optional[List[str]] = None  # deprecated
     vllm_gpu_memory_utilization: float = 0.9
     vllm_max_model_len: Optional[int] = None
+    vllm_max_num_seqs: Optional[int] = None  # deprecated
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
-    vllm_enable_prefix_caching: Optional[bool] = None  # deprecated
+    vllm_enable_prefix_caching: bool = True
     vllm_tensor_parallel_size: int = 1
     # external vllm (server)
     vllm_server_host: Optional[str] = None
     vllm_server_port: int = 8000
     vllm_server_timeout: float = 240.0
-    vllm_client = None
+    vllm_client = None  # Not required to set, used for client instantiation
 
     # reward function args, see details in swift/plugin/orm.py
     # cosine reward, https://arxiv.org/abs/2502.03373

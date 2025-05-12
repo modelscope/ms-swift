@@ -35,6 +35,7 @@ Training and inference share GPU resources; the inference service is started int
 
 Launch Parameters
 ```bash
+--use_vllm true \
 --vllm_mode colocate
 ```
 
@@ -52,13 +53,13 @@ When running in Colocate Mode , out-of-memory (OOM) errors are common due to sim
 ```bash
 --offload_optimizer true \
 --offload_model true \
---gc_collect_after_offload true \
+--gc_collect_after_offload true
 ```
 
 3. Use Tensor Parallelism in vLLM:
 
 ```bash
---tensor_parallel_size [tp_size]
+--vllm_tensor_parallel_size [tp_size]
 ```
 
 4. Batched gathering of model weights (when synchronizing vLLM weights under ZeRO-3):
@@ -84,6 +85,7 @@ swift rollout \
 Use the following parameters in training to connect to an external vLLM server:
 
 ```bash
+--use_vllm true \
 --vllm_mode server \
 --vllm_server_host <Server IP> \
 --vllm_server_port <Server Port> \
@@ -194,17 +196,16 @@ Arguments
 - loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo'], default is 'grpo'. For details, see this [pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb`, default is False.
   - Note: If `--report_to wandb` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
-- use_vllm: Whether to use vLLM as the back-end for sampling generation; default is False, using it is recommended to speed up training.
-- vllm_device: Device for deploying vLLM, default is auto, meaning the first unused GPU. Use cuda:x to specify a particular card.
+- use_vllm: Whether to use vLLM as the back-end for sampling generation; default is False, using pt(pytorch) engine to rollout.
+- vllm_mode: Mode to use for vLLM integration when `use_vllm` is set to `True`. Must be one of `"server"` or `"colocate"`
 - vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
-- vllm_max_model_len: vLLM passthrough parameter, default is None.
-- vllm_max_num_seqs: vLLM passthrough parameter, default is 256.
+- vllm_max_model_len: used in colocate mode, vLLM passthrough parameter, the total length limit of model, default is None.
 - vllm_enforce_eager: vLLM passthrough parameter, default is False.
 - vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
-- vllm_enable_prefix_caching: vLLM passthrough parameter, default is True.
 - vllm_server_host: The host address of the vLLM server. Default is None. This is used when connecting to an external vLLM server.
 - vllm_server_port: The service port of the vLLM server. Default is 8000.
 - vllm_server_timeout: The connection timeout for the vLLM server. Default is 120 seconds.
+- vllm_tensor_parallel_size: used in colocate mode, the tensor parallel size of vLLM engine, default is 1.
 - num_iterations: number of iterations per batch. Default is 1.
 - epsilon: epsilon value for clipping. Default is 0.2.
 - epsilon_high: Upper clip coefficient, default is None. When set, it forms a clipping range of [epsilon, epsilon_high] together with epsilon.

@@ -270,9 +270,9 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         if self.vllm_device is not None:
             logger.warning("The parameter 'vllm_device' has been deprecated and will be removed in version 3.6. ")
 
-        if self.vllm_enable_prefix_caching is not None:
-            logger.warning(
-                "The parameter 'vllm_enable_prefix_caching' has been deprecated and will be removed in version 3.6. ")
+        if self.vllm_max_num_seqs is not None:
+            logger.warning("The parameter 'vllm_max_num_seqs' is automatically set, "
+                           'and has been deprecated and will be removed in version 3.6. ')
 
         if self.num_infer_workers is not None:
             logger.warning(
