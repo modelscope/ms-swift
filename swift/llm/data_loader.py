@@ -89,7 +89,8 @@ class DataLoaderDispatcher:
         if not dist.is_initialized():
             return inputs[0]
         outputs = [None]
-        dist.scatter_object_list(outputs, inputs, self.src_rank, group=self.group)
+        global_src_rank = dist.get_global_rank(self.group, self.src_rank)
+        dist.scatter_object_list(outputs, inputs, global_src_rank, group=self.group)
         return outputs[0]
 
     def __iter__(self):
