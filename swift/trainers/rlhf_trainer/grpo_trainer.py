@@ -34,7 +34,6 @@ from trl.trainer.grpo_trainer import nanmax, nanmin
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
 from swift.plugin import multi_turns, orms, rm_plugins
-
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_logger, is_lmdeploy_available, is_vllm_available,
                          is_wandb_available)
 from ..mixin import SwiftMixin

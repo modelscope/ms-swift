@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
