@@ -234,39 +234,40 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
         self._out_queue = mp.Queue()
         self.workers = []
         self.cyclic = cyclic
-        if is_master():
-            for _ in range(self.num_proc):
-                worker = mp.Process(target=self._processor, daemon=True)
-                worker.start()
-                self.workers.append(worker)
+        for _ in range(self.num_proc):
+            worker = mp.Process(target=self._processor, daemon=True)
+            worker.start()
+            self.workers.append(worker)
 
     def _processor(self):
         while True:
-            data = self._in_queue.get()
+            i, data = self._in_queue.get()
             if data is None:
                 encoded_data = None
             else:
                 encoded_data = self._encode_data(data)
-            self._out_queue.put(encoded_data)
+            self._out_queue.put((i, encoded_data))
 
     def _put_data_in_queue(self, iterator):
-        for _ in range(self.packing_interval):
+        for i in range(self.packing_interval):
             try:
                 data = next(iterator)
             except StopIteration:
-                self._in_queue.put(None)
+                self._in_queue.put((i, None))
                 return True
-            self._in_queue.put(data)
+            self._in_queue.put((i, data))
         return False
 
     def _fetch_data_out_queue(self, res):
+        res = [None] * self.packing_interval
         for _ in range(self.packing_interval):
-            data = self._out_queue.get()
+            i, data = self._out_queue.get()
             if data is None:
                 break
             elif not data:
                 continue
-            res.append((data, len(data['input_ids'])))
+            res[i] = (data, len(data['input_ids']))
+        res = [data for data in res if data]
         return res
 
     @staticmethod
@@ -281,7 +282,6 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
         except StopIteration:
             return
 
-        assert len(self.workers) > 0, f'self.workers: {self.workers}'
         if self.cyclic:
             iterator = self.cyclic_iter(self.dataset)
         else:
