@@ -245,12 +245,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             logger.warning("Configuration conflict: External vLLM engine detected, but 'vllm_device' is set to '%s'. ",
                            self.vllm_device)
 
-        if self.num_infer_workers != 1:
-            logger.warning(
-                "Auto-adjustment: Changing 'num_infer_workers' from %s to 1 because external vLLM engine is detected",
-                self.num_infer_workers)
-            self.num_infer_workers = 1
-
         if self.vllm_max_model_len is not None:
             logger.warning(
                 "Configuration conflict: 'vllm_max_model_len=%s' is ignored for external vLLM. "

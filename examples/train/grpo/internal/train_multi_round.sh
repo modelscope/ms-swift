@@ -34,7 +34,6 @@ swift rlhf \
     --top_p 1.0 \
     --top_k 80 \
     --log_completions true \
-    --num_infer_workers 8 \
     --tensor_parallel_size 4 \
     --async_generate false \
     --offload_optimizer true \

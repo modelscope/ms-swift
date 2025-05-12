@@ -102,7 +102,7 @@ orms['dummy']= DummyLengthRewardFunction
 
 可以在`swift/examples/train/grpo/plugin/plugin.py`中加入该奖励函数，使用参数`--external_plugins examples/train/grpo/plugin/plugin.py`进行注册，并通过 reward_funcs 参数进行指定
 
-执行脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_rm.sh)
+执行脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh)
 
 ### 内置奖励函数
 swift内置了五种基于规则的奖励函数(代码见swift/plugin/orm.py)
@@ -278,7 +278,7 @@ swift rlhf \
 
 | 参数                 | 类型      | 值      |
 |----------------------|-----------|-------------|
-｜`--loss_type`        | `str`      |   `bnpo`   |
+｜`--loss_type`        | `str`      | `bnpo`     |
 | `--epsilon_high`     | `float`   | `0.28`      |
 | `--dynamic_sample`   | `bool`    | `true`      |
 | `--overlong_filter`  | `bool`    | `true`      |

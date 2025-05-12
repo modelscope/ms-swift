@@ -43,6 +43,5 @@ swift rlhf \
     --deepspeed zero3 \
     --log_completions true \
     --num_iterations 1 \
-    --num_infer_workers 1 \
     --report_to tensorboard wandb \
     --beta 0.0

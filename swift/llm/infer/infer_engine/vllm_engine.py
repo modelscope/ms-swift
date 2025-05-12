@@ -19,7 +19,7 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
-from .utils import AdapterRequest, InferStreamer, patch_npu_vllm, patch_vllm
+from .utils import AdapterRequest, InferStreamer, patch_npu_vllm
 
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
@@ -62,7 +62,6 @@ class VllmEngine(InferEngine):
         max_loras: int = 1,
         max_lora_rank: int = 16,
         enable_prefix_caching: bool = False,
-        num_infer_workers: int = 1,
         enable_sleep_mode: bool = False,
         distributed_executor_backend: Optional[str] = None,
         quantization: Optional[str] = None,

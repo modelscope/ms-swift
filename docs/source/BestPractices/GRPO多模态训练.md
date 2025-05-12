@@ -143,7 +143,6 @@ swift rlhf \
     --log_completions true \
     --report_to wandb \
     --num_iterations 1 \
-    --num_infer_workers 2 \
     --async_generate false \
     --beta 0.001 \
 

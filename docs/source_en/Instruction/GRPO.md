@@ -109,7 +109,7 @@ orms['dummy']= DummyLengthRewardFunction
 ```
 You can add this reward function in `swift/examples/train/grpo/plugin/plugin.py` and register it using the parameter `--external_plugins examples/train/grpo/plugin/plugin.py`, then specify it using the reward_funcs parameter.
 
-For an example of how to execute the script, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_rm.sh).
+For an example of how to execute the script, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh).
 
 
 
@@ -224,161 +224,6 @@ The hyperparameters for the reward function can be found in the [Built-in Reward
 
 You can use vLLM and LMDeploy as sampling backends to accelerate training.
 
-Multi-GPU vLLM
-```bash
-# async mode
-# The requirement is that num_infer_workers (deployment) + NPROC_PER_NODE (training) = device_count.
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=7 \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B \
-    --reward_funcs accuracy format cosine repetition\
-    --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.7 \
-    --vllm_max_model_len 8192 \
-    --num_infer_workers 1 \
-    --train_type full \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#5000' \
-    --max_completion_length 2048 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 1 \
-    --learning_rate 1e-6 \
-    --gradient_accumulation_steps 2 \
-    --eval_steps 200 \
-    --save_steps 200 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 4096 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 7 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero2 \
-    --log_completions true
-
-# colocate mode
-# The requirement is that num_infer_workers (deployment) = NPROC_PER_NODE (training) = device_count.
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=8 \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-1.5B \
-    --reward_funcs accuracy format \
-    --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.7 \
-    --vllm_max_model_len 8192 \
-    --num_infer_workers 8 \
-    --train_type full \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#5000' \
-    --max_completion_length 2048 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 1 \
-    --learning_rate 1e-6 \
-    --gradient_accumulation_steps 2 \
-    --eval_steps 200 \
-    --save_steps 200 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 4096 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 8 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero2 \
-    --log_completions true \
-    --sleep_level 1 \
-    --offload_model true \
-    --offload_optimizer true \
-    --gc_collect_after_offload true \
-    --log_completions true \
-```
-
-Single-GPU
-```bash
-# PT backend
-CUDA_VISIBLE_DEVICES=0 \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B \
-    --reward_funcs accuracy format cosine repetition\
-    --train_type lora \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --target_modules all-linear \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#1000' \
-    --max_completion_length 1024 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --learning_rate 1e-5 \
-    --gradient_accumulation_steps 1 \
-    --eval_steps 100 \
-    --save_steps 100 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 2048 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 4 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --log_completions true
-
-# vLLM backend
-CUDA_VISIBLE_DEVICES=0 \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B \
-    --vllm_gpu_memory_utilization 0.5 \
-    --use_vllm true \
-    --sleep_level 1 \
-    --offload_model true \
-    --offload_optimizer true \
-    --gc_collect_after_offload true \
-    --reward_funcs accuracy format \
-    --train_type lora \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --target_modules all-linear \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#1000' \
-    --max_completion_length 1024 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --learning_rate 1e-5 \
-    --gradient_accumulation_steps 1 \
-    --eval_steps 100 \
-    --save_steps 100 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 2048 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 4 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --log_completions true
-```
-
 For multi-node training, refer to [here](../../../examples/train/grpo/multi_node/) .
 
 Note : In the internal integration mode, the GPU configurations and training parameters must be identical across different nodes.
@@ -412,7 +257,6 @@ swift rlhf \
     --reward_model Qwen/Qwen2.5-3B-Instruct Shanghai_AI_Laboratory/internlm2-7b-reward \
     --reward_model_plugin genrm my_rmplugin \
     --reward_weights 0.1 1 1 \
-    --num_infer_workers 8 \
     --vllm_gpu_memory_utilization 0.5 \
     --sleep_level 1 \
     --offload_model true \
@@ -441,6 +285,7 @@ Among these, Token level Loss is implemented by default and does not require add
 
 | Parameter                 | Type      | Value      |
 |----------------------|-----------|-------------|
+｜`--loss_type`        | `str`      | `bnpo`     |
 | `--epsilon_high`     | `float`   | `0.28`      |
 | `--dynamic_sample`   | `bool`    | `true`      |
 | `--overlong_filter`  | `bool`    | `true`      |
@@ -466,7 +311,6 @@ swift rlhf \
     --max_resample_times 3 \
     --use_vllm true \
     --vllm_gpu_memory_utilization 0.6 \
-    --num_infer_workers 8 \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset AI-MO/NuminaMath-TIR#5000 \

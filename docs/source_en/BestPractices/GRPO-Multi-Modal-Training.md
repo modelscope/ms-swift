@@ -112,13 +112,13 @@ orms['external_r1v_acc'] = MultiModalAccuracyORM
 
 #### **Training Parameters**
 
-We selected `Qwen2.5-VL-3B-Instruct` as the base model for training. The main reason for choosing the `Instruct` model over the base model is to rapidly achieve format rewards. Experiments were conducted on 8 GPUs. SWIFT GRPO training supports multi-GPU deployment to accelerate rollouts, so we set `num_infer_workers` to 2 and processes to 6 (2 GPUs for deployment, 6 GPUs for training). If you encounter deployment errors for `qwen2.5-vl` on `vllm`, refer to [this issue](https://github.com/vllm-project/vllm/issues/13285).
+We selected `Qwen2.5-VL-3B-Instruct` as the base model for training. The main reason for choosing the `Instruct` model over the base model is to rapidly achieve format rewards. Experiments were conducted on 8 GPUs. SWIFT GRPO training supports multi-GPU deployment to accelerate rollouts. If you encounter deployment errors for `qwen2.5-vl` on `vllm`, refer to [this issue](https://github.com/vllm-project/vllm/issues/13285).
 
 Since the task is simple, we set `max_completion_length` to 1024 and selected `external_r1v_acc` and `format` as reward functions. The learning rate and beta are set to `1e-6` and `0.001`, respectively. Other configurations are as follows. The settings for `batch_size` and `num_generations` can be referenced from [GRPO Full Workflow](./GRPO完整流程.md).
 
 ```shell
 WANDB_API_KEY=your_wandb_api_key \
-NPROC_PER_NODE=6 \
+NPROC_PER_NODE=8 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
@@ -146,14 +146,13 @@ swift rlhf \
     --output_dir output/GRPO_CLEVR_COUNTDOWN \
     --warmup_ratio 0.01 \
     --dataloader_num_workers 4 \
-    --num_generations 24 \
+    --num_generations 32 \
     --temperature 1.0 \
     --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero3 \
     --log_completions true \
     --report_to wandb \
     --num_iterations 1 \
-    --num_infer_workers 2 \
     --async_generate false \
     --beta 0.001 \
 ```
@@ -232,7 +231,6 @@ swift rlhf \
     --log_completions true \
     --report_to wandb \
     --num_iterations 2 \
-    --num_infer_workers 2 \
     --async_generate false \
     --beta 0.001 \
     --max_grad_norm 0.5 \
@@ -321,7 +319,6 @@ swift rlhf \
     --log_completions true \
     --report_to wandb \
     --num_iterations 2 \
-    --num_infer_workers 2 \
     --async_generate false \
     --beta 0.001 \
     --max_grad_norm 0.5 \

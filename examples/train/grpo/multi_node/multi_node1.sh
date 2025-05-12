@@ -8,7 +8,7 @@ export NNODES=2
 export NODE_RANK=0
 export MASTER_ADDR=127.0.0.1
 export MASTER_PORT=29500
-export NPROC_PER_NODE=3
+export NPROC_PER_NODE=4
 
 swift rlhf \
     --rlhf_type grpo \
@@ -37,7 +37,7 @@ swift rlhf \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
-    --num_generations 7 \
+    --num_generations 8 \
     --temperature 0.9 \
     --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero2 \

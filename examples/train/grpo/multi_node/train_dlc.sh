@@ -33,7 +33,6 @@ torchrun \
     --vllm_gpu_memory_utilization 0.3 \
     --sleep_level 1 \
     --deepspeed zero3_offload \
-    --num_infer_workers 8 \
     --tensor_parallel_size 4 \
     --temperature 1.0 \
     --top_p 0.85

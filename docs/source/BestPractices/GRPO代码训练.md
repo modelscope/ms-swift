@@ -73,7 +73,6 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 14 \
     --temperature 0.9 \
-    --num_infer_workers 1 \
     --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero2 \
     --log_completions true \
@@ -123,7 +122,6 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 14 \
     --temperature 0.9 \
-    --num_infer_workers 1 \
     --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero2 \
     --log_completions true \
