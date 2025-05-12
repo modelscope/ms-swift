@@ -2,20 +2,9 @@
 
 ---
 
-## Known Issues
-Bugs in **vLLM >= 0.8**
-1. DeepSpeed ZeRO-3 Mode :
-    When using DeepSpeed's ZeRO-3 configuration, gradients may become zero during training.
-
-2. Async Mode
-    In certain scenarios, the asynchronous mode (Async Mode) may hang, causing the program to become unresponsive.
-
-To ensure stability and compatibility, it is recommended to use **vLLM 0.7.3** to avoid the above issues.
-
-
 ## **Introduction**
 
-The GRPO (Gradient-based Reinforcement Policy Optimization) training framework supports integrating high-performance inference engines like vLLM to accelerate the sampling process. The **Internal Mode** allows the inference service to be directly launched within the Trainer, reducing external dependencies and simplifying deployment.
+The GRPO (Group Relative Policy Optimization) training framework supports integrating high-performance inference engines like vLLM to accelerate the sampling process. The **Internal Mode** allows the inference service to be directly launched within the Trainer, reducing external dependencies and simplifying deployment.
 
 This folder contains scripts and instructions for running GRPO in **Internal Mode**, where the model training and inference are tightly integrated with flexible resource allocation strategies.
 
