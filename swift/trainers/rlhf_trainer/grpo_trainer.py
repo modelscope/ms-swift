@@ -24,7 +24,6 @@ from packaging import version
 from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
-from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.trainer import Trainer
 from transformers.trainer_utils import seed_worker
 from trl import GRPOTrainer as HFGRPOTrainer
@@ -39,6 +38,7 @@ from swift.utils import (JsonlWriter, gc_collect, get_device, get_logger, is_lmd
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import patch_lora_merge, patch_lora_unmerge, unwrap_model_for_generation
+from .vllm_client import VLLMClient
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
@@ -230,7 +230,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                   'Please install vLLM with `pip install vllm -U` to use it.')
             if self.vllm_mode == 'server':
-                self.vllm_client = vllm_client
+                self.vllm_client: VLLMClient = vllm_client
             elif self.vllm_mode == 'colocate':
                 if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:
                     raise ValueError(
@@ -1154,6 +1154,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
 
     def _process_infer_requests_images(self, infer_requests: List[InferRequest]):
+        # Process image format into a format that session.post can accept
         import base64
         if not any('images' in request for request in infer_requests):
             return
@@ -1163,6 +1164,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             for i, img in enumerate(request['images']):
                 if 'bytes' in img and img['bytes']:
                     request['images'][i] = base64.b64encode(img['bytes']).decode('utf-8')
+                elif 'path' in img and img['path']:
+                    request['images'][i] = img['path']
         return
 
     @property
