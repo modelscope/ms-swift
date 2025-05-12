@@ -82,7 +82,7 @@ class Template(ProcessorMixin):
         loss_scale: The loss scale function to use
         """
         from .template_meta import TemplateMeta
-        from swift.plugin import agent_templates
+        from swift.plugin import agent_templates, loss_scale_map
 
         self.processor = processor
         self.model_info = processor.model_info
@@ -115,7 +115,7 @@ class Template(ProcessorMixin):
         self.template_backend = template_backend
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
-        self.loss_scale = loss_scale
+        self.loss_scale = loss_scale_map[loss_scale]()
         self.max_pixels = max_pixels
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
@@ -819,7 +819,10 @@ class Template(ProcessorMixin):
         tokenizer_kwargs = {}
         if loss_scale_list is None:
             loss_scale_list = [0.] * len(context_list)
-        ignore_loss_scale = all(loss_scale in {0, 1} for loss_scale in loss_scale_list)
+        if self.loss_scale.keep_loss_scale and self._packing:
+            ignore_loss_scale = False
+        else:
+            ignore_loss_scale = all(loss_scale in {0, 1} for loss_scale in loss_scale_list)
         for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
             if isinstance(context, str):
                 # tokenizer_kwargs is the returned tokenizer_kwargs,
@@ -988,9 +991,7 @@ class Template(ProcessorMixin):
         if template_meta.auto_add_bos and sep_token:
             res_context_list.append(sep_token)
             res_context_types.append(ContextType.SUFFIX)
-        from swift.plugin import loss_scale_map
-        res_context_list, loss_scale_list = loss_scale_map[self.loss_scale](res_context_list, res_context_types,
-                                                                            inputs.messages)
+        res_context_list, loss_scale_list = self.loss_scale(res_context_list, res_context_types, inputs.messages)
         if self.is_training:
             answer_len = len(extra_context_list) + bool(response is not None)
         else:
