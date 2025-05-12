@@ -1,22 +1,29 @@
+# 快速训练视觉语言（Vision-Language, VL）模型的最佳实践
 
 本文档提供从零开始快速训练视觉语言(Vision-Language, VL)模型的最佳实践。
 
-大致思路：基于Qwen2.5-VL-7B-Instruct模型，将LLM部分替换为Qwen3-8B模型权重进行训练。
+涉及的模型链接：
+- [Qwen2.5-VL-7B-Instruct](https://www.modelscope.cn/models/Qwen/Qwen2.5-VL-7B-Instruct)
+- [Qwen3-8B](https://www.modelscope.cn/models/Qwen/Qwen3-8B)
 
-涉及到的模型链接：
-[Qwen2.5-VL-7B-Instruct](https://www.modelscope.cn/models/Qwen/Qwen2.5-VL-7B-Instruct)
-[Qwen3-8B](https://www.modelscope.cn/models/Qwen/Qwen3-8B)
+训练的模型链接：
+- [Simple-VL-8B](https://www.modelscope.cn/models/swift/Simple-VL-8B/summary)
 
-最终训练的模型链接：
-[Simple-VL-8B](https://www.modelscope.cn/models/swift/Simple-VL-8B/summary)
 
-1. 模型修改
-2. 训练
+本训练流程基于 Qwen2.5-VL-7B-Instruct 模型架构，将其内部的语言模型（LLM）部分替换为 Qwen3-8B 的权重，训练模型的视觉理解能力。具体步骤如下：
+
+1. 修改原始模型的配置文件 config.json，使其适配 Qwen3-8B 的模型结构。
+2. 初始化并加载新的模型权重，保存为新模型。
+3. 对新模型进行两阶段微调：
+    1. 第一阶段：仅训练视觉到语言的对齐模块（aligner），冻结 ViT 和 LLM 部分。
+    2. 第二阶段：解冻所有模块，联合训练提升整体性能。
+
 
 ## 模型修改
 
-### 修改config
-因为 Qwen2.5-VL-7B-Instruct 模型的底模 Qwen2.5-7B-Instruct 与 Qwen3-8B 在模型结构上存在部分差异（比如层数，hidden_state_dims），我们首先需要基于Qwen2.5-7B-Instruct的config.json文件，创建一个新的config.json文件，并修改以下参数对齐Qwen3-8B
+### 修改配置文件 config.json
+因为 Qwen2.5-VL-7B-Instruct 模型的底模 Qwen2.5-7B-Instruct 与 Qwen3-8B 在模型结构上存在部分差异（比如层数，hidden_state_dims），我们首先需要基于Qwen2.5-VL-7B-Instruct的config.json文件，创建一个新的config.json文件，并修改以下参数对齐Qwen3-8B
+
 ```
 修改
 1. hidden_size 3584->4096
@@ -31,15 +38,16 @@
 1. head_dim： 128
 ```
 
-### 模型权重修改
-我们需要对模型权重进行相应的初始化和重载，可以参考以下程序
+### 模型权重初始化与替换
+使用以下 Python 脚本完成模型权重的初始化、替换与保存：
+
 ```python
 import torch
 from modelscope import Qwen2_5_VLForConditionalGeneration, AutoModelForCausalLM, AutoConfig
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VLPatchMerger, Qwen2_5_VLModel
 from accelerate import Accelerator
 
-# 加载原始VL模型和Qwen3-8B模型
+# 加载原始 VL 模型和 Qwen3-8B 模型
 qwen2_5_vl_7b_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     "Qwen/Qwen2.5-VL-7B-Instruct",
     device_map="cuda",
@@ -54,9 +62,9 @@ qwen3_8b_model = AutoModelForCausalLM.from_pretrained(
 
 # 加载配置
 old_config = AutoConfig.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
-new_config = AutoConfig.from_pretrained("/path/to/new_config_dir")
+new_config = AutoConfig.from_pretrained("/path/to/new_config_dir") # 新 config 的文件夹路径
 
-# 1. 替换ViT到LLM的merger(aligner)层
+# 1. 替换 ViT 到 LLM 的 merger(aligner) 层
 new_merger = Qwen2_5_VLPatchMerger(
             dim=new_visual_config.out_hidden_size,
             context_dim=new_visual_config.hidden_size,
@@ -64,7 +72,7 @@ new_merger = Qwen2_5_VLPatchMerger(
         ).to(device).to(torch.bfloat16)
 qwen2_5_vl_7b_model.visual.merger = new_merger
 
-# 2. 替换VL模型的LLM部分
+# 2. 替换 VL 模型的 LLM 部分
 new_llm_model = Qwen2_5_VLModel(new_config).to(device).to(torch.bfloat16)
 
 for name, param in qwen3_8b_model.model.named_parameters():
@@ -87,20 +95,11 @@ accelerator.save_model(
 
 ## 训练
 
-简单起见，这里训练分为两个阶段
+为简化流程，我们跳过预训练（pretrain），直接进入监督微调（SFT）。训练分为两个阶段：
 
-1. stage1: 训练模型的 aligner 层，目的是能够将 vision tokens 转换为 language tokens
-2. stage2: 训练整体模型，增强模型的视觉能力
+### stage1 训练 Aligner 层
+仅训练视觉到语言的对齐层（Aligner），冻结 ViT 和 LLM 部分：
 
-### stage1
-第一阶段只训练 aligner 层，通过以下参数训练 aligner 层，并对模型的 vit 部分和 llm 部分进行冻结
-```
-    --freeze_vit true \
-    --freeze_llm true \
-    --freeze_aligner false \
-```
-
-参考脚本如下（如果是单机训练，去掉NNODES和NODE_RANK参数）
 ```bash
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
@@ -133,14 +132,8 @@ swift sft \
     --deepspeed zero2
 ```
 
-### stage2
-第二阶段训练全模型，设置如下
-```
-    --freeze_vit false \
-    --freeze_llm false \
-    --freeze_aligner false \
-```
-训练脚本如下
+### stage2 训练整个模型
+解冻所有模块，联合训练以增强模型的整体视觉理解能力：
 
 ```bash
 NNODES=$WORLD_SIZE \
@@ -174,14 +167,19 @@ swift sft \
     --deepspeed zero2
 ```
 
+## 推理/部署/评测
 
-## 推理与部署
+### 推理
+通过`swift infer`来推理训练得到的模型
+```bash
+swift infer \\
+    --ckpt_dir /path/to/stage2_checkpoint
 
+```
 
-## 评测
-可以通过 [evalscope](https://github.com/modelscope/evalscope/) 对训练得到的 VL 模型进行评测
+### 部署
+使用 vLLM 加速模型服务部署：
 
-我们可以使用 vLLM 部署模型来加速评测
 ```
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
@@ -197,7 +195,10 @@ swift deploy \
     --served_model_name Qwen3-VL
 ```
 
-以 MMMU benchmark 为例，对模型进行评测
+### 评测
+通过 [EvalScope](https://github.com/modelscope/evalscope/) 对训练得到的 VL 模型进行评测
+
+以下是以 MMMU benchmark 为例的评测代码：
 ```python
 from evalscope import TaskConfig, run_task
 
