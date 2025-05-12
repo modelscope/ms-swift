@@ -29,42 +29,67 @@ pip install -U trl
 
 The GRPO training framework supports the integration of high-performance inference engines (such as vLLM) to accelerate the sampling process, offering the following two deployment modes:
 
-### 1. Internal Integration Mode
+### 1. Colocate Mode
 
-- Launch the inference service directly within the Trainer.
-- Provides two resource allocation strategies:
-  - **Colocate Mode**: Training and inference share GPU resources.
-  - **Async Mode**: Training and inference use separate GPU resources.
+Training and inference share GPU resources; the inference service is started internally within the Trainer.
 
-### GRPO Training Resource Allocation Scheme
-
-| Configuration Scenario  | NPROC_PER_NODE | num_infer_workers | Resource Allocation Description       |
-|-------------------------|----------------|-------------------|---------------------------------------|
-| **Colocate**            | = Total GPUs   | = Total GPUs      | Training and inference share all GPU resources. |
-| **Async**               | = Training GPUs| = Inference GPUs  | Must satisfy: Training GPUs + Inference GPUs = Total GPUs. |
-
-**Note:**
-1. In Colocate mode, it is recommended to set `sleep_level=1` to release the GPU memory occupied by vLLM during model training.
-2. Total GPUs refers to the total number of visible GPU devices.
-
-### 2. External Service Mode
-
-Connect to an external vLLM inference server.
-When using this mode, configure the external vLLM server with the following parameters:
-
+Launch Parameters
 ```bash
---vllm_server_host <Server IP> \
---vllm_server_port <Server Port> \
---vllm_server_timeout <Timeout> \
+--vllm_mode colocate
 ```
 
-Deploy the vLLM server using the `swift rollout` command. Currently, only the vLLM backend is supported.
+#### Memory Optimization Strategies in Colocate Mode
+When running in Colocate Mode , out-of-memory (OOM) errors are common due to simultaneous training and inference workloads. Below are effective memory optimization strategies and configuration parameters:
+
+1. Release vLLM memory during training:
+
+```bash
+--sleep_level 1
+```
+
+2. Offload training model and optimizer memory during vLLM inference:
+
+```bash
+--offload_optimizer true \
+--offload_model true \
+--gc_collect_after_offload true \
+```
+
+3. Use Tensor Parallelism in vLLM:
+
+```bash
+--tensor_parallel_size [tp_size]
+```
+
+4. Batched gathering of model weights (when synchronizing vLLM weights under ZeRO-3):
+
+```bash
+--move_model_batches [number_of_batches]
+```
+
+
+### 2. Async Mode
+
+Training and inference use separate resources; a dedicated inference server is launched externally.
+
+Deploy the vLLM server using the swift rollout command. Currently, only the vLLM backend is supported:
+
 ```bash
 CUDA_VISIBLE_DEVICES=2 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
   --tensor_parallel_size 2 \
 ```
+
+Use the following parameters in training to connect to an external vLLM server:
+
+```bash
+--vllm_mode server \
+--vllm_server_host <Server IP> \
+--vllm_server_port <Server Port> \
+--vllm_server_timeout <Timeout> \
+```
+
 The complete script can be found [here](../../../examples/train/grpo/multi_node/Qwen2_5_32B_full.sh) .
 
 ## Reward Functions

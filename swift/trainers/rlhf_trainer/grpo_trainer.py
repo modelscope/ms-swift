@@ -559,7 +559,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # keys from InferRequest
         per_device_size = len(inputs)
         if is_global_inputs:
-            per_device_size /= self.accelerator.num_processes
+            per_device_size //= self.accelerator.num_processes
         infer_inputs = [{
             k: v
             for k, v in inp.items() if k in ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
@@ -722,7 +722,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         def done(future):
             try:
                 result = future.result()
-                current_queue.put(DataCache(inputs, result))
+                current_queue.put(DataCache(all_inputs, result))
             except Exception as e:
                 logger.error('Error in async_infer callback: %s', str(e))
 

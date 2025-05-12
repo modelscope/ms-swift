@@ -11,7 +11,7 @@ pip install -U trl
 ```
 
 **更新日志**
-
+- **2025-05-13** — Internal部分重构，支持vLLM>=0.8
 - **2025-05-11** — 支持生成式奖励模型，通过 reward_model_plugin 自定义奖励模型逻辑。有关更多详细信息，请参阅[自定义奖励模型](#自定义奖励模型)部分。
 - **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`
 
@@ -27,31 +27,47 @@ pip install -U trl
 
 GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样过程，提供以下两种部署模式：
 
-### 1. 内部集成模式 (Internal)
+### 1. Colocate Mode
 
-- 在Trainer内部直接启动推理服务
-- 提供两种资源分配策略：
-  - **协同模式 (Colocate)**: 训练与推理共享GPU资源
-  - **异步模式 (Async)**: 训练与推理使用独立GPU资源
+- 训练与推理共享GPU资源，在 Trainer 内部启动推理服务，
 
-### GRPO训练资源配置方案
-| 配置场景                 | NPROC_PER_NODE | num_infer_workers | 资源分配说明             |
-|--------------------------|----------------|------------------|------------------------|
-| **Colocate**   | =总GPU数      | =总GPU数          | 训练和推理共享全部GPU资源              |
-| **Async**      | =训练卡数      | =推理卡数         | 必须满足：训练卡数 + 推理卡数 = 总GPU数 |
-
-**注：**
-1. 在Colocate模式下推荐设置`sleep_level=1`, 在模型训练时释放vLLM占用显存
-2. 总GPU数指可见的GPU设备总数
-
-### 2. 外部服务模式 (External)
-连接外部的 vLLM 推理服务器
-使用时，使用以下参数配置外部 vLLM 服务器
+启动参数
 ```bash
---vllm_server_host <服务器IP> \
---vllm_server_port <服务端口> \
---vllm_server_timeout <超时时间> \
+--vllm_mode colocate
 ```
+
+#### Colocate 模式下的显存优化方案
+在 Colocate 模式下运行时，容易出现显存不足（OOM）的情况。以下是几种有效的显存优化方法和参数配置：
+
+1. 在训练阶段，释放 vLLM 占用的显存：
+
+```bash
+--sleep_level 1
+```
+
+2. 在vLLM 推理阶段，释放训练模型和优化器占用的显存：
+
+```bash
+--offload_optimizer true \
+--offload_model true \
+--gc_collect_after_offload true \
+```
+
+3. 在vLLM中使用 Tensor Parallel 技术：
+
+```bash
+--tensor_parallel_size [tp_size]
+```
+
+4. 分批 Gather 模型权重（zero3下同步 vLLM 权重时）：
+```bash
+--move_model_batches [批次数量]
+```
+
+### 2. Async Mode
+
+- 训练与推理资源分离，在外面启动单独的推理服务器
+
 使用`swift rollout`命令部署vLLM 服务器, 现仅支持vLLM backend
 ```bash
 CUDA_VISIBLE_DEVICES=2 \
@@ -59,6 +75,14 @@ swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
   --tensor_parallel_size 2 \
 ```
+
+训练使用以下参数配置外部 vLLM 服务器
+```bash
+--vllm_server_host <服务器IP> \
+--vllm_server_port <服务端口> \
+--vllm_server_timeout <超时时间> \
+```
+
 完整脚本可以参考[这里](../../../examples/train/grpo/multi_node/Qwen2_5_32B_full.sh)
 
 
