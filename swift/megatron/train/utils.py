@@ -156,21 +156,20 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> Optional[PackedSeqParam
 def _split_tokens(tokens, cu_seqlens):
     assert tokens.shape[0] == 1, f'tokens.shape: {tokens.shape}'
     new_tokens = []
-    tokens = tokens[0]
-    cu_seqlens = cu_seqlens.tolist()
     cp_size = mpu.get_context_parallel_world_size()
     cp_rank = mpu.get_context_parallel_rank()
-    for i in range(len(cu_seqlens) - 1):
-        val = tokens[cu_seqlens[i]:cu_seqlens[i + 1]]
+    for i in range(cu_seqlens.shape[0] - 1):
+        val = tokens[:, cu_seqlens[i]:cu_seqlens[i + 1]]
         val = val.view(
+            tokens.shape[0],
             2 * cp_size,
-            val.shape[0] // (2 * cp_size),
+            val.shape[1] // (2 * cp_size),
         )
         index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device='cpu',
                              pin_memory=True).cuda(non_blocking=True)
-        val = val.index_select(0, index)
-        new_tokens.append(val.view(-1))
-    return torch.cat(new_tokens, dim=0)[None]
+        val = val.index_select(1, index)
+        new_tokens.append(val.view(tokens.shape[0], -1))
+    return torch.cat(new_tokens, dim=1)
 
 
 def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
