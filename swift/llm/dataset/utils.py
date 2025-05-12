@@ -253,7 +253,7 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
             try:
                 data = next(iterator)
             except StopIteration:
-                self._in_queue.put(None)
+                self._in_queue.put((i, None))
                 return True
             self._in_queue.put((i, data))
         return False
