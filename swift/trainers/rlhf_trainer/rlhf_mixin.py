@@ -90,7 +90,7 @@ class RLHFTrainerMixin:
             return super().concatenated_forward(model, model_kwargs)
 
     def get_batch_logps(self, logits: torch.FloatTensor, labels: torch.LongTensor, *args, **kwargs):
-        if kwargs.get('is_encoder_decoder', False):
+        if self.is_encoder_decoder:
             labels = labels.clone()  # fix trl bug
         return super().get_batch_logps(logits, labels, *args, **kwargs)
 
