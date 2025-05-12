@@ -257,6 +257,8 @@ def patch_automodel_for_sequence_classification(model_meta):
             _patch_sequence_classification(self, model_meta)
 
         cls.__init__ = __new_init__
+        if hasattr(cls, '_tp_plan'):  # fix tp_plan
+            cls._tp_plan = cls._tp_plan or {}
         res = from_pretrained(cls, *args, **kwargs)
         cls.__init__ = __init__
         return res
