@@ -81,22 +81,18 @@ class DataLoaderDispatcher:
     def group(self):
         return dist.group.WORLD if dist.is_initialized() else 1
 
-    @property
-    def src_rank(self):
-        return 0
-
     def _scatter_object_list(self, inputs):
         if not dist.is_initialized():
             return inputs[0]
         outputs = [None]
-        global_src_rank = dist.get_global_rank(self.group, self.src_rank)
+        global_src_rank = dist.get_global_rank(self.group, 0)
         dist.scatter_object_list(outputs, inputs, global_src_rank, group=self.group)
         return outputs[0]
 
     def __iter__(self):
         base_iter = iter(self.base_dataloader)
         while True:
-            if self.rank == self.src_rank:
+            if self.rank == 0:
                 try:
                     data = [next(base_iter) for _ in range(self.world_size)]
                 except StopIteration:
