@@ -4,6 +4,8 @@ import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 
+from swift.llm import to_device
+
 
 class BatchSamplerShard:
 
@@ -56,18 +58,25 @@ class BatchSamplerShard:
 
 class DataLoaderShard(DataLoader):
 
-    def __init__(self, dataset, batch_sampler: BatchSamplerShard, **dataloader_params):
+    def __init__(self, dataset, batch_sampler: BatchSamplerShard, device=None, **dataloader_params):
         self.batch_sampler = batch_sampler
+        self.device = device
         super().__init__(dataset, batch_sampler=self.batch_sampler, **dataloader_params)
 
     def set_epoch(self, epoch: int):
         self.batch_sampler.set_epoch(epoch)
 
+    def __iter__(self):
+        for item in super().__iter__():
+            if self.device:
+                item = to_device(item, self.device)
+            yield item
 
 class DataLoaderDispatcher:
 
-    def __init__(self, base_dataloader):
+    def __init__(self, base_dataloader, device=None):
         self.base_dataloader = base_dataloader
+        self.device = device
 
     @property
     def rank(self):
@@ -102,4 +111,6 @@ class DataLoaderDispatcher:
                 data = self._scatter_object_list(None)
             if data is None:
                 break
+            if self.device:
+                data = to_device(data, self.device)
             yield data

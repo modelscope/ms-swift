@@ -144,9 +144,10 @@ class UlyssesSampler(Sampler):
 
 class UlyssesDispatcher(DataLoaderDispatcher):
 
-    def __init__(self, base_dataloader, ulysses):
+    def __init__(self, base_dataloader, ulysses, device=None):
         super().__init__(base_dataloader)
         self.ulysses = ulysses
+        self.device = device
 
     def __iter__(self):
         base_iter = iter(self.base_dataloader)
@@ -161,6 +162,8 @@ class UlyssesDispatcher(DataLoaderDispatcher):
                 pass
             if data is None:
                 break
+            if self.device:
+                data = to_device(data, self.device)
             yield data
 
 
@@ -546,7 +549,7 @@ class Ulysses(SequenceParallel):
             if dist.is_initialized() and dataloader_params['prefetch_factor']:
                 dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
             dataloader = DataLoader(dataset, batch_size=batch_size, **dataloader_params)
-            dataloader = UlyssesDispatcher(dataloader, self)
+            dataloader = UlyssesDispatcher(dataloader, self, trainer.accelerator.device)
             return dataloader
 
     def prepare_trainer(self, trainer):
