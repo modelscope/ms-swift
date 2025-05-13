@@ -9,18 +9,13 @@
 pip install math_verify==0.5.2 # reward function
 pip install -U trl
 ```
-GRPOTrainer在swift3.6.dev进行了代码重构，如果你使用的swift版本<=3.5, 请参考[stable文档](https://swift.readthedocs.io/zh-cn/stable/Instruction/GRPO.html)
+
+GRPOTrainer在swift3.5.dev进行了代码重构，如果你使用的swift版本<3.5, 请参考[stable文档](https://swift.readthedocs.io/zh-cn/stable/Instruction/GRPO.html)
 
 **更新日志**
 - **2025-05-13** — 为了代码的可读性和维护性， GRPOTrainer代码重构，Internal mode 支持vLLM>=0.8。
 - **2025-05-11** — 支持生成式奖励模型，通过 reward_model_plugin 自定义奖励模型逻辑。有关更多详细信息，请参阅[自定义奖励模型](#自定义奖励模型)部分。
 - **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`。
-
-**FAQ**
-1. 训练过程中 loss 接近0 是正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
-2. 训练的steps怎么计算? 参考[issue](https://github.com/modelscope/ms-swift/issues/3912)
-3. clip_ratio为什么总是1? 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
-
 
 ## 集群支持
 
@@ -34,6 +29,7 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 
 启动参数
 ```bash
+--use_vllm true \
 --vllm_mode colocate
 ```
 
@@ -80,6 +76,8 @@ swift rollout \
 
 训练使用以下参数配置外部 vLLM 服务器
 ```bash
+--use_vllm true \
+--vllm_mode server \
 --vllm_server_host <服务器IP> \
 --vllm_server_port <服务端口> \
 --vllm_server_timeout <超时时间> \
@@ -191,21 +189,21 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb` 使用。默认为False
   - 提示：若没有设置`--report_to wandb`，则会在checkpoint中创建`completions.jsonl`来存储生成内容
 - use_vllm: 是否使用 vLLM 作为 GRPO 生成的 infer_backend，默认为False。
-- vllm_mode: vLLM 集成模式，可选项为 `server` 和 `colocate`。server 模式使用 `swift rollout` 拉起的 vLLM 服务器进行采样，colocate 模式在程序内部署 vLLM。使用server端时，
+- vllm_mode: vLLM 集成模式，可选项为 `server` 和 `colocate`。server 模式使用 `swift rollout` 拉起的 vLLM 服务器进行采样，colocate 模式在程序内部署 vLLM。
 - vllm_mode server 参数
-  - vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用。
-  - vllm_server_port vLLM server 服务端口，默认为8000。
-  - vllm_server_timeout 连接vLLM server的超时时间，默认为120s。
+  - vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用.
+  - vllm_server_port vLLM server 服务端口，默认为8000.
+  - vllm_server_timeout 连接vLLM server的超时时间，默认为120s.
+  - async_generate: 异步rollout以提高训练速度，默认`false`.
 - vllm_mode colocate 参数
-  - vllm_gpu_memory_utilization: vllm透传参数，默认为0.9。
-  - vllm_max_model_len: vllm透传参数，默认为None。
-  - vllm_enforce_eager: vllm透传参数，默认为False。
-  - vllm_limit_mm_per_prompt: vllm透传参数，默认为None。
-  - vllm_enable_prefix_caching: vllm透传参数，默认为True。
+  - vllm_gpu_memory_utilization: vllm透传参数，默认为0.9.
+  - vllm_max_model_len: vllm透传参数，默认为None.
+  - vllm_enforce_eager: vllm透传参数，默认为False.
+  - vllm_limit_mm_per_prompt: vllm透传参数，默认为None.
+  - vllm_enable_prefix_caching: vllm透传参数，默认为True.
 - num_iterations: 每个批次代更新次数，默认为1.
 - epsilon: clip 系数，默认为0.2.
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围.
-- async_generate: 异步rollout以提高训练速度，仅支持async mode，默认`false`.
 - sleep_level: vllm特有参数，在训练和rollout复用卡的时候，可以选择vllm进行offload.
 - move_model_batches: 在模型向vLLM/LMDeploy等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个.
 - offload_optimizer: 是否在vLLM/LMDeploy推理时offload optimizer参数，默认为False
@@ -286,3 +284,48 @@ swift rlhf \
 | `--overlong_filter`  | `bool`    | `true`      |
 | `--reward_funcs`     | `str`     | `soft_overlong`|
 | `--max_resample_times` | `int`    | `3`        |
+
+
+## FAQ
+**1. 训练过程中 loss 等于0 / 接近0 / 小于0**
+
+正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
+
+**2. num_generations / 批量大小相关**
+
+在 GRPO 中，batch_size 以 completion（模型生成结果） 为单位。例如，设置 per_device_train_batch_size=8 表示每张 GPU 在训练过程中会同时处理 8 个 completion 的 loss 计算。
+
+训练阶段，在一次完整的梯度累计 batch 中，总的 completion 数量等于：
+
+```
+num_processes * per_device_train_batch_size * gradient_accumulation_steps
+```
+
+在评估阶段，completion 的数量等于：
+```
+num_processes * per_device_eval_batch_size
+```
+
+参数 `num_generations` 必须能够被以上两个值整除，以保证生成任务可以均匀分配到各个设备上。
+
+**示例**
+
+在 8 卡的环境下，若设置 `num_generations = 16`，则要求：
+
+- per_device_train_batch_size * gradient_accumulation_steps
+- per_device_eval_batch_size
+这两个值都应大于或等于 2，以满足整除条件。
+
+**3. 为什么 KL 出现了NaN**
+
+开启 overlong_filter 后，某一卡上的所有 completion 都被截断
+
+**4. 训练的steps怎么计算?**
+
+参考[issue](https://github.com/modelscope/ms-swift/issues/3912)
+
+**5. clip_ratio为什么总是1?**
+
+num_iterations = 1，async_generate = False 下为 on-policy RL，old_policy此时等于policy
+
+参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)

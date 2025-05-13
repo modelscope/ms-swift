@@ -10,7 +10,7 @@ environments
 pip install math_verify # reward function
 pip install -U trl
 ```
-The GRPOTrainer has been refactored in swift 3.6.dev. If you are using a version of Swift ≤ 3.5 , please refer to the[stable doc](https://swift.readthedocs.io/zh-cn/stable/Instruction/GRPO.html)
+The GRPOTrainer has been refactored in swift 3.5.dev. If you are using a version of Swift < 3.5 , please refer to the[stable doc](https://swift.readthedocs.io/zh-cn/stable/Instruction/GRPO.html)
 
 **Dev Log**
 - **2025-05-13** — The GRPOTrainer code has been refactored to improve code readability and maintainability. Internal mode now supports vLLM ≥ 0.8.
@@ -203,6 +203,7 @@ Arguments
   - vllm_server_host: The host address of the vLLM server. Default is None. This is used when connecting to an external vLLM server.
   - vllm_server_port: The service port of the vLLM server. Default is 8000.
   - vllm_server_timeout: The connection timeout for the vLLM server. Default is 120 seconds.
+  - async_generate: Use async rollout to improve train speed，default `false`.
 - vllm_mode colocate parameter
   - vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
   - vllm_max_model_len: vLLM passthrough parameter, the total length limit of model, default is None.
@@ -212,7 +213,6 @@ Arguments
 - num_iterations: number of iterations per batch. Default is 1.
 - epsilon: epsilon value for clipping. Default is 0.2.
 - epsilon_high: Upper clip coefficient, default is None. When set, it forms a clipping range of [epsilon, epsilon_high] together with epsilon.
-- async_generate: Use async rollout to improve train speed，default `false`.
 - sleep_level: vllm specific，when both actor and rollout in the same GPU，you can make vllm sleep when model is training.
 - move_model_batches: When moving model parameters to fast inference frameworks such as vLLM/LMDeploy, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
 - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM/LMDeploy. The default is `False`.
@@ -341,3 +341,47 @@ swift rlhf \
     --gc_collect_after_offload true \
     --log_completions true
 ```
+
+## FAQ
+**1. Loss equals zero / close to zero / negative during training**
+
+This is normal in certain cases.
+See reference: [issue](https://github.com/huggingface/open-r1/issues/239 #issuecomment-2646297851)
+
+**2. num_generations / Batch size calculation**
+
+In GRPO, the batch size is defined in terms of completions (i.e., model generation outputs). For example, setting per_device_train_batch_size=8 means that each GPU processes 8 completions for loss computation during training.
+
+During training, within a single gradient accumulation batch, the total number of completions is given by:
+
+```
+num_processes * per_device_train_batch_size * gradient_accumulation_steps
+```
+
+During evaluation, the number of completions is:
+```
+num_processes * per_device_eval_batch_size
+```
+The parameter num_generations must be divisible by both of these values to ensure even distribution of generation tasks across devices.
+
+**Example**
+In an 8-GPU setup, if you set num_generations = 16, then both:
+
+- per_device_train_batch_size * gradient_accumulation_steps
+- per_device_eval_batch_size
+
+should be at least 2 to satisfy the divisibility condition.
+
+**3. Why does KL become NaN?**
+
+After enabling overlong_filter, all completions on one GPU may have been truncated.
+
+**4. How are the training steps calculated?**
+
+See reference: [issue](https://github.com/modelscope/ms-swift/issues/3912)
+
+**5. Why is clip_ratio always 1?**
+
+When num_iterations = 1 and async_generate = False, it's on-policy RL, and old_policy is equal to policy.
+
+See reference: [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
