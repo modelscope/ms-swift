@@ -6,6 +6,11 @@ swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-72B-Instruct \
     --train_type lora \
+    --use_vllm true \
+    --vllm_mode colocate \
+    --vllm_gpu_memory_utilization 0.5 \
+    --vllm_max_model_len 2048 \
+    --vllm_tensor_parallel_size 4 \
     --dataset AI-MO/NuminaMath-TIR#10000 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
@@ -25,15 +30,11 @@ swift rlhf \
     --reward_funcs accuracy format \
     --num_generations 4 \
     --system examples/train/grpo/prompt.txt \
-    --use_vllm true \
-    --vllm_gpu_memory_utilization 0.5 \
-    --vllm_max_model_len 2048 \
     --deepspeed zero3_offload \
     --temperature 1.0 \
     --top_p 1.0 \
     --top_k 80 \
     --log_completions true \
-    --tensor_parallel_size 4 \
     --async_generate false \
     --move_model_batches 16 \
     --offload_optimizer true \

@@ -9,6 +9,11 @@ swift rlhf \
   --rlhf_type grpo \
   --model Qwen/Qwen2.5-VL-72B-Instruct \
   --train_type lora \
+  --use_vllm true \
+  --vllm_mode colocate \
+  --vllm_gpu_memory_utilization 0.5 \
+  --vllm_max_model_len 8192 \
+  --vllm_tensor_parallel_size 4 \
   --dataset lmms-lab/multimodal-open-r1-8k-verified#1000 \
   --external_plugins examples/train/grpo/plugin/plugin.py \
   --reward_funcs external_r1v_acc format \
@@ -29,15 +34,11 @@ swift rlhf \
   --dataloader_num_workers 4 \
   --max_completion_length 2048 \
   --num_generations 8 \
-  --use_vllm true \
-  --vllm_gpu_memory_utilization 0.5 \
-  --vllm_max_model_len 8192 \
   --deepspeed zero3 \
   --temperature 1.1 \
   --top_p 1.0 \
   --top_k 80 \
   --log_completions true \
-  --tensor_parallel_size 4 \
   --async_generate false \
   --offload_optimizer true \
   --offload_model true \

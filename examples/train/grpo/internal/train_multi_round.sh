@@ -6,6 +6,11 @@ swift rlhf \
     --train_type full \
     --dataset AI-MO/NuminaMath-TIR#10000 \
     --torch_dtype bfloat16 \
+    --use_vllm true \
+    --vllm_mode colocate \
+    --vllm_gpu_memory_utilization 0.5 \
+    --vllm_max_model_len 2048 \
+    --vllm_tensor_parallel_size 4 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --per_device_train_batch_size 4 \
@@ -23,15 +28,11 @@ swift rlhf \
     --reward_funcs accuracy format \
     --num_generations 32 \
     --system examples/train/grpo/prompt.txt \
-    --use_vllm true \
-    --vllm_gpu_memory_utilization 0.5 \
-    --vllm_max_model_len 2048 \
     --deepspeed zero3 \
     --temperature 1.0 \
     --top_p 1.0 \
     --top_k 80 \
     --log_completions true \
-    --tensor_parallel_size 4 \
     --async_generate false \
     --offload_optimizer true \
     --offload_model true \

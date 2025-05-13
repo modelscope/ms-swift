@@ -1,14 +1,22 @@
 # README: GRPO Internal(Colocate) Mode Execution Scripts
 
 ---
+**NOTE**
+The scripts in this folder require the source code version of ms-swift.
+
+```
+git clone https://github.com/modelscope/ms-swift.git
+cd ms-swift
+pip install -e .
+```
 
 ## **Introduction**
 
-The GRPO (Group Relative Policy Optimization) training framework supports high-performance inference engines like vLLM to accelerate the sampling process. The **Internal Mode** allows you 使用相同的GPU资源部署vLLM和训练
+The GRPO (Group Relative Policy Optimization) training framework supports high-performance inference engines like vLLM to accelerate the sampling process. The **Internal Mode** allows you to deploy vLLM and perform training using the same GPU resources.
 
 This folder contains scripts and instructions for running GRPO in **Internal Mode**
 
-## Training with Internal mode 
+## Training with Internal mode
 ```bash
 --use_vllm true \
 --vllm_mode colocate \
