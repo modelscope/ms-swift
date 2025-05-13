@@ -82,7 +82,7 @@ class Template(ProcessorMixin):
         loss_scale: The loss scale function to use
         """
         from .template_meta import TemplateMeta
-        from swift.plugin import agent_templates
+        from swift.plugin import agent_templates, loss_scale_map
 
         self.processor = processor
         self.model_info = processor.model_info
@@ -115,7 +115,7 @@ class Template(ProcessorMixin):
         self.template_backend = template_backend
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
-        self.loss_scale = loss_scale
+        self.loss_scale = loss_scale_map[loss_scale]()
         self.max_pixels = max_pixels
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
@@ -299,8 +299,8 @@ class Template(ProcessorMixin):
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
         assert chosen_inputs.rejected_response is not None, f'inputs: {inputs}'
         rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
-        chosen_encoded = self._encode(chosen_inputs)
-        rejected_encoded = self._encode(rejected_inputs)
+        chosen_encoded = self._encode_truncated(chosen_inputs)
+        rejected_encoded = self._encode_truncated(rejected_inputs)
 
         encoded = {}
         for prefix in ['chosen', 'rejected']:
@@ -338,7 +338,7 @@ class Template(ProcessorMixin):
         anchor.messages[-1]['content'] = ''
         anchor.rejected_response = []
         split_multi_medias(anchor)
-        anchor_encoded = self._encode(anchor)
+        anchor_encoded = self._encode_truncated(anchor)
         for key in anchor_encoded:
             _encoded[f'anchor_{key}'] = anchor_encoded[key]
 
@@ -347,7 +347,7 @@ class Template(ProcessorMixin):
         positive.messages[-1]['content'] = ''
         positive.rejected_response = []
         split_multi_medias(positive)
-        positive_encoded = self._encode(positive)
+        positive_encoded = self._encode_truncated(positive)
         for key in positive_encoded:
             _encoded[f'positive_{key}'] = positive_encoded[key]
         labels.append(float(inputs.label) if inputs.label is not None else 1.0)
@@ -359,7 +359,7 @@ class Template(ProcessorMixin):
             negative.messages[-1]['content'] = ''
             negative.rejected_response = []
             split_multi_medias(negative)
-            negative_encoded = self._encode(negative)
+            negative_encoded = self._encode_truncated(negative)
             for key in negative_encoded:
                 _encoded[f'negative{i}_{key}'] = negative_encoded[key]
             labels.append(0.0)
@@ -368,7 +368,7 @@ class Template(ProcessorMixin):
         return _encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded = self._encode(inputs)
+        encoded = self._encode_truncated(inputs)
         encoded.pop('labels', None)
         if inputs.label is not None:
             labels = inputs.label
@@ -399,12 +399,9 @@ class Template(ProcessorMixin):
             inputs = deepcopy(inputs)
         assert isinstance(inputs, StdTemplateInputs)
         self._preprocess_inputs(inputs)
-        if self.mode in {'vllm', 'lmdeploy'}:
-            encoded = Template._encode(self, inputs)
-            for key in ['images', 'audios', 'videos']:
-                encoded[key] = getattr(inputs, key)
-        elif self.mode in {'pt', 'train', 'prm'}:
-            encoded = self._encode(inputs)
+
+        if self.mode in {'pt', 'train', 'prm', 'vllm', 'lmdeploy'}:
+            encoded = self._encode_truncated(inputs)
         elif self.mode == 'seq_cls':
             encoded = self._seq_cls_encode(inputs)
         elif self.mode == 'rlhf':
@@ -418,11 +415,6 @@ class Template(ProcessorMixin):
                 encoded.pop(key)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
-        if self.max_length is not None and self.truncation_strategy == 'raise':
-            length = len(encoded.get('input_ids') or encoded.get('labels') or [])
-            if length > self.max_length:
-                raise MaxLengthError(f'Current length of row({length}) is larger'
-                                     f' than the max_length({self.max_length}).')
         return encoded
 
     def packing_row(self, row: List[Tuple[Dict[str, Any], int]]) -> Dict[str, Any]:
@@ -827,7 +819,10 @@ class Template(ProcessorMixin):
         tokenizer_kwargs = {}
         if loss_scale_list is None:
             loss_scale_list = [0.] * len(context_list)
-        ignore_loss_scale = all(loss_scale in {0, 1} for loss_scale in loss_scale_list)
+        if self.loss_scale.keep_loss_scale and self._packing:
+            ignore_loss_scale = False
+        else:
+            ignore_loss_scale = all(loss_scale in {0, 1} for loss_scale in loss_scale_list)
         for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
             if isinstance(context, str):
                 # tokenizer_kwargs is the returned tokenizer_kwargs,
@@ -996,14 +991,53 @@ class Template(ProcessorMixin):
         if template_meta.auto_add_bos and sep_token:
             res_context_list.append(sep_token)
             res_context_types.append(ContextType.SUFFIX)
-        from swift.plugin import loss_scale_map
-        res_context_list, loss_scale_list = loss_scale_map[self.loss_scale](res_context_list, res_context_types,
-                                                                            inputs.messages)
+        res_context_list, loss_scale_list = self.loss_scale(res_context_list, res_context_types, inputs.messages)
         if self.is_training:
             answer_len = len(extra_context_list) + bool(response is not None)
         else:
             answer_len = 0
         return res_context_list, loss_scale_list, answer_len
+
+    def _encode_truncated(self, inputs):
+        if self.mode in {'vllm', 'lmdeploy'}:
+            encoded = Template._encode(self, inputs)
+            for key in ['images', 'audios', 'videos']:
+                encoded[key] = getattr(inputs, key)
+        else:
+            encoded = self._encode(inputs)
+
+        input_ids = encoded.get('input_ids')
+        labels = encoded.get('labels')
+        loss_scale = encoded.get('loss_scale')
+        if self.max_length is not None:
+            if self.truncation_strategy == 'right':
+                input_ids = input_ids[:self.max_length]
+                if labels is not None:
+                    labels = labels[:self.max_length]
+                if loss_scale is not None:
+                    loss_scale = loss_scale[:self.max_length]
+            elif self.truncation_strategy == 'left':
+                if len(input_ids) > self.max_length:
+                    logger.warning_once(
+                        'Input data was left-truncated because its length exceeds `max_length` (input length: '
+                        f'{len(input_ids)}, max_length: {self.max_length}). '
+                        'This may cause loss of important tokens (e.g., image tokens) and lead to errors. '
+                        'To avoid this, consider increasing `max_length` or pre-filtering long sequences.',
+                        hash_id='max_length_check')
+                input_ids = input_ids[-self.max_length:]
+                if labels is not None:
+                    labels = labels[-self.max_length:]
+                if loss_scale is not None:
+                    loss_scale = loss_scale[-self.max_length:]
+            elif self.truncation_strategy == 'raise':
+                length = len(input_ids or labels or [])
+                if length > self.max_length:
+                    raise MaxLengthError(f'Current length of row({length}) is larger'
+                                         f' than the max_length({self.max_length}).')
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+        encoded['loss_scale'] = loss_scale
+        return encoded
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         template_backend = self.template_backend
@@ -1036,27 +1070,6 @@ class Template(ProcessorMixin):
 
         if tokenizer_kwargs:
             encoded['tokenizer_kwargs'] = tokenizer_kwargs
-
-        if self.max_length is not None:
-            if self.truncation_strategy == 'right':
-                input_ids = input_ids[:self.max_length]
-                if labels is not None:
-                    labels = labels[:self.max_length]
-                if loss_scale is not None:
-                    loss_scale = loss_scale[:self.max_length]
-            elif self.truncation_strategy == 'left':
-                if len(input_ids) > self.max_length:
-                    logger.warning_once(
-                        'Input data was left-truncated because its length exceeds `max_length` (input length: '
-                        f'{len(input_ids)}, max_length: {self.max_length}). '
-                        'This may cause loss of important tokens (e.g., image tokens) and lead to errors. '
-                        'To avoid this, consider increasing `max_length` or pre-filtering long sequences.',
-                        hash_id='max_length_check')
-                input_ids = input_ids[-self.max_length:]
-                if labels is not None:
-                    labels = labels[-self.max_length:]
-                if loss_scale is not None:
-                    loss_scale = loss_scale[-self.max_length:]
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
