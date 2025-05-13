@@ -190,7 +190,6 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb` 使用。默认为False
   - 提示：若没有设置`--report_to wandb`，则会在checkpoint中创建`completions.jsonl`来存储生成内容
 - use_vllm: 是否使用vLLM作为采样的生成后端，默认为False，建议使用加快训练速度
-- vllm_device: 设置vLLM部署的设备，默认为`auto`, 即未被使用的第一张显卡，使用`cuda:x`来设置特定的卡。
 - vllm_gpu_memory_utilization: vllm透传参数，默认为0.9
 - vllm_max_model_len: vllm透传参数，默认为None
 - vllm_max_num_seqs: vllm透传参数，默认为256
