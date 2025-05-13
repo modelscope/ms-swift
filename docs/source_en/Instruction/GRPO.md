@@ -213,6 +213,8 @@ Arguments
   - vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
   - vllm_tensor_parallel_size: the tensor parallel size of vLLM engine, default is 1.
   - sleep_level: make vllm sleep when model is training. Options are 0 or 1, default is 0, no sleep
+- use_lmdeploy: Whether to use LMDeoloy as the infer_backend for GRPO generation, default is False.
+- lmdeploy_cache_max_entry_count: LMDeploy passthrough parameter, default is 0.8
 - num_iterations: number of iterations per batch. Default is 1.
 - epsilon: epsilon value for clipping. Default is 0.2.
 - epsilon_high: Upper clip coefficient, default is None. When set, it forms a clipping range of [epsilon, epsilon_high] together with epsilon.

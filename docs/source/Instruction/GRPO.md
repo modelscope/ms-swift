@@ -204,6 +204,8 @@ A conversation between User and Assistant. The user asks a question, and the Ass
   - vllm_limit_mm_per_prompt: vllm透传参数，默认为None.
   - vllm_enable_prefix_caching: vllm透传参数，默认为True.
   - sleep_level: 训练时释放 vLLM 显存，可选项为[0, 1], 默认为0，不释放
+- use_lmdeploy: 是否使用 LMDeoloy 作为 GRPO 生成的 infer_backend，默认为False。
+- lmdeploy_cache_max_entry_count: LMDeploy 透传参数, 默认为0.8
 - num_iterations: 每个批次代更新次数，默认为1.
 - epsilon: clip 系数，默认为0.2.
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围.
