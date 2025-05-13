@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
-    from .train import megatron_sft_main, megatron_pt_main
+    from .train import megatron_sft_main, megatron_pt_main, megatron_rlhf_main
     from .utils import convert_hf2mcore, convert_mcore2hf
     from .argument import MegatronTrainArguments
     from .model import MegatronModelType, MegatronModelMeta, get_megatron_model_meta, register_megatron_model
