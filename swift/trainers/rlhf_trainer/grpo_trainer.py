@@ -179,6 +179,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         vllm_client = kwargs.pop('vllm_client')  # for external vllm
 
         super().__init__(model, ref_model, *_args, **kwargs)
+        # Multi-step
+        self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
+        self.epsilon_low = args.epsilon
+        self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
 
         self.use_liger_loss = self.args.use_liger_loss
         if self.use_liger_loss:
@@ -289,11 +293,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 else:
                     self.reward_funcs[i] = self.accelerator.prepare_model(
                         reward_func, evaluation_mode=True, device_placement=True)
-
-        # Multi-step
-        self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
-        self.epsilon_low = args.epsilon
-        self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
 
         # Tracks the number of iterations (forward + backward passes), including those within a gradient accumulation cycle. # noqa
         self._step = 0
