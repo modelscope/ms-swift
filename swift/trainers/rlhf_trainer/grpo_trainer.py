@@ -575,7 +575,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 torch.distributed.all_gather_object(gathered_inputs, inputs, group=self.tp_group)
                 inputs = [p for sublist in gathered_inputs for p in sublist]
             # confirm that the seed is same in tp group
-            request_config.seed = self.accelerator.process_index // self.vllm_tensor_parallel_size
+            mode = 'train' if self.model.training else 'eval'
+            batch_size = (
+                self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size)
+            request_config.seed = batch_size * self.accelerator.process_index // self.vllm_tensor_parallel_size
             results: List[ChatCompletionResponse] = self._engine_infer(
                 infer_requests=inputs, request_config=request_config)
 
