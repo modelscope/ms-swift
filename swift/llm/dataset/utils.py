@@ -4,11 +4,12 @@ import time
 from typing import Any, Callable, Dict, Optional, Union
 
 import numpy as np
+import torch.distributed as dist
 from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
 
-from swift.utils import get_logger
+from swift.utils import get_logger, is_dist, is_master
 from ..template import MaxLengthError
 from .preprocessor import RowPreprocessor
 
@@ -111,14 +112,14 @@ class LazyLLMDataset(Dataset):
 
 class BasePackingDataset:
 
-    def __init__(self, template, dataset, num_workers: int = 1, *, packing_interval: int = 128, strict: bool = False):
+    def __init__(self, template, dataset, num_proc: int = 1, *, packing_interval: int = 128, strict: bool = False):
         template._packing = True
         self.template = template
         self.dataset = dataset
-        self.num_workers = num_workers
+        self.num_proc = num_proc
         self.packing_interval = packing_interval
         self.strict = strict
-        assert num_workers >= 1, f'num_workers: {num_workers}'
+        assert num_proc >= 1, f'num_proc: {num_proc}'
         self.workers = []
 
     @staticmethod
@@ -138,33 +139,43 @@ class BasePackingDataset:
             res.append(packed)
         return res, ret_sequences
 
-    def _encode_data(self, data):
+    def _encode_data(self, data) -> Dict[str, Any]:
         res = None
         try:
             res = self.template.encode(data)
         except Exception as e:
             if self.strict and not isinstance(e, MaxLengthError):
                 raise
-        return res
+        return res or {}
 
 
 class PackingDataset(BasePackingDataset, Dataset):
 
-    def __init__(self, template, dataset, num_workers: int = 1, *, packing_interval: int = 128, strict: bool = False):
-        super().__init__(template, dataset, num_workers, packing_interval=packing_interval, strict=strict)
-        self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc='Packing')
+    def __init__(self, template, dataset, num_proc: int = 1, *, packing_interval: int = 128, strict: bool = False):
+        num_proc = min(len(dataset), num_proc)
+        super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
+        self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
         self._queue = mp.Queue()
         self._terminated_workers = 0
-        for i in range(self.num_workers):
-            shard_dataset = self.dataset.shard(self.num_workers, i)
-            worker = mp.Process(target=self._producer, args=(shard_dataset, ), daemon=True)
-            worker.start()
-            self.workers.append(worker)
+        if is_master():
+            for i in range(self.num_proc):
+                shard_dataset = self.dataset.shard(self.num_proc, i)
+                worker = mp.Process(target=self._producer, args=(shard_dataset, ), daemon=True)
+                worker.start()
+                self.workers.append(worker)
 
-        self.packed_dataset = self.get_packed_dataset()
-        self.prog_bar.close()
-        for worker in self.workers:
-            worker.terminate()
+            self.packed_dataset = self.get_packed_dataset()
+            self.prog_bar.close()
+            for worker in self.workers:
+                worker.terminate()
+            if is_dist():
+                obj_list = [self.packed_dataset]
+                dist.broadcast_object_list(obj_list)
+                self.packed_dataset = obj_list[0]
+        elif is_dist():
+            obj_list = [None]
+            dist.broadcast_object_list(obj_list)
+            self.packed_dataset = obj_list[0]
 
     def fetch_packing_data(self, res: Optional[list] = None):
         res = res or []
@@ -172,7 +183,7 @@ class PackingDataset(BasePackingDataset, Dataset):
             data = self._queue.get()
             if data is None:
                 self._terminated_workers += 1
-                if self._terminated_workers == self.num_workers:
+                if self._terminated_workers == self.num_proc:
                     break
                 continue
             self.prog_bar.update(1)
@@ -185,7 +196,7 @@ class PackingDataset(BasePackingDataset, Dataset):
         result = []
         while True:
             data = self.fetch_packing_data(data)
-            is_finished = self._terminated_workers == self.num_workers
+            is_finished = self._terminated_workers == self.num_proc
             res, data = self.calculate_matched_group(self.template, data, is_finished=is_finished)
             result += res
             if is_finished:
@@ -194,7 +205,7 @@ class PackingDataset(BasePackingDataset, Dataset):
 
     def _producer(self, shard_dataset):
         for data in shard_dataset:
-            encoded_data = self._encode_data(data) or {}  # ignore
+            encoded_data = self._encode_data(data)  # ignore
             self._queue.put(encoded_data)
         self._queue.put(None)
         while True:
@@ -210,35 +221,50 @@ class PackingDataset(BasePackingDataset, Dataset):
 
 class IterablePackingDataset(BasePackingDataset, IterableDataset):
 
-    def __init__(
-        self,
-        template,
-        dataset,
-        num_workers: int = 1,
-        *,
-        packing_interval: int = 128,
-        strict: bool = False,
-    ):
-        super().__init__(template, dataset, num_workers, packing_interval=packing_interval, strict=strict)
+    def __init__(self,
+                 template,
+                 dataset,
+                 num_proc: int = 1,
+                 *,
+                 packing_interval: int = 128,
+                 strict: bool = False,
+                 cyclic: bool = False):
+        super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
         self._in_queue = mp.Queue()
         self._out_queue = mp.Queue()
         self.workers = []
+        self.cyclic = cyclic
+        if is_master():
+            for _ in range(self.num_proc):
+                worker = mp.Process(target=self._processor, daemon=True)
+                worker.start()
+                self.workers.append(worker)
 
     def _processor(self):
         while True:
             data = self._in_queue.get()
-            encoded_data = self._encode_data(data)
+            if data is None:
+                encoded_data = None
+            else:
+                encoded_data = self._encode_data(data)
             self._out_queue.put(encoded_data)
 
     def _put_data_in_queue(self, iterator):
         for _ in range(self.packing_interval):
-            data = next(iterator)
+            try:
+                data = next(iterator)
+            except StopIteration:
+                self._in_queue.put(None)
+                return True
             self._in_queue.put(data)
+        return False
 
     def _fetch_data_out_queue(self, res):
         for _ in range(self.packing_interval):
             data = self._out_queue.get()
             if data is None:
+                break
+            elif not data:
                 continue
             res.append((data, len(data['input_ids'])))
         return res
@@ -250,22 +276,24 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
                 yield x
 
     def __iter__(self):
-        if not self.workers:
-            for _ in range(self.num_workers):
-                worker = mp.Process(target=self._processor, daemon=True)
-                worker.start()
-                self.workers.append(worker)
         try:
             next(iter(self.dataset))
         except StopIteration:
             return
-        iterator = self.cyclic_iter(self.dataset)
+
+        assert len(self.workers) > 0, f'self.workers: {self.workers}'
+        if self.cyclic:
+            iterator = self.cyclic_iter(self.dataset)
+        else:
+            iterator = iter(self.dataset)
         data = []
         while True:
-            self._put_data_in_queue(iterator)
+            finished = self._put_data_in_queue(iterator)
             data = self._fetch_data_out_queue(data)
-            res, data = self.calculate_matched_group(self.template, data, is_finished=False)
+            res, data = self.calculate_matched_group(self.template, data, is_finished=finished)
             yield from res
+            if finished:
+                break
 
 
 class EncodePreprocessor(RowPreprocessor):

@@ -133,6 +133,33 @@ def patch_lora_unmerge(model):
                 del module._cache_pop_origin
 
 
+@contextmanager
+def unwrap_model_for_generation(
+    model,
+    accelerator,
+    gather_deepspeed3_params=True,
+    gather_parameters: List = None,
+):
+    unwrapped_model = accelerator.unwrap_model(model)
+    if accelerator.state.deepspeed_plugin is not None and accelerator.state.deepspeed_plugin.zero_stage == 3:
+        if not gather_deepspeed3_params:
+            yield accelerator.unwrap_model(model)
+        else:
+            import deepspeed
+            parameters = [
+                parameter for name, parameter in model.named_parameters()
+                if not gather_parameters or name in gather_parameters
+            ]
+            with deepspeed.zero.GatheredParameters(parameters):
+                from trl.models.utils import remove_hooks
+                remove_hooks(model)
+                yield accelerator.unwrap_model(model)
+                from trl.models.utils import add_hooks
+                add_hooks(model)
+    else:
+        yield unwrapped_model
+
+
 class _ForwardRedirection:
     """Implements the `forward-redirection`.
     Taken from Pytorch-lightning:

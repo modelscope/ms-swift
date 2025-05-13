@@ -28,18 +28,27 @@
 ## 奖励函数
 使用`code_reward`和`code_format`奖励进行训练，实现细节见[代码](../../../examples/train/grpo/plugin/plugin.py)
 
-- `code_reward`通过[e2b](https://e2b.dev/)执行生成的代码，根据数据集中的测试用例对代码进行验证给出奖励值。
+- `code_reward`通过[e2b](https://e2b.dev/)或[judge0](https://judge0.com/)执行生成的代码，根据数据集中的测试用例对代码进行验证给出奖励值。
 - `code_format`要求模型输出包含代码块的格式化回答。
 
-注：当前实现仅支持python语言，你可以通过修改 `CodeReward.__call__` 来支持其他编程语言。
+注：当前通过e2b执行代码仅支持python语言，如需执行其他语言，可以使用judge0执行（[judge0支持语言列表](https://github.com/judge0/judge0?tab=readme-ov-file#supported-languages)）。
 
 ## 训练脚本
-首先在[e2b](https://e2b.dev/dashboard)注册获取E2B_API_KEY
+### e2b
+- 在[e2b](https://e2b.dev/dashboard)注册获取E2B_API_KEY，并设置为环境变量。
+- `--reward_funcs`添加`external_code_reward`作为奖励函数。
+- `--external_plugins`设置为plugin.py的路径。
+首先拉起 vLLM server
+```bash
+CUDA_VISIBLE_DEVICES=7 \
+swift rollout \
+  --model Qwen/Qwen2.5-7B-Instruct
+```
 
 ```bash
 E2B_API_KEY=xxx \
 WANDB_API_KEY=xxx \
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 \
 NPROC_PER_NODE=7 \
 swift rlhf \
     --rlhf_type grpo \
@@ -47,10 +56,10 @@ swift rlhf \
     --external_plugins examples/train/grpo/plugin/plugin.py \
     --reward_funcs external_code_reward external_code_format \
     --reward_weights 1.0 0.1 \
+    --vllm_mode server \
     --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.7 \
-    --vllm_max_model_len 8192 \
+    --vllm_server_host 127.0.0.1 \
+    --vllm_server_port 8000 \
     --train_type lora \
     --torch_dtype bfloat16 \
     --dataset 'open-r1/verifiable-coding-problems-python-10k' \
@@ -71,7 +80,55 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 14 \
     --temperature 0.9 \
-    --num_infer_workers 1 \
+    --system 'examples/train/grpo/prompt.txt' \
+    --deepspeed zero2 \
+    --log_completions true \
+    --report_to wandb
+```
+
+### judge0
+- 设置环境变量：
+    - （必需）JUDGE0_ENDPOINT: judge0访问地址。
+    - （可选）JUDGE0_X_AUTH_TOKEN: judge0访问Token。
+- `--reward_funcs`添加`external_code_reward_by_judge0`作为奖励函数。
+- `--external_plugins`设置为plugin.py的路径。
+
+```bash
+JUDGE0_ENDPOINT=xxx \
+JUDGE0_X_AUTH_TOKEN=xxx \
+WANDB_API_KEY=xxx \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 \
+NPROC_PER_NODE=7 \
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --reward_funcs external_code_reward_by_judge0 external_code_format \
+    --reward_weights 1.0 0.1 \
+    --vllm_mode server \
+    --use_vllm true \
+    --vllm_server_host 127.0.0.1 \
+    --vllm_server_port 8000 \
+    --train_type lora \
+    --torch_dtype bfloat16 \
+    --dataset 'open-r1/verifiable-coding-problems-python-10k' \
+    --max_completion_length 2048 \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
+    --learning_rate 1e-6 \
+    --gradient_accumulation_steps 1 \
+    --eval_steps 200 \
+    --save_steps 200 \
+    --save_total_limit 2 \
+    --logging_steps 5 \
+    --max_length 4096 \
+    --output_dir output \
+    --warmup_ratio 0.05 \
+    --dataloader_num_workers 4 \
+    --dataset_num_proc 4 \
+    --num_generations 14 \
+    --temperature 0.9 \
     --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero2 \
     --log_completions true \

@@ -10,6 +10,12 @@ environments
 pip install math_verify # reward function
 pip install -U trl
 ```
+The GRPOTrainer has been refactored in swift 3.5.dev. If you are using a version of Swift < 3.5 , please refer to the[stable doc](https://swift.readthedocs.io/zh-cn/stable/Instruction/GRPO.html)
+
+**Dev Log**
+- **2025-05-13** — The GRPOTrainer code has been refactored to improve code readability and maintainability. Internal mode now supports vLLM ≥ 0.8.
+- **2025-05-11** — Implemented support for the **Generative Reward Model** and enabled customized reward model processing logic through the reward plugin. For more details, refer to the [Customized Reward Models](#customized-reward-models) section.
+- **2025-04-30** — The startup command for the external vLLM server has been changed to swift rollout.
 
 **FAQ**
 1. It is normal for the loss to approach zero during training. Refer to this [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851) for more details.
@@ -24,42 +30,71 @@ pip install -U trl
 
 The GRPO training framework supports the integration of high-performance inference engines (such as vLLM) to accelerate the sampling process, offering the following two deployment modes:
 
-### 1. Internal Integration Mode
+### 1. Colocate(Internal) Mode
 
-- Launch the inference service directly within the Trainer.
-- Provides two resource allocation strategies:
-  - **Colocate Mode**: Training and inference share GPU resources.
-  - **Async Mode**: Training and inference use separate GPU resources.
+Training and inference share GPU resources; the inference service is started internally within the Trainer.
 
-### GRPO Training Resource Allocation Scheme
-
-| Configuration Scenario  | NPROC_PER_NODE | num_infer_workers | Resource Allocation Description       |
-|-------------------------|----------------|-------------------|---------------------------------------|
-| **Colocate**            | = Total GPUs   | = Total GPUs      | Training and inference share all GPU resources. |
-| **Async**               | = Training GPUs| = Inference GPUs  | Must satisfy: Training GPUs + Inference GPUs = Total GPUs. |
-
-**Note:**
-1. In Colocate mode, it is recommended to set `sleep_level=1` to release the GPU memory occupied by vLLM during model training.
-2. Total GPUs refers to the total number of visible GPU devices.
-
-### 2. External Service Mode
-
-Connect to an external vLLM inference server.
-When using this mode, configure the external vLLM server with the following parameters:
-
+Launch Parameters
 ```bash
---vllm_server_host <Server IP> \
---vllm_server_port <Server Port> \
---vllm_server_timeout <Timeout> \
+--use_vllm true \
+--vllm_mode colocate
 ```
 
-Deploy the vLLM server using the `swift rollout` command. Currently, only the vLLM backend is supported.
+#### Memory Optimization Strategies in Colocate Mode
+When running in Colocate Mode , out-of-memory (OOM) errors are common due to simultaneous training and inference workloads. Below are effective memory optimization strategies and configuration parameters:
+
+1. Release vLLM memory during training:
+
+```bash
+--sleep_level 1
+```
+
+2. Offload training model and optimizer memory during vLLM inference:
+
+```bash
+--offload_optimizer true \
+--offload_model true \
+--gc_collect_after_offload true
+```
+
+3. Use Tensor Parallelism in vLLM:
+
+```bash
+--vllm_tensor_parallel_size [tp_size]
+```
+
+4. Batched gathering of model weights (when synchronizing vLLM weights under ZeRO-3):
+
+```bash
+--move_model_batches [number_of_batches]
+```
+
+
+### 2. Async(External) Mode
+
+Training and inference use separate resources; a dedicated inference server is launched externally.
+
+Deploy the vLLM server using the swift rollout command. Currently, only the vLLM backend is supported:
+
 ```bash
 CUDA_VISIBLE_DEVICES=2 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
   --tensor_parallel_size 2 \
 ```
+
+For more vLLM parameters, you can refer to [vLLM arguments](./Command-line-parameters.md#vllm-arguments)
+
+Use the following parameters in training to connect to an external vLLM server:
+
+```bash
+--use_vllm true \
+--vllm_mode server \
+--vllm_server_host <Server IP> \
+--vllm_server_port <Server Port> \
+--vllm_server_timeout <Timeout> \
+```
+
 The complete script can be found [here](../../../examples/train/grpo/multi_node/Qwen2_5_32B_full.sh) .
 
 ## Reward Functions
@@ -77,7 +112,7 @@ orms['dummy']= DummyLengthRewardFunction
 ```
 You can add this reward function in `swift/examples/train/grpo/plugin/plugin.py` and register it using the parameter `--external_plugins examples/train/grpo/plugin/plugin.py`, then specify it using the reward_funcs parameter.
 
-For an example of how to execute the script, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_rm.sh).
+For an example of how to execute the script, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh).
 
 
 
@@ -156,35 +191,42 @@ Arguments
 - max_completion_length: The maximum length for sampling generation, default is 512.
 - ds3_gather_for_generation: This parameter applies to DeepSpeed ZeRO-3. If enabled, the policy model weights are gathered for generation, improving generation speed. However, disabling this option allows training models that exceed the VRAM capacity of a single GPU, albeit at the cost of slower generation. Disabling this option is not compatible with vLLM generation. The default is True.
 - reward_funcs: Reward functions to score the results generated by the model. Includes built-in accuracy, format , cosine and repetition rule-based functions, detailed in the swift/plugin/orm.py file.
-- reward_weights: Weights for each reward function. Must match the number of reward functions. If `None`, all rewards are weighted equally with weight `1.0`.
+- reward_weights: Weights for each reward function. The number should be equal to the sum of the number of reward functions and reward models. If `None`, all rewards are weighted equally with weight `1.0`.
   - Note: If `--reward_model` is included in GRPO training, it is added to the end of the reward functions.
+- reward_model: Same as the model, using a reward model as a reward function. At least one of reward_funcs and reward_model needs to be specified.
+- reward_model_plugin: The logic for the reward model, which defaults to ORM logic. For more information, please refer to [Customized Reward Models](#customized-reward-models).
 - dataset_shuffle: Whether to shuffle the dataset randomly. Default is True.
 - loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo'], default is 'grpo'. For details, see this [pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb`, default is False.
   - Note: If `--report_to wandb` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
-- use_vllm: Whether to use vLLM as the back-end for sampling generation; default is False, using it is recommended to speed up training.
-- vllm_device: Device for deploying vLLM, default is auto, meaning the first unused GPU. Use cuda:x to specify a particular card.
-- vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
-- vllm_max_model_len: vLLM passthrough parameter, default is None.
-- vllm_max_num_seqs: vLLM passthrough parameter, default is 256.
-- vllm_enforce_eager: vLLM passthrough parameter, default is False.
-- vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
-- vllm_enable_prefix_caching: vLLM passthrough parameter, default is True.
-- vllm_server_host: The host address of the vLLM server. Default is None. This is used when connecting to an external vLLM server.
-- vllm_server_port: The service port of the vLLM server. Default is 8000.
-- vllm_server_timeout: The connection timeout for the vLLM server. Default is 120 seconds.
-- reward_model: Same as the model, using a reward model as a reward function. At least one of reward_funcs and reward_model needs to be specified.
+- use_vllm: Whether to use vLLM as the infer_backend for GRPO generation, default is False.
+- vllm_mode: Mode to use for vLLM integration when `use_vllm` is set to `True`. Must be one of `server` or `colocate`
+- vllm_mode server parameter
+  - vllm_server_host: The host address of the vLLM server. Default is None. This is used when connecting to an external vLLM server.
+  - vllm_server_port: The service port of the vLLM server. Default is 8000.
+  - vllm_server_timeout: The connection timeout for the vLLM server. Default is 120 seconds.
+  - async_generate: Use async rollout to improve train speed，default `false`.
+- vllm_mode colocate parameter
+  - vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
+  - vllm_max_model_len: vLLM passthrough parameter, the total length limit of model, default is None.
+  - vllm_enforce_eager: vLLM passthrough parameter, default is False.
+  - vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
+  - vllm_tensor_parallel_size: the tensor parallel size of vLLM engine, default is 1.
+  - sleep_level: make vllm sleep when model is training. Options are 0 or 1, default is 0, no sleep
+- use_lmdeploy: Whether to use LMDeoloy as the infer_backend for GRPO generation, default is False.
+- lmdeploy_cache_max_entry_count: LMDeploy passthrough parameter, default is 0.8
 - num_iterations: number of iterations per batch. Default is 1.
 - epsilon: epsilon value for clipping. Default is 0.2.
 - epsilon_high: Upper clip coefficient, default is None. When set, it forms a clipping range of [epsilon, epsilon_high] together with epsilon.
-- async_generate: Use async rollout to improve train speed，default `false`.
-- sleep_level: vllm specific，when both actor and rollout in the same GPU，you can make vllm sleep when model is training.
 - move_model_batches: When moving model parameters to fast inference frameworks such as vLLM/LMDeploy, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
 - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM/LMDeploy. The default is `False`.
 - offload_model: Whether to offload the model itself during inference with vLLM/LMDeploy. The default is `False`.
-  - Note: If this parameter is set to True and the grad_norm remains zero during training, please install vllm==0.7.3.
 - gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
-- multi_turn_func: The multi turn GRPO plugin name. Add your multi-turn implementation in plugin/multi_turn.py
+- multi_turn_func: The multi turn GRPO plugin name. Add your multi-turn implementation in plugin/multi_turn.py.
+- completion_length_limit_scope: Specifies the scope of the `max_completion_length` limit in multi-turn conversations.
+When set to `total`, the total output length across all turns must not exceed `max_completion_length`.
+When set to `per_round`, each individual turn's output length is limited separately.
+Defaults to `per_round`. Currently only takes effect in colocate mode.
 - dynamic_sample: Exclude data within the group where the reward standard deviation is 0, and additionally sample new data. Default is False.
 - max_resample_times: Under the dynamic_sample setting, limit the number of resampling attempts to a maximum of 3. Default is 3 times.
 - overlong_filter: Skip overlong truncated samples, which will not be included in loss calculation. Default is False.
@@ -192,164 +234,53 @@ The hyperparameters for the reward function can be found in the [Built-in Reward
 
 You can use vLLM and LMDeploy as sampling backends to accelerate training.
 
-Multi-GPU vLLM
-```bash
-# async mode
-# The requirement is that num_infer_workers (deployment) + NPROC_PER_NODE (training) = device_count.
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=7 \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B \
-    --reward_funcs accuracy format cosine repetition\
-    --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.7 \
-    --vllm_max_model_len 8192 \
-    --num_infer_workers 1 \
-    --train_type full \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#5000' \
-    --max_completion_length 2048 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 1 \
-    --learning_rate 1e-6 \
-    --gradient_accumulation_steps 2 \
-    --eval_steps 200 \
-    --save_steps 200 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 4096 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 7 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero2 \
-    --log_completions true
+For multi-node training, refer to [here](../../../examples/train/grpo/multi_node/) .
 
-# colocate mode
-# The requirement is that num_infer_workers (deployment) = NPROC_PER_NODE (training) = device_count.
+Note : In the internal integration mode, the GPU configurations and training parameters must be identical across different nodes.
+
+## Customized Reward Models
+By default, a reward model refers to classification models that include a value head (commonly known as Output Reward Model (ORM)). These models score the outputs of other models, producing a scalar value that represents the quality of the response.
+
+Currently, we can leverage the **reward_model_plugin** to flexibly customize the processing logic of these reward models. This enables the implementation of advanced techniques such as Generative Reward Models, which include:
+
+- Customizing the Model's System Prompt: Defining specific instructions and context to guide the evaluation process.
+- Handling Model Interaction History: Managing the conversational context to provide meaningful and contextually aware evaluations.
+- Defining Custom Evaluation Criteria: Setting unique standards and metrics for assessing the model's responses beyond default accuracy and relevance measures.
+
+Through the **reward_model_plugin**, developers can tailor the reward evaluation process to meet the specific requirements of their applications. This flexibility allows for more nuanced and effective reward-based training strategies.
+
+We provide a simple generative reward model example (GenRMPlugin) in [rm_plugin.py](../../../swift/plugin/rm_plugin.py)
+
+You can also customized your reward model plugin in [plugin.py](../../../examples/train/grpo/plugin/plugin.py), and register with `external_plugins` argument
+
+Here is an example training script to train GRPO with two reward models: one ORM and one Gen-RM (using qwen2.5-3B-Instruct in this case):
+
+```
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-1.5B \
-    --reward_funcs accuracy format \
-    --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.7 \
-    --vllm_max_model_len 8192 \
-    --num_infer_workers 8 \
-    --train_type full \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#5000' \
-    --max_completion_length 2048 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 1 \
-    --learning_rate 1e-6 \
-    --gradient_accumulation_steps 2 \
-    --eval_steps 200 \
-    --save_steps 200 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 4096 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 8 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero2 \
-    --log_completions true \
-    --sleep_level 1 \
-    --offload_model true \
-    --offload_optimizer true \
-    --gc_collect_after_offload true \
-    --log_completions true \
-```
-
-Single-GPU
-```bash
-# PT backend
-CUDA_VISIBLE_DEVICES=0 \
-swift rlhf \
-    --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B \
-    --reward_funcs accuracy format cosine repetition\
-    --train_type lora \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --target_modules all-linear \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#1000' \
-    --max_completion_length 1024 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --learning_rate 1e-5 \
-    --gradient_accumulation_steps 1 \
-    --eval_steps 100 \
-    --save_steps 100 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 2048 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 4 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --log_completions true
-
-# vLLM backend
-CUDA_VISIBLE_DEVICES=0 \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B \
+    --dataset AI-MO/NuminaMath-TIR#5000 \
+    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --reward_funcs format \
+    --reward_model Qwen/Qwen2.5-3B-Instruct Shanghai_AI_Laboratory/internlm2-7b-reward \
+    --reward_model_plugin genrm my_rmplugin \
+    --reward_weights 0.1 1 1 \
     --vllm_gpu_memory_utilization 0.5 \
-    --use_vllm true \
     --sleep_level 1 \
     --offload_model true \
     --offload_optimizer true \
     --gc_collect_after_offload true \
-    --reward_funcs accuracy format \
-    --train_type lora \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --target_modules all-linear \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#1000' \
-    --max_completion_length 1024 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --learning_rate 1e-5 \
-    --gradient_accumulation_steps 1 \
-    --eval_steps 100 \
-    --save_steps 100 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 2048 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 4 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --log_completions true
+    --log_completions true \
+    --deepspeed zero3
 ```
 
-For multi-node training, refer to [here](../../../examples/train/grpo/multi_node/) .
+Notes:
 
-Note : In the internal integration mode, the GPU configurations and training parameters must be identical across different nodes.
+1. In the GRPOTrainer, reward_model instances are appended sequentially to reward_funcs. Therefore, the order of reward_weights corresponds to [reward_funcs, reward_model].
+2. The default value for reward_model_plugin is default, which uses the ORM processing logic.
+
 
 ## DAPO
 Decoupled Clip and Dynamic Sampling Policy Optimization (DAPO) introduces several tricks based on GRPO, which are:
@@ -359,57 +290,61 @@ Decoupled Clip and Dynamic Sampling Policy Optimization (DAPO) introduces severa
 - Token level Loss
 - Soft Overlong Punishment
 
-Among these, Token level Loss is implemented by default and does not require additional settings. For the other tricks, we can achieve the desired setup based on GRPOTrainer by configuring the following parameters.
+For the above tricks, we can achieve the desired setup based on GRPOTrainer by configuring the following parameters.
+
+The token-level loss is implemented by using the loss type bnpo.
 
 
 | Parameter                 | Type      | Value      |
 |----------------------|-----------|-------------|
+｜`--loss_type`        | `str`      | `bnpo`     |
 | `--epsilon_high`     | `float`   | `0.28`      |
 | `--dynamic_sample`   | `bool`    | `true`      |
 | `--overlong_filter`  | `bool`    | `true`      |
 | `--reward_funcs`     | `str`     | `soft_overlong`|
 | `--max_resample_times` | `int`    | `3`        |
 
-Reference training script (for 8-card colocate mode):
 
-```bash
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=8 \
-WANDB_API_KEY=xxx \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-1.5B \
-    --reward_funcs accuracy soft_overlong \
-    --max_completion_length 4096 \
-    --soft_cache_length 819 \
-    --epsilon 0.2 \
-    --epsilon_high 0.28 \
-    --dynamic_sample true \
-    --overlong_filter true \
-    --max_resample_times 3 \
-    --use_vllm true \
-    --vllm_gpu_memory_utilization 0.6 \
-    --num_infer_workers 8 \
-    --train_type full \
-    --torch_dtype bfloat16 \
-    --dataset AI-MO/NuminaMath-TIR#5000 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --learning_rate 1e-6 \
-    --eval_steps 1000 \
-    --save_steps 1000 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 8 \
-    --temperature 1.0 \
-    --top_p 1.0 \
-    --deepspeed zero2 \
-    --log_completions true \
-    --num_iterations 1 \
-    --report_to tensorboard wandb \
-    --beta 0.0 \
+## FAQ
+**1. Loss equals zero / close to zero / negative during training**
+
+This is normal in certain cases.
+See reference: [issue](https://github.com/huggingface/open-r1/issues/239 #issuecomment-2646297851)
+
+**2. num_generations / Batch size calculation**
+
+In GRPO, the batch size is defined in terms of completions (i.e., model generation outputs). For example, setting per_device_train_batch_size=8 means that each GPU processes 8 completions for loss computation during training.
+
+During training, within a single gradient accumulation batch, the total number of completions is given by:
+
 ```
+num_processes * per_device_train_batch_size * gradient_accumulation_steps
+```
+
+During evaluation, the number of completions is:
+```
+num_processes * per_device_eval_batch_size
+```
+The parameter num_generations must be divisible by both of these values to ensure even distribution of generation tasks across devices.
+
+**Example**
+In an 8-GPU setup, if you set num_generations = 16, then both:
+
+- per_device_train_batch_size * gradient_accumulation_steps
+- per_device_eval_batch_size
+
+should be at least 2 to satisfy the divisibility condition.
+
+**3. Why does KL become NaN?**
+
+After enabling overlong_filter, all completions on one GPU may have been truncated.
+
+**4. How are the training steps calculated?**
+
+See reference: [issue](https://github.com/modelscope/ms-swift/issues/3912)
+
+**5. Why is clip_ratio always 1?**
+
+When num_iterations = 1 and async_generate = False, it's on-policy RL, and old_policy is equal to policy.
+
+See reference: [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)

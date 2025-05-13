@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -15,9 +15,12 @@ class ExtraMegatronArguments:
     padded_vocab_size: Optional[int] = None
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
-    model_type: Optional[str] = None
+
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 10
+
+    model_type: Optional[str] = None
+    max_epochs: Optional[int] = None
 
 
 @dataclass
@@ -28,6 +31,7 @@ class MegatronArguments(ExtraMegatronArguments):
     recompute_granularity: Literal['selective', 'full'] = 'selective'
     recompute_method: Literal['uniform', 'block'] = None
     recompute_num_layers: Optional[int] = None
+    recompute_modules: List[str] = field(default_factory=lambda: ['core_attn'])
     use_cpu_initialization: bool = False
     deterministic_mode: bool = False
     train_iters: Optional[int] = None
@@ -39,7 +43,9 @@ class MegatronArguments(ExtraMegatronArguments):
     no_rope_fusion: bool = False
     no_gradient_accumulation_fusion: bool = False
     cross_entropy_loss_fusion: bool = False
+    calculate_per_token_loss: bool = True
     use_flash_attn: bool = False
+    attention_backend: str = 'auto'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
     dataloader_type: Literal['single', 'cyclic', 'external'] = 'cyclic'
     manual_gc: bool = False
@@ -80,6 +86,8 @@ class MegatronArguments(ExtraMegatronArguments):
     use_distributed_optimizer: bool = True
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
+    decoder_first_pipeline_num_layers: Optional[int] = None
+    decoder_last_pipeline_num_layers: Optional[int] = None
     sequence_parallel: bool = False
     context_parallel_size: int = 1
     tp_comm_overlap: bool = False
@@ -141,7 +149,10 @@ class MegatronArguments(ExtraMegatronArguments):
     no_log_learning_rate_to_tensorboard: bool = False
     log_validation_ppl_to_tensorboard: bool = True
     log_memory_to_tensorboard: bool = True
-    logging_leval: Optional[str] = None
+    logging_level: Optional[str] = None
+    wandb_project: Optional[str] = None
+    wandb_exp_name: Optional[str] = None
+    wandb_save_dir: Optional[str] = None
 
     # evaluate
     eval_iters: int = 100
@@ -197,7 +208,7 @@ class MegatronArguments(ExtraMegatronArguments):
 
     def __post_init__(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
-        if self.use_flash_attn:
+        if self.use_flash_attn or self.attention_backend == 'flash':
             require_version('flash-attn')
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self._set_default()

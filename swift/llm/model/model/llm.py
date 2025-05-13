@@ -301,3 +301,19 @@ register_model(
         None,
         get_model_tokenizer_qwen2_gte,
         architectures=['Qwen2ForCausalLM']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.mimo, [
+            ModelGroup([
+                Model('XiaomiMiMo/MiMo-7B-Base', 'XiaomiMiMo/MiMo-7B-Base'),
+                Model('XiaomiMiMo/MiMo-7B-SFT', 'XiaomiMiMo/MiMo-7B-SFT'),
+                Model('XiaomiMiMo/MiMo-7B-RL-Zero', 'XiaomiMiMo/MiMo-7B-RL-Zero'),
+                Model('XiaomiMiMo/MiMo-7B-RL', 'XiaomiMiMo/MiMo-7B-RL'),
+            ])
+        ],
+        TemplateType.qwen,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['MiMoForCausalLM'],
+        requires=['transformers>=4.37']))

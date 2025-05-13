@@ -101,7 +101,7 @@ $$
 
 We selected Qwen2.5-3B-Instruct as the base model for training, as using an instruct-tuned model allows for faster acquisition of format rewards. The experiment was conducted on three GPUs, with vLLM inference deployed on the last GPU and two processes set on the remaining GPUs for gradient updates.
 
-Since the task is relatively simple, we set both `max_completion_length` and `vllm_max_model_len` to 1024. For more complex tasks, the model output length can be increased appropriately, but note that **the larger these parameters, the more GPU memory is required, and the slower the training speed**. The training time per step is linearly related to `max_completion_length`.
+Since the task is relatively simple, we set both `max_completion_length` to 1024. For more complex tasks, the model output length can be increased appropriately, but note that **the larger these parameters, the more GPU memory is required, and the slower the training speed**. The training time per step is linearly related to `max_completion_length`.
 
 In our experiment, the total batch size is:
 
@@ -109,13 +109,7 @@ $$
 \text{total batch size} = \text{num\_processes} \times \text{per\_device\_train\_batch\_size} \times \text{gradient\_accumulation\_steps} = 2 \times 8 \times 8 = 128
 $$
 
-There is a constraint:
-
-$$
-\text{num\_processes} \times \text{per\_device\_train\_batch\_size} \text{ must divide evenly into } \text{num\_generations},
-$$
-
-where `num_generations` corresponds to $G$ in the GRPO formula. Therefore, we set it to 8. Note that the single-GPU batch size is also closely related to GPU memory capacity, so set an appropriate value based on memory limits. Additionally, the total number of steps can be calculated as:
+Note that the single-GPU batch size is also closely related to GPU memory capacity, so set an appropriate value based on memory limits. Additionally, the total number of steps can be calculated as:
 
 $$
 \text{num\_steps} = \text{epochs} \times \text{len(datasets)} \times \text{num\_generations} \div \text{batch\_size}
@@ -130,7 +124,13 @@ For KL divergence, the community has extensive discussions, such as [Why GRPO Ad
 Other parameter settings were not explored in detail and will not be discussed here.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0,1,2 \
+CUDA_VISIBLE_DEVICES=2 \
+swift rollout \
+    --model Qwen/Qwen2.5-3B-Instruct
+```
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 \
 WANDB_API_KEY=your_wandb_key \
 NPROC_PER_NODE=2 \
 swift rlhf \
@@ -139,8 +139,9 @@ swift rlhf \
     --external_plugins examples/train/grpo/plugin/plugin.py \
     --reward_funcs external_countdown format \
     --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.6 \
+    --vllm_mode server \
+    --vllm_server_host 127.0.0.1 \
+    --vllm_server_port 8000 \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'zouxuhong/Countdown-Tasks-3to4#50000' \
@@ -163,7 +164,6 @@ swift rlhf \
     --system 'You are a helpful assistant. You first thinks about the reasoning process in the mind and then provides the user with the answer.' \
     --deepspeed zero3 \
     --log_completions true \
-    --vllm_max_model_len 1024 \
     --report_to wandb \
     --beta 0.001 \
     --num_iterations 1
