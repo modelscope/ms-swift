@@ -5,6 +5,10 @@ swift rlhf \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
     --train_type lora \
     --dataset AI-ModelScope/chartqa_digit_r1v_format \
+    --use_vllm true \
+    --vllm_mode colocate \
+    --vllm_gpu_memory_utilization 0.5 \
+    --vllm_tensor_parallel_size 4 \
     --torch_dtype bfloat16 \
     --system examples/train/grpo/prompt.txt \
     --num_train_epochs 1 \
@@ -21,9 +25,6 @@ swift rlhf \
     --max_completion_length 1024 \
     --reward_funcs accuracy format \
     --num_generations 8 \
-    --use_vllm true \
-    --vllm_gpu_memory_utilization 0.5 \
     --sleep_level 1 \
-    --tensor_parallel_size 4 \
     --temperature 1.0 \
     --top_p 0.85

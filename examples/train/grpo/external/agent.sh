@@ -1,12 +1,21 @@
 # wandb result link: https://wandb.ai/tastelikefeet/tastelikefeet?nw=nwuseryuzezyz
 # model link: https://www.modelscope.cn/models/swift/Qwen2-7B-Agent-GRPO
 # WANDB_API_KEY=xxx \
+
+# CUDA_VISIBLE_DEVICES=7 \
+# swift rollout \
+#     --model Qwen/Qwen2.5-7B
+
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 \
 NPROC_PER_NODE=7 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B \
     --train_type full \
     --dataset LLM-Research/xlam-function-calling-60k \
+    --use_vllm true \
+    --vllm_mode server \
+    --vllm_server_host 127.0.0.1 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --max_length 2048 \
@@ -23,8 +32,6 @@ swift rlhf \
     --max_completion_length 1024 \
     --reward_funcs toolbench react_format \
     --num_generations 49 \
-    --use_vllm true \
-    --vllm_gpu_memory_utilization 0.7 \
     --deepspeed zero3 \
     --temperature 1.0 \
     --stop_words Observation: \

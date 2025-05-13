@@ -1,9 +1,11 @@
-# README: GRPO External Mode Execution Scripts
+# README: GRPO External(Async) Mode Execution Scripts
 
 ---
 
-> **Note**: External mode requires vLLM version 0.8.3 or higher.
+> **Note**: External mode requires
 
+1. vLLM version 0.8.3 or higher.
+2. trl version 0.17.0 or higher
 
 ## **Introduction**
 
@@ -37,10 +39,15 @@ swift rollout \
 ```
 
 ## Training with External vLLM Server
+Configuration Parameters
+
 ```bash
+--use_vllm true \
+--vllm_mode server \
 --vllm_server_host <server ip> \
 --vllm_server_port <server port> \
 --vllm_server_timeout <Timeout duration> \
 ```
-Configuration Parameters
-When using an external vLLM server, configure the following parameters:
+
+## Multi-Node Training
+On each node, execute the original single-node training script, using the environment variables `NNODES` and `NODE_RANK`, and ensure consistent use of configuration parameters across all nodes.
