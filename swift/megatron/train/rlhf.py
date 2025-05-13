@@ -29,6 +29,9 @@ class MegatronRLHF(MegatronSft):
 
         training.setup_model_and_optimizer = setup_model_and_optimizer
 
+    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
+        super().train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config)
+
     def run(self):
         self._patch_setup_model_and_optimizer()
         super().run()
