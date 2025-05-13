@@ -1,6 +1,7 @@
 # pip install math_verify # reward function
 # pip install -U trl
 # GPU memory: 80GiB
+# register customized plugin in external_plugins file
 
 CUDA_VISIBLE_DEVICES=0 \
 swift rlhf \
