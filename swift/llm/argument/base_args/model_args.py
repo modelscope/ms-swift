@@ -45,7 +45,7 @@ class ModelArguments:
 
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
-    rope_scaling: Literal['linear', 'dynamic'] = None
+    rope_scaling: Literal['linear', 'dynamic', 'yarn'] = None
     device_map: Optional[Union[dict, str]] = None
     max_memory: Optional[Union[dict, str]] = None
     # When some model code needs to be downloaded from GitHub,
