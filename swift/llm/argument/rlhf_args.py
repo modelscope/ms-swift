@@ -132,7 +132,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
-            if self.use_vllm or self.use_lmdeploy:
+            if self.use_vllm:
                 os.environ['USE_FAST_INFERENCE'] = '1'
                 set_default_ddp_config()
             if self.async_generate or not self.use_vllm:

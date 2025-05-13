@@ -10,7 +10,7 @@ pip install math_verify==0.5.2 # reward function
 pip install -U trl
 ```
 
-GRPOTrainer在swift3.5.dev进行了代码重构，如果你使用的swift版本<3.5, 请参考[stable文档](https://swift.readthedocs.io/zh-cn/stable/Instruction/GRPO.html)
+GRPOTrainer在swift3.5.dev进行了代码重构，如果你使用的swift版本<3.5, 请参考[stable文档](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md)
 
 **更新日志**
 - **2025-05-13** — 为了代码的可读性和维护性， GRPOTrainer代码重构，Internal mode 支持vLLM>=0.8。
@@ -204,8 +204,6 @@ A conversation between User and Assistant. The user asks a question, and the Ass
   - vllm_limit_mm_per_prompt: vllm透传参数，默认为None.
   - vllm_enable_prefix_caching: vllm透传参数，默认为True.
   - sleep_level: 训练时释放 vLLM 显存，可选项为[0, 1], 默认为0，不释放.
-- use_lmdeploy: 是否使用 LMDeoloy 作为 GRPO 生成的 infer_backend，默认为False。
-- lmdeploy_cache_max_entry_count: LMDeploy 透传参数, 默认为0.8。
 - num_iterations: 每个批次代更新次数，默认为1。
 - epsilon: clip 系数，默认为0.2。
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。
