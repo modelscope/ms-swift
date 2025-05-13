@@ -110,7 +110,11 @@ register_model(
             ModelGroup([
                 Model('cognitivecomputations/DeepSeek-V3-awq', 'cognitivecomputations/DeepSeek-V3-AWQ'),
                 Model('cognitivecomputations/DeepSeek-V3-0324-AWQ', 'cognitivecomputations/DeepSeek-V3-0324-AWQ')
-            ])
+            ]),
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-Prover-V2-7B', 'deepseek-ai/DeepSeek-Prover-V2-7B'),
+                Model('deepseek-ai/DeepSeek-Prover-V2-671B', 'deepseek-ai/DeepSeek-Prover-V2-671B'),
+            ]),
         ],
         TemplateType.deepseek_v2_5,
         get_model_tokenizer_deepseek_moe,
