@@ -301,12 +301,14 @@ def test_deepseek_r1_distill():
     res2 = _infer_model(pt_engine)
     assert res == res2, f'res: {res}, res2: {res2}'
 
+
 def test_deepseek_prover_v2():
     pt_engine = PtEngine('deepseek-ai/DeepSeek-Prover-V2-7B')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
     assert res == res2, f'res: {res}, res2: {res2}'
+
 
 def test_qwen2_5_prm():
     pt_engine = PtEngine('Qwen/Qwen2.5-Math-7B-PRM800K')
