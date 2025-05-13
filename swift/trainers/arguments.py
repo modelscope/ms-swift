@@ -175,11 +175,6 @@ class GRPOArgumentsMixin:
 
     reward_model: Optional[List[str]] = None
     reward_model_plugin: Optional[List[str]] = None
-    # LMDeploy in GRPO
-    use_lmdeploy: bool = False
-    lmdeploy_device: Optional[str] = 'auto'
-    lmdeploy_session_len: Optional[int] = None
-    lmdeploy_cache_max_entry_count: float = 0.8
 
     async_generate: bool = False
     tensor_parallel_size: Optional[int] = None  # deprecated

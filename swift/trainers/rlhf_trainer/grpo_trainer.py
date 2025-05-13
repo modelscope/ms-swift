@@ -33,8 +33,7 @@ from trl.trainer.grpo_trainer import nanmax, nanmin
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
 from swift.plugin import multi_turns, orms, rm_plugins
-from swift.utils import (JsonlWriter, gc_collect, get_device, get_logger, is_lmdeploy_available, is_vllm_available,
-                         is_wandb_available)
+from swift.utils import JsonlWriter, gc_collect, get_device, get_logger, is_vllm_available, is_wandb_available
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import patch_lora_merge, patch_lora_unmerge, unwrap_model_for_generation
@@ -176,7 +175,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.shuffle_dataset = args.dataset_shuffle
 
         self.use_vllm = args.use_vllm
-        self.use_lmdeploy = args.use_lmdeploy
         self.async_generate = args.async_generate
         vllm_client = kwargs.pop('vllm_client')  # for external vllm
 
@@ -225,7 +223,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # it's safer to set it in all cases.
         set_seed(args.seed, device_specific=True)
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
-        self.use_fast_infer = self.use_vllm or self.use_lmdeploy  # whether to use the PT backend
+        self.use_fast_infer = self.use_vllm  # whether to use the PT backend
         if self.use_vllm:
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
@@ -247,29 +245,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     ])
 
                 self.engine = self.prepare_vllm(model)
-                # Avoid thread-unsafe modifications of the mode.
-                self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
-
-        elif self.use_lmdeploy:
-            if not is_lmdeploy_available():
-                raise ImportError('LMDeploy is not available and `use_lmdeploy` is set to True.'
-                                  'Please install LMDeploy with `pip install lmdeploy -U` to use it.')
-            from swift.llm import LmdeployEngine
-            from swift.tuners import Swift
-            with Swift.grpo_context(model, self.template.processor):
-                self.engine = LmdeployEngine(
-                    model.model_dir,
-                    model.model_info.torch_dtype,
-                    model_type=model.model_meta.model_type,
-                    session_len=args.lmdeploy_session_len,
-                    cache_max_entry_count=args.lmdeploy_cache_max_entry_count,
-                    reload_weights=True)
-                from lmdeploy.turbomind.turbomind import TurboMind
-                lmdeploy_engine = self.engine.engine.engine
-                assert isinstance(
-                    lmdeploy_engine,
-                    TurboMind), ("Currently only LMDeploy's TurboMind backend is supported. "
-                                 'The current model is incompatible - please use vLLM or PyTorch backend instead.')
                 # Avoid thread-unsafe modifications of the mode.
                 self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
         else:
@@ -478,7 +453,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template.max_length = max_length
 
     @profiling_decorator
-    def _move_model_to_vllm_lmdeploy(self):
+    def _move_model_to_vllm(self):
         if self.vllm_mode == 'server':
             return super()._move_model_to_vllm()
 
@@ -582,7 +557,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             )
             results = results[process_slice]
         else:
-            # pt / lmdeploy / vllm
+            # pt / vllm
             if self.vllm_tensor_parallel_size > 1:
                 # Gather prompts from all ranks in the TP group and flatten.
                 # Each rank starts with its own prompts; after gathering, all ranks see the full group set.
@@ -744,7 +719,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.engine.engine.wake_up()
         # First, have main process load weights if needed
         if self.state.global_step != self._last_loaded_step:
-            self._move_model_to_vllm_lmdeploy()
+            self._move_model_to_vllm()
             self._last_loaded_step = self.state.global_step
 
         if self.async_generate:
