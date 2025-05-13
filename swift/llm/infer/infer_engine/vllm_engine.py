@@ -10,6 +10,7 @@ import torch
 from packaging import version
 from tqdm import tqdm
 from transformers import GenerationConfig
+from transformers.utils import is_torch_npu_available
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
@@ -18,7 +19,7 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
-from .utils import AdapterRequest, InferStreamer, patch_npu_vllm, patch_vllm
+from .utils import AdapterRequest, InferStreamer, patch_npu_vllm
 
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
@@ -61,7 +62,6 @@ class VllmEngine(InferEngine):
         max_loras: int = 1,
         max_lora_rank: int = 16,
         enable_prefix_caching: bool = False,
-        num_infer_workers: int = 1,
         enable_sleep_mode: bool = False,
         distributed_executor_backend: Optional[str] = None,
         quantization: Optional[str] = None,
@@ -98,12 +98,10 @@ class VllmEngine(InferEngine):
             quantization=quantization,
             engine_kwargs=engine_kwargs,
         )
-        nnodes = get_node_setting()[1]
-        total_infer_workers = num_infer_workers * nnodes
-        context, npu_context = patch_vllm(world_size=total_infer_workers), nullcontext()
-        if tensor_parallel_size == 1 or pipeline_parallel_size == 1:
-            npu_context = patch_npu_vllm(self.engine_args.device)
-        with context, npu_context:
+        context = nullcontext()
+        if is_torch_npu_available() and (tensor_parallel_size == 1 or pipeline_parallel_size == 1):
+            context = patch_npu_vllm(self.engine_args.device)
+        with context:
             self._prepare_engine()
         self._load_generation_config()
         self._fix_vllm_bug()

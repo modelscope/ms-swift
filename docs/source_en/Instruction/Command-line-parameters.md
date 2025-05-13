@@ -13,7 +13,7 @@ Hints:
 - 🔥tuner_backend: Options are 'peft', 'unsloth'. Default is 'peft'.
 - 🔥train_type: Options are: 'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'. Default is 'lora'.
 - 🔥adapters: A list used to specify the id/path of the adapter. Default is `[]`.
-- external_plugins: A list of external plugin py files which will be registered into the plugin mappings，please check [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_rm.sh).
+- external_plugins: A list of external plugin py files which will be registered into the plugin mappings，please check [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh).
 - seed: Default is 42.
 - model_kwargs: Additional parameters specific to the model that can be passed in. This list of parameters will log a message during training and inference for reference. For example, `--model_kwargs '{"fps_max_frames": 12}'`.
 - load_args: When specifying `--resume_from_checkpoint`, `--model`, or `--adapters`, it will read the `args.json` file saved in the checkpoint, assigning values to the default None `basic arguments` (excluding data and generation arguments) which can be overridden by manually passing them in. The default is True for inference and export, and False for training.
@@ -421,17 +421,18 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb`, default is False.
   - Note: If `--report_to wandb` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
 - use_vllm: Whether to use vLLM as the infer_backend for GRPO generation, default is False.
-- num_infer_workers: The number of inference workers per node. This setting is only effective when using vLLM or lmdeploy.
-- vllm_device: Configures the devices for deploying vLLM. You can set it to auto, which will allocate the last few GPUs based on the value of num_infer_workers. Alternatively, specify a number of devices equal to num_infer_workers. For example: --vllm_device cuda:1 cuda:2.
-- vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
-- vllm_max_model_len: vLLM passthrough parameter, default is None.
-- vllm_max_num_seqs: vLLM passthrough parameter, default is 256.
-- vllm_enforce_eager: vLLM passthrough parameter, default is False.
-- vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
-- vllm_enable_prefix_caching: vLLM passthrough parameter, default is True.
-- vllm_server_host: The host address of the vLLM server. Default is None. This is used when connecting to an external vLLM server.
-- vllm_server_port: The service port of the vLLM server. Default is 8000.
-- vllm_server_timeout: The connection timeout for the vLLM server. Default is 120 seconds.
+- vllm_mode: Mode to use for vLLM integration when `use_vllm` is set to `True`. Must be one of `server` or `colocate`
+- vllm_mode server parameter
+  - vllm_server_host: The host address of the vLLM server. Default is None. This is used when connecting to an external vLLM server.
+  - vllm_server_port: The service port of the vLLM server. Default is 8000.
+  - vllm_server_timeout: The connection timeout for the vLLM server. Default is 120 seconds.
+- vllm_mode colocate parameter
+  - vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
+  - vllm_max_model_len: vLLM passthrough parameter, the total length limit of model, default is None.
+  - vllm_enforce_eager: vLLM passthrough parameter, default is False.
+  - vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
+  - vllm_tensor_parallel_size: the tensor parallel size of vLLM engine, default is 1.
+  - sleep_level: make vllm sleep when model is training. Options are 0 or 1, default is 0, no sleep
 - top_k: Default is 50.
 - top_p: Default is 0.9.
 - repetition_penalty: Repetition penalty term. Default is 1.
@@ -439,13 +440,15 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - epsilon: epsilon value for clipping. Default is 0.2.
 - epsilon_high: Upper clip coefficient, default is None. When set, it forms a clipping range of [epsilon, epsilon_high] together with epsilon.
 - async_generate: Use async rollout to improve train speed，default `false`.
-- sleep_level: vllm specific，when both actor and rollout in the same GPU，you can make vllm sleep when model is training.
 - move_model_batches: When moving model parameters to fast inference frameworks such as vLLM/LMDeploy, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
 - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM/LMDeploy. The default is `False`.
 - offload_model: Whether to offload the model itself during inference with vLLM/LMDeploy. The default is `False`.
-  - Note: If this parameter is set to True and the grad_norm remains zero during training, please install vllm==0.7.3.
 - gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
-- multi_turn_func: The multi turn GRPO plugin name. Add your multi-turn implementation in plugin/multi_turn.py
+- multi_turn_func: The multi turn GRPO plugin name. Add your multi-turn implementation in plugin/multi_turn.py.
+- completion_length_limit_scope: Specifies the scope of the `max_completion_length` limit in multi-turn conversations.
+When set to `total`, the total output length across all turns must not exceed `max_completion_length`.
+When set to `per_round`, each individual turn's output length is limited separately.
+Defaults to `per_round`. Currently only takes effect in colocate mode.
 - dynamic_sample: Exclude data within the group where the reward standard deviation is 0, and additionally sample new data. Default is False.
 - max_resample_times: Under the dynamic_sample setting, limit the number of resampling attempts to a maximum of 3. Default is 3 times.
 - overlong_filter: Skip overlong truncated samples, which will not be included in loss calculation. Default is False.
