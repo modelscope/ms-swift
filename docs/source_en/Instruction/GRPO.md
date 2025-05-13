@@ -10,9 +10,10 @@ environments
 pip install math_verify # reward function
 pip install -U trl
 ```
+The GRPOTrainer has been refactored in swift 3.6.dev. If you are using a version of Swift ≤ 3.5 , please refer to the[stable doc](https://swift.readthedocs.io/zh-cn/stable/Instruction/GRPO.html)
 
 **Dev Log**
-
+- **2025-05-13** — The GRPOTrainer code has been refactored to improve code readability and maintainability. Internal mode now supports vLLM ≥ 0.8.
 - **2025-05-11** — Implemented support for the **Generative Reward Model** and enabled customized reward model processing logic through the reward plugin. For more details, refer to the [Customized Reward Models](#customized-reward-models) section.
 - **2025-04-30** — The startup command for the external vLLM server has been changed to swift rollout.
 
@@ -29,7 +30,7 @@ pip install -U trl
 
 The GRPO training framework supports the integration of high-performance inference engines (such as vLLM) to accelerate the sampling process, offering the following two deployment modes:
 
-### 1. Colocate Mode
+### 1. Colocate(Internal) Mode
 
 Training and inference share GPU resources; the inference service is started internally within the Trainer.
 
@@ -69,7 +70,7 @@ When running in Colocate Mode , out-of-memory (OOM) errors are common due to sim
 ```
 
 
-### 2. Async Mode
+### 2. Async(External) Mode
 
 Training and inference use separate resources; a dedicated inference server is launched externally.
 

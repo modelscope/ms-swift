@@ -9,11 +9,12 @@
 pip install math_verify==0.5.2 # reward function
 pip install -U trl
 ```
+GRPOTrainer在swift3.6.dev进行了代码重构，如果你使用的swift版本<=3.5, 请参考[stable文档](https://swift.readthedocs.io/zh-cn/stable/Instruction/GRPO.html)
 
 **更新日志**
-- **2025-05-13** — Internal部分代码重构，支持vLLM>=0.8
+- **2025-05-13** — 为了代码的可读性和维护性， GRPOTrainer代码重构，Internal mode 支持vLLM>=0.8。
 - **2025-05-11** — 支持生成式奖励模型，通过 reward_model_plugin 自定义奖励模型逻辑。有关更多详细信息，请参阅[自定义奖励模型](#自定义奖励模型)部分。
-- **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`
+- **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`。
 
 **FAQ**
 1. 训练过程中 loss 接近0 是正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
@@ -27,7 +28,7 @@ pip install -U trl
 
 GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样过程，提供以下两种部署模式：
 
-### 1. Colocate Mode
+### 1. Colocate(Internal) Mode
 
 - 训练与推理共享GPU资源，在 Trainer 内部启动推理服务，
 
@@ -65,9 +66,9 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 --move_model_batches [批次数量]
 ```
 
-### 2. Async Mode
+### 2. Async(External) Mode
 
-- 训练与推理资源分离，在外面启动单独的推理服务器
+- 训练与推理资源分离，启动单独的推理服务器
 
 使用`swift rollout`命令部署vLLM 服务器, 现仅支持vLLM backend
 ```bash
