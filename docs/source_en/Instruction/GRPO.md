@@ -10,7 +10,7 @@ environments
 pip install math_verify # reward function
 pip install -U trl
 ```
-The GRPOTrainer has been refactored in swift 3.5.dev. If you are using a version of Swift < 3.5 , please refer to the[stable doc](https://swift.readthedocs.io/zh-cn/stable/Instruction/GRPO.html)
+The GRPOTrainer has been refactored in swift 3.5.dev. If you are using a version of Swift < 3.5 , please refer to the[stable doc](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source_en/Instruction/GRPO.md)
 
 **Dev Log**
 - **2025-05-13** — The GRPOTrainer code has been refactored to improve code readability and maintainability. Internal mode now supports vLLM ≥ 0.8.

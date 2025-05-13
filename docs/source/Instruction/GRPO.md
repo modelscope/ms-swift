@@ -10,7 +10,7 @@ pip install math_verify==0.5.2 # reward function
 pip install -U trl
 ```
 
-GRPOTrainer在swift3.5.dev进行了代码重构，如果你使用的swift版本<3.5, 请参考[stable文档](https://swift.readthedocs.io/zh-cn/stable/Instruction/GRPO.html)
+GRPOTrainer在swift3.5.dev进行了代码重构，如果你使用的swift版本<3.5, 请参考[stable文档](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md)
 
 **更新日志**
 - **2025-05-13** — 为了代码的可读性和维护性， GRPOTrainer代码重构，Internal mode 支持vLLM>=0.8。
