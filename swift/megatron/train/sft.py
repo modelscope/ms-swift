@@ -1,9 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from contextlib import contextmanager
 from typing import List, Union
 
 from megatron.core.enums import ModelType
-from megatron.training import pretrain
+from megatron.training import get_args, pretrain, training
 
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
@@ -30,8 +31,50 @@ class MegatronSft(SwiftSft):
         self.template.use_megatron = True
         args.save_args(args.save)
 
+    @staticmethod
+    def new_cyclic_iter(iter):
+        args = get_args()
+        max_epochs = args.max_epochs
+        i = 0
+        while True:
+            if getattr(args, 'is_training', False):
+                if max_epochs and i >= max_epochs:
+                    logger.info(f'Training of {i} epochs has been completed, the training has finished.')
+                    break
+                logger.info(f'The training of Epoch {i} starts...')
+            for x in iter:
+                yield x
+            i += 1
+
+    @staticmethod
+    @contextmanager
+    def _training_context():
+        args = get_args()
+        args.is_training = True
+        try:
+            yield
+        finally:
+            args.is_training = False
+
+    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
+        return self._train_step_origin(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config)
+
+    def _patch_train_step(self):
+        # support max_epochs
+        def train_step(*args, **kwargs):
+            with self._training_context():
+                try:
+                    return self.train_step(*args, **kwargs)
+                except StopIteration:
+                    return {}, True, True, True, 0, None, None
+
+        self._train_step_origin = training.train_step
+        training.train_step = train_step
+        training.cyclic_iter = MegatronSft.new_cyclic_iter
+
     def run(self):
         args = self.args
+        self._patch_train_step()
 
         train_dataset, val_dataset = self._get_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
