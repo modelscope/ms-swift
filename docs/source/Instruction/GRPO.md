@@ -189,16 +189,18 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo'], 默认为'grpo', 具体查看该[pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)
 - log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb` 使用。默认为False
   - 提示：若没有设置`--report_to wandb`，则会在checkpoint中创建`completions.jsonl`来存储生成内容
-- use_vllm: 是否使用vLLM作为采样的生成后端，默认为False，建议使用加快训练速度
-- vllm_gpu_memory_utilization: vllm透传参数，默认为0.9
-- vllm_max_model_len: vllm透传参数，默认为None
-- vllm_max_num_seqs: vllm透传参数，默认为256
-- vllm_enforce_eager: vllm透传参数，默认为False
-- vllm_limit_mm_per_prompt: vllm透传参数，默认为None
-- vllm_enable_prefix_caching: vllm透传参数，默认为True
-- vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用
-- vllm_server_port vLLM server 服务端口，默认为8000
-- vllm_server_timeout 连接vLLM server的超时时间，默认为120s
+- use_vllm: 是否使用 vLLM 作为 GRPO 生成的 infer_backend，默认为False。
+- vllm_mode: vLLM 集成模式，可选项为 `server` 和 `colocate`。server 模式使用 `swift rollout` 拉起的 vLLM 服务器进行采样，colocate 模式在程序内部署 vLLM。使用server端时，
+- vllm_mode server 参数
+  - vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用。
+  - vllm_server_port vLLM server 服务端口，默认为8000。
+  - vllm_server_timeout 连接vLLM server的超时时间，默认为120s。
+- vllm_mode colocate 参数
+  - vllm_gpu_memory_utilization: vllm透传参数，默认为0.9。
+  - vllm_max_model_len: vllm透传参数，默认为None。
+  - vllm_enforce_eager: vllm透传参数，默认为False。
+  - vllm_limit_mm_per_prompt: vllm透传参数，默认为None。
+  - vllm_enable_prefix_caching: vllm透传参数，默认为True。
 - num_iterations: 每个批次代更新次数，默认为1.
 - epsilon: clip 系数，默认为0.2.
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围.

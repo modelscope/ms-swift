@@ -1,9 +1,6 @@
 # pip install math_verify # reward function
 # GPU memory: 8 * 80GiB
 
-# Note: If the grad_norm remains zero during training,
-# please remove the `--offload_model true` parameter, or use `vllm==0.7.3`.
-
 MAX_PIXELS=602112 \
 WANDB_API_KEY=xxx \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \

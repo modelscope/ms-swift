@@ -101,7 +101,7 @@ $$
 
 We selected Qwen2.5-3B-Instruct as the base model for training, as using an instruct-tuned model allows for faster acquisition of format rewards. The experiment was conducted on three GPUs, with vLLM inference deployed on the last GPU and two processes set on the remaining GPUs for gradient updates.
 
-Since the task is relatively simple, we set both `max_completion_length` and `vllm_max_model_len` to 1024. For more complex tasks, the model output length can be increased appropriately, but note that **the larger these parameters, the more GPU memory is required, and the slower the training speed**. The training time per step is linearly related to `max_completion_length`.
+Since the task is relatively simple, we set both `max_completion_length` to 1024. For more complex tasks, the model output length can be increased appropriately, but note that **the larger these parameters, the more GPU memory is required, and the slower the training speed**. The training time per step is linearly related to `max_completion_length`.
 
 In our experiment, the total batch size is:
 

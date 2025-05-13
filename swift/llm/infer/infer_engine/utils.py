@@ -377,6 +377,8 @@ def patch_npu_vllm(vllm_device: str):
 
 
 def patch_vllm_memory_leak():
+    # fix vllm 0.7.3 memory leak
+    # https://github.com/vllm-project/vllm/pull/14326
     import vllm
     if version.parse(vllm.__version__) != version.parse('0.7.3'):
         return
