@@ -6,21 +6,18 @@ from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-import torch.distributed as dist
 from peft import PeftModel
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader
 from transformers import EvalPrediction
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
 from swift.utils import JsonlWriter, Serializer, gc_collect
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
-from .mixin import SwiftMixin
+from .mixin import DataLoaderMixin, SwiftMixin
 
 
 class Trainer(SwiftMixin, HfTrainer):
@@ -80,7 +77,7 @@ class EmbeddingTrainer(Trainer):
             return calculate_paired_metrics(eval_prediction.predictions, eval_prediction.label_ids)
 
 
-class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
+class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
     args: Seq2SeqTrainingArguments
 
     def __init__(self, *args, **kwargs):
@@ -113,43 +110,6 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
                 self.template.register_post_encode_hook(models)
             self.data_collator = origin_data_collator
             self.template.set_mode(origin_mode)
-
-    def get_train_dataloader(self):
-        if self.template.sequence_parallel_size == 1:
-            # Higher efficiency
-            if self.train_dataset is None:
-                raise ValueError('Trainer: training requires a train_dataset.')
-            args = self.args
-            train_dataset = self.train_dataset
-
-            dataloader_params = {
-                'collate_fn': self.data_collator,
-                'num_workers': args.dataloader_num_workers,
-                'pin_memory': args.dataloader_pin_memory,
-                'persistent_workers': args.dataloader_persistent_workers,
-                'prefetch_factor': args.dataloader_prefetch_factor
-            }
-            batch_sampler_params = {
-                'drop_last': args.dataloader_drop_last,
-                'shuffle': args.train_dataloader_shuffle,
-                'data_seed': args.data_seed,
-            }
-
-            if hasattr(train_dataset, '__len__'):
-                batch_sampler = BatchSamplerShard(
-                    len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
-                dataloader = DataLoaderShard(train_dataset, batch_sampler, **dataloader_params)
-            else:
-                # IterableDataset
-                if dist.is_initialized():
-                    dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
-                dataloader = DataLoader(train_dataset, batch_size=self._train_batch_size, **dataloader_params)
-                dataloader = DataLoaderDispatcher(dataloader)
-
-            return dataloader
-        else:
-            from swift.trainers.xtuner import get_xtuner_train_dataloader
-            return get_xtuner_train_dataloader(self)
 
     def evaluate(self, *args, **kwargs):
         context = self._patch_predict_with_generate() if self.args.predict_with_generate else nullcontext()
@@ -236,8 +196,8 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
                 loss = self.label_smoother(outputs, labels)
 
         if self.template.sequence_parallel_size > 1:
-            from swift.trainers.xtuner import reduce_xtuner_sequence_parallel_loss
-            loss = reduce_xtuner_sequence_parallel_loss(loss, labels)
+            from swift.trainers.sequence_parallel import sequence_parallel
+            loss = sequence_parallel.reduce_outputs(loss, labels)
 
         if getattr(self.args, 'average_tokens_across_devices', False) and self.model_accepts_loss_kwargs:
             loss *= self.accelerator.num_processes

@@ -507,6 +507,20 @@ register_model(
                 Model('Qwen/Qwen3-8B', 'Qwen/Qwen3-8B'),
                 Model('Qwen/Qwen3-14B', 'Qwen/Qwen3-14B'),
                 Model('Qwen/Qwen3-32B', 'Qwen/Qwen3-32B'),
+                # fp8
+                Model('Qwen/Qwen3-0.6B-FP8', 'Qwen/Qwen3-0.6B-FP8'),
+                Model('Qwen/Qwen3-1.7B-FP8', 'Qwen/Qwen3-1.7B-FP8'),
+                Model('Qwen/Qwen3-4B-FP8', 'Qwen/Qwen3-4B-FP8'),
+                Model('Qwen/Qwen3-8B-FP8', 'Qwen/Qwen3-8B-FP8'),
+                Model('Qwen/Qwen3-14B-FP8', 'Qwen/Qwen3-14B-FP8'),
+                Model('Qwen/Qwen3-32B-FP8', 'Qwen/Qwen3-32B-FP8'),
+                # awq
+                Model('Qwen/Qwen3-4B-AWQ', 'Qwen/Qwen3-4B-AWQ'),
+                Model('Qwen/Qwen3-8B-AWQ', 'Qwen/Qwen3-8B-AWQ'),
+                Model('Qwen/Qwen3-14B-AWQ', 'Qwen/Qwen3-14B-AWQ'),
+                Model('Qwen/Qwen3-32B-AWQ', 'Qwen/Qwen3-32B-AWQ'),
+                # swift
+                Model('swift/Qwen3-32B-AWQ'),
             ]),
         ],
         TemplateType.qwen3,
@@ -525,6 +539,12 @@ register_model(
                 # instruct
                 Model('Qwen/Qwen3-30B-A3B', 'Qwen/Qwen3-30B-A3B'),
                 Model('Qwen/Qwen3-235B-A22B', 'Qwen/Qwen3-235B-A22B'),
+                # fp8
+                Model('Qwen/Qwen3-30B-A3B-FP8', 'Qwen/Qwen3-30B-A3B-FP8'),
+                Model('Qwen/Qwen3-235B-A22B-FP8', 'Qwen/Qwen3-235B-A22B-FP8'),
+                # awq
+                Model('swift/Qwen3-30B-A3B-AWQ', 'cognitivecomputations/Qwen3-30B-A3B-AWQ'),
+                Model('swift/Qwen3-235B-A22B-AWQ', 'cognitivecomputations/Qwen3-235B-A22B-AWQ'),
             ]),
         ],
         TemplateType.qwen3,

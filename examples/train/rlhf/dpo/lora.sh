@@ -1,7 +1,5 @@
-nproc_per_node=2
-
-CUDA_VISIBLE_DEVICES=0,1 \
-NPROC_PER_NODE=$nproc_per_node \
+# 24GiB
+CUDA_VISIBLE_DEVICES=0 \
 swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2.5-7B-Instruct \
@@ -15,7 +13,7 @@ swift rlhf \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
-    --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
+    --gradient_accumulation_steps 16 \
     --eval_steps 100 \
     --save_steps 100 \
     --save_total_limit 2 \
@@ -24,5 +22,4 @@ swift rlhf \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
-    --deepspeed zero2 \
     --dataset_num_proc 4

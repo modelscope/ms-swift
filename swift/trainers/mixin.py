@@ -12,6 +12,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import safetensors
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import transformers
 from datasets import Dataset as HfDataset
@@ -19,6 +20,7 @@ from modelscope import check_local_model_is_latest
 from packaging import version
 from peft import PeftModel
 from torch.nn import Module
+from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
@@ -28,7 +30,7 @@ from transformers.trainer_utils import EvalPrediction, IntervalStrategy
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
-from swift.llm import Template
+from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
 from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_mp_ddp, use_torchacc
@@ -61,6 +63,10 @@ class SwiftMixin:
                  optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
                  preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
                  **kwargs) -> None:
+        if not hasattr(train_dataset, '__len__') and args.dataloader_num_workers > 1:
+            args.dataloader_num_workers = 1
+            logger.warning('Using IterableDataset, setting args.dataloader_num_workers to 1.')
+
         if args.check_model and hasattr(model, 'model_dir'):
             from swift.utils.logger import ms_logger_ignore_error
             with ms_logger_ignore_error():
@@ -77,9 +83,6 @@ class SwiftMixin:
         self.template = template
         self.max_memory = 0
         self.hub = get_hub()
-        if template.sequence_parallel_size > 1:
-            from swift.trainers.xtuner import init_sequence_parallel_xtuner
-            init_sequence_parallel_xtuner(template.sequence_parallel_size)
 
         self.model_meta = model.model_meta
         with self.hub.patch_hub():
@@ -103,6 +106,9 @@ class SwiftMixin:
             self.can_return_loss = can_return_loss(model)
         self.label_names = self.label_names or ['labels']
         self.start_time = time.time()
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            sequence_parallel.prepare_trainer(self)
 
     def _save_initial_model(self, output_dir):
         # pissa/olora/lora-ga
@@ -309,11 +315,20 @@ class SwiftMixin:
 
     def train(self, *args, **kwargs):
         if self.model_meta.is_multimodal:
-            models = list(
-                set([
-                    v for k, v in self.__dict__.items()
-                    if isinstance(v, nn.Module) and k in {'model', 'ref_model', 'reward_model', 'value_model'}
-                ]))
+            models = []
+            for model_name in ['model', 'ref_model', 'value_model']:
+                model = getattr(self, model_name, None)
+                if isinstance(model, nn.Module):
+                    models.append(model)
+
+            reward_model = getattr(self, 'reward_model', None)
+            if reward_model is not None:
+                if isinstance(reward_model, list):
+                    models.extend([m for m in reward_model if isinstance(m, nn.Module)])
+                elif isinstance(reward_model, nn.Module):
+                    models.append(reward_model)
+
+            models = list(set(models))  # Deduplicate
             self.template.register_post_encode_hook(models)
             logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}.')
         self._save_initial_model(self.args.output_dir)
@@ -434,3 +449,68 @@ class SwiftMixin:
 
         self.model.train()
         return eval_dict
+
+    def get_batch_samples(self, *args, **kwargs):
+        res = super().get_batch_samples(*args, **kwargs)
+        if self.template.sequence_parallel_size == 1:
+            return res
+
+        batch_samples, num_items_in_batch = res
+        if num_items_in_batch is None:
+            num_items_in_batch = torch.tensor(0).to(args[2])
+        from swift.trainers.sequence_parallel import sequence_parallel
+        dist.all_reduce(num_items_in_batch, dist.ReduceOp.SUM, sequence_parallel.sp_group)
+        return batch_samples, num_items_in_batch
+
+
+class DataLoaderMixin:
+
+    def get_train_dataloader(self):
+        dataloader = None
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            dataloader = sequence_parallel.get_dataloader(self, self.train_dataset, self._train_batch_size)
+        if dataloader is None:
+            # Higher efficiency
+            if self.train_dataset is None:
+                raise ValueError('Trainer: training requires a train_dataset.')
+            args = self.args
+            train_dataset = self.train_dataset
+
+            dataloader_params = {
+                'collate_fn': self.data_collator,
+                'num_workers': args.dataloader_num_workers,
+                'pin_memory': args.dataloader_pin_memory,
+                'persistent_workers': args.dataloader_persistent_workers,
+                'prefetch_factor': args.dataloader_prefetch_factor
+            }
+            batch_sampler_params = {
+                'drop_last': args.dataloader_drop_last,
+                'shuffle': args.train_dataloader_shuffle,
+                'data_seed': args.data_seed,
+            }
+
+            if hasattr(train_dataset, '__len__'):
+                batch_sampler = BatchSamplerShard(
+                    len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
+                dataloader = DataLoaderShard(train_dataset, batch_sampler, **dataloader_params)
+            else:
+                # IterableDataset
+                if dist.is_initialized() and dataloader_params['prefetch_factor']:
+                    dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
+                dataloader = DataLoader(train_dataset, batch_size=self._train_batch_size, **dataloader_params)
+                dataloader = DataLoaderDispatcher(dataloader)
+
+        return dataloader
+
+    def get_eval_dataloader(self, eval_dataset=None):
+        dataloader = None
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            if eval_dataset is None and self.eval_dataset is None:
+                raise ValueError('Trainer: evaluation requires an eval_dataset.')
+            eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+            dataloader = sequence_parallel.get_dataloader(self, eval_dataset, self.args.eval_batch_size)
+        if dataloader is None:
+            return super().get_eval_dataloader(eval_dataset=eval_dataset)
+        return dataloader

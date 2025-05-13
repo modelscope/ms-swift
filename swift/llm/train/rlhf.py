@@ -1,8 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from typing import List, Union
 
+from swift.llm import safe_snapshot_download
 from swift.utils import get_logger, get_model_parameter_info
-from ..argument import RLHFArguments
+from ..argument import BaseArguments, RLHFArguments
 from ..model import HfConfigFactory
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft
@@ -15,29 +17,44 @@ class SwiftRLHF(SwiftSft):
     args: args_class
 
     def _prepare_model_tokenizer(self):
+        if self.args.sequence_parallel_size > 1:
+            # Duplicate calling is allowd to promise this function will
+            # be called before model initializing.
+            from swift.trainers.sequence_parallel import sequence_parallel
+            sequence_parallel.init_sequence_parallel(self.args.sequence_parallel_size)
+        # prepare ref/reward/value model
         from swift.llm.infer.utils import prepare_adapter
         args = self.args
-        for key in ['ref', 'reward', 'value']:
-            origin_key = key
-            setattr(self, f'{key}_model', None)
-            if key == 'value':
-                if args.rlhf_type == 'ppo':
-                    key = 'reward'
-                else:
-                    continue
+
+        def prepare_single_model(key, origin_key=None):
+            origin_key = origin_key or key
             model_id_or_path = getattr(args, f'{key}_model')
             if model_id_or_path is None:
-                continue
+                return None
+
             model_type = getattr(args, f'{key}_model_type')
             model_revision = getattr(args, f'{key}_model_revision')
-            adapters = args.adapters if key == 'ref' else args.reward_adapters
-            if origin_key == 'ref':
-                task_type = args.task_type
-                num_labels = None
+            model_dir = safe_snapshot_download(
+                model_id_or_path=model_id_or_path,
+                revision=model_revision,
+                download_model=False,
+                use_hf=args.use_hf,
+                hub_token=args.hub_token,
+            )
+            task_type = None
+            num_labels = None
+            if os.path.exists(os.path.join(model_dir, 'args.json')):
+                model_args = BaseArguments.from_pretrained(model_dir)
+                if hasattr(model_args, 'task_type'):
+                    task_type = model_args.task_type
             else:
-                task_type = 'seq_cls'
+                from transformers import AutoConfig
+                model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+                if hasattr(model_config, 'num_labels'):
+                    num_labels = model_config.num_labels
+            if task_type == 'seq_cls':
                 num_labels = 1
-            # Be aware of the unexpected behavior caused by double monkey patching.
+
             model, processor = args.get_model_processor(
                 model=model_id_or_path,
                 model_type=model_type,
@@ -45,8 +62,16 @@ class SwiftRLHF(SwiftSft):
                 task_type=task_type,
                 num_labels=num_labels)
 
+            adapters = args.adapters if key == 'ref' else args.reward_adapters
             model = prepare_adapter(args, model, adapters)
             if origin_key in {'ref', 'reward'}:
+                if self.args.sequence_parallel_size > 1:
+                    from swift.trainers.sequence_parallel import sequence_parallel
+                    if hasattr(model, 'model_meta'):
+                        is_multimodal = model.model_meta.is_multimodal
+                    else:
+                        is_multimodal = model.model.model_meta.is_multimodal
+                    sequence_parallel.prepare_model(model, processor, split_in_forward=is_multimodal)
                 model.requires_grad_(False).eval()
             else:
                 model = self.prepare_model(args, model, task_type=task_type)
@@ -54,13 +79,43 @@ class SwiftRLHF(SwiftSft):
                 model_parameter_info = get_model_parameter_info(model)
                 self.train_msg['value_model_parameter_info'] = model_parameter_info
                 logger.info(f'value_model_parameter_info: {model_parameter_info}')
-            setattr(self, f'{origin_key}_model', model)
+
             HfConfigFactory.set_model_config_attr(model, 'use_cache', False)
-            if origin_key == 'reward' and args.rlhf_type == 'grpo':
-                reward_template = self.args.get_template(processor, processor.model_meta.template)
-                if reward_template.use_model:
-                    reward_template.model = model
-                self.reward_template = reward_template
+            return model, processor
+
+        # Handle ref and value models
+        for key in ['ref', 'value']:
+            setattr(self, f'{key}_model', None)
+            if key == 'value' and args.rlhf_type != 'ppo':
+                continue
+
+            model_key = 'reward' if key == 'value' else key
+            result = prepare_single_model(model_key, key)
+            if result is not None:
+                model, _ = result
+                setattr(self, f'{key}_model', model)
+
+        # Handle reward model(s)
+        self.reward_model = None
+        if hasattr(args, 'reward_model') and args.reward_model is not None:
+            reward_models = args.reward_model if isinstance(args.reward_model, list) else [args.reward_model]
+            self.reward_model = []
+            if args.rlhf_type == 'grpo':
+                self.reward_template = []
+
+            for reward_model_path in reward_models:
+                args.reward_model = reward_model_path  # Temporarily set for prepare_single_model
+                result = prepare_single_model('reward')
+                if result is not None:
+                    model, processor = result
+                    self.reward_model.append(model)
+
+                    if args.rlhf_type == 'grpo':
+                        reward_template = self.args.get_template(processor, processor.model_meta.template)
+                        if reward_template.use_model:
+                            reward_template.model = model
+                        self.reward_template.append(reward_template)
+                args.reward_model = reward_models  # Restore original value
 
         super()._prepare_model_tokenizer()
 

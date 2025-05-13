@@ -302,6 +302,14 @@ def test_deepseek_r1_distill():
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
+def test_deepseek_prover_v2():
+    pt_engine = PtEngine('deepseek-ai/DeepSeek-Prover-V2-7B')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 def test_qwen2_5_prm():
     pt_engine = PtEngine('Qwen/Qwen2.5-Math-7B-PRM800K')
     data = {
@@ -381,8 +389,16 @@ def test_gemma3():
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
+def test_mimo():
+    pt_engine = PtEngine('XiaomiMiMo/MiMo-7B-SFT')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 if __name__ == '__main__':
-    from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
+    from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen2_5()
@@ -410,6 +426,7 @@ if __name__ == '__main__':
     # test_phi4_mini()
     # test_internlm3()
     # test_deepseek_r1_distill()
+    test_deepseek_prover_v2()
     # test_qwen2_5_prm()
     # test_mistral_small()
     # test_baichuan_m1()
@@ -417,4 +434,5 @@ if __name__ == '__main__':
     # test_ling()
     # test_gemma3()
     # test_glm4_0414()
-    test_qwen3()
+    # test_qwen3()
+    # test_mimo()

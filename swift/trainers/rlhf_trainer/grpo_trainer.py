@@ -30,13 +30,13 @@ from transformers.trainer import Trainer
 from transformers.trainer_utils import seed_worker
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.extras.profiling import profiling_decorator
+from trl.models import prepare_deepspeed
 from trl.trainer.grpo_trainer import nanmax, nanmin
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
 from swift.llm.infer.infer_engine import set_device_context
 from swift.llm.template.template_inputs import StdTemplateInputs
-from swift.plugin import orms
-from swift.plugin.multi_turn import multi_turns
+from swift.plugin import multi_turns, orms, rm_plugins
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
@@ -106,7 +106,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def __init__(self,
                  model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
-                 reward_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
+                 reward_model: Optional[List[Union[PreTrainedModel, nn.Module]]] = None,
                  reward_funcs: Optional[List[Union[str, Callable]]] = None,
                  *_args,
                  **kwargs):
@@ -139,20 +139,36 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
 
         self.reward_funcs = reward_funcs
-
-        self.multi_turn_func = None
-        if self.args.multi_turn_func:
-            if isinstance(self.args.multi_turn_func, str):
-                assert self.args.multi_turn_func in multi_turns
-                multi_turn_func = multi_turns[self.args.multi_turn_func]
-                self.multi_turn_func = multi_turn_func
+        self.reward_func_names = []
+        for reward_func in reward_funcs:
+            if inspect.isfunction(reward_func):
+                reward_func_name = reward_func.__name__
             else:
-                self.multi_turn_func = self.args.multi_turn_func
+                reward_func_name = reward_func.__class__.__name__
+            self.reward_func_names.append(reward_func_name)
 
-        self.reward_templates = [None] * len(self.reward_funcs)
+        self.reward_model_plugins = [None] * len(self.reward_funcs)
+
         if reward_model is not None:
-            self.reward_templates.append(kwargs.pop('reward_template', None))
-            self.reward_funcs.append(reward_model)
+            reward_template = kwargs.pop('reward_template')
+            reward_plugins = args.reward_model_plugin
+            if reward_plugins is None:
+                reward_plugins = ['default'] * len(reward_model)
+            assert len(reward_plugins) == len(reward_model), (
+                f"The number of 'reward_model_plugin' ({len(reward_plugins)}) does not match "
+                f"the number of 'reward_model' ({len(reward_model)}). "
+                "Please provide a corresponding 'reward_model_plugin' for each 'reward_model'.")
+            for rm, rm_plugin, rm_template in zip(reward_model, reward_plugins, reward_template):
+                # Set encoding mode train(see details in Template.encode).
+                # Set max_length to None to disable truncation, as the input length has already been truncated earlier.
+                rm_template.set_mode('train')
+                rm_template.max_length = None
+                if rm_plugin not in rm_plugins:
+                    raise ValueError(f'rm_plugin {rm_plugin} is not implemented in swift.llm.plugin')
+                self.reward_model_plugins.append(rm_plugins[rm_plugin](model=rm, template=rm_template))
+                self.reward_funcs.append(rm)
+                self.reward_func_names.append(rm.config._name_or_path.split('/')[-1])
+
         if not self.reward_funcs:
             raise ValueError('You must specify reward_funcs or reward_model')
 
@@ -164,6 +180,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.reward_weights = torch.tensor(args.reward_weights, dtype=torch.float32)
         else:
             self.reward_weights = torch.ones(len(reward_funcs), dtype=torch.float32)
+
+        self.multi_turn_func = None
+        if self.args.multi_turn_func:
+            if isinstance(self.args.multi_turn_func, str):
+                assert self.args.multi_turn_func in multi_turns
+                multi_turn_func = multi_turns[self.args.multi_turn_func]
+                self.multi_turn_func = multi_turn_func
+            else:
+                self.multi_turn_func = self.args.multi_turn_func
 
         self.num_generations = args.num_generations
         self.temperature = args.temperature
@@ -310,10 +335,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.request_config.seed = self.infer_rank // self.args.tensor_parallel_size
 
         self.model_accepts_loss_kwargs = False
+
         for i, reward_func in enumerate(self.reward_funcs):
-            if isinstance(reward_func, PreTrainedModel) and is_deepspeed_zero3_enabled():
-                from trl.models.utils import prepare_deepspeed
-                prepare_deepspeed(reward_func, self.accelerator)  # Does not wrap DeepSpeedEngine
+            if isinstance(reward_func, PreTrainedModel):
+                if self.is_deepspeed_enabled:
+                    self.reward_funcs[i] = prepare_deepspeed(reward_func, self.accelerator)
+                else:
+                    self.reward_funcs[i] = self.accelerator.prepare_model(
+                        reward_func, evaluation_mode=True, device_placement=True)
 
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
@@ -891,15 +920,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completions = [example['messages'][-1]['content'] for example in inputs]
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
 
-        for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, self.reward_templates)):
+        for i, (reward_func, reward_model_plugin) in enumerate(zip(self.reward_funcs, self.reward_model_plugins)):
             # reward model
             if isinstance(reward_func, nn.Module):
-                with self._template_context(reward_template):
-                    batched_inputs = [reward_template.encode(deepcopy(infer_request)) for infer_request in inputs]
-                    reward_inputs = to_device(reward_template.data_collator(batched_inputs), reward_func.device)
-
-                with torch.inference_mode():
-                    rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]
+                rewards_per_func[:, i] = reward_model_plugin(inputs=inputs)
             # reward function
             else:
                 # Repeat all input columns (but "messages" and "completion") to match the number of generations
@@ -959,37 +983,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return inputs, rewards, rewards_per_func, completions
 
-    def _encode_and_prepare_inputs(self, batch):
-        """Process input batch into model-ready format with gradient accumulation support.
-
-        Args:
-            batch: Input data batch with shape [gas*bs, ...], where gas is gradient
-                accumulation steps and bs is batch size
-
-        Returns:
-            List of encoded inputs with shape [gas, bs, ...] ready for model forward pass
-        """
-        template = self.template
-        ga_batch_encoded_inputs = []
-
-        with self._template_context(template):
-            gas = self.args.gradient_accumulation_steps
-            mode = 'train' if self.model.training else 'eval'
-            bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-            for i in range(gas):
-                start_idx = i * bs
-                end_idx = (i + 1) * bs
-                batch_encoded_inputs = [template.encode(infer_request) for infer_request in batch[start_idx:end_idx]]
-
-                batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
-                labels = batch_encoded_inputs.pop('labels')
-                last_non_padding = torch.ne(labels, -100).int().argmax(-1)
-                logits_to_keep = (labels.shape[-1] - last_non_padding).max().item()
-                batch_encoded_inputs.update({'completion_mask': labels[:, -logits_to_keep:] != -100})
-
-                ga_batch_encoded_inputs.append(batch_encoded_inputs)
-        return ga_batch_encoded_inputs
-
     def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> List[InputsType]:
         """
         Prepare the final batch inputs with advantages, ref/old_policy logps and other fields for RL training.
@@ -1021,7 +1014,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         mode = 'train' if self.model.training else 'eval'
         bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-        gas = self.args.gradient_accumulation_steps
+        gas = self.args.gradient_accumulation_steps if mode == 'train' else 1
 
         assert len(inputs) == bs * gas, f'Expected {bs * gas} inputs, got {len(inputs)}'
         gas_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(gas)]
@@ -1039,7 +1032,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
 
             # Process labels and masks
-            labels = batch_encoded_inputs['labels']
+            labels = batch_encoded_inputs.pop('labels')
             logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
             batch_encoded_inputs.update({
                 'completion_mask':
@@ -1088,20 +1081,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self._metrics[mode]['completions/clipped_ratio'].append(clipped_completions_ratio)
 
-        # Get the names of the reward functions
-        reward_func_names = []
-        for reward_func in self.reward_funcs:
-            if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
-                reward_func_name = reward_func.config._name_or_path.split('/')[-1]
-            else:
-                if inspect.isfunction(reward_func):
-                    reward_func_name = reward_func.__name__
-                else:
-                    reward_func_name = reward_func.__class__.__name__
-
-            reward_func_names.append(reward_func_name)
-
-        for i, reward_func_name in enumerate(reward_func_names):
+        for i, reward_func_name in enumerate(self.reward_func_names):
             mean_rewards = rewards_per_func[:, i].mean().item()
             self._metrics[mode][f'rewards/{reward_func_name}/mean'].append(mean_rewards)
             std_rewards = rewards_per_func[:, i].std().item()
@@ -1115,8 +1095,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Log prompt and completion texts
         self._textual_logs['prompt'].extend(gather_object(messages))
         self._textual_logs['completion'].extend(gather_object(completions))
-
-        for i, name in enumerate(reward_func_names):
+        for i, name in enumerate(self.reward_func_names):
             self._textual_logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
 
     @profiling_decorator
@@ -1195,7 +1174,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
         unwrapped_model = self.accelerator.unwrap_model(model)
-        parameters = inspect.signature(unwrapped_model.forward).parameters
+        if is_peft_model(unwrapped_model):
+            parameters = inspect.signature(unwrapped_model.base_model.model.forward).parameters
+        else:
+            parameters = inspect.signature(unwrapped_model.forward).parameters
         if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
             # save memory
             return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)

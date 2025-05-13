@@ -10,6 +10,11 @@ pip install math_verify==0.5.2 # reward function
 pip install -U trl
 ```
 
+**更新日志**
+
+- **2025-05-11** — 支持生成式奖励模型，通过 reward_model_plugin 自定义奖励模型逻辑。有关更多详细信息，请参阅[自定义奖励模型](#自定义奖励模型)部分。
+- **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`
+
 **FAQ**
 1. 训练过程中 loss 接近0 是正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
 2. 训练的steps怎么计算? 参考[issue](https://github.com/modelscope/ms-swift/issues/3912)
@@ -151,8 +156,10 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - max_completion_length: 采样生成的最大长度，默认为512
 - ds3_gather_for_generation: 该参数适用于DeepSpeed ZeRO-3。如果启用，策略模型权重将被收集用于生成，从而提高生成速度。然而，禁用此选项允许训练超出单个GPU VRAM的模型，尽管生成速度会变慢。禁用此选项与vLLM生成不兼容。默认为True
 - reward_funcs: 奖励函数，根据模型生成结果进行打分，内置accuracy、format、cosine和repetition四个rule-based函数，详细见 swift/plugin/orm.py 文件
-- reward_weights: 每个奖励函数的权重。必须与奖励函数的数量匹配。如果为 None，则所有奖励的权重都相等，为`1.0`
+- reward_weights: 每个奖励函数的权重。必须与奖励函数和奖励模型的总数量匹配。如果为 None，则所有奖励的权重都相等，为`1.0`
   - 提示：如果GRPO训练中包含`--reward_model`，则其加在奖励函数的最后位置
+- reward_model: 同model, 使用奖励模型作为奖励函数，与reward_funcs至少需要指定一个。
+- reward_model_plugin: 奖励模型逻辑，默认为orm逻辑, 详细见[自定义奖励模型](#自定义奖励模型)。
 - dataset_shuffle: 是否对dataset进行随机操作，默认为True
 - loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo'], 默认为'grpo', 具体查看该[pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)
 - log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb` 使用。默认为False
@@ -168,7 +175,6 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用
 - vllm_server_port vLLM server 服务端口，默认为8000
 - vllm_server_timeout 连接vLLM server的超时时间，默认为120s
-- reward_model: 同model, 使用奖励模型作为奖励函数，与reward_funcs至少需要指定一个
 - num_iterations: 每个批次代更新次数，默认为1.
 - epsilon: clip 系数，默认为0.2.
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围.
@@ -350,7 +356,47 @@ swift rlhf \
 
 注：内部集成模式下，需要不同节点的GPU配置以及训练参数相同
 
+## 自定义奖励模型
+默认情况下，奖励模型指的是包含数值头的分类模型（通常称为输出奖励模型（ORM））。这些模型对其他模型的输出进行评分，产生一个标量值，表示模型响应的质量。
 
+目前，我们可以利用reward_model_plugin灵活地自定义奖励模型的处理逻辑。这使得实现诸如生成式奖励模型等技术成为可能，包括：
+- 自定义模型的系统提示：定义特定的指令和上下文以指导评估过程。
+- 处理模型交互历史：管理对话上下文，以提供有意义且具有上下文感知的评估。
+- 定义自定义评估标准：设置独特的标准和度量，用于评估模型的响应，超越默认的准确性和相关性衡量标准。
+
+通过reward_model_plugin，开发者可以针对其应用的特定需求定制奖励评估过程。这种灵活性允许更细致和有效的基于奖励的训练策略。
+
+我们在 [rm_plugin.py](../../../swift/plugin/rm_plugin.py) 中提供了一个简单的生成式奖励模型示例（GenRMPlugin）。
+
+您还可以在 [plugin.py](../../../examples/train/grpo/plugin/plugin.py) 中自定义您的奖励模型插件，并使用 `external_plugins` 参数进行注册。
+
+以下是一个训练脚本示例，用于使用两个奖励模型，包括一个 ORM 和一个 Gen-RM（此处使用 qwen2.5-3B-Instruct）进行 GRPO 训练：
+
+```
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=8 \
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen2.5-7B \
+    --dataset AI-MO/NuminaMath-TIR#5000 \
+    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --reward_funcs format \
+    --reward_model Qwen/Qwen2.5-3B-Instruct Shanghai_AI_Laboratory/internlm2-7b-reward \
+    --reward_model_plugin genrm my_rmplugin \
+    --reward_weights 0.1 1 1 \
+    --num_infer_workers 8 \
+    --vllm_gpu_memory_utilization 0.5 \
+    --sleep_level 1 \
+    --offload_model true \
+    --offload_optimizer true \
+    --gc_collect_after_offload true \
+    --log_completions true \
+    --deepspeed zero2
+```
+
+注意：
+1. 在 GRPOTrainer 中，reward_model 会依次append到 reward_funcs 中。因此，reward_weights 的顺序对应 [reward_funcs, reward_model]。
+2. reward_model_plugin 默认为 default，即使用 ORM 处理逻辑。
 
 
 ## DAPO

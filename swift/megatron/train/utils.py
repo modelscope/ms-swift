@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from functools import partial
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import torch
 from megatron.core import mpu
@@ -23,10 +23,6 @@ def get_swift_datasets_provider(train_dataset, val_dataset):
 
 
 class MegatronDataLoaderDispatcher(DataLoaderDispatcher):
-
-    @property
-    def src_rank(self):
-        return mpu.get_data_parallel_src_rank()
 
     @property
     def group(self):
@@ -58,19 +54,24 @@ def get_batch_on_this_tp_rank(data_iterator):
 
     if mpu.get_tensor_model_parallel_rank() == 0:
 
-        if data_iterator is not None:
+        try:
             data = next(data_iterator)
+        except StopIteration:
+            seq_length = -1
         else:
-            data = None
-        tokens = data['input_ids']
-        seq_length = torch.tensor(tokens.shape[1]).cuda(non_blocking=True)
-        batch = {
-            'tokens': tokens.cuda(non_blocking=True),
-            'labels': data['labels'].cuda(non_blocking=True),
-            'attention_mask': None if 'attention_mask' not in data else data['attention_mask'].cuda(non_blocking=True),
-            'position_ids': data['position_ids'].cuda(non_blocking=True)
-        }
+            tokens = data['input_ids']
+            seq_length = tokens.shape[1]
+            batch = {
+                'tokens': tokens.cuda(non_blocking=True),
+                'labels': data['labels'].cuda(non_blocking=True),
+                'attention_mask':
+                None if 'attention_mask' not in data else data['attention_mask'].cuda(non_blocking=True),
+                'position_ids': data['position_ids'].cuda(non_blocking=True)
+            }
+        seq_length = torch.tensor(seq_length).cuda(non_blocking=True)
         _broadcast(seq_length)
+        if seq_length.item() == -1:
+            return {}
         if args.pipeline_model_parallel_size == 1:
             _broadcast(batch['tokens'])
             _broadcast(batch['labels'])
@@ -85,11 +86,13 @@ def get_batch_on_this_tp_rank(data_iterator):
         elif mpu.is_pipeline_last_stage():
             _broadcast(batch['labels'])
             _broadcast(batch['attention_mask'])
+            _broadcast(batch['position_ids'])
 
     else:
         seq_length = torch.empty((), dtype=torch.int64, device=torch.cuda.current_device())
         _broadcast(seq_length)
-
+        if seq_length.item() == -1:
+            return {}
         micro_batch_size = 1  # use qkv_format 'thd'
         tokens = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
         labels = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
@@ -118,10 +121,10 @@ def get_batch_on_this_tp_rank(data_iterator):
 
         elif mpu.is_pipeline_last_stage():
             tokens = None
-            position_ids = None
 
             _broadcast(labels)
             _broadcast(attention_mask)
+            _broadcast(position_ids)  # compat packing & cp
 
         batch = {'tokens': tokens, 'labels': labels, 'attention_mask': attention_mask, 'position_ids': position_ids}
 
@@ -146,11 +149,67 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> Optional[PackedSeqParam
         qkv_format='thd')
 
 
+def _split_tokens(tokens, cu_seqlens):
+    assert tokens.shape[0] == 1, f'tokens.shape: {tokens.shape}'
+    new_tokens = []
+    cp_size = mpu.get_context_parallel_world_size()
+    cp_rank = mpu.get_context_parallel_rank()
+    for i in range(cu_seqlens.shape[0] - 1):
+        val = tokens[:, cu_seqlens[i]:cu_seqlens[i + 1]]
+        val = val.view(
+            tokens.shape[0],
+            2 * cp_size,
+            val.shape[1] // (2 * cp_size),
+        )
+        index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device='cpu',
+                             pin_memory=True).cuda(non_blocking=True)
+        val = val.index_select(1, index)
+        new_tokens.append(val.view(tokens.shape[0], -1))
+    return torch.cat(new_tokens, dim=1)
+
+
+def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
+    """Slice batch input along sequence dimension into multiple chunks,
+    which are parallelized across GPUs in a context parallel group.
+    """
+
+    # With causal masking, each token only attends to its prior tokens. Simply split
+    # sequence into CP chunks can result in severe load imbalance. That's to say, chunks
+    # at the end of sequence have bigger workload than others. To address this issue,
+    # we split sequence into 2*CP ranks. Assuming CP=2, we then get 4 chunks, chunk_0
+    # and chunk_3 are assigned to GPU0, chunk_1 and chunk_2 are assigned to GPU1, so
+    # that we can get balanced workload among GPUs in a context parallel group.
+    cp_size = mpu.get_context_parallel_world_size()
+    if cp_size > 1:
+        packed_seq_params = batch['packed_seq_params']
+        for key, val in batch.items():
+            if key == 'packed_seq_params':
+                continue
+            if val is not None:
+                batch[key] = _split_tokens(val, packed_seq_params.cu_seqlens_q)
+
+    return batch
+
+
+def get_batch(data_iterator):
+    """Generate a batch."""
+
+    # TODO: this is pretty hacky, find a better way
+    if (not mpu.is_pipeline_first_stage()) and (not mpu.is_pipeline_last_stage()):
+        return None, None, None, None, None
+
+    # get batches based on the TP rank you are on
+    batch = get_batch_on_this_tp_rank(data_iterator)
+    if not batch:
+        return batch
+    batch['packed_seq_params'] = get_packed_seq_params(batch['position_ids'])
+    # slice batch along sequence dimension for context parallelism
+    batch = get_batch_on_this_cp_rank(batch)
+    return batch.values()
+
+
 def forward_step(data_iterator, model):
-    import pretrain_gpt
-    from pretrain_gpt import loss_func, get_batch
-    # patch get_batch_on_this_tp_rank
-    pretrain_gpt.get_batch_on_this_tp_rank = get_batch_on_this_tp_rank
+    from pretrain_gpt import loss_func
 
     timers = get_timers()
 
@@ -158,9 +217,10 @@ def forward_step(data_iterator, model):
     timers('batch-generator', log_level=2).start()
     global stimer
     with stimer(bdata=True):
-        tokens, labels, attention_mask, position_ids = get_batch(data_iterator)
-        packed_seq_params = None if position_ids is None else get_packed_seq_params(position_ids)
-
+        data = get_batch(data_iterator)
+    if not data:
+        raise StopIteration
+    tokens, labels, attention_mask, position_ids, packed_seq_params = data
     timers('batch-generator').stop()
 
     with stimer:
