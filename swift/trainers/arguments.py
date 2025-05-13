@@ -190,6 +190,7 @@ class GRPOArgumentsMixin:
     offload_model: bool = False
     gc_collect_after_offload: bool = False
     multi_turn_func: Optional[str] = None
+    completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
 
     # DAPO, https://arxiv.org/abs/2503.14476
     dynamic_sample: bool = False

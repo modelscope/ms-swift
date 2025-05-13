@@ -170,6 +170,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.vllm_tensor_parallel_size = args.vllm_tensor_parallel_size  # only applies to colocation mode
         self.loss_type = args.loss_type
         self.max_completion_length = args.max_completion_length
+        self.completion_length_limit_scope = args.completion_length_limit_scope
         model.warnings_issued['estimate_tokens'] = True
         kwargs['data_collator'] = lambda features: features
         self.shuffle_dataset = args.dataset_shuffle
@@ -532,7 +533,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     with patch_lora_unmerge(unwrapped_model):
                         unwrapped_model.unmerge_adapter()
         if self.use_vllm and self.vllm_mode == 'colocate':
-            # since update weights, we should reset the prefix cache
+            # since vLLM model weights has been updated, we should reset the prefix cache
             self.engine.engine.reset_prefix_cache()
 
     def _wait_queue(self):
@@ -551,7 +552,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
     def _infer(self, inputs: InputsType, request_config: RequestConfig, is_global_inputs: bool = False) -> OutputsType:
-        # inputs: local inputs
         from swift.llm.infer.protocol import ChatCompletionResponse
         request_config = copy(request_config)
         # keys from InferRequest
@@ -1242,7 +1242,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         Ensures the total sequence length (prompt + completion) never exceeds:
             min(original_max_len, prompt_tokens + max_completion_length)
         """
-        if not (self.multi_turn_func and self.use_fast_infer) or self.vllm_mode == 'server':
+        if not (self.multi_turn_func and
+                self.use_fast_infer) or self.vllm_mode == 'server' or self.completion_length_limit_scope == 'per_round':
             yield
             return
 

@@ -446,7 +446,11 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM/LMDeploy. The default is `False`.
 - offload_model: Whether to offload the model itself during inference with vLLM/LMDeploy. The default is `False`.
 - gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
-- multi_turn_func: The multi turn GRPO plugin name. Add your multi-turn implementation in plugin/multi_turn.py
+- multi_turn_func: The multi turn GRPO plugin name. Add your multi-turn implementation in plugin/multi_turn.py.
+- completion_length_limit_scope: Specifies the scope of the `max_completion_length` limit in multi-turn conversations.
+When set to `total`, the total output length across all turns must not exceed `max_completion_length`.
+When set to `per_round`, each individual turn's output length is limited separately.
+Defaults to `per_round`. Currently only takes effect in colocate mode.
 - dynamic_sample: Exclude data within the group where the reward standard deviation is 0, and additionally sample new data. Default is False.
 - max_resample_times: Under the dynamic_sample setting, limit the number of resampling attempts to a maximum of 3. Default is 3 times.
 - overlong_filter: Skip overlong truncated samples, which will not be included in loss calculation. Default is False.
