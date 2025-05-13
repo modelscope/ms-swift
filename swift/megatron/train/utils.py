@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from functools import partial
 from typing import Any, Dict, Optional
 
 import torch
@@ -206,24 +205,3 @@ def get_batch(data_iterator):
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch)
     return batch.values()
-
-
-def forward_step(data_iterator, model):
-    from pretrain_gpt import loss_func
-
-    timers = get_timers()
-
-    # Get the batch.
-    timers('batch-generator', log_level=2).start()
-    global stimer
-    with stimer(bdata=True):
-        data = get_batch(data_iterator)
-    if not data:
-        raise StopIteration
-    tokens, labels, attention_mask, position_ids, packed_seq_params = data
-    timers('batch-generator').stop()
-
-    with stimer:
-        output_tensor = model(tokens, position_ids, attention_mask, labels=labels, packed_seq_params=packed_seq_params)
-    loss_mask = None if labels is None else (labels != -100).float()
-    return output_tensor, partial(loss_func, loss_mask)

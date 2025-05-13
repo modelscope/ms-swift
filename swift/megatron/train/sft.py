@@ -1,17 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from contextlib import contextmanager
+from functools import partial
 from typing import List, Union
 
 from megatron.core.enums import ModelType
-from megatron.training import get_args, pretrain, training
+from megatron.training import get_args, get_timers, pretrain, training
 
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
 from ..utils import patch_megatron_tokenizer
 from .patcher import patch_megatron_data_collator, patch_training_log
-from .utils import build_streaming_dataloader, forward_step, get_swift_datasets_provider
+from .utils import build_streaming_dataloader, get_batch, get_swift_datasets_provider
 
 logger = get_logger()
 
@@ -72,6 +73,27 @@ class MegatronSft(SwiftSft):
         training.train_step = train_step
         training.cyclic_iter = MegatronSft.new_cyclic_iter
 
+    def forward_step(self, data_iterator, model):
+        from pretrain_gpt import loss_func
+
+        timers = get_timers()
+
+        # Get the batch.
+        timers('batch-generator', log_level=2).start()
+        global stimer
+        with stimer(bdata=True):
+            data = get_batch(data_iterator)
+        if not data:
+            raise StopIteration
+        tokens, labels, attention_mask, position_ids, packed_seq_params = data
+        timers('batch-generator').stop()
+
+        with stimer:
+            output_tensor = model(
+                tokens, position_ids, attention_mask, labels=labels, packed_seq_params=packed_seq_params)
+        loss_mask = None if labels is None else (labels != -100).float()
+        return output_tensor, partial(loss_func, loss_mask)
+
     def run(self):
         args = self.args
         self._patch_train_step()
@@ -94,7 +116,7 @@ class MegatronSft(SwiftSft):
                     datasets_provider,
                     args.megatron_model_meta.model_provider,
                     ModelType.encoder_or_decoder,
-                    forward_step,
+                    self.forward_step,
                     args_defaults=args.extra_args)
         finally:
             # Visualization
