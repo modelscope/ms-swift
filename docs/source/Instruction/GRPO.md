@@ -74,6 +74,8 @@ swift rollout \
   --tensor_parallel_size 2 \
 ```
 
+对于更多 vLLM 参数，你可以参考[vLLM参数](./命令行参数.md#vllm参数)
+
 训练使用以下参数配置外部 vLLM 服务器
 ```bash
 --use_vllm true \
@@ -201,10 +203,10 @@ A conversation between User and Assistant. The user asks a question, and the Ass
   - vllm_enforce_eager: vllm透传参数，默认为False.
   - vllm_limit_mm_per_prompt: vllm透传参数，默认为None.
   - vllm_enable_prefix_caching: vllm透传参数，默认为True.
+  - sleep_level: 训练时释放 vLLM 显存，可选项为[0, 1], 默认为0，不释放
 - num_iterations: 每个批次代更新次数，默认为1.
 - epsilon: clip 系数，默认为0.2.
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围.
-- sleep_level: vllm特有参数，在训练和rollout复用卡的时候，可以选择vllm进行offload.
 - move_model_batches: 在模型向vLLM/LMDeploy等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个.
 - offload_optimizer: 是否在vLLM/LMDeploy推理时offload optimizer参数，默认为False
 - offload_model: 是否在vLLM/LMDeploy推理时offload 模型本身，默认为False

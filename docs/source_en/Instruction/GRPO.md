@@ -83,6 +83,8 @@ swift rollout \
   --tensor_parallel_size 2 \
 ```
 
+For more vLLM parameters, you can refer to [vLLM arguments](./Command-line-parameters.md#vllm-arguments)
+
 Use the following parameters in training to connect to an external vLLM server:
 
 ```bash
@@ -210,10 +212,10 @@ Arguments
   - vllm_enforce_eager: vLLM passthrough parameter, default is False.
   - vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
   - vllm_tensor_parallel_size: the tensor parallel size of vLLM engine, default is 1.
+  - sleep_level: make vllm sleep when model is training. Options are 0 or 1, default is 0, no sleep
 - num_iterations: number of iterations per batch. Default is 1.
 - epsilon: epsilon value for clipping. Default is 0.2.
 - epsilon_high: Upper clip coefficient, default is None. When set, it forms a clipping range of [epsilon, epsilon_high] together with epsilon.
-- sleep_level: vllm specific，when both actor and rollout in the same GPU，you can make vllm sleep when model is training.
 - move_model_batches: When moving model parameters to fast inference frameworks such as vLLM/LMDeploy, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
 - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM/LMDeploy. The default is `False`.
 - offload_model: Whether to offload the model itself during inference with vLLM/LMDeploy. The default is `False`.
@@ -282,7 +284,9 @@ Decoupled Clip and Dynamic Sampling Policy Optimization (DAPO) introduces severa
 - Token level Loss
 - Soft Overlong Punishment
 
-Among these, Token level Loss is implemented by default and does not require additional settings. For the other tricks, we can achieve the desired setup based on GRPOTrainer by configuring the following parameters.
+For the above tricks, we can achieve the desired setup based on GRPOTrainer by configuring the following parameters.
+
+The token-level loss is implemented by using the loss type bnpo.
 
 
 | Parameter                 | Type      | Value      |
@@ -294,53 +298,6 @@ Among these, Token level Loss is implemented by default and does not require add
 | `--reward_funcs`     | `str`     | `soft_overlong`|
 | `--max_resample_times` | `int`    | `3`        |
 
-Reference training script (for 8-card colocate mode):
-
-```bash
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=8 \
-WANDB_API_KEY=xxx \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-1.5B \
-    --reward_funcs accuracy soft_overlong \
-    --max_completion_length 4096 \
-    --soft_cache_length 819 \
-    --epsilon 0.2 \
-    --epsilon_high 0.28 \
-    --dynamic_sample true \
-    --overlong_filter true \
-    --max_resample_times 3 \
-    --use_vllm true \
-    --vllm_gpu_memory_utilization 0.6 \
-    --train_type full \
-    --torch_dtype bfloat16 \
-    --dataset AI-MO/NuminaMath-TIR#5000 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --learning_rate 1e-6 \
-    --eval_steps 1000 \
-    --save_steps 1000 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 8 \
-    --temperature 1.0 \
-    --top_p 1.0 \
-    --deepspeed zero2 \
-    --log_completions true \
-    --num_iterations 1 \
-    --report_to tensorboard wandb \
-    --beta 0.0 \
-    --sleep_level 1 \
-    --offload_model true \
-    --offload_optimizer true \
-    --gc_collect_after_offload true \
-    --log_completions true
-```
 
 ## FAQ
 **1. Loss equals zero / close to zero / negative during training**
