@@ -1,15 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import mmap
 import multiprocessing as mp
+import os
+import pickle
 import time
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import torch.distributed as dist
 from datasets import Dataset as HfDataset
+from modelscope.hub.utils.utils import get_cache_dir
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
 
-from swift.utils import get_logger, is_dist, is_master
+from swift.utils import get_logger, is_master, safe_ddp_context
 from ..template import MaxLengthError
 from .preprocessor import RowPreprocessor
 
@@ -149,33 +152,110 @@ class BasePackingDataset:
         return res or {}
 
 
+class IndexedDatasetBuilder:
+
+    def __init__(self, dataset_name: str):
+        self.cache_dir = IndexedDataset.get_cache_dir(dataset_name)
+        self.bin_path = os.path.join(self.cache_dir, IndexedDataset.BIN_FNAME)
+        self.idx_path = os.path.join(self.cache_dir, IndexedDataset.IDX_FNAME)
+        if os.path.exists(self.bin_path):
+            os.remove(self.bin_path)
+        self.bin_file = open(self.bin_path, 'ab')
+        self.idx_list = [0]
+
+    def add_items(self, items: List[Any]) -> None:
+        bin_buffer = []
+        for item in items:
+            item_buffer = pickle.dumps(item)
+            bin_buffer.append(item_buffer)
+            self.idx_list.append(self.idx_list[-1] + len(item_buffer))
+        if bin_buffer:
+            self.bin_file.write(b''.join(bin_buffer))
+
+    def finalize(self):
+        self.bin_file.close()
+        with open(self.idx_path, 'wb') as f:
+            pickle.dump(self.idx_list, f)
+
+
+class BinReader:
+
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+        self.file = open(file_path, 'rb')
+        self.mm = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
+
+    def read_buffer(self, offset: int, size: int) -> bytes:
+        if offset < 0 or size < 0 or offset + size > len(self.mm):
+            raise ValueError('Invalid offset or size')
+        return self.mm[offset:offset + size]
+
+    def __del__(self):
+        self.mm.close()
+        self.file.close()
+
+
+class IndexedDataset(Dataset):
+    BIN_FNAME = 'data.bin'
+    IDX_FNAME = 'data.idx'
+
+    @staticmethod
+    def get_cache_dir(dataset_name: str):
+        cache_dir = os.path.join(get_cache_dir(), 'tmp', dataset_name)
+        os.makedirs(cache_dir, exist_ok=True)
+        assert dataset_name is not None, f'dataset_name: {dataset_name}'
+        return cache_dir
+
+    def __init__(self, dataset_name: str):
+        self.dataset_name = dataset_name
+        cache_dir = self.get_cache_dir(dataset_name)
+        self.bin_path = os.path.join(cache_dir, IndexedDataset.BIN_FNAME)
+        self.idx_path = os.path.join(cache_dir, IndexedDataset.IDX_FNAME)
+        self.bin_readers = BinReader(self.bin_path)
+        with open(self.idx_path, 'rb') as f:
+            self.idx_list = pickle.load(f)
+
+    def __getitem__(self, index: int):
+        if index < 0:
+            index = index % len(self)
+        idx, idx_next = self.idx_list[index], self.idx_list[index + 1]
+        buffer = self.bin_readers.read_buffer(idx, idx_next - idx)
+        return pickle.loads(buffer)
+
+    def __len__(self):
+        return len(self.idx_list) - 1
+
+
 class PackingDataset(BasePackingDataset, Dataset):
 
     def __init__(self, template, dataset, num_proc: int = 1, *, packing_interval: int = 128, strict: bool = False):
+        from datasets.fingerprint import update_fingerprint
         num_proc = min(len(dataset), num_proc)
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
-        self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
-        self._queue = mp.Queue()
-        self._terminated_workers = 0
-        if is_master():
+        fingerprint = update_fingerprint(dataset._fingerprint, 'PackingDataset', {
+            'template': template,
+            'packing_interval': packing_interval,
+            'strict': strict
+        })
+        self.dataset_name = f'packing-cache-{fingerprint}'
+        cache_dir = IndexedDataset.get_cache_dir(self.dataset_name)
+        logger.info(f'packing cache_dir: {cache_dir}')
+        if is_master() and not os.path.exists(os.path.join(cache_dir, IndexedDataset.IDX_FNAME)):
+            self._queue = mp.Queue()
+            self._terminated_workers = 0
+            self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
             for i in range(self.num_proc):
                 shard_dataset = self.dataset.shard(self.num_proc, i)
                 worker = mp.Process(target=self._producer, args=(shard_dataset, ), daemon=True)
                 worker.start()
                 self.workers.append(worker)
 
-            self.packed_dataset = self.get_packed_dataset()
+            self.packing_dataset()
             self.prog_bar.close()
             for worker in self.workers:
                 worker.terminate()
-            if is_dist():
-                obj_list = [self.packed_dataset]
-                dist.broadcast_object_list(obj_list)
-                self.packed_dataset = obj_list[0]
-        elif is_dist():
-            obj_list = [None]
-            dist.broadcast_object_list(obj_list)
-            self.packed_dataset = obj_list[0]
+        with safe_ddp_context(None, True):
+            self.packed_dataset = IndexedDataset(self.dataset_name)
 
     def fetch_packing_data(self, res: Optional[list] = None):
         res = res or []
@@ -191,17 +271,17 @@ class PackingDataset(BasePackingDataset, Dataset):
                 res.append((data, len(data['input_ids'])))
         return res
 
-    def get_packed_dataset(self):
+    def packing_dataset(self):
         data = []
-        result = []
+        indexed_dataset_builder = IndexedDatasetBuilder(self.dataset_name)
         while True:
             data = self.fetch_packing_data(data)
             is_finished = self._terminated_workers == self.num_proc
             res, data = self.calculate_matched_group(self.template, data, is_finished=is_finished)
-            result += res
+            indexed_dataset_builder.add_items(res)
             if is_finished:
                 break
-        return result
+        indexed_dataset_builder.finalize()
 
     def _producer(self, shard_dataset):
         for data in shard_dataset:
@@ -258,7 +338,7 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
             self._in_queue.put((i, data))
         return False
 
-    def _fetch_data_out_queue(self, res):
+    def _fetch_data_out_queue(self, last_res):
         res = [None] * self.packing_interval
         for _ in range(self.packing_interval):
             i, data = self._out_queue.get()
@@ -268,7 +348,8 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
                 continue
             res[i] = (data, len(data['input_ids']))
         res = [data for data in res if data]
-        return res
+        last_res += res
+        return last_res
 
     @staticmethod
     def cyclic_iter(iterable):
