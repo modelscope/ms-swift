@@ -444,7 +444,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         template.max_length = None
         loss_scale = template.loss_scale
         if self.multi_turn_func:
-            template.loss_scale = loss_scale_map['default']
+            template.loss_scale = loss_scale_map['default']()
         try:
             yield
         finally:
