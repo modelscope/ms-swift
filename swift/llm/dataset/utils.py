@@ -4,7 +4,6 @@ import multiprocessing as mp
 import os
 import pickle
 import time
-from queue import Empty
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -69,7 +68,6 @@ class LazyLLMDataset(Dataset):
                  random_state: Union[np.random.RandomState, int, None] = None,
                  traceback_limit: int = 10) -> None:
         self.dataset = dataset
-        self.cached_dataset = None
         self.encode_func = encode_func
 
         n_try_fetch = 1 if strict else min(n_try_fetch, len(self.dataset))
@@ -87,8 +85,6 @@ class LazyLLMDataset(Dataset):
         self._idx_list = self.random_state.permutation(len(self.dataset)).tolist()
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
-        if self.cached_dataset:
-            return self.cached_dataset[idx]
         for i in range(self.n_try_fetch):
             n_try = i
             if i == 0:
@@ -115,82 +111,46 @@ class LazyLLMDataset(Dataset):
                          'modifying the `truncation_strategy`.')
 
     def __len__(self) -> int:
-        if self.cached_dataset:
-            return len(self.cached_dataset)
         return len(self.dataset)
 
+
+class BasePackingDataset:
+
+    def __init__(self, template, dataset, num_proc: int = 1, *, packing_interval: int = 128, strict: bool = False):
+        template._packing = True
+        self.template = template
+        self.dataset = dataset
+        self.num_proc = num_proc
+        self.packing_interval = packing_interval
+        self.strict = strict
+        assert num_proc >= 1, f'num_proc: {num_proc}'
+        self.workers = []
+
     @staticmethod
-    def encode_data(data, map_func) -> Dict[str, Any]:
+    def calculate_matched_group(template, sequences, is_finished: bool = True):
+        if len(sequences) == 0:
+            return [], []
+        # https://arxiv.org/pdf/2404.10830
+        import binpacking
+        sequences = binpacking.to_constant_volume(sequences, template.max_length, weight_pos=1)
+        res = []
+        if sequences and not is_finished:
+            sequences, ret_sequences = sequences[:-1], sequences[-1]
+        else:
+            ret_sequences = []
+        for row in sequences:
+            packed = template.packing_row(row)
+            res.append(packed)
+        return res, ret_sequences
+
+    def _encode_data(self, data) -> Dict[str, Any]:
         res = None
         try:
-            res = map_func(data)
+            res = self.template.encode(data)
         except Exception as e:
-            if not isinstance(e, MaxLengthError):
+            if self.strict and not isinstance(e, MaxLengthError):
                 raise
         return res or {}
-
-    @staticmethod
-    def _map_single(shard_dataset: HfDataset, map_func, queue, rank: int, dataset_name: str):
-        indexed_dataset_builder = IndexedDatasetBuilder(dataset_name, rank=rank)
-        i = 0
-        pre_i = 0
-        item_list = []
-        while i < len(shard_dataset):
-            item = LazyLLMDataset.encode_data(shard_dataset[i], map_func)
-            if item:
-                item_list.append(item)
-            if i % 1000 == 0:
-                queue.put(i - pre_i)
-                pre_i = i
-                indexed_dataset_builder.add_items(item_list)
-                item_list = []
-            i += 1
-        queue.put(i - pre_i)
-        indexed_dataset_builder.add_items(item_list)
-        indexed_dataset_builder.finalize()
-
-    def create_cached_dataset(self, num_proc: int) -> None:
-        dataset = self.dataset
-        prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
-        async_results = []
-        dataset_name = 'encode-cache'
-        with mp.Pool(num_proc) as pool:
-            with mp.Manager() as manager:
-                queue = manager.Queue()
-                for i in range(num_proc):
-                    shard_dataset = dataset.shard(num_proc, i)
-                    async_results.append(
-                        pool.apply_async(
-                            self._map_single, args=(shard_dataset, self.encode_func, queue, i, dataset_name)))
-                try:
-                    while True:
-                        try:
-                            num = queue.get(timeout=0.05)
-                            prog_bar.update(num)
-                        except Empty:
-                            if all(async_result.ready() for async_result in async_results) and queue.empty():
-                                break
-                finally:
-                    # we get the result in case there's an error to raise
-                    [async_result.get(timeout=0.05) for async_result in async_results]
-        self.cached_dataset = IndexedDataset(dataset_name, num_proc)
-
-
-def calculate_matched_group(template, sequences, is_finished: bool = True):
-    if len(sequences) == 0:
-        return [], []
-    # https://arxiv.org/pdf/2404.10830
-    import binpacking
-    sequences = binpacking.to_constant_volume(sequences, template.max_length, weight_pos=1)
-    res = []
-    if sequences and not is_finished:
-        sequences, ret_sequences = sequences[:-1], sequences[-1]
-    else:
-        ret_sequences = []
-    for row in sequences:
-        packed = template.packing_row(row)
-        res.append(packed)
-    return res, ret_sequences
 
 
 class IndexedDatasetBuilder:
@@ -258,41 +218,67 @@ class IndexedDataset(Dataset):
         return len(self.idx_list) - 1
 
 
-class PackingDataset(Dataset):
+class PackingDataset(BasePackingDataset, Dataset):
 
-    def __init__(self,
-                 template,
-                 dataset: Union[HfDataset, LazyLLMDataset],
-                 *,
-                 num_proc: int = 1,
-                 packing_interval: int = 128):
-        template._packing = True
-        self.template = template
-        if isinstance(dataset, LazyLLMDataset):
-            dataset.create_cached_dataset(num_proc)
-        self.dataset = dataset
-        self.packing_interval = packing_interval
-        self.packed_dataset = self.get_packed_dataset(dataset)
+    def __init__(self, template, dataset, *, num_proc: int = 1, packing_interval: int = 128, strict: bool = False):
+        num_proc = min(len(dataset), num_proc)
+        super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
+        self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
+        self._queue = mp.Queue()
+        self._terminated_workers = 0
+        if is_master():
+            for i in range(self.num_proc):
+                shard_dataset = self.dataset.shard(self.num_proc, i)
+                worker = mp.Process(target=self._producer, args=(shard_dataset, ), daemon=True)
+                worker.start()
+                self.workers.append(worker)
 
-    def get_packed_dataset(self, dataset):
-        data_list = []
+            self.packed_dataset = self.get_packed_dataset()
+            self.prog_bar.close()
+            for worker in self.workers:
+                worker.terminate()
+            if is_dist():
+                obj_list = [self.packed_dataset]
+                dist.broadcast_object_list(obj_list)
+                self.packed_dataset = obj_list[0]
+        elif is_dist():
+            obj_list = [None]
+            dist.broadcast_object_list(obj_list)
+            self.packed_dataset = obj_list[0]
+
+    def _producer(self, shard_dataset):
+        for data in shard_dataset:
+            encoded_data = self._encode_data(data)  # ignore
+            self._queue.put(encoded_data)
+        self._queue.put(None)
+        while True:
+            # Wait for the main process to terminate to avoid fd anomalies.
+            time.sleep(0.1)
+
+    def fetch_packing_data(self, res: Optional[list] = None):
+        res = res or []
+        for _ in range(self.packing_interval):
+            data = self._queue.get()
+            if data is None:
+                self._terminated_workers += 1
+                if self._terminated_workers == self.num_proc:
+                    break
+                continue
+            self.prog_bar.update(1)
+            if data:
+                res.append((data, len(data['input_ids'])))
+        return res
+
+    def get_packed_dataset(self):
+        data = []
         result = []
-        it = iter(dataset)
-        is_finished = False
-        prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc='Packing:')
-        while not is_finished:
-            try:
-                for _ in range(self.packing_interval):
-                    data = next(it)
-                    prog_bar.update(1)
-                    data_list.append((data, len(data['input_ids'])))
-            except StopIteration:
-                is_finished = True
-            res, data = calculate_matched_group(self.template, data_list, is_finished=is_finished)
+        while True:
+            data = self.fetch_packing_data(data)
+            is_finished = self._terminated_workers == self.num_proc
+            res, data = self.calculate_matched_group(self.template, data, is_finished=is_finished)
             result += res
             if is_finished:
                 break
-        prog_bar.close()
         return result
 
     def __getitem__(self, index):
@@ -302,14 +288,17 @@ class PackingDataset(Dataset):
         return len(self.packed_dataset)
 
 
-class IterablePackingDataset(IterableDataset):
+class IterablePackingDataset(BasePackingDataset, IterableDataset):
 
-    def __init__(self, template, dataset, *, num_proc: int = 1, packing_interval: int = 128, cyclic: bool = False):
-        template._packing = True
-        self.template = template
-        self.dataset = dataset
-        self.num_proc = num_proc
-        self.packing_interval = packing_interval
+    def __init__(self,
+                 template,
+                 dataset,
+                 num_proc: int = 1,
+                 *,
+                 packing_interval: int = 128,
+                 strict: bool = False,
+                 cyclic: bool = False):
+        super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
 
         self._in_queue = mp.Queue()
         self._out_queue = mp.Queue()
@@ -326,7 +315,7 @@ class IterablePackingDataset(IterableDataset):
             if data is None:
                 encoded_data = None
             else:
-                encoded_data = LazyLLMDataset.encode_data(data, self.template.encode)
+                encoded_data = self._encode_data(data)
             self._out_queue.put((i, encoded_data))
 
     def _put_data_in_queue(self, iterator):
