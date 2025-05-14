@@ -260,15 +260,6 @@ class PackingDataset(BasePackingDataset, Dataset):
                 res.append((data, len(data['input_ids'])))
         return res
 
-    def _producer(self, shard_dataset):
-        for data in shard_dataset:
-            encoded_data = self._encode_data(data)  # ignore
-            self._queue.put(encoded_data)
-        self._queue.put(None)
-        while True:
-            # Wait for the main process to terminate to avoid fd anomalies.
-            time.sleep(0.1)
-
     def get_packed_dataset(self):
         data = []
         result = []
@@ -280,6 +271,15 @@ class PackingDataset(BasePackingDataset, Dataset):
             if is_finished:
                 break
         return result
+
+    def _producer(self, shard_dataset):
+        for data in shard_dataset:
+            encoded_data = self._encode_data(data)  # ignore
+            self._queue.put(encoded_data)
+        self._queue.put(None)
+        while True:
+            # Wait for the main process to terminate to avoid fd anomalies.
+            time.sleep(0.1)
 
     def __getitem__(self, index):
         return self.packed_dataset[index].copy()
@@ -299,7 +299,6 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
                  strict: bool = False,
                  cyclic: bool = False):
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
-
         self._in_queue = mp.Queue()
         self._out_queue = mp.Queue()
         self.workers = []
