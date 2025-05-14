@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import bisect
 import concurrent.futures
+import mmap
 import multiprocessing as mp
 import os
 import pickle
@@ -179,6 +180,23 @@ class IndexedDatasetBuilder:
             pickle.dump(self.idx_list, f)
 
 
+class BinReader:
+
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+        self.file = open(file_path, 'rb')
+        self.mm = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
+
+    def read_buffer(self, offset: int, size: int) -> bytes:
+        if offset < 0 or size < 0 or offset + size > len(self.mm):
+            raise ValueError('Invalid offset or size')
+        return self.mm[offset:offset + size]
+
+    def __del__(self):
+        self.mm.close()
+        self.file.close()
+
+
 class IndexedDataset(Dataset):
 
     @staticmethod
@@ -192,13 +210,13 @@ class IndexedDataset(Dataset):
         assert dataset_name is not None, f'dataset_name: {dataset_name}'
         return IndexedDataset._get_shard_prefix_path(tmp_dir, rank)
 
-    def initialize(self, dataset_name: str, n_shard: int):
+    def __init__(self, dataset_name: str, n_shard: int = 1):
         self.dataset_name = dataset_name
         self.n_shard = n_shard
         prefix_path_list = [self.get_prefix_path(dataset_name, i) for i in range(n_shard)]
         self.bin_path_list = [f'{prefix_path}.bin' for prefix_path in prefix_path_list]
         self.idx_path_list = [f'{prefix_path}.idx' for prefix_path in prefix_path_list]
-        self.bin_file_list = [open(bin_path, 'rb') for bin_path in self.bin_path_list]
+        self.bin_readers = [BinReader(bin_path) for bin_path in self.bin_path_list]
         self.idx_list = []
         self.idx_table = []
         idx = 0
@@ -209,24 +227,14 @@ class IndexedDataset(Dataset):
                 self.idx_table.append(idx)
                 self.idx_list += idx_list
 
-    def __init__(self, dataset_name: str, n_shard: int = 1):
-        self.initialize(dataset_name, n_shard)
-
-    def __getstate__(self):
-        return self.dataset_name, self.n_shard
-
-    def __setstate__(self, state) -> None:
-        dataset_name, n_shard = state
-        self.initialize(dataset_name, n_shard)
-
     def __getitem__(self, index: int):
         if index < 0:
             index = index % len(self)
         bucket_idx = bisect.bisect_right(self.idx_table, index)
         index += bucket_idx
         idx, idx_next = self.idx_list[index], self.idx_list[index + 1]
-        self.bin_file_list[bucket_idx].seek(idx)
-        return pickle.loads(self.bin_file_list[bucket_idx].read(idx_next - idx))
+        buffer = self.bin_readers[bucket_idx].read_buffer(idx, idx_next - idx)
+        return pickle.loads(buffer)
 
     def __len__(self):
         return len(self.idx_list) - len(self.idx_table)
