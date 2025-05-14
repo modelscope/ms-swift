@@ -279,7 +279,7 @@ class PackingDataset(Dataset):
         result = []
         it = iter(dataset)
         is_finished = False
-        prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing:')
+        prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc='Packing:')
         while not is_finished:
             try:
                 for _ in range(self.packing_interval):
