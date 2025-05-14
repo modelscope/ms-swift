@@ -32,6 +32,7 @@ from trl.models import prepare_deepspeed
 from trl.trainer.grpo_trainer import nanmax, nanmin
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
+from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
 from swift.utils import JsonlWriter, gc_collect, get_device, get_logger, is_vllm_available, is_wandb_available
 from ..mixin import SwiftMixin
@@ -598,6 +599,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return results
 
+    def _set_inputs_system(self, inputs: InputsType) -> InputsType:
+        if all(_input['messages'][0]['role'] == 'system' for _input in inputs):
+            return
+        for _input in inputs:
+            messages = _input['messages']
+            if messages[0]['role'] != 'system':
+                messages.insert(0, {'role': 'system', 'content': self.template.template_meta.default_system})
+
     def _infer_single_or_multi_turn(self,
                                     inputs: InputsType,
                                     request_config: RequestConfig,
@@ -613,7 +622,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             - List of responses per prompt
             - Each response is a tuple of (message_history, finish_reason)
         """
-
+        self._set_inputs_system(inputs)
         # infer first turn
         results = self._infer(inputs, request_config, is_global_inputs)
 
@@ -1001,10 +1010,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics[mode]['reward_std'].append(grouped_rewards.std(dim=1).mean().item())
 
         # Log prompt and completion texts
-        self._textual_logs['prompt'].extend(gather_object(messages))
+        self._textual_logs['prompt'].extend(self._apply_chat_template_to_messages_list(gather_object(messages)))
         self._textual_logs['completion'].extend(gather_object(completions))
         for i, name in enumerate(self.reward_func_names):
             self._textual_logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
+
+    def _apply_chat_template_to_messages_list(self, messages_list: InputsType):
+        prompts_text = []
+        for messages in messages_list:
+            InferRequest.remove_response(messages)
+            template_inputs = StdTemplateInputs.from_dict({'messages': messages})
+            res_context_list, _, _ = self.template._swift_encode(template_inputs)
+            prompts_text.append(''.join(res_context_list))
+        return prompts_text
 
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
