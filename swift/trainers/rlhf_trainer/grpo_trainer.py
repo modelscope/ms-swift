@@ -36,7 +36,7 @@ from trl.trainer.grpo_trainer import nanmax, nanmin
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
 from swift.llm.infer.infer_engine import set_device_context
 from swift.llm.template.template_inputs import StdTemplateInputs
-from swift.plugin import multi_turns, orms, rm_plugins
+from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
@@ -559,7 +559,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         template.max_length = None
         loss_scale = template.loss_scale
         if self.multi_turn_func:
-            template.loss_scale = 'default'
+            template.loss_scale = loss_scale_map['default']()
         try:
             yield
         finally:
