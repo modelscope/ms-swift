@@ -33,7 +33,7 @@ from trl.trainer.grpo_trainer import nanmax, nanmin
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
 from swift.llm.template.template_inputs import StdTemplateInputs
-from swift.plugin import multi_turns, orms, rm_plugins
+from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
 from swift.utils import JsonlWriter, gc_collect, get_device, get_logger, is_vllm_available, is_wandb_available
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
@@ -445,7 +445,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         template.max_length = None
         loss_scale = template.loss_scale
         if self.multi_turn_func:
-            template.loss_scale = 'default'
+            template.loss_scale = loss_scale_map['default']()
         try:
             yield
         finally:
@@ -575,12 +575,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 gathered_inputs = [None for _ in range(self.vllm_tensor_parallel_size)]
                 torch.distributed.all_gather_object(gathered_inputs, inputs, group=self.tp_group)
                 inputs = [p for sublist in gathered_inputs for p in sublist]
-            # confirm that the seed is same in tp group
+            # Set request_config.seed
+            # 1. Ensure that the seed for vLLM Engines within each TP (Tensor Parallelism) group is the same;
+            #   otherwise, the program may hang.
+            # 2. Ensure that the seed for vLLM Engines across different TP groups is different;
+            #   otherwise, identical completions will be generated.
             mode = 'train' if self.model.training else 'eval'
             batch_size = (
                 self.args.per_device_train_batch_size
                 * self.args.gradient_accumulation_steps if mode == 'train' else self.args.per_device_eval_batch_size)
-            request_config.seed = batch_size * self.accelerator.process_index // self.vllm_tensor_parallel_size
+            # Since the TP (Tensor Parallelism) group gathers the inputs,
+            # multiply the batch size by the TP parallel size.
+            batch_size *= self.vllm_tensor_parallel_size
+            request_config.seed = batch_size * (self.accelerator.process_index // self.vllm_tensor_parallel_size)
+
             results: List[ChatCompletionResponse] = self._engine_infer(
                 infer_requests=inputs, request_config=request_config)
 
