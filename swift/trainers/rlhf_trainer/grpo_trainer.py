@@ -591,12 +591,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return results
 
     def _set_inputs_system(self, inputs: InputsType) -> InputsType:
-        if all(messages[0]['role'] == 'system' for _input in inputs for messages in _input['messages']):
+        if all(_input['messages'][0]['role'] == 'system' for _input in inputs):
             return
         for _input in inputs:
             messages = _input['messages']
             if messages[0]['role'] != 'system':
-                messages.insert(0, {'role': 'system', 'content': self.template.system})
+                messages.insert(0, {'role': 'system', 'content': self.template.template_meta.default_system})
 
         return inputs
 
