@@ -4,6 +4,7 @@ import multiprocessing as mp
 import os
 import pickle
 import time
+from copy import copy
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -232,6 +233,8 @@ class PackingDataset(BasePackingDataset, Dataset):
         from datasets.fingerprint import update_fingerprint
         num_proc = min(len(dataset), num_proc)
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
+        template = copy(template)
+        template.model = None  # Avoid hashing the model.
         fingerprint = update_fingerprint(dataset._fingerprint, 'PackingDataset', {
             'template': template,
             'packing_interval': packing_interval,
