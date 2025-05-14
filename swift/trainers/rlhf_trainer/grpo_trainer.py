@@ -590,6 +590,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return results
 
+    def _set_inputs_system(self, inputs: InputsType) -> InputsType:
+        if all(messages[0]['role'] == 'system' for _input in inputs for messages in _input['messages']):
+            return
+        for _input in inputs:
+            messages = _input['messages']
+            if messages[0]['role'] != 'system':
+                messages.insert(0, {'role': 'system', 'content': self.template.system})
+
+        return inputs
+
     def _infer_single_or_multi_turn(self,
                                     inputs: InputsType,
                                     request_config: RequestConfig,
@@ -605,7 +615,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             - List of responses per prompt
             - Each response is a tuple of (message_history, finish_reason)
         """
-
+        self._set_inputs_system(inputs)
         # infer first turn
         results = self._infer(inputs, request_config, is_global_inputs)
 
