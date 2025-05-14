@@ -253,13 +253,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
         predict_with_generate = getattr(args, 'predict_with_generate', False)
         if not is_grpo:
-            if args.packing:
-                packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
-                train_dataset = packing_dataset_cls(
-                    self.template, train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
-                if val_dataset is not None:
-                    val_dataset = packing_dataset_cls(
-                        self.template, val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
+            if args.packing and args.streaming:
+                pass
             elif args.lazy_tokenize:
                 train_dataset = LazyLLMDataset(
                     train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
@@ -271,7 +266,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 train_dataset = preprocessor(train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
                 if val_dataset is not None and not predict_with_generate:
                     val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
-
+            if args.packing:
+                packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
+                train_dataset = packing_dataset_cls(
+                    self.template, train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
+                if val_dataset is not None:
+                    val_dataset = packing_dataset_cls(
+                        self.template, val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
             if is_master():
                 inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
                 template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
