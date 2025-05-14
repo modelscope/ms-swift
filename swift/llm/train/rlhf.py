@@ -126,7 +126,7 @@ class SwiftRLHF(SwiftSft):
                             reward_template.model = model
                         self.reward_template.append(reward_template)
                 args.reward_model = rms  # Restore original value
-                if args.rlhf_type != 'grpo':
+                if args.rlhf_type != 'grpo' and self.reward_model:
                     assert len(self.reward_model) <= 1
                     self.reward_model = self.reward_model[0]
 
