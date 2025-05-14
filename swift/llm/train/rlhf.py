@@ -26,14 +26,14 @@ class SwiftRLHF(SwiftSft):
         from swift.llm.infer.utils import prepare_adapter
         args = self.args
 
-        def prepare_single_model(key, origin_key=None):
+        def prepare_single_model(key, origin_key, model_type, model_revision):
             origin_key = origin_key or key
             model_id_or_path = getattr(args, f'{key}_model')
             if model_id_or_path is None:
                 return None
-
-            model_type = getattr(args, f'{key}_model_type')
-            model_revision = getattr(args, f'{key}_model_revision')
+            if isinstance(model_id_or_path, list):
+                # value model in PPO
+                model_id_or_path = model_id_or_path[0]
             model_dir = safe_snapshot_download(
                 model_id_or_path=model_id_or_path,
                 revision=model_revision,
@@ -90,7 +90,13 @@ class SwiftRLHF(SwiftSft):
                 continue
 
             model_key = 'reward' if key == 'value' else key
-            result = prepare_single_model(model_key, key)
+            model_type = getattr(args, f'{model_key}_model_type')
+            model_revision = getattr(args, f'{model_key}_model_revision')
+            if key == 'value':
+                model_type = model_type[0] if model_type else None
+                model_revision = model_revision[0] if model_revision else None
+
+            result = prepare_single_model(model_key, key, model_type, model_revision)
             if result is not None:
                 model, _ = result
                 setattr(self, f'{key}_model', model)
@@ -98,14 +104,18 @@ class SwiftRLHF(SwiftSft):
         # Handle reward model(s)
         self.reward_model = None
         if hasattr(args, 'reward_model') and args.reward_model is not None:
-            reward_models = args.reward_model if isinstance(args.reward_model, list) else [args.reward_model]
+            rms = args.reward_model if isinstance(args.reward_model, list) else [args.reward_model]
+            rm_types = args.reward_model_type if isinstance(args.reward_model_type, list) else [args.reward_model_type]
+            rm_revisions = args.reward_model_revision if isinstance(args.reward_model_revision,
+                                                                    list) else [args.reward_model_revision]
+
             self.reward_model = []
             if args.rlhf_type == 'grpo':
                 self.reward_template = []
 
-            for reward_model_path in reward_models:
+            for reward_model_path, rm_type, rm_revision in zip(rms, rm_types, rm_revisions):
                 args.reward_model = reward_model_path  # Temporarily set for prepare_single_model
-                result = prepare_single_model('reward')
+                result = prepare_single_model('reward', None, rm_type, rm_revision)
                 if result is not None:
                     model, processor = result
                     self.reward_model.append(model)
@@ -115,7 +125,10 @@ class SwiftRLHF(SwiftSft):
                         if reward_template.use_model:
                             reward_template.model = model
                         self.reward_template.append(reward_template)
-                args.reward_model = reward_models  # Restore original value
+                args.reward_model = rms  # Restore original value
+                if args.rlhf_type != 'grpo' and self.reward_model:
+                    assert len(self.reward_model) <= 1
+                    self.reward_model = self.reward_model[0]
 
         super()._prepare_model_tokenizer()
 

@@ -13,7 +13,7 @@ from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
 from transformers.trainer_utils import seed_worker
 
-from swift.llm import DataLoaderDispatcher, get_model_arch
+from swift.llm import DataLoaderDispatcher, get_model_arch, to_device
 from swift.tuners import SwiftModel
 from swift.utils import get_current_device, get_device, get_dist_setting
 from .base import SequenceParallel
