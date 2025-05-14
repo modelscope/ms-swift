@@ -607,8 +607,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if messages[0]['role'] != 'system':
                 messages.insert(0, {'role': 'system', 'content': self.template.template_meta.default_system})
 
-        return inputs
-
     def _infer_single_or_multi_turn(self,
                                     inputs: InputsType,
                                     request_config: RequestConfig,
