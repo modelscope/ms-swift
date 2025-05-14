@@ -13,11 +13,11 @@ logger = get_logger()
 
 @dataclass
 class RewardModelArguments:
-    reward_model: Optional[str] = None
+    reward_model: Optional[List[str]] = None
     reward_adapters: List[str] = field(default_factory=list)
-    reward_model_type: Optional[str] = field(
+    reward_model_type: Optional[List[str]] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
-    reward_model_revision: Optional[str] = None
+    reward_model_revision: Optional[List[str]] = None
 
 
 @dataclass
