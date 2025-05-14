@@ -6,6 +6,7 @@ from typing import List, Union
 
 from megatron.core.enums import ModelType
 from megatron.training import get_args, get_timers, pretrain, training
+from megatron.core.utils import StragglerDetector
 
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
@@ -16,6 +17,7 @@ from .utils import build_streaming_dataloader, get_batch, get_swift_datasets_pro
 
 logger = get_logger()
 
+stimer = StragglerDetector()
 
 class MegatronSft(SwiftSft):
     args_class = MegatronTrainArguments
