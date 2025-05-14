@@ -7,13 +7,12 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import torch.distributed as dist
 from datasets import Dataset as HfDataset
 from modelscope.hub.utils.utils import get_cache_dir
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
 
-from swift.utils import get_logger, is_dist, is_master
+from swift.utils import get_logger, is_master, split_list
 from ..template import MaxLengthError
 from .preprocessor import RowPreprocessor
 
@@ -178,6 +177,24 @@ class IndexedDatasetBuilder:
         with open(self.idx_path, 'wb') as f:
             pickle.dump(self.idx_list, f)
 
+    @staticmethod
+    def writer_mp(dataset_name, num_proc: int, items: List[Any]) -> 'IndexedDataset':
+
+        def _writer_single(dataset, rank):
+            indexed_dataset_builder = IndexedDatasetBuilder(dataset_name, rank)
+            i = 0
+            while True:
+                indexed_dataset_builder.add_items(dataset[i:i + 1000])
+                i += 1000
+                if i >= len(dataset):
+                    break
+            indexed_dataset_builder.finalize()
+
+        chunks = split_list(items, num_proc)
+        with mp.Pool(processes=num_proc) as pool:
+            pool.starmap(_writer_single, [(rank, chunk) for rank, chunk in enumerate(chunks)])
+        return IndexedDataset(dataset_name)
+
 
 class IndexedDataset(Dataset):
 
@@ -193,6 +210,7 @@ class IndexedDataset(Dataset):
         return IndexedDataset._get_shard_prefix_path(os.path.join(tmp_dir, dataset_name), rank)
 
     def __init__(self, dataset_name: str, n_shard: int = 1):
+        self.dataset_name = dataset_name
         prefix_path_list = [self.get_default_prefix_path(dataset_name, i) for i in range(n_shard)]
         self.bin_path_list = [f'{prefix_path}.bin' for prefix_path in prefix_path_list]
         self.idx_path_list = [f'{prefix_path}.idx' for prefix_path in prefix_path_list]
@@ -226,6 +244,7 @@ class PackingDataset(BasePackingDataset, Dataset):
         self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
         self._queue = mp.Queue()
         self._terminated_workers = 0
+        self.dataset_name = 'packing-cache'
         if is_master():
             for i in range(self.num_proc):
                 shard_dataset = self.dataset.shard(self.num_proc, i)
@@ -233,18 +252,12 @@ class PackingDataset(BasePackingDataset, Dataset):
                 worker.start()
                 self.workers.append(worker)
 
-            self.packed_dataset = self.get_packed_dataset()
+            packed_dataset = self.get_packed_dataset()
+            IndexedDatasetBuilder.writer_mp(self.dataset_name, num_proc, packed_dataset)
             self.prog_bar.close()
             for worker in self.workers:
                 worker.terminate()
-            if is_dist():
-                obj_list = [self.packed_dataset]
-                dist.broadcast_object_list(obj_list)
-                self.packed_dataset = obj_list[0]
-        elif is_dist():
-            obj_list = [None]
-            dist.broadcast_object_list(obj_list)
-            self.packed_dataset = obj_list[0]
+        self.packed_dataset = IndexedDataset(self.dataset_name, num_proc)
 
     def fetch_packing_data(self, res: Optional[list] = None):
         res = res or []
