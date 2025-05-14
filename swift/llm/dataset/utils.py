@@ -234,7 +234,7 @@ class PackingDataset(BasePackingDataset, Dataset):
         num_proc = min(len(dataset), num_proc)
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
         template = copy(template)
-        template.model = None
+        template.model = None  # Avoid hashing the model.
         fingerprint = update_fingerprint(dataset._fingerprint, 'PackingDataset', {
             'template': template,
             'packing_interval': packing_interval,
