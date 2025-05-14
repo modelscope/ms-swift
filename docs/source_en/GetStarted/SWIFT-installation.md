@@ -39,7 +39,7 @@ pip install ms-swift==2.*
 ## Mirror
 
 ```
-# vllm0.8.3 (This version of vllm may cause some GRPO training to get stuck; it is recommended to use vllm0.7.3 for GRPO training as a priority).
+# vllm0.8.3
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
 modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
 
