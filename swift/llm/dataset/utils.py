@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import bisect
+import concurrent.futures
 import multiprocessing as mp
 import os
 import pickle
@@ -178,22 +179,27 @@ class IndexedDatasetBuilder:
             pickle.dump(self.idx_list, f)
 
     @staticmethod
-    def writer_mp(dataset_name, num_proc: int, items: List[Any]) -> 'IndexedDataset':
+    def _writer_single(dataset_name, rank, dataset):
+        indexed_dataset_builder = IndexedDatasetBuilder(dataset_name, rank)
+        i = 0
+        while True:
+            indexed_dataset_builder.add_items(dataset[i:i + 1000])
+            i += 1000
+            if i >= len(dataset):
+                break
+        indexed_dataset_builder.finalize()
 
-        def _writer_single(dataset, rank):
-            indexed_dataset_builder = IndexedDatasetBuilder(dataset_name, rank)
-            i = 0
-            while True:
-                indexed_dataset_builder.add_items(dataset[i:i + 1000])
-                i += 1000
-                if i >= len(dataset):
-                    break
-            indexed_dataset_builder.finalize()
-
+    @staticmethod
+    def writer_mp(dataset_name, num_proc: int, items: List[Any]):
         chunks = split_list(items, num_proc)
-        with mp.Pool(processes=num_proc) as pool:
-            pool.starmap(_writer_single, [(rank, chunk) for rank, chunk in enumerate(chunks)])
-        return IndexedDataset(dataset_name)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_proc) as executor:
+            futures = [
+                executor.submit(IndexedDatasetBuilder._writer_single, dataset_name, rank, chunk)
+                for rank, chunk in enumerate(chunks)
+            ]
+            # Wait for all tasks to complete
+            for future in futures:
+                future.result()
 
 
 class IndexedDataset(Dataset):
@@ -222,29 +228,40 @@ class IndexedDataset(Dataset):
         for idx_path in self.idx_path_list:
             with open(idx_path, 'rb') as f:
                 idx_list = pickle.load(f)
-                idx += len(idx_list)
+                idx += len(idx_list) - 1
                 self.idx_table.append(idx)
                 self.idx_list += idx_list
 
     def __getitem__(self, index: int):
-        bucket_idx = bisect.bisect_left(self.idx_table, index)
+        if index < 0:
+            index = index % len(self)
+        bucket_idx = bisect.bisect_right(self.idx_table, index)
+        index += bucket_idx
         idx, idx_next = self.idx_list[index], self.idx_list[index + 1]
         self.bin_file_list[bucket_idx].seek(idx)
         return pickle.loads(self.bin_file_list[bucket_idx].read(idx_next - idx))
 
     def __len__(self):
-        return len(self.idx_list) - 1
+        return len(self.idx_list) - len(self.idx_table)
 
 
 class PackingDataset(BasePackingDataset, Dataset):
 
-    def __init__(self, template, dataset, num_proc: int = 1, *, packing_interval: int = 128, strict: bool = False):
+    def __init__(self,
+                 template,
+                 dataset,
+                 num_proc: int = 1,
+                 *,
+                 packing_interval: int = 128,
+                 strict: bool = False,
+                 prefix: str = '',
+                 **kwargs):
         num_proc = min(len(dataset), num_proc)
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
         self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
         self._queue = mp.Queue()
         self._terminated_workers = 0
-        self.dataset_name = 'packing-cache'
+        self.dataset_name = f'{prefix}-packing-cache'
         if is_master():
             for i in range(self.num_proc):
                 shard_dataset = self.dataset.shard(self.num_proc, i)
@@ -310,7 +327,8 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
                  *,
                  packing_interval: int = 128,
                  strict: bool = False,
-                 cyclic: bool = False):
+                 cyclic: bool = False,
+                 **kwargs):
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
         self._in_queue = mp.Queue()
         self._out_queue = mp.Queue()

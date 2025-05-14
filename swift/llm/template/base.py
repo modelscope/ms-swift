@@ -819,7 +819,7 @@ class Template(ProcessorMixin):
         tokenizer_kwargs = {}
         if loss_scale_list is None:
             loss_scale_list = [0.] * len(context_list)
-        if self.loss_scale.keep_loss_scale and self._packing:
+        if self.loss_scale.keep_loss_scale:
             ignore_loss_scale = False
         else:
             ignore_loss_scale = all(loss_scale in {0, 1} for loss_scale in loss_scale_list)
