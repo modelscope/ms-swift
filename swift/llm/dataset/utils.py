@@ -220,7 +220,7 @@ class IndexedDataset(Dataset):
 
 class PackingDataset(BasePackingDataset, Dataset):
 
-    def __init__(self, template, dataset, *, num_proc: int = 1, packing_interval: int = 128, strict: bool = False):
+    def __init__(self, template, dataset, num_proc: int = 1, *, packing_interval: int = 128, strict: bool = False):
         num_proc = min(len(dataset), num_proc)
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
         self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
@@ -246,15 +246,6 @@ class PackingDataset(BasePackingDataset, Dataset):
             dist.broadcast_object_list(obj_list)
             self.packed_dataset = obj_list[0]
 
-    def _producer(self, shard_dataset):
-        for data in shard_dataset:
-            encoded_data = self._encode_data(data)  # ignore
-            self._queue.put(encoded_data)
-        self._queue.put(None)
-        while True:
-            # Wait for the main process to terminate to avoid fd anomalies.
-            time.sleep(0.1)
-
     def fetch_packing_data(self, res: Optional[list] = None):
         res = res or []
         for _ in range(self.packing_interval):
@@ -268,6 +259,15 @@ class PackingDataset(BasePackingDataset, Dataset):
             if data:
                 res.append((data, len(data['input_ids'])))
         return res
+
+    def _producer(self, shard_dataset):
+        for data in shard_dataset:
+            encoded_data = self._encode_data(data)  # ignore
+            self._queue.put(encoded_data)
+        self._queue.put(None)
+        while True:
+            # Wait for the main process to terminate to avoid fd anomalies.
+            time.sleep(0.1)
 
     def get_packed_dataset(self):
         data = []
@@ -361,7 +361,7 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
         while True:
             finished = self._put_data_in_queue(iterator)
             data = self._fetch_data_out_queue(data)
-            res, data = calculate_matched_group(self.template, data, is_finished=finished)
+            res, data = self.calculate_matched_group(self.template, data, is_finished=finished)
             yield from res
             if finished:
                 break
