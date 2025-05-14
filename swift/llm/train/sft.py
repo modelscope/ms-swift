@@ -256,10 +256,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             if args.packing:
                 packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
                 train_dataset = packing_dataset_cls(
-                    self.template, train_dataset, num_proc=args.dataset_num_proc, strict=args.strict, prefix='train')
+                    self.template, train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
                 if val_dataset is not None:
                     val_dataset = packing_dataset_cls(
-                        self.template, val_dataset, num_proc=args.dataset_num_proc, strict=args.strict, prefix='val')
+                        self.template, val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
             elif args.lazy_tokenize:
                 train_dataset = LazyLLMDataset(
                     train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)

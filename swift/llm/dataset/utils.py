@@ -1,6 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import bisect
-import concurrent.futures
 import mmap
 import multiprocessing as mp
 import os
@@ -14,7 +12,7 @@ from modelscope.hub.utils.utils import get_cache_dir
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
 
-from swift.utils import get_logger, is_master, safe_ddp_context, split_list
+from swift.utils import get_logger, is_master, safe_ddp_context
 from ..template import MaxLengthError
 from .preprocessor import RowPreprocessor
 
@@ -156,10 +154,10 @@ class BasePackingDataset:
 
 class IndexedDatasetBuilder:
 
-    def __init__(self, dataset_name: str, rank: int = 0):
-        self.prefix_path = IndexedDataset.get_prefix_path(dataset_name, rank)
-        self.bin_path = f'{self.prefix_path}.bin'
-        self.idx_path = f'{self.prefix_path}.idx'
+    def __init__(self, dataset_name: str):
+        self.prefix_path = IndexedDataset.get_prefix_path(dataset_name)
+        self.bin_path = os.path.join(self.prefix_path, IndexedDataset.BIN_FNAME)
+        self.idx_path = os.path.join(self.prefix_path, IndexedDataset.IDX_FNAME)
         if os.path.exists(self.bin_path):
             os.remove(self.bin_path)
         self.bin_file = open(self.bin_path, 'ab')
@@ -198,66 +196,56 @@ class BinReader:
 
 
 class IndexedDataset(Dataset):
+    BIN_FNAME = 'data.bin'
+    IDX_FNAME = 'data.idx'
 
     @staticmethod
-    def _get_shard_prefix_path(prefix_path: str, rank: int):
-        return os.path.join(prefix_path, f'{rank:05}')
+    def cache_exists(dataset_name: str):
+        idx_path = os.path.join(IndexedDataset.get_prefix_path(dataset_name), IndexedDataset.IDX_FNAME)
+        return os.path.exists(idx_path)
 
     @staticmethod
-    def get_prefix_path(dataset_name: str, rank: int):
-        tmp_dir = os.path.join(get_cache_dir(), 'tmp', dataset_name)
-        os.makedirs(tmp_dir, exist_ok=True)
+    def get_prefix_path(dataset_name: str):
+        prefix_path = os.path.join(get_cache_dir(), 'tmp', dataset_name)
+        os.makedirs(prefix_path, exist_ok=True)
         assert dataset_name is not None, f'dataset_name: {dataset_name}'
-        return IndexedDataset._get_shard_prefix_path(tmp_dir, rank)
+        return prefix_path
 
-    def __init__(self, dataset_name: str, n_shard: int = 1):
+    def __init__(self, dataset_name: str):
         self.dataset_name = dataset_name
-        self.n_shard = n_shard
-        prefix_path_list = [self.get_prefix_path(dataset_name, i) for i in range(n_shard)]
-        self.bin_path_list = [f'{prefix_path}.bin' for prefix_path in prefix_path_list]
-        self.idx_path_list = [f'{prefix_path}.idx' for prefix_path in prefix_path_list]
-        self.bin_readers = [BinReader(bin_path) for bin_path in self.bin_path_list]
-        self.idx_list = []
-        self.idx_table = []
-        idx = 0
-        for idx_path in self.idx_path_list:
-            with open(idx_path, 'rb') as f:
-                idx_list = pickle.load(f)
-                idx += len(idx_list) - 1
-                self.idx_table.append(idx)
-                self.idx_list += idx_list
+        prefix_path = self.get_prefix_path(dataset_name)
+        self.bin_path = os.path.join(prefix_path, IndexedDataset.BIN_FNAME)
+        self.idx_path = os.path.join(prefix_path, IndexedDataset.IDX_FNAME)
+        self.bin_readers = BinReader(self.bin_path)
+        with open(self.idx_path, 'rb') as f:
+            self.idx_list = pickle.load(f)
 
     def __getitem__(self, index: int):
         if index < 0:
             index = index % len(self)
-        bucket_idx = bisect.bisect_right(self.idx_table, index)
-        index += bucket_idx
         idx, idx_next = self.idx_list[index], self.idx_list[index + 1]
-        buffer = self.bin_readers[bucket_idx].read_buffer(idx, idx_next - idx)
+        buffer = self.bin_readers.read_buffer(idx, idx_next - idx)
         return pickle.loads(buffer)
 
     def __len__(self):
-        return len(self.idx_list) - len(self.idx_table)
+        return len(self.idx_list) - 1
 
 
 class PackingDataset(BasePackingDataset, Dataset):
 
-    def __init__(self,
-                 template,
-                 dataset,
-                 num_proc: int = 1,
-                 *,
-                 packing_interval: int = 128,
-                 strict: bool = False,
-                 prefix: str = '',
-                 **kwargs):
+    def __init__(self, template, dataset, num_proc: int = 1, *, packing_interval: int = 128, strict: bool = False):
+        from datasets.fingerprint import update_fingerprint
         num_proc = min(len(dataset), num_proc)
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
-        self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
-        self._queue = mp.Queue()
-        self._terminated_workers = 0
-        self.dataset_name = f'{prefix}-packing-cache'
-        if is_master():
+        fingerprint = update_fingerprint(dataset._fingerprint, 'PackingDataset', {
+            'template': template,
+            'packing_interval': packing_interval
+        })
+        self.dataset_name = f'packing-cache-{fingerprint}'
+        if is_master() and not IndexedDataset.cache_exists(self.dataset_name):
+            self._queue = mp.Queue()
+            self._terminated_workers = 0
+            self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
             for i in range(self.num_proc):
                 shard_dataset = self.dataset.shard(self.num_proc, i)
                 worker = mp.Process(target=self._producer, args=(shard_dataset, ), daemon=True)
@@ -322,8 +310,7 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
                  *,
                  packing_interval: int = 128,
                  strict: bool = False,
-                 cyclic: bool = False,
-                 **kwargs):
+                 cyclic: bool = False):
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
         self._in_queue = mp.Queue()
         self._out_queue = mp.Queue()
