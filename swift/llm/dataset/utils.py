@@ -237,9 +237,9 @@ class PackingDataset(BasePackingDataset, Dataset):
             'packing_interval': packing_interval
         })
         self.dataset_name = f'packing-cache-{fingerprint}'
-        cache_path = IndexedDataset.get_cache_dir(self.dataset_name)
-        logger.info(f'packing cache_path: {cache_path}')
-        if is_master() and not os.path.exists(os.path.join(cache_path, IndexedDataset.IDX_FNAME)):
+        cache_dir = IndexedDataset.get_cache_dir(self.dataset_name)
+        logger.info(f'packing cache_dir: {cache_dir}')
+        if is_master() and not os.path.exists(os.path.join(cache_dir, IndexedDataset.IDX_FNAME)):
             self._queue = mp.Queue()
             self._terminated_workers = 0
             self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
