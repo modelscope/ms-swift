@@ -31,7 +31,9 @@ class SwiftRLHF(SwiftSft):
             model_id_or_path = getattr(args, f'{key}_model')
             if model_id_or_path is None:
                 return None
-
+            if isinstance(model_id_or_path, list):
+                # value model in PPO
+                model_id_or_path = model_id_or_path[0]
             model_type = getattr(args, f'{key}_model_type')
             model_revision = getattr(args, f'{key}_model_revision')
             model_dir = safe_snapshot_download(
