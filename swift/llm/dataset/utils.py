@@ -234,7 +234,8 @@ class PackingDataset(BasePackingDataset, Dataset):
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
         fingerprint = update_fingerprint(dataset._fingerprint, 'PackingDataset', {
             'template': template,
-            'packing_interval': packing_interval
+            'packing_interval': packing_interval,
+            'strict': strict
         })
         self.dataset_name = f'packing-cache-{fingerprint}'
         cache_dir = IndexedDataset.get_cache_dir(self.dataset_name)
