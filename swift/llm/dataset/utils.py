@@ -200,11 +200,6 @@ class IndexedDataset(Dataset):
     IDX_FNAME = 'data.idx'
 
     @staticmethod
-    def cache_exists(dataset_name: str):
-        idx_path = os.path.join(IndexedDataset.get_prefix_path(dataset_name), IndexedDataset.IDX_FNAME)
-        return os.path.exists(idx_path)
-
-    @staticmethod
     def get_prefix_path(dataset_name: str):
         prefix_path = os.path.join(get_cache_dir(), 'tmp', dataset_name)
         os.makedirs(prefix_path, exist_ok=True)
@@ -242,7 +237,9 @@ class PackingDataset(BasePackingDataset, Dataset):
             'packing_interval': packing_interval
         })
         self.dataset_name = f'packing-cache-{fingerprint}'
-        if is_master() and not IndexedDataset.cache_exists(self.dataset_name):
+        cache_path = IndexedDataset.get_prefix_path(self.dataset_name)
+        logger.info(f'packing cache_path: {cache_path}')
+        if is_master() and not os.path.exists(os.path.join(cache_path, IndexedDataset.IDX_FNAME)):
             self._queue = mp.Queue()
             self._terminated_workers = 0
             self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
