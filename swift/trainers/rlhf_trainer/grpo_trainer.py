@@ -1003,7 +1003,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics[mode]['reward_std'].append(grouped_rewards.std(dim=1).mean().item())
 
         # Log prompt and completion texts
-        self._textual_logs['prompt'].extend(gather_object(messages))
+        self._textual_logs['prompt'].extend(self.template.apply_chat_template_to_messages(gather_object(messages)))
         self._textual_logs['completion'].extend(gather_object(completions))
         for i, name in enumerate(self.reward_func_names):
             self._textual_logs['rewards'][name].extend(rewards_per_func[:, i].tolist())

@@ -417,6 +417,29 @@ class Template(ProcessorMixin):
             encoded['template_inputs'] = inputs
         return encoded
 
+    def apply_chat_template_to_messages(self, inputs: Union[TemplateInputs, Dict[str, Any], InferRequest]) -> str:
+        if isinstance(inputs, (InferRequest, TemplateInputs)):
+            inputs = asdict(inputs)
+
+        if isinstance(inputs, dict):
+            inputs = deepcopy(inputs)
+            if not self.is_training:
+                InferRequest.remove_response(inputs['messages'])
+            inputs = StdTemplateInputs.from_dict(inputs)
+        elif isinstance(inputs, StdTemplateInputs):
+            inputs = deepcopy(inputs)
+        assert isinstance(inputs, StdTemplateInputs)
+        self._preprocess_inputs(inputs)
+        Template._encode(self, inputs)
+        template_backend = self.template_backend
+        if (self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training
+                and self.mode != 'seq_cls'):
+            template_backend = 'jinja'
+            logger.info_once(f'Setting template_backend: {template_backend}')
+        res_context_list, _, _ = (
+            self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
+        return res_context_list
+
     def packing_row(self, row: List[Tuple[Dict[str, Any], int]]) -> Dict[str, Any]:
         packed = {}
         keys = set()
