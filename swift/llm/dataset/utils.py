@@ -155,9 +155,9 @@ class BasePackingDataset:
 class IndexedDatasetBuilder:
 
     def __init__(self, dataset_name: str):
-        self.prefix_path = IndexedDataset.get_prefix_path(dataset_name)
-        self.bin_path = os.path.join(self.prefix_path, IndexedDataset.BIN_FNAME)
-        self.idx_path = os.path.join(self.prefix_path, IndexedDataset.IDX_FNAME)
+        self.cache_dir = IndexedDataset.get_cache_dir(dataset_name)
+        self.bin_path = os.path.join(self.cache_dir, IndexedDataset.BIN_FNAME)
+        self.idx_path = os.path.join(self.cache_dir, IndexedDataset.IDX_FNAME)
         if os.path.exists(self.bin_path):
             os.remove(self.bin_path)
         self.bin_file = open(self.bin_path, 'ab')
@@ -200,17 +200,17 @@ class IndexedDataset(Dataset):
     IDX_FNAME = 'data.idx'
 
     @staticmethod
-    def get_prefix_path(dataset_name: str):
-        prefix_path = os.path.join(get_cache_dir(), 'tmp', dataset_name)
-        os.makedirs(prefix_path, exist_ok=True)
+    def get_cache_dir(dataset_name: str):
+        cache_dir = os.path.join(get_cache_dir(), 'tmp', dataset_name)
+        os.makedirs(cache_dir, exist_ok=True)
         assert dataset_name is not None, f'dataset_name: {dataset_name}'
-        return prefix_path
+        return cache_dir
 
     def __init__(self, dataset_name: str):
         self.dataset_name = dataset_name
-        prefix_path = self.get_prefix_path(dataset_name)
-        self.bin_path = os.path.join(prefix_path, IndexedDataset.BIN_FNAME)
-        self.idx_path = os.path.join(prefix_path, IndexedDataset.IDX_FNAME)
+        cache_dir = self.get_cache_dir(dataset_name)
+        self.bin_path = os.path.join(cache_dir, IndexedDataset.BIN_FNAME)
+        self.idx_path = os.path.join(cache_dir, IndexedDataset.IDX_FNAME)
         self.bin_readers = BinReader(self.bin_path)
         with open(self.idx_path, 'rb') as f:
             self.idx_list = pickle.load(f)
@@ -237,7 +237,7 @@ class PackingDataset(BasePackingDataset, Dataset):
             'packing_interval': packing_interval
         })
         self.dataset_name = f'packing-cache-{fingerprint}'
-        cache_path = IndexedDataset.get_prefix_path(self.dataset_name)
+        cache_path = IndexedDataset.get_cache_dir(self.dataset_name)
         logger.info(f'packing cache_path: {cache_path}')
         if is_master() and not os.path.exists(os.path.join(cache_path, IndexedDataset.IDX_FNAME)):
             self._queue = mp.Queue()
