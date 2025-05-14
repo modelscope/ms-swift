@@ -13,7 +13,7 @@ from modelscope.hub.utils.utils import get_cache_dir
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
 
-from swift.utils import get_logger, is_master, split_list
+from swift.utils import get_logger, is_master, safe_ddp_context, split_list
 from ..template import MaxLengthError
 from .preprocessor import RowPreprocessor
 
@@ -155,7 +155,7 @@ class BasePackingDataset:
 
 class IndexedDatasetBuilder:
 
-    def __init__(self, dataset_name: str, rank: int = 1):
+    def __init__(self, dataset_name: str, rank: int = 0):
         self.prefix_path = IndexedDataset.get_default_prefix_path(dataset_name, rank)
         self.bin_path = f'{self.prefix_path}.bin'
         self.idx_path = f'{self.prefix_path}.idx'
@@ -178,50 +178,27 @@ class IndexedDatasetBuilder:
         with open(self.idx_path, 'wb') as f:
             pickle.dump(self.idx_list, f)
 
-    @staticmethod
-    def _writer_single(dataset_name, rank, dataset):
-        indexed_dataset_builder = IndexedDatasetBuilder(dataset_name, rank)
-        i = 0
-        while True:
-            indexed_dataset_builder.add_items(dataset[i:i + 1000])
-            i += 1000
-            if i >= len(dataset):
-                break
-        indexed_dataset_builder.finalize()
-
-    @staticmethod
-    def writer_mp(dataset_name, num_proc: int, items: List[Any]):
-        chunks = split_list(items, num_proc)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=num_proc) as executor:
-            futures = [
-                executor.submit(IndexedDatasetBuilder._writer_single, dataset_name, rank, chunk)
-                for rank, chunk in enumerate(chunks)
-            ]
-            # Wait for all tasks to complete
-            for future in futures:
-                future.result()
-
 
 class IndexedDataset(Dataset):
 
     @staticmethod
     def _get_shard_prefix_path(prefix_path: str, rank: int):
-        return f'{prefix_path}-{rank:05}'
+        return os.path.join(prefix_path, f'{rank:05}')
 
     @staticmethod
     def get_default_prefix_path(dataset_name: str, rank: int):
-        tmp_dir = os.path.join(get_cache_dir(), 'tmp')
+        tmp_dir = os.path.join(get_cache_dir(), 'tmp', dataset_name)
         os.makedirs(tmp_dir, exist_ok=True)
         assert dataset_name is not None, f'dataset_name: {dataset_name}'
-        return IndexedDataset._get_shard_prefix_path(os.path.join(tmp_dir, dataset_name), rank)
+        return IndexedDataset._get_shard_prefix_path(tmp_dir, rank)
 
-    def __init__(self, dataset_name: str, n_shard: int = 1):
+    def initialize(self, dataset_name, n_shard):
         self.dataset_name = dataset_name
+        self.n_shard = n_shard
         prefix_path_list = [self.get_default_prefix_path(dataset_name, i) for i in range(n_shard)]
         self.bin_path_list = [f'{prefix_path}.bin' for prefix_path in prefix_path_list]
         self.idx_path_list = [f'{prefix_path}.idx' for prefix_path in prefix_path_list]
         self.bin_file_list = [open(bin_path, 'rb') for bin_path in self.bin_path_list]
-        self.n_shard = n_shard
         self.idx_list = []
         self.idx_table = []
         idx = 0
@@ -231,6 +208,16 @@ class IndexedDataset(Dataset):
                 idx += len(idx_list) - 1
                 self.idx_table.append(idx)
                 self.idx_list += idx_list
+
+    def __init__(self, dataset_name: str, n_shard: int = 1):
+        self.initialize(dataset_name, n_shard)
+
+    def __getstate__(self):
+        return self.dataset_name, self.n_shard
+
+    def __setstate__(self, state) -> None:
+        dataset_name, n_shard = state
+        self.initialize(dataset_name, n_shard)
 
     def __getitem__(self, index: int):
         if index < 0:
@@ -269,12 +256,12 @@ class PackingDataset(BasePackingDataset, Dataset):
                 worker.start()
                 self.workers.append(worker)
 
-            packed_dataset = self.get_packed_dataset()
-            IndexedDatasetBuilder.writer_mp(self.dataset_name, num_proc, packed_dataset)
+            self.packing_dataset()
             self.prog_bar.close()
             for worker in self.workers:
                 worker.terminate()
-        self.packed_dataset = IndexedDataset(self.dataset_name, num_proc)
+        with safe_ddp_context(None, True):
+            self.packed_dataset = IndexedDataset(self.dataset_name)
 
     def fetch_packing_data(self, res: Optional[list] = None):
         res = res or []
@@ -290,17 +277,17 @@ class PackingDataset(BasePackingDataset, Dataset):
                 res.append((data, len(data['input_ids'])))
         return res
 
-    def get_packed_dataset(self):
+    def packing_dataset(self):
         data = []
-        result = []
+        indexed_dataset_builder = IndexedDatasetBuilder(self.dataset_name)
         while True:
             data = self.fetch_packing_data(data)
             is_finished = self._terminated_workers == self.num_proc
             res, data = self.calculate_matched_group(self.template, data, is_finished=is_finished)
-            result += res
+            indexed_dataset_builder.add_items(res)
             if is_finished:
                 break
-        return result
+        indexed_dataset_builder.finalize()
 
     def _producer(self, shard_dataset):
         for data in shard_dataset:
