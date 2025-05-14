@@ -156,7 +156,7 @@ class BasePackingDataset:
 class IndexedDatasetBuilder:
 
     def __init__(self, dataset_name: str, rank: int = 0):
-        self.prefix_path = IndexedDataset.get_default_prefix_path(dataset_name, rank)
+        self.prefix_path = IndexedDataset.get_prefix_path(dataset_name, rank)
         self.bin_path = f'{self.prefix_path}.bin'
         self.idx_path = f'{self.prefix_path}.idx'
         if os.path.exists(self.bin_path):
@@ -186,16 +186,16 @@ class IndexedDataset(Dataset):
         return os.path.join(prefix_path, f'{rank:05}')
 
     @staticmethod
-    def get_default_prefix_path(dataset_name: str, rank: int):
+    def get_prefix_path(dataset_name: str, rank: int):
         tmp_dir = os.path.join(get_cache_dir(), 'tmp', dataset_name)
         os.makedirs(tmp_dir, exist_ok=True)
         assert dataset_name is not None, f'dataset_name: {dataset_name}'
         return IndexedDataset._get_shard_prefix_path(tmp_dir, rank)
 
-    def initialize(self, dataset_name, n_shard):
+    def initialize(self, dataset_name: str, n_shard: int):
         self.dataset_name = dataset_name
         self.n_shard = n_shard
-        prefix_path_list = [self.get_default_prefix_path(dataset_name, i) for i in range(n_shard)]
+        prefix_path_list = [self.get_prefix_path(dataset_name, i) for i in range(n_shard)]
         self.bin_path_list = [f'{prefix_path}.bin' for prefix_path in prefix_path_list]
         self.idx_path_list = [f'{prefix_path}.idx' for prefix_path in prefix_path_list]
         self.bin_file_list = [open(bin_path, 'rb') for bin_path in self.bin_path_list]
