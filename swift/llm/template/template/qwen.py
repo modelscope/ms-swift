@@ -291,7 +291,10 @@ class Qwen2VLTemplate(Template):
         image_grid_thw = inputs.get('image_grid_thw')
         video_grid_thw = inputs.get('video_grid_thw')
 
-        inputs_embeds = _model.embed_tokens(input_ids)
+        if hasattr(_model, 'embed_tokens'):
+            inputs_embeds = _model.embed_tokens(input_ids)
+        else:
+            inputs_embeds = _model.language_model.embed_tokens(input_ids)
 
         dtype = model.visual.get_dtype() if self.version == 'v2' else model.visual.dtype
         if pixel_values is None and pixel_values_videos is None:  # plain-text
@@ -347,7 +350,11 @@ class Qwen2VLTemplate(Template):
         kwargs = {}
         if self.version == 'v2_5':
             kwargs = {'second_per_grid_ts': inputs.get('second_per_grid_ts')}
-        position_ids, _ = self.model.get_rope_index(
+        if hasattr(self.model, 'get_rope_index'):
+            get_rope_index = self.model.get_rope_index
+        else:
+            get_rope_index = self.model.model.get_rope_index
+        position_ids, _ = get_rope_index(
             inputs['input_ids'],
             inputs.get('image_grid_thw'),
             inputs.get('video_grid_thw'),
@@ -403,7 +410,8 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             inputs.images[index] = fetch_image({'image': inputs.images[index]})
             return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
         elif media_type == 'audio':
-            inputs.audios[index] = load_audio(inputs.audios[index], self.sampling_rate)
+            if self.mode != 'vllm':
+                inputs.audios[index] = load_audio(inputs.audios[index], self.sampling_rate)
             return ['<|audio_bos|><|AUDIO|><|audio_eos|>']
         elif media_type == 'video':
             video = inputs.videos[index]
