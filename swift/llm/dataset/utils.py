@@ -241,12 +241,17 @@ class PackingDataset(BasePackingDataset, Dataset):
             'strict': strict
         })
         self.dataset_name = f'packing-cache-{fingerprint}'
+        with safe_ddp_context(None, True):
+            self.create_packed_dataset()
+
+    def create_packed_dataset(self):
         cache_dir = IndexedDataset.get_cache_dir(self.dataset_name)
         logger.info(f'packing cache_dir: {cache_dir}')
-        if is_master() and not os.path.exists(os.path.join(cache_dir, IndexedDataset.IDX_FNAME)):
+        if not os.path.exists(os.path.join(cache_dir, IndexedDataset.IDX_FNAME)):
             self._queue = mp.Queue()
             self._terminated_workers = 0
-            self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
+            self.prog_bar = tqdm(
+                total=len(self.dataset), dynamic_ncols=True, desc=f'Packing (num_proc={self.num_proc})')
             for i in range(self.num_proc):
                 shard_dataset = self.dataset.shard(self.num_proc, i)
                 worker = mp.Process(target=self._producer, args=(shard_dataset, ), daemon=True)
@@ -257,8 +262,7 @@ class PackingDataset(BasePackingDataset, Dataset):
             self.prog_bar.close()
             for worker in self.workers:
                 worker.terminate()
-        with safe_ddp_context(None, True):
-            self.packed_dataset = IndexedDataset(self.dataset_name)
+        self.packed_dataset = IndexedDataset(self.dataset_name)
 
     def fetch_packing_data(self, res: Optional[list] = None):
         res = res or []
