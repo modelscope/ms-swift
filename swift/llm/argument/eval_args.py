@@ -55,6 +55,7 @@ class EvalArguments(DeployArguments):
         self._init_eval_dataset()
         self.dataset_args = self.parse_to_dict(self.dataset_args)
         self.eval_generation_config = self.parse_to_dict(self.eval_generation_config)
+        self.extra_eval_args = self.parse_to_dict(self.extra_eval_args)
         self.eval_output_dir = to_abspath(self.eval_output_dir)
         logger.info(f'eval_output_dir: {self.eval_output_dir}')
 
