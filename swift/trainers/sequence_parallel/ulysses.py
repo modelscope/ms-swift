@@ -1,10 +1,10 @@
+import math
 import os
 from functools import partial
 from types import MethodType
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import datasets
-import math
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -12,19 +12,15 @@ from packaging import version
 from peft import PeftModel
 from torch.distributed.device_mesh import init_device_mesh
 from torch.nn import CrossEntropyLoss
-from torch.nn.functional import cross_entropy
 from torch.utils.data import DataLoader, Sampler
 from transformers.trainer_utils import seed_worker
 
 from swift.llm import DataLoaderDispatcher, get_model_arch, to_device
 from swift.tuners import SwiftModel
-from swift.utils import get_current_device, get_device, get_dist_setting, gc_collect
-from swift.utils import get_logger
+from swift.utils import get_current_device, get_device, get_dist_setting
 from .base import SequenceParallel
 
-logger = get_logger()
-
-if version.parse(torch.__version__) >= version.parse("2.0.0"):
+if version.parse(torch.__version__) >= version.parse('2.0.0'):
     torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
 
@@ -63,20 +59,20 @@ class GatherLoss(torch.autograd.Function):
             ctx.scatter_shape, dim=ctx.gather_idx)[dist.get_rank(ctx.process_group)].contiguous(), None, None, None
 
 
-torch_compile_options = {
-    "epilogue_fusion"   : True,
-    "max_autotune"      : False,
-    "shape_padding"     : True,
-    "trace.enabled"     : False,
-    "triton.cudagraphs" : False,
-}
-
-
 def torch_compile():
+    torch_compile_options = {
+        'epilogue_fusion': True,
+        'max_autotune': False,
+        'shape_padding': True,
+        'trace.enabled': False,
+        'triton.cudagraphs': False,
+    }
+
     def decorator(func):
-        if version.parse(torch.__version__) >= version.parse("2.0.0"):
+        if version.parse(torch.__version__) >= version.parse('2.0.0'):
             return torch.compile(dynamic=True, fullgraph=True, options=torch_compile_options)(func)
         return func
+
     return decorator
 
 
@@ -133,6 +129,8 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
 
         return logits, None, None, None
 
+
+@torch_compile()
 def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None, process_group=None) -> torch.Tensor:
     if hasattr(outputs, 'logits'):
         logits = outputs.logits
@@ -240,9 +238,7 @@ class UlyssesDispatcher(DataLoaderDispatcher):
 
     def __iter__(self):
         base_iter = iter(self.base_dataloader)
-        idx = 0
         while True:
-            idx += 1
             if self.ulysses.dp_rank == 0:
                 try:
                     data = [next(base_iter) for _ in range(self.ulysses.dp_world_size)]
