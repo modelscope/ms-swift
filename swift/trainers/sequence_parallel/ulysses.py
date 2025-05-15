@@ -1,4 +1,7 @@
+import os
+
 import math
+from packaging import version
 from functools import partial
 from types import MethodType
 from typing import Any, Dict, Iterator, List, Optional, Tuple
@@ -17,6 +20,12 @@ from swift.llm import DataLoaderDispatcher, get_model_arch
 from swift.tuners import SwiftModel
 from swift.utils import get_current_device, get_device, get_dist_setting
 from .base import SequenceParallel
+from swift.utils import get_logger
+
+logger = get_logger()
+
+if version.parse(torch.__version__) >= version.parse("2.0.0"):
+    torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
 
 class GatherLoss(torch.autograd.Function):
@@ -54,7 +63,24 @@ class GatherLoss(torch.autograd.Function):
             ctx.scatter_shape, dim=ctx.gather_idx)[dist.get_rank(ctx.process_group)].contiguous(), None, None, None
 
 
+torch_compile_options = {
+    "epilogue_fusion"   : True,
+    "max_autotune"      : False,
+    "shape_padding"     : True,
+    "trace.enabled"     : False,
+    "triton.cudagraphs" : False,
+}
+
+
+def torch_compile():
+    def decorator(func):
+        if version.parse(torch.__version__) >= version.parse("2.0.0"):
+            return torch.compile(dynamic=True, fullgraph=True, options=torch_compile_options)(func)
+        return func
+    return decorator
+
 # For nll loss
+@torch_compile()
 def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None, process_group=None) -> torch.Tensor:
     if hasattr(outputs, 'logits'):
         logits = outputs.logits
@@ -65,8 +91,16 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
     labels = labels.flatten().to(device)
     # Flatten the tokens
     loss_fct = CrossEntropyLoss(reduction='none')
-    # flatten loss
-    loss = loss_fct(logits, labels)
+
+    sploss_parallel_size = int(os.environ.get('CELOSS_PARALLEL_SIZE', '0'))
+    if sploss_parallel_size > 0:
+        losses = []
+        for i in range(math.ceil(logits.shape[0] / sploss_parallel_size)):
+            # flatten loss
+            losses.append(loss_fct(logits[i*sploss_parallel_size: (i+1)*sploss_parallel_size], labels[i*sploss_parallel_size: (i+1)*sploss_parallel_size]))
+        loss = torch.cat(losses)
+    else:
+        loss = loss_fct(logits, labels)
 
     if loss_scale is not None:
         loss_scale = loss_scale.flatten().to(loss.device)
@@ -148,19 +182,31 @@ class UlyssesDispatcher(DataLoaderDispatcher):
         super().__init__(base_dataloader)
         self.ulysses = ulysses
 
+    def _scatter_object_list(self, inputs):
+        if not dist.is_initialized():
+            return inputs[0]
+        outputs = [None]
+        global_src_rank = dist.get_global_rank(self.ulysses.dp_group, 0)
+        # print('global_src_rank', global_src_rank)
+        dist.scatter_object_list(outputs, inputs, global_src_rank, group=self.ulysses.dp_group)
+        return outputs[0]
+
     def __iter__(self):
         base_iter = iter(self.base_dataloader)
+        idx = 0
         while True:
-            data = None
-            try:
-                for i in range(self.ulysses.dp_world_size):
-                    data = next(base_iter)
-                    if i == self.ulysses.dp_rank:
-                        break
-            except StopIteration:
-                pass
+            idx += 1
+            if self.ulysses.dp_rank == 0:
+                try:
+                    data = [next(base_iter) for _ in range(self.ulysses.dp_world_size)]
+                except StopIteration:
+                    data = [None] * self.ulysses.dp_world_size
+                data = self._scatter_object_list(data)
+            else:
+                data = self._scatter_object_list(None)
             if data is None:
                 break
+            # logger.info(f'idx: {idx}, rank:{dist.get_rank()}, length: {data["input_ids"].shape}')
             yield data
 
 
