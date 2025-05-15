@@ -295,6 +295,13 @@ class Template(ProcessorMixin):
     def compute_loss_context(self, model, inputs):
         return nullcontext()
 
+    @staticmethod
+    def get_base_model(model):
+        if isinstance(model, PeftModel):
+            return model.model
+        else:
+            return model
+
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
         assert chosen_inputs.rejected_response is not None, f'inputs: {inputs}'
@@ -516,10 +523,8 @@ class Template(ProcessorMixin):
         raise NotImplementedError
 
     def generate(self, model, *args, **kwargs):
-        if isinstance(model, PeftModel):
-            signature = inspect.signature(model.model.generate)
-        else:
-            signature = inspect.signature(model.generate)
+        base_model = self.get_base_model(model)
+        signature = inspect.signature(base_model.generate)
         if 'use_model_defaults' in signature.parameters and 'use_model_defaults' not in kwargs:
             kwargs['use_model_defaults'] = False
         return model.generate(*args, **kwargs)
@@ -1152,10 +1157,8 @@ class Template(ProcessorMixin):
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)
 
-        if isinstance(model, PeftModel):
-            parameters = inspect.signature(model.model.forward).parameters
-        else:
-            parameters = inspect.signature(model.forward).parameters
+        base_model = self.get_base_model(model)
+        parameters = inspect.signature(base_model.forward).parameters
         if 'position_ids' not in parameters:
             kwargs.pop('position_ids', None)
         return args, kwargs
