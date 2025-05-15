@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from typing import Any, Dict, Optional, Tuple, Type
 
 import torch
@@ -557,6 +558,9 @@ register_model(
 def patch_qwen_vl_utils(vision_process):
     if hasattr(vision_process, '_patch'):
         return
+    if os.getenv('VIDEO_MAX_PIXELS') and not os.getenv('VIDEO_TOTAL_PIXELS'):
+        # https://github.com/QwenLM/Qwen2.5-VL/issues/1120
+        os.environ['VIDEO_TOTAL_PIXELS'] = str(int(128000 * 28 * 28 * 0.9))
     for key in [
             'image_factor', 'min_pixels', 'max_pixels', 'max_ratio', 'video_min_pixels', 'video_max_pixels',
             'video_total_pixels', 'frame_factor', 'fps', 'fps_min_frames', 'fps_max_frames'
