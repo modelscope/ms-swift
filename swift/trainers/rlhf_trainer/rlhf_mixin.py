@@ -44,12 +44,16 @@ class RLHFTrainerMixin:
         self.label_pad_token_id = -100
         self.use_dpo_data_collator = True
         super().__init__(model, *_args, **kwargs)
-        if is_deepspeed_zero3_enabled() and ref_model is not None:
-            try:
-                from trl.models.utils import prepare_deepspeed
-            except ImportError as e:
-                raise ImportError('Please install trl>=0.14 via `pip install "trl>=0.14"`') from e
-            prepare_deepspeed(self.ref_model, self.accelerator)  # Does not wrap DeepSpeedEngine
+        if ref_model is not None:
+            if self.is_deepspeed_enabled:
+                try:
+                    from trl.models.utils import prepare_deepspeed
+                except ImportError as e:
+                    raise ImportError('Please install trl>=0.14 via `pip install "trl>=0.14"`') from e
+                self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
+            else:
+                self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
+
         self.padding_value = self.tokenizer.pad_token_id
 
     def concatenated_forward(
