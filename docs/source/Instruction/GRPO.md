@@ -53,7 +53,7 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 3. 在vLLM中使用 Tensor Parallel 技术：
 
 ```bash
---tensor_parallel_size [tp_size]
+--vllm_tensor_parallel_size [tp_size]
 ```
 
 4. 分批 Gather 模型权重（zero3下同步 vLLM 权重时）：
