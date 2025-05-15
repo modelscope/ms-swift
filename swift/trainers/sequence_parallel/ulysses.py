@@ -20,9 +20,6 @@ from swift.tuners import SwiftModel
 from swift.utils import get_current_device, get_device, get_dist_setting
 from .base import SequenceParallel
 
-if version.parse(torch.__version__) >= version.parse('2.0.0'):
-    torch._dynamo.config.capture_dynamic_output_shape_ops = True
-
 
 class GatherLoss(torch.autograd.Function):
     """Gather loss from sequence group"""
@@ -70,6 +67,7 @@ def torch_compile():
 
     def decorator(func):
         if version.parse(torch.__version__) >= version.parse('2.0.0'):
+            torch._dynamo.config.capture_dynamic_output_shape_ops = True
             return torch.compile(dynamic=True, fullgraph=True, options=torch_compile_options)(func)
         return func
 
@@ -104,7 +102,6 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
     def backward(ctx: Any, *grad_outputs: Any):
         logits, labels, loss_scale = ctx.saved_tensors
         chunk_size = ctx.chunk_size
-        # grad_logits = torch.zeros_like(logits)
 
         for i in range(math.ceil(logits.shape[0] / chunk_size)):
             l_start = i * chunk_size
