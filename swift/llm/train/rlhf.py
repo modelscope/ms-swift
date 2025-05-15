@@ -57,7 +57,8 @@ class SwiftRLHF(SwiftSft):
                 if hasattr(model_config, 'num_labels'):
                     num_labels = model_config.num_labels
 
-                if num_labels is not None:
+                # PretrainedConfig default num_labels = 2
+                if num_labels == 1:
                     task_type = 'seq_cls'
 
             model, processor = args.get_model_processor(
