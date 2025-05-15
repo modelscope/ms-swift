@@ -1,26 +1,26 @@
 import os
-
-import math
-from packaging import version
 from functools import partial
 from types import MethodType
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import datasets
+import math
 import numpy as np
 import torch
 import torch.distributed as dist
+from packaging import version
 from peft import PeftModel
 from torch.distributed.device_mesh import init_device_mesh
 from torch.nn import CrossEntropyLoss
+from torch.nn.functional import cross_entropy
 from torch.utils.data import DataLoader, Sampler
 from transformers.trainer_utils import seed_worker
 
 from swift.llm import DataLoaderDispatcher, get_model_arch
 from swift.tuners import SwiftModel
-from swift.utils import get_current_device, get_device, get_dist_setting
-from .base import SequenceParallel
+from swift.utils import get_current_device, get_device, get_dist_setting, gc_collect
 from swift.utils import get_logger
+from .base import SequenceParallel
 
 logger = get_logger()
 
@@ -79,8 +79,60 @@ def torch_compile():
         return func
     return decorator
 
-# For nll loss
-@torch_compile()
+
+class ChunkedCrossEntropyLoss(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, logits, labels, loss_scale, chunk_size):
+        ctx.save_for_backward(logits, labels, loss_scale)
+        ctx.chunk_size = chunk_size
+
+        losses = []
+        for i in range(math.ceil(logits.shape[0] / chunk_size)):
+            l_start = i * chunk_size
+            l_end = min((i + 1) * chunk_size, logits.shape[0])
+            logits_chunk = logits[l_start:l_end]
+            labels_chunk = labels[l_start:l_end]
+            loss_fct = CrossEntropyLoss(reduction='none')
+            loss_chunk = loss_fct(logits_chunk, labels_chunk)
+            if loss_scale is not None:
+                loss_scale_chunk = loss_scale[l_start:l_end]
+                loss_chunk = loss_chunk * loss_scale_chunk
+            losses.append(loss_chunk)
+            del logits_chunk
+            del labels_chunk
+        all_losses = torch.cat(losses)
+        return all_losses
+
+    @staticmethod
+    def backward(ctx: Any, *grad_outputs: Any):
+        logits, labels, loss_scale = ctx.saved_tensors
+        chunk_size = ctx.chunk_size
+        # grad_logits = torch.zeros_like(logits)
+
+        for i in range(math.ceil(logits.shape[0] / chunk_size)):
+            l_start = i * chunk_size
+            l_end = min((i + 1) * chunk_size, logits.shape[0])
+            logits_chunk = logits[l_start:l_end].detach().requires_grad_(True)
+            labels_chunk = labels[l_start:l_end]
+            if loss_scale is not None:
+                loss_scale_chunk = loss_scale[l_start:l_end]
+            else:
+                loss_scale_chunk = None
+
+            loss_fct = CrossEntropyLoss(reduction='none')
+            with torch.enable_grad():
+                loss_chunk = loss_fct(logits_chunk, labels_chunk)
+                if loss_scale_chunk is not None:
+                    loss_chunk = loss_chunk * loss_scale_chunk
+
+                grad_output_chunk = grad_outputs[0][l_start:l_end]
+                _loss_chunk = (loss_chunk * grad_output_chunk).sum()
+                grad_chunk = torch.autograd.grad(_loss_chunk, logits_chunk, retain_graph=False)[0]
+                logits[l_start:l_end] = grad_chunk
+
+        return logits, None, None, None
+
 def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None, process_group=None) -> torch.Tensor:
     if hasattr(outputs, 'logits'):
         logits = outputs.logits
@@ -89,29 +141,23 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
     device = logits.device
     logits = logits.view(-1, logits.shape[-1])
     labels = labels.flatten().to(device)
-    # Flatten the tokens
-    loss_fct = CrossEntropyLoss(reduction='none')
+    if loss_scale is not None:
+        loss_scale = loss_scale.flatten().to(device)
 
     sploss_parallel_size = int(os.environ.get('CELOSS_PARALLEL_SIZE', '0'))
     if sploss_parallel_size > 0:
-        losses = []
-        for i in range(math.ceil(logits.shape[0] / sploss_parallel_size)):
-            # flatten loss
-            losses.append(loss_fct(logits[i*sploss_parallel_size: (i+1)*sploss_parallel_size], labels[i*sploss_parallel_size: (i+1)*sploss_parallel_size]))
-        loss = torch.cat(losses)
+        loss = ChunkedCrossEntropyLoss.apply(logits, labels, loss_scale, sploss_parallel_size)
     else:
+        loss_fct = CrossEntropyLoss(reduction='none')
         loss = loss_fct(logits, labels)
-
-    if loss_scale is not None:
-        loss_scale = loss_scale.flatten().to(loss.device)
-        loss = (loss_scale * loss)
     loss, labels = GatherLoss.apply(loss, labels, process_group)
-    loss = loss[labels != -100].sum()
+    mask = (labels != -100)
+    total_loss = loss[mask].sum()
     if num_items_in_batch is None:
-        loss = loss / (labels != -100).sum()
+        total_loss = total_loss / mask.sum()
     else:
-        loss = loss / num_items_in_batch
-    return loss
+        total_loss = total_loss / num_items_in_batch
+    return total_loss
 
 
 # For DPO
