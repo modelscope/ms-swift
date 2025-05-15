@@ -11,8 +11,8 @@ class SwiftPt(SwiftSft):
 
     def _prepare_template(self) -> None:
         self.args.use_chat_template = False
+        self.args.loss_scale = 'all'
         super()._prepare_template()
-        self.template.loss_scale = 'all'
 
 
 def pt_main(args: Union[List[str], TrainArguments, None] = None):
