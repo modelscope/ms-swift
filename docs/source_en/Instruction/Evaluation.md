@@ -86,6 +86,21 @@ Where:
 - eval_limit: Sample size for each evaluation set; default is None, which means using all data; can be used for quick validation
 - eval_dataset: Evaluation dataset(s); multiple datasets can be set, separated by spaces
 
+**Complex Evaluation Example**
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift eval \
+    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --eval_backend Native \
+    --infer_backend pt \
+    --eval_limit 10 \
+    --eval_dataset gsm8k \
+    --dataset_args '{"gsm8k": {"few_shot_num": 0, "filters": {"remove_until": "</think>"}}}' \
+    --eval_generation_config '{"max_tokens": 512, "temperature": 0}' \
+    --extra_eval_args '{"ignore_errors": true, "debug": true}'
+```
+
 For a specific list of evaluation parameters, please refer to [here](./Command-line-parameters.md#evaluation-arguments).
 
 ## Evaluation During Training

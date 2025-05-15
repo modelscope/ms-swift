@@ -1,3 +1,8 @@
+# CUDA_VISIBLE_DEVICES=0,1 \
+# swift rollout \
+#     --model Qwen/Qwen2.5-32B-Instruct \
+#     --tensor_parallel_size 2
+
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 swift rlhf \
@@ -5,6 +10,7 @@ swift rlhf \
     --model Qwen/Qwen2.5-32B-Instruct \
     --reward_funcs accuracy \
     --use_vllm true \
+    --vllm_mode server \
     --vllm_server_host xxx \
     --vllm_server_port 8000 \
     --train_type full \
@@ -28,6 +34,5 @@ swift rlhf \
     --deepspeed zero3 \
     --log_completions true \
     --num_iterations 1 \
-    --num_infer_workers 1 \
     --report_to tensorboard wandb \
     --beta 0.0

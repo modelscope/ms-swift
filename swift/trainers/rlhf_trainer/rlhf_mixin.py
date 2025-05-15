@@ -1,17 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import defaultdict
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 from transformers import PreTrainedModel
-from transformers.integrations import is_deepspeed_zero3_enabled
-
-try:
-    from trl import AutoModelForCausalLMWithValueHead
-except (ImportError, RuntimeError):
-    AutoModelForCausalLMWithValueHead = None
+from trl.models.utils import prepare_deepspeed
 
 
 class RLHFTrainerMixin:
@@ -44,12 +39,12 @@ class RLHFTrainerMixin:
         self.label_pad_token_id = -100
         self.use_dpo_data_collator = True
         super().__init__(model, *_args, **kwargs)
-        if is_deepspeed_zero3_enabled() and ref_model is not None:
-            try:
-                from trl.models.utils import prepare_deepspeed
-            except ImportError as e:
-                raise ImportError('Please install trl>=0.14 via `pip install "trl>=0.14"`') from e
-            prepare_deepspeed(self.ref_model, self.accelerator)  # Does not wrap DeepSpeedEngine
+        if ref_model is not None:
+            if self.is_deepspeed_enabled:
+                self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
+            else:
+                self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
+
         self.padding_value = self.tokenizer.pad_token_id
 
     def concatenated_forward(
@@ -90,7 +85,7 @@ class RLHFTrainerMixin:
             return super().concatenated_forward(model, model_kwargs)
 
     def get_batch_logps(self, logits: torch.FloatTensor, labels: torch.LongTensor, *args, **kwargs):
-        if kwargs.get('is_encoder_decoder', False):
+        if self.is_encoder_decoder:
             labels = labels.clone()  # fix trl bug
         return super().get_batch_logps(logits, labels, *args, **kwargs)
 

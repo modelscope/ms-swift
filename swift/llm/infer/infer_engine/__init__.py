@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from .infer_client import InferClient
     from .infer_engine import InferEngine
     from .base import BaseInferEngine
-    from .utils import prepare_generation_config, AdapterRequest, set_device_context, patch_vllm_memory_leak
+    from .utils import prepare_generation_config, AdapterRequest, patch_vllm_memory_leak
 else:
     _import_structure = {
         'vllm_engine': ['VllmEngine'],
@@ -21,7 +21,7 @@ else:
         'infer_client': ['InferClient'],
         'infer_engine': ['InferEngine'],
         'base': ['BaseInferEngine'],
-        'utils': ['prepare_generation_config', 'AdapterRequest', 'set_device_context', 'patch_vllm_memory_leak'],
+        'utils': ['prepare_generation_config', 'AdapterRequest', 'patch_vllm_memory_leak'],
     }
 
     import sys

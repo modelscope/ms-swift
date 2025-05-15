@@ -96,7 +96,7 @@ $$
 
 由于任务较为简单，我们设置 max_completion_length 和 vllm_max_model_len 为1024，如果有更复杂的任务，可以适当加大模型输出长度，但请注意，**这两个参数越大，模型训练需要的显存越多，训练速度越慢，单个step的训练时间与max_completion_length呈现线性关系**。
 
-在我们的实验中，总batch_size为 $num\_processes \times per\_device\_train\_batch\_size \times gradient\_accumulation\_steps = 2 \times 8 \times 8 = 128$ 而参数设置有一个限制，即：$num\_processes \times per\_device\_train\_batch\_size$ 必须整除 $num\_generations$，其中，$num\_generations$就是GRPO公式中的 $G$，故我们设置为8。 注意，这里单卡batch_size设置也与显存息息相关，请根据显存上限设置一个合适的值。 同时，还有一个公式，即总的steps数量 :$num\_steps = epochs \times len(datasets) \times num\_generations \div batch\_size $，需要根据这个来合理规划训练的学习率和warmup设置。
+在我们的实验中，总batch_size为 $num\_processes \times per\_device\_train\_batch\_size \times gradient\_accumulation\_steps = 2 \times 8 \times 8 = 128$。 注意，这里单卡batch_size设置也与显存息息相关，请根据显存上限设置一个合适的值。 同时，还有一个公式，即总的steps数量 :$num\_steps = epochs \times len(datasets) \times num\_generations \div batch\_size $，需要根据这个来合理规划训练的学习率和warmup设置。
 
 最后比较重要的设置是学习率和 beta，学习率比较好理解，而beta则是是以上公式的 $\beta$，即KL散度的梯度的权重。这两个参数设置的越大，模型收敛原则上更快，但训练往往会不稳定。经过实验，我们分别设置为 `5e-7` 和 `0.001`。在实际训练中，请根据是否出现不稳定的震荡情况适当调整这两个参数。
 
@@ -104,7 +104,13 @@ $$
 
 其他参数的设置，没有做太多探讨，所以这里不进行详细说明。
 ```bash
-CUDA_VISIBLE_DEVICES=0,1,2 \
+CUDA_VISIBLE_DEVICES=2 \
+swift rollout \
+    --model Qwen/Qwen2.5-3B-Instruct
+```
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 \
 WANDB_API_KEY=your_wandb_key \
 NPROC_PER_NODE=2 \
 swift rlhf \
@@ -113,8 +119,9 @@ swift rlhf \
     --external_plugins examples/train/grpo/plugin/plugin.py \
     --reward_funcs external_countdown format \
     --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.6 \
+    --vllm_mode server \
+    --vllm_server_host 127.0.0.1 \
+    --vllm_server_port 8000 \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'zouxuhong/Countdown-Tasks-3to4#50000' \
@@ -137,7 +144,6 @@ swift rlhf \
     --system 'You are a helpful assistant. You first thinks about the reasoning process in the mind and then provides the user with the answer.' \
     --deepspeed zero3 \
     --log_completions true \
-    --vllm_max_model_len 1024 \
     --report_to wandb \
     --beta 0.001 \
     --num_iterations 1

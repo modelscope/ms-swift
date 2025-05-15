@@ -12,6 +12,16 @@ from .utils import calculate_loss_scale
 class LossScale:
     loss_scale_config = None  # path
 
+    def _set_keep_loss_scale(self):
+        self.keep_loss_scale = False
+        if self.loss_scale_map is None:
+            return
+        res = set()
+        for v in self.loss_scale_map.values():
+            res.update(v)
+        if len(res - {0., 1.}) > 0:
+            self.keep_loss_scale = True
+
     def __init__(self):
         if self.loss_scale_config is not None:
             path = os.path.dirname(os.path.abspath(__file__))
@@ -20,6 +30,7 @@ class LossScale:
                 self.loss_scale_map = json.load(json_file)
         else:
             self.loss_scale_map = None
+        self._set_keep_loss_scale()
 
     def get_loss_scale(self,
                        context: str,
@@ -123,14 +134,14 @@ class IgnoreEmptyThink(REACTLossScale):
 
 # Add your loss scale here, use --loss_scale xxx to train
 loss_scale_map = {
-    'last_round': LastRoundLossScale(),
-    'default': LossScale(),
-    'all': TrainAllLossScale(),
-    'ignore_empty_think': IgnoreEmptyThink(),
+    'last_round': LastRoundLossScale,
+    'default': LossScale,
+    'all': TrainAllLossScale,
+    'ignore_empty_think': IgnoreEmptyThink,
     # agent
-    'react': REACTLossScale(),
-    'hermes': HermesLossScale(),
-    'qwen': QwenLossScale(),
-    'agentflan': AgentFlanLossScale(),
-    'alpha_umi': AlphaUmiLossScale(),
+    'react': REACTLossScale,
+    'hermes': HermesLossScale,
+    'qwen': QwenLossScale,
+    'agentflan': AgentFlanLossScale,
+    'alpha_umi': AlphaUmiLossScale,
 }

@@ -25,10 +25,6 @@ def get_swift_datasets_provider(train_dataset, val_dataset):
 class MegatronDataLoaderDispatcher(DataLoaderDispatcher):
 
     @property
-    def src_rank(self):
-        return mpu.get_data_parallel_src_rank()
-
-    @property
     def group(self):
         return mpu.get_data_parallel_group()
 

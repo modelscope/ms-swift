@@ -16,6 +16,8 @@ pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
 # apex
 git clone https://github.com/NVIDIA/apex
 cd apex
+# https://github.com/modelscope/ms-swift/issues/4176
+git checkout e13873debc4699d39c6861074b9a3b2a02327f92
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
