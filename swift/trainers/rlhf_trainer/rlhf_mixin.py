@@ -1,17 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import defaultdict
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 from transformers import PreTrainedModel
-from transformers.integrations import is_deepspeed_zero3_enabled
-
-try:
-    from trl import AutoModelForCausalLMWithValueHead
-except (ImportError, RuntimeError):
-    AutoModelForCausalLMWithValueHead = None
+from trl.models.utils import prepare_deepspeed
 
 
 class RLHFTrainerMixin:
@@ -46,10 +41,6 @@ class RLHFTrainerMixin:
         super().__init__(model, *_args, **kwargs)
         if ref_model is not None:
             if self.is_deepspeed_enabled:
-                try:
-                    from trl.models.utils import prepare_deepspeed
-                except ImportError as e:
-                    raise ImportError('Please install trl>=0.14 via `pip install "trl>=0.14"`') from e
                 self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
             else:
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)

@@ -6,15 +6,12 @@ import torch.nn as nn
 from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
+from trl.trainer.utils import selective_log_softmax
 
 from ..mixin import DataLoaderMixin, SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
 del HFDPOTrainer.__init__
-try:
-    from trl.trainer.utils import selective_log_softmax
-except ImportError:
-    selective_log_softmax = None
 
 
 class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
