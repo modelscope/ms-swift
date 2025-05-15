@@ -5,8 +5,8 @@ from functools import partial
 from typing import List, Union
 
 from megatron.core.enums import ModelType
-from megatron.training import get_args, get_timers, pretrain, training
 from megatron.core.utils import StragglerDetector
+from megatron.training import get_args, get_timers, pretrain, training
 
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
@@ -18,6 +18,7 @@ from .utils import build_streaming_dataloader, get_batch, get_swift_datasets_pro
 logger = get_logger()
 
 stimer = StragglerDetector()
+
 
 class MegatronSft(SwiftSft):
     args_class = MegatronTrainArguments
@@ -87,12 +88,11 @@ class MegatronSft(SwiftSft):
             data = get_batch(data_iterator)
         if not data:
             raise StopIteration
-        tokens, labels, attention_mask, position_ids, packed_seq_params = data
         timers('batch-generator').stop()
 
         with stimer:
-            output_tensor = model(
-                tokens, position_ids, attention_mask, labels=labels, packed_seq_params=packed_seq_params)
+            output_tensor = model(**data)
+        labels = data.get('labels')
         loss_mask = None if labels is None else (labels != -100).float()
         return output_tensor, partial(loss_func, loss_mask)
 

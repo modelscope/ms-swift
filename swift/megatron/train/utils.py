@@ -9,6 +9,7 @@ from megatron.training.training import cyclic_iter
 
 from swift.llm import DataLoaderDispatcher
 
+
 def get_swift_datasets_provider(train_dataset, val_dataset):
 
     def swift_datasets_provider(train_val_test_num_samples):
@@ -54,10 +55,10 @@ def get_batch_on_this_tp_rank(data_iterator):
         except StopIteration:
             seq_length = -1
         else:
-            tokens = data['input_ids']
-            seq_length = tokens.shape[1]
+            input_ids = data['input_ids']
+            seq_length = input_ids.shape[1]
             batch = {
-                'tokens': tokens.cuda(non_blocking=True),
+                'input_ids': input_ids.cuda(non_blocking=True),
                 'labels': data['labels'].cuda(non_blocking=True),
                 'attention_mask':
                 None if 'attention_mask' not in data else data['attention_mask'].cuda(non_blocking=True),
@@ -68,13 +69,13 @@ def get_batch_on_this_tp_rank(data_iterator):
         if seq_length.item() == -1:
             return {}
         if args.pipeline_model_parallel_size == 1:
-            _broadcast(batch['tokens'])
+            _broadcast(batch['input_ids'])
             _broadcast(batch['labels'])
             _broadcast(batch['attention_mask'])
             _broadcast(batch['position_ids'])
 
         elif mpu.is_pipeline_first_stage():
-            _broadcast(batch['tokens'])
+            _broadcast(batch['input_ids'])
             _broadcast(batch['attention_mask'])
             _broadcast(batch['position_ids'])
 
@@ -89,7 +90,7 @@ def get_batch_on_this_tp_rank(data_iterator):
         if seq_length.item() == -1:
             return {}
         micro_batch_size = 1  # use qkv_format 'thd'
-        tokens = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
+        input_ids = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
         labels = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
         if args.create_attention_mask_in_dataloader:
             attention_mask = torch.empty((micro_batch_size, 1, seq_length, seq_length),
@@ -102,7 +103,7 @@ def get_batch_on_this_tp_rank(data_iterator):
                                    device=torch.cuda.current_device())
 
         if args.pipeline_model_parallel_size == 1:
-            _broadcast(tokens)
+            _broadcast(input_ids)
             _broadcast(labels)
             _broadcast(attention_mask)
             _broadcast(position_ids)
@@ -110,18 +111,18 @@ def get_batch_on_this_tp_rank(data_iterator):
         elif mpu.is_pipeline_first_stage():
             labels = None
 
-            _broadcast(tokens)
+            _broadcast(input_ids)
             _broadcast(attention_mask)
             _broadcast(position_ids)
 
         elif mpu.is_pipeline_last_stage():
-            tokens = None
+            input_ids = None
 
             _broadcast(labels)
             _broadcast(attention_mask)
             _broadcast(position_ids)  # compat packing & cp
 
-        batch = {'tokens': tokens, 'labels': labels, 'attention_mask': attention_mask, 'position_ids': position_ids}
+        batch = {'input_ids': input_ids, 'labels': labels, 'attention_mask': attention_mask, 'position_ids': position_ids}
 
     return batch
 
@@ -200,4 +201,4 @@ def get_batch(data_iterator):
     batch['packed_seq_params'] = get_packed_seq_params(batch['position_ids'])
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch)
-    return batch.values()
+    return batch
