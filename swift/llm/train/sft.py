@@ -178,8 +178,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 state.best_model_checkpoint = best_checkpoint
         else:
             state.last_model_checkpoint = None
-            logger.warning('No training was carried out, which may be due to the dataset being too small '
-                           'or incorrect usage of resume_from_checkpoint.')
         logger.info(f'last_model_checkpoint: {state.last_model_checkpoint}')
         logger.info(f'best_model_checkpoint: {state.best_model_checkpoint}')
 

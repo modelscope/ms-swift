@@ -667,6 +667,7 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - ASCEND_RT_VISIBLE_DEVICES: Controls which NPU (effective for ASCEND cards) are used. By default, all NPUs are used.
 - MODELSCOPE_CACHE: Controls the cache path.
 - NPROC_PER_NODE: Pass-through for the `--nproc_per_node` parameter in torchrun. The default is 1. If the `NPROC_PER_NODE` or `NNODES` environment variables are set, torchrun is used to start training or inference.
+- PYTORCH_CUDA_ALLOC_CONF: It is recommended to set it to `'expandable_segments:True'`, which reduces GPU memory fragmentation. For more details, please refer to the [PyTorch documentation](https://docs.pytorch.org/docs/stable/notes/cuda.html#cuda-memory-management).
 - MASTER_PORT: Pass-through for the `--master_port` parameter in torchrun. The default is 29500.
 - MASTER_ADDR: Pass-through for the `--master_addr` parameter in torchrun.
 - NNODES: Pass-through for the `--nnodes` parameter in torchrun.
