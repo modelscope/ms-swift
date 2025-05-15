@@ -74,7 +74,8 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     megatron_args = MegatronArguments(**kwargs, **convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
-    initialize_megatron(args_defaults=extra_args)
+    extra_args_provider = megatron_model_meta.extra_args_provider
+    initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
 
     mg_model = megatron_model_meta.model_provider()
     logger.info('Megatron model created successfully.')
@@ -101,7 +102,8 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     megatron_args = MegatronArguments(**kwargs, **convert_kwargs, load=args.mcore_model, torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
-    initialize_megatron(args_defaults=extra_args)
+    extra_args_provider = megatron_model_meta.extra_args_provider
+    initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
 
     mg_model = megatron_model_meta.model_provider()
     load_checkpoint([mg_model], None, None, strict=True)

@@ -47,11 +47,13 @@ class MegatronSft(SwiftSft):
         logger.info(f'The logging file will be saved in: {logging_path}')
         try:
             with patch_training_log(), patch_megatron_data_collator(data_collator):
+                extra_args_provider = args.megatron_model_meta.extra_args_provider
                 pretrain(
                     datasets_provider,
                     args.megatron_model_meta.model_provider,
                     ModelType.encoder_or_decoder,
                     forward_step,
+                    extra_args_provider=extra_args_provider,
                     args_defaults=args.extra_args)
         finally:
             # Visualization
