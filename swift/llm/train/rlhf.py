@@ -47,13 +47,18 @@ class SwiftRLHF(SwiftSft):
                 model_args = BaseArguments.from_pretrained(model_dir)
                 if hasattr(model_args, 'task_type'):
                     task_type = model_args.task_type
+                if hasattr(model_args, 'num_labels'):
+                    num_labels = model_args.num_labels
+                if task_type == 'seq_cls' and num_labels is None:
+                    num_labels = 1
             else:
                 from transformers import AutoConfig
                 model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
                 if hasattr(model_config, 'num_labels'):
                     num_labels = model_config.num_labels
-            if task_type == 'seq_cls':
-                num_labels = 1
+
+                if num_labels is not None:
+                    task_type = 'seq_cls'
 
             model, processor = args.get_model_processor(
                 model=model_id_or_path,
