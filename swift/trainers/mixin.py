@@ -319,14 +319,14 @@ class SwiftMixin:
             for model_name in ['model', 'ref_model', 'value_model']:
                 model = getattr(self, model_name, None)
                 if isinstance(model, nn.Module):
-                    models.append(model)
+                    models.append(self.accelerator.unwrap_model(model))
 
             reward_model = getattr(self, 'reward_model', None)
             if reward_model is not None:
                 if isinstance(reward_model, list):
-                    models.extend([m for m in reward_model if isinstance(m, nn.Module)])
+                    models.extend([self.accelerator.unwrap_model(m) for m in reward_model if isinstance(m, nn.Module)])
                 elif isinstance(reward_model, nn.Module):
-                    models.append(reward_model)
+                    models.append(self.accelerator.unwrap_model(reward_model))
 
             models = list(set(models))  # Deduplicate
             self.template.register_post_encode_hook(models)
