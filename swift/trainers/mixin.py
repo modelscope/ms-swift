@@ -328,7 +328,7 @@ class SwiftMixin:
                 elif isinstance(reward_model, nn.Module):
                     models.append(reward_model)
 
-            models = list(set(models))  # Deduplicate
+            models = [self.accelerator.unwrap_model(model) for model in set(models)]  # Deduplicate
             self.template.register_post_encode_hook(models)
             logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}.')
         self._save_initial_model(self.args.output_dir)
