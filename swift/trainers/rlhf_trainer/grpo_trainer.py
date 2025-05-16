@@ -547,8 +547,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # for server mode, we gather all the inputs and send to remote vllm server in main process
             if is_global_inputs:
                 all_inputs = infer_inputs
+                all_input_lengths = None  # TODO:async_generate
             else:
                 all_inputs = gather_object(infer_inputs)
+                all_input_lengths = gather_object(len(inputs))
+
             if self.accelerator.is_main_process:
                 results: List[ChatCompletionResponse] = self._engine_infer(
                     infer_requests=all_inputs, request_config=request_config)
@@ -558,10 +561,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # ensuring each process receives its corresponding slice.
             results = broadcast_object_list(results, from_process=0)
             process_slice = slice(
-                self.accelerator.process_index * per_device_size,
-                (self.accelerator.process_index + 1) * per_device_size,
+                self.accelerator.process_index,
+                (self.accelerator.process_index + 1),
             )
-            results = results[process_slice]
+            results = results[all_input_lengths[process_slice]]
         else:
             # pt / vllm
             if self.vllm_tensor_parallel_size > 1:
