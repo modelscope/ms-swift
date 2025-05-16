@@ -3,8 +3,10 @@ import mmap
 import multiprocessing as mp
 import os
 import pickle
+import threading
 import time
 from copy import copy
+from queue import Queue
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -163,17 +165,32 @@ class IndexedDatasetBuilder:
             os.remove(self.bin_path)
         self.bin_file = open(self.bin_path, 'ab')
         self.idx_list = [0]
+        self._thread = None
+        self._queue = Queue()
+
+    def _write_worker(self):
+        while True:
+            item = self._queue.get()
+            if item is None:
+                break
+            self.bin_file.write(item)
 
     def add_items(self, items: List[Any]) -> None:
+        if self._thread is None:
+            self._thread = threading.Thread(target=self._write_worker, daemon=True)
+            self._thread.start()
         bin_buffer = []
         for item in items:
             item_buffer = pickle.dumps(item)
             bin_buffer.append(item_buffer)
             self.idx_list.append(self.idx_list[-1] + len(item_buffer))
         if bin_buffer:
-            self.bin_file.write(b''.join(bin_buffer))
+            self._queue.put(b''.join(bin_buffer))
 
     def finalize(self):
+        if self._thread is not None:
+            self._queue.put(None)
+            self._thread.join()
         self.bin_file.close()
         with open(self.idx_path, 'wb') as f:
             pickle.dump(self.idx_list, f)
