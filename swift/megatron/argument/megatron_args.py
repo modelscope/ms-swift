@@ -4,7 +4,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-import megatron
+import megatron.core
 import torch
 from packaging import version
 from transformers.utils.versions import require_version
