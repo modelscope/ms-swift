@@ -231,11 +231,13 @@ class MegatronArguments(ExtraMegatronArguments):
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
 
         try:
-            self.extra_megatron_kwargs = (
-                json.loads(self.extra_megatron_kwargs)
-                if self.extra_megatron_kwargs
-                else {}
-            )
+            if self.extra_megatron_kwargs is None:
+                self.extra_megatron_kwargs = {}
+            elif isinstance(self.extra_megatron_kwargs, str):
+                self.extra_megatron_kwargs = json.loads(self.extra_megatron_kwargs)
+            elif isinstance(self.extra_megatron_kwargs, dict):
+                # For loading from config file
+                self.extra_megatron_kwargs = self.extra_megatron_kwargs
         except json.JSONDecodeError:
             raise ValueError('extra_megatron_kwargs should be a valid json string')
 
