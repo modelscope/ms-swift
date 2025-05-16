@@ -98,7 +98,7 @@ class LazyLLMDataset(Dataset):
             try:
                 return self.encode_func(data)
             except Exception:
-                if n_try == self.n_try_fetch - 1:
+                if n_try == self.n_try_fetch - 1 or self.strict:
                     if self.strict:
                         logger.warning('To avoid errors, you can pass `strict=False`.')
                     raise
