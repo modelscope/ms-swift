@@ -180,6 +180,11 @@ class GRPOArgumentsMixin:
     reward_model: Optional[List[str]] = None
     reward_model_plugin: Optional[List[str]] = None
 
+    # sync ref model
+    sync_ref_model: bool = False
+    ref_model_sync_steps: int = 512
+    ref_model_mixup_alpha: float = 0.6
+
     async_generate: bool = False
     tensor_parallel_size: Optional[int] = None  # deprecated
 

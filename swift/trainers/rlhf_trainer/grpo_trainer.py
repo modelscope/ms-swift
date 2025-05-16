@@ -29,6 +29,7 @@ from transformers.trainer_utils import seed_worker
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.extras.profiling import profiling_decorator
 from trl.models import prepare_deepspeed
+from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import nanmax, nanmin
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
@@ -286,6 +287,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Buffer the batch to reuse generated outputs across multiple updates. For more details, see
         # `_get_train_sampler` and `_prepare_inputs`.
         self._buffered_inputs = None
+
+        if args.sync_ref_model:
+            self.add_callback(SyncRefModelCallback(ref_model=self.ref_model, accelerator=self.accelerator))
+
         if self.async_generate:
             self.add_callback(GRPOCallback(self))
 
