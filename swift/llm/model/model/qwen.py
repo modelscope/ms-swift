@@ -710,7 +710,7 @@ register_model(
         TemplateType.qwen2_5_omni,
         get_model_tokenizer_qwen2_5_omni,
         model_arch=ModelArch.qwen2_5_omni,
-        architectures=['Qwen2_5OmniModel'],
+        architectures=['Qwen2_5OmniModel', 'Qwen2_5OmniForConditionalGeneration'],
         requires=['transformers>=4.50', 'soundfile', 'qwen_omni_utils', 'decord'],
         tags=['vision', 'video', 'audio'],
         additional_saved_files=['spk_dict.pt'],
