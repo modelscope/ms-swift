@@ -11,7 +11,7 @@ import torch.utils.checkpoint
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
-from swift.utils import get_dist_setting, get_logger, is_liger_available, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, use_torchacc
 from .optimizers.galore import GaLoreConfig
 
 logger = get_logger()
@@ -87,6 +87,10 @@ class TrainArgumentsMixin:
             assert is_liger_available(), 'use_liger_kernel requires liger_kernels, try `pip install liger-kernel`'
 
     def __post_init__(self):
+        if is_mp() and self.use_liger_kernel:
+            raise ValueError('liger_kernel does not support device_map. '
+                             'Please use DDP/DeepSpeed for multi-GPU training.')
+
         from swift.llm.argument.base_args.model_args import ModelArguments
         if use_torchacc():
             self.dataloader_drop_last = True
