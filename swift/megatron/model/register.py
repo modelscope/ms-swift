@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from argparse import ArgumentParser
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
@@ -19,6 +20,8 @@ class MegatronModelMeta:
     convert_hf_config: Callable[[PretrainedConfig], Dict[str, Any]]
     convert_mcore2hf: Callable[[nn.Module, nn.Module], None]
     convert_hf2mcore: Callable[[nn.Module, nn.Module], None]
+
+    extra_args_provider: Optional[Callable[[ArgumentParser], ArgumentParser]] = None
 
 
 def register_megatron_model(megatron_model_meta: MegatronModelMeta, *, exist_ok: bool = False):
