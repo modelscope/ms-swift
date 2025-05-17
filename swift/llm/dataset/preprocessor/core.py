@@ -289,8 +289,6 @@ class RowPreprocessor:
             batch_size = 1000 if isinstance(dataset, HfDataset) else 16
         if self.dataset_sample is not None:
             dataset = sample_dataset(dataset, self.dataset_sample, True, self.random_state)
-        if not get_env_args('load_from_cache_file', bool, True):
-            load_from_cache_file = False
         map_kwargs = {'batched': True, 'batch_size': batch_size}
         if isinstance(dataset, HfDataset):
             if not load_from_cache_file and is_dist() and not is_master():
