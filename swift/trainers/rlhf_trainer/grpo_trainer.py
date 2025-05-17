@@ -665,7 +665,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         messages = current_input['messages']
 
                         # Determine whether to append a new message or update the last one based on the current state
-                        if first_turn or not messages[-1]['content']:
+                        if first_turn or not messages[-1]['content'] or messages[-1]['content'] == '<None>':
                             # If it's the first turn or the last message content is empty(dummy), remove the response
                             InferRequest.remove_response(messages)
                         if messages[-1]['role'] == 'assistant':
@@ -692,7 +692,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     else:
                         if r['messages'][-1]['role'] == 'assistant':
                             # infer will remove response, so we add dummy response here
-                            r['messages'].append({'role': 'assistant', 'content': None})
+                            r['messages'].append({'role': 'assistant', 'content': '<None>'})
                         next_turn_inputs.append(r)
                 if next_turn_inputs:
                     current_results = self._infer(next_turn_inputs, request_config)
