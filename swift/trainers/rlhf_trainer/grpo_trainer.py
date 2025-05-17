@@ -550,7 +550,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 all_input_lengths = [per_device_size] * self.accelerator.num_processes
             else:
                 all_inputs = gather_object(infer_inputs)
-                all_input_lengths = gather_object(len(infer_inputs))
+                all_input_lengths = gather_object([len(infer_inputs)])
 
             if self.accelerator.is_main_process:
                 results: List[ChatCompletionResponse] = self._engine_infer(
