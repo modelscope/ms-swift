@@ -4,7 +4,9 @@ import sys
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import megatron.core
 import torch
+from packaging import version
 from transformers.utils.versions import require_version
 
 from swift.llm.argument.base_args import to_abspath
@@ -133,6 +135,7 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_z_loss_coeff: Optional[float] = None
     moe_expert_capacity_factor: Optional[float] = None
     moe_shared_expert_overlap: bool = False
+    moe_layer_recompute: bool = False
 
     # mixed precision
     fp16: Optional[bool] = None
@@ -231,6 +234,8 @@ class MegatronArguments(ExtraMegatronArguments):
         args_dict = asdict(self)
         extra_args = {}
         for k, value in args_dict.items():
+            if k == 'recompute_modules' and version.parse(megatron.core.__version__) < version.parse('0.12'):
+                continue
             if k not in MegatronArguments.__annotations__:
                 extra_args[k] = value
                 continue
