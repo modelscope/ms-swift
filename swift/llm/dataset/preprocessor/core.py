@@ -12,7 +12,7 @@ from datasets import IterableDataset as HfIterableDataset
 from datasets import Sequence, Value
 
 from swift.llm import history_to_messages
-from swift.utils import get_env_args, get_logger, is_dist, is_master, safe_ddp_context
+from swift.utils import get_logger, is_dist, is_master, safe_ddp_context
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
@@ -289,6 +289,7 @@ class RowPreprocessor:
             batch_size = 1000 if isinstance(dataset, HfDataset) else 16
         if self.dataset_sample is not None:
             dataset = sample_dataset(dataset, self.dataset_sample, True, self.random_state)
+
         map_kwargs = {'batched': True, 'batch_size': batch_size}
         if isinstance(dataset, HfDataset):
             if not load_from_cache_file and is_dist() and not is_master():
