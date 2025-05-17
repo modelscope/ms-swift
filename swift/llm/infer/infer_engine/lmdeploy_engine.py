@@ -32,6 +32,9 @@ except ImportError:
 
 logger = get_logger()
 
+LMDEPLOY_MODEL_TYPE_MAPPING = {
+    'qwen2_5_vl': 'qwen2d5-vl',
+}
 
 class LmdeployEngine(InferEngine):
 
@@ -132,7 +135,10 @@ class LmdeployEngine(InferEngine):
         _old_best_match_model = async_engine.best_match_model
 
         def _best_match_model(*args, **kwargs) -> Optional[str]:
-            return self.model_info.model_type
+            model_type = self.model_info.model_type
+            if model_type in LMDEPLOY_MODEL_TYPE_MAPPING:
+                return LMDEPLOY_MODEL_TYPE_MAPPING[model_type]
+            return model_type
 
         async_engine.best_match_model = _best_match_model
         try:
