@@ -84,6 +84,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     hub_token: Optional[str] = field(
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     custom_register_path: List[str] = field(default_factory=list)  # .py
+    ddp_timeout: int = 18000000
+    ddp_backend: Optional[str] = None
 
     # extra
     ignore_args_error: bool = False  # True: notebook compatibility

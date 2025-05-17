@@ -168,7 +168,8 @@ class PtEngine(InferEngine):
 
     @staticmethod
     def preprocess_logits(batched_logits: Optional[List[torch.Tensor]], batched_generate_ids: torch.Tensor,
-                          top_logprobs: int):
+                          top_logprobs: Optional[int]):
+        top_logprobs = top_logprobs or 1
         batch_size = batched_generate_ids.shape[0]
         if batched_logits is None:
             return None
@@ -256,7 +257,7 @@ class PtEngine(InferEngine):
 
             batched_generate_ids = template.get_generate_ids(raw_batched_generate_ids, num_prompt_tokens)
             self._update_batched_logprobs(batched_logprobs, logits_streamer, batched_generate_ids,
-                                          generation_config.top_logprobs or 1)
+                                          generation_config.top_logprobs)
 
             res = []
             for i in range(batched_generate_ids.shape[0]):

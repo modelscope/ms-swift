@@ -28,7 +28,7 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
         self.extra_args = self.parse_to_megatron()
 
     def _init_save(self):
-        init_process_group()
+        init_process_group(backend=self.ddp_backend, timeout=self.ddp_timeout)
         if self.save is None:
             self.save = f'megatron_output/{self.model_suffix}'
         self.save = to_abspath(self.save)

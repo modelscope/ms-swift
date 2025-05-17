@@ -127,7 +127,6 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     metric: Literal['acc', 'rouge'] = None
     # for pt engine
     max_batch_size: int = 1
-    ddp_backend: Optional[str] = None
 
     # only for inference
     val_dataset_sample: Optional[int] = None
@@ -160,7 +159,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         assert not self.eval_human and not self.stream, (
             f'args.eval_human: {self.eval_human}, args.stream: {self.stream}')
         self._init_device()
-        init_process_group(self.ddp_backend)
+        init_process_group(backend=self.ddp_backend, timeout=self.ddp_timeout)
 
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
