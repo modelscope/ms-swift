@@ -521,18 +521,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         while self._queue.empty():
             time.sleep(0.01)
 
-    @staticmethod
-    def reorder_outputs(outputs, distributed_idx):
-        index_to_output = {}
-        current_position = 0
-        for output_idx in distributed_idx:
-            for idx in output_idx:
-                index_to_output[idx] = outputs[current_position]
-                current_position += 1
-
-        return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
-
-    def _infer(self, inputs: InputsType, request_config: RequestConfig, is_global_inputs: bool = False) -> OutputsType:
+    def _infer(self,
+               inputs: Optional[InputsType],
+               request_config: RequestConfig,
+               is_global_inputs: bool = False) -> OutputsType:
         from swift.llm.infer.protocol import ChatCompletionResponse
         request_config = copy(request_config)
         # keys from InferRequest
@@ -542,7 +534,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         infer_inputs = [{
             k: v
             for k, v in inp.items() if k in ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
-        } for inp in inputs]
+        } for inp in inputs] if inputs else []
         if self.vllm_mode == 'server':
             # for server mode, we gather all the inputs and send to remote vllm server in main process
             if is_global_inputs:
@@ -654,7 +646,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             first_turn = True
             next_turn_inputs = inputs.copy()
             last_turn_results = results
-            while len(next_turn_inputs) > 0:
+            while True:
+                local_has_data = len(next_turn_inputs) > 0
+                has_data = gather_object([local_has_data])
+                if not any(has_data):
+                    break
                 # inputs for current turn
                 current_inputs = []
                 cnt = 0
@@ -682,10 +678,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         current_inputs.append(current_input)
 
                 # Process messages in the multi-turn function
-                current_results: List[Dict] = self.multi_turn_func(current_inputs)
+                current_results: List[Dict] = self.multi_turn_func(current_inputs) if local_has_data else []
 
                 # Retain messages that are not yet finished for the next round of rollout
-                next_turn_inputs = []
+                new_next_turn_inputs = []
                 for r in current_results:
                     if r['finished'] or r['finish_reason'] == 'length':
                         outputs[r['index']] = (r['messages'], r['finish_reason'])
@@ -693,12 +689,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         if r['messages'][-1]['role'] == 'assistant':
                             # infer will remove response, so we add dummy response here
                             r['messages'].append({'role': 'assistant', 'content': '<None>'})
-                        next_turn_inputs.append(r)
-                if next_turn_inputs:
-                    current_results = self._infer(next_turn_inputs, request_config)
+                        new_next_turn_inputs.append(r)
+
+                current_infer_inputs = new_next_turn_inputs if local_has_data else []
+                current_results = self._infer(current_infer_inputs, request_config)
 
                 last_turn_results = current_results
-                # concat responses from the second loop
+                next_turn_inputs = new_next_turn_inputs
                 first_turn = False
 
             assert not any([o is None for o in outputs])
@@ -753,11 +750,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # send this step data to server
             # we gather inputs outside the thread for prevent potential gather deadlock
             all_inputs = gather_object(inputs)
-            self.async_infer(all_inputs)
-            # get last step data from cache
-            data_cache = self._queue.get()
-            inputs = data_cache.inputs
-            outputs = data_cache.outputs
+            if self.accelerator.is_main_process:
+                self.async_infer(all_inputs)
+                data_cache = self._queue.get()
+                # cached data from last step
+                inputs = data_cache.inputs
+                outputs = data_cache.outputs
+            else:
+                inputs = []
+                outputs = []
+
+            outputs = self.gather_and_slice_object(outputs)
+            inputs = self.gather_and_slice_object(inputs)
         else:
             with self.multi_turn_completion_length_context():
                 outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
@@ -771,6 +775,28 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.args.offload_optimizer:
                 self.load_optimizer()
         return inputs, outputs
+
+    def gather_and_slice_object(self, input_data):
+        """
+        Gathers input data from all processes and slices the collected data
+        based on the current process's index.
+        Args:
+            input_data (list or similar): The input data to be gathered from each process.
+        Returns:
+            list: A slice of the gathered data corresponding to the current process's workload.
+        """
+
+        # Gather data from all processes into a single list
+        gathered_data = gather_object(input_data)
+
+        # Calculate the slice range for the current process
+        process_slice = slice(
+            self.accelerator.process_index * len(gathered_data),
+            (self.accelerator.process_index + 1) * len(gathered_data),
+        )
+
+        # Return the portion of the gathered data assigned to this process
+        return gathered_data[process_slice]
 
     def _generate_completions(self, inputs: InputsType) -> InputsType:
         """Generate completions for given inputs using either fast inference or standard PyTorch inference.
