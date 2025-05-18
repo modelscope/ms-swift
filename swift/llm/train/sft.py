@@ -4,6 +4,7 @@ from functools import partial
 from typing import List, Union
 
 from datasets import Dataset as HfDataset
+from tqdm import tqdm
 
 from swift.plugin import extra_callbacks, get_loss_func, get_metric
 from swift.trainers import TrainerFactory
@@ -231,13 +232,15 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self.callbacks = callbacks
 
     def _stat_dataset(self, dataset: HfDataset):
+        if not is_master():
+            return
         args = self.args
         if isinstance(dataset, HfDataset):
             dataset = GetLengthPreprocessor()(dataset, num_proc=args.dataset_num_proc)
             length = dataset['length']
         else:
             length = []
-            for row in dataset:
+            for row in tqdm(dataset, dynamic_ncols=True, desc='Get Length'):
                 length.append(max([len(row[k]) for k in row.keys() if k.endswith('input_ids')]))
         _, stat_str = stat_array(length)
         logger.info(f'Dataset Token Length: {stat_str}')
