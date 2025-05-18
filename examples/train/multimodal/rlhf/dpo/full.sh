@@ -1,4 +1,4 @@
-# 4 * 48GiB
+# 4 * 50GiB
 nproc_per_node=4
 
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
