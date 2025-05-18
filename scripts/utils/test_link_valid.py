@@ -2,9 +2,11 @@ import os
 import re
 
 import requests
+
 from swift.utils import get_logger
 
 logger = get_logger()
+
 
 def check_link(url):
     try:
@@ -43,7 +45,10 @@ def check_links_in_folder(folder_path):
                     if check_link(link):
                         logger.info(f'✅ Link is valid: {link}')
                     else:
-                        logger.info(f'❌ Link is broken: {link}')
+                        if 'huggingface.co' in link:
+                            logger.info(f'Link is broken: {link}')
+                        else:
+                            logger.info(f'❌ Link is broken: {link}')
 
 
 if __name__ == '__main__':
