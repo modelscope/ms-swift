@@ -232,13 +232,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self.callbacks = callbacks
 
     def _stat_dataset(self, dataset: HfDataset):
-        if not is_master():
-            return
         args = self.args
         if isinstance(dataset, HfDataset):
             dataset = GetLengthPreprocessor()(dataset, num_proc=args.dataset_num_proc)
             length = dataset['length']
         else:
+            if not is_master():
+                return
             length = []
             for row in tqdm(dataset, dynamic_ncols=True, desc='Get Length'):
                 length.append(max([len(row[k]) for k in row.keys() if k.endswith('input_ids')]))
