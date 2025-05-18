@@ -1,11 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
 from contextlib import contextmanager
+from typing import Optional
 
 import transformers
 from packaging import version
 from torch.utils.data import DataLoader
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, Trainer
 from trl import PPOTrainer as HFPPOTrainer
 
 from swift.utils import patch_getattr
@@ -63,3 +64,21 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
             trial = kwargs.get('trial')
             self._determine_best_metric(metrics=metrics, trial=trial)
         return super()._save_checkpoint(*args, **kwargs)
+
+    def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
+        # https://github.com/huggingface/trl/issues/2122
+        backup_model = self.model
+        self.model = self.model.policy  # save only the policy
+
+        Trainer.save_model(self, output_dir, _internal_call)
+
+        self.model = backup_model
+
+    def _save(self, output_dir: Optional[str] = None, state_dict=None):
+        if self.is_deepspeed_enabled:
+            state_dict = {
+                name.removeprefix('policy.'): param
+                for name, param in state_dict.items() if name.startswith('policy.')
+            }
+
+        super()._save(output_dir, state_dict)
