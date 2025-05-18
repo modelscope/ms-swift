@@ -212,7 +212,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - tp_comm_overlap: 启用张量并行通信与GEMM（通用矩阵乘法）内核的重叠（降低通信耗时）。默认为False。
 - overlap_grad_reduce: 启用DDP中grad reduce操作的重叠（降低DP通信耗时）。默认为False。
 - overlap_param_gather: 启用分布式优化器中参数all-gather的重叠（降低DP通信耗时）。默认为False。
-- distributed_timeout_minutes: torch.distributed的timeout时间（单位为分钟），默认为60分钟。
+- distributed_timeout_minutes: torch.distributed的timeout时间（单位为分钟），该参数失效，使用[基础参数](./命令行参数.md#基本参数)中的ddp_timeout控制，默认为300000分钟。
 
 **日志参数**:
 - log_params_norm: 记录参数的norm。默认为False。
