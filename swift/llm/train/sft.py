@@ -240,7 +240,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             length = dataset['length']
         else:
             length = []
-            for row in tqdm(dataset):
+            for row in tqdm(dataset, dynamic_ncols=True, desc='Get Length'):
                 length.append(max([len(row[k]) for k in row.keys() if k.endswith('input_ids')]))
         _, stat_str = stat_array(length)
         logger.info(f'Dataset Token Length: {stat_str}')
