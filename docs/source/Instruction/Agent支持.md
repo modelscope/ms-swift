@@ -200,7 +200,7 @@ loss_scale可以对模型输出部分的训练损失权重进行调节。例如�
 ## 推理
 
 - 🚀原始模型或者全参数训练后模型的推理，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_agent.py)。
-- LoRA训练后推理，参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent/loss_scale/infer.md)。
+- LoRA训练后推理，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/agent/loss_scale/infer_lora.py)。
 
 ## 部署
 

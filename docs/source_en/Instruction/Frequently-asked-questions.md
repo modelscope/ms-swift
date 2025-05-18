@@ -225,7 +225,7 @@ Environment variable parameters correspond to model parameters. `MAX_PIXELS` onl
 Use `swift sft`, no special configuration needed. See [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/base_to_chat).
 
 ### Q70:  Where can I find sequence parallel examples?
-See this example: [sequence_parallel](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel).
+See this example: [sequence_parallel](https://github.com/modelscope/ms-swift/tree/main/examples/train/long_text).
 
 ### Q71: Can swift support training custom model structures?
 Yes, just customize the `get_model_tokenizer_xxx` function to return `model` and `tokenizer`.
@@ -264,7 +264,7 @@ Training can use either left or right padding. The default is right padding, whi
 Yes, there's an [example](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/grounding.sh) under examples.
 
 ### Q82: Does ms-swift support contrastive learning for training llm_emb?
-Yes, here's an [example](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding/train.sh).
+Yes, here's an [example](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding).
 
 ### Q83: Is there a big difference in performance between manually coding fine-tuning and GRPO using peft and trl libraries compared to Swift official training with the same parameters?
 The difference is minimal, with Swift additionally supporting multimodality.
