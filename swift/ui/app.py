@@ -21,17 +21,17 @@ locale_dict = {
     },
     'sub_title': {
         'zh':
-        '请查看 <a href=\"https://github.com/modelscope/swift/tree/main/docs/source\" target=\"_blank\">'
+        '请查看 <a href=\"https://github.com/modelscope/ms-swift/tree/main/docs/source\" target=\"_blank\">'
         'SWIFT 文档</a>来查看更多功能，使用SWIFT_UI_LANG=en环境变量来切换英文界面',
         'en':
-        'Please check <a href=\"https://github.com/modelscope/swift/tree/main/docs/source_en\" target=\"_blank\">'
+        'Please check <a href=\"https://github.com/modelscope/ms-swift/tree/main/docs/source_en\" target=\"_blank\">'
         'SWIFT Documentation</a> for more usages, Use SWIFT_UI_LANG=zh variable to switch to Chinese UI',
     },
     'star_beggar': {
         'zh':
-        '喜欢<a href=\"https://github.com/modelscope/swift\" target=\"_blank\">SWIFT</a>就动动手指给我们加个star吧🥺 ',
+        '喜欢<a href=\"https://github.com/modelscope/ms-swift\" target=\"_blank\">SWIFT</a>就动动手指给我们加个star吧🥺 ',
         'en':
-        'If you like <a href=\"https://github.com/modelscope/swift\" target=\"_blank\">SWIFT</a>, '
+        'If you like <a href=\"https://github.com/modelscope/ms-swift\" target=\"_blank\">SWIFT</a>, '
         'please take a few seconds to star us🥺 '
     },
 }

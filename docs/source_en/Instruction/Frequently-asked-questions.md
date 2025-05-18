@@ -460,7 +460,7 @@ Yes, logprobs can be output. For command line inference, set `--logprobs true`. 
 Models trained with QLoRA do not support merge-lora; it is recommended to merge-lora after fine-tuning and then quantize.
 
 ### Q11: Getting the error `assert factor in rope_scaling` with vllm?
-For more details, see qwen2-vl [issue#96](https://github.com/QwenLM/Qwen2-VL/issues/96).
+For more details, see qwen2-vl [issue#96](https://github.com/QwenLM/Qwen2.5-VL/issues/96).
 
 ### Q12: Does vllm require the models to be merged before calling them during inference?
 Models do not have to be merged. See the documentation on [Command Line Parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
@@ -589,7 +589,7 @@ base64, see [mllm client example](https://github.com/modelscope/ms-swift/tree/ma
 ```text
 Unrecognized keys in `rope_scaling`for 'rope_type'='default': {'mrope_section'}
 ```
-Refer to the [issue](https://github.com/QwenLM/Qwen2-VL/issues/209).
+Refer to the [issue](https://github.com/QwenLM/Qwen2.5-VL/issues/209).
 
 ### Q11: When using Swift deploy for inference, I want to output token probabilities. I added logprobs True, but it outputs null. What's the reason?
 ```shell
