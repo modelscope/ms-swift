@@ -27,4 +27,5 @@ swift rlhf \
     --deepspeed zero3 \
     --response_length 512 \
     --temperature 0.7 \
-    --dataset_num_proc 4
+    --dataset_num_proc 4 \
+    --save_only_model true
