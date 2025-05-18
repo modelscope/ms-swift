@@ -266,9 +266,17 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                         val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             else:
                 preprocessor = EncodePreprocessor(template=template)
-                train_dataset = preprocessor(train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
+                train_dataset = preprocessor(
+                    train_dataset,
+                    num_proc=args.dataset_num_proc,
+                    load_from_cache_file=args.load_from_cache_file,
+                    strict=args.strict)
                 if val_dataset is not None and not predict_with_generate:
-                    val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
+                    val_dataset = preprocessor(
+                        val_dataset,
+                        num_proc=args.dataset_num_proc,
+                        load_from_cache_file=args.load_from_cache_file,
+                        strict=args.strict)
 
             if is_master():
                 inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
