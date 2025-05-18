@@ -232,8 +232,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self.callbacks = callbacks
 
     def _stat_dataset(self, dataset: HfDataset):
-        if not is_master():
-            return
         args = self.args
         if isinstance(dataset, HfDataset):
             dataset = GetLengthPreprocessor()(dataset, num_proc=args.dataset_num_proc)
