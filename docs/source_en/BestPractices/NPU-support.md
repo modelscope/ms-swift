@@ -1,5 +1,4 @@
 # NPU Support
-Author: [chuanzhubin](https://github.com/chuanzhubin)
 
 ## Environment Preparation
 

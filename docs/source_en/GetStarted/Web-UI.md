@@ -24,7 +24,7 @@ This provides several features for the web-ui:
 3. After the web-ui service is closed, the background services continue to run. This prevents the training processes from being affected when the web-ui is shut down. If you need to terminate background services, simply **select the corresponding task** and click the kill service button in the `Runtime` tab on the interface.
 4. After restarting the web-ui, if you need to display the running services, click `Recover Runtime Tasks` in the `Runtime` tab.
 5. The training interface supports displaying runtime logs. After selecting a specific task, manually click `Show Runtime Status`. During training, the runtime status can display training charts, including basic metrics such as training loss, training accuracy, and learning rate. In the human alignment task interface, the charts display key metrics like margin and logps.
-6. Training through the web-ui does not support PPO, as the process is more complex. It is recommended to use the [shell script](../../../examples/train/rlhf/ppo.sh) in the examples directory to run it directly.
+6. Training through the web-ui does not support PPO, as the process is more complex. It is recommended to use the [shell script](../../../examples/train/rlhf/ppo) in the examples directory to run it directly.
 
 If you need to use share mode, please add the `--share true` parameter. **Note:** Do not use this parameter in environments such as dsw or notebooks.
 

@@ -142,7 +142,7 @@ Action Input: {'city': '上海'}
 Observation:[-100 * 45]根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。<|im_end|>
 ```
 
-更多模型和agent_template的尝试可以使用以下代码，更多的agent template可选值参考[这里](https://github.com/modelscope/swift/blob/main/swift/plugin/agent_template/__init__.py)。
+更多模型和agent_template的尝试可以使用以下代码，更多的agent template可选值参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/agent_template/__init__.py)。
 ```python
 from swift.llm import get_model_tokenizer, get_template
 
@@ -185,7 +185,7 @@ tools = [{
 
 ## loss_scale的使用
 
-loss_scale可以对模型输出部分的训练损失权重进行调节。例如在ReACT格式中，可以设置`--loss_scale react`（loss_scale配置文件书写在[这里](https://github.com/modelscope/swift/blob/main/swift/plugin/loss_scale/config/react.json)），该参数起到的作用是：
+loss_scale可以对模型输出部分的训练损失权重进行调节。例如在ReACT格式中，可以设置`--loss_scale react`（loss_scale配置文件书写在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/react.json)），该参数起到的作用是：
 
 'Thought:'和'Final Answer:'部分权重为1，'Action:'和'Action Input:'部分权重为2，'Observation:'字段本身权重为2，'Observation:'后面的工具调用结果权重为0。
 
@@ -200,7 +200,7 @@ loss_scale可以对模型输出部分的训练损失权重进行调节。例如�
 ## 推理
 
 - 🚀原始模型或者全参数训练后模型的推理，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_agent.py)。
-- LoRA训练后推理，参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent/loss_scale/infer.md)。
+- LoRA训练后推理，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/agent/loss_scale/infer_lora.py)。
 
 ## 部署
 

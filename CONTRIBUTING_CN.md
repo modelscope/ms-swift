@@ -29,7 +29,7 @@
 
 任何feature开发都在github上以先Fork后PR的形式进行。
 
-1. Fork：进入[SWIFT](https://github.com/modelscope/swift)页面后，点击**Fork按钮**执行。完成后会在您的个人组织下克隆出一个SWIFT代码库
+1. Fork：进入[ms-swift](https://github.com/modelscope/ms-swift)页面后，点击**Fork按钮**执行。完成后会在您的个人组织下克隆出一个SWIFT代码库
 
 2. Clone：将第一步产生的代码库clone到本地并**拉新分支**进行开发，开发中请及时点击**Sync Fork按钮**同步`main`分支，防止代码过期并冲突
 

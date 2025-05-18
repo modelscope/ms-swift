@@ -73,6 +73,7 @@ Hints:
 - 🔥max_length: The maximum length of tokens for a single sample. Defaults to None, set to the maximum length of tokens supported by the model (max_model_len).
   - Note: In the cases of PPO, GRPO, and inference, max_length represents max_prompt_length.
 - truncation_strategy: Strategy for handling single sample tokens that exceed `max_length`. Options are `delete`, `left`, and `right`, representing deletion, left-side truncation, and right-side truncation, respectively. The default is 'delete'.
+  - It is currently not recommended to set the `truncation_strategy` to `left` or `right` for training multimodal models, as this may result in image tokens being truncated and causing errors (to be optimized).
 - 🔥max_pixels: The maximum number of pixels (H*W) for input images to a multimodal model. Images exceeding this limit will be scaled. Default is None, meaning no maximum pixel limit.
 - 🔥agent_template: Agent template, which determines how to convert the list of tools into a system, how to extract tool calls from the model's response, and specifies the template format for `{"role": "tool_call", "content": "xxx"}` and `{"role": "tool_response", "content": "xxx"}`. Optional values include "react_en", "hermes", "glm4", "qwen_en", "toolbench", etc. For more details, please check [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/agent_template/__init__.py). The default value is None, meaning it will be selected based on the model type.
 - norm_bbox: Controls how to scale bounding boxes (bbox). Options are 'norm1000' and 'none'. 'norm1000' represents scaling bbox coordinates to one-thousandths, and 'none' means no scaling. Default is None, automatically selected based on the model.
@@ -530,7 +531,7 @@ App parameters inherit from [deployment arguments](#deployment-arguments) and [W
 Evaluation Arguments inherit from the [deployment arguments](#deployment-arguments).
 
 - 🔥eval_backend: Evaluation backend, defaults to 'Native'. It can also be specified as 'OpenCompass' or 'VLMEvalKit'.
-- 🔥eval_dataset: Evaluation dataset, please refer to the [evaluation documentation](./评测.md).
+- 🔥eval_dataset: Evaluation dataset, please refer to the [evaluation documentation](./Evaluation.md).
 - eval_limit: Number of samples per evaluation set, defaults to None.
 - eval_output_dir: Directory to store evaluation results, defaults to 'eval_output'.
 - temperature: Override generation parameters, defaults to 0.
