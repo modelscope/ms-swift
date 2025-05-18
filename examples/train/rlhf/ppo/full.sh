@@ -1,3 +1,4 @@
+# 8 * 65 GiB
 # Currently, it only supports the case where the model and reward_model use the same template/tokenizer.
 # Currently, multimodal model PPO is not supported.
 nproc_per_node=8
