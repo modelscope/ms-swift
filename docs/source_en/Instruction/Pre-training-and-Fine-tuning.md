@@ -68,7 +68,7 @@ Additionally, we offer a series of scripts to help you understand the training c
 - Any-to-Any Model Training: Refer to [here](https://github.com/modelscope/swift/blob/main/examples/train/all_to_all).
 - Other Capabilities:
   - Streaming Data Reading: Reduces memory usage when handling large datasets. Refer to [here](https://github.com/modelscope/swift/blob/main/examples/train/streaming/train.sh).
-  - Packing: Combines multiple sequences into one, making each training sample as close to max_length as possible to improve GPU utilization. Refer to [here](https://github.com/modelscope/swift/blob/main/examples/train/packing/train.sh).
+  - Packing: Combines multiple sequences into one, making each training sample as close to max_length as possible to improve GPU utilization. Refer to [here](https://github.com/modelscope/swift/blob/main/examples/train/packing).
   - Long Text Training: Refer to [here](https://github.com/modelscope/swift/blob/main/examples/train/long_text).
   - Lazy Tokenize: Performs tokenization during training instead of pre-training (for multi-modal models, this avoids the need to load all multi-modal resources before training), which can reduce preprocessing wait times and save memory. Refer to [here](https://github.com/modelscope/swift/blob/main/examples/train/lazy_tokenize/train.sh).
 
