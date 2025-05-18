@@ -189,7 +189,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 model_name = unwrapped_model._get_name()
             # User-defined compute_loss function
             if self.compute_loss_func is not None:
-                loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, **loss_kwargs)
+                loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, logprobs_path=inputs.pop('logprobs_path'), **loss_kwargs)
             elif model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
                 loss = self.label_smoother(outputs, labels, shift_labels=True)
             else:

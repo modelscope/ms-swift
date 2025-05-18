@@ -96,7 +96,9 @@ class LazyLLMDataset(Dataset):
                 self._idx = (self._idx + 1) % len(self.dataset)
             data = self.dataset[i]
             try:
-                return self.encode_func(data)
+                encoded = self.encode_func(data)
+                encoded["logprobs_path"] = data.get("logprobs_path")
+                return encoded
             except Exception:
                 if n_try == self.n_try_fetch - 1 or self.strict:
                     if self.strict:

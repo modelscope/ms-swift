@@ -90,6 +90,7 @@ class TemplateInputs(InferRequest):
     """
     rejected_response: Optional[str] = None
     label: Optional[bool] = None
+    logprobs_path: Optional[str] = None
 
 
 @dataclass

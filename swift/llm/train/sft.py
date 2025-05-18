@@ -18,6 +18,23 @@ from ..model import HfConfigFactory, get_model_arch
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
 from .tuner import TunerMixin
 
+from functools import wraps
+
+
+def keep_logprobs_path(collator):
+    """
+    Returns a new collator that behaves exactly like `collator` but
+    adds `logprobs_path` (a list of raw strings) to the batch.
+    """
+    @wraps(collator)
+    def _wrapper(features, *args, **kwargs):
+        batch = collator(features, *args, **kwargs)          # original work
+        batch["logprobs_path"] = [f["logprobs_path"]         # <- preserve
+                                  for f in features]
+        return batch
+    return _wrapper
+
+
 logger = get_logger()
 
 
@@ -129,6 +146,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args.save_args()
 
         data_collator = self._get_data_collator()
+        data_collator = keep_logprobs_path(data_collator)
         # Some tuners require train_dataset and data_collator for preparation: LoRA-GA
         self.model = self.prepare_model(self.args, self.model, template=self.template, train_dataset=train_dataset)
         logger.info(f'model: {self.model}')

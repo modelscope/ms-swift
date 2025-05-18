@@ -20,7 +20,7 @@ logger = get_logger()
 
 
 class RowPreprocessor:
-    standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
+    standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects', 'logprobs_path']
 
     def __init__(self,
                  *,

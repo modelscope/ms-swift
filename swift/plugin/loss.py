@@ -18,6 +18,7 @@ class LossType:
     contrastive = 'contrastive'
     online_contrastive = 'online_contrastive'
     infonce = 'infonce'
+    logits_distillation = 'logits_distillation'
 
 
 LOSS_MAPPING = {}
@@ -380,6 +381,79 @@ def online_contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch
     negative_loss = F.relu(margin - negative_pairs).pow(2).sum()
     loss = positive_loss + negative_loss
     return loss
+
+def _pad_stack(tensors, pad_value: float = 0.0, dtype=None):    
+    """
+    Pad a list of [L_i, k] tensors along dim=0 to the max length then stack,
+    returning shape [B, L_max, k].
+    """
+    max_len = max(t.size(0) for t in tensors)
+    k = tensors[0].size(1)
+
+    # pick dtype automatically unless the caller overrides it
+    dtype = dtype or tensors[0].dtype
+    device = tensors[0].device
+
+    out = torch.full((len(tensors), max_len, k),
+                     pad_value, dtype=dtype, device=device)
+
+    for i, t in enumerate(tensors):
+        out[i, : t.size(0)] = t.to(dtype) if t.dtype != dtype else t
+    return out
+
+@register_loss_func(LossType.logits_distillation)
+def logits_distillation_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, logprobs_path=None) -> torch.Tensor:
+    alpha        = 0.5 # Weight between CE and KL, 1 - without CE, 0 - without KL
+    temperature  = 1.0
+    eps          = 1e-12
+
+    logits  = outputs.logits                               # [B,L,V]
+    device  = logits.device
+    B       = logits.size(0)
+
+    # ----- teacher top-k data ------------------------------------------------
+    idx_list, lp_list = [], []
+    for p in logprobs_path:               # each file: (k, L_i)
+        idxs, lps = torch.load(p)
+        idx_list.append(idxs.T)           # (L_i, k)
+        lp_list.append(lps.T)
+    token_indices  = _pad_stack(idx_list,  pad_value=0, dtype=torch.int64)
+    token_logprobs = _pad_stack(lp_list, pad_value=-1e9, dtype=torch.float32)
+
+    token_indices  = token_indices.to(device)
+    token_logprobs = token_logprobs.to(device)
+
+    # ----- teacher distribution ---------------------------------------------
+    teacher_logp = token_logprobs / temperature
+    teacher_p = torch.softmax(teacher_logp, dim=-1)
+
+    # ----- student restricted to top-k --------------------------------------
+    student_logits_k = logits.gather(-1, token_indices) / temperature
+    student_logp_k   = student_logits_k - \
+        torch.logsumexp(student_logits_k, dim=-1, keepdim=True)
+
+    kl_tok = (teacher_p * (teacher_logp - student_logp_k)).sum(-1)  # [B,L]
+
+    # ----- CE part (token shift inside helper) ------------------------------
+    ce_vec, _ = ce_loss_func(outputs, labels)
+    ce = ce_vec.mean() if num_items_in_batch is None else \
+         ce_vec.sum() / num_items_in_batch
+
+    # ----- mask & length alignment -----------------------------------------
+    if labels.shape[1] < kl_tok.size(1):                    # pad labels
+        labels = F.pad(labels, (0, kl_tok.size(1) - labels.shape[1]),
+                       value=-100)
+
+    valid_mask = (labels != -100).to(device)
+
+    seq_len = min(kl_tok.size(1), valid_mask.size(1))
+    kl_tok     = kl_tok[:, :seq_len]
+    valid_mask = valid_mask[:, :seq_len]
+
+    kl = (kl_tok * valid_mask).sum() / valid_mask.sum().clamp_min(1)
+    kl = (temperature ** 2) * kl
+
+    return alpha * kl + (1.0 - alpha) * ce
 
 
 def get_loss_func(loss_type: Optional[str]) -> Optional[Callable]:

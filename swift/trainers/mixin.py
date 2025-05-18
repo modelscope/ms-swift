@@ -462,6 +462,24 @@ class SwiftMixin:
         dist.all_reduce(num_items_in_batch, dist.ReduceOp.SUM, sequence_parallel.sp_group)
         return batch_samples, num_items_in_batch
 
+    def _convert_inputs(self, model_inputs, remove_labels=False, **kwargs):
+        """Convert input dictionary from template format to model format."""
+        use_hf_format = kwargs.pop('use_hf_format', True)
+        retain_inference_format = remove_labels and kwargs.pop('retain_inference_format', False)
+        ret = {}
+        # Forwarding token_indices, token_logprobs, and logprobs_path
+        if 'token_indices' in model_inputs:
+            ret['token_indices'] = model_inputs.pop('token_indices')
+        if 'token_logprobs' in model_inputs:
+            ret['token_logprobs'] = model_inputs.pop('token_logprobs')
+        if 'logprobs_path' in model_inputs:
+            ret['logprobs_path'] = model_inputs.pop('logprobs_path')
+            
+        # Extract items from model_inputs
+        use_sequence_parallel = hasattr(self, 'use_sequence_parallel') and self.use_sequence_parallel
+        has_labels = 'labels' in model_inputs
+        has_position_ids = 'position_ids' in model_inputs
+
 
 class DataLoaderMixin:
 
