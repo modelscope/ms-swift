@@ -3,6 +3,7 @@
 # Currently, multimodal model PPO is not supported.
 nproc_per_node=4
 
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=$nproc_per_node \
 swift rlhf \
