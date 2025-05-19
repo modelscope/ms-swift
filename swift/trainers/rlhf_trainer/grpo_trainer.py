@@ -620,7 +620,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         Args:
             inputs: list of input requests
             request_config: Inference configuration parameters
-
+            is_global_inputs:
+                A boolean indicating whether the inputs are global. When set to True,
+                the returned results in the main process will be a complete list of
+                global_outputs, while other processes will return an empty list [].
         Returns:
             List of outputs where each entry contains:
             - List of responses per prompt
@@ -737,7 +740,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         inputs = next(iter(dataloader))
         all_inputs = gather_object(inputs)
         outputs = self._infer_single_or_multi_turn(all_inputs, self.request_config, is_global_inputs=True)
-        self._queue.put(DataCache(inputs, outputs))
+        self._queue.put(DataCache(all_inputs, outputs))
 
     def _fast_infer(self, inputs: InputsType) -> Tuple[InputsType, OutputsType]:
         if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
@@ -762,8 +765,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.async_infer(all_inputs)
             # cached data from last step
             data_cache = self._queue.get()
-            inputs = data_cache.inputs
-            outputs = self.gather_and_slice_object(data_cache.outputs)
+            all_inputs = data_cache.inputs
+            all_outputs = gather_object(data_cache.outputs)
+            process_slice = slice(
+                self.accelerator.process_index * len(inputs),
+                (self.accelerator.process_index + 1) * len(inputs),
+            )
+            inputs = all_inputs[process_slice]
+            outputs = all_outputs[process_slice]
+
         else:
             with self.multi_turn_completion_length_context():
                 outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
