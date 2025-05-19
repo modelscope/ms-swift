@@ -12,7 +12,7 @@ swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B \
     --train_type full \
-    --dataset LLM-Research/xlam-function-calling-60k \
+    --dataset LLM-Research/xlam-function-calling-60k:grpo \
     --use_vllm true \
     --vllm_mode server \
     --vllm_server_host 127.0.0.1 \

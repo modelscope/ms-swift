@@ -606,7 +606,17 @@ register_dataset(
         huge_dataset=True))
 
 
-class XlamFunctionCallingPreprocessor(ResponsePreprocessor):
+class XlamFunctionCallingPreprocessor(RowPreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        messages = [{'role': 'user', 'content': row['query']}]
+        response = row['answers']
+        response = json.loads(response)
+        messages += [{'role': 'tool_call', 'content': json.dumps(content)} for content in response]
+        return {'messages': messages, 'tools': row['tools']}
+
+
+class XlamFunctionCallingGRPOPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         query = row['query']
@@ -624,9 +634,12 @@ class XlamFunctionCallingPreprocessor(ResponsePreprocessor):
 register_dataset(
     DatasetMeta(
         ms_dataset_id='LLM-Research/xlam-function-calling-60k',
-        subsets=['dataset'],
-        preprocess_func=XlamFunctionCallingPreprocessor(),
-        tags=['agent']))
+        hf_dataset_id='Salesforce/xlam-function-calling-60k',
+        subsets=[
+            SubsetDataset('default', 'dataset', preprocess_func=XlamFunctionCallingPreprocessor()),
+            SubsetDataset('grpo', 'dataset', preprocess_func=XlamFunctionCallingGRPOPreprocessor())
+        ],
+        tags=['agent', 'grpo', '🔥']))
 
 
 class HHRLHFCNPreprocessor(MessagesPreprocessor):
