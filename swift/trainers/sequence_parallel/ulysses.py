@@ -59,23 +59,6 @@ class GatherLoss(torch.autograd.Function):
             ctx.scatter_shape, dim=ctx.gather_idx)[dist.get_rank(ctx.process_group)].contiguous(), None, None, None
 
 
-def torch_compile():
-    torch_compile_options = {
-        'epilogue_fusion': True,
-        'max_autotune': False,
-        'shape_padding': True,
-        'trace.enabled': False,
-        'triton.cudagraphs': False,
-    }
-
-    def decorator(func):
-        if version.parse(torch.__version__) >= version.parse('2.0.0'):
-            return torch.compile(dynamic=True, fullgraph=True, options=torch_compile_options)(func)
-        return func
-
-    return decorator
-
-
 class ChunkedCrossEntropyLoss(torch.autograd.Function):
 
     @staticmethod
@@ -129,7 +112,16 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
         return logits, None, None, None
 
 
-@torch_compile()
+torch_compile_options = {
+    'epilogue_fusion': True,
+    'max_autotune': False,
+    'shape_padding': True,
+    'trace.enabled': False,
+    'triton.cudagraphs': False,
+}
+
+
+@torch.compile(dynamic=True, fullgraph=True, options=torch_compile_options)
 def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None, process_group=None) -> torch.Tensor:
     if hasattr(outputs, 'logits'):
         logits = outputs.logits
