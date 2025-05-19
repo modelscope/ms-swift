@@ -1,8 +1,6 @@
 import os
 from pprint import pprint
 
-import torch
-
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 kwargs = {
     'per_device_train_batch_size': 4,

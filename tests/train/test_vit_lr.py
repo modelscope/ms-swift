@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def test_vit_lr():
@@ -9,7 +9,7 @@ def test_vit_lr():
     sft_main(
         TrainArguments(
             model='Qwen/Qwen2.5-VL-7B-Instruct',
-            dataset='AI-ModelScope/LaTeX_OCR#20000',
+            dataset=['AI-ModelScope/LaTeX_OCR#20000'],
             vit_lr=2e-5,
             learning_rate=1e-5,
             aligner_lr=1e-4,
