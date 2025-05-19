@@ -650,9 +650,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             next_turn_inputs = inputs.copy()
             last_turn_results = results
             while True:
-                local_has_data = len(next_turn_inputs) > 0
-                has_data = gather_object([local_has_data])
-                if not any(has_data):
+                has_local_data = len(next_turn_inputs) > 0
+                has_global_data = gather_object([has_local_data])
+                if not any(has_global_data):
                     break
                 # inputs for current turn
                 current_inputs = []
@@ -681,24 +681,27 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         current_inputs.append(current_input)
 
                 # Process messages in the multi-turn function
-                current_results: List[Dict] = self.multi_turn_func(current_inputs) if local_has_data else []
+                current_results: List[Dict] = self.multi_turn_func(current_inputs) if has_local_data else []
 
                 # Retain messages that are not yet finished for the next round of rollout
-                new_next_turn_inputs = []
+                penging_inputs = []
                 for r in current_results:
                     if r['finished'] or r['finish_reason'] == 'length':
                         outputs[r['index']] = (r['messages'], r['finish_reason'])
                     else:
                         if r['messages'][-1]['role'] == 'assistant':
-                            # infer will remove response, so we add dummy response here
+                            # Sometimes, after processing with multi_turn_func,
+                            # we want to continue reasoning based on the previous assistant content.
+                            # However, _infer will remove the response internally, so we add a dummy response here
+                            # to prevent the assistant content from being removed.
                             r['messages'].append({'role': 'assistant', 'content': '<None>'})
-                        new_next_turn_inputs.append(r)
+                        penging_inputs.append(r)
 
-                current_infer_inputs = new_next_turn_inputs if local_has_data else []
+                current_infer_inputs = penging_inputs if has_local_data else []
                 current_results = self._infer(current_infer_inputs, request_config)
 
                 last_turn_results = current_results
-                next_turn_inputs = new_next_turn_inputs
+                next_turn_inputs = penging_inputs
                 first_turn = False
 
             assert not any([o is None for o in outputs])
