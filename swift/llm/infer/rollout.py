@@ -85,7 +85,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
     def __init__(self, args: Union[List[str], DeployArguments, None] = None):
         os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '1')
         super().__init__(args)
-        assert self.args.data_parallel_size == 1, 'currently, DP is not supported, please set --data_parallel_size 1'
         safe_set_start_method()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_rl_rollout_app()
