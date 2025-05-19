@@ -539,7 +539,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # for server mode, we gather all the inputs and send to remote vllm server in main process
             if is_global_inputs:
                 all_inputs = infer_inputs
-                all_input_lengths = [per_device_size] * self.accelerator.num_processes
+                all_input_lengths = [per_device_size] + [0] * (self.accelerator.num_processes - 1)
             else:
                 all_inputs = gather_object(infer_inputs)
                 all_input_lengths = gather_object([len(infer_inputs)])
@@ -640,7 +640,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs.append(_choices)
             # flatten 2D list to 1D list
             outputs = [item for sublist in outputs for item in sublist]
-            assert len(outputs) == len(inputs)
         else:
             # Multi-turn: continue to rollout until finished.
             orig_size = len(inputs)
@@ -756,18 +755,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # send this step data to server
             # we gather inputs outside the thread for prevent potential gather deadlock
             all_inputs = gather_object(inputs)
-            if self.accelerator.is_main_process:
-                self.async_infer(all_inputs)
-                data_cache = self._queue.get()
-                # cached data from last step
-                inputs = data_cache.inputs
-                outputs = data_cache.outputs
-            else:
-                inputs = []
-                outputs = []
-
-            outputs = self.gather_and_slice_object(outputs)
-            inputs = self.gather_and_slice_object(inputs)
+            self.async_infer(all_inputs)
+            # cached data from last step
+            data_cache = self._queue.get()
+            inputs = self.gather_and_slice_object(data_cache.inputs)
+            outputs = self.gather_and_slice_object(data_cache.outputs)
         else:
             with self.multi_turn_completion_length_context():
                 outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
