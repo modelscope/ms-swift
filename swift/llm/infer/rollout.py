@@ -249,7 +249,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
             # However, vLLM requires that we always send at least one prompt. So we send a placeholder prompt to comply
             # with vLLM's requirement, and we later ignore the result.
             if not infer_requests:
-                infer_requests = RolloutInferRequest(messages=None)
+                infer_requests = RolloutInferRequest(messages=[])
             kwargs = {'infer_requests': infer_requests, 'request_config': request_config, 'use_tqdm': use_tqdm}
             connection.send({'type': 'call', 'method': 'infer', 'kwargs': kwargs})
 

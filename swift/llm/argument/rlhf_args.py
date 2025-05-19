@@ -237,6 +237,10 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             'please deploy vLLM server by `swift rollout` and assign with `vllm_server_host` '
             'for more infomations, please check https://swift.readthedocs.io/en/latest/Instruction/GRPO.html'
 
+        if not self.use_vllm and self.vllm_tensor_parallel_size != 1:
+            self.vllm_tensor_parallel_size = 1
+            logger.warning('set vllm_tensor_parallel_size to 1 since use_vllm false')
+
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
             return
