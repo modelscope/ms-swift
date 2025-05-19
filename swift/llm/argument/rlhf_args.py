@@ -241,6 +241,9 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             self.vllm_tensor_parallel_size = 1
             logger.warning('set vllm_tensor_parallel_size to 1 since use_vllm false')
 
+        if self.async_generate and self.multi_turn_func is not None:
+            raise NotImplementedError("Currently, async_generate is not supported with multi-turn functionality.")
+
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
             return
