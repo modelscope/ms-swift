@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import bisect
 import mmap
 import multiprocessing as mp
 import os
@@ -156,15 +157,19 @@ class BasePackingDataset:
 
 
 class IndexedDatasetBuilder:
+    CHUNK_SIZE = 1e10
 
     def __init__(self, dataset_name: str):
         self.cache_dir = IndexedDataset.get_cache_dir(dataset_name)
-        self.bin_path = os.path.join(self.cache_dir, IndexedDataset.BIN_FNAME)
+        self.n_shard = 1
+        self.bin_path = os.path.join(self.cache_dir, IndexedDataset.BIN_FNAME.format(0))
         self.idx_path = os.path.join(self.cache_dir, IndexedDataset.IDX_FNAME)
         if os.path.exists(self.bin_path):
             os.remove(self.bin_path)
         self.bin_file = open(self.bin_path, 'ab')
+        self.length_list = []
         self.idx_list = [0]
+        self.shard_offset = [0]
         self._thread = None
         self._queue = Queue()
 
@@ -174,6 +179,13 @@ class IndexedDatasetBuilder:
             if item is None:
                 break
             self.bin_file.write(item)
+            offset = self.bin_file.tell()
+            if offset >= self.CHUNK_SIZE:
+                self.bin_file.close()
+                self.bin_path = os.path.join(self.cache_dir, IndexedDataset.BIN_FNAME.format(self.n_shard))
+                self.shard_offset.append(self.shard_offset[-1] + offset)
+                self.n_shard += 1
+                self.bin_file = open(self.bin_path, 'ab')
 
     def add_items(self, items: List[Any]) -> None:
         if self._thread is None:
@@ -184,6 +196,8 @@ class IndexedDatasetBuilder:
             item_buffer = pickle.dumps(item)
             bin_buffer.append(item_buffer)
             self.idx_list.append(self.idx_list[-1] + len(item_buffer))
+            self.length_list.append(
+                max([len(item[k]) for k in item.keys() if k.endswith('input_ids') or k.endswith('labels')]))
         if bin_buffer:
             self._queue.put(b''.join(bin_buffer))
 
@@ -192,15 +206,21 @@ class IndexedDatasetBuilder:
             self._queue.put(None)
             self._thread.join()
         self.bin_file.close()
+        self.idx_obj = {
+            'idx': self.idx_list,
+            'length': self.length_list,
+            'n_shard': self.n_shard,
+            'shard_offset': self.shard_offset,
+        }
         with open(self.idx_path, 'wb') as f:
-            pickle.dump(self.idx_list, f)
+            pickle.dump(self.idx_obj, f)
 
 
 class BinReader:
 
-    def __init__(self, file_path: str):
-        self.file_path = file_path
-        self.file = open(file_path, 'rb')
+    def __init__(self, bin_path: str):
+        self.bin_path = bin_path
+        self.file = open(bin_path, 'rb')
         self.mm = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
 
     def read_buffer(self, offset: int, size: int) -> bytes:
@@ -214,7 +234,7 @@ class BinReader:
 
 
 class IndexedDataset(Dataset):
-    BIN_FNAME = 'data.bin'
+    BIN_FNAME = 'data-{:05d}.bin'
     IDX_FNAME = 'data.idx'
 
     @staticmethod
@@ -227,17 +247,25 @@ class IndexedDataset(Dataset):
     def __init__(self, dataset_name: str):
         self.dataset_name = dataset_name
         cache_dir = self.get_cache_dir(dataset_name)
-        self.bin_path = os.path.join(cache_dir, IndexedDataset.BIN_FNAME)
-        self.idx_path = os.path.join(cache_dir, IndexedDataset.IDX_FNAME)
-        self.bin_readers = BinReader(self.bin_path)
+        self.idx_path = os.path.join(cache_dir, self.IDX_FNAME)
         with open(self.idx_path, 'rb') as f:
-            self.idx_list = pickle.load(f)
+            idx_obj = pickle.load(f)
+        self.idx_list = idx_obj['idx']
+        self.length_list = idx_obj['length']
+        self.n_shard = idx_obj['n_shard']
+        self.shard_offset = idx_obj['shard_offset']
+        self.bin_readers = []
+        for i in range(self.n_shard):
+            bin_path = os.path.join(cache_dir, self.BIN_FNAME.format(i))
+            self.bin_readers.append(BinReader(bin_path))
 
     def __getitem__(self, index: int):
         if index < 0:
             index = index % len(self)
         idx, idx_next = self.idx_list[index], self.idx_list[index + 1]
-        buffer = self.bin_readers.read_buffer(idx, idx_next - idx)
+        num_shard = bisect.bisect_right(self.shard_offset, idx)
+        offset = self.shard_offset[num_shard - 1]
+        buffer = self.bin_readers[num_shard - 1].read_buffer(idx - offset, idx_next - idx)
         return pickle.loads(buffer)
 
     def __len__(self):

@@ -240,8 +240,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             if not is_master():
                 return
             length = []
-            for row in tqdm(dataset, dynamic_ncols=True, desc='Get Length'):
-                length.append(max([len(row[k]) for k in row.keys() if k.endswith('input_ids')]))
+            if hasattr(dataset.packed_dataset, 'length_list'):
+                length = dataset.packed_dataset.length_list
+            else:
+                for row in tqdm(dataset, dynamic_ncols=True, desc='Get Length'):
+                    length.append(max([len(row[k]) for k in row.keys() if k.endswith('input_ids')]))
         _, stat_str = stat_array(length)
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str

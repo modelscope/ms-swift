@@ -1036,12 +1036,12 @@ class Template(ProcessorMixin):
                     loss_scale = loss_scale[-self.max_length:]
             elif self.truncation_strategy == 'raise':
                 # input_ids might be a tensor.
+                lengths = [0]
                 if input_ids is not None:
-                    length = len(input_ids)
-                elif labels is not None:
-                    length = len(labels)
-                else:
-                    length = 0
+                    lengths.append(len(input_ids))
+                if labels is not None:
+                    lengths.append(len(labels))
+                length = max(lengths)
                 if length > self.max_length:
                     raise MaxLengthError(f'Current length of row({length}) is larger'
                                          f' than the max_length({self.max_length}).')
