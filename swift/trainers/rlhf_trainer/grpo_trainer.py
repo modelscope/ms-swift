@@ -689,7 +689,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 current_results: List[Dict] = self.multi_turn_func(current_inputs) if has_local_data else []
 
                 # Retain messages that are not yet finished for the next round of rollout
-                penging_inputs = []
+                pending_inputs = []
                 for r in current_results:
                     if r['finished'] or r['finish_reason'] == 'length':
                         outputs[r['index']] = (r['messages'], r['finish_reason'])
@@ -700,13 +700,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             # However, _infer will remove the response internally, so we add a dummy response here
                             # to prevent the assistant content from being removed.
                             r['messages'].append({'role': 'assistant', 'content': '<None>'})
-                        penging_inputs.append(r)
+                        pending_inputs.append(r)
 
-                current_infer_inputs = penging_inputs if has_local_data else []
+                current_infer_inputs = pending_inputs if has_local_data else []
                 current_results = self._infer(current_infer_inputs, request_config)
 
                 last_turn_results = current_results
-                next_turn_inputs = penging_inputs
+                next_turn_inputs = pending_inputs
                 first_turn = False
 
             assert not any([o is None for o in outputs])
