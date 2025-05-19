@@ -554,7 +554,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 results = [None] * len(all_inputs)
             # Broadcast the results from the main process to all processes,
             # ensuring each process receives its corresponding slice.
-            results = broadcast_object_list(results, from_process=0)
+            if not is_global_inputs:
+                results = broadcast_object_list(results, from_process=0)
             start_idx = sum(all_input_lengths[:self.accelerator.process_index])
             end_idx = start_idx + all_input_lengths[self.accelerator.process_index]
             results = results[start_idx:end_idx]
@@ -1155,7 +1156,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def evaluation_loop(self, dataloader, *args, **kwargs):
         # Wait for the training rollout to complete
         if self.args.async_generate:
-            while not self.is_async_generate_eval_rollout_done():
+            while not self.is_async_generate_train_rollout_done():
                 time.sleep(0.1)
         if self._queue.empty() and self.args.async_generate:
             self._prefetch(dataloader)
