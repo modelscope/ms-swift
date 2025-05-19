@@ -789,8 +789,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Calculate the slice range for the current process
         process_slice = slice(
-            self.accelerator.process_index * len(gathered_data),
-            (self.accelerator.process_index + 1) * len(gathered_data),
+            self.accelerator.process_index * len(input_data),
+            (self.accelerator.process_index + 1) * len(input_data),
         )
 
         # Return the portion of the gathered data assigned to this process
