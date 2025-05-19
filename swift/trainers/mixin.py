@@ -493,7 +493,8 @@ class DataLoaderMixin:
             if hasattr(train_dataset, '__len__'):
                 batch_sampler = BatchSamplerShard(
                     len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
-                dataloader = DataLoaderShard(train_dataset, batch_sampler, self.accelerator.device, **dataloader_params)
+                dataloader = DataLoaderShard(
+                    train_dataset, batch_sampler=batch_sampler, device=self.accelerator.device, **dataloader_params)
             else:
                 # IterableDataset
                 if dist.is_initialized() and dataloader_params['prefetch_factor']:
