@@ -94,6 +94,7 @@ accelerator.save_model(
 )
 ```
 
+After saving the weights, copy all files from the original Qwen2.5-VL-7B-Instruct model folder, except for the model weights, to the new model weights folder, and replace config.json with the newly modified config.json file.
 
 ## Training
 To simplify the process, we skip pre-training and proceed directly to supervised fine-tuning (SFT). The training is divided into two stages:

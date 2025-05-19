@@ -93,6 +93,7 @@ accelerator.save_model(
 )
 ```
 
+保存完权重后，将原 Qwen2.5-VL-7B-Instruct 模型文件夹中除模型权重的文件复制到新的模型权重文件夹中，并替换 config.json 为新修改的 config.json文件。
 
 ## 训练
 
