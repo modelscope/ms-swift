@@ -1,4 +1,4 @@
-# 快速训练视觉语言（Vision-Language, VL）模型的最佳实践
+# 快速训练VL模型
 
 本文档提供从零开始快速训练视觉语言(Vision-Language, VL)模型的最佳实践。
 
@@ -63,6 +63,7 @@ qwen3_8b_model = AutoModelForCausalLM.from_pretrained(
 # 加载配置
 old_config = AutoConfig.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
 new_config = AutoConfig.from_pretrained("/path/to/new_config_dir") # 新 config 的文件夹路径
+new_visual_config = new_config.vision_config
 
 # 1. 替换 ViT 到 LLM 的 merger(aligner) 层
 new_merger = Qwen2_5_VLPatchMerger(

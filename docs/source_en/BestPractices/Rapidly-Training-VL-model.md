@@ -64,6 +64,7 @@ qwen3_8b_model = AutoModelForCausalLM.from_pretrained(
 # Load configurations
 old_config = AutoConfig.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
 new_config = AutoConfig.from_pretrained("/path/to/new_config_dir")  # Path to new config directory
+new_visual_config = new_config.vision_config
 
 # Replace merger (aligner) layer
 new_merger = Qwen2_5_VLPatchMerger(
