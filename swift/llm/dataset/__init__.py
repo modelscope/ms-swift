@@ -1,6 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import inspect
-
 import datasets.fingerprint
 from datasets import Dataset as HfDataset
 
