@@ -1,8 +1,8 @@
-from typing import Optional
+from typing import Iterable, Optional, Union
 
 import torch
 import torch.distributed as dist
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Sampler
 
 from swift.llm import to_device
 
@@ -58,13 +58,15 @@ class BatchSamplerShard:
 
 class DataLoaderShard(DataLoader):
 
-    def __init__(self, dataset, batch_sampler: BatchSamplerShard, device=None, **dataloader_params):
-        self.batch_sampler = batch_sampler
+    def __init__(self, dataset, device=None, **dataloader_params):
         self.device = device
-        super().__init__(dataset, batch_sampler=self.batch_sampler, **dataloader_params)
+        super().__init__(dataset, **dataloader_params)
 
     def set_epoch(self, epoch: int):
-        self.batch_sampler.set_epoch(epoch)
+        if self.batch_sampler is not None and hasattr(self.batch_sampler, 'set_epoch'):
+            self.batch_sampler.set_epoch(epoch)
+        elif self.sampler is not None and hasattr(self.sampler, 'set_epoch'):
+            self.sampler.set_epoch(epoch)
 
     def __iter__(self):
         for item in super().__iter__():

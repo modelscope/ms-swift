@@ -15,7 +15,7 @@ from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
 from transformers.trainer_utils import seed_worker
 
-from swift.llm import DataLoaderDispatcher, get_model_arch, to_device
+from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_model_arch, to_device
 from swift.tuners import SwiftModel
 from swift.utils import get_current_device, get_device, get_dist_setting
 from .base import SequenceParallel
@@ -57,6 +57,23 @@ class GatherLoss(torch.autograd.Function):
         _grad = grad_output[0] * dist.get_world_size(group=ctx.process_group)
         return _grad.split(
             ctx.scatter_shape, dim=ctx.gather_idx)[dist.get_rank(ctx.process_group)].contiguous(), None, None, None
+
+
+def torch_compile():
+    torch_compile_options = {
+        'epilogue_fusion': True,
+        'max_autotune': False,
+        'shape_padding': True,
+        'trace.enabled': False,
+        'triton.cudagraphs': False,
+    }
+
+    def decorator(func):
+        if version.parse(torch.__version__) >= version.parse('2.0.0'):
+            return torch.compile(dynamic=True, fullgraph=True, options=torch_compile_options)(func)
+        return func
+
+    return decorator
 
 
 class ChunkedCrossEntropyLoss(torch.autograd.Function):
@@ -112,16 +129,7 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
         return logits, None, None, None
 
 
-torch_compile_options = {
-    'epilogue_fusion': True,
-    'max_autotune': False,
-    'shape_padding': True,
-    'trace.enabled': False,
-    'triton.cudagraphs': False,
-}
-
-
-@torch.compile(dynamic=True, fullgraph=True, options=torch_compile_options)
+@torch_compile()
 def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None, process_group=None) -> torch.Tensor:
     if hasattr(outputs, 'logits'):
         logits = outputs.logits
@@ -615,7 +623,7 @@ class Ulysses(SequenceParallel):
                 dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
                 dataloader_params['worker_init_fn'] = seed_worker
 
-            return DataLoader(dataset, **dataloader_params)
+            return DataLoaderShard(dataset, device=trainer.accelerator.device, **dataloader_params)
         else:
             dataloader_params = {
                 'collate_fn': data_collator,
