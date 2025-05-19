@@ -4,6 +4,7 @@ from functools import partial
 from typing import List, Union
 
 from datasets import Dataset as HfDataset
+from tqdm import tqdm
 
 from swift.plugin import extra_callbacks, get_loss_func, get_metric
 from swift.trainers import TrainerFactory
@@ -236,8 +237,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             dataset = GetLengthPreprocessor()(dataset, num_proc=args.dataset_num_proc)
             length = dataset['length']
         else:
+            if not is_master():
+                return
             length = []
-            for row in dataset:
+            for row in tqdm(dataset, dynamic_ncols=True, desc='Get Length'):
                 length.append(max([len(row[k]) for k in row.keys() if k.endswith('input_ids')]))
         _, stat_str = stat_array(length)
         logger.info(f'Dataset Token Length: {stat_str}')
@@ -266,9 +269,17 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                         val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             else:
                 preprocessor = EncodePreprocessor(template=template)
-                train_dataset = preprocessor(train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
+                train_dataset = preprocessor(
+                    train_dataset,
+                    num_proc=args.dataset_num_proc,
+                    load_from_cache_file=args.load_from_cache_file,
+                    strict=args.strict)
                 if val_dataset is not None and not predict_with_generate:
-                    val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
+                    val_dataset = preprocessor(
+                        val_dataset,
+                        num_proc=args.dataset_num_proc,
+                        load_from_cache_file=args.load_from_cache_file,
+                        strict=args.strict)
 
             if is_master():
                 inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))

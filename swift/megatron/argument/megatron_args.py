@@ -95,7 +95,7 @@ class MegatronArguments(ExtraMegatronArguments):
     tp_comm_overlap: bool = False
     overlap_grad_reduce: bool = False
     overlap_param_gather: bool = False
-    distributed_timeout_minutes: int = 60
+    distributed_timeout_minutes: int = 300000
 
     # model
     num_layers: Optional[int] = None
@@ -215,6 +215,8 @@ class MegatronArguments(ExtraMegatronArguments):
             require_version('flash-attn')
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self._set_default()
+        if hasattr(self, 'ddp_timeout'):
+            self.distributed_timeout_minutes = self.ddp_timeout // 60
         self.group_query_attention = self.num_query_groups > 1
         if self.rope_scaling is not None:
             self.rope_scaling = ModelArguments.parse_to_dict(self.rope_scaling)

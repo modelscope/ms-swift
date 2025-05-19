@@ -38,7 +38,7 @@ class DataArguments:
 
     data_seed: Optional[int] = None
     dataset_num_proc: int = 1
-    load_from_cache_file: bool = False
+    load_from_cache_file: bool = True
     dataset_shuffle: bool = True
     val_dataset_shuffle: bool = False
     streaming: bool = False

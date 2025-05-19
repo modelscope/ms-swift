@@ -1,5 +1,4 @@
 # NPU支持
-作者: [chuanzhubin](https://github.com/chuanzhubin)
 
 ## 环境准备
 

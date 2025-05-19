@@ -807,7 +807,7 @@ The table below introduces information about the datasets integrated with ms-swi
 - HF Dataset ID: Hugging Face dataset ID
 - Subset Name: Name of the subset
 - Dataset Size: Size of the dataset
-- Statistic: The statistical count of the dataset. We use the number of tokens for statistics, which helps in adjusting the `max_length` hyperparameter. We tokenize the dataset using the tokenizer of qwen2.5. The token count varies with different tokenizers. If you need to obtain token statistics for tokenizers of other models, you can acquire it using the [script](https://github.com/modelscope/swift/tree/main/scripts/utils/run_dataset_info.py).
+- Statistic: The statistical count of the dataset. We use the number of tokens for statistics, which helps in adjusting the `max_length` hyperparameter. We tokenize the dataset using the tokenizer of qwen2.5. The token count varies with different tokenizers. If you need to obtain token statistics for tokenizers of other models, you can acquire it using the [script](https://github.com/modelscope/ms-swift/tree/main/scripts/utils/run_dataset_info.py).
 - Tags: Tags associated with the dataset
 
 

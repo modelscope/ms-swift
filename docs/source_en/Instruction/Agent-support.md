@@ -146,7 +146,7 @@ Action Input: {'city': 'Shanghai'}
 Observation:[-100 * 45]According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution.<|im_end|>
 ```
 
-The following code can be used to experiment with more models and `agent_template` options. For more selectable values of `agent_template`, refer to [here](https://github.com/modelscope/swift/blob/main/swift/plugin/agent_template/__init__.py).
+The following code can be used to experiment with more models and `agent_template` options. For more selectable values of `agent_template`, refer to [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/agent_template/__init__.py).
 
 ```python
 from swift.llm import get_model_tokenizer, get_template
@@ -190,7 +190,7 @@ tools = [{
 
 ## Usage of loss_scale
 
-`loss_scale` can be used to adjust the training loss weight for the model's output section. For example, in the ReACT format, you can set `--loss_scale react` (the loss_scale configuration file is written [here](https://github.com/modelscope/swift/blob/main/swift/plugin/loss_scale/config/react.json)). The role of this parameter is as follows:
+`loss_scale` can be used to adjust the training loss weight for the model's output section. For example, in the ReACT format, you can set `--loss_scale react` (the loss_scale configuration file is written [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/react.json)). The role of this parameter is as follows:
 
 - The weight for the 'Thought:' and 'Final Answer:' sections is 1.
 - The weight for the 'Action:' and 'Action Input:' sections is 2.
@@ -208,7 +208,7 @@ For the detailed design of the `loss_scale` plugin, please refer to the [Plugin-
 ## Inference
 
 - 🚀For inference of the original model or fully trained model, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_agent.py).
-- For inference after LoRA training, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent/loss_scale/infer.md).
+- For inference after LoRA training, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/agent/loss_scale/infer_lora.py).
 
 ## Deployment
 
