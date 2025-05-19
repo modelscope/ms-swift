@@ -106,8 +106,8 @@ def get_param_startswith(model,
     res = []
     if not chosen_prefix:
         return res
-    if_peft_model = isinstance(model, PeftModel)
-    if if_peft_model:
+    is_peft_model = isinstance(model, PeftModel)
+    if is_peft_model:
         model = model.model
     for n, p in model.named_parameters():
         if not p.requires_grad:
@@ -121,7 +121,7 @@ def get_param_startswith(model,
             continue
         for prefix in chosen_prefix:
             if n.startswith(prefix):
-                if if_peft_model:
+                if is_peft_model:
                     n = f'base_model.model.{n}'
                 res.append((n, p))
                 break
