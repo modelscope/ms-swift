@@ -56,7 +56,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         prediction_loss_only: bool,
         ignore_keys: Optional[List[str]] = None,
     ):
-        # inputs = self._prepare_inputs(inputs)
+        inputs = self._prepare_inputs(inputs)
         return super().prediction_step(model, inputs, prediction_loss_only, ignore_keys)
 
     def concatenated_forward(
