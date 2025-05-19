@@ -26,7 +26,7 @@ from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import TrainerCallback
-from transformers.trainer_utils import EvalPrediction, IntervalStrategy
+from transformers.trainer_utils import EvalPrediction, IntervalStrategy, seed_worker
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
@@ -493,8 +493,9 @@ class DataLoaderMixin:
             if hasattr(train_dataset, '__len__'):
                 batch_sampler = BatchSamplerShard(
                     len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
-                dataloader = DataLoaderShard(
-                    train_dataset, batch_sampler=batch_sampler, device=self.accelerator.device, **dataloader_params)
+                dataloader_params['worker_init_fn'] = seed_worker
+                dataloader_params['batch_sampler'] = batch_sampler
+                dataloader = DataLoaderShard(train_dataset, device=self.accelerator.device, **dataloader_params)
             else:
                 # IterableDataset
                 if dist.is_initialized() and dataloader_params['prefetch_factor']:

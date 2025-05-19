@@ -46,6 +46,8 @@ class TrainArgumentsMixin:
     acc_strategy: Literal['token', 'seq'] = 'token'
     train_dataloader_shuffle: bool = True
     max_epochs: Optional[int] = None
+    aligner_lr: Optional[float] = None
+    vit_lr: Optional[float] = None
 
     # torchacc
     metric_warmup_step: Optional[float] = 0
