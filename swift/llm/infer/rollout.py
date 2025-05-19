@@ -20,7 +20,7 @@ from fastapi import FastAPI
 from swift.llm import DeployArguments, InferArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.utils import get_logger
-from .infer_engine import InferClient, VllmEngine
+from .infer_engine import GRPOVllmEngine, InferClient, VllmEngine
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
 
 try:
@@ -145,7 +145,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         engine_kwargs.update({'worker_extension_cls': 'trl.scripts.vllm_serve.WeightSyncWorkerExtension'})
         engine_kwargs.update({'data_parallel_size': args.data_parallel_size})
         kwargs['engine_kwargs'] = engine_kwargs
-        return VllmEngine(**kwargs)
+        return GRPOVllmEngine(**kwargs)
 
     async def health(self):
         """
