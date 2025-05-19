@@ -544,6 +544,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 all_inputs = gather_object(infer_inputs)
                 all_input_lengths = gather_object([len(infer_inputs)])
 
+            if not any(inputs for inputs in all_inputs):
+                return []
+
             if self.accelerator.is_main_process:
                 results: List[ChatCompletionResponse] = self._engine_infer(
                     infer_requests=all_inputs, request_config=request_config)
