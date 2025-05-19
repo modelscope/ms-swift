@@ -19,7 +19,7 @@ from fastapi import FastAPI
 
 from swift.llm import DeployArguments, InferArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
-from swift.utils import get_logger
+from swift.utils import get_device, get_logger
 from .infer_engine import GRPOVllmEngine, InferClient, VllmEngine
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
 
@@ -44,6 +44,7 @@ def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
     os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
     os.environ['VLLM_DP_SIZE'] = str(args.data_parallel_size)
     os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
+    kwargs = {'device': get_device(str(data_parallel_rank))}
     engine = SwiftRolloutDeploy.get_infer_engine(args)
 
     # Send ready signal to parent process
