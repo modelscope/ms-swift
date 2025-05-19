@@ -1,8 +1,8 @@
-from typing import Iterable, Optional, Union
+from typing import Optional
 
 import torch
 import torch.distributed as dist
-from torch.utils.data import DataLoader, Sampler
+from torch.utils.data import DataLoader
 
 from swift.llm import to_device
 
