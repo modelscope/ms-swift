@@ -556,9 +556,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # ensuring each process receives its corresponding slice.
             if not is_global_inputs:
                 results = broadcast_object_list(results, from_process=0)
-            start_idx = sum(all_input_lengths[:self.accelerator.process_index])
-            end_idx = start_idx + all_input_lengths[self.accelerator.process_index]
-            results = results[start_idx:end_idx]
+                start_idx = sum(all_input_lengths[:self.accelerator.process_index])
+                end_idx = start_idx + all_input_lengths[self.accelerator.process_index]
+                results = results[start_idx:end_idx]
+            else:
+                results = results if self.accelerator.is_main_process else []
         else:
             # pt / vllm
             if self.vllm_tensor_parallel_size > 1:
@@ -733,7 +735,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _prefetch(self, dataloader: DataLoader):
         inputs = next(iter(dataloader))
-        outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
+        all_inputs = gather_object(inputs)
+        outputs = self._infer_single_or_multi_turn(all_inputs, self.request_config, is_global_inputs=True)
         self._queue.put(DataCache(inputs, outputs))
 
     def _fast_infer(self, inputs: InputsType) -> Tuple[InputsType, OutputsType]:
@@ -759,7 +762,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.async_infer(all_inputs)
             # cached data from last step
             data_cache = self._queue.get()
-            inputs = self.gather_and_slice_object(data_cache.inputs)
+            inputs = data_cache.inputs
             outputs = self.gather_and_slice_object(data_cache.outputs)
         else:
             with self.multi_turn_completion_length_context():
