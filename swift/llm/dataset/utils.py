@@ -206,14 +206,14 @@ class IndexedDatasetBuilder:
             self._queue.put(None)
             self._thread.join()
         self.bin_file.close()
-        self.idx_obj = {
+        idx_obj = {
             'idx': self.idx_list,
             'length': self.length_list,
             'n_shard': self.n_shard,
             'shard_offset': self.shard_offset,
         }
         with open(self.idx_path, 'wb') as f:
-            pickle.dump(self.idx_obj, f)
+            pickle.dump(idx_obj, f)
 
 
 class BinReader:
