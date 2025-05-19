@@ -1,4 +1,4 @@
-# 快速训练视觉语言（Vision-Language, VL）模型的最佳实践
+# 快速训练VL模型
 
 本文档提供从零开始快速训练视觉语言(Vision-Language, VL)模型的最佳实践。
 
@@ -63,6 +63,7 @@ qwen3_8b_model = AutoModelForCausalLM.from_pretrained(
 # 加载配置
 old_config = AutoConfig.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
 new_config = AutoConfig.from_pretrained("/path/to/new_config_dir") # 新 config 的文件夹路径
+new_visual_config = new_config.vision_config
 
 # 1. 替换 ViT 到 LLM 的 merger(aligner) 层
 new_merger = Qwen2_5_VLPatchMerger(
@@ -92,6 +93,7 @@ accelerator.save_model(
 )
 ```
 
+保存完权重后，将原 Qwen2.5-VL-7B-Instruct 模型文件夹中除模型权重的文件(包括`model.safetensors.index.json`) 复制到新的模型权重文件夹中，并替换 config.json 为新修改的 config.json文件。
 
 ## 训练
 
