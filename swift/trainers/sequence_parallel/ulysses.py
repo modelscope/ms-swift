@@ -15,7 +15,7 @@ from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
 from transformers.trainer_utils import seed_worker
 
-from swift.llm import DataLoaderDispatcher, get_model_arch, to_device
+from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_model_arch, to_device
 from swift.tuners import SwiftModel
 from swift.utils import get_current_device, get_device, get_dist_setting
 from .base import SequenceParallel
@@ -623,7 +623,7 @@ class Ulysses(SequenceParallel):
                 dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
                 dataloader_params['worker_init_fn'] = seed_worker
 
-            return DataLoader(dataset, **dataloader_params)
+            return DataLoaderShard(dataset, device=trainer.accelerator.device, **dataloader_params)
         else:
             dataloader_params = {
                 'collate_fn': data_collator,
