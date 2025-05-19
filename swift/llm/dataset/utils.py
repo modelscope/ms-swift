@@ -283,7 +283,8 @@ class PackingDataset(BasePackingDataset, Dataset):
         fingerprint = update_fingerprint(dataset._fingerprint, 'PackingDataset', {
             'template': template,
             'packing_interval': packing_interval,
-            'strict': strict
+            'strict': strict,
+            'version': 'v1',
         })
         self.dataset_name = f'packing-cache-{fingerprint}'
         with safe_ddp_context(None, True):
