@@ -1,5 +1,4 @@
 # 8 * 80 G (6 for training, 2 for rollout)
-# exp link: https://github.com/modelscope/ms-swift/pull/4279
 # CUDA_VISIBLE_DEVICES=6,7 \
 # swift rollout \
 #     --model Qwen/Qwen2.5-7B-Instruct \
