@@ -143,9 +143,9 @@ def create_default_optimizer(args: 'TrainingArguments', model, dataset):
             lr = args.learning_rate
         for wd in [0., args.weight_decay]:
             if wd == 0:
-                params = [p for n, p in parameters if n in decay_parameters]
-            else:
                 params = [p for n, p in parameters if n not in decay_parameters]
+            else:
+                params = [p for n, p in parameters if n in decay_parameters]
             if not params:
                 continue
             optimizer_grouped_parameters.append({
