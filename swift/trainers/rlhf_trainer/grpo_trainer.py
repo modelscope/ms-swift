@@ -547,9 +547,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if not any(inputs for inputs in all_inputs):
                 return []
 
+            request_config.n = self.num_generations
             if self.accelerator.is_main_process:
                 results: List[ChatCompletionResponse] = self._engine_infer(
-                    infer_requests=all_inputs, request_config=request_config)
+                    infer_requests=all_inputs[::self.num_generations], request_config=request_config)
             else:
                 results = [None] * len(all_inputs)
             # Broadcast the results from the main process to all processes,
