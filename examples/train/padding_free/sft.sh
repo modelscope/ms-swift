@@ -1,7 +1,7 @@
 # Supported multimodal models reference:
 # https://github.com/modelscope/ms-swift/blob/main/examples/train/packing/qwen2_5_vl.sh
-# without data_flatten: 4 * 60GiB, 26h
-# data_flatten: 4 * 44GiB, 13h
+# without padding_free: 4 * 60GiB, 26h
+# padding_free: 4 * 44GiB, 13h
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
@@ -26,4 +26,4 @@ swift sft \
     --deepspeed zero3 \
     --use_liger_kernel true \
     --attn_impl flash_attn \
-    --data_flatten true
+    --padding_free true
