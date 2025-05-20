@@ -57,8 +57,8 @@ class LLMGRPO(BaseUI):
     locale_dict: Dict[str, Dict] = {
         'llm_grpo': {
             'label': {
-                'zh': 'LLMGRPO',
-                'en': 'LLMGRPO',
+                'zh': 'LLM GRPO',
+                'en': 'LLM GRPO',
             }
         },
         'train_stage': {
