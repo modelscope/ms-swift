@@ -12,15 +12,15 @@ swift rlhf \
     --reward_funcs accuracy \
     --use_vllm true \
     --vllm_mode server \
-    --vllm_server_host xxx \
+    --vllm_server_host 127.0.0.1 \
     --vllm_server_port 8000 \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset AI-MO/NuminaMath-TIR#1000 \
+    --split_dataset_ratio 0 \
     --max_completion_length 2048 \
     --num_train_epochs 3 \
     --per_device_train_batch_size 2 \
-    --per_device_eval_batch_size 4 \
     --learning_rate 1e-6 \
     --gradient_accumulation_steps 2 \
     --save_total_limit 2 \

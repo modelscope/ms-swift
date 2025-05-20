@@ -343,3 +343,8 @@ num_processes * per_device_eval_batch_size
 num_iterations = 1，async_generate = False 下为 on-policy RL，old_policy此时等于policy
 
 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
+
+**6. 为什么没有设置val_dataset，仍然有验证过程，如何取消**
+当没有显式传入`val_dataset`时，参数`split_dataset_ratio`负责切分部分`dataset`为验证数据集，默认切分1%数据
+
+通过设置`--split_dataset_ratio 0` 来取消验证过程

@@ -358,3 +358,9 @@ See reference: [issue](https://github.com/modelscope/ms-swift/issues/3912)
 When num_iterations = 1 and async_generate = False, it's on-policy RL, and old_policy is equal to policy.
 
 See reference: [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
+
+
+**6.Why is there still a validation process when val_dataset is not set? How can I disable it?**
+When `val_dataset` is not explicitly passed in, the parameter `split_dataset_ratio` is responsible for splitting a portion of the dataset into a validation dataset, with a default split of 1% of the data.
+
+You can disable the validation process by setting `--split_dataset_ratio 0`.
