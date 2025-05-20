@@ -68,10 +68,23 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 
 使用`swift rollout`命令部署vLLM 服务器, 现仅支持vLLM backend
 ```bash
-CUDA_VISIBLE_DEVICES=2 \
+CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
   --tensor_parallel_size 2 \
+  --data_parallel_size 1
+
+CUDA_VISIBLE_DEVICES=0,1 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+  --data_parallel_size 1
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+  --data_parallel_size 2
 ```
 
 对于更多 vLLM 参数，你可以参考[vLLM参数](./命令行参数.md#vllm参数)
@@ -224,7 +237,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 奖励函数参数，见[内置奖励函数](#内置奖励函数)
 
-运行脚本参考[这里](../../../examples/train/grpo/)
+更多运行脚本参考[这里](../../../examples/train/grpo/)
 
 ## 自定义奖励模型
 默认情况下，奖励模型指的是包含数值头的分类模型（通常称为输出奖励模型（ORM））。这些模型对其他模型的输出进行评分，产生一个标量值，表示模型响应的质量。
