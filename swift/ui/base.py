@@ -296,7 +296,13 @@ class BaseUI:
         return arguments
 
     @classmethod
-    def update_input_model(cls, model, allow_keys=None, has_record=True, arg_cls=BaseArguments, is_ref_model=False):
+    def update_input_model(cls,
+                           model,
+                           allow_keys=None,
+                           has_record=True,
+                           arg_cls=BaseArguments,
+                           is_ref_model=False,
+                           is_reward_model=False):
         keys = cls.valid_element_keys()
         if allow_keys:
             keys = [key for key in keys if key in allow_keys]
@@ -354,11 +360,16 @@ class BaseUI:
         else:
             values = []
             for key in keys:
-                if key not in ('template', 'model_type', 'ref_model_type', 'system'):
+                if key not in ('template', 'model_type', 'ref_model_type', 'reward_model_type', 'system'):
                     values.append(gr.update())
-                elif key in ('template', 'model_type', 'ref_model_type'):
+                elif key in ('template', 'model_type', 'ref_model_type', 'reward_model_type'):
                     if key == 'ref_model_type':
                         if is_ref_model:
+                            values.append(gr.update(value=getattr(model_meta, 'model_type')))
+                        else:
+                            values.append(gr.update())
+                    elif key == 'reward_model_type':
+                        if is_reward_model:
                             values.append(gr.update(value=getattr(model_meta, 'model_type')))
                         else:
                             values.append(gr.update())
