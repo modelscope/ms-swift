@@ -29,7 +29,7 @@ def get_template(
         agent_template: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
         response_prefix: Optional[str] = None,
-        data_flatten: bool = False,
+        padding_free: bool = False,
         # train
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
@@ -48,7 +48,7 @@ def get_template(
         agent_template=agent_template,
         norm_bbox=norm_bbox,
         response_prefix=response_prefix,
-        data_flatten=data_flatten,
+        padding_free=padding_free,
         padding_side=padding_side,
         loss_scale=loss_scale,
         sequence_parallel_size=sequence_parallel_size,
