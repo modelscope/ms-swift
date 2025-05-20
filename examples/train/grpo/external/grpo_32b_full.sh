@@ -12,7 +12,7 @@ swift rlhf \
     --reward_funcs accuracy \
     --use_vllm true \
     --vllm_mode server \
-    --vllm_server_host 127.0.0.1 \
+    --vllm_server_host xxx \
     --vllm_server_port 8000 \
     --train_type full \
     --torch_dtype bfloat16 \
