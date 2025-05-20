@@ -1332,6 +1332,11 @@ class Template(ProcessorMixin):
             res['labels'] = labels
         return res
 
+    def _data_flatten(self, batch: List[Dict[str, Any]]):
+        new_batch = [(row, len(row['input_ids'])) for row in batch]
+        new_batch = self.packing_row(new_batch)
+        return [new_batch]
+
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
@@ -1342,7 +1347,9 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
-        packing_mode = self.use_megatron or self._packing or self.data_flatten and 'position_ids' in batch[0]
+        packing_mode = self.use_megatron or self.data_flatten or self._packing and 'position_ids' in batch[0]
+        if self.data_flatten:
+            batch = self._data_flatten(batch)
         res = {}
         if packing_mode:
             # only support llm
