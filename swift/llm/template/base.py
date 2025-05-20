@@ -1334,8 +1334,7 @@ class Template(ProcessorMixin):
 
     def _data_flatten(self, batch: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         new_batch = [(row, len(row['input_ids'])) for row in batch]
-        new_batch = self.packing_row(new_batch)
-        return [new_batch]
+        return [self.packing_row(new_batch)]
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
