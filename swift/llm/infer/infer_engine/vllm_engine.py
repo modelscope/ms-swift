@@ -2,7 +2,6 @@
 import asyncio
 import inspect
 import os
-from collections import defaultdict
 from contextlib import nullcontext
 from copy import deepcopy
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
@@ -15,7 +14,7 @@ from transformers.utils import is_torch_npu_available
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
-from swift.utils import get_logger, get_node_setting, get_seed
+from swift.utils import get_logger, get_seed
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
@@ -438,12 +437,12 @@ class VllmEngine(InferEngine):
                 self._add_stop_words(generation_config, request_config, template.template_meta)
                 self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
             prog_bar = tqdm(total=len(batched_inputs), dynamic_ncols=True, disable=not use_tqdm)
-            outputs = defaultdict(list)
+            outputs = {}
             while self.engine.has_unfinished_requests():
                 step_outputs = self.engine.step()
                 for output in step_outputs:
                     if output.finished:
-                        outputs[output.request_id].append(output)
+                        outputs[output.request_id] = output
                         prog_bar.update()
             prog_bar.close()
             outputs = [outputs[request_id] for request_id in request_id_list]
