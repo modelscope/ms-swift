@@ -16,6 +16,7 @@ from gradio import Accordion, Audio, Button, Checkbox, Dropdown, File, Image, Sl
 from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.llm import TEMPLATE_MAPPING, BaseArguments, get_matched_model_meta
+from swift.utils.constants import DEFAULT_SYSTEM
 
 all_langs = ['zh', 'en']
 builder: Type['BaseUI'] = None
@@ -376,7 +377,10 @@ class BaseUI:
                     else:
                         values.append(gr.update(value=getattr(model_meta, key)))
                 else:
-                    values.append(gr.update(value=TEMPLATE_MAPPING[model_meta.template].default_system))
+                    if cls.group == 'llm_grpo':
+                        values.append(gr.update(value=DEFAULT_SYSTEM))
+                    else:
+                        values.append(gr.update(value=TEMPLATE_MAPPING[model_meta.template].default_system))
 
         if has_record:
             return [gr.update(choices=cls.list_cache(model))] + values

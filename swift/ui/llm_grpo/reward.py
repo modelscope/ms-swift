@@ -106,6 +106,8 @@ class Reward(BaseUI):
                             has_record=False,
                             arg_cls=BaseArguments,
                             is_reward_model=False):
+        if models is None:
+            return gr.update()
         rm_type_str = ''
         for model in models:
             rm_type_str = ' '.join([
