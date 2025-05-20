@@ -2,6 +2,7 @@
 import asyncio
 import inspect
 import os
+from collections import defaultdict
 from contextlib import nullcontext
 from copy import deepcopy
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
@@ -437,12 +438,12 @@ class VllmEngine(InferEngine):
                 self._add_stop_words(generation_config, request_config, template.template_meta)
                 self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
             prog_bar = tqdm(total=len(batched_inputs), dynamic_ncols=True, disable=not use_tqdm)
-            outputs = {}
+            outputs = defaultdict(list)
             while self.engine.has_unfinished_requests():
                 step_outputs = self.engine.step()
                 for output in step_outputs:
                     if output.finished:
-                        outputs[output.request_id] = output
+                        outputs[output.request_id].append(output)
                         prog_bar.update()
             prog_bar.close()
             outputs = [outputs[request_id] for request_id in request_id_list]
