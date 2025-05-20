@@ -65,6 +65,7 @@ class Template(ProcessorMixin):
         agent_template: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
         response_prefix: Optional[str] = None,
+        data_flatten: bool = False,
         # only for train
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
@@ -119,6 +120,7 @@ class Template(ProcessorMixin):
         self.max_pixels = max_pixels
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
+        self.data_flatten = data_flatten
         agent_template = agent_template or template_meta.agent_template
         logger.info(f'agent_template: {agent_template}')
         self.agent_template = agent_templates[agent_template]()
@@ -1340,7 +1342,7 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
-        packing_mode = self.use_megatron or self._packing and 'position_ids' in batch[0]
+        packing_mode = self.use_megatron or self._packing or self.data_flatten and 'position_ids' in batch[0]
         res = {}
         if packing_mode:
             # only support llm
