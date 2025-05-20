@@ -46,6 +46,9 @@ class TrainArgumentsMixin:
     acc_strategy: Literal['token', 'seq'] = 'token'
     train_dataloader_shuffle: bool = True
     max_epochs: Optional[int] = None
+    aligner_lr: Optional[float] = None
+    vit_lr: Optional[float] = None
+    optimizer: Optional[str] = None
 
     # torchacc
     metric_warmup_step: Optional[float] = 0
@@ -92,6 +95,8 @@ class TrainArgumentsMixin:
                              'Please use DDP/DeepSpeed for multi-GPU training.')
 
         from swift.llm.argument.base_args.model_args import ModelArguments
+        if self.optimizer is None and (self.vit_lr is not None or self.aligner_lr is not None):
+            self.optimizer = 'default'
         if use_torchacc():
             self.dataloader_drop_last = True
         if self.gradient_accumulation_steps is None:
@@ -127,7 +132,6 @@ class TrainArgumentsMixin:
 class SwiftArgumentsMixin(TrainArgumentsMixin):
     # Value copied from TrainArguments
     train_type: Optional[str] = None
-    optimizer: Optional[str] = None
     local_repo_path: Optional[str] = None
     galore_config: Optional[GaLoreConfig] = None
 

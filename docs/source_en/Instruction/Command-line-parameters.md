@@ -136,6 +136,9 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - weight_decay: Weight decay coefficient, default value is 0.1.
 - adam_beta2: Default is 0.95.
 - 🔥learning_rate: Learning rate, defaults to 1e-5 for full parameters, and 1e-4 for LoRA and other tuners.
+- 🔥vit_lr: When training a multimodal large model, this parameter specifies the learning rate for the ViT. By default, it is set to None, which means it equals `learning_rate`.
+  - Usually used in conjunction with the `--freeze_vit` and `--freeze_aligner` parameters.
+- 🔥aligner_lr: When training a multimodal large model, this parameter specifies the learning rate for the aligner. By default, it is set to None, which means it equals `learning_rate`.
 - lr_scheduler_type: Type of lr_scheduler, defaults to 'cosine'.
 - lr_scheduler_kwargs: Other parameters for the lr_scheduler, defaults to None.
 - 🔥gradient_checkpointing_kwargs: Parameters for `torch.utils.checkpoint`. For example, set as `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Defaults to None.
