@@ -171,35 +171,36 @@ class IndexedDatasetBuilder:
         self.idx_list = [0]
         self.shard_offset = [0]
         self._thread = None
-        self._queue = Queue()
+        self._queue = Queue(maxsize=1000)
 
     def _write_worker(self):
         while True:
-            item = self._queue.get()
-            if item is None:
+            items = self._queue.get()
+            if items is None:
                 break
-            self.bin_file.write(item)
-            offset = self.bin_file.tell()
+            bin_buffer = []
+            for item in items:
+                item_buffer = pickle.dumps(item)
+                bin_buffer.append(item_buffer)
+                self.idx_list.append(self.idx_list[-1] + len(item_buffer))
+                self.length_list.append(
+                    max([len(item[k]) for k in item.keys() if k.endswith('input_ids') or k.endswith('labels')]))
+            self.bin_file.write(b''.join(bin_buffer))
+            offset = self.idx_list[-1] - self.shard_offset[-1]
             if offset >= self.CHUNK_SIZE:
                 self.bin_file.close()
                 self.bin_path = os.path.join(self.cache_dir, IndexedDataset.BIN_FNAME.format(self.n_shard))
                 self.shard_offset.append(self.shard_offset[-1] + offset)
                 self.n_shard += 1
+                if os.path.exists(self.bin_path):
+                    os.remove(self.bin_path)
                 self.bin_file = open(self.bin_path, 'ab')
 
     def add_items(self, items: List[Any]) -> None:
         if self._thread is None:
             self._thread = threading.Thread(target=self._write_worker, daemon=True)
             self._thread.start()
-        bin_buffer = []
-        for item in items:
-            item_buffer = pickle.dumps(item)
-            bin_buffer.append(item_buffer)
-            self.idx_list.append(self.idx_list[-1] + len(item_buffer))
-            self.length_list.append(
-                max([len(item[k]) for k in item.keys() if k.endswith('input_ids') or k.endswith('labels')]))
-        if bin_buffer:
-            self._queue.put(b''.join(bin_buffer))
+        self._queue.put(items)
 
     def finalize(self):
         if self._thread is not None:
@@ -294,7 +295,7 @@ class PackingDataset(BasePackingDataset, Dataset):
         cache_dir = IndexedDataset.get_cache_dir(self.dataset_name)
         logger.info(f'packing cache_dir: {cache_dir}')
         if not os.path.exists(os.path.join(cache_dir, IndexedDataset.IDX_FNAME)):
-            self._queue = mp.Queue()
+            self._queue = mp.Queue(maxsize=1000)
             self._terminated_workers = 0
             self.prog_bar = tqdm(
                 total=len(self.dataset), dynamic_ncols=True, desc=f'Packing (num_proc={self.num_proc})')
