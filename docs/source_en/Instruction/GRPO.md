@@ -77,10 +77,23 @@ Training and inference use separate resources; a dedicated inference server is l
 Deploy the vLLM server using the swift rollout command. Currently, only the vLLM backend is supported:
 
 ```bash
-CUDA_VISIBLE_DEVICES=2 \
+CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
   --tensor_parallel_size 2 \
+  --data_parallel_size 1
+
+CUDA_VISIBLE_DEVICES=0,1 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+  --data_parallel_size 1
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+  --data_parallel_size 2
 ```
 
 For more vLLM parameters, you can refer to [vLLM arguments](./Command-line-parameters.md#vllm-arguments)
@@ -94,8 +107,6 @@ Use the following parameters in training to connect to an external vLLM server:
 --vllm_server_port <Server Port> \
 --vllm_server_timeout <Timeout> \
 ```
-
-The complete script can be found [here](../../../examples/train/grpo/multi_node/Qwen2_5_32B_full.sh) .
 
 ## Reward Functions
 ### Custom Reward Functions
@@ -219,9 +230,9 @@ Arguments
 - sync_ref_model: Whether to synchronize the reference model. Default is False。
   - ref_model_mixup_alpha: The Parameter controls the mix between the current policy and the previous reference policy during updates. The reference policy is updated according to the equation: $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$. Default is 0.6.
   - ref_model_sync_steps：The parameter determines how frequently the current policy is synchronized with the reference policy. Default is 512.
-- move_model_batches: When moving model parameters to fast inference frameworks such as vLLM/LMDeploy, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
-- offload_optimizer: Whether to offload optimizer parameters during inference with vLLM/LMDeploy. The default is `False`.
-- offload_model: Whether to offload the model itself during inference with vLLM/LMDeploy. The default is `False`.
+- move_model_batches: When moving model parameters to fast inference frameworks such as vLLM, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
+- offload_optimizer: Whether to offload optimizer parameters during inference with vLLM. The default is `False`.
+- offload_model: Whether to offload the model itself during inference with vLLM. The default is `False`.
 - gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
 - multi_turn_func: The multi turn GRPO plugin name. Add your multi-turn implementation in plugin/multi_turn.py.
 - completion_length_limit_scope: Specifies the scope of the `max_completion_length` limit in multi-turn conversations.
@@ -233,11 +244,9 @@ Defaults to `per_round`. Currently only takes effect in colocate mode.
 - overlong_filter: Skip overlong truncated samples, which will not be included in loss calculation. Default is False.
 The hyperparameters for the reward function can be found in the [Built-in Reward Functions section](#built-in-reward-functions).
 
-You can use vLLM and LMDeploy as sampling backends to accelerate training.
+You can use vLLM as sampling backends to accelerate training.
 
-For multi-node training, refer to [here](../../../examples/train/grpo/multi_node/) .
-
-Note : In the internal integration mode, the GPU configurations and training parameters must be identical across different nodes.
+For training scripts, refer to [here](../../../examples/train/grpo/) .
 
 ## Customized Reward Models
 By default, a reward model refers to classification models that include a value head (commonly known as Output Reward Model (ORM)). These models score the outputs of other models, producing a scalar value that represents the quality of the response.

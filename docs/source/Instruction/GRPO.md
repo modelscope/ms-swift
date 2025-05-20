@@ -98,9 +98,6 @@ swift rollout \
 --vllm_server_timeout <超时时间> \
 ```
 
-完整脚本可以参考[这里](../../../examples/train/grpo/multi_node/Qwen2_5_32B_full.sh)
-
-
 ## 奖励函数
 ### 自定义奖励函数
 奖励函数接受模型生成的文本 completions 以及其他数据集中的列作为参数(kwargs)，并对模型生成的文本进行打分。以下是一个示例，展示了如何实现一个简单的长度奖励函数。该函数会在模型生成的文本长度超过 1024 时，给予 1.0 的奖励信号；否则，奖励信号为 0.0。
@@ -223,9 +220,9 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - sync_ref_model: 是否定期同步ref_model，默认为False。
 - ref_model_mixup_alpha: 控制在更新过程中model和先前ref_model之间的混合。更新公式为 $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$。默认为0.6。
 - ref_model_sync_steps：同步频率，默认为512。
-- move_model_batches: 在模型向vLLM/LMDeploy等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。
-- offload_optimizer: 是否在vLLM/LMDeploy推理时offload optimizer参数，默认为False。
-- offload_model: 是否在vLLM/LMDeploy推理时offload 模型本身，默认为False。
+- move_model_batches: 在模型向vLLM等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。
+- offload_optimizer: 是否在vLLM推理时offload optimizer参数，默认为False。
+- offload_model: 是否在vLLM推理时offload 模型本身，默认为False。
 - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False。
 - multi_turn_func: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现。
 - completion_length_limit_scope: 在多轮对话中，`max_completion_length` 的限制范围。
@@ -237,7 +234,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 奖励函数参数，见[内置奖励函数](#内置奖励函数)
 
-更多运行脚本参考[这里](../../../examples/train/grpo/)
+训练脚本参考[这里](../../../examples/train/grpo/)
 
 ## 自定义奖励模型
 默认情况下，奖励模型指的是包含数值头的分类模型（通常称为输出奖励模型（ORM））。这些模型对其他模型的输出进行评分，产生一个标量值，表示模型响应的质量。
