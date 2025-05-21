@@ -39,7 +39,7 @@ The training module in the dependent library Megatron-LM will be cloned and inst
 This section introduces a quick start example for fine-tuning the self-awareness of the Qwen2.5-7B-Instruct model using two 80GiB A100 GPUs. The following best practices can be completed within 10 minutes.
 
 First, we need to convert the weights from HF (Hugging Face) format to Megatron format:
-
+- If OOM occurs, simply remove `CUDA_VISIBLE_DEVICES=0`.
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -50,7 +50,7 @@ swift export \
 ```
 
 Next, use the following script to start training. The required GPU memory resources are 2*80GiB:
-
+- If using multi-machine training, it is recommended to share a disk and specify the same path for `--save`.
 ```shell
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
