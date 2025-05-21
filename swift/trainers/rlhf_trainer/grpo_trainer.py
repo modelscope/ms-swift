@@ -798,7 +798,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     self.model.train()
             if is_multimodal:
                 self.template.register_post_encode_hook(models)
-        inputs = self._postprocess_outputs(outputs, process_slice=process_slice)
+        outputs = self._postprocess_outputs(outputs, process_slice=process_slice)
 
         for i, output in enumerate(outputs):
             inputs[i]['messages'] = output[0]
