@@ -1,7 +1,5 @@
 # 4 * 50GiB
-pip uninstall transformers
-pip install git+https://github.com/huggingface/transformers
-pip install math_verify trl -U
+pip install transformers math_verify trl -U
 
 MAX_PIXELS=1003520 \
 NPROC_PER_NODE=4 \
