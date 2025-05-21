@@ -128,7 +128,7 @@ def get_param_startswith(model,
     return res
 
 
-def create_default_optimizer(args: 'TrainingArguments', model, dataset):
+def create_multimodal_optimizer(args: 'TrainingArguments', model, dataset):
     """ViT/Aligner/LLM use different learning rates."""
     from swift.llm import get_model_arch
     decay_parameters = set(Trainer.get_decay_parameter_names(None, model))
@@ -162,5 +162,5 @@ optimizers_map = {
     'galore': create_galore_optimizer,
     'lorap': create_lorap_optimizer,
     'muon': create_muon_optimizer,
-    'default': create_default_optimizer,
+    'multimodal': create_multimodal_optimizer,
 }
