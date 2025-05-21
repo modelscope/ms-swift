@@ -308,7 +308,7 @@ class VllmEngine(InferEngine):
             kwargs['seed'] = get_seed()
         res = SamplingParams(**kwargs)
 
-        if hasattr(res, 'output_kind'):
+        if hasattr(res, 'output_kind') and res.n > 1:
             # fix n > 1 in V1 Engine
             from vllm.sampling_params import RequestOutputKind
             res.output_kind = RequestOutputKind.FINAL_ONLY
