@@ -869,43 +869,51 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _get_process_slice(self, local_inputs: InputsType, is_equal_length: bool = True) -> slice:
         """
-        Determine the slice of inputs for the current process based on input length equality.
+        Calculate the slice of inputs that corresponds to the current process in a distributed setting.
+
+        This method determines the range of inputs assigned to the current process based on whether
+        the inputs are evenly distributed across processes or not.
 
         Args:
-            local_inputs: Inputs specific to the current process.
-            is_equal_length: Indicates if all processes have the same number of inputs.
+            local_inputs (InputsType): The inputs available to the current process. This can be any
+                                       iterable object representing the local data.
+            is_equal_length (bool, optional): A flag indicating whether all processes have the same
+                                              number of inputs. Defaults to True.
 
         Returns:
-            A slice object for the current process's inputs. If gathering is not needed,
-            it returns a slice that includes all of the local inputs.
-
-        Examples:
-            1. If is_equal_length is True:
-            Each process handles equal inputs. For 3 processes, each with 2 inputs:
-            - Process 0: slice(0, 2)
-            - Process 1: slice(2, 4)
-            - Process 2: slice(4, 6)
-
-            2. If is_equal_length is False:
-            For 3 processes with lengths [2, 3, 1]:
-            - Process 0: slice(0, 2)
-            - Process 1: slice(2, 5)
-            - Process 2: slice(5, 6)
+            slice: A slice object representing the range of indices corresponding to the inputs
+                   assigned to the current process.
         """
+
         if not self.need_gather:
             return slice(0, len(local_inputs))
         elif is_equal_length:
             # all processes have the same number of inputs
-            process_slice = slice(
-                self.accelerator.process_index * len(local_inputs),
-                (self.accelerator.process_index + 1) * len(local_inputs),
-            )
+            if self.vllm_tensor_parallel_size > 1:
+                local_rank_in_group = torch.distributed.get_rank(group=self.tp_group)
+                process_slice = slice(
+                    local_rank_in_group * len(local_inputs),
+                    (local_rank_in_group + 1) * len(local_inputs),
+                )
+            else:
+                process_slice = slice(
+                    self.accelerator.process_index * len(local_inputs),
+                    (self.accelerator.process_index + 1) * len(local_inputs),
+                )
         else:
-            # gather lengths of inputs from all processes
-            all_input_lengths = gather_object([len(local_inputs)])
-            start_idx = sum(all_input_lengths[:self.accelerator.process_index])
-            end_idx = start_idx + all_input_lengths[self.accelerator.process_index]
-            process_slice = slice(start_idx, end_idx)
+            if self.vllm_tensor_parallel_size > 1:
+                local_rank_in_group = torch.distributed.get_rank(group=self.tp_group)
+                local_input_length = len(local_inputs)
+                all_input_lengths = [None] * self.vllm_tensor_parallel_size
+                torch.distributed.all_gather_object(all_input_lengths, local_input_length, group=self.tp_group)
+                start_idx = sum(all_input_lengths[:local_rank_in_group])
+                end_idx = start_idx + all_input_lengths[local_rank_in_group]
+            else:
+                all_input_lengths = gather_object([len(local_inputs)])
+                start_idx = sum(all_input_lengths[:self.accelerator.process_index])
+                end_idx = start_idx + all_input_lengths[self.accelerator.process_index]
+                process_slice = slice(start_idx, end_idx)
+
         return process_slice
 
     def _generate_and_score_completions(self, inputs: InputsType) -> InputsType:
