@@ -13,11 +13,10 @@ from peft import PeftModel
 from torch.distributed.device_mesh import init_device_mesh
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
-from transformers.trainer_utils import seed_worker
 
 from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_model_arch, to_device
 from swift.tuners import SwiftModel
-from swift.utils import get_current_device, get_device, get_dist_setting
+from swift.utils import get_current_device, get_device, get_dist_setting, seed_worker
 from .base import SequenceParallel
 
 if version.parse(torch.__version__) >= version.parse('2.0.0'):
@@ -621,7 +620,8 @@ class Ulysses(SequenceParallel):
             if not isinstance(dataset, torch.utils.data.IterableDataset):
                 dataloader_params['sampler'] = sampler
                 dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
-                dataloader_params['worker_init_fn'] = seed_worker
+                dataloader_params['worker_init_fn'] = partial(
+                    seed_worker, num_workers=self.args.dataloader_num_workers, rank=self.args.process_index)
 
             return DataLoaderShard(dataset, device=trainer.accelerator.device, **dataloader_params)
         else:

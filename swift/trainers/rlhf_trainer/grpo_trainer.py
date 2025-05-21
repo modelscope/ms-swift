@@ -10,6 +10,7 @@ from concurrent.futures import Future
 from contextlib import contextmanager
 from copy import copy, deepcopy
 from dataclasses import asdict, dataclass, field
+from functools import partial
 from math import ceil
 from queue import Queue
 from types import MethodType
@@ -25,7 +26,6 @@ from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
 from transformers.trainer import Trainer
-from transformers.trainer_utils import seed_worker
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.extras.profiling import profiling_decorator
 from trl.models import prepare_deepspeed
@@ -35,7 +35,8 @@ from trl.trainer.grpo_trainer import nanmax, nanmin
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
-from swift.utils import JsonlWriter, gc_collect, get_device, get_logger, is_vllm_available, is_wandb_available
+from swift.utils import (JsonlWriter, gc_collect, get_device, get_logger, is_vllm_available, is_wandb_available,
+                         seed_worker)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import patch_lora_merge, patch_lora_unmerge, unwrap_model_for_generation
@@ -1333,7 +1334,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with seed_context(self):  # Set a different seed for resampling than the train_dataset.
                 dataloader_params['sampler'] = self._get_train_sampler()
             dataloader_params['drop_last'] = self.args.dataloader_drop_last
-            dataloader_params['worker_init_fn'] = seed_worker
+            dataloader_params['worker_init_fn'] = partial(
+                seed_worker, num_workers=self.args.dataloader_num_workers, rank=self.args.process_index)
             dataloader_params['prefetch_factor'] = self.args.dataloader_prefetch_factor
 
         return self.accelerator.prepare(DataLoader(resample_dataset, **dataloader_params))

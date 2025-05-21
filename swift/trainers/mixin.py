@@ -26,14 +26,14 @@ from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import TrainerCallback
-from transformers.trainer_utils import EvalPrediction, IntervalStrategy, seed_worker
+from transformers.trainer_utils import EvalPrediction, IntervalStrategy
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
 from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
 from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
-from swift.utils import get_logger, is_mp_ddp, use_torchacc
+from swift.utils import get_logger, is_mp_ddp, seed_worker, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
 from ..utils.torch_utils import get_device_count
 from .arguments import TrainingArguments
@@ -493,7 +493,8 @@ class DataLoaderMixin:
             if hasattr(train_dataset, '__len__'):
                 batch_sampler = BatchSamplerShard(
                     len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
-                dataloader_params['worker_init_fn'] = seed_worker
+                dataloader_params['worker_init_fn'] = partial(
+                    seed_worker, num_workers=self.args.dataloader_num_workers, rank=self.args.process_index)
                 dataloader_params['batch_sampler'] = batch_sampler
                 dataloader = DataLoaderShard(train_dataset, device=self.accelerator.device, **dataloader_params)
             else:
