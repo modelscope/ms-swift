@@ -283,15 +283,22 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _extend_tokens(input_ids: List[int], labels: Optional[List[int]], replace_idx_list: List[int],
-                       get_new_tokens: Callable[[int], List[int]]) -> Tuple[List[int], Optional[List[int]]]:
+                       get_new_tokens: Callable[[int], List[int]], max_audio_tokens = 2048) -> Tuple[List[int], Optional[List[int]]]:
         added_tokens_len = 0
         for i, idx in enumerate(replace_idx_list):
             new_tokens = get_new_tokens(i)
             token_len = len(new_tokens)
-            input_ids = input_ids[:idx + added_tokens_len] + new_tokens + input_ids[added_tokens_len + idx + 1:]
-            if labels:
-                labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx + 1:]
-            added_tokens_len += token_len - 1
+            if token_len < max_audio_tokens:
+                input_ids = input_ids[:idx + added_tokens_len] + new_tokens + input_ids[added_tokens_len + idx + 1:]
+                if labels:
+                    labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx + 1:]
+                added_tokens_len += token_len - 1
+            else:
+                logger.warning_once(f'Failed to encode audio: `{idx}`, audio length is too long.', hash_id='audio')
+                input_ids = input_ids[:idx + added_tokens_len] + new_tokens[:max_audio_tokens] + input_ids[added_tokens_len + idx + 1:]
+                if labels:
+                    labels = labels[:idx + added_tokens_len] + [-100] * max_audio_tokens + labels[added_tokens_len + idx + 1:]
+                added_tokens_len += max_audio_tokens - 1
         return input_ids, labels
 
     def compute_loss_context(self, model, inputs):
