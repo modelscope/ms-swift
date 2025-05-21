@@ -217,6 +217,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'model_type',
             'model_revision',
             'torch_dtype',
+            'attn_impl',
             'num_labels',
             'problem_type',
             # quant_args
@@ -227,23 +228,20 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             # template_args
             'template',
             'system',
-            'truncation_strategy'
+            'truncation_strategy',
             'agent_template',
             'norm_bbox',
             'response_prefix',
         ]
 
         data_keys = list(f.name for f in fields(DataArguments))
-        res = []
         for key, old_value in old_args.items():
             if old_value is None:
                 continue
             if key in force_load_keys or self.load_data_args and key in data_keys:
-                res.append((key, old_value))
                 setattr(self, key, old_value)
             value = getattr(self, key, None)
-            if key in load_keys and value is None or isinstance(value, (list, tuple)) and len(value) == 0:
-                res.append((key, old_value))
+            if key in load_keys and (value is None or isinstance(value, (list, tuple)) and len(value) == 0):
                 setattr(self, key, old_value)
         logger.info(f'Successfully loaded {args_path}.')
 
