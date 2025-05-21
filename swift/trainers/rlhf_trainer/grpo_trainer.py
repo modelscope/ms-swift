@@ -780,9 +780,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         mode = 'train' if self.model.training else 'eval'
         process_slice = self._get_process_slice(inputs)
-        inputs = self._preprocess_inputs(inputs)
+        processed_inputs = self._preprocess_inputs(inputs)
         if self.use_fast_infer:
-            inputs, outputs = self._fast_infer(inputs)
+            processed_inputs, outputs = self._fast_infer(processed_inputs)
+            if self.async_generate:
+                inputs = processed_inputs[process_slice]
         else:
             # pt infer
             is_multimodal = self.model.model_meta.is_multimodal
@@ -791,7 +793,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with unwrap_model_for_generation(
                     self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
             ), self.multi_turn_completion_length_context():
-                outputs = self._infer_single_or_multi_turn(inputs)
+                outputs = self._infer_single_or_multi_turn(processed_inputs)
                 if mode == 'train':
                     # In training mode, ensure the model is returned to train() mode after inference
                     # This is necessary as pt engines set the model to eval mode during generation
