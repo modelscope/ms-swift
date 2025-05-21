@@ -124,6 +124,6 @@ class XTuner(SequenceParallel):
             dataloader_params['sampler'] = SequenceParallelSampler(dataset, seed=1024)
             dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
             dataloader_params['worker_init_fn'] = partial(
-                seed_worker, num_workers=self.args.dataloader_num_workers, rank=self.args.process_index)
+                seed_worker, num_workers=trainer.args.dataloader_num_workers, rank=trainer.args.process_index)
 
         return DataLoader(dataset, **dataloader_params)

@@ -621,7 +621,7 @@ class Ulysses(SequenceParallel):
                 dataloader_params['sampler'] = sampler
                 dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
                 dataloader_params['worker_init_fn'] = partial(
-                    seed_worker, num_workers=self.args.dataloader_num_workers, rank=self.args.process_index)
+                    seed_worker, num_workers=trainer.args.dataloader_num_workers, rank=trainer.args.process_index)
 
             return DataLoaderShard(dataset, device=trainer.accelerator.device, **dataloader_params)
         else:
