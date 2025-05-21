@@ -586,6 +586,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             batch_size = (
                 self.args.per_device_train_batch_size
                 * self.args.gradient_accumulation_steps if mode == 'train' else self.args.per_device_eval_batch_size)
+            batch_size *= self.vllm_tensor_parallel_size
             # Since the TP (Tensor Parallelism) group gathers the inputs,
             # multiply the batch size by the TP parallel size.
             request_config.seed = batch_size * (self.accelerator.process_index // self.vllm_tensor_parallel_size)
