@@ -194,12 +194,10 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             self.load_args_from_ckpt()
 
     def load_args_from_ckpt(self) -> None:
-        from ..train_args import TrainArguments
         args_path = os.path.join(self.ckpt_dir, 'args.json')
         assert os.path.exists(args_path), f'args_path: {args_path}'
         with open(args_path, 'r', encoding='utf-8') as f:
             old_args = json.load(f)
-        # If the current value is None/[] and it is among the following keys,
         force_load_keys = [
             # base_args
             'tuner_backend',
