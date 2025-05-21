@@ -284,7 +284,10 @@ class LLMTrain(BaseUI):
         more_params = {}
         more_params_cmd = ''
         keys = cls.valid_element_keys()
-        train_stage = 'sft'
+        if cls.group == 'llm_grpo':
+            train_stage = 'rlhf'
+        else:
+            train_stage = 'sft'
         for key, value in zip(keys, args):
             compare_value = default_args.get(key)
             if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
@@ -335,6 +338,9 @@ class LLMTrain(BaseUI):
             else:
                 raise e
         params = ''
+
+        if cls.group == 'llm_grpo' and sys.platform != 'win32':
+            params += f'--rlhf_type {cls.quote}grpo{cls.quote} '
 
         sep = f'{cls.quote} {cls.quote}'
         for e in kwargs:

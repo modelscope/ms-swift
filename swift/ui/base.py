@@ -16,11 +16,17 @@ from gradio import Accordion, Audio, Button, Checkbox, Dropdown, File, Image, Sl
 from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.llm import TEMPLATE_MAPPING, BaseArguments, get_matched_model_meta
-from swift.utils.constants import DEFAULT_SYSTEM
 
 all_langs = ['zh', 'en']
 builder: Type['BaseUI'] = None
 base_builder: Type['BaseUI'] = None
+
+DEFAULT_GRPO_SYSTEM = (
+    'A conversation between User and Assistant. The user asks a question, and the Assistant solves it. '
+    'The assistant first thinks about the reasoning process in the mind and then provides the user '
+    'with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> '
+    '</answer> tags, respectively, i.e., <think> reasoning process here </think>'
+    '<answer> answer here </answer>')
 
 
 def update_data(fn):
@@ -378,7 +384,7 @@ class BaseUI:
                         values.append(gr.update(value=getattr(model_meta, key)))
                 else:
                     if cls.group == 'llm_grpo':
-                        values.append(gr.update(value=DEFAULT_SYSTEM))
+                        values.append(gr.update(value=DEFAULT_GRPO_SYSTEM))
                     else:
                         values.append(gr.update(value=TEMPLATE_MAPPING[model_meta.template].default_system))
 
