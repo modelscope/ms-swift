@@ -576,7 +576,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         request_config = copy(self.request_config)
         if self.vllm_mode == 'server':
             request_config.n = self.num_generations
-        elif self.vllm_tensor_parallel_size > 1:
+        else:
             # Set request_config.seed
             # 1. Ensure that the seed for vLLM Engines within each TP (Tensor Parallelism) group is the same;
             #   otherwise, the program may hang.
