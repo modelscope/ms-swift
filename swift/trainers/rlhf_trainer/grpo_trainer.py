@@ -619,11 +619,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._set_inputs_system(inputs)
         # infer first turn
         results = self._infer(inputs)
-
         if not self.multi_turn_func:
             # Single-turn: combine completions with messages and retain the finish reason.
             outputs = []
             for i, output in enumerate(results):
+                if output == [None]:
+                    continue
                 _choices = []
                 for choice in output.choices:
                     _input: Dict = deepcopy(inputs[i])
