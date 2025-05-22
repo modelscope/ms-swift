@@ -565,7 +565,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 results: List[ChatCompletionResponse] = self._engine_infer(
                     infer_requests=infer_inputs[::self.num_generations], request_config=request_config)
             else:
-                results = [None] * len(infer_inputs)
+                results = []
         else:
             results: List[ChatCompletionResponse] = self._engine_infer(
                 infer_requests=inputs, request_config=request_config)
@@ -850,13 +850,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
 
         # If asynchronous generation is enabled, gather outputs from all processes.
-        if self.async_generate:
+        if self.vllm_mode == 'server':
             all_outputs = gather_object(outputs)
-
-        # If in server mode, broadcast the outputs from the main process to all processes.
-        elif self.vllm_mode == 'server':
-            all_outputs = broadcast_object_list(outputs, from_process=0)
-
         else:
             # In colocated environments with tensor parallelism (TP > 1),
             # the returned outputs are already aggregated results from the processes.
