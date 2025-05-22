@@ -216,8 +216,6 @@ class GRPOArgumentsMixin:
     # dataset
     dataset_shuffle: Optional[bool] = True
 
-    use_liger_loss: bool = False
-
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
