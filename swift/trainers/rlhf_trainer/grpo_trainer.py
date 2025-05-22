@@ -38,7 +38,7 @@ from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
 from swift.utils import JsonlWriter, gc_collect, get_device, get_logger, is_vllm_available, is_wandb_available
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import patch_lora_merge, patch_lora_unmerge, unwrap_model_for_generation
+from .utils import patch_lora_merge, patch_lora_unmerge, shuffle_tensor_dict, unwrap_model_for_generation
 from .vllm_client import VLLMClient
 
 del HFGRPOTrainer.__init__
@@ -304,7 +304,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self._step % generate_every == 0 or self._buffered_inputs is None:
                 generation_batch = self._generate_and_score_completions(generation_batch)
                 # TODO
-                from trl.trainer.grpo_trainer import split_tensor_dict, shuffle_tensor_dict
+                from trl.trainer.grpo_trainer import split_tensor_dict
                 generation_batch = shuffle_tensor_dict(generation_batch)
                 self._buffered_inputs = split_tensor_dict(generation_batch, self.args.steps_per_generation)
 
@@ -1080,8 +1080,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # old_per_token_logps == per_token_logps, so we can skip it's computation
         # (see _generate_and_score_completions) and use per_token_logps.detach() instead.
         old_per_token_logps = (
-            per_token_logps.detach() if inputs["old_per_token_logps"] is None else inputs["old_per_token_logps"]
-        )
+            per_token_logps.detach() if inputs['old_per_token_logps'] is None else inputs['old_per_token_logps'])
 
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
