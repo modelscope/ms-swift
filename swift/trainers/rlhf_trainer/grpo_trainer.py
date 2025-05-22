@@ -623,7 +623,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Single-turn: combine completions with messages and retain the finish reason.
             outputs = []
             for i, output in enumerate(results):
-                if output == [None]:
+                if not output:
                     continue
                 _choices = []
                 for choice in output.choices:
