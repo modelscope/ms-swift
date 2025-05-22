@@ -33,9 +33,7 @@ from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import nanmax, nanmin
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
-from swift.llm.infer.protocol import ChatCompletionResponse
 from swift.llm.template.template_inputs import StdTemplateInputs
-from swift.llm.utils import Messages
 from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
 from swift.utils import JsonlWriter, gc_collect, get_device, get_logger, is_vllm_available, is_wandb_available
 from ..mixin import SwiftMixin
@@ -52,7 +50,7 @@ if is_wandb_available():
 
 InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
 # tuple: (messages, finish_reason)
-OutputsType = List[Union[Messages, Tuple[Messages, str]]]
+OutputsType = List[Tuple[List[Dict], str]]
 
 
 class GRPOCallback(TrainerCallback):
@@ -305,9 +303,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         yield x
 
             self.resample_iterator = cyclic_iter(self.get_resample_dataloader())
-
-        self.need_gather = self.use_vllm and (self.vllm_mode == 'server' or self.vllm_tensor_parallel_size > 1)
-
         # flag indicating whether the evaluation has started
         self.eval_flag = False
 
@@ -526,57 +521,64 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         while self._queue.empty():
             time.sleep(0.01)
 
-    def _infer(self, inputs: InputsType) -> List[ChatCompletionResponse]:
-        """
-        Generate inference results based on the provided inputs.
-
-        Args:
-            inputs: A list of input examples to infer from, typically containing
-                    conversation messages, images, audio, or other media.
-
-        Returns:
-            A list of inference results
-
-        Notes:
-            In this method, the inputs may either be gathered (if running in server
-            mode or when using tensor parallel with more than one process) or they
-            may be processed directly as local inputs.
-
-            - When in `server` mode, if the current process is the main process,
-            the inputs will be gathered and sent to the inference engine.
-            - When using tensor parallelism (e.g., `self.vllm_tensor_parallel_size > 1`),
-            inputs will be gathered from all processes in the tensor parallel group.
-            - In other cases, when `self.vllm_mode` is not 'server' and tensor
-            parallel size is 1, the local inputs will be used directly for inference.
-        """
-
-        request_config = self._get_request_config()
+    def _infer(self,
+               inputs: Optional[InputsType],
+               request_config: RequestConfig,
+               is_global_inputs: bool = False) -> OutputsType:
+        from swift.llm.infer.protocol import ChatCompletionResponse
+        request_config = copy(request_config)
         # keys from InferRequest
+        per_device_size = len(inputs)
+        if is_global_inputs:
+            per_device_size //= self.accelerator.num_processes
         infer_inputs = [{
             k: v
             for k, v in inp.items() if k in ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
         } for inp in inputs] if inputs else []
-
-        if not any(inputs):
-            return []
-
         if self.vllm_mode == 'server':
+            # for server mode, we gather all the inputs and send to remote vllm server in main process
+            if is_global_inputs:
+                all_inputs = infer_inputs
+                all_input_lengths = [per_device_size] + [0] * (self.accelerator.num_processes - 1)
+            else:
+                all_inputs = gather_object(infer_inputs)
+                all_input_lengths = gather_object([len(infer_inputs)])
+
+            if not any(inputs for inputs in all_inputs):
+                return []
+
             if self.accelerator.is_main_process:
                 results: List[ChatCompletionResponse] = self._engine_infer(
-                    infer_requests=infer_inputs, request_config=request_config)
+                    infer_requests=all_inputs, request_config=request_config)
             else:
-                results = []
+                results = [None] * len(all_inputs)
+            # Broadcast the results from the main process to all processes,
+            # ensuring each process receives its corresponding slice.
+            if not is_global_inputs:
+                results = broadcast_object_list(results, from_process=0)
+                start_idx = sum(all_input_lengths[:self.accelerator.process_index])
+                end_idx = start_idx + all_input_lengths[self.accelerator.process_index]
+                results = results[start_idx:end_idx]
+            else:
+                results = results if self.accelerator.is_main_process else []
         else:
-            results: List[ChatCompletionResponse] = self._engine_infer(
-                infer_requests=inputs, request_config=request_config)
+            # pt / vllm
+            if self.vllm_tensor_parallel_size > 1:
+                # Gather prompts from all ranks in the TP group and flatten.
+                # Each rank starts with its own prompts; after gathering, all ranks see the full group set.
+                # Note: The input sizes may differ across ranks (e.g., in multi-turn scenarios,
+                # the amount of data each rank continues to process may vary).
+                local_rank_in_group = torch.distributed.get_rank(group=self.tp_group)
+                local_input_length = len(inputs)
+                all_input_lengths = [None] * self.vllm_tensor_parallel_size
+                torch.distributed.all_gather_object(all_input_lengths, local_input_length, group=self.tp_group)
+                start_idx = sum(all_input_lengths[:local_rank_in_group])
+                end_idx = start_idx + all_input_lengths[local_rank_in_group]
 
-        return results
-
-    def _get_request_config(self) -> RequestConfig:
-        request_config = copy(self.request_config)
-        if self.vllm_mode == 'server':
-            request_config.seed = self.args.seed
-        else:
+                # orig_size = len(inputs)/
+                gathered_inputs = [None for _ in range(self.vllm_tensor_parallel_size)]
+                torch.distributed.all_gather_object(gathered_inputs, inputs, group=self.tp_group)
+                inputs = [p for sublist in gathered_inputs for p in sublist]
             # Set request_config.seed
             # 1. Ensure that the seed for vLLM Engines within each TP (Tensor Parallelism) group is the same;
             #   otherwise, the program may hang.
@@ -586,14 +588,22 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             batch_size = (
                 self.args.per_device_train_batch_size
                 * self.args.gradient_accumulation_steps if mode == 'train' else self.args.per_device_eval_batch_size)
-            batch_size *= self.vllm_tensor_parallel_size
             # Since the TP (Tensor Parallelism) group gathers the inputs,
             # multiply the batch size by the TP parallel size.
+            batch_size *= self.vllm_tensor_parallel_size
             request_config.seed = batch_size * (self.accelerator.process_index // self.vllm_tensor_parallel_size)
 
-        return request_config
+            results: List[ChatCompletionResponse] = self._engine_infer(
+                infer_requests=inputs, request_config=request_config)
 
-    def _set_inputs_system(self, inputs: InputsType):
+            if self.vllm_tensor_parallel_size > 1:
+                # Slice completions for this rank within its TP group.
+                # Each rank generates all outputs — we keep only our share.
+                results = results[start_idx:end_idx]
+
+        return results
+
+    def _set_inputs_system(self, inputs: InputsType) -> InputsType:
         if all(_input['messages'][0]['role'] == 'system' for _input in inputs):
             return
         for _input in inputs:
@@ -601,7 +611,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if messages[0]['role'] != 'system':
                 messages.insert(0, {'role': 'system', 'content': self.template.template_meta.default_system})
 
-    def _infer_single_or_multi_turn(self, inputs: InputsType) -> OutputsType:
+    def _infer_single_or_multi_turn(self,
+                                    inputs: InputsType,
+                                    request_config: RequestConfig,
+                                    is_global_inputs: bool = False) -> OutputsType:
         """Perform multi-turn or single-turn inference
 
         Args:
@@ -618,13 +631,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         self._set_inputs_system(inputs)
         # infer first turn
-        results = self._infer(inputs)
+        results = self._infer(inputs, request_config, is_global_inputs)
+
         if not self.multi_turn_func:
             # Single-turn: combine completions with messages and retain the finish reason.
             outputs = []
             for i, output in enumerate(results):
-                if not output:
-                    continue
                 _choices = []
                 for choice in output.choices:
                     _input: Dict = deepcopy(inputs[i])
@@ -690,10 +702,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             r['messages'].append({'role': 'assistant', 'content': '<None>'})
                         pending_inputs.append(r)
 
-                current_infer_inputs = self._preprocess_inputs(pending_inputs)
-                process_slice = self._get_process_slice(current_infer_inputs)
-                current_results = self._infer(current_infer_inputs)
-                current_results = self._postprocess_outputs(current_results, process_slice)
+                current_infer_inputs = pending_inputs if has_local_data else []
+                current_results = self._infer(current_infer_inputs, request_config)
 
                 last_turn_results = current_results
                 next_turn_inputs = pending_inputs
@@ -708,7 +718,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         def infer_task():
             try:
                 with self.multi_turn_completion_length_context():
-                    return self._infer_single_or_multi_turn(all_inputs)
+                    return self._infer_single_or_multi_turn(all_inputs, self.request_config, is_global_inputs=True)
             except Exception as e:
                 logger.error('Inference task failed: %s', str(e))
                 raise
@@ -728,8 +738,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _prefetch(self, dataloader: DataLoader):
         inputs = next(iter(dataloader))
-        all_inputs = self._preprocess_inputs(inputs)
-        outputs = self._infer_single_or_multi_turn(all_inputs)
+        all_inputs = gather_object(inputs)
+        outputs = self._infer_single_or_multi_turn(all_inputs, self.request_config, is_global_inputs=True)
         self._queue.put(DataCache(all_inputs, outputs))
 
     def _fast_infer(self, inputs: InputsType) -> Tuple[InputsType, OutputsType]:
@@ -750,14 +760,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if self.async_generate:
             # send this step data to server
-            self.async_infer(inputs)
+            # we gather inputs outside the thread for prevent potential gather deadlock
+            all_inputs = gather_object(inputs)
+            self.async_infer(all_inputs)
             # cached data from last step
             data_cache = self._queue.get()
-            inputs = data_cache.inputs
-            outputs = data_cache.outputs
+            all_inputs = data_cache.inputs
+            all_outputs = gather_object(data_cache.outputs)
+            process_slice = slice(
+                self.accelerator.process_index * len(inputs),
+                (self.accelerator.process_index + 1) * len(inputs),
+            )
+            inputs = all_inputs[process_slice]
+            outputs = all_outputs[process_slice]
+
         else:
             with self.multi_turn_completion_length_context():
-                outputs = self._infer_single_or_multi_turn(inputs)
+                outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
 
         if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
@@ -780,12 +799,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             and truncation flag set in 'is_truncated' field.
         """
         mode = 'train' if self.model.training else 'eval'
-        process_slice = self._get_process_slice(inputs)
-        processed_inputs = self._preprocess_inputs(inputs)
         if self.use_fast_infer:
-            processed_inputs, outputs = self._fast_infer(processed_inputs)
-            if self.async_generate:
-                inputs = processed_inputs[process_slice]
+            inputs, outputs = self._fast_infer(inputs)
         else:
             # pt infer
             is_multimodal = self.model.model_meta.is_multimodal
@@ -794,123 +809,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with unwrap_model_for_generation(
                     self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
             ), self.multi_turn_completion_length_context():
-                outputs = self._infer_single_or_multi_turn(processed_inputs)
+                outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
                 if mode == 'train':
                     # In training mode, ensure the model is returned to train() mode after inference
                     # This is necessary as pt engines set the model to eval mode during generation
                     self.model.train()
             if is_multimodal:
                 self.template.register_post_encode_hook(models)
-        outputs = self._postprocess_outputs(outputs, process_slice=process_slice)
 
         for i, output in enumerate(outputs):
             inputs[i]['messages'] = output[0]
             inputs[i]['is_truncated'] = output[1] == 'length'
 
         return inputs
-
-    def _preprocess_inputs(self, local_inputs: InputsType) -> InputsType:
-        """
-        Prepare the input data for inference based on the current mode and tensor parallel size.
-
-        Args:
-            local_inputs: Inputs specific to the local process, typically a list of prompts.
-
-        Returns:
-            A collection of inputs ready for inference, which may include gathered inputs
-            from multiple processes or ranks depending on the configuration.
-        """
-        if self.vllm_mode == 'server':
-            # for server mode, we gather all the inputs and send to remote vllm server in main process
-            return gather_object(local_inputs)
-
-        elif self.vllm_tensor_parallel_size > 1:
-            # gather prompts from all ranks in the TP group and flatten.
-            # each rank starts with its own prompts; after gathering, all ranks see the full group set.
-            gathered_inputs = [None for _ in range(self.vllm_tensor_parallel_size)]
-            torch.distributed.all_gather_object(gathered_inputs, local_inputs, group=self.tp_group)
-            return [p for sublist in gathered_inputs for p in sublist]
-
-        else:
-            # for PT or TP = 1 in colocate mode, return local inputs
-            return local_inputs
-
-    def _postprocess_outputs(self, outputs: OutputsType, process_slice: slice) -> OutputsType:
-        """
-        Post-process the generated outputs based on the current mode of operation.
-
-        Args:
-            outputs: The list of outputs received from the inference processes.
-            process_slice: A slice object that indicates the range of outputs
-                        to be processed for the current process.
-
-        Returns:
-            A slice of outputs relevant to the current process after any necessary
-            gathering or broadcasting operations have been performed.
-        """
-
-        # If asynchronous generation is enabled, gather outputs from all processes.
-        if self.vllm_mode == 'server':
-            all_outputs = gather_object(outputs)
-        else:
-            # In colocated environments with tensor parallelism (TP > 1),
-            # the returned outputs are already aggregated results from the processes.
-            # In other cases, we only need to retrieve the local outputs.
-            all_outputs = outputs
-
-        # Slice the outputs based on the current process's range.
-        outputs = all_outputs[process_slice]
-
-        return outputs
-
-    def _get_process_slice(self, local_inputs: InputsType, is_equal_length: bool = True) -> slice:
-        """
-        Calculate the slice of inputs that corresponds to the current process in a distributed setting.
-
-        This method determines the range of inputs assigned to the current process based on whether
-        the inputs are evenly distributed across processes or not.
-
-        Args:
-            local_inputs (InputsType): The inputs available to the current process. This can be any
-                                       iterable object representing the local data.
-            is_equal_length (bool, optional): A flag indicating whether all processes have the same
-                                              number of inputs. Defaults to True.
-
-        Returns:
-            slice: A slice object representing the range of indices corresponding to the inputs
-                   assigned to the current process.
-        """
-
-        if not self.need_gather:
-            return slice(0, len(local_inputs))
-        elif is_equal_length:
-            # all processes have the same number of inputs
-            if self.vllm_tensor_parallel_size > 1:
-                local_rank_in_group = torch.distributed.get_rank(group=self.tp_group)
-                process_slice = slice(
-                    local_rank_in_group * len(local_inputs),
-                    (local_rank_in_group + 1) * len(local_inputs),
-                )
-            else:
-                process_slice = slice(
-                    self.accelerator.process_index * len(local_inputs),
-                    (self.accelerator.process_index + 1) * len(local_inputs),
-                )
-        else:
-            if self.vllm_tensor_parallel_size > 1:
-                local_rank_in_group = torch.distributed.get_rank(group=self.tp_group)
-                local_input_length = len(local_inputs)
-                all_input_lengths = [None] * self.vllm_tensor_parallel_size
-                torch.distributed.all_gather_object(all_input_lengths, local_input_length, group=self.tp_group)
-                start_idx = sum(all_input_lengths[:local_rank_in_group])
-                end_idx = start_idx + all_input_lengths[local_rank_in_group]
-            else:
-                all_input_lengths = gather_object([len(local_inputs)])
-                start_idx = sum(all_input_lengths[:self.accelerator.process_index])
-                end_idx = start_idx + all_input_lengths[self.accelerator.process_index]
-                process_slice = slice(start_idx, end_idx)
-
-        return process_slice
 
     def _generate_and_score_completions(self, inputs: InputsType) -> InputsType:
 
