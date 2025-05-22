@@ -18,7 +18,7 @@ from .utils import ChatmlTemplateMeta
 
 class InternvlTemplate(Template):
     skip_prompt = False
-    num_image_token = 256
+    num_image_token = None
     placeholder_tokens = ['<IMG_CONTEXT>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -31,15 +31,18 @@ class InternvlTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
+        self.input_size = get_env_args('input_size', int, 448)
+        if self.num_image_token is None:
+            self.num_image_token = int((self.input_size // 14) ** 2 * (0.5 ** 2))
         input_ids = encoded['input_ids']
         idx_list = findall(input_ids, -100)
         pixel_values = None
         images = inputs.images
         if images:
             labels = encoded.get('labels')
-            input_size = get_env_args('input_size', int, 448)
+
             max_num = get_env_args('max_num', int, 12)
-            pixel_values_images = [transform_image(image, input_size, max_num) for image in images]
+            pixel_values_images = [transform_image(image, self.input_size, max_num) for image in images]
             pixel_values = torch.cat(pixel_values_images, dim=0).to(self.model_info.torch_dtype)
             image_bs = pixel_values.shape[0]
 
@@ -97,6 +100,7 @@ register_template(
 
 class Internvl2Template(InternvlTemplate):
     video_segments = 8
+    num_image_token = None
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -116,18 +120,20 @@ class Internvl2Template(InternvlTemplate):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super(InternvlTemplate, self)._encode(inputs)
+        self.input_size = get_env_args('input_size', int, 448)
+        if self.num_image_token is None:
+            self.num_image_token = int((self.input_size // 14) ** 2 * (0.5 ** 2))
         input_ids = encoded['input_ids']
         idx_list = findall(input_ids, -100)
         labels = encoded['labels']
         images = inputs.images
         if images:
             has_video = bool(inputs.videos)
-            input_size = get_env_args('input_size', int, 448)
             max_num = get_env_args('max_num', int, 12)
             video_max_num = get_env_args('video_max_num', int, 1)
             if has_video:
                 max_num = video_max_num
-            pixel_values = [transform_image(image, input_size, max_num) for image in images]
+            pixel_values = [transform_image(image, self.input_size, max_num) for image in images]
             num_patches = [pv.shape[0] for pv in pixel_values]
             pixel_values = torch.cat(pixel_values).to(self.model_info.torch_dtype)
         else:
