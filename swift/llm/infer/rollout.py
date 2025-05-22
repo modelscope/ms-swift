@@ -45,12 +45,8 @@ def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
     os.environ['VLLM_DP_SIZE'] = str(args.data_parallel_size)
     os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
     kwargs = {}
-    # kwargs = {
-    #     'device': get_device(str(data_parallel_rank)),
-    #     'engine_kwargs': {
-    #         'seed': data_parallel_rank
-    #     },
-    # }
+    if args.tensor_parallel_size == 1 and args.data_parallel_size > 1:
+        kwargs['device'] = get_device(str(data_parallel_rank))
     engine = SwiftRolloutDeploy.get_infer_engine(args, **kwargs)
 
     # Send ready signal to parent process
