@@ -51,6 +51,7 @@ class GRPOVllmEngine(VllmEngine):
         enable_prefix_caching: bool = False,
         enable_sleep_mode: bool = False,
         distributed_executor_backend: Optional[str] = None,
+        quantization: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '0')
@@ -83,6 +84,7 @@ class GRPOVllmEngine(VllmEngine):
             device=device,
             distributed_executor_backend=distributed_executor_backend,
             enable_sleep_mode=enable_sleep_mode,
+            quantization=quantization,
             engine_kwargs=engine_kwargs,
         )
         self._prepare_engine()
