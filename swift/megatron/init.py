@@ -17,7 +17,7 @@ def _patch_transformer_engine():
         try:
             transformer_engine.pytorch.attention.apply_rotary_pos_emb = (
                 transformer_engine.pytorch.attention.rope.apply_rotary_pos_emb)
-            logger.info(f'Patch apply_rotary_pos_emb successfully applied.')
+            logger.info('Patch apply_rotary_pos_emb successfully applied.')
         except (ImportError, AttributeError):
             pass
     try:
@@ -25,7 +25,7 @@ def _patch_transformer_engine():
     except ImportError:
         try:
             transformer_engine.pytorch.attention._SplitAlongDim = (transformer_engine.pytorch.utils.SplitAlongDim)
-            logger.info(f'Patch _SplitAlongDim successfully applied.')
+            logger.info('Patch _SplitAlongDim successfully applied.')
         except (ImportError, AttributeError):
             pass
 

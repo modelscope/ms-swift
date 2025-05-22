@@ -52,8 +52,9 @@ class RLHFTrainerMixin:
 
     def get_train_dataloader(self):
         train_dataloader = super().get_train_dataloader()
-        base_dataloader = train_dataloader if isinstance(train_dataloader,
-                                                         DataLoader) else train_dataloader.base_dataloader
+        base_dataloader = train_dataloader.base_dataloader if hasattr(
+            train_dataloader, 'base_dataloader') and isinstance(train_dataloader.base_dataloader,
+                                                                DataLoader) else train_dataloader
         if base_dataloader.worker_init_fn is not None and not isinstance(
                 base_dataloader.worker_init_fn, partial) and 'num_workers' in inspect.signature(
                     base_dataloader.worker_init_fn).parameters:
