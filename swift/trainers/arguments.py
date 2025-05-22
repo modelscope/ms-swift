@@ -216,6 +216,9 @@ class GRPOArgumentsMixin:
     # dataset
     dataset_shuffle: Optional[bool] = True
 
+    generation_batch_size: Optional[int] = None
+    steps_per_generation: Optional[int] = None
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
