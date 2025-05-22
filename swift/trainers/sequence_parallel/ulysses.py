@@ -455,7 +455,7 @@ class Ulysses(SequenceParallel):
     def prepare_model(self, model, tokenizer, split_in_forward):
         self.split_in_forward = split_in_forward
 
-        def forward(_self, **kwargs):
+        def pre_forward_split_hook(_self, args, kwargs):
             # Split embedding here for multi-modal
             inputs_embeds = kwargs['inputs_embeds']
             position_ids = kwargs['position_ids']
@@ -472,7 +472,7 @@ class Ulysses(SequenceParallel):
             kwargs['inputs_embeds'] = inputs_embeds
             kwargs['position_ids'] = position_ids
             kwargs['attention_mask'] = attention_mask
-            return _self.forward_origin(**kwargs)
+            return args, kwargs
 
         if isinstance(model, (SwiftModel, PeftModel)):
             model = model.model
@@ -489,9 +489,7 @@ class Ulysses(SequenceParallel):
         base_model = llm_model.model
         self.causal_mask_func = base_model._update_causal_mask
         if self.split_in_forward:
-            # for multi modal models
-            base_model.forward_origin = base_model.forward
-            base_model.forward = MethodType(forward, base_model)
+            base_model.register_forward_pre_hook(pre_forward_split_hook, with_kwargs=True)
 
         self.model_dtype = next(model.parameters()).dtype
 
@@ -549,7 +547,8 @@ class Ulysses(SequenceParallel):
         if input_ids is not None and split_inputs:
             input_ids = self._pad_sp(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
         if input_embeds is not None:
-            pad_emb = embed_tokens(torch.tensor(tokenizer.pad_token_id).to(embed_tokens.weight.device)).unsqueeze(0)
+            pad_emb = torch.zeros(
+                (1, embed_tokens.weight.shape[-1])).to(embed_tokens.weight.device).to(embed_tokens.weight.dtype)
             input_embeds = self._pad_sp(input_embeds, padding_value=pad_emb, dim=1)
         if position_ids is not None and split_inputs:
             position_ids = self._pad_sp(position_ids, padding_value=0, dim=-1)
