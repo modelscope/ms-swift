@@ -65,6 +65,7 @@ class Template(ProcessorMixin):
         agent_template: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
         response_prefix: Optional[str] = None,
+        padding_free: bool = False,
         # only for train
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
@@ -119,6 +120,7 @@ class Template(ProcessorMixin):
         self.max_pixels = max_pixels
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
+        self.padding_free = padding_free
         agent_template = agent_template or template_meta.agent_template
         logger.info(f'agent_template: {agent_template}')
         self.agent_template = agent_templates[agent_template]()
@@ -1036,12 +1038,12 @@ class Template(ProcessorMixin):
                     loss_scale = loss_scale[-self.max_length:]
             elif self.truncation_strategy == 'raise':
                 # input_ids might be a tensor.
+                lengths = [0]
                 if input_ids is not None:
-                    length = len(input_ids)
-                elif labels is not None:
-                    length = len(labels)
-                else:
-                    length = 0
+                    lengths.append(len(input_ids))
+                if labels is not None:
+                    lengths.append(len(labels))
+                length = max(lengths)
                 if length > self.max_length:
                     raise MaxLengthError(f'Current length of row({length}) is larger'
                                          f' than the max_length({self.max_length}).')
@@ -1330,6 +1332,10 @@ class Template(ProcessorMixin):
             res['labels'] = labels
         return res
 
+    def _data_flatten(self, batch: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        new_batch = [(row, len(row['input_ids'])) for row in batch]
+        return [self.packing_row(new_batch)]
+
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
@@ -1340,7 +1346,9 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
-        packing_mode = self.use_megatron or self._packing and 'position_ids' in batch[0]
+        packing_mode = self.use_megatron or self.padding_free or self._packing and 'position_ids' in batch[0]
+        if self.padding_free:
+            batch = self._data_flatten(batch)
         res = {}
         if packing_mode:
             # only support llm
