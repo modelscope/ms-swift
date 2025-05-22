@@ -563,7 +563,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.vllm_mode == 'server':
             if self.accelerator.is_main_process:
                 results: List[ChatCompletionResponse] = self._engine_infer(
-                    infer_requests=infer_inputs[::self.num_generations], request_config=request_config)
+                    infer_requests=infer_inputs, request_config=request_config)
             else:
                 results = []
         else:

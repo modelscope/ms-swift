@@ -245,7 +245,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         chunked_infer_requests = chunk_list(infer_requests, self.args.data_parallel_size)
 
         # Send the prompts to each worker
-        for i, connection, requests in enumerate(zip(self.connections, chunked_infer_requests)):
+        for i, (connection, requests) in enumerate(zip(self.connections, chunked_infer_requests)):
             # When the number of prompts is less than data_parallel_size, some workers will receive empty prompts.
             # However, vLLM requires that we always send at least one prompt. So we send a placeholder prompt to comply
             # with vLLM's requirement, and we later ignore the result.
