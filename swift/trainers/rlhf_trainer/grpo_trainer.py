@@ -29,10 +29,12 @@ from transformers.trainer_utils import seed_worker
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.extras.profiling import profiling_decorator
 from trl.models import prepare_deepspeed
+from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import nanmax, nanmin
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
-from swift.plugin import multi_turns, orms, rm_plugins
+from swift.llm.template.template_inputs import StdTemplateInputs
+from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
 from swift.utils import JsonlWriter, gc_collect, get_device, get_logger, is_vllm_available, is_wandb_available
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
@@ -299,6 +301,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Buffer the batch to reuse generated outputs across multiple updates. For more details, see
         # `_get_train_sampler` and `_prepare_inputs`.
         self._buffered_inputs = None
+
+        if args.sync_ref_model:
+            self.add_callback(SyncRefModelCallback(ref_model=self.ref_model, accelerator=self.accelerator))
+
         if self.async_generate:
             self.add_callback(GRPOCallback(self))
 
@@ -458,7 +464,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         template.max_length = None
         loss_scale = template.loss_scale
         if self.multi_turn_func:
-            template.loss_scale = 'default'
+            template.loss_scale = loss_scale_map['default']()
         try:
             yield
         finally:
@@ -529,18 +535,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         while self._queue.empty():
             time.sleep(0.01)
 
-    @staticmethod
-    def reorder_outputs(outputs, distributed_idx):
-        index_to_output = {}
-        current_position = 0
-        for output_idx in distributed_idx:
-            for idx in output_idx:
-                index_to_output[idx] = outputs[current_position]
-                current_position += 1
-
-        return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
-
-    def _infer(self, inputs: InputsType, request_config: RequestConfig, is_global_inputs: bool = False) -> OutputsType:
+    def _infer(self,
+               inputs: Optional[InputsType],
+               request_config: RequestConfig,
+               is_global_inputs: bool = False) -> OutputsType:
         from swift.llm.infer.protocol import ChatCompletionResponse
         request_config = copy(request_config)
         # keys from InferRequest
@@ -550,13 +548,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         infer_inputs = [{
             k: v
             for k, v in inp.items() if k in ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
-        } for inp in inputs]
+        } for inp in inputs] if inputs else []
         if self.vllm_mode == 'server':
             # for server mode, we gather all the inputs and send to remote vllm server in main process
             if is_global_inputs:
                 all_inputs = infer_inputs
+                all_input_lengths = [per_device_size] + [0] * (self.accelerator.num_processes - 1)
             else:
                 all_inputs = gather_object(infer_inputs)
+                all_input_lengths = gather_object([len(infer_inputs)])
+
+            if not any(inputs for inputs in all_inputs):
+                return []
+
             if self.accelerator.is_main_process:
                 results: List[ChatCompletionResponse] = self._engine_infer(
                     infer_requests=all_inputs, request_config=request_config)
@@ -564,12 +568,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 results = [None] * len(all_inputs)
             # Broadcast the results from the main process to all processes,
             # ensuring each process receives its corresponding slice.
-            results = broadcast_object_list(results, from_process=0)
-            process_slice = slice(
-                self.accelerator.process_index * per_device_size,
-                (self.accelerator.process_index + 1) * per_device_size,
-            )
-            results = results[process_slice]
+            if not is_global_inputs:
+                results = broadcast_object_list(results, from_process=0)
+                start_idx = sum(all_input_lengths[:self.accelerator.process_index])
+                end_idx = start_idx + all_input_lengths[self.accelerator.process_index]
+                results = results[start_idx:end_idx]
+            else:
+                results = results if self.accelerator.is_main_process else []
         else:
             # pt / vllm
             if self.vllm_tensor_parallel_size > 1:
@@ -588,12 +593,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 gathered_inputs = [None for _ in range(self.vllm_tensor_parallel_size)]
                 torch.distributed.all_gather_object(gathered_inputs, inputs, group=self.tp_group)
                 inputs = [p for sublist in gathered_inputs for p in sublist]
-            # confirm that the seed is same in tp group
+            # Set request_config.seed
+            # 1. Ensure that the seed for vLLM Engines within each TP (Tensor Parallelism) group is the same;
+            #   otherwise, the program may hang.
+            # 2. Ensure that the seed for vLLM Engines across different TP groups is different;
+            #   otherwise, identical completions will be generated.
             mode = 'train' if self.model.training else 'eval'
             batch_size = (
                 self.args.per_device_train_batch_size
                 * self.args.gradient_accumulation_steps if mode == 'train' else self.args.per_device_eval_batch_size)
-            request_config.seed = batch_size * self.accelerator.process_index // self.vllm_tensor_parallel_size
+            # Since the TP (Tensor Parallelism) group gathers the inputs,
+            # multiply the batch size by the TP parallel size.
+            batch_size *= self.vllm_tensor_parallel_size
+            request_config.seed = batch_size * (self.accelerator.process_index // self.vllm_tensor_parallel_size)
+
             results: List[ChatCompletionResponse] = self._engine_infer(
                 infer_requests=inputs, request_config=request_config)
 
@@ -604,6 +617,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return results
 
+    def _set_inputs_system(self, inputs: InputsType) -> InputsType:
+        if all(_input['messages'][0]['role'] == 'system' for _input in inputs):
+            return
+        for _input in inputs:
+            messages = _input['messages']
+            if messages[0]['role'] != 'system':
+                messages.insert(0, {'role': 'system', 'content': self.template.template_meta.default_system})
+
     def _infer_single_or_multi_turn(self,
                                     inputs: InputsType,
                                     request_config: RequestConfig,
@@ -613,13 +634,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         Args:
             inputs: list of input requests
             request_config: Inference configuration parameters
-
+            is_global_inputs:
+                A boolean indicating whether the inputs are global. When set to True,
+                the returned results in the main process will be a complete list of
+                global_outputs, while other processes will return an empty list [].
         Returns:
             List of outputs where each entry contains:
             - List of responses per prompt
             - Each response is a tuple of (message_history, finish_reason)
         """
-
+        self._set_inputs_system(inputs)
         # infer first turn
         results = self._infer(inputs, request_config, is_global_inputs)
 
@@ -636,7 +660,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs.append(_choices)
             # flatten 2D list to 1D list
             outputs = [item for sublist in outputs for item in sublist]
-            assert len(outputs) == len(inputs)
         else:
             # Multi-turn: continue to rollout until finished.
             orig_size = len(inputs)
@@ -645,7 +668,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             first_turn = True
             next_turn_inputs = inputs.copy()
             last_turn_results = results
-            while len(next_turn_inputs) > 0:
+            while True:
+                has_local_data = len(next_turn_inputs) > 0
+                has_global_data = gather_object([has_local_data])
+                if not any(has_global_data):
+                    break
                 # inputs for current turn
                 current_inputs = []
                 cnt = 0
@@ -656,7 +683,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         messages = current_input['messages']
 
                         # Determine whether to append a new message or update the last one based on the current state
-                        if first_turn or not messages[-1]['content']:
+                        if first_turn or not messages[-1]['content'] or messages[-1]['content'] == '<None>':
                             # If it's the first turn or the last message content is empty(dummy), remove the response
                             InferRequest.remove_response(messages)
                         if messages[-1]['role'] == 'assistant':
@@ -673,23 +700,27 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         current_inputs.append(current_input)
 
                 # Process messages in the multi-turn function
-                current_results: List[Dict] = self.multi_turn_func(current_inputs)
+                current_results: List[Dict] = self.multi_turn_func(current_inputs) if has_local_data else []
 
                 # Retain messages that are not yet finished for the next round of rollout
-                next_turn_inputs = []
+                pending_inputs = []
                 for r in current_results:
                     if r['finished'] or r['finish_reason'] == 'length':
                         outputs[r['index']] = (r['messages'], r['finish_reason'])
                     else:
                         if r['messages'][-1]['role'] == 'assistant':
-                            # infer will remove response, so we add dummy response here
-                            r['messages'].append({'role': 'assistant', 'content': None})
-                        next_turn_inputs.append(r)
-                if next_turn_inputs:
-                    current_results = self._infer(next_turn_inputs, request_config)
+                            # Sometimes, after processing with multi_turn_func,
+                            # we want to continue reasoning based on the previous assistant content.
+                            # However, _infer will remove the response internally, so we add a dummy response here
+                            # to prevent the assistant content from being removed.
+                            r['messages'].append({'role': 'assistant', 'content': '<None>'})
+                        pending_inputs.append(r)
+
+                current_infer_inputs = pending_inputs if has_local_data else []
+                current_results = self._infer(current_infer_inputs, request_config)
 
                 last_turn_results = current_results
-                # concat responses from the second loop
+                next_turn_inputs = pending_inputs
                 first_turn = False
 
             assert not any([o is None for o in outputs])
@@ -721,8 +752,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _prefetch(self, dataloader: DataLoader):
         inputs = next(iter(dataloader))
-        outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
-        self._queue.put(DataCache(inputs, outputs))
+        all_inputs = gather_object(inputs)
+        outputs = self._infer_single_or_multi_turn(all_inputs, self.request_config, is_global_inputs=True)
+        self._queue.put(DataCache(all_inputs, outputs))
 
     def _fast_infer(self, inputs: InputsType) -> Tuple[InputsType, OutputsType]:
         if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
@@ -745,10 +777,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # we gather inputs outside the thread for prevent potential gather deadlock
             all_inputs = gather_object(inputs)
             self.async_infer(all_inputs)
-            # get last step data from cache
+            # cached data from last step
             data_cache = self._queue.get()
-            inputs = data_cache.inputs
-            outputs = data_cache.outputs
+            all_inputs = data_cache.inputs
+            all_outputs = gather_object(data_cache.outputs)
+            process_slice = slice(
+                self.accelerator.process_index * len(inputs),
+                (self.accelerator.process_index + 1) * len(inputs),
+            )
+            inputs = all_inputs[process_slice]
+            outputs = all_outputs[process_slice]
+
         else:
             with self.multi_turn_completion_length_context():
                 outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
@@ -998,10 +1037,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics[mode]['reward_std'].append(grouped_rewards.std(dim=1).mean().item())
 
         # Log prompt and completion texts
-        self._textual_logs['prompt'].extend(gather_object(messages))
+        self._textual_logs['prompt'].extend(self._apply_chat_template_to_messages_list(gather_object(messages)))
         self._textual_logs['completion'].extend(gather_object(completions))
         for i, name in enumerate(self.reward_func_names):
             self._textual_logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
+
+    def _apply_chat_template_to_messages_list(self, messages_list: InputsType):
+        prompts_text = []
+        for messages in messages_list:
+            InferRequest.remove_response(messages)
+            template_inputs = StdTemplateInputs.from_dict({'messages': messages})
+            res_context_list, _, _ = self.template._swift_encode(template_inputs)
+            prompts_text.append(''.join(res_context_list))
+        return prompts_text
 
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
@@ -1183,7 +1231,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def evaluation_loop(self, dataloader, *args, **kwargs):
         # Wait for the training rollout to complete
         if self.args.async_generate:
-            while not self.is_async_generate_eval_rollout_done():
+            while not self.is_async_generate_train_rollout_done():
                 time.sleep(0.1)
         if self._queue.empty() and self.args.async_generate:
             self._prefetch(dataloader)

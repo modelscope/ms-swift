@@ -120,6 +120,7 @@ def test_qwen2_5_vl_video():
 def test_qwen2_5_omni():
     limit_mm_per_prompt = {'image': 1, 'video': 1, 'audio': 1}
     response = _infer_video('Qwen/Qwen2.5-Omni-7B', limit_mm_per_prompt=limit_mm_per_prompt)
+    # response = _infer_audio('Qwen/Qwen2.5-Omni-7B')
     assert response
 
 

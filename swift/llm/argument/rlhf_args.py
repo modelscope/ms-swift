@@ -13,11 +13,11 @@ logger = get_logger()
 
 @dataclass
 class RewardModelArguments:
-    reward_model: Optional[str] = None
+    reward_model: Optional[List[str]] = None
     reward_adapters: List[str] = field(default_factory=list)
-    reward_model_type: Optional[str] = field(
+    reward_model_type: Optional[List[str]] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
-    reward_model_revision: Optional[str] = None
+    reward_model_revision: Optional[List[str]] = None
 
 
 @dataclass
@@ -241,6 +241,13 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             assert self.vllm_mode == 'server', 'async generate require vllm_mode == server, '
             'please deploy vLLM server by `swift rollout` and assign with `vllm_server_host` '
             'for more infomations, please check https://swift.readthedocs.io/en/latest/Instruction/GRPO.html'
+
+        if not self.use_vllm and self.vllm_tensor_parallel_size != 1:
+            self.vllm_tensor_parallel_size = 1
+            logger.warning('set vllm_tensor_parallel_size to 1 since use_vllm false')
+
+        if self.async_generate and self.multi_turn_func is not None:
+            raise NotImplementedError('Currently, async_generate is not supported with multi-turn functionality.')
 
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:

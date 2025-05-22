@@ -7,13 +7,14 @@ swift sft \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
     --dataset 'AI-ModelScope/coco#20000' \
     --train_type custom \
-    --optimizer custom \
     --external_plugins 'examples/train/multimodal/lora_llm_full_vit/custom_plugin.py' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --learning_rate 1e-4 \
+    --vit_lr 1e-5 \
+    --aligner_lr 1e-5 \
     --lora_rank 16 \
     --lora_alpha 32 \
     --gradient_accumulation_steps 4 \

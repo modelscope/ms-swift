@@ -1,16 +1,17 @@
 import os
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import safetensors.torch
 import torch
-from transformers import Trainer
 
 from swift.llm import deep_getattr, get_model_arch, get_multimodal_target_regex
-from swift.plugin import Tuner, extra_tuners, optimizers_map
+from swift.plugin import Tuner, extra_tuners
 from swift.tuners import LoraConfig, Swift
 from swift.utils import get_logger
 
 logger = get_logger()
+if TYPE_CHECKING:
+    from swift.llm import TrainArguments
 
 
 def is_vit_param(model_arch, parameter_name: str) -> bool:
@@ -63,38 +64,4 @@ class CustomTuner(Tuner):
         return model
 
 
-def create_custom_optimizer(args, model, dataset):
-    """ViT and LLM use different learning rates."""
-    decay_parameters = set(Trainer.get_decay_parameter_names(None, model))
-    model_arch = get_model_arch(model.model_meta.model_arch)
-    vit_parameters = [(n, p) for n, p in model.named_parameters() if is_vit_param(model_arch, n) and p.requires_grad]
-    llm_parameters = [(n, p) for n, p in model.named_parameters()
-                      if not is_vit_param(model_arch, n) and p.requires_grad]
-    optimizer_grouped_parameters = [
-        # vit & merger
-        {
-            'params': [p for n, p in vit_parameters if n in decay_parameters],
-            'weight_decay': args.weight_decay,
-            'lr': 0.1 * args.learning_rate,  # 1e-5
-        },
-        {
-            'params': [p for n, p in vit_parameters if n not in decay_parameters],
-            'weight_decay': 0.0,
-            'lr': 0.1 * args.learning_rate,
-        },
-        # llm
-        {
-            'params': [p for n, p in llm_parameters if n in decay_parameters],
-            'weight_decay': args.weight_decay,
-        },
-        {
-            'params': [p for n, p in llm_parameters if n not in decay_parameters],
-            'weight_decay': 0.0,
-        },
-    ]
-    optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(args, model)
-    return optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs), None
-
-
 extra_tuners['custom'] = CustomTuner
-optimizers_map['custom'] = create_custom_optimizer

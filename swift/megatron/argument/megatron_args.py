@@ -4,7 +4,9 @@ import sys
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import megatron.core
 import torch
+from packaging import version
 from transformers.utils.versions import require_version
 
 from swift.llm.argument.base_args import to_abspath
@@ -93,7 +95,7 @@ class MegatronArguments(ExtraMegatronArguments):
     tp_comm_overlap: bool = False
     overlap_grad_reduce: bool = False
     overlap_param_gather: bool = False
-    distributed_timeout_minutes: int = 60
+    distributed_timeout_minutes: int = 300000
 
     # model
     num_layers: Optional[int] = None
@@ -133,6 +135,7 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_z_loss_coeff: Optional[float] = None
     moe_expert_capacity_factor: Optional[float] = None
     moe_shared_expert_overlap: bool = False
+    moe_layer_recompute: bool = False
 
     # mixed precision
     fp16: Optional[bool] = None
@@ -212,6 +215,8 @@ class MegatronArguments(ExtraMegatronArguments):
             require_version('flash-attn')
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self._set_default()
+        if hasattr(self, 'ddp_timeout'):
+            self.distributed_timeout_minutes = self.ddp_timeout // 60
         self.group_query_attention = self.num_query_groups > 1
         if self.rope_scaling is not None:
             self.rope_scaling = ModelArguments.parse_to_dict(self.rope_scaling)
@@ -231,6 +236,8 @@ class MegatronArguments(ExtraMegatronArguments):
         args_dict = asdict(self)
         extra_args = {}
         for k, value in args_dict.items():
+            if k == 'recompute_modules' and version.parse(megatron.core.__version__) < version.parse('0.12'):
+                continue
             if k not in MegatronArguments.__annotations__:
                 extra_args[k] = value
                 continue

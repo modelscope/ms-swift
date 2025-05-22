@@ -23,7 +23,6 @@ from .utils import AdapterRequest, InferStreamer, patch_npu_vllm
 
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
-    os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '0')
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '3600'
     import vllm
@@ -67,6 +66,7 @@ class VllmEngine(InferEngine):
         quantization: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
+        os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '0')
         self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -307,6 +307,12 @@ class VllmEngine(InferEngine):
         if kwargs.get('seed') is None:
             kwargs['seed'] = get_seed()
         res = SamplingParams(**kwargs)
+
+        if hasattr(res, 'output_kind'):
+            # fix n > 1 in V1 Engine
+            from vllm.sampling_params import RequestOutputKind
+            res.output_kind = RequestOutputKind.FINAL_ONLY
+
         res.top_logprobs = request_config.top_logprobs
         return res
 

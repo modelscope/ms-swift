@@ -53,7 +53,7 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 3. 在vLLM中使用 Tensor Parallel 技术：
 
 ```bash
---tensor_parallel_size [tp_size]
+--vllm_tensor_parallel_size [tp_size]
 ```
 
 4. 分批 Gather 模型权重（zero3下同步 vLLM 权重时）：
@@ -196,7 +196,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
   - vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用.
   - vllm_server_port vLLM server 服务端口，默认为8000.
   - vllm_server_timeout 连接vLLM server的超时时间，默认为120s.
-  - async_generate: 异步rollout以提高训练速度，默认`false`.
+  - async_generate: 异步rollout以提高训练速度，注意开启时采样会使用上一轮更新的模型进行采样，不支持多轮场景。默认`false`.
 - vllm_mode colocate 参数
   - vllm_gpu_memory_utilization: vllm透传参数，默认为0.9.
   - vllm_max_model_len: vllm透传参数，默认为None.
@@ -207,6 +207,9 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - num_iterations: 每个批次代更新次数，默认为1。
 - epsilon: clip 系数，默认为0.2。
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。
+- sync_ref_model: 是否定期同步ref_model，默认为False。
+- ref_model_mixup_alpha: 控制在更新过程中model和先前ref_model之间的混合。更新公式为 $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$。默认为0.6。
+- ref_model_sync_steps：同步频率，默认为512。
 - move_model_batches: 在模型向vLLM/LMDeploy等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。
 - offload_optimizer: 是否在vLLM/LMDeploy推理时offload optimizer参数，默认为False。
 - offload_model: 是否在vLLM/LMDeploy推理时offload 模型本身，默认为False。
