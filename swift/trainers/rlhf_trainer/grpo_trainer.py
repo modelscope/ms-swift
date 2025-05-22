@@ -304,8 +304,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self._step % generate_every == 0 or self._buffered_inputs is None:
                 generation_batch = self._generate_and_score_completions(generation_batch)
                 # TODO
-                from trl.trainer.grpo_trainer import split_tensor_dict
+                from trl.trainer.grpo_trainer import split_tensor_dict, shuffle_tensor_dict
+                generation_batch = shuffle_tensor_dict(generation_batch)
                 self._buffered_inputs = split_tensor_dict(generation_batch, self.args.steps_per_generation)
+
                 # self._buffered_inputs = generation_batch  # < this is the change
             inputs = self._buffered_inputs[self._step % self.args.steps_per_generation]
             self._step += 1
@@ -1074,7 +1076,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
         advantages = inputs['advantages']
-        old_per_token_logps = inputs['old_per_token_logps'] if self.old_policy else per_token_logps.detach()
+        # When using num_iterations == 1 and steps_per_generation <= gradient_accumulation_steps
+        # old_per_token_logps == per_token_logps, so we can skip it's computation
+        # (see _generate_and_score_completions) and use per_token_logps.detach() instead.
+        old_per_token_logps = (
+            per_token_logps.detach() if inputs["old_per_token_logps"] is None else inputs["old_per_token_logps"]
+        )
+
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
         per_token_loss1 = coef_1 * advantages.unsqueeze(1)
@@ -1199,7 +1207,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @property
     def old_policy(self):
-        return self.num_iterations > 1
+        return self.num_iterations > 1 or self.args.steps_per_generation > self.args.gradient_accumulation_steps
 
     @property
     def _queue(self):
