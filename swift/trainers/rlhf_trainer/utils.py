@@ -5,6 +5,7 @@ from typing import Any, List, Optional
 import torch
 from peft.tuners import lora
 from peft.tuners.lora import LoraLayer
+from torch import nn
 
 
 def round_robin(num_reqs, num_workers):
@@ -157,6 +158,51 @@ def unwrap_model_for_generation(
                 add_hooks(model)
     else:
         yield unwrapped_model
+
+
+class _ForwardRedirection:
+    """Implements the `forward-redirection`.
+    Taken from Pytorch-lightning:
+    https://github.com/Lightning-AI/pytorch-lightning/blob/02311d03fb982560246eead7c08104481fac9579/src/lightning/pytorch/strategies/strategy.py#L602
+    A method call to a wrapped module gets rerouted through the wrapper's `forward` method instead.
+    """
+
+    def __call__(self, wrapper_module: nn.Module, original_module: nn.Module, method: callable, *args: Any,
+                 **kwargs: Any):
+        """Reroutes a method call through the `wrapper_module`'s `forward` method.
+        Args:
+            wrapper_module: The module that has `original_module` wrapped.
+            original_module: The module that was wrapped inside `wrapper_module`.
+            method_name: The name of the method that should be called on the `original_module` after inputs get
+                redirected through the `wrapper_module`'s `forward` method.
+            *args: The positional arguments to the method `method_name`. They will get passed to a patched
+                `forward` method instead.
+            **kwargs: The keyword arguments to the method `method_name`. They will get passed to a patched
+                `forward` method instead.
+        """
+        original_forward = original_module.forward
+
+        def wrapped_forward(*_args: Any, **_kwargs: Any) -> Any:
+            # Unpatch ourselves immediately before calling the method `method_name`
+            # because itself may want to call the real `forward`
+            original_module.forward = original_forward  # type: ignore[method-assign]
+            # Call the actual method e.g. `.training_step(...)`
+            out = method(*_args, **_kwargs)
+            self.on_after_inner_forward(wrapper_module, original_module)
+            return out
+
+        # Patch the original_module's forward so we can redirect the arguments back to the real method
+        original_module.forward = wrapped_forward  # type: ignore[method-assign]
+
+        wrapper_output = wrapper_module(*args, **kwargs)
+        self.on_after_outer_forward(wrapper_module, original_module)
+        return wrapper_output
+
+    def on_after_inner_forward(self, wrapper_module: nn.Module, original_module: nn.Module) -> None:
+        pass
+
+    def on_after_outer_forward(self, wrapper_module: nn.Module, original_module: nn.Module) -> None:
+        pass
 
 
 def shuffle_tensor_dict(tensor_dict: dict[str, Optional[torch.Tensor]]) -> dict[str, Optional[torch.Tensor]]:

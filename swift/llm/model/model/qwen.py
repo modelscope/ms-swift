@@ -582,9 +582,13 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
     from transformers import Qwen2VLForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2VLForConditionalGeneration
     model, tokenizer = get_model_tokenizer_multimodal(*args, **kwargs)
-    if model is not None and hasattr(model.model, 'embed_tokens'):
-        patch_output_clone(model.model.embed_tokens)
-        patch_output_to_input_device(model.model.embed_tokens)
+    if model is not None:
+        if hasattr(model.model, 'embed_tokens'):
+            embed_tokens = model.model.embed_tokens
+        else:
+            embed_tokens = model.model.language_model.embed_tokens
+        patch_output_clone(embed_tokens)
+        patch_output_to_input_device(embed_tokens)
 
     from qwen_vl_utils import vision_process
     patch_qwen_vl_utils(vision_process)

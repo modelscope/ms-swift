@@ -217,12 +217,17 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     def _check_grpo(self):
         if self.rlhf_type != 'grpo':
             return
-
         from packaging import version
+
         import trl
         trl_version = version.parse(trl.__version__)
         assert trl_version >= version.parse('0.17'), ('Your current version of `trl` is outdated. '
                                                       'Please update it by running: pip install -U trl')
+
+        if self.use_liger_kernel:
+            from trl.import_utils import is_liger_kernel_available
+            assert is_liger_kernel_available(), (
+                'Please install/update liger-kernel by running: pip install -U liger-kernel')
 
         if self.vllm_mode == 'server':
             assert not self.use_vllm or self.vllm_server_host is not None

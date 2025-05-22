@@ -59,18 +59,18 @@ class Template(ProcessorMixin):
         default_system: Optional[str] = None,
         max_length: Optional[int] = None,
         *,
-        use_chat_template: bool = True,
         truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
         max_pixels: Optional[int] = None,
         agent_template: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
-        response_prefix: Optional[str] = None,
+        use_chat_template: bool = True,
         # only for train
         padding_free: bool = False,
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
         sequence_parallel_size: int = 1,
         # infer/deploy
+        response_prefix: Optional[str] = None,
         template_backend: Literal['swift', 'jinja'] = 'swift',
     ) -> None:
         """
@@ -1160,7 +1160,8 @@ class Template(ProcessorMixin):
         old_kwargs = to_device(kwargs, model.device)
         kwargs = to_device(self._post_encode(model, old_kwargs), model.device)
         for k, v in old_kwargs.items():
-            if k in {'input_ids', 'attention_mask', 'labels', 'position_ids'} and k not in kwargs:
+            if k in {'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states'
+                     } and k not in kwargs:
                 kwargs[k] = v
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)
