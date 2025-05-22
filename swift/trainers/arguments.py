@@ -212,12 +212,11 @@ class GRPOArgumentsMixin:
 
     # compatible with trl main branch(0.17.0.dev0)
     wandb_log_unique_prompts: Optional[bool] = None
+    generation_batch_size: Optional[int] = None
+    steps_per_generation: Optional[int] = None
 
     # dataset
     dataset_shuffle: Optional[bool] = True
-
-    generation_batch_size: Optional[int] = None
-    steps_per_generation: Optional[int] = None
 
 
 @dataclass

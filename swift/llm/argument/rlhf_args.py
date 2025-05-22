@@ -224,11 +224,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         assert trl_version >= version.parse('0.17'), ('Your current version of `trl` is outdated. '
                                                       'Please update it by running: pip install -U trl')
 
-        if self.num_generations < 2:
-            raise ValueError(
-                'GRPO requires at least 2 generations per prompt to calculate the advantages. You provided '
-                f'{self.num_generations}, which is less than the minimum required.')
-
         if self.vllm_mode == 'server':
             assert not self.use_vllm or self.vllm_server_host is not None
 

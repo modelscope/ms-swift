@@ -62,6 +62,7 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
         # https://github.com/modelscope/ms-swift/issues/3863
         self.dataloader_drop_last = True
 
+        # trl 0.17.dev
         num_processes = self.world_size
         # The current default effective batch size
         if self.generation_batch_size is not None and self.steps_per_generation is not None:
@@ -107,5 +108,3 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
                     f'evenly divisible by the number of generations per prompt ({self.num_generations}). Given the '
                     'current global eval batch size, the valid values for the number of generations are: '
                     f'{possible_values}.')
-        if self.delta is not None and self.use_liger_loss:
-            raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
