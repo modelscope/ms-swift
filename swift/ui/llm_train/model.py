@@ -104,7 +104,7 @@ class Model(BaseUI):
                 train_record = gr.Dropdown(elem_id='train_record', choices=[], scale=20)
                 clear_cache = gr.Button(elem_id='clear_cache', scale=2)
             with gr.Row():
-                gr.Textbox(elem_id='system', lines=1, scale=20)
+                gr.Textbox(elem_id='system', lines=4 if cls.group == 'llm_grpo' else 1, scale=20)
 
         def clear_record(model):
             if model:

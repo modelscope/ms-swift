@@ -96,7 +96,7 @@ class TrainArgumentsMixin:
 
         from swift.llm.argument.base_args.model_args import ModelArguments
         if self.optimizer is None and (self.vit_lr is not None or self.aligner_lr is not None):
-            self.optimizer = 'default'
+            self.optimizer = 'multimodal'
         if use_torchacc():
             self.dataloader_drop_last = True
         if self.gradient_accumulation_steps is None:

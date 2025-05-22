@@ -37,8 +37,8 @@ class TemplateArguments:
     agent_template: Optional[str] = None
     norm_bbox: Literal['norm1000', 'none', None] = None
     response_prefix: Optional[str] = None
-    padding_free: bool = False
     # train
+    padding_free: bool = False
     padding_side: Literal['left', 'right'] = 'right'
     loss_scale: str = 'default'
     sequence_parallel_size: int = 1
