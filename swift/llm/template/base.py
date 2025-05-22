@@ -59,18 +59,18 @@ class Template(ProcessorMixin):
         default_system: Optional[str] = None,
         max_length: Optional[int] = None,
         *,
-        use_chat_template: bool = True,
         truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
         max_pixels: Optional[int] = None,
         agent_template: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
-        response_prefix: Optional[str] = None,
+        use_chat_template: bool = True,
         # only for train
         padding_free: bool = False,
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
         sequence_parallel_size: int = 1,
         # infer/deploy
+        response_prefix: Optional[str] = None,
         template_backend: Literal['swift', 'jinja'] = 'swift',
     ) -> None:
         """

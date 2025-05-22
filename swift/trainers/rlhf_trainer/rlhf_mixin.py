@@ -1,10 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 from collections import defaultdict
 from contextlib import contextmanager
+from functools import partial
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from trl.models.utils import prepare_deepspeed
 
@@ -46,6 +49,19 @@ class RLHFTrainerMixin:
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
 
         self.padding_value = self.tokenizer.pad_token_id
+
+    def get_train_dataloader(self):
+        train_dataloader = super().get_train_dataloader()
+        base_dataloader = train_dataloader if isinstance(train_dataloader,
+                                                         DataLoader) else train_dataloader.base_dataloader
+        if base_dataloader.worker_init_fn is not None and not isinstance(
+                base_dataloader.worker_init_fn, partial) and 'num_workers' in inspect.signature(
+                    base_dataloader.worker_init_fn).parameters:
+            base_dataloader.worker_init_fn = partial(
+                base_dataloader.worker_init_fn,
+                num_workers=self.args.dataloader_num_workers,
+                rank=self.args.process_index)
+        return train_dataloader
 
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
@@ -97,3 +113,9 @@ class RLHFTrainerMixin:
             loss /= self.args.gradient_accumulation_steps
             return (loss, res[1:]) if return_outputs else loss
         return res
+
+    def _get_train_sampler(self, train_dataset=None):
+        get_train_sampler = super()._get_train_sampler
+        parameters = inspect.signature(get_train_sampler).parameters
+        kwargs = {'train_dataset': train_dataset} if 'train_dataset' in parameters else {}
+        return get_train_sampler(**kwargs)
