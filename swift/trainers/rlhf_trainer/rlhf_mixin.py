@@ -113,3 +113,9 @@ class RLHFTrainerMixin:
             loss /= self.args.gradient_accumulation_steps
             return (loss, res[1:]) if return_outputs else loss
         return res
+
+    def _get_train_sampler(self, train_dataset=None):
+        get_train_sampler = super()._get_train_sampler
+        parameters = inspect.signature(get_train_sampler).parameters
+        kwargs = {'train_dataset': train_dataset} if 'train_dataset' in parameters else {}
+        return get_train_sampler(**kwargs)
