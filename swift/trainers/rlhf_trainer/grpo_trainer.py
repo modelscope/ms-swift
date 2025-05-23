@@ -320,12 +320,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             generate_every = self.args.steps_per_generation * self.num_iterations
             if self._step % generate_every == 0 or self._buffered_inputs is None:
                 generation_batch = self._generate_and_score_completions(generation_batch)
-                # TODO
-                from trl.trainer.grpo_trainer import split_tensor_dict
-                generation_batch = shuffle_tensor_dict(generation_batch)
-                self._buffered_inputs = split_tensor_dict(generation_batch, self.args.steps_per_generation)
-
-                # self._buffered_inputs = generation_batch  # < this is the change
+                self._buffered_inputs = generation_batch  # < this is the change
             inputs = self._buffered_inputs[self._step % self.args.steps_per_generation]
             self._step += 1
         else:

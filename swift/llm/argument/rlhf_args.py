@@ -244,6 +244,12 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         if self.async_generate and self.multi_turn_func is not None:
             raise NotImplementedError('Currently, async_generate is not supported with multi-turn functionality.')
 
+        if self.generation_batch_size or self.steps_per_generation:
+            from trl.trainer.grpo_config import GRPOConfig
+            assert 'generation_batch_size' in GRPOConfig.__dict__, (
+                'generation_batch_size or steps_per_generation needs trl >= 0.18.dev, '
+                'please install trl from source `pip install git+https://github.com/huggingface/trl.git')
+
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
             return

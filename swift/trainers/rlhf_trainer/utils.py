@@ -203,29 +203,3 @@ class _ForwardRedirection:
 
     def on_after_outer_forward(self, wrapper_module: nn.Module, original_module: nn.Module) -> None:
         pass
-
-
-def shuffle_tensor_dict(tensor_dict: dict[str, Optional[torch.Tensor]]) -> dict[str, Optional[torch.Tensor]]:
-    """
-    code borrowed from trl 0.17.dev
-    Shuffles a dictionary of tensors along the first dimension in unison.
-
-    Example:
-        >>> x = torch.arange(6).reshape(3, 2)
-        >>> y = torch.arange(3).reshape(3, 1)
-        >>> tensor_dict = {"x": x, "y": y}
-        >>> shuffle_tensor_dict(tensor_dict)
-        {'x': tensor([[2, 3],
-                      [0, 1],
-                      [4, 5]]),
-         'y': tensor([[1],
-                      [0],
-                      [2]])}
-    """
-    first_tensor = next(tensor for tensor in tensor_dict.values() if tensor is not None)
-    batch_size = first_tensor.shape[0]
-    permutation = torch.randperm(batch_size)
-    return {
-        key: value[permutation] if isinstance(value, torch.Tensor) and value is not None else value
-        for key, value in tensor_dict.items()
-    }
