@@ -28,6 +28,7 @@ class TrainArgumentsMixin:
     gradient_accumulation_steps: Optional[int] = None
 
     gradient_checkpointing: bool = True
+    vit_gradient_checkpointing: Optional[bool] = None
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
     logging_first_step: bool = True
     logging_steps: int = 5

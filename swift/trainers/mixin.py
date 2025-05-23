@@ -313,6 +313,24 @@ class SwiftMixin:
         finally:
             Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
 
+    def _prepare_gradient_checkpointing(self):
+        args = self.args
+        HfConfigFactory.set_model_config_attr(self.model, 'use_cache', False)
+        if args.gradient_checkpointing:
+            self.model.supports_gradient_checkpointing = True
+            dynamic_gradient_checkpointing(self.model, args.vit_gradient_checkpointing)
+            self.model.enable_input_require_grads()
+        model_meta = self.model.model_meta
+        model_arch = get_model_arch(model_meta.model_arch)
+        if args.vit_gradient_checkpointing and model_meta.is_multimodal and model_arch:
+            for vision_tower_name in model_arch.vision_tower:
+                vision_tower = deep_getattr(self.model, vision_tower_name)
+                if hasattr(vision_tower, 'enable_input_require_grads'):
+                    try:
+                        vision_tower.enable_input_require_grads()
+                    except NotImplementedError:
+                        pass
+
     def train(self, *args, **kwargs):
         if self.model_meta.is_multimodal:
             models = []

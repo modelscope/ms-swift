@@ -32,24 +32,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._prepare_template()
         self._prepare_callbacks()
 
-    def _prepare_gradient_checkpointing(self):
-        args = self.args
-        HfConfigFactory.set_model_config_attr(self.model, 'use_cache', False)
-        if args.gradient_checkpointing:
-            self.model.supports_gradient_checkpointing = True
-            dynamic_gradient_checkpointing(self.model)
-            self.model.enable_input_require_grads()
-        model_meta = self.model.model_meta
-        model_arch = get_model_arch(model_meta.model_arch)
-        if model_meta.is_multimodal and model_arch:
-            for vision_tower_name in model_arch.vision_tower:
-                vision_tower = deep_getattr(self.model, vision_tower_name)
-                if hasattr(vision_tower, 'enable_input_require_grads'):
-                    try:
-                        vision_tower.enable_input_require_grads()
-                    except NotImplementedError:
-                        pass
-
     def _prepare_generation_config(self):
         args = self.args
         self.model.origin_generation_config = self.model.generation_config
@@ -70,7 +52,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         logger.info(f'model_info: {self.model.model_info}')
 
         self._prepare_generation_config()
-        self._prepare_gradient_checkpointing()
 
     def _prepare_template(self) -> None:
         template = self.args.get_template(self.processor)

@@ -150,12 +150,14 @@ def _add_gradient_checkpointing(module_list):
         module.__old_forward = __old_forward
 
 
-def dynamic_gradient_checkpointing(model) -> None:
+def dynamic_gradient_checkpointing(model, including_vit: bool = False) -> None:
     from .model import ModelMeta, get_model_arch
     model_meta: ModelMeta = model.model_meta
     model_arch = get_model_arch(model_meta.model_arch)
     if model_meta.is_multimodal and model_arch:
-        tower_names = model_arch.language_model + model_arch.vision_tower
+        tower_names = model_arch.language_model.copy()
+        if including_vit:
+            tower_names += model_arch.vision_tower
     else:
         tower_names = [None]
 
