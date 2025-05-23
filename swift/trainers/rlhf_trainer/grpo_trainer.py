@@ -39,8 +39,7 @@ from swift.utils import (JsonlWriter, gc_collect, get_device, get_logger, is_vll
                          seed_worker)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import (_ForwardRedirection, patch_lora_merge, patch_lora_unmerge, shuffle_tensor_dict,
-                    unwrap_model_for_generation)
+from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge, unwrap_model_for_generation
 from .vllm_client import VLLMClient
 
 del HFGRPOTrainer.__init__

@@ -188,7 +188,9 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 参数
 - per_device_train_batch_size: 每个设备训练批量大小，在GRPO中，指 completion 的批次大小。
 - per_device_eval_batch_size: 每个设备评估批量大小，在GRPO中，指 completion 的批次大小。
-- num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_batch_size * gradient_accumulation_steps * nproc_per_node 整除，默认为8
+- generation_batch_size: 采样completion批量大小，需要是 num_processes * per_device_train_batch_size 的倍数，默认等于per_device_batch_size * gradient_accumulation_steps * num_processes
+- steps_per_generation: 采样相比优化数据的倍数，默认等于gradient_accumulation_steps。与generation_batch_size只能同时设置一个
+- num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_batch_size * gradient_accumulation_steps * num_processes 整除，默认为8
 - max_completion_length: 采样生成的最大长度，默认为512
 - ds3_gather_for_generation: 该参数适用于DeepSpeed ZeRO-3。如果启用，策略模型权重将被收集用于生成，从而提高生成速度。然而，禁用此选项允许训练超出单个GPU VRAM的模型，尽管生成速度会变慢。禁用此选项与vLLM生成不兼容。默认为True
 - reward_funcs: 奖励函数，根据模型生成结果进行打分，内置accuracy、format、cosine和repetition四个rule-based函数，详细见 swift/plugin/orm.py 文件
@@ -309,26 +311,39 @@ swift rlhf \
 
 在 GRPO 中，batch_size 以 completion（模型生成结果） 为单位。例如，设置 per_device_train_batch_size=8 表示每张 GPU 在训练过程中会同时处理 8 个 completion 的 loss 计算。
 
-训练阶段，在一次完整的梯度累计 batch 中，总的 completion 数量等于：
+训练阶段，在一次完整的梯度累计 batch 中，总的批量大小等于：
 
 ```
-num_processes * per_device_train_batch_size * gradient_accumulation_steps
+effective_batch_size = num_processes * per_device_train_batch_size * gradient_accumulation_steps
 ```
+
+采样阶段，总的批量大小 (completion-level) 数量等于:
+
+1. 设置 generation_batch_size 下，等于 generation_batch_size
+
+2. 设置 steps_per_generation 下， 等于 steps_per_generation * 训练总批量大小
+
+3. 默认等于训练总批量大小(即num_processes * per_device_train_batch_size * gradient_accumulation_steps)
 
 在评估阶段，completion 的数量等于：
 ```
 num_processes * per_device_eval_batch_size
 ```
 
-参数 `num_generations` 必须能够被以上两个值整除，以保证生成任务可以均匀分配到各个设备上。
+参数 `num_generations` 必须能够被以上采样阶段和评估的总批量大小整除，以保证生成任务可以均匀分配到各个设备上。
 
 **示例**
 
-在 8 卡的环境下，若设置 `num_generations = 16`，则要求：
+num_processes = 8
+per_device_train_batch_size = 4
+gradient_accumulation_steps = 8
+generation_batch_size = 512
+num_generations = 64
 
-- per_device_train_batch_size * gradient_accumulation_steps
-- per_device_eval_batch_size
-这两个值都应大于或等于 2，以满足整除条件。
+1. 采样需要的总数据(prompt)量等于 512 / 64 = 8
+2. 每次采样 512 条模型回复
+3. 每次更新模型权重批量大小为 8 *4 * 8 = 256
+
 
 **3. 为什么 KL 出现了NaN**
 
