@@ -1,8 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional, Tuple
-import os
+
 import torch
 import torch.nn.functional as F
 
