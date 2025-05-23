@@ -222,8 +222,8 @@ class Qwen2VLTemplate(Template):
         else:
             video = inputs.videos[index]
             if os.path.isdir(video):
-                video = os.listdir(video)
-            video = fetch_video({'type': 'video', 'video': video})
+                video = [os.path.join(video, fname) for fname in os.listdir(video)]
+            video = fetch_video({'video': video})
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
             inputs.videos[index] = video
