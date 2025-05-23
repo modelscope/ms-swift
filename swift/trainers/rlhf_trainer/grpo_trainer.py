@@ -921,7 +921,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             valid_completions.extend(
                 [inp['messages'][-1]['content'] for inp, mask in zip(all_inputs, valid_mask) if mask])
 
-            if len(valid_samples) >= self.generation_batch_size:
+            if len(valid_samples) >= self.effective_train_batch_size:
                 break
 
             inputs = next(self.resample_iterator)
@@ -930,15 +930,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             rewards_per_func, rewards, completions = self._score_completions(inputs)
             resample_count += 1
 
-        if len(valid_samples) >= self.generation_batch_size:
+        if len(valid_samples) >= self.effective_train_batch_size:
             process_slice = slice(
                 self.accelerator.process_index * len(inputs),
                 (self.accelerator.process_index + 1) * len(inputs),
             )
-            inputs = valid_samples[:self.generation_batch_size][process_slice]
-            rewards = torch.cat(valid_rewards)[:self.generation_batch_size]
-            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.generation_batch_size]
-            completions = valid_completions[:self.generation_batch_size][process_slice]
+            inputs = valid_samples[:self.effective_train_batch_size][process_slice]
+            rewards = torch.cat(valid_rewards)[:self.effective_train_batch_size]
+            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.effective_train_batch_size]
+            completions = valid_completions[:self.effective_train_batch_size][process_slice]
         else:
             logger.warning(f'There are still std=0 groups present after {self.args.max_resample_times} retries.')
             inputs, rewards, rewards_per_func, completions = origin_data
@@ -950,14 +950,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         Prepare the final batch inputs with advantages, ref/old_policy logps and other fields for RL training.
 
         Args:
-            inputs (InputsType): List of input samples. Original shape is [gas*bs] where:
-                - gas: gradient accumulation steps
+            inputs (InputsType): List of input samples. Original shape is [spg*bs] where:
+                - spg: steps_per_generation
                 - bs: per-device batch size
             rewards (torch.Tensor): Tensor of rewards corresponding to the inputs.
-                Shape should match the total number of samples (gas*bs*num_generations)
+                Shape should match the total number of samples (spg*bs*num_generations)
 
         Returns:
-            List[InputsType]: A list of prepared batch inputs, organized as [gas][bs]
+            List[InputsType]: A list of prepared batch inputs, organized as [spg][bs]
         """
         # Compute advantages
         grouped_rewards = rewards.view(-1, self.num_generations)
@@ -976,18 +976,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         mode = 'train' if self.model.training else 'eval'
         bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-        gas = self.args.gradient_accumulation_steps if mode == 'train' else 1
+        spg = self.args.steps_per_generation if mode == 'train' else 1
 
-        assert len(inputs) == bs * gas, f'Expected {bs * gas} inputs, got {len(inputs)}'
-        gas_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(gas)]
+        assert len(inputs) == bs * spg, f'Expected {bs * spg} inputs, got {len(inputs)}'
+        spg_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(spg)]
 
         ga_batch_encoded_inputs = []
         template = self.template
 
-        # Split advantages by GAS chunks
-        advantage_chunks = torch.chunk(advantages, gas)
+        # Split advantages by spg chunks
+        advantage_chunks = torch.chunk(advantages, spg)
 
-        for i, (batch, batch_advantages) in enumerate(zip(gas_chunks, advantage_chunks)):
+        for i, (batch, batch_advantages) in enumerate(zip(spg_chunks, advantage_chunks)):
             # Encode and process each batch (size=bs)
             with self._template_context(template):
                 batch_encoded_inputs = [template.encode(infer_request) for infer_request in batch]
