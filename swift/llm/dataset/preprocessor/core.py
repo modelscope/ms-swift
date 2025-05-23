@@ -20,7 +20,8 @@ logger = get_logger()
 
 
 class RowPreprocessor:
-    standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
+    standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects',
+                     'channel']
 
     def __init__(self,
                  *,
@@ -303,6 +304,9 @@ class RowPreprocessor:
         if 'solution' in dataset.features:
             with safe_ddp_context(None, True):
                 dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
+        channel = None
+        if 'channel' in dataset.features:
+            channel = dataset['channel']
         dataset = self._rename_columns(dataset)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
@@ -323,6 +327,9 @@ class RowPreprocessor:
         if isinstance(dataset_mapped, HfDataset) and len(dataset) != len(dataset_mapped):
             logger.info(
                 f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
+        if channel:
+            dataset_mapped = dataset_mapped.map(lambda example, idx: {**example, 'channel': channel[idx]},
+                                                with_indices=True)
 
         return dataset_mapped
 
