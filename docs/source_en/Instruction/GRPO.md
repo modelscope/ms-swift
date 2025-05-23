@@ -246,7 +246,7 @@ The hyperparameters for the reward function can be found in the [Built-in Reward
 
 You can use vLLM as sampling backends to accelerate training.
 
-For training scripts, refer to [here](../../../examples/train/grpo/) .
+For training scripts, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo).
 
 ## Customized Reward Models
 By default, a reward model refers to classification models that include a value head (commonly known as Output Reward Model (ORM)). These models score the outputs of other models, producing a scalar value that represents the quality of the response.
@@ -259,9 +259,9 @@ Currently, we can leverage the **reward_model_plugin** to flexibly customize the
 
 Through the **reward_model_plugin**, developers can tailor the reward evaluation process to meet the specific requirements of their applications. This flexibility allows for more nuanced and effective reward-based training strategies.
 
-We provide a simple generative reward model example (GenRMPlugin) in [rm_plugin.py](../../../swift/plugin/rm_plugin.py)
+We provide a simple generative reward model example (GenRMPlugin) in [rm_plugin.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/rm_plugin.py)
 
-You can also customized your reward model plugin in [plugin.py](../../../examples/train/grpo/plugin/plugin.py), and register with `external_plugins` argument
+You can also customized your reward model plugin in [plugin.py](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py), and register with `external_plugins` argument
 
 Here is an example training script to train GRPO with two reward models: one ORM and one Gen-RM (using qwen2.5-3B-Instruct in this case):
 
