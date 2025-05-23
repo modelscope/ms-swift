@@ -13,6 +13,9 @@ pip install -U trl
 GRPOTrainer在swift3.5.dev进行了代码重构，如果你使用的swift版本<3.5, 请参考[stable文档](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md)
 
 **更新日志**
+- **2025-05-23** — 支持自定义采样批量大小，参考 generation_batch_size / steps_per_generation 参数
+- **2025-05-22** — swift rollout 支持 data_parallel_size 参数
+- **2025-05-16** - 增加 ref_model 同步逻辑，参考参数 sync_ref_model
 - **2025-05-13** — 为了代码的可读性和维护性， GRPOTrainer代码重构，Internal mode 支持vLLM>=0.8。
 - **2025-05-11** — 支持生成式奖励模型，通过 reward_model_plugin 自定义奖励模型逻辑。有关更多详细信息，请参阅[自定义奖励模型](#自定义奖励模型)部分。
 - **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`。
@@ -188,9 +191,9 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 参数
 - per_device_train_batch_size: 每个设备训练批量大小，在GRPO中，指 completion 的批次大小。
 - per_device_eval_batch_size: 每个设备评估批量大小，在GRPO中，指 completion 的批次大小。
-- generation_batch_size: 采样completion批量大小，需要是 num_processes * per_device_train_batch_size 的倍数，默认等于per_device_batch_size * gradient_accumulation_steps * num_processes
-- steps_per_generation: 采样相比优化数据的倍数，默认等于gradient_accumulation_steps。与generation_batch_size只能同时设置一个
-- num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_batch_size * gradient_accumulation_steps * num_processes 整除，默认为8
+- generation_batch_size: 采样completion批量大小，需要是 num_processes * per_device_train_batch_size 的倍数，默认等于 per_device_batch_size * gradient_accumulation_steps * num_processes
+- steps_per_generation: 每轮生成的优化步数，默认等于gradient_accumulation_steps。与generation_batch_size 只能同时设置一个
+- num_generations: 每个prompt采样的数量，论文中的G值，需要被 generation_batch_size 或 per_device_batch_size * steps_per_generation * num_processes 整除，默认为8
 - max_completion_length: 采样生成的最大长度，默认为512
 - ds3_gather_for_generation: 该参数适用于DeepSpeed ZeRO-3。如果启用，策略模型权重将被收集用于生成，从而提高生成速度。然而，禁用此选项允许训练超出单个GPU VRAM的模型，尽管生成速度会变慢。禁用此选项与vLLM生成不兼容。默认为True
 - reward_funcs: 奖励函数，根据模型生成结果进行打分，内置accuracy、format、cosine和repetition四个rule-based函数，详细见 swift/plugin/orm.py 文件

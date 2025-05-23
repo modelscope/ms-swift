@@ -13,6 +13,9 @@ pip install -U trl
 The GRPOTrainer has been refactored in swift 3.5.dev. If you are using a version of Swift < 3.5 , please refer to the[stable doc](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source_en/Instruction/GRPO.md)
 
 **Dev Log**
+- **2025-05-23** — Added support for custom sampling batch size (see parameters: generation_batch_size / steps_per_generation).
+- **2025-05-22** — swift rollout now supports the data_parallel_size parameter.
+- **2025-05-16** - Implemented ref_model synchronization logic (see parameter: sync_ref_model).
 - **2025-05-13** — The GRPOTrainer code has been refactored to improve code readability and maintainability. Internal mode now supports vLLM ≥ 0.8.
 - **2025-05-11** — Implemented support for the **Generative Reward Model** and enabled customized reward model processing logic through the reward plugin. For more details, refer to the [Customized Reward Models](#customized-reward-models) section.
 - **2025-04-30** — The startup command for the external vLLM server has been changed to swift rollout.
