@@ -1,4 +1,3 @@
-# pip install git+https://github.com/huggingface/transformers.git  # transformers>=4.49
 import os
 import re
 from typing import Literal

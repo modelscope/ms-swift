@@ -17,22 +17,25 @@ def register_template(template_meta: TemplateMeta, *, exist_ok: bool = False) ->
 
 
 def get_template(
-        template_type: str,
-        processor: Processor,
-        default_system: Optional[str] = None,
-        max_length: Optional[int] = None,
-        *,
-        use_chat_template: bool = True,
-        template_backend: Literal['swift', 'jinja'] = 'swift',
-        truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
-        max_pixels: Optional[int] = None,  # h * w
-        agent_template: Optional[str] = None,
-        norm_bbox: Literal['norm1000', 'none', None] = None,
-        response_prefix: Optional[str] = None,
-        # train
-        padding_side: Literal['left', 'right'] = 'right',
-        loss_scale: str = 'default',
-        sequence_parallel_size: int = 1) -> 'Template':
+    template_type: str,
+    processor: Processor,
+    default_system: Optional[str] = None,
+    max_length: Optional[int] = None,
+    *,
+    truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
+    max_pixels: Optional[int] = None,  # h * w
+    agent_template: Optional[str] = None,
+    norm_bbox: Literal['norm1000', 'none', None] = None,
+    use_chat_template: bool = True,
+    # train
+    padding_free: bool = False,
+    padding_side: Literal['left', 'right'] = 'right',
+    loss_scale: str = 'default',
+    sequence_parallel_size: int = 1,
+    # infer/deploy
+    response_prefix: Optional[str] = None,
+    template_backend: Literal['swift', 'jinja'] = 'swift',
+) -> 'Template':
     template_meta = TEMPLATE_MAPPING[template_type]
     template_cls = template_meta.template_cls
     return template_cls(
@@ -40,16 +43,19 @@ def get_template(
         template_meta,
         default_system,
         max_length,
-        use_chat_template=use_chat_template,
-        template_backend=template_backend,
         truncation_strategy=truncation_strategy,
         max_pixels=max_pixels,
         agent_template=agent_template,
         norm_bbox=norm_bbox,
-        response_prefix=response_prefix,
+        use_chat_template=use_chat_template,
+        # train
+        padding_free=padding_free,
         padding_side=padding_side,
         loss_scale=loss_scale,
         sequence_parallel_size=sequence_parallel_size,
+        # infer/deploy
+        response_prefix=response_prefix,
+        template_backend=template_backend,
     )
 
 

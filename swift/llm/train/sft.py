@@ -169,7 +169,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         training_args = trainer.args
         state = trainer.state
         if hasattr(state, 'last_model_checkpoint'):
-            if self.args.create_checkpoint_symlink:
+            if is_master() and self.args.create_checkpoint_symlink:
                 last_checkpoint = os.path.join(self.args.output_dir, 'last')
                 best_checkpoint = os.path.join(self.args.output_dir, 'best')
                 os.symlink(state.last_model_checkpoint, last_checkpoint)
@@ -178,8 +178,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 state.best_model_checkpoint = best_checkpoint
         else:
             state.last_model_checkpoint = None
-            logger.warning('No training was carried out, which may be due to the dataset being too small '
-                           'or incorrect usage of resume_from_checkpoint.')
         logger.info(f'last_model_checkpoint: {state.last_model_checkpoint}')
         logger.info(f'best_model_checkpoint: {state.best_model_checkpoint}')
 
@@ -232,15 +230,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         callbacks += extra_callbacks
         self.callbacks = callbacks
 
-    def _stat_dataset(self, dataset: HfDataset):
+    def _stat_dataset(self, dataset: Union[HfDataset, PackingDataset]):
         args = self.args
         if isinstance(dataset, HfDataset):
             dataset = GetLengthPreprocessor()(dataset, num_proc=args.dataset_num_proc)
             length = dataset['length']
         else:
-            length = []
-            for row in dataset:
-                length.append(max([len(row[k]) for k in row.keys() if k.endswith('input_ids')]))
+            length = dataset.packed_dataset.length_list
         _, stat_str = stat_array(length)
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
@@ -268,9 +264,17 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                         val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             else:
                 preprocessor = EncodePreprocessor(template=template)
-                train_dataset = preprocessor(train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
+                train_dataset = preprocessor(
+                    train_dataset,
+                    num_proc=args.dataset_num_proc,
+                    load_from_cache_file=args.load_from_cache_file,
+                    strict=args.strict)
                 if val_dataset is not None and not predict_with_generate:
-                    val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
+                    val_dataset = preprocessor(
+                        val_dataset,
+                        num_proc=args.dataset_num_proc,
+                        load_from_cache_file=args.load_from_cache_file,
+                        strict=args.strict)
 
             if is_master():
                 inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))

@@ -10,16 +10,12 @@ pip install math_verify==0.5.2 # reward function
 pip install -U trl
 ```
 
+GRPOTrainer在swift3.5.dev进行了代码重构，如果你使用的swift版本<3.5, 请参考[stable文档](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md)
+
 **更新日志**
-
+- **2025-05-13** — 为了代码的可读性和维护性， GRPOTrainer代码重构，Internal mode 支持vLLM>=0.8。
 - **2025-05-11** — 支持生成式奖励模型，通过 reward_model_plugin 自定义奖励模型逻辑。有关更多详细信息，请参阅[自定义奖励模型](#自定义奖励模型)部分。
-- **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`
-
-**FAQ**
-1. 训练过程中 loss 接近0 是正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
-2. 训练的steps怎么计算? 参考[issue](https://github.com/modelscope/ms-swift/issues/3912)
-3. clip_ratio为什么总是1? 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
-
+- **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`。
 
 ## 集群支持
 
@@ -27,40 +23,80 @@ pip install -U trl
 
 GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样过程，提供以下两种部署模式：
 
-### 1. 内部集成模式 (Internal)
+### 1. Colocate(Internal) Mode
 
-- 在Trainer内部直接启动推理服务
-- 提供两种资源分配策略：
-  - **协同模式 (Colocate)**: 训练与推理共享GPU资源
-  - **异步模式 (Async)**: 训练与推理使用独立GPU资源
+- 训练与推理共享GPU资源，在 Trainer 内部启动推理服务，
 
-### GRPO训练资源配置方案
-| 配置场景                 | NPROC_PER_NODE | num_infer_workers | 资源分配说明             |
-|--------------------------|----------------|------------------|------------------------|
-| **Colocate**   | =总GPU数      | =总GPU数          | 训练和推理共享全部GPU资源              |
-| **Async**      | =训练卡数      | =推理卡数         | 必须满足：训练卡数 + 推理卡数 = 总GPU数 |
-
-**注：**
-1. 在Colocate模式下推荐设置`sleep_level=1`, 在模型训练时释放vLLM占用显存
-2. 总GPU数指可见的GPU设备总数
-
-### 2. 外部服务模式 (External)
-连接外部的 vLLM 推理服务器
-使用时，使用以下参数配置外部 vLLM 服务器
+启动参数
 ```bash
+--use_vllm true \
+--vllm_mode colocate
+```
+
+#### Colocate 模式下的显存优化方案
+在 Colocate 模式下运行时，容易出现显存不足（OOM）的情况。以下是几种有效的显存优化方法和参数配置：
+
+1. 在训练阶段，释放 vLLM 占用的显存：
+
+```bash
+--sleep_level 1
+```
+
+2. 在vLLM 推理阶段，释放训练模型和优化器占用的显存：
+
+```bash
+--offload_optimizer true \
+--offload_model true \
+--gc_collect_after_offload true \
+```
+
+3. 在vLLM中使用 Tensor Parallel 技术：
+
+```bash
+--vllm_tensor_parallel_size [tp_size]
+```
+
+4. 分批 Gather 模型权重（zero3下同步 vLLM 权重时）：
+
+```bash
+--move_model_batches [批次数量]
+```
+
+### 2. Async(External) Mode
+
+- 训练与推理资源分离，启动单独的推理服务器
+
+使用`swift rollout`命令部署vLLM 服务器, 现仅支持vLLM backend
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+  --data_parallel_size 1
+
+CUDA_VISIBLE_DEVICES=0,1 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+  --data_parallel_size 1
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+  --data_parallel_size 2
+```
+
+对于更多 vLLM 参数，你可以参考[vLLM参数](./命令行参数.md#vllm参数)
+
+训练使用以下参数配置外部 vLLM 服务器
+```bash
+--use_vllm true \
+--vllm_mode server \
 --vllm_server_host <服务器IP> \
 --vllm_server_port <服务端口> \
 --vllm_server_timeout <超时时间> \
 ```
-使用`swift rollout`命令部署vLLM 服务器, 现仅支持vLLM backend
-```bash
-CUDA_VISIBLE_DEVICES=2 \
-swift rollout \
-  --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --tensor_parallel_size 2 \
-```
-完整脚本可以参考[这里](../../../examples/train/grpo/multi_node/Qwen2_5_32B_full.sh)
-
 
 ## 奖励函数
 ### 自定义奖励函数
@@ -77,7 +113,7 @@ orms['dummy']= DummyLengthRewardFunction
 
 可以在`swift/examples/train/grpo/plugin/plugin.py`中加入该奖励函数，使用参数`--external_plugins examples/train/grpo/plugin/plugin.py`进行注册，并通过 reward_funcs 参数进行指定
 
-执行脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_rm.sh)
+执行脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh)
 
 ### 内置奖励函数
 swift内置了五种基于规则的奖励函数(代码见swift/plugin/orm.py)
@@ -164,197 +200,41 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo'], 默认为'grpo', 具体查看该[pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)
 - log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb` 使用。默认为False
   - 提示：若没有设置`--report_to wandb`，则会在checkpoint中创建`completions.jsonl`来存储生成内容
-- use_vllm: 是否使用vLLM作为采样的生成后端，默认为False，建议使用加快训练速度
-- vllm_device: 设置vLLM部署的设备，默认为`auto`, 即未被使用的第一张显卡，使用`cuda:x`来设置特定的卡。
-- vllm_gpu_memory_utilization: vllm透传参数，默认为0.9
-- vllm_max_model_len: vllm透传参数，默认为None
-- vllm_max_num_seqs: vllm透传参数，默认为256
-- vllm_enforce_eager: vllm透传参数，默认为False
-- vllm_limit_mm_per_prompt: vllm透传参数，默认为None
-- vllm_enable_prefix_caching: vllm透传参数，默认为True
-- vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用
-- vllm_server_port vLLM server 服务端口，默认为8000
-- vllm_server_timeout 连接vLLM server的超时时间，默认为120s
-- num_iterations: 每个批次代更新次数，默认为1.
-- epsilon: clip 系数，默认为0.2.
-- epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围.
-- async_generate: 异步rollout以提高训练速度，默认`false`.
-- sleep_level: vllm特有参数，在训练和rollout复用卡的时候，可以选择vllm进行offload.
-- move_model_batches: 在模型向vLLM/LMDeploy等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个
-- offload_optimizer: 是否在vLLM/LMDeploy推理时offload optimizer参数，默认为False
-- offload_model: 是否在vLLM/LMDeploy推理时offload 模型本身，默认为False
-  - 注意：若该参数设置为True，训练时grad_norm一直为0，请安装`vllm==0.7.3`
-- gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False
-- multi_turn_func: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现
+- use_vllm: 是否使用 vLLM 作为 GRPO 生成的 infer_backend，默认为False。
+- vllm_mode: vLLM 集成模式，可选项为 `server` 和 `colocate`。server 模式使用 `swift rollout` 拉起的 vLLM 服务器进行采样，colocate 模式在程序内部署 vLLM。
+- vllm_mode server 参数
+  - vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用.
+  - vllm_server_port vLLM server 服务端口，默认为8000.
+  - vllm_server_timeout 连接vLLM server的超时时间，默认为120s.
+  - async_generate: 异步rollout以提高训练速度，注意开启时采样会使用上一轮更新的模型进行采样，不支持多轮场景。默认`false`.
+- vllm_mode colocate 参数
+  - vllm_gpu_memory_utilization: vllm透传参数，默认为0.9.
+  - vllm_max_model_len: vllm透传参数，默认为None.
+  - vllm_enforce_eager: vllm透传参数，默认为False.
+  - vllm_limit_mm_per_prompt: vllm透传参数，默认为None.
+  - vllm_enable_prefix_caching: vllm透传参数，默认为True.
+  - sleep_level: 训练时释放 vLLM 显存，可选项为[0, 1], 默认为0，不释放.
+- num_iterations: 每个批次代更新次数，默认为1。
+- epsilon: clip 系数，默认为0.2。
+- epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。
+- sync_ref_model: 是否定期同步ref_model，默认为False。
+- ref_model_mixup_alpha: 控制在更新过程中model和先前ref_model之间的混合。更新公式为 $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$。默认为0.6。
+- ref_model_sync_steps：同步频率，默认为512。
+- move_model_batches: 在模型向vLLM等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。
+- offload_optimizer: 是否在vLLM推理时offload optimizer参数，默认为False。
+- offload_model: 是否在vLLM推理时offload 模型本身，默认为False。
+- gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False。
+- multi_turn_func: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现。
+- completion_length_limit_scope: 在多轮对话中，`max_completion_length` 的限制范围。
+`total`限制所有对话轮次的总输出长度不超过`max_completion_length`, `per_round`限制每一轮的输出长度。
+默认为`per_round`, 当前仅对 colocate mode 生效。
 - dynamic_sample：筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
 - max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。
 - overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。
-- vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用 \
-- vllm_server_port vLLM server 服务端口，默认为8000 \
-- vllm_server_timeout 连接vLLM server的超时时间，默认为120s \
-
 
 奖励函数参数，见[内置奖励函数](#内置奖励函数)
 
-可以使用vLLM、LMDeploy作为采样后端加速训练
-多卡vLLM
-```bash
-# async mode
-# 要求 num_infer_workers(部署) + NPROC_PER_NODE(训练) = device_count
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=7 \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B \
-    --reward_funcs accuracy format \
-    --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.7 \
-    --vllm_max_model_len 8192 \
-    --num_infer_workers 1 \
-    --train_type full \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#5000' \
-    --max_completion_length 2048 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 1 \
-    --learning_rate 1e-6 \
-    --gradient_accumulation_steps 2 \
-    --eval_steps 200 \
-    --save_steps 200 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 4096 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 7 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero2 \
-    --log_completions true
-
-# colocate mode
-# 要求 num_infer_workers(部署) = NPROC_PER_NODE(训练) = device_count
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=8 \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-1.5B \
-    --reward_funcs accuracy format \
-    --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.5 \
-    --vllm_max_model_len 8192 \
-    --num_infer_workers 8 \
-    --train_type full \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#5000' \
-    --max_completion_length 2048 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 1 \
-    --learning_rate 1e-6 \
-    --gradient_accumulation_steps 2 \
-    --eval_steps 200 \
-    --save_steps 200 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 4096 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 8 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero2 \
-    --log_completions true \
-    --sleep_level 1 \
-    --offload_model true \
-    --offload_optimizer true \
-    --gc_collect_after_offload true \
-    --log_completions true
-```
-
-
-单卡
-```bash
-# PT backend
-CUDA_VISIBLE_DEVICES=0 \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B \
-    --reward_funcs accuracy format \
-    --train_type lora \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --target_modules all-linear \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#1000' \
-    --max_completion_length 1024 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --learning_rate 1e-5 \
-    --gradient_accumulation_steps 1 \
-    --eval_steps 100 \
-    --save_steps 100 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 2048 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 4 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --log_completions true
-
-# vLLM backend
-CUDA_VISIBLE_DEVICES=0 \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B \
-    --vllm_gpu_memory_utilization 0.5 \
-    --use_vllm true \
-    --sleep_level 1 \
-    --offload_model true \
-    --offload_optimizer true \
-    --gc_collect_after_offload true \
-    --reward_funcs accuracy format \
-    --train_type lora \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --target_modules all-linear \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#1000' \
-    --max_completion_length 1024 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --learning_rate 1e-5 \
-    --gradient_accumulation_steps 1 \
-    --eval_steps 100 \
-    --save_steps 100 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 2048 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 4 \
-    --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
-    --log_completions true
-```
-多机训练参考[这里](../../../examples/train/grpo/multi_node/)
-
-注：内部集成模式下，需要不同节点的GPU配置以及训练参数相同
+训练脚本参考[这里](../../../examples/train/grpo/)
 
 ## 自定义奖励模型
 默认情况下，奖励模型指的是包含数值头的分类模型（通常称为输出奖励模型（ORM））。这些模型对其他模型的输出进行评分，产生一个标量值，表示模型响应的质量。
@@ -384,7 +264,6 @@ swift rlhf \
     --reward_model Qwen/Qwen2.5-3B-Instruct Shanghai_AI_Laboratory/internlm2-7b-reward \
     --reward_model_plugin genrm my_rmplugin \
     --reward_weights 0.1 1 1 \
-    --num_infer_workers 8 \
     --vllm_gpu_memory_utilization 0.5 \
     --sleep_level 1 \
     --offload_model true \
@@ -407,55 +286,65 @@ swift rlhf \
 - Token level Loss
 - Soft Overlong Punishment
 
-其中Token level Loss是默认实现，不用额外设置。对于其余trick，我们可以基于GRPOTrainer，设置以下参数实现。
+以上trick，我们可以基于GRPOTrainer，设置以下参数实现。
+
+其中Token level Loss是通过使用参数 loss type `bnpo` 实现
 
 | 参数                 | 类型      | 值      |
 |----------------------|-----------|-------------|
+｜`--loss_type`        | `str`      | `bnpo`     |
 | `--epsilon_high`     | `float`   | `0.28`      |
 | `--dynamic_sample`   | `bool`    | `true`      |
 | `--overlong_filter`  | `bool`    | `true`      |
 | `--reward_funcs`     | `str`     | `soft_overlong`|
 | `--max_resample_times` | `int`    | `3`        |
 
-参考训练脚本(八卡colocate mode)
-```bash
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=8 \
-WANDB_API_KEY=xxx \
-swift rlhf \
-    --rlhf_type grpo \
-    --model Qwen/Qwen2.5-1.5B \
-    --reward_funcs accuracy soft_overlong \
-    --max_completion_length 4096 \
-    --soft_cache_length 819 \
-    --epsilon 0.2 \
-    --epsilon_high 0.28 \
-    --dynamic_sample true \
-    --overlong_filter true \
-    --max_resample_times 3 \
-    --use_vllm true \
-    --vllm_gpu_memory_utilization 0.6 \
-    --num_infer_workers 8 \
-    --train_type full \
-    --torch_dtype bfloat16 \
-    --dataset AI-MO/NuminaMath-TIR#5000 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --learning_rate 1e-6 \
-    --eval_steps 1000 \
-    --save_steps 1000 \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --num_generations 8 \
-    --temperature 1.0 \
-    --top_p 1.0 \
-    --deepspeed zero2 \
-    --log_completions true \
-    --num_iterations 1 \
-    --report_to tensorboard wandb \
-    --beta 0.0 \
+
+## FAQ
+**1. 训练过程中 loss 等于0 / 接近0 / 小于0**
+
+正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
+
+**2. num_generations / 批量大小相关**
+
+在 GRPO 中，batch_size 以 completion（模型生成结果） 为单位。例如，设置 per_device_train_batch_size=8 表示每张 GPU 在训练过程中会同时处理 8 个 completion 的 loss 计算。
+
+训练阶段，在一次完整的梯度累计 batch 中，总的 completion 数量等于：
+
 ```
+num_processes * per_device_train_batch_size * gradient_accumulation_steps
+```
+
+在评估阶段，completion 的数量等于：
+```
+num_processes * per_device_eval_batch_size
+```
+
+参数 `num_generations` 必须能够被以上两个值整除，以保证生成任务可以均匀分配到各个设备上。
+
+**示例**
+
+在 8 卡的环境下，若设置 `num_generations = 16`，则要求：
+
+- per_device_train_batch_size * gradient_accumulation_steps
+- per_device_eval_batch_size
+这两个值都应大于或等于 2，以满足整除条件。
+
+**3. 为什么 KL 出现了NaN**
+
+开启 overlong_filter 后，某一卡上的所有 completion 都被截断
+
+**4. 训练的steps怎么计算?**
+
+参考[issue](https://github.com/modelscope/ms-swift/issues/3912)
+
+**5. clip_ratio为什么总是1?**
+
+num_iterations = 1，async_generate = False 下为 on-policy RL，old_policy此时等于policy
+
+参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
+
+**6. 为什么没有设置val_dataset，仍然有验证过程，如何取消**
+当没有显式传入`val_dataset`时，参数`split_dataset_ratio`负责切分部分`dataset`为验证数据集，默认切分1%数据
+
+通过设置`--split_dataset_ratio 0` 来取消验证过程

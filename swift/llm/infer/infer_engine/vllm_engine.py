@@ -10,19 +10,19 @@ import torch
 from packaging import version
 from tqdm import tqdm
 from transformers import GenerationConfig
+from transformers.utils import is_torch_npu_available
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
-from swift.utils import get_logger, get_node_setting, get_seed
+from swift.utils import get_logger, get_seed
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
-from .utils import AdapterRequest, InferStreamer, patch_npu_vllm, patch_vllm
+from .utils import AdapterRequest, InferStreamer, patch_npu_vllm
 
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
-    os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '0')
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '3600'
     import vllm
@@ -61,12 +61,12 @@ class VllmEngine(InferEngine):
         max_loras: int = 1,
         max_lora_rank: int = 16,
         enable_prefix_caching: bool = False,
-        num_infer_workers: int = 1,
         enable_sleep_mode: bool = False,
         distributed_executor_backend: Optional[str] = None,
         quantization: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
+        os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '0')
         self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -98,12 +98,10 @@ class VllmEngine(InferEngine):
             quantization=quantization,
             engine_kwargs=engine_kwargs,
         )
-        nnodes = get_node_setting()[1]
-        total_infer_workers = num_infer_workers * nnodes
-        context, npu_context = patch_vllm(world_size=total_infer_workers), nullcontext()
-        if tensor_parallel_size == 1 or pipeline_parallel_size == 1:
-            npu_context = patch_npu_vllm(self.engine_args.device)
-        with context, npu_context:
+        context = nullcontext()
+        if is_torch_npu_available() and (tensor_parallel_size == 1 or pipeline_parallel_size == 1):
+            context = patch_npu_vllm(self.engine_args.device)
+        with context:
             self._prepare_engine()
         self._load_generation_config()
         self._fix_vllm_bug()
@@ -309,6 +307,12 @@ class VllmEngine(InferEngine):
         if kwargs.get('seed') is None:
             kwargs['seed'] = get_seed()
         res = SamplingParams(**kwargs)
+
+        if hasattr(res, 'output_kind') and res.n > 1:
+            # fix n > 1 in V1 Engine
+            from vllm.sampling_params import RequestOutputKind
+            res.output_kind = RequestOutputKind.FINAL_ONLY
+
         res.top_logprobs = request_config.top_logprobs
         return res
 

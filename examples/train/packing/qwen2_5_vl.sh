@@ -2,6 +2,9 @@
 # Multimodal packing currently only supports qwen2_vl, qwen2_5_vl, qwen2_5_omni, internvl2_5/3
 # Efficiency: With packing: 10 minutes; Without packing: >=1 hour
 # For local datasets, it is recommended to use streaming: `--streaming true` (save memory)
+# You can also use padding_free to avoid the space/time cost caused by multi-modal packing:
+# https://github.com/modelscope/ms-swift/blob/main/examples/train/padding_free/sft.sh
+
 NPROC_PER_NODE=4 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \

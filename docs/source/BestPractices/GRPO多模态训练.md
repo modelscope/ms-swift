@@ -102,12 +102,19 @@ orms['external_r1v_acc'] = MultiModalAccuracyORM
 
 ### GRPO训练实验记录
 #### 训练参数：
-我们选取 Qwen2.5-VL-3B-Instruct 作为基础模型进行训练，选取 Instruct 而不是基模的主要原因是可以更快地获取 format reward。我们在八卡 GPU 上进行实验。SWIFT GRPO训练已支持多卡部署模型以加速rollout，因此我们设置num_infer_workers为2，进程数为6，即2卡部署，6卡训练。如果遇到vllm部署qwen2.5-vl报错，可以参考[issue](https://github.com/vllm-project/vllm/issues/13285)
+我们选取 Qwen2.5-VL-3B-Instruct 作为基础模型进行训练，选取 Instruct 而不是基模的主要原因是可以更快地获取 format reward。我们在八卡 GPU 上进行实验。如果遇到vllm部署qwen2.5-vl报错，可以参考[issue](https://github.com/vllm-project/vllm/issues/13285)
 
 由于任务简单，我们设置max_completion_length为1024，奖励函数选择external_r1v_acc和format，学习率和beta分别设置为1e-6和0.001。其他设置如下所示，batch_size和num_generations的设置原则可以参考[GRPO完整流程](./GRPO完整流程.md)。
+首先拉起 external vLLM server
+```bash
+CUDA_VISIBLE_DEVICES=6,7 \
+swift rollout \
+    --model Qwen/Qwen2.5-VL-3B-Instruct
+```
 
 ```shell
 WANDB_API_KEY=your_wandb_api_key \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
 NPROC_PER_NODE=6 \
 swift rlhf \
     --rlhf_type grpo \
@@ -115,12 +122,12 @@ swift rlhf \
     --external_plugins examples/train/grpo/plugin/plugin.py \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.6 \
+    --vllm_mode server \
+    --vllm_server_host 127.0.0.1 \
+    --vllm_server_port 8000 \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'okwinds/clevr_cogen_a_train' \
-    --vllm_max_model_len 8192 \
     --max_completion_length 1024 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 8 \
@@ -143,10 +150,8 @@ swift rlhf \
     --log_completions true \
     --report_to wandb \
     --num_iterations 1 \
-    --num_infer_workers 2 \
     --async_generate false \
     --beta 0.001 \
-
 ```
 #### 实验现象
 ![image.png](../../resources/grpo_clevr_count.png)
@@ -182,6 +187,7 @@ step 400:
 
 ```shell
 WANDB_API_KEY=your_wandb_api_key \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
 MAX_PIXELS=401408 \
 NPROC_PER_NODE=6 \
 swift rlhf \
@@ -190,12 +196,12 @@ swift rlhf \
     --external_plugins examples/train/grpo/plugin/plugin.py \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.6 \
+    --vllm_mode server \
+    --vllm_server_host 127.0.0.1 \
+    --vllm_server_port 8000 \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'AI-ModelScope/GEOQA_R1V_Train_8K' \
-    --vllm_max_model_len 8192 \
     --max_completion_length 1024 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 8 \
@@ -219,7 +225,6 @@ swift rlhf \
     --log_completions true \
     --report_to wandb \
     --num_iterations 2 \
-    --num_infer_workers 2 \
     --async_generate false \
     --beta 0.001 \
     --max_grad_norm 0.5 \
@@ -248,6 +253,7 @@ Assistant:
 选取的模型和大部分超参数与上一个实验相似，由于训练的时候出现了OOM，我们设置`MAX_PIXELS=262144`以降低显存占用。
 ```shell
 WANDB_API_KEY=your_wandb_api_key \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
 MAX_PIXELS=262144 \
 MASTER_PORT=29600 \
 NPROC_PER_NODE=6 \
@@ -257,12 +263,12 @@ swift rlhf \
     --external_plugins examples/train/grpo/plugin/plugin.py \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.6 \
+    --vllm_mode server \
+    --vllm_server_host 127.0.0.1 \
+    --vllm_server_port 8000 \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'lmms-lab/multimodal-open-r1-8k-verified' \
-    --vllm_max_model_len 8192
     --max_completion_length 1024 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 8 \
@@ -286,11 +292,9 @@ swift rlhf \
     --log_completions true \
     --report_to wandb \
     --num_iterations 2 \
-    --num_infer_workers 2 \
     --async_generate false \
     --beta 0.001 \
     --max_grad_norm 0.5 \
-
 ```
 
 #### 实验现象

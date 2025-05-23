@@ -20,6 +20,7 @@ swift rlhf \
     --model Qwen/Qwen2.5-32B-Instruct \
     --reward_funcs accuracy \
     --use_vllm true \
+    --vllm_mode colocate \
     --vllm_server_host xxx \
     --vllm_server_port 8000 \
     --train_type full \
@@ -43,6 +44,5 @@ swift rlhf \
     --deepspeed zero3 \
     --log_completions true \
     --num_iterations 1 \
-    --num_infer_workers 1 \
     --report_to tensorboard wandb \
     --beta 0.0

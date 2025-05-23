@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from typing import Any, Dict, Optional, Tuple, Type
 
 import torch
@@ -557,6 +558,9 @@ register_model(
 def patch_qwen_vl_utils(vision_process):
     if hasattr(vision_process, '_patch'):
         return
+    if os.getenv('VIDEO_MAX_PIXELS') and not os.getenv('VIDEO_TOTAL_PIXELS'):
+        # https://github.com/QwenLM/Qwen2.5-VL/issues/1120
+        os.environ['VIDEO_TOTAL_PIXELS'] = str(int(128000 * 28 * 28 * 0.9))
     for key in [
             'image_factor', 'min_pixels', 'max_pixels', 'max_ratio', 'video_min_pixels', 'video_max_pixels',
             'video_total_pixels', 'frame_factor', 'fps', 'fps_min_frames', 'fps_max_frames'
@@ -578,9 +582,13 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
     from transformers import Qwen2VLForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2VLForConditionalGeneration
     model, tokenizer = get_model_tokenizer_multimodal(*args, **kwargs)
-    if model is not None and hasattr(model.model, 'embed_tokens'):
-        patch_output_clone(model.model.embed_tokens)
-        patch_output_to_input_device(model.model.embed_tokens)
+    if model is not None:
+        if hasattr(model.model, 'embed_tokens'):
+            embed_tokens = model.model.embed_tokens
+        else:
+            embed_tokens = model.model.language_model.embed_tokens
+        patch_output_clone(embed_tokens)
+        patch_output_to_input_device(embed_tokens)
 
     from qwen_vl_utils import vision_process
     patch_qwen_vl_utils(vision_process)
@@ -706,7 +714,7 @@ register_model(
         TemplateType.qwen2_5_omni,
         get_model_tokenizer_qwen2_5_omni,
         model_arch=ModelArch.qwen2_5_omni,
-        architectures=['Qwen2_5OmniModel'],
+        architectures=['Qwen2_5OmniModel', 'Qwen2_5OmniForConditionalGeneration'],
         requires=['transformers>=4.50', 'soundfile', 'qwen_omni_utils', 'decord'],
         tags=['vision', 'video', 'audio'],
         additional_saved_files=['spk_dict.pt'],

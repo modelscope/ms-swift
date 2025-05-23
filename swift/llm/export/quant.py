@@ -109,7 +109,7 @@ class QuantEngine(ProcessorMixin):
         if is_multimodal and args.quant_method == 'gptq':
             return samples
         # now concatenate all samples and split according to block size
-        n_split = len(samples) // block_size
+        n_split = max(len(samples) // block_size, 1)
         logger.info(f'Split into {n_split} blocks')
         res = []
         for i in range(n_split):

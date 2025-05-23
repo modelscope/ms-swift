@@ -28,7 +28,7 @@ dataset example
 
 ## Reward Functions
 
-The training process utilizes two reward functions: `code_reward` and `code_format`. For implementation details, refer to the [code]((../../../examples/train/grpo/plugin/plugin.py)).
+The training process utilizes two reward functions: `code_reward` and `code_format`. For implementation details, refer to the [code](../../../examples/train/grpo/plugin/plugin.py).
 
 
 - `code_reward` Executes the generated code using [e2b](https://e2b.dev/) or [judge0](https://judge0.com/). Validates the code against the test cases in the dataset and assigns a reward value based on correctness.
@@ -42,10 +42,17 @@ Note: Currently, executing code through E2B only supports the Python language. I
 - Add `external_code_reward` as a reward function with `--reward_funcs`.
 - Set `--external_plugins` to the path of plugin.py.
 
+launch external vLLM server using following script
+```bash
+CUDA_VISIBLE_DEVICES=7 \
+swift rollout \
+  --model Qwen/Qwen2.5-7B-Instruct
+```
+
 ```bash
 E2B_API_KEY=xxx \
 WANDB_API_KEY=xxx \
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 \
 NPROC_PER_NODE=7 \
 swift rlhf \
     --rlhf_type grpo \
@@ -53,10 +60,10 @@ swift rlhf \
     --external_plugins examples/train/grpo/plugin/plugin.py \
     --reward_funcs external_code_reward external_code_format \
     --reward_weights 1.0 0.1 \
+    --vllm_mode server \
     --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.7 \
-    --vllm_max_model_len 8192 \
+    --vllm_server_host 127.0.0.1 \
+    --vllm_server_port 8000 \
     --train_type lora \
     --torch_dtype bfloat16 \
     --dataset 'open-r1/verifiable-coding-problems-python-10k' \
@@ -77,7 +84,6 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 14 \
     --temperature 0.9 \
-    --num_infer_workers 1 \
     --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero2 \
     --log_completions true \
@@ -94,7 +100,7 @@ swift rlhf \
 JUDGE0_ENDPOINT=xxx \
 JUDGE0_X_AUTH_TOKEN=xxx \
 WANDB_API_KEY=xxx \
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 \
 NPROC_PER_NODE=7 \
 swift rlhf \
     --rlhf_type grpo \
@@ -102,10 +108,10 @@ swift rlhf \
     --external_plugins examples/train/grpo/plugin/plugin.py \
     --reward_funcs external_code_reward_by_judge0 external_code_format \
     --reward_weights 1.0 0.1 \
+    --vllm_mode server \
     --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.7 \
-    --vllm_max_model_len 8192 \
+    --vllm_server_host 127.0.0.1 \
+    --vllm_server_port 8000 \
     --train_type lora \
     --torch_dtype bfloat16 \
     --dataset 'open-r1/verifiable-coding-problems-python-10k' \
@@ -126,7 +132,6 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 14 \
     --temperature 0.9 \
-    --num_infer_workers 1 \
     --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero2 \
     --log_completions true \

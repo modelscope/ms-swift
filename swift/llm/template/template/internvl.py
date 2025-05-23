@@ -18,7 +18,7 @@ from .utils import ChatmlTemplateMeta
 
 class InternvlTemplate(Template):
     skip_prompt = False
-    num_image_token = 256
+    num_image_token = None
     placeholder_tokens = ['<IMG_CONTEXT>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -38,6 +38,8 @@ class InternvlTemplate(Template):
         if images:
             labels = encoded.get('labels')
             input_size = get_env_args('input_size', int, 448)
+            if self.num_image_token is None:
+                self.num_image_token = int((input_size // 14)**2 * (0.5**2))
             max_num = get_env_args('max_num', int, 12)
             pixel_values_images = [transform_image(image, input_size, max_num) for image in images]
             pixel_values = torch.cat(pixel_values_images, dim=0).to(self.model_info.torch_dtype)
@@ -123,6 +125,8 @@ class Internvl2Template(InternvlTemplate):
         if images:
             has_video = bool(inputs.videos)
             input_size = get_env_args('input_size', int, 448)
+            if self.num_image_token is None:
+                self.num_image_token = int((input_size // 14)**2 * (0.5**2))
             max_num = get_env_args('max_num', int, 12)
             video_max_num = get_env_args('video_max_num', int, 1)
             if has_video:

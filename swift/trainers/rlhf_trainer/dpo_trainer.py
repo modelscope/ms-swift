@@ -6,6 +6,7 @@ import torch.nn as nn
 from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
+from trl.trainer.utils import selective_log_softmax
 
 from ..mixin import DataLoaderMixin, SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
@@ -123,7 +124,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         loss_mask = labels != label_pad_token_id
 
         labels[labels == label_pad_token_id] = 0
-
-        per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
-
+        # https://github.com/huggingface/trl/pull/2799
+        # Reduce peak vram consumption with efficient selective log_softmax
+        per_token_logps = selective_log_softmax(logits, labels)
         return (per_token_logps * loss_mask).sum(-1), loss_mask.sum(-1)

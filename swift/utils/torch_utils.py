@@ -8,6 +8,7 @@ import time
 import uuid
 from bisect import bisect_right
 from contextlib import contextmanager, nullcontext
+from datetime import timedelta
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -17,6 +18,7 @@ import torch.nn as nn
 from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
 from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.trainer_utils import set_seed
 from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 
 from .env import get_dist_setting, is_dist, is_dist_ta, is_local_master, is_master
@@ -377,15 +379,25 @@ def set_default_ddp_config():
         os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
 
 
-def init_process_group(ddp_backend: Optional[str] = None):
+def init_process_group(backend: Optional[str] = None, timeout: int = 18000000):
     if dist.is_initialized():
         return
     set_device()
-    if ddp_backend is None:
+    if backend is None:
         if is_torch_npu_available():
-            ddp_backend = 'hccl'
+            backend = 'hccl'
         elif torch.cuda.is_available():
-            ddp_backend = 'nccl'
+            backend = 'nccl'
         else:
-            ddp_backend = 'gloo'
-    dist.init_process_group(backend=ddp_backend)
+            backend = 'gloo'
+    timeout = timedelta(seconds=timeout)
+    dist.init_process_group(backend=backend, timeout=timeout)
+
+
+def seed_worker(worker_id: int, num_workers: int, rank: int):
+    """
+    Helper function to set worker seed during Dataloader initialization.
+    """
+    init_seed = torch.initial_seed() % 2**32
+    worker_seed = num_workers * rank + init_seed
+    set_seed(worker_seed)
