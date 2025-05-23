@@ -124,6 +124,29 @@ class Runtime(BaseUI):
         },
     ]
 
+    grpo_plot = [
+        {
+            'name': 'train/loss',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'train/reward',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'train/learning_rate',
+            'smooth': None,
+        },
+        {
+            'name': 'train/completions/mean_length',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'train/kl',
+            'smooth': 0.9,
+        },
+    ]
+
     locale_dict = {
         'runtime_tab': {
             'label': {
@@ -292,6 +315,8 @@ class Runtime(BaseUI):
             return cls.kto_plot
         elif train_type == 'orpo':
             return cls.orpo_plot
+        elif train_type == 'grpo':
+            return cls.grpo_plot
 
     @classmethod
     def update_log(cls, task):

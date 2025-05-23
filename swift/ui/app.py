@@ -11,6 +11,7 @@ import swift
 from swift.llm import DeployArguments, EvalArguments, ExportArguments, RLHFArguments, SwiftPipeline, WebUIArguments
 from swift.ui.llm_eval.llm_eval import LLMEval
 from swift.ui.llm_export.llm_export import LLMExport
+from swift.ui.llm_grpo.llm_grpo import LLMGRPO
 from swift.ui.llm_infer.llm_infer import LLMInfer
 from swift.ui.llm_train.llm_train import LLMTrain
 
@@ -50,6 +51,7 @@ class SwiftWebUI(SwiftPipeline):
         port_env = os.environ.get('WEBUI_PORT')
         port = int(port_env) if port_env else self.args.server_port
         LLMTrain.set_lang(lang)
+        LLMGRPO.set_lang(lang)
         LLMInfer.set_lang(lang)
         LLMExport.set_lang(lang)
         LLMEval.set_lang(lang)
@@ -62,6 +64,7 @@ class SwiftWebUI(SwiftPipeline):
             gr.HTML(f"<h3><center>{locale_dict['sub_title'][lang]}</center></h3>")
             with gr.Tabs():
                 LLMTrain.build_ui(LLMTrain)
+                LLMGRPO.build_ui(LLMGRPO)
                 LLMInfer.build_ui(LLMInfer)
                 LLMExport.build_ui(LLMExport)
                 LLMEval.build_ui(LLMEval)
@@ -73,6 +76,10 @@ class SwiftWebUI(SwiftPipeline):
                 partial(LLMTrain.update_input_model, arg_cls=RLHFArguments),
                 inputs=[LLMTrain.element('model')],
                 outputs=[LLMTrain.element('train_record')] + list(LLMTrain.valid_elements().values()))
+            app.load(
+                partial(LLMGRPO.update_input_model, arg_cls=RLHFArguments),
+                inputs=[LLMGRPO.element('model')],
+                outputs=[LLMGRPO.element('train_record')] + list(LLMGRPO.valid_elements().values()))
             app.load(
                 partial(LLMInfer.update_input_model, arg_cls=DeployArguments, has_record=False),
                 inputs=[LLMInfer.element('model')],

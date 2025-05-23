@@ -14,7 +14,7 @@ from transformers.utils import is_torch_npu_available
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
-from swift.utils import get_logger, get_node_setting, get_seed
+from swift.utils import get_logger, get_seed
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
@@ -307,6 +307,12 @@ class VllmEngine(InferEngine):
         if kwargs.get('seed') is None:
             kwargs['seed'] = get_seed()
         res = SamplingParams(**kwargs)
+
+        if hasattr(res, 'output_kind') and res.n > 1:
+            # fix n > 1 in V1 Engine
+            from vllm.sampling_params import RequestOutputKind
+            res.output_kind = RequestOutputKind.FINAL_ONLY
+
         res.top_logprobs = request_config.top_logprobs
         return res
 

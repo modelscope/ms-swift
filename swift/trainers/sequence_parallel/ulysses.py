@@ -21,7 +21,7 @@ from trl.extras.profiling import profiling_decorator
 
 from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_model_arch, to_device
 from swift.tuners import SwiftModel
-from swift.utils import get_current_device, get_device, get_dist_setting
+from swift.utils import get_current_device, get_device, get_dist_setting, seed_worker
 from .base import SequenceParallel
 
 if version.parse(torch.__version__) >= version.parse('2.0.0'):
@@ -552,10 +552,10 @@ class Ulysses(SequenceParallel):
         self.causal_mask_func = base_model._update_causal_mask
         if self.split_in_base_model:
             # for multi modal models
-            base_model.register_forward_hook(pre_forward_split_hook)
+            base_model.register_forward_hook(pre_forward_split_hook, with_kwargs=True)
         else:
             # llm models
-            model.register_forward_hook(pre_forward_split_hook)
+            model.register_forward_hook(pre_forward_split_hook, with_kwargs=True)
 
         self.model_dtype = next(model.parameters()).dtype
 
@@ -608,7 +608,9 @@ class Ulysses(SequenceParallel):
         if input_ids is not None:
             input_ids = self._pad_sp(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
         if input_embeds is not None:
-            pad_emb = embed_tokens(torch.tensor(tokenizer.pad_token_id).to(embed_tokens.weight.device)).unsqueeze(0)
+            pad_emb = torch.zeros(
+                (1, embed_tokens.weight.shape[-1])).to(embed_tokens.weight.device).to(embed_tokens.weight.dtype)
+
             input_embeds = self._pad_sp(input_embeds, padding_value=pad_emb, dim=1)
         if position_ids is not None:
             position_ids = self._pad_sp(position_ids, padding_value=0, dim=-1)
@@ -679,7 +681,8 @@ class Ulysses(SequenceParallel):
             if not isinstance(dataset, torch.utils.data.IterableDataset):
                 dataloader_params['sampler'] = sampler
                 dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
-                dataloader_params['worker_init_fn'] = seed_worker
+                dataloader_params['worker_init_fn'] = partial(
+                    seed_worker, num_workers=trainer.args.dataloader_num_workers, rank=trainer.args.process_index)
 
             return DataLoaderShard(dataset, device=trainer.accelerator.device, **dataloader_params)
         else:

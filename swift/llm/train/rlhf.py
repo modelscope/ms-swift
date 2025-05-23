@@ -111,9 +111,10 @@ class SwiftRLHF(SwiftSft):
         self.reward_model = None
         if hasattr(args, 'reward_model') and args.reward_model is not None:
             rms = args.reward_model if isinstance(args.reward_model, list) else [args.reward_model]
-            rm_types = args.reward_model_type if isinstance(args.reward_model_type, list) else [args.reward_model_type]
-            rm_revisions = args.reward_model_revision if isinstance(args.reward_model_revision,
-                                                                    list) else [args.reward_model_revision]
+            num_rms = len(rms)
+            rm_types = args.reward_model_type if args.reward_model_type else [None] * num_rms
+            rm_revisions = args.reward_model_revision if args.reward_model_revision else [None] * num_rms
+            assert len(rms) == len(rm_types) == len(rm_revisions)
 
             self.reward_model = []
             if args.rlhf_type == 'grpo':

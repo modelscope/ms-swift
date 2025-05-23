@@ -68,10 +68,23 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 
 使用`swift rollout`命令部署vLLM 服务器, 现仅支持vLLM backend
 ```bash
-CUDA_VISIBLE_DEVICES=2 \
+CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
   --tensor_parallel_size 2 \
+  --data_parallel_size 1
+
+CUDA_VISIBLE_DEVICES=0,1 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+  --data_parallel_size 1
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+  --data_parallel_size 2
 ```
 
 对于更多 vLLM 参数，你可以参考[vLLM参数](./命令行参数.md#vllm参数)
@@ -84,9 +97,6 @@ swift rollout \
 --vllm_server_port <服务端口> \
 --vllm_server_timeout <超时时间> \
 ```
-
-完整脚本可以参考[这里](../../../examples/train/grpo/multi_node/Qwen2_5_32B_full.sh)
-
 
 ## 奖励函数
 ### 自定义奖励函数
@@ -210,9 +220,9 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - sync_ref_model: 是否定期同步ref_model，默认为False。
 - ref_model_mixup_alpha: 控制在更新过程中model和先前ref_model之间的混合。更新公式为 $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$。默认为0.6。
 - ref_model_sync_steps：同步频率，默认为512。
-- move_model_batches: 在模型向vLLM/LMDeploy等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。
-- offload_optimizer: 是否在vLLM/LMDeploy推理时offload optimizer参数，默认为False。
-- offload_model: 是否在vLLM/LMDeploy推理时offload 模型本身，默认为False。
+- move_model_batches: 在模型向vLLM等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。
+- offload_optimizer: 是否在vLLM推理时offload optimizer参数，默认为False。
+- offload_model: 是否在vLLM推理时offload 模型本身，默认为False。
 - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False。
 - multi_turn_func: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现。
 - completion_length_limit_scope: 在多轮对话中，`max_completion_length` 的限制范围。
@@ -224,7 +234,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 奖励函数参数，见[内置奖励函数](#内置奖励函数)
 
-运行脚本参考[这里](../../../examples/train/grpo/)
+训练脚本参考[这里](../../../examples/train/grpo/)
 
 ## 自定义奖励模型
 默认情况下，奖励模型指的是包含数值头的分类模型（通常称为输出奖励模型（ORM））。这些模型对其他模型的输出进行评分，产生一个标量值，表示模型响应的质量。
@@ -333,3 +343,8 @@ num_processes * per_device_eval_batch_size
 num_iterations = 1，async_generate = False 下为 on-policy RL，old_policy此时等于policy
 
 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
+
+**6. 为什么没有设置val_dataset，仍然有验证过程，如何取消**
+当没有显式传入`val_dataset`时，参数`split_dataset_ratio`负责切分部分`dataset`为验证数据集，默认切分1%数据
+
+通过设置`--split_dataset_ratio 0` 来取消验证过程

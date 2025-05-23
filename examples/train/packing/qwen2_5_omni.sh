@@ -2,8 +2,7 @@
 # Multimodal packing currently only supports qwen2_vl, qwen2_5_vl, qwen2_5_omni, internvl2_5/3
 # A demo for four modalities that can be run directly
 # For local datasets, it is recommended to use streaming: `--streaming true` (save memory)
-pip uninstall transformers
-pip install git+https://github.com/huggingface/transformers
+pip install transformers -U
 
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \

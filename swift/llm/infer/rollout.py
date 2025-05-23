@@ -19,8 +19,8 @@ from fastapi import FastAPI
 
 from swift.llm import DeployArguments, InferArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
-from swift.utils import get_logger
-from .infer_engine import InferClient, VllmEngine
+from swift.utils import get_device, get_logger
+from .infer_engine import GRPOVllmEngine, InferClient
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
 
 try:
@@ -44,7 +44,10 @@ def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
     os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
     os.environ['VLLM_DP_SIZE'] = str(args.data_parallel_size)
     os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
-    engine = SwiftRolloutDeploy.get_infer_engine(args)
+    kwargs = {}
+    if args.tensor_parallel_size == 1 and args.data_parallel_size > 1:
+        kwargs['device'] = get_device(str(data_parallel_rank))
+    engine = SwiftRolloutDeploy.get_infer_engine(args, **kwargs)
 
     # Send ready signal to parent process
     connection.send({'status': 'ready'})
@@ -85,7 +88,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
     def __init__(self, args: Union[List[str], DeployArguments, None] = None):
         os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '1')
         super().__init__(args)
-        assert self.args.data_parallel_size == 1, 'currently, DP is not supported, please set --data_parallel_size 1'
         safe_set_start_method()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_rl_rollout_app()
@@ -144,9 +146,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
         engine_kwargs = kwargs.get('engine_kwargs', {})
         # for RL rollout model weight sync
         engine_kwargs.update({'worker_extension_cls': 'trl.scripts.vllm_serve.WeightSyncWorkerExtension'})
-        engine_kwargs.update({'data_parallel_size': args.data_parallel_size})
         kwargs['engine_kwargs'] = engine_kwargs
-        return VllmEngine(**kwargs)
+        return GRPOVllmEngine(**kwargs)
 
     async def health(self):
         """
@@ -244,12 +245,14 @@ class SwiftRolloutDeploy(SwiftPipeline):
         chunked_infer_requests = chunk_list(infer_requests, self.args.data_parallel_size)
 
         # Send the prompts to each worker
-        for connection, requests in zip(self.connections, chunked_infer_requests):
+        for i, (connection, requests) in enumerate(zip(self.connections, chunked_infer_requests)):
             # When the number of prompts is less than data_parallel_size, some workers will receive empty prompts.
             # However, vLLM requires that we always send at least one prompt. So we send a placeholder prompt to comply
             # with vLLM's requirement, and we later ignore the result.
             if not requests:
                 requests = RolloutInferRequest(messages=[{'role': 'user', 'content': '<placeholder>'}])
+            # different seed bewteen vLLM Engine
+            request_config.seed += i * len(requests)
             kwargs = {'infer_requests': requests, 'request_config': request_config, 'use_tqdm': use_tqdm}
             connection.send({'type': 'call', 'method': 'infer', 'kwargs': kwargs})
 

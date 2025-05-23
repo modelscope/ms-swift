@@ -12,7 +12,6 @@ swift rlhf \
     --torch_dtype bfloat16 \
     --system examples/train/grpo/prompt.txt \
     --num_train_epochs 1 \
-    --max_length 2048 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --learning_rate 1e-6 \
