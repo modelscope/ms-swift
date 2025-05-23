@@ -4,7 +4,6 @@ import sys
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-import json
 import megatron.core
 import torch
 from packaging import version
@@ -169,7 +168,7 @@ class MegatronArguments(ExtraMegatronArguments):
     no_create_attention_mask_in_dataloader: bool = True
 
     # extra_args for megatron
-    extra_megatron_kwargs: Optional[str] = None
+    extra_megatron_kwargs: Optional[Union[dict, str]] = None
 
     def _set_default(self):
         if self.num_query_groups is None:
