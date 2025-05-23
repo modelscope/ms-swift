@@ -22,7 +22,7 @@ os.system('swift sft --model xxx --dataset xxx')
 3. web-ui服务关闭后，后台服务是仍旧运行的，这防止了web-ui被关掉后影响训练进程，如果需要关闭后台服务，只需要**选择对应的任务**后在界面上的`运行时`tab点击杀死服务
 4. 重新启动web-ui后，如果需要显示正在运行的服务，在`运行时`tab点击`找回运行时任务`即可
 5. 训练界面支持显示运行日志，请在选择某个任务后手动点击`展示运行状态`，在训练时运行状态支持展示训练图表，图标包括训练loss、训练acc、学习率等基本指标，在人类对齐任务重界面图标为margin、logps等关键指标
-6. web-ui的训练不支持PPO，该过程比较复杂，建议使用examples的[shell脚本](../../../examples/train/rlhf/ppo)直接运行
+6. web-ui的训练不支持PPO，该过程比较复杂，建议使用examples的[shell脚本](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/ppo)直接运行
 
 如果需要使用share模式，请添加`--share true`参数。注意：请不要在dsw、notebook等环境中使用该参数。
 

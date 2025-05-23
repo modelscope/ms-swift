@@ -26,7 +26,7 @@
 
 
 ## 奖励函数
-使用`code_reward`和`code_format`奖励进行训练，实现细节见[代码](../../../examples/train/grpo/plugin/plugin.py)
+使用`code_reward`和`code_format`奖励进行训练，实现细节见[代码](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py)
 
 - `code_reward`通过[e2b](https://e2b.dev/)或[judge0](https://judge0.com/)执行生成的代码，根据数据集中的测试用例对代码进行验证给出奖励值。
 - `code_format`要求模型输出包含代码块的格式化回答。

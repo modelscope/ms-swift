@@ -234,7 +234,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 奖励函数参数，见[内置奖励函数](#内置奖励函数)
 
-训练脚本参考[这里](../../../examples/train/grpo/)
+训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo)
 
 ## 自定义奖励模型
 默认情况下，奖励模型指的是包含数值头的分类模型（通常称为输出奖励模型（ORM））。这些模型对其他模型的输出进行评分，产生一个标量值，表示模型响应的质量。
@@ -246,9 +246,9 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 通过reward_model_plugin，开发者可以针对其应用的特定需求定制奖励评估过程。这种灵活性允许更细致和有效的基于奖励的训练策略。
 
-我们在 [rm_plugin.py](../../../swift/plugin/rm_plugin.py) 中提供了一个简单的生成式奖励模型示例（GenRMPlugin）。
+我们在 [rm_plugin.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/rm_plugin.py) 中提供了一个简单的生成式奖励模型示例（GenRMPlugin）。
 
-您还可以在 [plugin.py](../../../examples/train/grpo/plugin/plugin.py) 中自定义您的奖励模型插件，并使用 `external_plugins` 参数进行注册。
+您还可以在 [plugin.py](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py) 中自定义您的奖励模型插件，并使用 `external_plugins` 参数进行注册。
 
 以下是一个训练脚本示例，用于使用两个奖励模型，包括一个 ORM 和一个 Gen-RM（此处使用 qwen2.5-3B-Instruct）进行 GRPO 训练：
 

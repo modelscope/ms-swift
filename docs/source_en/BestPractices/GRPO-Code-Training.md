@@ -28,7 +28,7 @@ dataset example
 
 ## Reward Functions
 
-The training process utilizes two reward functions: `code_reward` and `code_format`. For implementation details, refer to the [code](../../../examples/train/grpo/plugin/plugin.py).
+The training process utilizes two reward functions: `code_reward` and `code_format`. For implementation details, refer to the [code](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py).
 
 
 - `code_reward` Executes the generated code using [e2b](https://e2b.dev/) or [judge0](https://judge0.com/). Validates the code against the test cases in the dataset and assigns a reward value based on correctness.
