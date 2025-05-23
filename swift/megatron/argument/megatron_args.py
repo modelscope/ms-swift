@@ -260,7 +260,7 @@ class MegatronArguments(ExtraMegatronArguments):
                 if isinstance(value, str):
                     value = json.loads(value)
                 if not isinstance(value, dict):
-                    raise ValueError(f"extra_megatron_kwargs should be a dict, but got {type(value)}")
+                    raise ValueError(f'extra_megatron_kwargs should be a dict, but got {type(value)}')
                 for sub_key, sub_value in value.items():
                     new_args.append(f"--{sub_key.replace('_', '-')}")
                     new_args.append(str(sub_value))

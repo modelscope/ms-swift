@@ -11,7 +11,8 @@ def get_mg_model_tokenizer(model_id):
     megatron_model_meta = get_megatron_model_meta(processor.model_meta.model_type)
     model_info = processor.model_info
     kwargs = megatron_model_meta.convert_hf_config(model_info.config)
-    megatron_args = MegatronArguments(**kwargs, seq_length=1, use_cpu_initialization=True, no_initialization=True, torch_dtype=torch.float32)
+    megatron_args = MegatronArguments(
+        **kwargs, seq_length=1, use_cpu_initialization=True, no_initialization=True, torch_dtype=torch.float32)
     extra_args_provider = megatron_model_meta.extra_args_provider
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
