@@ -225,4 +225,7 @@ def shuffle_tensor_dict(tensor_dict: dict[str, Optional[torch.Tensor]]) -> dict[
     first_tensor = next(tensor for tensor in tensor_dict.values() if tensor is not None)
     batch_size = first_tensor.shape[0]
     permutation = torch.randperm(batch_size)
-    return {key: tensor[permutation] if tensor is not None else None for key, tensor in tensor_dict.items()}
+    return {
+        key: value[permutation] if isinstance(value, torch.Tensor) and value is not None else value
+        for key, value in tensor_dict.items()
+    }
