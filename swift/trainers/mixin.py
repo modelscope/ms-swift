@@ -321,6 +321,7 @@ class SwiftMixin:
             self.model.supports_gradient_checkpointing = True
             dynamic_gradient_checkpointing(self.model, args.vit_gradient_checkpointing)
             self.model.enable_input_require_grads()
+
         model_meta = self.model.model_meta
         model_arch = get_model_arch(model_meta.model_arch)
         if args.vit_gradient_checkpointing and model_meta.is_multimodal and model_arch:
@@ -333,7 +334,6 @@ class SwiftMixin:
                         pass
 
     def train(self, *args, **kwargs):
-        self._prepare_gradient_checkpointing()
         if self.model_meta.is_multimodal:
             models = []
             for model_name in ['model', 'ref_model', 'value_model']:
@@ -352,9 +352,14 @@ class SwiftMixin:
             self.template.register_post_encode_hook(models)
             logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}.')
         self._save_initial_model(self.args.output_dir)
+
+        self._prepare_gradient_checkpointing()
+        # Avoid vit_gradient_checkpointing being overwritten by transformers.Trainer.gradient_checkpointing_enable.
+        self.args.gradient_checkpointing = False
         with self.hub.patch_hub(), self._fix_grad_norm_nan():
             res = super().train(*args, **kwargs)
         self.template.remove_post_encode_hook()
+        self.args.gradient_checkpointing = True  # recover
         return res
 
     def push_to_hub(self, *args, **kwargs):
