@@ -4,6 +4,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import json
 import megatron.core
 import torch
 from packaging import version
@@ -167,6 +168,9 @@ class MegatronArguments(ExtraMegatronArguments):
     num_workers: int = 4
     no_create_attention_mask_in_dataloader: bool = True
 
+    # extra_args for megatron
+    extra_megatron_kwargs: Optional[str] = None
+
     def _set_default(self):
         if self.num_query_groups is None:
             self.num_query_groups = 1
@@ -231,6 +235,17 @@ class MegatronArguments(ExtraMegatronArguments):
 
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
 
+        try:
+            if self.extra_megatron_kwargs is None:
+                self.extra_megatron_kwargs = {}
+            elif isinstance(self.extra_megatron_kwargs, str):
+                self.extra_megatron_kwargs = json.loads(self.extra_megatron_kwargs)
+            elif isinstance(self.extra_megatron_kwargs, dict):
+                # For loading from config file
+                self.extra_megatron_kwargs = self.extra_megatron_kwargs
+        except json.JSONDecodeError:
+            raise ValueError('extra_megatron_kwargs should be a valid json string')
+
     def _args_to_argv(self) -> Tuple[List[Any], Dict[str, Any]]:
         new_args = []
         args_dict = asdict(self)
@@ -240,6 +255,15 @@ class MegatronArguments(ExtraMegatronArguments):
                 continue
             if k not in MegatronArguments.__annotations__:
                 extra_args[k] = value
+                continue
+            if k == 'extra_megatron_kwargs':
+                if isinstance(value, str):
+                    value = json.loads(value)
+                if not isinstance(value, dict):
+                    raise ValueError(f'extra_megatron_kwargs should be a dict, but got {type(value)}')
+                for sub_key, sub_value in value.items():
+                    new_args.append(f"--{sub_key.replace('_', '-')}")
+                    new_args.append(str(sub_value))
                 continue
             if value is None or value is False:
                 continue
