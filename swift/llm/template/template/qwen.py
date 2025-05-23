@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional, Tuple
@@ -219,7 +220,13 @@ class Qwen2VLTemplate(Template):
             else:
                 return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
-            inputs.videos[index] = fetch_video({'video': inputs.videos[index]}).to(torch.uint8)
+            video = inputs.videos[index]
+            if os.path.isdir(video):
+                video = [os.path.join(video, fname) for fname in os.listdir(video)]
+            video = fetch_video({'video': video})
+            if isinstance(video, torch.Tensor):
+                video = video.to(torch.uint8)
+            inputs.videos[index] = video
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
