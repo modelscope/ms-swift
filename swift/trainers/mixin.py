@@ -314,6 +314,7 @@ class SwiftMixin:
             Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
 
     def _prepare_gradient_checkpointing(self):
+        from swift.llm import HfConfigFactory, get_model_arch, deep_getattr, dynamic_gradient_checkpointing
         args = self.args
         HfConfigFactory.set_model_config_attr(self.model, 'use_cache', False)
         if args.gradient_checkpointing:
@@ -332,6 +333,7 @@ class SwiftMixin:
                         pass
 
     def train(self, *args, **kwargs):
+        self._prepare_gradient_checkpointing()
         if self.model_meta.is_multimodal:
             models = []
             for model_name in ['model', 'ref_model', 'value_model']:

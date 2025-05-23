@@ -14,8 +14,6 @@ from ..base import SwiftPipeline
 from ..dataset import (EncodePreprocessor, GetLengthPreprocessor, IterablePackingDataset, LazyLLMDataset,
                        PackingDataset, load_dataset)
 from ..infer import prepare_generation_config
-from ..model import HfConfigFactory, get_model_arch
-from ..utils import deep_getattr, dynamic_gradient_checkpointing
 from .tuner import TunerMixin
 
 logger = get_logger()
