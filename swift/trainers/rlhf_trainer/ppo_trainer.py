@@ -82,3 +82,8 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
             }
 
         super()._save(output_dir, state_dict)
+
+    def _prepare_gradient_checkpointing(self, model):
+        models = list(set([self.model.policy, self.model.value_model]))
+        for model in models:
+            SwiftMixin._prepare_gradient_checkpointing(self, model)

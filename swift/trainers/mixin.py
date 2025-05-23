@@ -313,24 +313,31 @@ class SwiftMixin:
         finally:
             Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
 
-    def _prepare_gradient_checkpointing(self):
+    def _prepare_gradient_checkpointing(self, model) -> None:
         from swift.llm import HfConfigFactory, get_model_arch, deep_getattr, dynamic_gradient_checkpointing
         args = self.args
-        HfConfigFactory.set_model_config_attr(self.model, 'use_cache', False)
+        if args.gradient_checkpointing or args.vit_gradient_checkpointing:
+            HfConfigFactory.set_model_config_attr(model, 'use_cache', False)
+            dynamic_gradient_checkpointing(model, args.vit_gradient_checkpointing)
         if args.gradient_checkpointing:
-            self.model.supports_gradient_checkpointing = True
-            dynamic_gradient_checkpointing(self.model, args.vit_gradient_checkpointing)
-            self.model.enable_input_require_grads()
+            model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
+            model.enable_input_require_grads()
 
-        model_meta = self.model.model_meta
+        model_meta = model.model_meta
         model_arch = get_model_arch(model_meta.model_arch)
-        if args.vit_gradient_checkpointing and model_meta.is_multimodal and model_arch:
+        if model_meta.is_multimodal and model_arch:
             for vision_tower_name in model_arch.vision_tower:
-                vision_tower = deep_getattr(self.model, vision_tower_name)
+                vision_tower = deep_getattr(model, vision_tower_name)
                 if hasattr(vision_tower, 'enable_input_require_grads'):
                     try:
-                        vision_tower.enable_input_require_grads()
-                    except NotImplementedError:
+                        if args.vit_gradient_checkpointing:
+                            vision_tower.gradient_checkpointing_enable(
+                                gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
+                            vision_tower.enable_input_require_grads()
+                        else:
+                            vision_tower.gradient_checkpointing_disable()
+                            vision_tower.disable_input_require_grads()
+                    except (NotImplementedError, AttributeError):
                         pass
 
     def train(self, *args, **kwargs):
@@ -353,13 +360,15 @@ class SwiftMixin:
             logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}.')
         self._save_initial_model(self.args.output_dir)
 
-        self._prepare_gradient_checkpointing()
+        # gradient_checkpointing
+        self._prepare_gradient_checkpointing(self.accelerator.unwrap_model(self.model))
         # Avoid vit_gradient_checkpointing being overwritten by transformers.Trainer.gradient_checkpointing_enable.
+        gradient_checkpointing = self.args.gradient_checkpointing
         self.args.gradient_checkpointing = False
         with self.hub.patch_hub(), self._fix_grad_norm_nan():
             res = super().train(*args, **kwargs)
         self.template.remove_post_encode_hook()
-        self.args.gradient_checkpointing = True  # recover
+        self.args.gradient_checkpointing = gradient_checkpointing  # recover
         return res
 
     def push_to_hub(self, *args, **kwargs):

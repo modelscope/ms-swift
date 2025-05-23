@@ -161,11 +161,13 @@ def dynamic_gradient_checkpointing(model, including_vit: bool = False) -> None:
     else:
         tower_names = [None]
 
+    model.supports_gradient_checkpointing = True
     for tower_name in tower_names:
         if tower_name is None:
             model_tower = model
         else:
             model_tower = deep_getattr(model, tower_name)
+        model_tower.supports_gradient_checkpointing = True
         module_list = find_module_list(model_tower)
         if module_list is None:
             continue
