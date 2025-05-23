@@ -239,16 +239,13 @@ class MegatronArguments(ExtraMegatronArguments):
         new_args = []
         args_dict = asdict(self)
         extra_args = {}
+        extra_megatron_kwargs = args_dict.pop('extra_megatron_kwargs')
+        args_dict.update(extra_megatron_kwargs)
         for k, value in args_dict.items():
-            if k == 'recompute_modules' and version.parse(megatron.core.__version__) < version.parse('0.12'):
-                continue
-            if k not in MegatronArguments.__annotations__:
+            if k not in MegatronArguments.__annotations__ and k not in extra_megatron_kwargs:
                 extra_args[k] = value
                 continue
-            if k == 'extra_megatron_kwargs':
-                for sub_key, sub_value in value.items():
-                    new_args.append(f"--{sub_key.replace('_', '-')}")
-                    new_args.append(str(sub_value))
+            if k == 'recompute_modules' and version.parse(megatron.core.__version__) < version.parse('0.12'):
                 continue
             if value is None or value is False:
                 continue
