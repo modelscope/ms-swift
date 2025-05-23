@@ -1,3 +1,5 @@
+import inspect
+
 import math
 import os
 from functools import partial
@@ -8,12 +10,14 @@ import datasets
 import numpy as np
 import torch
 import torch.distributed as dist
+from accelerate.utils import is_peft_model
 from packaging import version
 from peft import PeftModel
 from torch.distributed.device_mesh import init_device_mesh
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
 from transformers.trainer_utils import seed_worker
+from trl.extras.profiling import profiling_decorator
 
 from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_model_arch, to_device
 from swift.tuners import SwiftModel
@@ -79,8 +83,8 @@ def torch_compile():
 class ChunkedCrossEntropyLoss(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx, logits, labels, loss_scale, chunk_size):
-        ctx.save_for_backward(logits, labels, loss_scale)
+    def forward(ctx, logits, labels, chunk_size):
+        ctx.save_for_backward(logits, labels)
         ctx.chunk_size = chunk_size
 
         losses = []
@@ -91,9 +95,6 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
             labels_chunk = labels[l_start:l_end]
             loss_fct = CrossEntropyLoss(reduction='none')
             loss_chunk = loss_fct(logits_chunk, labels_chunk)
-            if loss_scale is not None:
-                loss_scale_chunk = loss_scale[l_start:l_end]
-                loss_chunk = loss_chunk * loss_scale_chunk
             losses.append(loss_chunk)
             del logits_chunk
             del labels_chunk
@@ -102,7 +103,7 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs: Any):
-        logits, labels, loss_scale = ctx.saved_tensors
+        logits, labels = ctx.saved_tensors
         chunk_size = ctx.chunk_size
 
         for i in range(math.ceil(logits.shape[0] / chunk_size)):
@@ -110,27 +111,19 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
             l_end = min((i + 1) * chunk_size, logits.shape[0])
             logits_chunk = logits[l_start:l_end].detach().requires_grad_(True)
             labels_chunk = labels[l_start:l_end]
-            if loss_scale is not None:
-                loss_scale_chunk = loss_scale[l_start:l_end]
-            else:
-                loss_scale_chunk = None
-
             loss_fct = CrossEntropyLoss(reduction='none')
             with torch.enable_grad():
                 loss_chunk = loss_fct(logits_chunk, labels_chunk)
-                if loss_scale_chunk is not None:
-                    loss_chunk = loss_chunk * loss_scale_chunk
-
                 grad_output_chunk = grad_outputs[0][l_start:l_end]
                 _loss_chunk = (loss_chunk * grad_output_chunk).sum()
                 grad_chunk = torch.autograd.grad(_loss_chunk, logits_chunk, retain_graph=False)[0]
                 logits[l_start:l_end] = grad_chunk
 
-        return logits, None, None, None
+        return logits, None, None
 
 
 @torch_compile()
-def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None, process_group=None) -> torch.Tensor:
+def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None, ulysses=None) -> torch.Tensor:
     if hasattr(outputs, 'logits'):
         logits = outputs.logits
     else:
@@ -138,16 +131,25 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
     device = logits.device
     logits = logits.view(-1, logits.shape[-1])
     labels = labels.flatten().to(device)
-    if loss_scale is not None:
-        loss_scale = loss_scale.flatten().to(device)
+    _, _, labels, _, _, loss_scale = ulysses.pad_and_split_inputs(
+        ulysses.tokenizer,
+        None,
+        None,
+        labels,
+        None,
+        None,
+        loss_scale)
 
     sploss_parallel_size = int(os.environ.get('CELOSS_PARALLEL_SIZE', '0'))
     if sploss_parallel_size > 0:
-        loss = ChunkedCrossEntropyLoss.apply(logits, labels, loss_scale, sploss_parallel_size)
+        loss = ChunkedCrossEntropyLoss.apply(logits, labels, sploss_parallel_size)
     else:
         loss_fct = CrossEntropyLoss(reduction='none')
         loss = loss_fct(logits, labels)
-    loss, labels = GatherLoss.apply(loss, labels, process_group)
+    if loss_scale is not None:
+        loss_scale = loss_scale.flatten().to(device)
+        loss = (loss_scale * loss)
+    loss, labels = GatherLoss.apply(loss, labels, ulysses.sp_group)
     mask = (labels != -100)
     total_loss = loss[mask].sum()
     if num_items_in_batch is None:
@@ -162,15 +164,73 @@ def get_batch_logps(logits: torch.FloatTensor,
                     labels: torch.LongTensor,
                     label_pad_token_id: int = -100,
                     is_encoder_decoder: bool = False,
-                    process_group=None) -> Tuple[torch.FloatTensor, torch.LongTensor]:
+                    ulysses=None) -> Tuple[torch.FloatTensor, torch.LongTensor]:
+    _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(
+        ulysses.tokenizer,
+        None,
+        None,
+        labels,
+        None,
+        None,
+        None)
     labels = labels.clone()  # No need to shift, pad and split has shifted the inputs.
     loss_mask = labels != label_pad_token_id
     labels[labels == label_pad_token_id] = 0
     labels = labels.to(logits.device)
     loss_mask = loss_mask.to(logits.device)
     per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
-    total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, process_group, 1)
+    total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, ulysses.sp_group, 1)
     return (total_per_token_logps * total_loss_mask).sum(-1), total_loss_mask.sum(-1)
+
+
+@profiling_decorator
+def _get_per_token_logps(self, model, inputs, ulysses):
+    from trl.trainer.utils import selective_log_softmax
+    logits_to_keep = inputs['logits_to_keep']
+    input_ids = inputs['input_ids']
+    unwrapped_model = self.accelerator.unwrap_model(model)
+    if is_peft_model(unwrapped_model):
+        parameters = inspect.signature(unwrapped_model.base_model.model.forward).parameters
+    else:
+        parameters = inspect.signature(unwrapped_model.forward).parameters
+    if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
+        # save memory
+        return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
+    inputs = {
+        k: v
+        for k, v in inputs.items() if k not in [
+            'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
+            'truncated_mask'
+        ]
+    }
+
+    with self._template_context(self.template), self.packing_context(model):
+        logits = model(**inputs).logits
+
+    _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(
+        ulysses.tokenizer,
+        None,
+        None,
+        input_ids,
+        None,
+        None,
+        None)
+
+    shape1 = logits.shape[1]
+    logits_to_keep_sharded = min(logits_to_keep - (ulysses.sp_world_size - ulysses.sp_rank - 1) * shape1, shape1)
+    logits_kept = logits[:, -(logits_to_keep_sharded + 1):, :]
+    logits_kept = logits_kept / self.temperature
+    labels_kept = labels[:, -(logits_to_keep_sharded + 1):]
+    left_padding_len = labels.shape[1] - logits_to_keep_sharded - 1
+    per_token_logps = selective_log_softmax(logits, labels)
+    _padding_logps = (torch.zeros((per_token_logps.shape[0], left_padding_len)).
+                      to(per_token_logps.device).to(per_token_logps.dtype))
+    per_token_logps_padded = torch.cat((_padding_logps, logits_kept), dim=1)
+    _padding_labels = (torch.zeros((labels.shape[0], left_padding_len)).
+                      to(labels.device).to(labels.dtype))
+    labels_padded = torch.cat((_padding_labels, labels_kept), dim=1)
+    per_token_logps, _ = GatherLoss.apply(per_token_logps_padded, labels_padded, ulysses)
+    return per_token_logps[:, -(logits_to_keep + 1):, :]
 
 
 class UlyssesSampler(Sampler):
@@ -453,27 +513,28 @@ class Ulysses(SequenceParallel):
 
             modeling_flash_attention_utils._flash_attention_forward = flash_attention_forward
 
-    def prepare_model(self, model, tokenizer, split_in_forward):
-        self.split_in_forward = split_in_forward
+    def prepare_model(self, model, tokenizer, split_in_base_model):
+        self.split_in_base_model = split_in_base_model
 
-        def forward(_self, **kwargs):
-            # Split embedding here for multi-modal
-            inputs_embeds = kwargs['inputs_embeds']
+        def pre_forward_split_hook(_self, args, kwargs):
+            input_ids = kwargs.get('input_ids', None)
+            inputs_embeds = kwargs.get('inputs_embeds', None)
             position_ids = kwargs['position_ids']
             attention_mask = kwargs['attention_mask']
-            _, inputs_embeds, _, position_ids, attention_mask, _ = self.pad_and_split_inputs(
+            input_ids, inputs_embeds, _, position_ids, attention_mask, _ = self.pad_and_split_inputs(
                 tokenizer,
-                None,
+                input_ids,
                 inputs_embeds,
                 None,
                 position_ids,
                 attention_mask,
                 None,
-                embed_tokens=_self.embed_tokens)
+                embed_tokens=getattr(_self, 'embed_tokens', None))
+            kwargs['input_ids'] = input_ids
             kwargs['inputs_embeds'] = inputs_embeds
             kwargs['position_ids'] = position_ids
             kwargs['attention_mask'] = attention_mask
-            return _self.forward_origin(**kwargs)
+            return args, kwargs
 
         if isinstance(model, (SwiftModel, PeftModel)):
             model = model.model
@@ -489,10 +550,12 @@ class Ulysses(SequenceParallel):
 
         base_model = llm_model.model
         self.causal_mask_func = base_model._update_causal_mask
-        if self.split_in_forward:
+        if self.split_in_base_model:
             # for multi modal models
-            base_model.forward_origin = base_model.forward
-            base_model.forward = MethodType(forward, base_model)
+            base_model.register_forward_hook(pre_forward_split_hook)
+        else:
+            # llm models
+            model.register_forward_hook(pre_forward_split_hook)
 
         self.model_dtype = next(model.parameters()).dtype
 
@@ -517,12 +580,12 @@ class Ulysses(SequenceParallel):
     def world_size(self):
         return self.sp_world_size
 
-    def _split_sp(self, input, dim: int, sp_group: dist.ProcessGroup):
+    def _split_sp(self, input, dim: int):
         # code borrowed from xtuner
         if self.sp_world_size == 1:
             return input
 
-        rank = dist.get_rank(sp_group)
+        rank = dist.get_rank(self.sp_group)
         dim_size = input.size(dim)
         assert dim_size % self.sp_world_size == 0, (f'The dimension to split ({dim_size}) is not a multiple of '
                                                     f'world size ({self.sp_world_size}), cannot split tensor evenly')
@@ -542,19 +605,14 @@ class Ulysses(SequenceParallel):
                              loss_scale,
                              embed_tokens=None):
         sp_group = self.sp_group
-        split_inputs = False
-        if (input_ids is not None and not self.split_in_forward) or input_embeds is not None:
-            # Whether split the model inputs
-            # cannot split input_ids for multi-modal models
-            split_inputs = True
-        if input_ids is not None and split_inputs:
+        if input_ids is not None:
             input_ids = self._pad_sp(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
         if input_embeds is not None:
             pad_emb = embed_tokens(torch.tensor(tokenizer.pad_token_id).to(embed_tokens.weight.device)).unsqueeze(0)
             input_embeds = self._pad_sp(input_embeds, padding_value=pad_emb, dim=1)
-        if position_ids is not None and split_inputs:
+        if position_ids is not None:
             position_ids = self._pad_sp(position_ids, padding_value=0, dim=-1)
-        if split_inputs:
+        if input_ids is not None or input_embeds is not None:
             inputs = input_ids if input_ids is not None else input_embeds
             attn_shape = inputs.shape[1]  # The sequence length
             if attention_mask is None:
@@ -564,22 +622,22 @@ class Ulysses(SequenceParallel):
             # pad attention mask to 4d to avoid calculation errors
             attention_mask = self.causal_mask_func(attention_mask, inputs.to(self.model_dtype), cache_position, None,
                                                    None)
-        if input_ids is not None and split_inputs:
-            input_ids = self._split_sp(input_ids, dim=1, sp_group=sp_group)
+        if input_ids is not None:
+            input_ids = self._split_sp(input_ids, dim=1)
         if input_embeds is not None:
-            input_embeds = self._split_sp(input_embeds, dim=1, sp_group=sp_group)
-        if position_ids is not None and split_inputs:
-            position_ids = self._split_sp(position_ids, dim=-1, sp_group=sp_group)
+            input_embeds = self._split_sp(input_embeds, dim=1)
+        if position_ids is not None:
+            position_ids = self._split_sp(position_ids, dim=-1)
         if labels is not None:
             labels = self._pad_sp(labels, padding_value=-100, dim=-1)
             labels[:, 0] = -100  # make the last invalid, so we do not need to cut the loss of last token
             labels = torch.roll(labels, shifts=-1, dims=1)
-            labels = self._split_sp(labels, dim=1, sp_group=sp_group)
+            labels = self._split_sp(labels, dim=1)
 
         if loss_scale is not None:
             loss_scale = self._pad_sp(loss_scale, padding_value=0., dim=-1)
             loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1)
-            loss_scale = self._split_sp(loss_scale, dim=-1, sp_group=sp_group)
+            loss_scale = self._split_sp(loss_scale, dim=-1)
 
         return input_ids, input_embeds, labels, position_ids, attention_mask, loss_scale
 
@@ -642,13 +700,15 @@ class Ulysses(SequenceParallel):
         if trainer.train_dataset is None:
             raise ValueError('Trainer: training requires a train_dataset.')
 
-        trainer.compute_loss_func = partial(loss_scale_sp_func, process_group=self.sp_group)
+        trainer.compute_loss_func = partial(loss_scale_sp_func, ulysses=self)
         if hasattr(trainer, 'get_batch_logps'):
-            trainer.get_batch_logps = partial(get_batch_logps, process_group=self.sp_group)
+            trainer.get_batch_logps = partial(get_batch_logps, ulysses=self)
+        if hasattr(trainer, '_get_per_token_logps'):
+            trainer._get_per_token_logps = partial(_get_per_token_logps, ulysses=self)
         if hasattr(trainer, 'get_nll_loss'):
 
             def rlhf_loss_scale_sp_func(_, *args, **kwargs):
-                return loss_scale_sp_func(*args, process_group=self.sp_group, **kwargs)
+                return loss_scale_sp_func(*args, ulysses=self, **kwargs)
 
             trainer.get_nll_loss = MethodType(rlhf_loss_scale_sp_func, trainer)
 

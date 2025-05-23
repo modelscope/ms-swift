@@ -1115,6 +1115,63 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return loss
 
+    @contextmanager
+    def packing_context(self, model: torch.nn.Module):
+
+        def _packing_input_hook(module, args, kwargs):
+            if self.args.packing:
+                import binpacking
+                sequences = binpacking.to_constant_volume(kwargs, self.template.max_length, weight_pos=1)
+                packed = []
+                for row in sequences:
+                    packed.append(self.template.packing_row(row))
+                kwargs = packed
+            elif self.args.padding_free:
+                kwargs = self.template._data_flatten(kwargs)
+            return args, kwargs
+
+        def _packing_output_hook(module, args, kwargs, result):
+            position_ids = kwargs['position_ids']
+            batch_size = position_ids.shape[0]
+            seq_lengths = []
+
+            for i in range(batch_size):
+                pos = position_ids[i]
+                resets = torch.where(pos[1:] < pos[:-1])[0] + 1
+
+                if len(resets) == 0:
+                    # Only one sequence in this batch item
+                    seq_lengths.append([pos.max().item() + 1])
+                else:
+                    # Multiple sequences
+                    lengths = []
+                    start = 0
+                    for end in resets:
+                        lengths.append(end - start)
+                        start = end
+                    # Add the last sequence
+                    lengths.append(pos.shape[0] - start)
+                    seq_lengths.append(lengths)
+
+            logits = result.logits
+            unpacked_logits = []
+
+            for i, lengths in enumerate(seq_lengths):
+                start = 0
+                for length in lengths:
+                    unpacked_logits.append(logits[i, start:start + length])
+                    start += length
+            result.logits = unpacked_logits
+            return result
+
+
+        remove_handle1 = model.register_forward_pre_hook(_packing_input_hook, with_kwargs=True)
+        remove_handle2 = model.register_forward_hook(_packing_output_hook, with_kwargs=True)
+        yield
+        remove_handle1.remove()
+        remove_handle2.remove()
+
+
     # Get the per-token log probabilities for the completions for the model and the reference model
     @profiling_decorator
     def _get_per_token_logps(self, model, inputs):
@@ -1136,7 +1193,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'truncated_mask'
             ]
         }
-        with self._template_context(self.template):
+
+        with self._template_context(self.template), self.packing_context(model):
             logits = model(**inputs).logits
         # exclude the last logit: it corresponds to the next token pred
         logits = logits[:, -(logits_to_keep + 1):-1, :]
