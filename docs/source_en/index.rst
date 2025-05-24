@@ -49,6 +49,7 @@ Swift DOCUMENTATION
    BestPractices/GRPO.md
    BestPractices/GRPO-Multi-Modal-Training.md
    BestPractices/GRPO-Code-Training.md
+   BestPractices/Qwen3-Best-Practice.md
    BestPractices/Embedding.md
    BestPractices/Rapidly-Training-VL-model.md
    BestPractices/NPU-support.md
