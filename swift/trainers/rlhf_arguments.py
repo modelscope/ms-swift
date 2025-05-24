@@ -61,3 +61,9 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
 
         # https://github.com/modelscope/ms-swift/issues/3863
         self.dataloader_drop_last = True
+
+        num_processes = self.world_size
+        if self.steps_per_generation is None:
+            self.steps_per_generation = self.gradient_accumulation_steps
+        if self.generation_batch_size is None:
+            self.generation_batch_size = self.per_device_train_batch_size * num_processes * self.steps_per_generation
