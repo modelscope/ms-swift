@@ -268,8 +268,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     ])
 
                 self.engine = self.prepare_vllm(model)
-                # Avoid thread-unsafe modifications of the mode.
-                self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
         else:
             from swift.llm import PtEngine
             self.engine = PtEngine.from_model_template(self.model, copy(self.template), max_batch_size=0)  # 0: no limit
@@ -452,8 +450,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 device=current_device,
                 max_model_len=self.args.vllm_max_model_len,
                 engine_kwargs=engine_kwargs,
+                # Avoid thread-unsafe modifications of the mode.
+                template=copy(self.template),
                 **vllm_kwargs)
-            engine.default_template = self.template
         return engine
 
     @contextmanager
