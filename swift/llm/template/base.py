@@ -85,8 +85,6 @@ class Template(ProcessorMixin):
         from .template_meta import TemplateMeta
         from swift.plugin import agent_templates, loss_scale_map
         self._processor_inited = False
-        if processor is not None:
-            self.init_processor(processor)
         self.max_length = max_length
 
         if not use_chat_template:
@@ -123,6 +121,9 @@ class Template(ProcessorMixin):
         self.use_megatron = False
         self._handles = []
         self._deepspeed_initialize = None
+
+        if processor is not None:
+            self.init_processor(processor)
 
     def init_processor(self, processor: Processor) -> None:
         if processor is None:
