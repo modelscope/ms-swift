@@ -55,7 +55,6 @@ class GRPOVllmEngine(VllmEngine):
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
     ) -> None:
-        os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '0')
         patch_vllm_memory_leak()
         self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
