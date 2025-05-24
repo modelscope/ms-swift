@@ -700,6 +700,7 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
         use_submodel_func(model, 'thinker')
         model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
         model.config.talker_config.pad_token_id = None
+        patch_get_input_embeddings(model.thinker.visual, 'patch_embed')
     return model, processor
 
 
