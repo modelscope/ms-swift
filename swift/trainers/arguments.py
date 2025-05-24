@@ -216,6 +216,9 @@ class GRPOArgumentsMixin:
     # dataset
     dataset_shuffle: Optional[bool] = True
 
+    packing: bool = False
+    padding_free: bool = False
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):

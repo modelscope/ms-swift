@@ -23,6 +23,7 @@ from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_model_arch, to_
 from swift.tuners import SwiftModel
 from swift.utils import get_current_device, get_device, get_dist_setting, seed_worker
 from .base import SequenceParallel
+from .. import SwiftMixin
 
 if version.parse(torch.__version__) >= version.parse('2.0.0'):
     torch._dynamo.config.capture_dynamic_output_shape_ops = True
@@ -195,7 +196,8 @@ def _get_per_token_logps(self, model, inputs, ulysses):
         parameters = inspect.signature(unwrapped_model.forward).parameters
     if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
         # save memory
-        return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
+        with self.packing_context(model):
+            return super(SwiftMixin, self)._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
     inputs = {
         k: v
         for k, v in inputs.items() if k not in [
@@ -513,14 +515,14 @@ class Ulysses(SequenceParallel):
 
             modeling_flash_attention_utils._flash_attention_forward = flash_attention_forward
 
-    def prepare_model(self, model, tokenizer, split_in_base_model):
-        self.split_in_base_model = split_in_base_model
+    def prepare_model(self, model, tokenizer):
 
         def pre_forward_split_hook(_self, args, kwargs):
             input_ids = kwargs.get('input_ids', None)
+            print(f'{os.environ["RANK"]}, {input_ids.shape}', flush=True)
             inputs_embeds = kwargs.get('inputs_embeds', None)
             position_ids = kwargs['position_ids']
-            attention_mask = kwargs['attention_mask']
+            attention_mask = kwargs.get('attention_mask', None)
             input_ids, inputs_embeds, _, position_ids, attention_mask, _ = self.pad_and_split_inputs(
                 tokenizer,
                 input_ids,
@@ -550,13 +552,7 @@ class Ulysses(SequenceParallel):
 
         base_model = llm_model.model
         self.causal_mask_func = base_model._update_causal_mask
-        if self.split_in_base_model:
-            # for multi modal models
-            base_model.register_forward_hook(pre_forward_split_hook, with_kwargs=True)
-        else:
-            # llm models
-            model.register_forward_hook(pre_forward_split_hook, with_kwargs=True)
-
+        base_model.register_forward_pre_hook(pre_forward_split_hook, with_kwargs=True)
         self.model_dtype = next(model.parameters()).dtype
 
     def _pad_sp(self, tensor, padding_value, dim=-1):
@@ -610,11 +606,11 @@ class Ulysses(SequenceParallel):
         if input_embeds is not None:
             pad_emb = torch.zeros(
                 (1, embed_tokens.weight.shape[-1])).to(embed_tokens.weight.device).to(embed_tokens.weight.dtype)
-
             input_embeds = self._pad_sp(input_embeds, padding_value=pad_emb, dim=1)
+        batch_size = input_ids.shape[0] if input_ids is not None else input_embeds.shape[0]
         if position_ids is not None:
             position_ids = self._pad_sp(position_ids, padding_value=0, dim=-1)
-        if input_ids is not None or input_embeds is not None:
+        if (input_ids is not None or input_embeds is not None) and batch_size > 1:
             inputs = input_ids if input_ids is not None else input_embeds
             attn_shape = inputs.shape[1]  # The sequence length
             if attention_mask is None:
@@ -707,7 +703,25 @@ class Ulysses(SequenceParallel):
         if hasattr(trainer, 'get_batch_logps'):
             trainer.get_batch_logps = partial(get_batch_logps, ulysses=self)
         if hasattr(trainer, '_get_per_token_logps'):
-            trainer._get_per_token_logps = partial(_get_per_token_logps, ulysses=self)
+
+            model = self.accelerator.unwrap_model(trainer.model)
+            if isinstance(model, (SwiftModel, PeftModel)):
+                model = model.model
+            model_meta = model.model_meta
+            llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
+            if llm_prefix:
+                llm_model = getattr(model, llm_prefix[0])
+            else:
+                llm_model = model
+
+            if 'CausalLM' not in llm_model.__class__.__name__:
+                llm_model = model
+
+            def pre_forward_gather_hook(_self, args, kwargs):
+                if trainer.padding_free:
+                    
+            
+            trainer._get_per_token_logps = MethodType(partial(_get_per_token_logps, ulysses=self), trainer)
         if hasattr(trainer, 'get_nll_loss'):
 
             def rlhf_loss_scale_sp_func(_, *args, **kwargs):

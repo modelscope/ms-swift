@@ -192,6 +192,7 @@ def get_model_tokenizer_from_local(model_dir: str,
     """Load the model and tokenizer from the local model_dir."""
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    model_config.base_model_tp_plan = None
     # fix prediction_step (internvl2, ovis, ...)
     if not hasattr(model_config, 'keys_to_ignore_at_inference'):
         model_config.keys_to_ignore_at_inference = []

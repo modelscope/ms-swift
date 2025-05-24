@@ -22,6 +22,7 @@ import torch.nn as nn
 import transformers
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
 from packaging import version
+from peft import PeftModel
 from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
@@ -41,6 +42,7 @@ from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge, unwrap_model_for_generation
 from .vllm_client import VLLMClient
+from ... import SwiftModel
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
@@ -289,7 +291,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
         # self.model_accepts_loss_kwargs to False to enable scaling.
         self.model_accepts_loss_kwargs = False
-
+        self.padding_free = self.template.padding_free
+        self.template.padding_free = False
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 if self.is_deepspeed_enabled:
@@ -1149,56 +1152,69 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @contextmanager
     def packing_context(self, model: torch.nn.Module):
+        model = self.accelerator.unwrap_model(model)
+
+        ctx = {}
 
         def _packing_input_hook(module, args, kwargs):
-            if self.args.packing:
-                import binpacking
-                sequences = binpacking.to_constant_volume(kwargs, self.template.max_length, weight_pos=1)
-                packed = []
-                for row in sequences:
-                    packed.append(self.template.packing_row(row))
-                kwargs = packed
-            elif self.args.padding_free:
-                kwargs = self.template._data_flatten(kwargs)
+            attention_mask = kwargs['attention_mask']
+            ctx['padding_left'] = (attention_mask[:, -1].sum() == attention_mask.shape[0])
+            kwargs['position_ids'] = torch.arange(kwargs['input_ids'].shape[1]).unsqueeze(0).repeat(kwargs['input_ids'].shape[0], 1).to(kwargs['input_ids'].dtype).to(kwargs['input_ids'].device)
+            kwargs['input_ids'] = kwargs['input_ids'][attention_mask.bool()].unsqueeze(0)
+            kwargs['position_ids'] = kwargs['position_ids'][attention_mask.bool()].unsqueeze(0)
+            kwargs.pop('attention_mask', None)
             return args, kwargs
 
         def _packing_output_hook(module, args, kwargs, result):
             position_ids = kwargs['position_ids']
-            batch_size = position_ids.shape[0]
             seq_lengths = []
+            pos = position_ids[0]
+            resets = torch.where(pos[1:] < pos[:-1])[0] + 1
 
-            for i in range(batch_size):
-                pos = position_ids[i]
-                resets = torch.where(pos[1:] < pos[:-1])[0] + 1
+            max_length = 0
+            if len(resets) == 0:
+                # Only one sequence in this batch item
+                seq_lengths = [pos.max().item() + 1]
+            else:
+                # Multiple sequences
+                start = 0
+                for end in resets:
+                    seq_lengths.append(end - start)
+                    start = end
+                seq_lengths.append(pos.shape[0] - start)
 
-                if len(resets) == 0:
-                    # Only one sequence in this batch item
-                    seq_lengths.append([pos.max().item() + 1])
-                else:
-                    # Multiple sequences
-                    lengths = []
-                    start = 0
-                    for end in resets:
-                        lengths.append(end - start)
-                        start = end
-                    # Add the last sequence
-                    lengths.append(pos.shape[0] - start)
-                    seq_lengths.append(lengths)
-
-            logits = result.logits
+            max_length = max(seq_lengths)
+            last_hidden_state = result.last_hidden_state.squeeze(0)
             unpacked_logits = []
 
-            for i, lengths in enumerate(seq_lengths):
-                start = 0
-                for length in lengths:
-                    unpacked_logits.append(logits[i, start:start + length])
-                    start += length
-            result.logits = unpacked_logits
+            start = 0
+            for length in seq_lengths:
+                seq_state = last_hidden_state[start:start + length]
+                padding = torch.zeros((max_length-length, last_hidden_state.shape[-1])).to(last_hidden_state.dtype).to(last_hidden_state.device)
+                if ctx['padding_left']:
+                    seq_state = torch.cat((padding, seq_state), dim=0)
+                else:
+                    seq_state = torch.cat((seq_state, padding), dim=0)
+                unpacked_logits.append(seq_state)
+                start += length
+            result.last_hidden_state = torch.stack(unpacked_logits, dim=0)
             return result
 
+        if isinstance(model, (SwiftModel, PeftModel)):
+            model = model.model
+        model_meta = model.model_meta
+        llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
+        if llm_prefix:
+            llm_model = getattr(model, llm_prefix[0])
+        else:
+            llm_model = model
 
-        remove_handle1 = model.register_forward_pre_hook(_packing_input_hook, with_kwargs=True)
-        remove_handle2 = model.register_forward_hook(_packing_output_hook, with_kwargs=True)
+        if 'CausalLM' not in llm_model.__class__.__name__:
+            llm_model = model
+
+        base_model = llm_model.model
+        remove_handle1 = base_model.register_forward_pre_hook(_packing_input_hook, with_kwargs=True, prepend=True)
+        remove_handle2 = base_model.register_forward_hook(_packing_output_hook, with_kwargs=True, prepend=True)
         yield
         remove_handle1.remove()
         remove_handle2.remove()
@@ -1217,7 +1233,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             parameters = inspect.signature(unwrapped_model.forward).parameters
         if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
             # save memory
-            return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
+            with self.packing_context(model):
+                return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
         inputs = {
             k: v
             for k, v in inputs.items() if k not in [
