@@ -99,8 +99,6 @@ class Template(ProcessorMixin):
             template_meta.default_system = default_system
         if response_prefix is not None:
             template_meta.response_prefix = response_prefix
-        logger.info(f'default_system: {repr(template_meta.default_system)}')
-        logger.info(f'response_prefix: {repr(template_meta.response_prefix)}')
 
         self.template_meta: TemplateMeta = template_meta
         self.use_chat_template = use_chat_template
@@ -113,10 +111,9 @@ class Template(ProcessorMixin):
         self.sequence_parallel_size = sequence_parallel_size
         self.padding_free = padding_free
         agent_template = agent_template or template_meta.agent_template
-        logger.info(f'agent_template: {agent_template}')
+        self._agent_template = agent_template
         self.agent_template = agent_templates[agent_template]()
         self.norm_bbox = norm_bbox or self.norm_bbox
-        logger.info(f'norm_bbox: {self.norm_bbox}')
         if self.is_encoder_decoder:
             self.skip_prompt = False
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
@@ -124,8 +121,6 @@ class Template(ProcessorMixin):
                            'seq_cls', 'embedding', 'prm'] = 'pt'
         self._packing = False
         self.use_megatron = False
-        if self.model_info.task_type != 'causal_lm':
-            self.mode = self.model_info.task_type
         self._handles = []
         self._deepspeed_initialize = None
 
@@ -136,10 +131,17 @@ class Template(ProcessorMixin):
         self.processor = processor
         self.model_info = processor.model_info
         self.config = self.model_info.config
+        if self.model_info.task_type != 'causal_lm':
+            self.mode = self.model_info.task_type
+
         self.model_meta = processor.model_meta
         if self.max_length is None:
             self.max_length = self.model_info.max_model_len
+        logger.info(f'default_system: {repr(self.template_meta.default_system)}')
         logger.info(f'max_length: {self.max_length}')
+        logger.info(f'response_prefix: {repr(self.template_meta.response_prefix)}')
+        logger.info(f'agent_template: {self._agent_template}')
+        logger.info(f'norm_bbox: {self.norm_bbox}')
         tokenizer = self.tokenizer
 
         for i, token in enumerate(self.placeholder_tokens):
