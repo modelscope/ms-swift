@@ -33,8 +33,8 @@ class SwiftInfer(SwiftPipeline):
             self.infer_engine = PtEngine.from_model_template(model, self.template, max_batch_size=args.max_batch_size)
             logger.info(f'model: {self.infer_engine.model}')
         else:
-            self.infer_engine = self.get_infer_engine(args)
             self.template = args.get_template(self.processor)
+            self.infer_engine = self.get_infer_engine(args)
         self.random_state = np.random.RandomState(args.data_seed)
 
     def __getattr__(self, key: str):
@@ -52,6 +52,7 @@ class SwiftInfer(SwiftPipeline):
             'model_type': args.model_type,
             'revision': args.model_revision,
             'torch_dtype': args.torch_dtype,
+            'template': self.template
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
         if infer_backend == 'pt':
