@@ -59,6 +59,7 @@ class PtEngine(InferEngine):
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
             quantization_config=None,
             model_kwargs: Optional[Dict[str, Any]] = None,
+            template: Optional[Template] = None,
             **kwargs):
         self.model, self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -80,10 +81,10 @@ class PtEngine(InferEngine):
         self.adapters = adapters or []
         for adapter in self.adapters:
             self._add_adapter(safe_snapshot_download(adapter, use_hf=use_hf, hub_token=hub_token))
-        self._post_init()
+        self._post_init(template)
 
-    def _post_init(self):
-        super()._post_init()
+    def _post_init(self, template=None):
+        super()._post_init(template)
         self.engine = self.model  # dummy
         self.generation_config = self.model.generation_config
         self._queue = Queue()
@@ -146,10 +147,9 @@ class PtEngine(InferEngine):
     def from_model_template(cls, model, template=None, *, max_batch_size: int = 1):
         self = super().__new__(cls)
         self.model = model
-        self.default_template = template
         self.processor = template.processor
         self.max_batch_size = max_batch_size
-        self._post_init()
+        self._post_init(template)
         return self
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> _GenerationConfig:

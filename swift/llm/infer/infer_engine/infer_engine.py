@@ -25,7 +25,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
     llm_max_batch_size = 1024 * 1024
     mllm_max_batch_size = 1024
 
-    def _post_init(self):
+    def _post_init(self, template=None):
         processor = self.processor
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
@@ -33,7 +33,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.model_name = self.model_info.model_name
         self.max_model_len = self.model_info.max_model_len
         self.config = self.model_info.config
-        if getattr(self, 'default_template', None) is None:
+        if template is None:
             ckpt_dir = get_ckpt_dir(self.model_dir, getattr(self, 'adapters', None))
             logger.info('Create the default_template for the infer_engine')
             if ckpt_dir:
@@ -42,6 +42,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 self.default_template = args.get_template(self.processor)
             else:
                 self.default_template = get_template(self.model_meta.template, self.processor)
+        else:
+            self.default_template = template
+            self.default_template.init_processor(self.processor)
 
         self._adapters_pool = {}
 

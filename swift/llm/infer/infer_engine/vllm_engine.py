@@ -65,6 +65,7 @@ class VllmEngine(InferEngine):
         distributed_executor_backend: Optional[str] = None,
         quantization: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
+        template: Optional[Template] = None,
     ) -> None:
         os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '0')
         self.use_async_engine = use_async_engine
@@ -77,7 +78,7 @@ class VllmEngine(InferEngine):
             use_hf=use_hf,
             hub_token=hub_token,
             revision=revision)[1]
-        self._post_init()
+        self._post_init(template)
 
         self._prepare_engine_kwargs(
             gpu_memory_utilization=gpu_memory_utilization,
