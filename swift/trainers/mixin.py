@@ -339,6 +339,8 @@ class SwiftMixin:
                             vision_tower.disable_input_require_grads()
                     except (NotImplementedError, AttributeError):
                         pass
+        # Avoid vit_gradient_checkpointing being overwritten by transformers.Trainer.gradient_checkpointing_enable.
+        self.args.gradient_checkpointing = False
 
     def train(self, *args, **kwargs):
         if self.model_meta.is_multimodal:
@@ -361,10 +363,8 @@ class SwiftMixin:
         self._save_initial_model(self.args.output_dir)
 
         # gradient_checkpointing
-        self._prepare_gradient_checkpointing(self.accelerator.unwrap_model(self.model))
-        # Avoid vit_gradient_checkpointing being overwritten by transformers.Trainer.gradient_checkpointing_enable.
         gradient_checkpointing = self.args.gradient_checkpointing
-        self.args.gradient_checkpointing = False
+        self._prepare_gradient_checkpointing(self.accelerator.unwrap_model(self.model))
         with self.hub.patch_hub(), self._fix_grad_norm_nan():
             res = super().train(*args, **kwargs)
         self.template.remove_post_encode_hook()
