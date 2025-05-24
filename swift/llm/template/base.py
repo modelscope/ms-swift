@@ -54,7 +54,7 @@ class Template(ProcessorMixin):
 
     def __init__(
         self,
-        processor: Processor,
+        processor: Optional[Processor],
         template_meta: 'TemplateMeta',
         default_system: Optional[str] = None,
         max_length: Optional[int] = None,
@@ -84,14 +84,10 @@ class Template(ProcessorMixin):
         """
         from .template_meta import TemplateMeta
         from swift.plugin import agent_templates, loss_scale_map
-
-        self.processor = processor
-        self.model_info = processor.model_info
-        self.config = self.model_info.config
-        self.model_meta = processor.model_meta
-        if max_length is None:
-            max_length = self.model_info.max_model_len
-        tokenizer = self.tokenizer
+        self._processor_inited = False
+        if processor is not None:
+            self.init_processor(processor)
+        self.max_length = max_length
 
         if not use_chat_template:
             template_meta = template_meta.to_generate_template_meta()
@@ -105,11 +101,6 @@ class Template(ProcessorMixin):
             template_meta.response_prefix = response_prefix
         logger.info(f'default_system: {repr(template_meta.default_system)}')
         logger.info(f'response_prefix: {repr(template_meta.response_prefix)}')
-
-        for i, token in enumerate(self.placeholder_tokens):
-            if isinstance(token, str):
-                self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
-        template_meta.init(tokenizer)
 
         self.template_meta: TemplateMeta = template_meta
         self.use_chat_template = use_chat_template
@@ -125,7 +116,6 @@ class Template(ProcessorMixin):
         logger.info(f'agent_template: {agent_template}')
         self.agent_template = agent_templates[agent_template]()
         self.norm_bbox = norm_bbox or self.norm_bbox
-        logger.info(f'max_length: {self.max_length}')
         logger.info(f'norm_bbox: {self.norm_bbox}')
         if self.is_encoder_decoder:
             self.skip_prompt = False
@@ -138,6 +128,24 @@ class Template(ProcessorMixin):
             self.mode = self.model_info.task_type
         self._handles = []
         self._deepspeed_initialize = None
+
+    def init_processor(self, processor: Processor) -> None:
+        if processor is None:
+            return
+        self._processor_inited = True
+        self.processor = processor
+        self.model_info = processor.model_info
+        self.config = self.model_info.config
+        self.model_meta = processor.model_meta
+        if self.max_length is None:
+            self.max_length = self.model_info.max_model_len
+        logger.info(f'max_length: {self.max_length}')
+        tokenizer = self.tokenizer
+
+        for i, token in enumerate(self.placeholder_tokens):
+            if isinstance(token, str):
+                self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
+        self.template_meta.init(tokenizer)
 
     @staticmethod
     def _load_image(image, load_images: bool):
@@ -396,6 +404,8 @@ class Template(ProcessorMixin):
         Returns:
             return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
         """
+        assert self._processor_inited, ('Please initialize the processor before calling the template.encode method: '
+                                        'template.init_processor(processor).')
         if isinstance(inputs, (InferRequest, TemplateInputs)):
             inputs = asdict(inputs)
 

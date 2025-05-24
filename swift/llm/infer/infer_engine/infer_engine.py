@@ -44,6 +44,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 self.default_template = get_template(self.model_meta.template, self.processor)
         else:
             self.default_template = template
+            self.default_template.init_processor(self.processor)
 
         self._adapters_pool = {}
 
