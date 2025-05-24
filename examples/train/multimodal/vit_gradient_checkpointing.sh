@@ -1,5 +1,6 @@
 # gc true, vgc true: 48GiB, 2.45s/it
 # gc true, vgc false: 62GiB 2.32s/it
+# gc false, vgc true: 56GiB 2.16s/it
 # gc false, vgc false: 77GiB 1.95s/it
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
