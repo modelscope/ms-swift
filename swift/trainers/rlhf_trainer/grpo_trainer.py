@@ -270,7 +270,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.engine = self.prepare_vllm(model)
         else:
             from swift.llm import PtEngine
-            self.engine = PtEngine.from_model_template(self.model, copy(self.template), max_batch_size=0)  # 0: no limit
+            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
 
         self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
         self.request_config = RequestConfig(
@@ -450,8 +450,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 device=current_device,
                 max_model_len=self.args.vllm_max_model_len,
                 engine_kwargs=engine_kwargs,
-                # Avoid thread-unsafe modifications of the mode.
-                template=copy(self.template),
+                template=self.template,
                 **vllm_kwargs)
         return engine
 
