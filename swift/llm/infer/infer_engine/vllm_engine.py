@@ -67,7 +67,6 @@ class VllmEngine(InferEngine):
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
     ) -> None:
-        os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '0')
         self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
             model_id_or_path,
