@@ -11,7 +11,7 @@ from swift.llm import TemplateType
 from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
+from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone, patch_output_to_input_device
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal, get_model_tokenizer_reward_model,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import AttnImpl, ModelInfo, use_submodel_func
@@ -589,6 +589,7 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
             embed_tokens = model.model.language_model.embed_tokens
         patch_output_clone(embed_tokens)
         patch_output_to_input_device(embed_tokens)
+        patch_get_input_embeddings(model.visual, 'patch_embed')
 
     from qwen_vl_utils import vision_process
     patch_qwen_vl_utils(vision_process)
@@ -699,6 +700,7 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
         use_submodel_func(model, 'thinker')
         model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
         model.config.talker_config.pad_token_id = None
+        patch_get_input_embeddings(model.thinker.visual, 'patch_embed')
     return model, processor
 
 

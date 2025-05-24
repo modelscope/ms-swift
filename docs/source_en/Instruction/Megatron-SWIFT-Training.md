@@ -304,6 +304,4 @@ Megatron training parameters inherit from Megatron parameters and basic paramete
 - 🔥packing: Whether to use sequence packing, defaults to False.
 - 🔥streaming: Stream reading and processing of the dataset, default is False. It is typically set to True when handling large datasets. For more information on streaming parameters, refer to the command-line parameters documentation.
 - lazy_tokenize: Default is False. If this parameter is set to False, all dataset samples are tokenized before training (this avoids errors during training); if set to True, tokenization occurs during training (this saves memory).
-- dataloader_persistent_workers: A parameter passed directly to the dataloader, with a default value of True.
-- dataloader_prefetch_factor: A parameter passed directly to the dataloader, with a default value of 10.
 - max_epochs: Forces the training to exit after reaching `max_epochs`, and performs validation and saving of the model weights. This parameter is especially useful when using a streaming dataset. Default is None.
