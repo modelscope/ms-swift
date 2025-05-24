@@ -45,19 +45,3 @@ register_model(
         model_arch=ModelArch.llava_hf,
         requires=['transformers<4.49'],
     ))
-
-register_model(
-    ModelMeta(
-        MLLMModelType.kimi_vl,
-        [
-            ModelGroup([
-                Model('moonshotai/Kimi-VL-A3B-Instruct', 'moonshotai/Kimi-VL-A3B-Instruct'),
-                Model('moonshotai/Kimi-VL-A3B-Thinking', 'moonshotai/Kimi-VL-A3B-Thinking'),
-            ])
-        ],
-        TemplateType.kimi_vl,
-        get_model_tokenizer_kimi_vl,
-        architectures=['KimiVLForConditionalGeneration'],
-        model_arch=ModelArch.llava_hf,
-        requires=['transformers<4.49'],
-    ))
