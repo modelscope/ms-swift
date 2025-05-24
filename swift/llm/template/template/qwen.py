@@ -254,8 +254,7 @@ class Qwen2VLTemplate(Template):
                         processor_func = processor.video_processor
                     else:
                         processor_func = processor.image_processor
-                    media_inputs = processor_func(
-                        images=None, videos=videos, return_tensors='pt', do_resize=False)
+                    media_inputs = processor_func(images=None, videos=videos, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
                     if self.version == 'v2_5':
