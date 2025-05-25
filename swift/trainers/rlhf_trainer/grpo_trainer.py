@@ -953,6 +953,24 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return inputs, rewards, rewards_per_func, completions
 
+    def split_by_mini_batches(self, inputs, advantages):
+        # Slice to keep only the local part of the data
+        process_slice = slice(
+            self.accelerator.process_index * len(inputs),
+            (self.accelerator.process_index + 1) * len(inputs),
+        )
+        advantages = advantages[process_slice]
+
+        mode = 'train' if self.model.training else 'eval'
+        bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
+        gas = self.args.gradient_accumulation_steps if mode == 'train' else 1
+
+        assert len(inputs) == bs * gas, f'Expected {bs * gas} inputs, got {len(inputs)}'
+        gas_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(gas)]
+        # Split advantages by GAS chunks
+        advantage_chunks = torch.chunk(advantages, gas)
+        return gas_chunks, advantage_chunks
+
     def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> List[InputsType]:
         """
         Prepare the final batch inputs with advantages, ref/old_policy logps and other fields for RL training.
@@ -974,27 +992,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         advantages = (rewards - mean_grouped_rewards)
         if self.args.scale_rewards:
             advantages /= (std_grouped_rewards + 1e-4)
-
-        # Slice to keep only the local part of the data
-        process_slice = slice(
-            self.accelerator.process_index * len(inputs),
-            (self.accelerator.process_index + 1) * len(inputs),
-        )
-        advantages = advantages[process_slice]
-
-        mode = 'train' if self.model.training else 'eval'
-        bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-        gas = self.args.gradient_accumulation_steps if mode == 'train' else 1
-
-        assert len(inputs) == bs * gas, f'Expected {bs * gas} inputs, got {len(inputs)}'
-        gas_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(gas)]
-
-        ga_batch_encoded_inputs = []
         template = self.template
 
-        # Split advantages by GAS chunks
-        advantage_chunks = torch.chunk(advantages, gas)
-
+        gas_chunks, advantage_chunks = self.split_by_mini_batches(inputs, advantages)
+        ga_batch_encoded_inputs = []
         for i, (batch, batch_advantages) in enumerate(zip(gas_chunks, advantage_chunks)):
             # Encode and process each batch (size=bs)
             with self._template_context(template):

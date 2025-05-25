@@ -235,6 +235,28 @@ def _get_per_token_logps(self, model, inputs, ulysses):
     return per_token_logps[:, -(logits_to_keep + 1):, :]
 
 
+def split_by_mini_batches(self, inputs, advantages, ulysses):
+    output = [None] * (len(inputs) * ulysses.sp_world_size)
+    dist.gather_object(inputs, output, group=ulysses.sp_group)
+    inputs = output
+    process_slice = slice(
+        ulysses.dp_rank * len(inputs),
+        (ulysses.dp_rank + 1) * len(inputs),
+    )
+
+    advantages = advantages[process_slice]
+
+    mode = 'train' if self.model.training else 'eval'
+    bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
+    gas = self.args.gradient_accumulation_steps * ulysses.sp_world_size if mode == 'train' else 1
+
+    assert len(inputs) == bs * gas, f'Expected {bs * gas} inputs, got {len(inputs)}'
+    gas_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(gas)]
+    # Split advantages by GAS chunks
+    advantage_chunks = torch.chunk(advantages, gas)
+    return gas_chunks, advantage_chunks
+
+
 class UlyssesSampler(Sampler):
 
     # Code borrowed from mmengine
@@ -703,25 +725,8 @@ class Ulysses(SequenceParallel):
         if hasattr(trainer, 'get_batch_logps'):
             trainer.get_batch_logps = partial(get_batch_logps, ulysses=self)
         if hasattr(trainer, '_get_per_token_logps'):
-
-            model = self.accelerator.unwrap_model(trainer.model)
-            if isinstance(model, (SwiftModel, PeftModel)):
-                model = model.model
-            model_meta = model.model_meta
-            llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
-            if llm_prefix:
-                llm_model = getattr(model, llm_prefix[0])
-            else:
-                llm_model = model
-
-            if 'CausalLM' not in llm_model.__class__.__name__:
-                llm_model = model
-
-            def pre_forward_gather_hook(_self, args, kwargs):
-                if trainer.padding_free:
-                    
-            
             trainer._get_per_token_logps = MethodType(partial(_get_per_token_logps, ulysses=self), trainer)
+            trainer.split_by_mini_batches = MethodType(partial(split_by_mini_batches, ulysses=self), trainer)
         if hasattr(trainer, 'get_nll_loss'):
 
             def rlhf_loss_scale_sp_func(_, *args, **kwargs):
