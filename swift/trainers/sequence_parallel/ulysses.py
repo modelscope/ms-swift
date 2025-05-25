@@ -631,7 +631,6 @@ class Ulysses(SequenceParallel):
 
         def pre_forward_split_hook(_self, args, kwargs):
             input_ids = kwargs.get('input_ids', None)
-            print(f'{os.environ["RANK"]}, {input_ids.shape}', flush=True)
             inputs_embeds = kwargs.get('inputs_embeds', None)
             position_ids = kwargs['position_ids']
             attention_mask = kwargs.get('attention_mask', None)
