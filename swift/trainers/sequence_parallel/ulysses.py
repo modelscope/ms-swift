@@ -224,7 +224,7 @@ def packing_context(self, model: torch.nn.Module):
         start = 0
         for length in seq_lengths:
             seq_state = logits[start:start + length]
-            padding = torch.zeros((max_length-length, logits.shape[-1])).to(logits.dtype).to(logits.device)
+            padding = torch.zeros((max_length-length)).to(logits.dtype).to(logits.device)
             if ctx['padding_left']:
                 seq_state = torch.cat((padding, seq_state), dim=0)
             else:
@@ -237,8 +237,9 @@ def packing_context(self, model: torch.nn.Module):
     llm_model = get_llm_model(model)
 
     if self.padding_free:
-        remove_handle1 = llm_model.register_forward_pre_hook(_packing_input_hook, with_kwargs=True, prepend=True)
+        remove_handle1 = llm_model.model.register_forward_pre_hook(_packing_input_hook, with_kwargs=True, prepend=True)
         llm_model._unpack_output = _packing_output_hook
+        llm_model._pack_input = _packing_input_hook
     yield
     if self.padding_free:
         remove_handle1.remove()
@@ -249,8 +250,6 @@ def _get_per_token_logps(self, model, inputs, ulysses):
     from trl.trainer.utils import selective_log_softmax
     logits_to_keep = inputs['logits_to_keep']
     input_ids = inputs['input_ids']
-    if self.padding_free:
-        logits_to_keep = input_ids.shape[1]
     inputs = {
         k: v
         for k, v in inputs.items() if k not in [
@@ -259,11 +258,16 @@ def _get_per_token_logps(self, model, inputs, ulysses):
         ]
     }
 
-    with self._template_context(self.template), self.packing_context(model):
+    with self._template_context(self.template), packing_context(self, model):
         output = model(**inputs)
         logits = output.logits
 
     origin_length = input_ids.shape[-1]
+    if self.padding_free:
+        _origin_logits_to_keep = logits_to_keep
+        logits_to_keep = inputs['attention_mask'].sum()
+        input_ids = input_ids[inputs['attention_mask'].bool()].unsqueeze(0)
+        origin_length = inputs['attention_mask'].sum()
     _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(
         self.tokenizer,
         None,
@@ -296,8 +300,11 @@ def _get_per_token_logps(self, model, inputs, ulysses):
     if self.padding_free:
         llm_model = get_llm_model(model)
         output.logits = per_token_logps
+        _, inputs = llm_model._pack_input(None, None, inputs)
         per_token_logps = llm_model._unpack_output(None, None, inputs, output).logits
         delattr(llm_model, '_unpack_output')
+        delattr(llm_model, '_pack_input')
+        logits_to_keep = _origin_logits_to_keep
     return per_token_logps[:, -logits_to_keep-1:-1]
 
 
@@ -637,8 +644,6 @@ class Ulysses(SequenceParallel):
                 attention_mask,
                 None,
                 embed_tokens=getattr(_self, 'embed_tokens', None))
-            if _input_ids.min() < 0:
-                print()
             kwargs['input_ids'] = _input_ids
             kwargs['inputs_embeds'] = inputs_embeds
             kwargs['position_ids'] = position_ids
