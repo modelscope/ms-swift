@@ -338,6 +338,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self._step += 1
         else:
             inputs = self._generate_and_score_completions(accumulated_local_batch)
+        if inputs['input_ids'].min() < 0:
+            print()
         return inputs
 
     def split_batches(self):
@@ -1002,6 +1004,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 batch_encoded_inputs = [template.encode(infer_request) for infer_request in batch]
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
 
+            if batch_encoded_inputs['input_ids'].min() < 0:
+                print()
             # Process labels and masks
             labels = batch_encoded_inputs.pop('labels')
             logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
@@ -1214,11 +1218,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             llm_model = model
 
         base_model = llm_model.model
-        remove_handle1 = base_model.register_forward_pre_hook(_packing_input_hook, with_kwargs=True, prepend=True)
-        remove_handle2 = base_model.register_forward_hook(_packing_output_hook, with_kwargs=True, prepend=True)
+        if self.padding_free:
+            remove_handle1 = base_model.register_forward_pre_hook(_packing_input_hook, with_kwargs=True, prepend=True)
+            remove_handle2 = base_model.register_forward_hook(_packing_output_hook, with_kwargs=True, prepend=True)
         yield
-        remove_handle1.remove()
-        remove_handle2.remove()
+        if self.padding_free:
+            remove_handle1.remove()
+            remove_handle2.remove()
 
 
     # Get the per-token log probabilities for the completions for the model and the reference model

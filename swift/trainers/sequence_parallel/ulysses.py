@@ -194,10 +194,11 @@ def _get_per_token_logps(self, model, inputs, ulysses):
         parameters = inspect.signature(unwrapped_model.base_model.model.forward).parameters
     else:
         parameters = inspect.signature(unwrapped_model.forward).parameters
-    if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
-        # save memory
-        with self.packing_context(model):
-            return super(SwiftMixin, self)._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
+    # if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
+    #     # save memory
+    #     with self.packing_context(model):
+    #         return super(SwiftMixin, self)._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
+    completion_mask = inputs['completion_mask']
     inputs = {
         k: v
         for k, v in inputs.items() if k not in [
@@ -209,35 +210,43 @@ def _get_per_token_logps(self, model, inputs, ulysses):
     with self._template_context(self.template), self.packing_context(model):
         logits = model(**inputs).logits
 
+    origin_length = input_ids.shape[-1]
     _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(
-        ulysses.tokenizer,
+        self.tokenizer,
         None,
         None,
-        input_ids,
+        input_ids.clone(),
         None,
         None,
         None)
 
     shape1 = logits.shape[1]
-    logits_to_keep_sharded = min(logits_to_keep - (ulysses.sp_world_size - ulysses.sp_rank - 1) * shape1, shape1)
-    logits_kept = logits[:, -(logits_to_keep_sharded + 1):, :]
+    labels = torch.where(labels == -100, self.tokenizer.pad_token_id, labels)
+    padding_size = shape1 * ulysses.sp_world_size - origin_length
+    logits_to_keep_padded = logits_to_keep + padding_size + 1
+    
+    logits_to_keep_sharded = max(min(logits_to_keep_padded - (ulysses.sp_world_size - ulysses.sp_rank - 1) * shape1, shape1), 0)
+    logits_kept = logits[:, -logits_to_keep_sharded:, :]
     logits_kept = logits_kept / self.temperature
-    labels_kept = labels[:, -(logits_to_keep_sharded + 1):]
-    left_padding_len = labels.shape[1] - logits_to_keep_sharded - 1
-    per_token_logps = selective_log_softmax(logits, labels)
+    labels_kept = labels[:, -logits_to_keep_sharded:]
+    left_padding_len = shape1 - logits_to_keep_sharded
+    per_token_logps = selective_log_softmax(logits_kept, labels_kept)
     _padding_logps = (torch.zeros((per_token_logps.shape[0], left_padding_len)).
                       to(per_token_logps.device).to(per_token_logps.dtype))
-    per_token_logps_padded = torch.cat((_padding_logps, logits_kept), dim=1)
+    per_token_logps_padded = torch.cat((_padding_logps, per_token_logps), dim=1)
     _padding_labels = (torch.zeros((labels.shape[0], left_padding_len)).
                       to(labels.device).to(labels.dtype))
     labels_padded = torch.cat((_padding_labels, labels_kept), dim=1)
-    per_token_logps, _ = GatherLoss.apply(per_token_logps_padded, labels_padded, ulysses)
-    return per_token_logps[:, -(logits_to_keep + 1):, :]
+    per_token_logps, _ = GatherLoss.apply(per_token_logps_padded, labels_padded, ulysses.sp_group, 1)
+    if padding_size > 0:
+        per_token_logps = per_token_logps[:, :-padding_size]
+    return per_token_logps[:, -logits_to_keep-1:-1]
 
 
 def split_by_mini_batches(self, inputs, advantages, ulysses):
-    output = [None] * (len(inputs) * ulysses.sp_world_size)
-    dist.gather_object(inputs, output, group=ulysses.sp_group)
+    output = [None] * ulysses.sp_world_size
+    dist.all_gather_object(output, inputs, group=ulysses.sp_group)
+    output = [p for sublist in output for p in sublist]
     inputs = output
     process_slice = slice(
         ulysses.dp_rank * len(inputs),
@@ -255,6 +264,22 @@ def split_by_mini_batches(self, inputs, advantages, ulysses):
     # Split advantages by GAS chunks
     advantage_chunks = torch.chunk(advantages, gas)
     return gas_chunks, advantage_chunks
+
+
+@profiling_decorator
+def _prepare_inputs(self, accumulated_local_batch, ulysses):
+    gas = self.args.gradient_accumulation_steps * ulysses.sp_world_size
+    mode = 'train' if self.model.training else 'eval'
+    if mode == 'train':
+        generate_every = gas * self.num_iterations
+        if self._step % generate_every == 0 or self._buffered_inputs is None:
+            accumulated_local_batch = self._generate_and_score_completions(accumulated_local_batch)
+            self._buffered_inputs = accumulated_local_batch  # < this is the change
+        inputs = self._buffered_inputs[self._step % gas]
+        self._step += 1
+    else:
+        inputs = self._generate_and_score_completions(accumulated_local_batch)
+    return inputs
 
 
 class UlyssesSampler(Sampler):
@@ -545,7 +570,7 @@ class Ulysses(SequenceParallel):
             inputs_embeds = kwargs.get('inputs_embeds', None)
             position_ids = kwargs['position_ids']
             attention_mask = kwargs.get('attention_mask', None)
-            input_ids, inputs_embeds, _, position_ids, attention_mask, _ = self.pad_and_split_inputs(
+            _input_ids, inputs_embeds, _, position_ids, attention_mask, _ = self.pad_and_split_inputs(
                 tokenizer,
                 input_ids,
                 inputs_embeds,
@@ -554,7 +579,9 @@ class Ulysses(SequenceParallel):
                 attention_mask,
                 None,
                 embed_tokens=getattr(_self, 'embed_tokens', None))
-            kwargs['input_ids'] = input_ids
+            if _input_ids.min() < 0:
+                print()
+            kwargs['input_ids'] = _input_ids
             kwargs['inputs_embeds'] = inputs_embeds
             kwargs['position_ids'] = position_ids
             kwargs['attention_mask'] = attention_mask
@@ -629,7 +656,7 @@ class Ulysses(SequenceParallel):
             pad_emb = torch.zeros(
                 (1, embed_tokens.weight.shape[-1])).to(embed_tokens.weight.device).to(embed_tokens.weight.dtype)
             input_embeds = self._pad_sp(input_embeds, padding_value=pad_emb, dim=1)
-        batch_size = input_ids.shape[0] if input_ids is not None else input_embeds.shape[0]
+        batch_size = input_ids.shape[0] if input_ids is not None else input_embeds.shape[0] if input_embeds is not None else 1
         if position_ids is not None:
             position_ids = self._pad_sp(position_ids, padding_value=0, dim=-1)
         if (input_ids is not None or input_embeds is not None) and batch_size > 1:
@@ -725,6 +752,7 @@ class Ulysses(SequenceParallel):
         if hasattr(trainer, 'get_batch_logps'):
             trainer.get_batch_logps = partial(get_batch_logps, ulysses=self)
         if hasattr(trainer, '_get_per_token_logps'):
+            trainer._prepare_inputs = MethodType(partial(_prepare_inputs, ulysses=self), trainer)
             trainer._get_per_token_logps = MethodType(partial(_get_per_token_logps, ulysses=self), trainer)
             trainer.split_by_mini_batches = MethodType(partial(split_by_mini_batches, ulysses=self), trainer)
         if hasattr(trainer, 'get_nll_loss'):
