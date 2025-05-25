@@ -216,7 +216,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'completion': deque(maxlen=maxlen),
             'rewards': defaultdict(lambda: deque(maxlen=maxlen)),
         }
-
         # Ensure each process receives a unique seed to prevent duplicate completions when generating with
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
@@ -913,7 +912,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             valid_completions.extend(
                 [inp['messages'][-1]['content'] for inp, mask in zip(all_inputs, valid_mask) if mask])
 
-            if len(valid_samples) >= self.effective_train_batch_size:
+            if len(valid_samples) >= self.args.generation_batch_size:
                 break
 
             inputs = next(self.resample_iterator)
@@ -922,15 +921,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             rewards_per_func, rewards, completions = self._score_completions(inputs)
             resample_count += 1
 
-        if len(valid_samples) >= self.effective_train_batch_size:
+        if len(valid_samples) >= self.args.generation_batch_size:
             process_slice = slice(
                 self.accelerator.process_index * len(inputs),
                 (self.accelerator.process_index + 1) * len(inputs),
             )
-            inputs = valid_samples[:self.effective_train_batch_size][process_slice]
-            rewards = torch.cat(valid_rewards)[:self.effective_train_batch_size]
-            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.effective_train_batch_size]
-            completions = valid_completions[:self.effective_train_batch_size][process_slice]
+            inputs = valid_samples[:self.args.generation_batch_size][process_slice]
+            rewards = torch.cat(valid_rewards)[:self.args.generation_batch_size]
+            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.args.generation_batch_size]
+            completions = valid_completions[:self.args.generation_batch_size][process_slice]
         else:
             logger.warning(f'There are still std=0 groups present after {self.args.max_resample_times} retries.')
             inputs, rewards, rewards_per_func, completions = origin_data
