@@ -718,9 +718,8 @@ class Ulysses(SequenceParallel):
             position_ids = self._split_sp(position_ids, dim=-1)
         if labels is not None:
             labels = self._pad_sp(labels, padding_value=-100, dim=-1)
-            labels[:, 0] = -100  # make the last invalid, so we do not need to cut the loss of last token
-            labels = torch.roll(labels, shifts=-1, dims=1)
-            labels = self._split_sp(labels, dim=1)
+            labels = torch.roll(labels, shifts=-1, dims=-1)
+            labels = self._split_sp(labels, dim=-1)
 
         if loss_scale is not None:
             loss_scale = self._pad_sp(loss_scale, padding_value=0., dim=-1)
