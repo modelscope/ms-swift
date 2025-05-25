@@ -4,7 +4,6 @@ import sys
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-import json
 import megatron.core
 import torch
 from packaging import version
@@ -18,7 +17,7 @@ class ExtraMegatronArguments:
     padded_vocab_size: Optional[int] = None
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
-
+    # streaming dataloader
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 10
 
@@ -169,7 +168,7 @@ class MegatronArguments(ExtraMegatronArguments):
     no_create_attention_mask_in_dataloader: bool = True
 
     # extra_args for megatron
-    extra_megatron_kwargs: Optional[str] = None
+    extra_megatron_kwargs: Optional[Union[dict, str]] = None
 
     def _set_default(self):
         if self.num_query_groups is None:
@@ -234,36 +233,19 @@ class MegatronArguments(ExtraMegatronArguments):
         self._init_mixed_precision()
 
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
-
-        try:
-            if self.extra_megatron_kwargs is None:
-                self.extra_megatron_kwargs = {}
-            elif isinstance(self.extra_megatron_kwargs, str):
-                self.extra_megatron_kwargs = json.loads(self.extra_megatron_kwargs)
-            elif isinstance(self.extra_megatron_kwargs, dict):
-                # For loading from config file
-                self.extra_megatron_kwargs = self.extra_megatron_kwargs
-        except json.JSONDecodeError:
-            raise ValueError('extra_megatron_kwargs should be a valid json string')
+        self.extra_megatron_kwargs = ModelArguments.parse_to_dict(self.extra_megatron_kwargs)
 
     def _args_to_argv(self) -> Tuple[List[Any], Dict[str, Any]]:
         new_args = []
         args_dict = asdict(self)
         extra_args = {}
+        extra_megatron_kwargs = args_dict.pop('extra_megatron_kwargs')
+        args_dict.update(extra_megatron_kwargs)
         for k, value in args_dict.items():
-            if k == 'recompute_modules' and version.parse(megatron.core.__version__) < version.parse('0.12'):
-                continue
-            if k not in MegatronArguments.__annotations__:
+            if k not in MegatronArguments.__annotations__ and k not in extra_megatron_kwargs:
                 extra_args[k] = value
                 continue
-            if k == 'extra_megatron_kwargs':
-                if isinstance(value, str):
-                    value = json.loads(value)
-                if not isinstance(value, dict):
-                    raise ValueError(f'extra_megatron_kwargs should be a dict, but got {type(value)}')
-                for sub_key, sub_value in value.items():
-                    new_args.append(f"--{sub_key.replace('_', '-')}")
-                    new_args.append(str(sub_value))
+            if k == 'recompute_modules' and version.parse(megatron.core.__version__) < version.parse('0.12'):
                 continue
             if value is None or value is False:
                 continue

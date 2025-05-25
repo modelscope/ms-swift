@@ -170,7 +170,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - seq_length: 默认为None，即设置为`max_length`。对数据集长度进行限制请使用基本参数中的`--max_length`控制，无需设置此参数。
 - use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。
 - no_create_attention_mask_in_dataloader: 在dataloader中不创建attention mask，默认为True。
-
+- extra_megatron_kwargs: Additional parameters passed to Megatron, provided as a JSON object. Defaults to None.
 
 **学习率参数**:
 - 🔥lr: 初始学习率，最终会根据学习率预热策略和衰减策略决定每个迭代的学习率，默认为1e-5。
@@ -293,6 +293,4 @@ Megatron训练参数继承自Megatron参数和基本参数。基本参数的内�
 - 🔥packing: 是否使用序列packing，默认为False。
 - 🔥streaming: 流式读取并处理数据集，默认False。通常在处理大型数据集时，设置为True。更多流式的参数查看命令行参数文档。
 - lazy_tokenize: 默认为False。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（这可以避免在训练中出现报错）；设置为True，则在训练中对数据集进行tokenize（这可以节约内存）。
-- dataloader_persistent_workers: 透传入dataloader的参数，默认为True。
-- dataloader_prefetch_factor: 透传入dataloader的参数，默认为10。
 - max_epochs: 训练到`max_epochs`时强制退出训练，并对权重进行验证和保存。该参数在使用流式数据集时很有用。默认为None。

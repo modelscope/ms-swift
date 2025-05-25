@@ -53,6 +53,7 @@ class LmdeployEngine(InferEngine):
         devices: Optional[List[int]] = None,
         reload_weights: bool = False,
         engine_kwargs: Optional[Dict[str, Any]] = None,
+        template: Optional[Template] = None,
     ) -> None:
         version_7 = version.parse(lmdeploy.__version__) >= version.parse('0.7.0')
         if reload_weights:
@@ -68,7 +69,7 @@ class LmdeployEngine(InferEngine):
             use_hf=use_hf,
             hub_token=hub_token,
             revision=revision)[1]
-        self._post_init()
+        self._post_init(template)
 
         if self.max_model_len is not None:
             self.max_model_len -= 1

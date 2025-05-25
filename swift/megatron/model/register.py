@@ -1,12 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from argparse import ArgumentParser
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 import torch.nn as nn
 from transformers import PretrainedConfig
 
-from swift.llm import MODEL_MAPPING, ModelGroup
+from swift.llm import MODEL_MAPPING
 
 MEGATRON_MODEL_MAPPING = {}
 

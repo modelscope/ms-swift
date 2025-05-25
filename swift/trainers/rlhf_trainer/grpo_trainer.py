@@ -213,37 +213,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
         # maxlen is set to the total number of forward passes per step. This value of `maxlen` ensures we log only the
         # final optimization step.
-        maxlen = self.accelerator.num_processes * args.per_device_train_batch_size * args.gradient_accumulation_steps
+        maxlen = self.accelerator.num_processes * args.per_device_train_batch_size * args.steps_per_generation
         self._textual_logs = {
             'prompt': deque(maxlen=maxlen),
             'completion': deque(maxlen=maxlen),
             'rewards': defaultdict(lambda: deque(maxlen=maxlen)),
         }
-
-        # num_generation check
-        num_processes = self.accelerator.num_processes
-        self.effective_train_batch_size = effective_batch_size = \
-            args.per_device_train_batch_size * num_processes * args.gradient_accumulation_steps
-        possible_values = [n_gen for n_gen in range(2, effective_batch_size + 1) if (effective_batch_size) % n_gen == 0]
-
-        if self.num_generations not in possible_values:
-            raise ValueError(
-                f'The effective train batch size ({num_processes} x {args.per_device_train_batch_size} x '
-                f'{args.gradient_accumulation_steps}) must be evenly divisible by the number of generations per '
-                f'prompt ({self.num_generations}). Given the current effective train batch size, the valid values for '
-                f'the number of generations are: {possible_values}.')
-        if self.args.eval_strategy != 'no':
-            effective_batch_size = args.per_device_eval_batch_size * num_processes
-            possible_values = [
-                n_gen for n_gen in range(2, effective_batch_size + 1) if (effective_batch_size) % n_gen == 0
-            ]
-            if self.num_generations not in possible_values:
-                raise ValueError(
-                    f'The effective eval batch size ({num_processes} x {args.per_device_eval_batch_size}) must be '
-                    f'evenly divisible by the number of generations per prompt ({self.num_generations}). Given the '
-                    'current effective eval batch size, the valid values for the number of generations are: '
-                    f'{possible_values}.')
-
         # Ensure each process receives a unique seed to prevent duplicate completions when generating with
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
@@ -271,11 +246,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     ])
 
                 self.engine = self.prepare_vllm(model)
-                # Avoid thread-unsafe modifications of the mode.
-                self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
         else:
             from swift.llm import PtEngine
-            self.engine = PtEngine.from_model_template(self.model, copy(self.template), max_batch_size=0)  # 0: no limit
+            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
 
         self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
         self.request_config = RequestConfig(
@@ -327,20 +300,31 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.eval_flag = False
 
     @profiling_decorator
-    def _prepare_inputs(
-            self, accumulated_local_batch: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
+    def _prepare_inputs(self, generation_batch: dict[str, Union[torch.Tensor,
+                                                                Any]]) -> dict[str, Union[torch.Tensor, Any]]:
+        # Prepares inputs for model training/evaluation by managing completion generation and batch handling.
+        # During training:
+        #   - Receives the local generation batch (Per-GPU batch size × steps per generation)
+        #     from the modified training dataloader instead of the standard local batch
+        #   - Generates completions once for the entire generation batch and splits it into batches of size
+        #     `per_device_train_batch_size`
+        #   - Buffers these completions and returns the appropriate slice for the current accumulation step
+        #   - Optimizes by regenerating completions only periodically (every steps_per_generation * num_iterations)
+        # During evaluation:
+        #   - The input is treated as a standard local batch (no accumulation, no multiple iterations)
+        #   - Completions are generated for each batch without buffering or reuse
+        # Returns a single local batch in both cases.
+
         mode = 'train' if self.model.training else 'eval'
         if mode == 'train':
-            generate_every = self.args.gradient_accumulation_steps * self.num_iterations
+            generate_every = self.args.steps_per_generation * self.num_iterations
             if self._step % generate_every == 0 or self._buffered_inputs is None:
-                accumulated_local_batch = self._generate_and_score_completions(accumulated_local_batch)
-                self._buffered_inputs = accumulated_local_batch  # < this is the change
-            inputs = self._buffered_inputs[self._step % self.args.gradient_accumulation_steps]
+                generation_batch = self._generate_and_score_completions(generation_batch)
+                self._buffered_inputs = generation_batch  # < this is the change
+            inputs = self._buffered_inputs[self._step % self.args.steps_per_generation]
             self._step += 1
         else:
-            inputs = self._generate_and_score_completions(accumulated_local_batch)
-        if inputs['input_ids'].min() < 0:
-            print()
+            inputs = self._generate_and_score_completions(generation_batch)
         return inputs
 
     def split_batches(self):
@@ -458,8 +442,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 device=current_device,
                 max_model_len=self.args.vllm_max_model_len,
                 engine_kwargs=engine_kwargs,
+                template=self.template,
                 **vllm_kwargs)
-            engine.default_template = self.template
         return engine
 
     @contextmanager
@@ -932,7 +916,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             valid_completions.extend(
                 [inp['messages'][-1]['content'] for inp, mask in zip(all_inputs, valid_mask) if mask])
 
-            if len(valid_samples) >= self.effective_train_batch_size:
+            if len(valid_samples) >= self.args.generation_batch_size:
                 break
 
             inputs = next(self.resample_iterator)
@@ -941,15 +925,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             rewards_per_func, rewards, completions = self._score_completions(inputs)
             resample_count += 1
 
-        if len(valid_samples) >= self.effective_train_batch_size:
+        if len(valid_samples) >= self.args.generation_batch_size:
             process_slice = slice(
                 self.accelerator.process_index * len(inputs),
                 (self.accelerator.process_index + 1) * len(inputs),
             )
-            inputs = valid_samples[:self.effective_train_batch_size][process_slice]
-            rewards = torch.cat(valid_rewards)[:self.effective_train_batch_size]
-            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.effective_train_batch_size]
-            completions = valid_completions[:self.effective_train_batch_size][process_slice]
+            inputs = valid_samples[:self.args.generation_batch_size][process_slice]
+            rewards = torch.cat(valid_rewards)[:self.args.generation_batch_size]
+            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.args.generation_batch_size]
+            completions = valid_completions[:self.args.generation_batch_size][process_slice]
         else:
             logger.warning(f'There are still std=0 groups present after {self.args.max_resample_times} retries.')
             inputs, rewards, rewards_per_func, completions = origin_data
@@ -957,6 +941,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return inputs, rewards, rewards_per_func, completions
 
     def split_by_mini_batches(self, inputs, advantages):
+        # Slice to keep only the local part of the data
         # Slice to keep only the local part of the data
         process_slice = slice(
             self.accelerator.process_index * len(inputs),
@@ -966,27 +951,27 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         mode = 'train' if self.model.training else 'eval'
         bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-        gas = self.args.gradient_accumulation_steps if mode == 'train' else 1
+        spg = self.args.steps_per_generation if mode == 'train' else 1
 
-        assert len(inputs) == bs * gas, f'Expected {bs * gas} inputs, got {len(inputs)}'
-        gas_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(gas)]
-        # Split advantages by GAS chunks
-        advantage_chunks = torch.chunk(advantages, gas)
-        return gas_chunks, advantage_chunks
+        assert len(inputs) == bs * spg, f'Expected {bs * spg} inputs, got {len(inputs)}'
+        spg_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(spg)]
+        # Split advantages by spg chunks
+        advantage_chunks = torch.chunk(advantages, spg)
+        return spg_chunks, advantage_chunks
 
     def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> List[InputsType]:
         """
         Prepare the final batch inputs with advantages, ref/old_policy logps and other fields for RL training.
 
         Args:
-            inputs (InputsType): List of input samples. Original shape is [gas*bs] where:
-                - gas: gradient accumulation steps
+            inputs (InputsType): List of input samples. Original shape is [spg*bs] where:
+                - spg: steps_per_generation
                 - bs: per-device batch size
             rewards (torch.Tensor): Tensor of rewards corresponding to the inputs.
-                Shape should match the total number of samples (gas*bs*num_generations)
+                Shape should match the total number of samples (spg*bs*num_generations)
 
         Returns:
-            List[InputsType]: A list of prepared batch inputs, organized as [gas][bs]
+            List[InputsType]: A list of prepared batch inputs, organized as [spg][bs]
         """
         # Compute advantages
         grouped_rewards = rewards.view(-1, self.num_generations)
@@ -1111,7 +1096,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
         advantages = inputs['advantages']
-        old_per_token_logps = inputs['old_per_token_logps'] if self.old_policy else per_token_logps.detach()
+        # When using num_iterations == 1 and steps_per_generation <= gradient_accumulation_steps
+        # old_per_token_logps == per_token_logps, so we can skip it's computation
+        # (see _generate_and_score_completions) and use per_token_logps.detach() instead.
+        old_per_token_logps = (
+            per_token_logps.detach() if inputs['old_per_token_logps'] is None else inputs['old_per_token_logps'])
+
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
         per_token_loss1 = coef_1 * advantages.unsqueeze(1)
@@ -1364,7 +1354,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @property
     def old_policy(self):
-        return self.num_iterations > 1
+        return self.num_iterations > 1 or self.args.steps_per_generation > self.args.gradient_accumulation_steps
 
     @property
     def _queue(self):
@@ -1484,7 +1474,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             data_collator = self._get_collator_with_removed_columns(data_collator, description='training')
 
         dataloader_params = {
-            'batch_size': self._train_batch_size * self.args.gradient_accumulation_steps,
+            'batch_size': self._train_batch_size * self.args.steps_per_generation,
             'collate_fn': data_collator,
             'num_workers': self.args.dataloader_num_workers,
             'pin_memory': self.args.dataloader_pin_memory,
