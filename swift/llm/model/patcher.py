@@ -20,7 +20,7 @@ from swift.llm import to_device, to_float_dtype
 from swift.utils import get_dist_setting, get_logger, is_mp_ddp, safe_ddp_context, use_torchacc
 from swift.utils.torch_utils import _get_max_memory, _sync_max_memory, get_device_count
 from .model_arch import get_model_arch
-from .utils import HfConfigFactory
+from .utils import HfConfigFactory, get_llm_model
 
 logger = get_logger()
 
@@ -66,14 +66,7 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
         return hidden_states
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
-    llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
-    if llm_prefix:
-        llm_model = getattr(module, llm_prefix[0])
-    else:
-        llm_model = module
-
-    if 'CausalLM' not in llm_model.__class__.__name__:
-        llm_model = module
+    llm_model = get_llm_model(module)
 
     found = False
     for lm_head in lm_heads:
@@ -156,13 +149,7 @@ def _patch_sequence_classification(model, model_meta):
     initializer_range = HfConfigFactory.get_config_attr(model.config, 'initializer_range')
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
-    llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
-    if llm_prefix:
-        llm_model = getattr(model, llm_prefix[0])
-    else:
-        llm_model = model
-    if 'CausalLM' not in llm_model.__class__.__name__:  # fix qwen2_vl
-        llm_model = model
+    llm_model = get_llm_model(model, model_meta=model_meta)
     llm_model.num_labels = model.config.num_labels
     llm_model.score = nn.Linear(hidden_size, llm_model.num_labels, bias=False, dtype=llm_model.dtype)
     if llm_model.score.weight.device == torch.device('meta'):

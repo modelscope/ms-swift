@@ -2,6 +2,7 @@ import inspect
 
 import math
 import os
+from contextlib import contextmanager
 from functools import partial
 from types import MethodType
 from typing import Any, Dict, Iterator, List, Optional, Tuple
@@ -24,6 +25,7 @@ from swift.tuners import SwiftModel
 from swift.utils import get_current_device, get_device, get_dist_setting, seed_worker
 from .base import SequenceParallel
 from .. import SwiftMixin
+from ...llm.model.utils import get_llm_model
 
 if version.parse(torch.__version__) >= version.parse('2.0.0'):
     torch._dynamo.config.capture_dynamic_output_shape_ops = True
@@ -184,21 +186,71 @@ def get_batch_logps(logits: torch.FloatTensor,
     return (total_per_token_logps * total_loss_mask).sum(-1), total_loss_mask.sum(-1)
 
 
+@contextmanager
+def packing_context(self, model: torch.nn.Module):
+    ctx = {}
+
+    def _packing_input_hook(module, args, kwargs):
+        attention_mask = kwargs['attention_mask']
+        ctx['padding_left'] = (attention_mask[:, -1].sum() == attention_mask.shape[0])
+        kwargs['position_ids'] = torch.arange(kwargs['input_ids'].shape[1]).unsqueeze(0).repeat(kwargs['input_ids'].shape[0], 1).to(kwargs['input_ids'].dtype).to(kwargs['input_ids'].device)
+        kwargs['input_ids'] = kwargs['input_ids'][attention_mask.bool()].unsqueeze(0)
+        kwargs['position_ids'] = kwargs['position_ids'][attention_mask.bool()].unsqueeze(0)
+        kwargs.pop('attention_mask', None)
+        return args, kwargs
+
+    def _packing_output_hook(module, args, kwargs, result):
+        position_ids = kwargs['position_ids']
+        seq_lengths = []
+        pos = position_ids[0]
+        resets = torch.where(pos[1:] < pos[:-1])[0] + 1
+
+        max_length = 0
+        if len(resets) == 0:
+            # Only one sequence in this batch item
+            seq_lengths = [pos.max().item() + 1]
+        else:
+            # Multiple sequences
+            start = 0
+            for end in resets:
+                seq_lengths.append(end - start)
+                start = end
+            seq_lengths.append(pos.shape[0] - start)
+
+        max_length = max(seq_lengths)
+        logits = result.logits.squeeze(0)
+        unpacked_logits = []
+
+        start = 0
+        for length in seq_lengths:
+            seq_state = logits[start:start + length]
+            padding = torch.zeros((max_length-length, logits.shape[-1])).to(logits.dtype).to(logits.device)
+            if ctx['padding_left']:
+                seq_state = torch.cat((padding, seq_state), dim=0)
+            else:
+                seq_state = torch.cat((seq_state, padding), dim=0)
+            unpacked_logits.append(seq_state)
+            start += length
+        result.logits = torch.stack(unpacked_logits, dim=0)
+        return result
+
+    llm_model = get_llm_model(model)
+
+    if self.padding_free:
+        remove_handle1 = llm_model.register_forward_pre_hook(_packing_input_hook, with_kwargs=True, prepend=True)
+        llm_model._unpack_output = _packing_output_hook
+    yield
+    if self.padding_free:
+        remove_handle1.remove()
+
+
 @profiling_decorator
 def _get_per_token_logps(self, model, inputs, ulysses):
     from trl.trainer.utils import selective_log_softmax
     logits_to_keep = inputs['logits_to_keep']
     input_ids = inputs['input_ids']
-    unwrapped_model = self.accelerator.unwrap_model(model)
-    if is_peft_model(unwrapped_model):
-        parameters = inspect.signature(unwrapped_model.base_model.model.forward).parameters
-    else:
-        parameters = inspect.signature(unwrapped_model.forward).parameters
-    # if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
-    #     # save memory
-    #     with self.packing_context(model):
-    #         return super(SwiftMixin, self)._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
-    completion_mask = inputs['completion_mask']
+    if self.padding_free:
+        logits_to_keep = input_ids.shape[1]
     inputs = {
         k: v
         for k, v in inputs.items() if k not in [
@@ -208,7 +260,8 @@ def _get_per_token_logps(self, model, inputs, ulysses):
     }
 
     with self._template_context(self.template), self.packing_context(model):
-        logits = model(**inputs).logits
+        output = model(**inputs)
+        logits = output.logits
 
     origin_length = input_ids.shape[-1]
     _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(
@@ -240,6 +293,11 @@ def _get_per_token_logps(self, model, inputs, ulysses):
     per_token_logps, _ = GatherLoss.apply(per_token_logps_padded, labels_padded, ulysses.sp_group, 1)
     if padding_size > 0:
         per_token_logps = per_token_logps[:, :-padding_size]
+    if self.padding_free:
+        llm_model = get_llm_model(model)
+        output.logits = per_token_logps
+        per_token_logps = llm_model._unpack_output(None, None, inputs, output).logits
+        delattr(llm_model, '_unpack_output')
     return per_token_logps[:, -logits_to_keep-1:-1]
 
 
@@ -587,17 +645,7 @@ class Ulysses(SequenceParallel):
             kwargs['attention_mask'] = attention_mask
             return args, kwargs
 
-        if isinstance(model, (SwiftModel, PeftModel)):
-            model = model.model
-        model_meta = model.model_meta
-        llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
-        if llm_prefix:
-            llm_model = getattr(model, llm_prefix[0])
-        else:
-            llm_model = model
-
-        if 'CausalLM' not in llm_model.__class__.__name__:
-            llm_model = model
+        llm_model = get_llm_model(model)
 
         base_model = llm_model.model
         self.causal_mask_func = base_model._update_causal_mask

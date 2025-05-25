@@ -43,6 +43,7 @@ from .rlhf_mixin import RLHFTrainerMixin
 from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge, unwrap_model_for_generation
 from .vllm_client import VLLMClient
 from ... import SwiftModel
+from ...llm.model.utils import get_llm_model
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
@@ -1157,8 +1158,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @contextmanager
     def packing_context(self, model: torch.nn.Module):
-        model = self.accelerator.unwrap_model(model)
-
         ctx = {}
 
         def _packing_input_hook(module, args, kwargs):
@@ -1205,17 +1204,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             result.last_hidden_state = torch.stack(unpacked_logits, dim=0)
             return result
 
-        if isinstance(model, (SwiftModel, PeftModel)):
-            model = model.model
-        model_meta = model.model_meta
-        llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
-        if llm_prefix:
-            llm_model = getattr(model, llm_prefix[0])
-        else:
-            llm_model = model
-
-        if 'CausalLM' not in llm_model.__class__.__name__:
-            llm_model = model
+        llm_model = get_llm_model(model)
 
         base_model = llm_model.model
         if self.padding_free:
