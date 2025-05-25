@@ -117,7 +117,7 @@ torch_compile_options = {
 }
 
 
-@torch.compile(dynamic=True, fullgraph=True, options=torch_compile_options)
+# @torch.compile(dynamic=True, fullgraph=True, options=torch_compile_options)
 def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None, ulysses=None) -> torch.Tensor:
     if hasattr(outputs, 'logits'):
         logits = outputs.logits
@@ -127,7 +127,6 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
     logits = logits.view(-1, logits.shape[-1])
     labels = labels.flatten().to(device)
     _, _, labels, _, _, loss_scale = ulysses.pad_and_split_inputs(
-        ulysses.tokenizer,
         None,
         None,
         labels,
@@ -161,7 +160,6 @@ def get_batch_logps(logits: torch.FloatTensor,
                     is_encoder_decoder: bool = False,
                     ulysses=None) -> Tuple[torch.FloatTensor, torch.LongTensor]:
     _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(
-        ulysses.tokenizer,
         None,
         None,
         labels,
@@ -261,7 +259,6 @@ def _get_per_token_logps(self, model, inputs, ulysses):
         input_ids = input_ids[inputs['attention_mask'].bool()].unsqueeze(0)
         origin_length = inputs['attention_mask'].sum()
     _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(
-        self.tokenizer,
         None,
         None,
         input_ids.clone(),
@@ -627,7 +624,6 @@ class Ulysses(SequenceParallel):
             position_ids = kwargs['position_ids']
             attention_mask = kwargs.get('attention_mask', None)
             _input_ids, inputs_embeds, _, position_ids, attention_mask, _ = self.pad_and_split_inputs(
-                tokenizer,
                 input_ids,
                 inputs_embeds,
                 None,
@@ -647,6 +643,7 @@ class Ulysses(SequenceParallel):
         self.causal_mask_func = base_model._update_causal_mask
         base_model.register_forward_pre_hook(pre_forward_split_hook, with_kwargs=True)
         self.model_dtype = next(model.parameters()).dtype
+        self.tokenizer = tokenizer
 
     def _pad_sp(self, tensor, padding_value, dim=-1):
         # code borrowed from xtuner
@@ -685,7 +682,6 @@ class Ulysses(SequenceParallel):
         return output
 
     def pad_and_split_inputs(self,
-                             tokenizer,
                              input_ids,
                              input_embeds,
                              labels,
@@ -693,6 +689,7 @@ class Ulysses(SequenceParallel):
                              attention_mask,
                              loss_scale,
                              embed_tokens=None):
+        tokenizer = self.tokenizer
         sp_group = self.sp_group
         if input_ids is not None:
             input_ids = self._pad_sp(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
