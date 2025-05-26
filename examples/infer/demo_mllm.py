@@ -108,7 +108,7 @@ if __name__ == '__main__':
         mm_type = 'audio'
         engine = PtEngine(model, max_batch_size=64)
     elif infer_backend == 'vllm':
-        # test env: vllm==0.7.3, transformers==4.49.*
+        # test env: vllm==0.8.5.post1, transformers==4.51.3
         # The meaning of environment variables can be found at:
         # https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html#id17
         from swift.llm import VllmEngine
