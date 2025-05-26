@@ -318,6 +318,7 @@ register_model(
         architectures=['MiMoForCausalLM'],
         requires=['transformers>=4.37']))
 
+
 register_model(
     ModelMeta(
         LLMModelType.qwen3_emb, [
@@ -328,6 +329,6 @@ register_model(
                 Model('tongyi/Qwen3-Embedding-8B', 'tongyi/Qwen3-Embedding-8B'),
             ]),
         ],
-        None,
+        TemplateType.qwen3_emb,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3ForCausalLM']))
