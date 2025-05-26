@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Union
 
 import numpy as np
 from datasets import Dataset as HfDataset
+from tqdm import tqdm
 
 from swift.llm import InferArguments, InferRequest, SwiftPipeline, load_dataset, prepare_model_template, sample_dataset
 from swift.plugin import InferStats, MeanMetric, compute_rouge_bleu
