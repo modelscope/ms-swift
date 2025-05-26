@@ -335,12 +335,13 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - pipeline_parallel_size: Default is `1`.
 - max_num_seqs: Default is `256`.
 - 🔥max_model_len: Default is `None`.
-- disable_custom_all_reduce: Default is `False`.
+- disable_custom_all_reduce: Default is `True`.
 - enforce_eager: Determines whether vllm uses PyTorch eager mode or constructs a CUDA graph, default is `False`. Setting it to True can save memory but may affect efficiency.
 - 🔥limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--limit_mm_per_prompt '{"image": 5, "video": 2}'`.
 - vllm_max_lora_rank: Default is `16`. This is the parameter supported by vllm for lora.
-- - vllm_quantization: vllm is able to quantize model with this argument，supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
+- vllm_quantization: vllm is able to quantize model with this argument，supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 - enable_prefix_caching: Enable the automatic prefix caching of vllm to save processing time for querying repeated prefixes. The default is `False`.
+- use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
 
 ### Merge Arguments
 
@@ -522,8 +523,6 @@ Deployment Arguments inherit from the [inference arguments](#inference-arguments
   - Note: In `swift app` or `swift eval`, the default is False.
 - log_interval: Interval for printing tokens/s statistics, default is 20 seconds. If set to -1, it will not be printed.
 - max_logprobs: Maximum number of logprobs returned to the client, with a default value of 20.
-- use_async_engine: Whether to use the async engine under the vLLM backend. Default is True.
-
 
 ### Web-UI Arguments
 - server_name: Host for the web UI, default is '0.0.0.0'.
