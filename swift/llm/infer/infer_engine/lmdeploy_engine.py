@@ -53,6 +53,8 @@ class LmdeployEngine(InferEngine):
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
     ) -> None:
+        if engine_kwargs is None:
+            engine_kwargs = {}
         self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
@@ -72,7 +74,7 @@ class LmdeployEngine(InferEngine):
             cache_max_entry_count=cache_max_entry_count,
             quant_policy=quant_policy,
             vision_batch_size=vision_batch_size,
-            engine_kwargs=engine_kwargs)
+            **engine_kwargs)
 
         self.config.torch_dtype = torch_dtype or self.model_info.torch_dtype
 
@@ -85,9 +87,7 @@ class LmdeployEngine(InferEngine):
                                cache_max_entry_count: float = 0.8,
                                quant_policy: int = 0,
                                vision_batch_size: int = 1,
-                               engine_kwargs: Optional[Dict[str, Any]] = None):
-        if engine_kwargs is None:
-            engine_kwargs = {}
+                               **engine_kwargs):
         engine_kwargs['tp'] = tp
         engine_kwargs['session_len'] = session_len
         engine_kwargs['cache_max_entry_count'] = cache_max_entry_count

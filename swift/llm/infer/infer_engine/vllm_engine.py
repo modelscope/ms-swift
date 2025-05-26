@@ -137,8 +137,6 @@ class VllmEngine(InferEngine):
         enable_sleep_mode: bool = False,
         **engine_kwargs,
     ) -> None:
-        if engine_kwargs is None:
-            engine_kwargs = {}
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
         if self.use_async_engine:
             engine_cls = AsyncEngineArgs
