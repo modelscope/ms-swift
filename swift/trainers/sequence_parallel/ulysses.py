@@ -125,7 +125,6 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
         logits = outputs
     device = logits.device
     logits = logits.view(-1, logits.shape[-1])
-    labels = labels.flatten().to(device)
     _, _, labels, _, _, loss_scale = ulysses.pad_and_split_inputs(
         None,
         None,
@@ -134,6 +133,7 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
         None,
         loss_scale)
 
+    labels = labels.flatten().to(device)
     sploss_parallel_size = int(os.environ.get('CELOSS_PARALLEL_SIZE', '0'))
     if sploss_parallel_size > 0:
         loss = ChunkedCrossEntropyLoss.apply(logits, labels, sploss_parallel_size)
@@ -394,7 +394,6 @@ class UlyssesDispatcher(DataLoaderDispatcher):
             return inputs[0]
         outputs = [None]
         global_src_rank = dist.get_global_rank(self.ulysses.dp_group, 0)
-        # print('global_src_rank', global_src_rank)
         dist.scatter_object_list(outputs, inputs, global_src_rank, group=self.ulysses.dp_group)
         return outputs[0]
 
