@@ -47,8 +47,7 @@ class PtEngine(InferEngine):
             torch_dtype: Optional[torch.dtype] = None,
             *,
             adapters: List[str] = None,
-            max_batch_size: int = 1,
-            #
+            max_batch_size: int = 1,  # 0/1: no limit
             model_type: Optional[str] = None,
             use_hf: Optional[bool] = None,
             revision: Optional[str] = None,
@@ -107,7 +106,9 @@ class PtEngine(InferEngine):
         if len(self._task_pool) == 0:
             return
         key, (kwargs, data) = next(iter(self._task_pool.items()))
-        max_batch_size = self.max_batch_size or len(data)
+        max_batch_size = self.max_batch_size
+        if max_batch_size <= 0:
+            max_batch_size = len(data)
         data, remain_data = data[:max_batch_size], data[max_batch_size:]
         if remain_data:
             self._task_pool[key] = kwargs, remain_data
@@ -534,8 +535,10 @@ class PtEngine(InferEngine):
         if use_tqdm is None:
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm)
-        # If self.max_batch_size is None or 0, then process all infer_requests at once.
-        max_batch_size = self.max_batch_size or len(infer_requests)
+        # If self.max_batch_size <= 0, then process all infer_requests at once.
+        max_batch_size = self.max_batch_size
+        if max_batch_size <= 0:
+            max_batch_size = len(infer_requests)
         res = []
         i = 0
         while i < len(infer_requests):

@@ -217,12 +217,14 @@ class SwiftInfer(SwiftPipeline):
             metrics = self.infer_kwargs.pop('metrics')
             print({metrics[0].compute()})
         else:
-            idx = 0
+            if args.write_batch_size <= 0:
+                args.write_batch_size = len(val_dataset)
             if args.write_batch_size < len(val_dataset) and args.result_path:
                 logger.info(f'args.result_path: {args.result_path}')
             prog_bar = tqdm(
                 total=len(val_dataset), dynamic_ncols=True, disable=args.write_batch_size >= len(val_dataset))
             result_list = []
+            idx = 0
             while idx < len(val_dataset):
                 shard_dataset = val_dataset.select(range(idx, idx + args.write_batch_size))
                 result_list += self._batch_infer(shard_dataset, request_config)
@@ -262,6 +264,7 @@ class SwiftInfer(SwiftPipeline):
                 result_list.append(data)
         if self.jsonl_writer:
             self.jsonl_writer.append(result_list, gather_obj=True)
+        return result_list
 
 
 def infer_main(args: Union[List[str], InferArguments, None] = None):
