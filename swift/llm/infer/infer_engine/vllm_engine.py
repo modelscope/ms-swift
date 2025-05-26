@@ -418,8 +418,8 @@ class VllmEngine(InferEngine):
             )
         else:
             request_config = deepcopy(request_config or RequestConfig())
-            if request_config.stream:
-                raise ValueError('If you want to use stream inference, you need to pass `use_async_engine` as True.')
+            if request_config.stream and len(infer_requests) > 1:
+                raise ValueError('If you want to use stream batch inference, you need to set use_async_engine to True.')
             if use_tqdm is None:
                 use_tqdm = len(infer_requests) > 1
             rank = get_dist_setting()[0]
