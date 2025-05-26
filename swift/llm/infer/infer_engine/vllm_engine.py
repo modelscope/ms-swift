@@ -455,12 +455,15 @@ class VllmEngine(InferEngine):
                     token_idxs = [0 for _ in range(generation_config.n)]
                     while self.engine.has_unfinished_requests():
                         result = self.engine.step()
+                        if not result:
+                            continue
+                        result = result[0]
                         res = self._create_chat_completion_stream_response(result, template, generation_config,
                                                                            request_id, infer_streamers, token_idxs)
                         if res is None:
                             continue
-                        yield res[0]
-                        if output.finished:
+                        yield res
+                        if result.finished:
                             break
 
                     self._update_metrics(res, metrics)
