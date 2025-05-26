@@ -329,38 +329,45 @@ class VllmEngine(InferEngine):
         infer_streamers = [InferStreamer(template) for _ in range(generation_config.n)]
         token_idxs = [0 for _ in range(generation_config.n)]
         async for result in result_generator:
-
-            is_diff = False
-            is_finished = False
-            for output in result.outputs:
-                output.token_ids = list(output.token_ids)
-                output.delta_text = infer_streamers[output.index].get_printable_text(
-                    output.token_ids, output.finished())
-                output.is_finished = output.finish_reason is not None
-                is_diff |= bool(output.delta_text)
-                is_finished |= output.is_finished
-            if not is_diff and not is_finished:
+            res = self._create_chat_completion_stream_response(result, template, generation_config, request_id,
+                                                               infer_streamers, token_idxs)
+            if res is None:
                 continue
+            yield res
 
-            num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
-            usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
-            choices = []
-            for output in result.outputs:
-                logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idxs[output.index]:],
-                                              generation_config.top_logprobs)
-                token_idxs[output.index] = len(output.token_ids)
-                toolcall = None
-                if output.is_finished:
-                    toolcall = self._get_toolcall(template.decode(output.token_ids), template)
-                choice = ChatCompletionResponseStreamChoice(
-                    index=output.index,
-                    delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
-                    finish_reason=output.finish_reason,
-                    logprobs=logprobs)
-                choices.append(choice)
-            yield ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
+    def _create_chat_completion_stream_response(self, result, template, generation_config, request_id, infer_streamers,
+                                                token_idxs) -> Optional[ChatCompletionStreamResponse]:
+        is_diff = False
+        is_finished = False
+        for output in result.outputs:
+            output.token_ids = list(output.token_ids)
+            output.delta_text = infer_streamers[output.index].get_printable_text(output.token_ids, output.finished())
+            output.is_finished = output.finish_reason is not None
+            is_diff |= bool(output.delta_text)
+            is_finished |= output.is_finished
+        if not is_diff and not is_finished:
+            return
 
-    def _create_chat_completion_response(self, result, template, generation_config, request_id):
+        num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
+        usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
+        choices = []
+        for output in result.outputs:
+            logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idxs[output.index]:],
+                                          generation_config.top_logprobs)
+            token_idxs[output.index] = len(output.token_ids)
+            toolcall = None
+            if output.is_finished:
+                toolcall = self._get_toolcall(template.decode(output.token_ids), template)
+            choice = ChatCompletionResponseStreamChoice(
+                index=output.index,
+                delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
+                finish_reason=output.finish_reason,
+                logprobs=logprobs)
+            choices.append(choice)
+        return ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
+
+    def _create_chat_completion_response(self, result, template, generation_config,
+                                         request_id) -> ChatCompletionResponse:
         assert result is not None
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
@@ -441,20 +448,39 @@ class VllmEngine(InferEngine):
                 self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
             prog_bar = tqdm(total=len(batched_inputs), dynamic_ncols=True, disable=not use_tqdm)
             outputs = {}
-            while self.engine.has_unfinished_requests():
-                step_outputs = self.engine.step()
-                for output in step_outputs:
-                    if output.finished:
-                        outputs[output.request_id] = output
-                        prog_bar.update()
-            prog_bar.close()
-            outputs = [outputs[request_id] for request_id in request_id_list]
-            res = [
-                self._create_chat_completion_response(result, template, generation_config, request_id)
-                for request_id, result in zip(request_id_list, outputs)
-            ]
-            self._update_metrics(res, metrics)
-            return res
+            if request_config.stream:
+
+                def _gen_wrapper():
+                    infer_streamers = [InferStreamer(template) for _ in range(generation_config.n)]
+                    token_idxs = [0 for _ in range(generation_config.n)]
+                    while self.engine.has_unfinished_requests():
+                        result = self.engine.step()
+                        res = self._create_chat_completion_stream_response(result, template, generation_config,
+                                                                           request_id, infer_streamers, token_idxs)
+                        if res is None:
+                            continue
+                        yield res[0]
+                        if output.finished:
+                            break
+
+                    self._update_metrics(res, metrics)
+
+                return [_gen_wrapper()]
+            else:
+                while self.engine.has_unfinished_requests():
+                    step_outputs = self.engine.step()
+                    for output in step_outputs:
+                        if output.finished:
+                            outputs[output.request_id] = output
+                            prog_bar.update()
+                prog_bar.close()
+                outputs = [outputs[request_id] for request_id in request_id_list]
+                res = [
+                    self._create_chat_completion_response(result, template, generation_config, request_id)
+                    for request_id, result in zip(request_id_list, outputs)
+                ]
+                self._update_metrics(res, metrics)
+                return res
 
     async def infer_async(
         self,
