@@ -41,7 +41,7 @@ class VllmEngine(InferEngine):
         model_id_or_path: str,
         torch_dtype: Optional[torch.dtype] = None,
         *,
-        use_async_engine: bool = False,
+        use_async_engine: bool = True,
         model_type: Optional[str] = None,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
