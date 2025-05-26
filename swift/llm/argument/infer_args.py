@@ -75,7 +75,7 @@ class VllmArguments:
     limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_max_lora_rank: int = 16
     enable_prefix_caching: bool = False
-    use_async_engine: bool = True
+    use_async_engine: bool = False
     data_parallel_size: int = 1
     log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
     vllm_quantization: Optional[str] = None

@@ -6,7 +6,7 @@ from datasets import Dataset as HfDataset
 
 from swift.llm import InferArguments, InferRequest, SwiftPipeline, load_dataset, prepare_model_template, sample_dataset
 from swift.plugin import InferStats, MeanMetric, compute_rouge_bleu
-from swift.utils import JsonlWriter, get_dist_setting, get_logger, is_master, read_from_jsonl
+from swift.utils import JsonlWriter, get_dist_setting, get_logger, is_dist, is_master, read_from_jsonl
 from .infer_engine import AdapterRequest, PtEngine
 from .protocol import RequestConfig
 from .utils import InferCliState
@@ -65,14 +65,12 @@ class SwiftInfer(SwiftPipeline):
             from .infer_engine import VllmEngine
             infer_engine_cls = VllmEngine
             kwargs.update(args.get_vllm_engine_kwargs())
-            seed = args.seed + get_dist_setting()[0] // args.tensor_parallel_size
-            kwargs.update({
-                'distributed_executor_backend': 'external_launcher',
-                'use_async_engine': False,
-                'engine_kwargs': {
-                    'seed': seed
-                },
-            })
+            if is_dist() and args.tensor_parallel_size > 1:
+                seed = args.seed + get_dist_setting()[0] // args.tensor_parallel_size
+                kwargs.update({
+                    'distributed_executor_backend': 'external_launcher',
+                    'seed': seed,
+                })
         else:
             from .infer_engine import LmdeployEngine
             infer_engine_cls = LmdeployEngine
@@ -215,7 +213,7 @@ class SwiftInfer(SwiftPipeline):
                 if self.jsonl_writer:
                     self.jsonl_writer.append(data)
         else:
-            rank = args.rank // args.tensor_parallel_size
+            rank = args.rank // args.tensor_parallel_size if args.rank >= 0 else -1
             data_parallel_size = args.global_world_size // args.tensor_parallel_size
             if rank >= 0 and data_parallel_size > 1:
                 val_dataset = val_dataset.shard(data_parallel_size, rank, contiguous=True)
@@ -230,14 +228,14 @@ class SwiftInfer(SwiftPipeline):
 
             resp_list = self.infer(
                 val_dataset, request_config, template=self.template, use_tqdm=True, **self.infer_kwargs)
+            if rank >= 0 and args.rank % args.tensor_parallel_size != 0:
+                result_list = []
             for data, resp, labels in zip(val_dataset, resp_list, labels_list):
                 response = resp.choices[0].message.content
                 data['messages'].append({'role': 'assistant', 'content': response})
                 data = {'response': response, 'labels': labels, 'logprobs': resp.choices[0].logprobs, **data}
                 result_list.append(data)
             if self.jsonl_writer:
-                if args.rank % args.tensor_parallel_size != 0:
-                    result_list = []
                 self.jsonl_writer.append(result_list, gather_obj=True)
         metrics = self.infer_kwargs.pop('metrics')
         print(f'[rank{rank}] {metrics[0].compute()}')

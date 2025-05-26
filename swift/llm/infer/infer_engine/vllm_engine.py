@@ -41,7 +41,7 @@ class VllmEngine(InferEngine):
         model_id_or_path: str,
         torch_dtype: Optional[torch.dtype] = None,
         *,
-        use_async_engine: bool = True,
+        use_async_engine: bool = False,
         model_type: Optional[str] = None,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
@@ -56,6 +56,7 @@ class VllmEngine(InferEngine):
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         device: str = 'auto',
+        seed: Optional[int] = None,
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -93,10 +94,11 @@ class VllmEngine(InferEngine):
             max_lora_rank=max_lora_rank,
             enable_prefix_caching=enable_prefix_caching,
             device=device,
+            seed=seed,
             distributed_executor_backend=distributed_executor_backend,
             enable_sleep_mode=enable_sleep_mode,
             quantization=quantization,
-            engine_kwargs=engine_kwargs,
+            **engine_kwargs,
         )
         context = nullcontext()
         if is_torch_npu_available() and (tensor_parallel_size == 1 or pipeline_parallel_size == 1):
@@ -131,8 +133,7 @@ class VllmEngine(InferEngine):
         enable_prefix_caching: bool = False,
         distributed_executor_backend: Optional[str] = None,
         enable_sleep_mode: bool = False,
-        quantization: Optional[str] = None,
-        engine_kwargs: Optional[Dict[str, Any]] = None,
+        **engine_kwargs,
     ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
@@ -158,7 +159,6 @@ class VllmEngine(InferEngine):
         if 'enable_sleep_mode' in parameters:
             engine_kwargs['enable_sleep_mode'] = enable_sleep_mode
 
-        engine_kwargs['quantization'] = quantization
         model_info = self.model_info
         if self.config.architectures is None:
             architectures = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM']}[self.model_meta.model_type]
@@ -180,8 +180,6 @@ class VllmEngine(InferEngine):
             device=device,
             **engine_kwargs,
         )
-        if distributed_executor_backend == 'external_launcher':
-            engine_args.disable_custom_all_reduce = True
         self.engine_args = engine_args
         self.enable_lora = enable_lora
         if max_model_len is not None:
