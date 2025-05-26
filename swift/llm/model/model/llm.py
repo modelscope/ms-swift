@@ -318,7 +318,6 @@ register_model(
         architectures=['MiMoForCausalLM'],
         requires=['transformers>=4.37']))
 
-
 register_model(
     ModelMeta(
         LLMModelType.qwen3_emb, [
