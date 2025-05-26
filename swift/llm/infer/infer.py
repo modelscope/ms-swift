@@ -196,9 +196,10 @@ class SwiftInfer(SwiftPipeline):
 
         val_dataset = self._prepare_val_dataset()
         logger.info(f'val_dataset: {val_dataset}')
-        result_list = []
+
         self.infer_kwargs['metrics'] = [InferStats()]
         if request_config and request_config.stream:
+            result_list = []
             for data in val_dataset:
                 labels = InferRequest.remove_response(data['messages'])
                 query = data['messages'][-1]['content']
@@ -212,36 +213,52 @@ class SwiftInfer(SwiftPipeline):
                 result_list.append(data)
                 if self.jsonl_writer:
                     self.jsonl_writer.append(data)
+            metrics = self.infer_kwargs.pop('metrics')
+            print({metrics[0].compute()})
         else:
-            rank = args.rank // args.tensor_parallel_size if args.rank >= 0 else -1
-            data_parallel_size = args.global_world_size // args.tensor_parallel_size
-            if rank >= 0 and data_parallel_size > 1:
-                val_dataset = val_dataset.shard(data_parallel_size, rank, contiguous=True)
-            val_dataset = list(val_dataset)
-            labels_list = []
-            for data in val_dataset:
-                if args.task_type == 'causal_lm':
-                    labels = InferRequest.remove_response(data['messages'])
-                else:
-                    labels = data.pop('label', None)
-                labels_list.append(labels)
-
-            resp_list = self.infer(
-                val_dataset, request_config, template=self.template, use_tqdm=True, **self.infer_kwargs)
-            if rank >= 0 and args.rank % args.tensor_parallel_size != 0:
-                result_list = []
-            for data, resp, labels in zip(val_dataset, resp_list, labels_list):
-                response = resp.choices[0].message.content
-                data['messages'].append({'role': 'assistant', 'content': response})
-                data = {'response': response, 'labels': labels, 'logprobs': resp.choices[0].logprobs, **data}
-                result_list.append(data)
-            if self.jsonl_writer:
-                self.jsonl_writer.append(result_list, gather_obj=True)
-        metrics = self.infer_kwargs.pop('metrics')
-        print(f'[rank{rank}] {metrics[0].compute()}')
+            idx = 0
+            prog_bar = tqdm(
+                total=len(val_dataset), dynamic_ncols=True, disable=args.write_batch_size < len(val_dataset))
+            while idx < len(val_dataset):
+                shard_dataset = val_dataset.select(range(idx, idx + args.write_batch_size))
+                result_list = self._batch_infer(shard_dataset, request_config)
+                idx += args.write_batch_size
+                prog_bar.update(args.write_batch_size)
+            metrics = self.infer_kwargs.pop('metrics')
+            print(f'[rank{args.rank}] {metrics[0].compute()}')
         if args.metric is not None:
             self._calc_metric()
         return result_list
+
+    def _batch_infer(self, val_dataset, request_config):
+        args = self.args
+        result_list = []
+        if args.infer_backend == 'vllm':
+            rank = args.rank // args.tensor_parallel_size if args.rank >= 0 else -1
+            data_parallel_size = args.global_world_size // args.tensor_parallel_size
+        else:
+            rank, data_parallel_size = args.rank, args.global_world_size
+        if rank >= 0 and data_parallel_size > 1:
+            val_dataset = val_dataset.shard(data_parallel_size, rank, contiguous=True)
+        val_dataset = list(val_dataset)
+        labels_list = []
+        for data in val_dataset:
+            if args.task_type == 'causal_lm':
+                labels = InferRequest.remove_response(data['messages'])
+            else:
+                labels = data.pop('label', None)
+            labels_list.append(labels)
+
+        resp_list = self.infer(val_dataset, request_config, template=self.template, use_tqdm=True, **self.infer_kwargs)
+        if args.infer_backend == 'vllm' and rank >= 0 and args.rank % args.tensor_parallel_size != 0:
+            resp_list = []
+        for data, resp, labels in zip(val_dataset, resp_list, labels_list):
+            response = resp.choices[0].message.content
+            data['messages'].append({'role': 'assistant', 'content': response})
+            data = {'response': response, 'labels': labels, 'logprobs': resp.choices[0].logprobs, **data}
+            result_list.append(data)
+        if self.jsonl_writer:
+            self.jsonl_writer.append(result_list, gather_obj=True)
 
 
 def infer_main(args: Union[List[str], InferArguments, None] = None):
