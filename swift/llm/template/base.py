@@ -912,7 +912,7 @@ class Template(ProcessorMixin):
         return system
 
     @staticmethod
-    def _swift_prepare_function_call(agent_template, messages):
+    def _swift_prepare_messages(agent_template, messages):
         if len(messages) < 2:
             return
         i = 1
@@ -928,8 +928,8 @@ class Template(ProcessorMixin):
                     pre_content, messages[i_start:i + 1])
                 messages[i_start:i + 1] = [{'role': 'tool', 'content': tool_content}]
                 i = i_start + 1
-            elif pre_role == 'assistant' and role == 'assistant':
-                # Consecutive messages from the assistant role need to be merged to prevent errors.
+            elif pre_role == 'assistant' and role == 'assistant' or pre_role == 'user' and role == 'user':
+                # Consecutive messages from the assistant/user role need to be merged to prevent errors.
                 pre_message['content'] = pre_content + content
                 messages.pop(i)
             else:
@@ -938,7 +938,7 @@ class Template(ProcessorMixin):
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
         system = self._get_system(inputs)
-        self._swift_prepare_function_call(self.agent_template, inputs.messages)
+        self._swift_prepare_messages(self.agent_template, inputs.messages)
 
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2

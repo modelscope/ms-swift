@@ -190,7 +190,8 @@ class VllmEngine(InferEngine):
     def _fix_vllm_bug(self) -> None:
         # fix vllm==0.4 bug (very slow)
         tokenizer = self.tokenizer
-        if self._version_ge('0.4') and not tokenizer.__class__.__name__.startswith('Cached'):
+        if self._version_ge(
+                '0.4') and not self._version_ge('0.6') and not tokenizer.__class__.__name__.startswith('Cached'):
             _tokenizer_len = len(tokenizer)
             __old_len__ = tokenizer.__class__.__len__
 
