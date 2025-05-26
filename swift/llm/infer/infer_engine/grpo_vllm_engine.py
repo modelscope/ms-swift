@@ -29,7 +29,6 @@ class GRPOVllmEngine(VllmEngine):
         model_id_or_path: str,
         torch_dtype: Optional[torch.dtype] = None,
         *,
-        use_async_engine: bool = True,
         model_type: Optional[str] = None,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
@@ -57,7 +56,6 @@ class GRPOVllmEngine(VllmEngine):
     ) -> None:
         os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '0')
         patch_vllm_memory_leak()
-        self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,

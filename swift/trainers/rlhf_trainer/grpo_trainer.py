@@ -434,7 +434,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 enforce_eager=self.args.vllm_enforce_eager,
                 limit_mm_per_prompt=self.args.vllm_limit_mm_per_prompt,
                 enable_sleep_mode=self.args.sleep_level > 0,
-                use_async_engine=False,
                 device=current_device,
                 max_model_len=self.args.vllm_max_model_len,
                 engine_kwargs=engine_kwargs,

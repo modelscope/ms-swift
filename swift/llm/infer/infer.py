@@ -35,8 +35,6 @@ class SwiftInfer(SwiftPipeline):
             logger.info(f'model: {self.infer_engine.model}')
         else:
             self.template = args.get_template(None)
-            if args.infer_backend == 'vllm' and not args.eval_human and not args.stream:
-                args.use_async_engine = False
             self.infer_engine = self.get_infer_engine(args, self.template)
         self.random_state = np.random.RandomState(args.data_seed)
 

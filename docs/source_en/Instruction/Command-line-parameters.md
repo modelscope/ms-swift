@@ -341,7 +341,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - vllm_max_lora_rank: Default is `16`. This is the parameter supported by vllm for lora.
 - vllm_quantization: vllm is able to quantize model with this argument，supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 - enable_prefix_caching: Enable the automatic prefix caching of vllm to save processing time for querying repeated prefixes. The default is `False`.
-- use_async_engine: Whether to use the async engine under the vLLM backend. The default is `True`.
+- use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
 
 ### Merge Arguments
 

@@ -41,7 +41,7 @@ class VllmEngine(InferEngine):
         model_id_or_path: str,
         torch_dtype: Optional[torch.dtype] = None,
         *,
-        use_async_engine: bool = True,
+        use_async_engine: bool = False,
         model_type: Optional[str] = None,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
@@ -395,11 +395,6 @@ class VllmEngine(InferEngine):
     def _batch_infer_stream(self, *args, **kwargs):
         if hasattr(self.engine, 'engine'):
             self.engine.engine.model_executor.parallel_worker_tasks = None
-        elif hasattr(self.engine, 'engine_core'):
-            # vllm>=0.8
-            self.engine.engine_core.outputs_queue = type(self.engine.engine_core.outputs_queue)()
-            self.engine.engine_core.queue_task = None
-            self.engine.output_handler = None
         return super()._batch_infer_stream(*args, **kwargs)
 
     def infer(
