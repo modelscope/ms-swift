@@ -125,7 +125,7 @@ class VllmEngine(InferEngine):
         pipeline_parallel_size: int = 1,
         max_model_len: Optional[int] = None,
         max_num_seqs: int = 256,
-        disable_custom_all_reduce: bool = False,
+        disable_custom_all_reduce: bool = True,
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         device: str = 'auto',
