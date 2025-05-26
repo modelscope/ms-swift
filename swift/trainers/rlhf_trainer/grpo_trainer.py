@@ -410,7 +410,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def prepare_vllm(self, model):
         from swift.tuners import Swift
-        from swift.llm.infer.infer_engine import GRPOVllmEngine
+        from swift.llm.infer.infer_engine import VllmEngine
         if self.vllm_tensor_parallel_size > 1:
             vllm_kwargs = {'distributed_executor_backend': 'external_launcher'}
         else:
@@ -423,7 +423,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             * self.args.gradient_accumulation_steps)
         current_device = get_device()
         with Swift.grpo_context(model, self.template.processor):
-            engine = GRPOVllmEngine(
+            engine = VllmEngine(
                 model.model_dir,
                 model.model_info.torch_dtype,
                 model_type=model.model_meta.model_type,

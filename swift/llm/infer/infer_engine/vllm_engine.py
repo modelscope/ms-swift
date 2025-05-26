@@ -106,6 +106,7 @@ class VllmEngine(InferEngine):
         self._load_generation_config()
         self._fix_vllm_bug()
         self.patch_remove_log()
+        self._request_count = 0
 
     def _prepare_engine(self) -> None:
         with patch_auto_tokenizer(self.tokenizer), patch_auto_config(self.config):
@@ -304,8 +305,6 @@ class VllmEngine(InferEngine):
         for key in ['n', 'best_of', 'frequency_penalty', 'presence_penalty', 'seed']:
             kwargs[key] = getattr(request_config, key)
 
-        if kwargs.get('seed') is None:
-            kwargs['seed'] = get_seed()
         res = SamplingParams(**kwargs)
 
         if hasattr(res, 'output_kind') and res.n > 1:
@@ -437,8 +436,9 @@ class VllmEngine(InferEngine):
             self.set_default_max_tokens(request_config, batched_inputs)
             request_id_list = []
             for inputs in batched_inputs:
-                request_id = random_uuid()
+                request_id = str(self._request_count)
                 request_id_list.append(request_id)
+                self._request_count += 1
                 generation_config = self._prepare_generation_config(request_config)
                 self._add_stop_words(generation_config, request_config, template.template_meta)
                 self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)

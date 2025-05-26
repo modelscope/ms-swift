@@ -219,7 +219,6 @@ curl http://localhost:8000/v1/chat/completions \
 ### Server Side
 
 ```shell
-# test environment: pip install transformers==4.49.* vllm==0.7.3
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 VIDEO_MAX_PIXELS=50176 \

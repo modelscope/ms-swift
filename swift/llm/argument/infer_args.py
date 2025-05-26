@@ -102,8 +102,6 @@ class VllmArguments:
             'enable_prefix_caching': self.enable_prefix_caching,
             'quantization': self.vllm_quantization,
         }
-        if dist.is_initialized():
-            kwargs.update({'device': dist.get_rank()})
         return kwargs
 
 
