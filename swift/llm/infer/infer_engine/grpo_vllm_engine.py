@@ -59,8 +59,8 @@ class GRPOVllmEngine(VllmEngine):
         os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '0')
         if engine_kwargs is None:
             engine_kwargs = {}
-        self.use_async_engine = use_async_engine
         patch_vllm_memory_leak()
+        self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
