@@ -14,7 +14,7 @@ from transformers.utils import is_torch_npu_available
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
-from swift.utils import get_logger, get_seed
+from swift.utils import get_dist_setting, get_logger, get_seed, is_dist
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
@@ -427,6 +427,9 @@ class VllmEngine(InferEngine):
                 raise ValueError('If you want to use stream inference, you need to pass `use_async_engine` as True.')
             if use_tqdm is None:
                 use_tqdm = len(infer_requests) > 1
+            rank = get_dist_setting()[0]
+            if is_dist() and rank % self.engine_args.tensor_parallel_size != 0:
+                use_tqdm = False
             if template is None:
                 template = self.default_template
             template.set_mode('vllm')
@@ -451,10 +454,12 @@ class VllmEngine(InferEngine):
                         prog_bar.update()
             prog_bar.close()
             outputs = [outputs[request_id] for request_id in request_id_list]
-            return [
+            res = [
                 self._create_chat_completion_response(result, template, generation_config, request_id)
                 for request_id, result in zip(request_id_list, outputs)
             ]
+            self._update_metrics(res, metrics)
+            return res
 
     async def infer_async(
         self,

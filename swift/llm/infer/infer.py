@@ -67,7 +67,7 @@ class SwiftInfer(SwiftPipeline):
             infer_engine_cls = VllmEngine
             kwargs.update(args.get_vllm_engine_kwargs())
             seed = args.seed
-            if is_dist() and args.tensor_parallel_size > 1:
+            if is_dist():
                 # Ensure that different data-parallel processes have different seeds.
                 seed += get_dist_setting()[0] // args.tensor_parallel_size
                 kwargs['distributed_executor_backend'] = 'external_launcher'
@@ -231,7 +231,8 @@ class SwiftInfer(SwiftPipeline):
                 idx += args.write_batch_size
                 prog_bar.update(args.write_batch_size)
             metrics = self.infer_kwargs.pop('metrics')
-            print(f'[rank{args.rank}] {metrics[0].compute()}')
+            if result_list:
+                print(f'[rank{args.rank}] {metrics[0].compute()}')
         if args.metric is not None:
             self._calc_metric()
         return result_list
