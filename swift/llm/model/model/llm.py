@@ -317,17 +317,3 @@ register_model(
         model_arch=ModelArch.llama,
         architectures=['MiMoForCausalLM'],
         requires=['transformers>=4.37']))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen3_emb, [
-            ModelGroup([
-                Model('tongyi/Qwen3-Embedding-0.6B', 'tongyi/Qwen3-Embedding-0.6B'),
-                Model('tongyi/Qwen3-Embedding-1.7B', 'tongyi/Qwen3-Embedding-1.7B'),
-                Model('tongyi/Qwen3-Embedding-4B', 'tongyi/Qwen3-Embedding-4B'),
-                Model('tongyi/Qwen3-Embedding-8B', 'tongyi/Qwen3-Embedding-8B'),
-            ]),
-        ],
-        TemplateType.qwen3_emb,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3ForCausalLM']))

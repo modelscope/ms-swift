@@ -7,7 +7,7 @@ nproc_per_node=8
 # --model iic/gte-modernbert-base iic/gte_Qwen2-7B-instruct also supported
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \
-    --model tongyi/Qwen3-Embedding-8B \
+    --model Qwen/Qwen3-Embedding-8B \
     --train_type lora \
     --dataset 'sentence-transformers/stsb' \
     --torch_dtype bfloat16 \
