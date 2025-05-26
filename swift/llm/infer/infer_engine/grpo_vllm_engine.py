@@ -29,6 +29,7 @@ class GRPOVllmEngine(VllmEngine):
         model_id_or_path: str,
         torch_dtype: Optional[torch.dtype] = None,
         *,
+        use_async_engine: bool = False,
         model_type: Optional[str] = None,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
@@ -43,6 +44,7 @@ class GRPOVllmEngine(VllmEngine):
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         device: str = 'auto',
+        seed: Optional[int] = None,
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -55,6 +57,9 @@ class GRPOVllmEngine(VllmEngine):
         template: Optional[Template] = None,
     ) -> None:
         os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '0')
+        if engine_kwargs is None:
+            engine_kwargs = {}
+        self.use_async_engine = use_async_engine
         patch_vllm_memory_leak()
         self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -81,6 +86,7 @@ class GRPOVllmEngine(VllmEngine):
             max_lora_rank=max_lora_rank,
             enable_prefix_caching=enable_prefix_caching,
             device=device,
+            seed=seed,
             distributed_executor_backend=distributed_executor_backend,
             enable_sleep_mode=enable_sleep_mode,
             quantization=quantization,
