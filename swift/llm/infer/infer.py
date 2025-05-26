@@ -251,13 +251,12 @@ class SwiftInfer(SwiftPipeline):
             labels_list.append(labels)
 
         resp_list = self.infer(val_dataset, request_config, template=self.template, use_tqdm=True, **self.infer_kwargs)
-        if args.infer_backend == 'vllm' and rank >= 0 and args.rank % args.tensor_parallel_size != 0:
-            resp_list = []
-        for data, resp, labels in zip(val_dataset, resp_list, labels_list):
-            response = resp.choices[0].message.content
-            data['messages'].append({'role': 'assistant', 'content': response})
-            data = {'response': response, 'labels': labels, 'logprobs': resp.choices[0].logprobs, **data}
-            result_list.append(data)
+        if not (args.infer_backend == 'vllm' and rank >= 0 and args.rank % args.tensor_parallel_size != 0):
+            for data, resp, labels in zip(val_dataset, resp_list, labels_list):
+                response = resp.choices[0].message.content
+                data['messages'].append({'role': 'assistant', 'content': response})
+                data = {'response': response, 'labels': labels, 'logprobs': resp.choices[0].logprobs, **data}
+                result_list.append(data)
         if self.jsonl_writer:
             self.jsonl_writer.append(result_list, gather_obj=True)
 
