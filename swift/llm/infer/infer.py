@@ -66,12 +66,12 @@ class SwiftInfer(SwiftPipeline):
             from .infer_engine import VllmEngine
             infer_engine_cls = VllmEngine
             kwargs.update(args.get_vllm_engine_kwargs())
+            seed = args.seed
             if is_dist() and args.tensor_parallel_size > 1:
-                seed = args.seed + get_dist_setting()[0] // args.tensor_parallel_size
-                kwargs.update({
-                    'distributed_executor_backend': 'external_launcher',
-                    'seed': seed,
-                })
+                # Ensure that different data-parallel processes have different seeds.
+                seed += get_dist_setting()[0] // args.tensor_parallel_size
+                kwargs['distributed_executor_backend'] = 'external_launcher'
+            kwargs['seed'] = seed
         else:
             from .infer_engine import LmdeployEngine
             infer_engine_cls = LmdeployEngine
