@@ -218,8 +218,11 @@ class SwiftInfer(SwiftPipeline):
             print({metrics[0].compute()})
         else:
             idx = 0
+            disable = args.write_batch_size >= len(val_dataset)
+            if not disable and args.result_path:
+                logger.info(f'args.result_path: {args.result_path}')
             prog_bar = tqdm(
-                total=len(val_dataset), dynamic_ncols=True, disable=args.write_batch_size < len(val_dataset))
+                total=len(val_dataset), dynamic_ncols=True, disable=disable)
             while idx < len(val_dataset):
                 shard_dataset = val_dataset.select(range(idx, idx + args.write_batch_size))
                 result_list = self._batch_infer(shard_dataset, request_config)

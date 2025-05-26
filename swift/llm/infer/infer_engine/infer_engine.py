@@ -157,12 +157,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         tasks = [self.infer_async(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
             use_tqdm = not request_config.stream and len(infer_requests) > 1
-        if request_config.stream:
-            return self._batch_infer_stream(tasks, True, use_tqdm, metrics)
-        else:
-            for res in self._batch_infer_stream(tasks, False, use_tqdm):
-                pass
-            return res
+        return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
     @staticmethod
     def _get_toolcall(response: str, template: Template) -> Optional[List[ChatCompletionMessageToolCall]]:
