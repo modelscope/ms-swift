@@ -397,7 +397,7 @@ class VllmEngine(InferEngine):
             self.engine.engine.model_executor.parallel_worker_tasks = None
         elif hasattr(self.engine, 'engine_core'):
             # vllm>=0.8
-            self.engine.engine_core.outputs_queue = None
+            self.engine.engine_core.outputs_queue = type(self.engine.engine_core.outputs_queue)()
             self.engine.engine_core.queue_task = None
             self.engine.output_handler = None
         return super()._batch_infer_stream(*args, **kwargs)
