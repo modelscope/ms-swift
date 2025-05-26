@@ -58,7 +58,7 @@ class VllmArguments:
         pipeline_parallel_size(int): Pipeline parallelism size. Default is 1.
         max_num_seqs (int): Maximum number of sequences. Default is 256.
         max_model_len (Optional[int]): Maximum model length. Default is None.
-        disable_custom_all_reduce (bool): Flag to disable custom all-reduce. Default is False.
+        disable_custom_all_reduce (bool): Flag to disable custom all-reduce. Default is True.
         enforce_eager (bool): Flag to enforce eager execution. Default is False.
         limit_mm_per_prompt (Optional[str]): Limit multimedia per prompt. Default is None.
         vllm_max_lora_rank (int): Maximum LoRA rank. Default is 16.
@@ -70,7 +70,7 @@ class VllmArguments:
     pipeline_parallel_size: int = 1
     max_num_seqs: int = 256
     max_model_len: Optional[int] = None
-    disable_custom_all_reduce: bool = False
+    disable_custom_all_reduce: bool = True
     enforce_eager: bool = False
     limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_max_lora_rank: int = 16
