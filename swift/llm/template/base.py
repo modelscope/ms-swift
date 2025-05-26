@@ -929,7 +929,7 @@ class Template(ProcessorMixin):
                 messages[i_start:i + 1] = [{'role': 'tool', 'content': tool_content}]
                 i = i_start + 1
             elif pre_role == 'assistant' and role == 'assistant' or pre_role == 'user' and role == 'user':
-                # Consecutive messages from the assistant role need to be merged to prevent errors.
+                # Consecutive messages from the assistant/user role need to be merged to prevent errors.
                 pre_message['content'] = pre_content + content
                 messages.pop(i)
             else:

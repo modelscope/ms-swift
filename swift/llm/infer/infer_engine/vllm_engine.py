@@ -108,6 +108,7 @@ class VllmEngine(InferEngine):
         with context:
             self._prepare_engine()
         self._load_generation_config()
+        self._fix_vllm_bug()
         self.patch_remove_log()
         self._request_count = 0
 
@@ -186,6 +187,21 @@ class VllmEngine(InferEngine):
         if max_model_len is not None:
             model_info.max_model_len = max_model_len
 
+    def _fix_vllm_bug(self) -> None:
+        # fix vllm==0.4 bug (very slow)
+        tokenizer = self.tokenizer
+        if self._version_ge(
+                '0.4') and not self._version_ge('0.6') and not tokenizer.__class__.__name__.startswith('Cached'):
+            _tokenizer_len = len(tokenizer)
+            __old_len__ = tokenizer.__class__.__len__
+
+            def __len__(self) -> int:
+                if self is tokenizer:
+                    return _tokenizer_len
+                else:
+                    return __old_len__(self)
+
+            tokenizer.__class__.__len__ = __len__
 
     def _load_generation_config(self) -> None:
         generation_config_path = os.path.join(self.model_dir, 'generation_config.json')
