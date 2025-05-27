@@ -1,9 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable
 
 import torch
-
+import asyncio
 from swift.llm import Template, VllmEngine
 from .utils import AdapterRequest
 from ..protocol import (ChatCompletionResponse, random_uuid)
@@ -11,7 +11,7 @@ try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '3600'
-    from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams, EngineArgs, LLMEngine
+    from vllm import SamplingParams
 
 except Exception:
     raise
@@ -50,6 +50,7 @@ class GRPOVllmEngine(VllmEngine):
         quantization: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
+        callback: Callable = None,
     ) -> None:
         super().__init__(
             model_id_or_path=model_id_or_path,
@@ -79,6 +80,7 @@ class GRPOVllmEngine(VllmEngine):
             engine_kwargs=engine_kwargs,
             template=template,
         )
+        self.callback = callback
 
     async def _infer_full_async(
         self,
@@ -86,10 +88,26 @@ class GRPOVllmEngine(VllmEngine):
         inputs: Dict[str, Any],
         generation_config: SamplingParams,
         adapter_request: Optional[AdapterRequest] = None,
+        **kwargs
     ) -> ChatCompletionResponse:
         request_id = random_uuid()
-        result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
-        result = None
-        async for result in result_generator:
-            pass
+        max_turns = 3
+        current_turn = 1
+        infer_request = kwargs.pop('infer_request')
+        request_config = kwargs.pop('request_config', None)
+        while current_turn <= max_turns:
+            result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
+
+            result = None
+            async for result in result_generator:
+                pass
+            if True:
+                loop = asyncio.get_running_loop()
+                infer_request.messages.append({'role': 'assistant', 'content': self.tokenizer.decode(tuple(list(result.outputs[0].token_ids)[:-1] + self.tokenizer.encode(result.request_id)))})
+                with torch.inference_mode():
+                    inputs = await loop.run_in_executor(None, template.encode, infer_request)
+                self.set_default_max_tokens(request_config, inputs)
+                generation_config = self._prepare_generation_config(request_config)
+                self._add_stop_words(generation_config, request_config, template.template_meta)
+            current_turn += 1
         return self._create_chat_completion_response(result, template, generation_config, request_id)
