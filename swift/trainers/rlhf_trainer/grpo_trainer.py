@@ -38,12 +38,12 @@ from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_logger, is_vllm_available, is_wandb_available,
                          seed_worker)
+from ... import SwiftModel
+from ...llm.model.utils import get_llm_model
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge, unwrap_model_for_generation
 from .vllm_client import VLLMClient
-from ... import SwiftModel
-from ...llm.model.utils import get_llm_model
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
@@ -1153,7 +1153,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         def _packing_input_hook(module, args, kwargs):
             attention_mask = kwargs['attention_mask']
             ctx['padding_left'] = (attention_mask[:, -1].sum() == attention_mask.shape[0])
-            kwargs['position_ids'] = torch.arange(kwargs['input_ids'].shape[1]).unsqueeze(0).repeat(kwargs['input_ids'].shape[0], 1).to(kwargs['input_ids'].dtype).to(kwargs['input_ids'].device)
+            kwargs['position_ids'] = torch.arange(kwargs['input_ids'].shape[1]).unsqueeze(0).repeat(
+                kwargs['input_ids'].shape[0], 1).to(kwargs['input_ids'].dtype).to(kwargs['input_ids'].device)
             kwargs['input_ids'] = kwargs['input_ids'][attention_mask.bool()].unsqueeze(0)
             kwargs['position_ids'] = kwargs['position_ids'][attention_mask.bool()].unsqueeze(0)
             kwargs.pop('attention_mask', None)
@@ -1184,7 +1185,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             start = 0
             for length in seq_lengths:
                 seq_state = last_hidden_state[start:start + length]
-                padding = torch.zeros((max_length-length, last_hidden_state.shape[-1])).to(last_hidden_state.dtype).to(last_hidden_state.device)
+                padding = torch.zeros(
+                    (max_length - length,
+                     last_hidden_state.shape[-1])).to(last_hidden_state.dtype).to(last_hidden_state.device)
                 if ctx['padding_left']:
                     seq_state = torch.cat((padding, seq_state), dim=0)
                 else:
@@ -1204,7 +1207,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.padding_free:
             remove_handle1.remove()
             remove_handle2.remove()
-
 
     # Get the per-token log probabilities for the completions for the model and the reference model
     @profiling_decorator

@@ -14,7 +14,6 @@ class SequenceParallel(abc.ABC):
 
     @abstractmethod
     def pad_and_split_inputs(self,
-                             tokenizer,
                              input_ids,
                              input_embeds,
                              labels,

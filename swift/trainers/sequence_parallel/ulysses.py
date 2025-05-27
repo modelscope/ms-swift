@@ -1,5 +1,3 @@
-import inspect
-
 import math
 import os
 from contextlib import contextmanager
@@ -11,21 +9,15 @@ import datasets
 import numpy as np
 import torch
 import torch.distributed as dist
-from accelerate.utils import is_peft_model
 from packaging import version
-from peft import PeftModel
 from torch.distributed.device_mesh import init_device_mesh
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
-from transformers.trainer_utils import seed_worker
 from trl.extras.profiling import profiling_decorator
 
-from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_model_arch, to_device
-from swift.tuners import SwiftModel
+from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_llm_model, to_device
 from swift.utils import get_current_device, get_device, get_dist_setting, seed_worker
 from .base import SequenceParallel
-from .. import SwiftMixin
-from ...llm.model.utils import get_llm_model
 
 assert version.parse(torch.__version__) >= version.parse('2.0.0')
 torch._dynamo.config.capture_dynamic_output_shape_ops = True
@@ -125,13 +117,7 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
         logits = outputs
     device = logits.device
     logits = logits.view(-1, logits.shape[-1])
-    _, _, labels, _, _, loss_scale = ulysses.pad_and_split_inputs(
-        None,
-        None,
-        labels,
-        None,
-        None,
-        loss_scale)
+    _, _, labels, _, _, loss_scale = ulysses.pad_and_split_inputs(None, None, labels, None, None, loss_scale)
 
     labels = labels.flatten().to(device)
     sploss_parallel_size = int(os.environ.get('CELOSS_PARALLEL_SIZE', '0'))
@@ -159,13 +145,7 @@ def get_batch_logps(logits: torch.FloatTensor,
                     label_pad_token_id: int = -100,
                     is_encoder_decoder: bool = False,
                     ulysses=None) -> Tuple[torch.FloatTensor, torch.LongTensor]:
-    _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(
-        None,
-        None,
-        labels,
-        None,
-        None,
-        None)
+    _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(None, None, labels, None, None, None)
     labels = labels.clone()  # No need to shift, pad and split has shifted the inputs.
     loss_mask = labels != label_pad_token_id
     labels[labels == label_pad_token_id] = 0
@@ -183,7 +163,8 @@ def packing_context(self, model: torch.nn.Module):
     def _packing_input_hook(module, args, kwargs):
         attention_mask = kwargs['attention_mask']
         ctx['padding_left'] = (attention_mask[:, -1].sum() == attention_mask.shape[0])
-        kwargs['position_ids'] = torch.arange(kwargs['input_ids'].shape[1]).unsqueeze(0).repeat(kwargs['input_ids'].shape[0], 1).to(kwargs['input_ids'].dtype).to(kwargs['input_ids'].device)
+        kwargs['position_ids'] = torch.arange(kwargs['input_ids'].shape[1]).unsqueeze(0).repeat(
+            kwargs['input_ids'].shape[0], 1).to(kwargs['input_ids'].dtype).to(kwargs['input_ids'].device)
         kwargs['input_ids'] = kwargs['input_ids'][attention_mask.bool()].unsqueeze(0)
         kwargs['position_ids'] = kwargs['position_ids'][attention_mask.bool()].unsqueeze(0)
         kwargs.pop('attention_mask', None)
@@ -214,7 +195,7 @@ def packing_context(self, model: torch.nn.Module):
         start = 0
         for length in seq_lengths:
             seq_state = logits[start:start + length]
-            padding = torch.zeros((max_length-length)).to(logits.dtype).to(logits.device)
+            padding = torch.zeros((max_length - length)).to(logits.dtype).to(logits.device)
             if ctx['padding_left']:
                 seq_state = torch.cat((padding, seq_state), dim=0)
             else:
@@ -258,30 +239,24 @@ def _get_per_token_logps(self, model, inputs, ulysses):
         logits_to_keep = inputs['attention_mask'].sum()
         input_ids = input_ids[inputs['attention_mask'].bool()].unsqueeze(0)
         origin_length = inputs['attention_mask'].sum()
-    _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(
-        None,
-        None,
-        input_ids.clone(),
-        None,
-        None,
-        None)
+    _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(None, None, input_ids.clone(), None, None, None)
 
     shape1 = logits.shape[1]
     labels = torch.where(labels == -100, self.tokenizer.pad_token_id, labels)
     padding_size = shape1 * ulysses.sp_world_size - origin_length
     logits_to_keep_padded = logits_to_keep + padding_size + 1
-    
-    logits_to_keep_sharded = max(min(logits_to_keep_padded - (ulysses.sp_world_size - ulysses.sp_rank - 1) * shape1, shape1), 0)
+
+    logits_to_keep_sharded = max(
+        min(logits_to_keep_padded - (ulysses.sp_world_size - ulysses.sp_rank - 1) * shape1, shape1), 0)
     logits_kept = logits[:, -logits_to_keep_sharded:, :]
     logits_kept = logits_kept / self.temperature
     labels_kept = labels[:, -logits_to_keep_sharded:]
     left_padding_len = shape1 - logits_to_keep_sharded
     per_token_logps = selective_log_softmax(logits_kept, labels_kept)
-    _padding_logps = (torch.zeros((per_token_logps.shape[0], left_padding_len)).
-                      to(per_token_logps.device).to(per_token_logps.dtype))
+    _padding_logps = (
+        torch.zeros((per_token_logps.shape[0], left_padding_len)).to(per_token_logps.device).to(per_token_logps.dtype))
     per_token_logps_padded = torch.cat((_padding_logps, per_token_logps), dim=1)
-    _padding_labels = (torch.zeros((labels.shape[0], left_padding_len)).
-                      to(labels.device).to(labels.dtype))
+    _padding_labels = (torch.zeros((labels.shape[0], left_padding_len)).to(labels.device).to(labels.dtype))
     labels_padded = torch.cat((_padding_labels, labels_kept), dim=1)
     per_token_logps, _ = GatherLoss.apply(per_token_logps_padded, labels_padded, ulysses.sp_group, 1)
     if padding_size > 0:
@@ -294,7 +269,7 @@ def _get_per_token_logps(self, model, inputs, ulysses):
         delattr(llm_model, '_unpack_output')
         delattr(llm_model, '_pack_input')
         logits_to_keep = _origin_logits_to_keep
-    return per_token_logps[:, -logits_to_keep-1:-1]
+    return per_token_logps[:, -logits_to_keep - 1:-1]
 
 
 def split_by_mini_batches(self, inputs, advantages, ulysses):
@@ -691,14 +666,14 @@ class Ulysses(SequenceParallel):
                              loss_scale,
                              embed_tokens=None):
         tokenizer = self.tokenizer
-        sp_group = self.sp_group
         if input_ids is not None:
             input_ids = self._pad_sp(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
         if input_embeds is not None:
             pad_emb = torch.zeros(
                 (1, embed_tokens.weight.shape[-1])).to(embed_tokens.weight.device).to(embed_tokens.weight.dtype)
             input_embeds = self._pad_sp(input_embeds, padding_value=pad_emb, dim=1)
-        batch_size = input_ids.shape[0] if input_ids is not None else input_embeds.shape[0] if input_embeds is not None else 1
+        batch_size = input_ids.shape[
+            0] if input_ids is not None else input_embeds.shape[0] if input_embeds is not None else 1
         if position_ids is not None:
             position_ids = self._pad_sp(position_ids, padding_value=0, dim=-1)
         if (input_ids is not None or input_embeds is not None) and batch_size > 1:
