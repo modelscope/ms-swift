@@ -19,7 +19,7 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
-from .utils import AdapterRequest, InferStreamer, patch_npu_vllm
+from .utils import AdapterRequest, InferStreamer, patch_npu_vllm, patch_vllm_memory_leak
 
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
@@ -70,6 +70,7 @@ class VllmEngine(InferEngine):
     ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
+        patch_vllm_memory_leak()
         self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
             model_id_or_path,
