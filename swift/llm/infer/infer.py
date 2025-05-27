@@ -226,10 +226,11 @@ class SwiftInfer(SwiftPipeline):
             result_list = []
             idx = 0
             while idx < len(val_dataset):
-                shard_dataset = val_dataset.select(range(idx, idx + args.write_batch_size))
+                dataset_size = min(idx + args.write_batch_size, len(val_dataset)) - idx
+                shard_dataset = val_dataset.select(range(idx, idx + dataset_size))
                 result_list += self._batch_infer(shard_dataset, request_config)
-                idx += args.write_batch_size
-                prog_bar.update(args.write_batch_size)
+                idx += dataset_size
+                prog_bar.update(dataset_size)
             metrics = self.infer_kwargs.pop('metrics')
             if result_list:
                 print(f'[rank{args.rank}] {metrics[0].compute()}')
