@@ -5,11 +5,14 @@ from typing import Any, Dict, Optional
 import torch
 
 from swift.llm import Template, VllmEngine
-
+from .utils import AdapterRequest
+from ..protocol import (ChatCompletionResponse, random_uuid)
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '3600'
+    from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams, EngineArgs, LLMEngine
+
 except Exception:
     raise
 
@@ -48,7 +51,6 @@ class GRPOVllmEngine(VllmEngine):
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
     ) -> None:
-        assert not use_async_engine  # TODO
         super().__init__(
             model_id_or_path=model_id_or_path,
             torch_dtype=torch_dtype,
@@ -77,3 +79,17 @@ class GRPOVllmEngine(VllmEngine):
             engine_kwargs=engine_kwargs,
             template=template,
         )
+
+    async def _infer_full_async(
+        self,
+        template: Template,
+        inputs: Dict[str, Any],
+        generation_config: SamplingParams,
+        adapter_request: Optional[AdapterRequest] = None,
+    ) -> ChatCompletionResponse:
+        request_id = random_uuid()
+        result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
+        result = None
+        async for result in result_generator:
+            pass
+        return self._create_chat_completion_response(result, template, generation_config, request_id)
