@@ -11,6 +11,7 @@ SWIFT引入了Megatron的并行技术来加速大模型的训练，包括数据�
 pip install pybind11
 # transformer_engine
 # 若出现安装错误，可以参考该issue解决: https://github.com/modelscope/ms-swift/issues/3793
+# ms-swift使用此版本测试: pip install git+https://github.com/NVIDIA/TransformerEngine.git@9c8ba5c8d1a9a8479ab45fbf7951025a393e7c66
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
 
 # apex

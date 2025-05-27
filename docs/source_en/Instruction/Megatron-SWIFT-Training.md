@@ -12,6 +12,7 @@ To use Megatron-SWIFT, in addition to installing the `swift` dependencies, you a
 pip install pybind11
 # transformer_engine
 # If an installation error occurs, you can refer to this issue for resolution: https://github.com/modelscope/ms-swift/issues/3793
+# ms-swift uses this version for testing: pip install git+https://github.com/NVIDIA/TransformerEngine.git@9c8ba5c8d1a9a8479ab45fbf7951025a393e7c66
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
 
 # apex
