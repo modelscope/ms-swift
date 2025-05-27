@@ -867,16 +867,3 @@ register_dataset(
             SubsetDataset('empty_think', preprocess_func=EmptyThinkSelfCognitionPreprocessor()),
         ],
         tags=['chat', 'self-cognition', '🔥']))
-
-# class DocQARLPreprocessor(RowPreprocessor):
-
-#     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-#         row['response'] = '<think>\n\n</think>\n\n' + row['response']
-#         return super().preprocess(row)
-
-# register_dataset(
-#     DatasetMeta(
-#         ms_dataset_id='iic/DocQA-RL-1.6K',
-#         hf_dataset_id='Tongyi-Zhiwen/DocQA-RL-1.6K',
-#         preprocess_func=Dolly15kPreprocessor(),
-#         tags=['chat', 'self-cognition', '🔥']))
