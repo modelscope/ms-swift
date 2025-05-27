@@ -372,7 +372,6 @@ class UlyssesSampler(Sampler):
             indices = (indices * int(self.total_size / len(indices) + 1))[:self.total_size]
 
         indices = indices[self.rank:self.total_size:self.world_size]
-
         return iter(indices)
 
     def __len__(self) -> int:
@@ -639,7 +638,10 @@ class Ulysses(SequenceParallel):
         llm_model = get_llm_model(model)
 
         base_model = llm_model.model
-        self.causal_mask_func = base_model._update_causal_mask
+        if hasattr(base_model, 'language_model'):
+            self.causal_mask_func = base_model.language_model._update_causal_mask
+        else:
+            self.causal_mask_func = base_model._update_causal_mask
         base_model.register_forward_pre_hook(pre_forward_split_hook, with_kwargs=True)
         self.model_dtype = next(model.parameters()).dtype
         self.tokenizer = tokenizer
