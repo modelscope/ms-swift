@@ -156,6 +156,14 @@ def get_batch_logps(logits: torch.FloatTensor,
     return (total_per_token_logps * total_loss_mask).sum(-1), total_loss_mask.sum(-1)
 
 
+def training_step(self, model, inputs, num_items_in_batch=None, ulysses=None):
+    origin_gas = self.args.gradient_accumulation_steps
+    self.args.gradient_accumulation_steps = self.args.gradient_accumulation_steps * ulysses.sp_world_size
+    res = self.origin_training_step(model, inputs, num_items_in_batch)
+    self.args.gradient_accumulation_steps = origin_gas
+    return res
+
+
 @contextmanager
 def packing_context(self, model: torch.nn.Module):
     ctx = {}
@@ -286,7 +294,7 @@ def split_by_mini_batches(self, inputs, advantages, ulysses):
 
     mode = 'train' if self.model.training else 'eval'
     bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-    gas = self.args.gradient_accumulation_steps * ulysses.sp_world_size if mode == 'train' else 1
+    gas = self.args.gradient_accumulation_steps if mode == 'train' else 1
 
     assert len(inputs) == bs * gas, f'Expected {bs * gas} inputs, got {len(inputs)}'
     gas_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(gas)]
@@ -297,18 +305,11 @@ def split_by_mini_batches(self, inputs, advantages, ulysses):
 
 @profiling_decorator
 def _prepare_inputs(self, accumulated_local_batch, ulysses):
-    gas = self.args.gradient_accumulation_steps * ulysses.sp_world_size
-    mode = 'train' if self.model.training else 'eval'
-    if mode == 'train':
-        generate_every = gas * self.num_iterations
-        if self._step % generate_every == 0 or self._buffered_inputs is None:
-            accumulated_local_batch = self._generate_and_score_completions(accumulated_local_batch)
-            self._buffered_inputs = accumulated_local_batch  # < this is the change
-        inputs = self._buffered_inputs[self._step % gas]
-        self._step += 1
-    else:
-        inputs = self._generate_and_score_completions(accumulated_local_batch)
-    return inputs
+    origin_gas = self.args.gradient_accumulation_steps
+    self.args.gradient_accumulation_steps = self.args.gradient_accumulation_steps * ulysses.sp_world_size
+    res = self.origin_prepare_inputs(accumulated_local_batch)
+    self.args.gradient_accumulation_steps = origin_gas
+    return res
 
 
 class UlyssesSampler(Sampler):
@@ -768,7 +769,10 @@ class Ulysses(SequenceParallel):
         if hasattr(trainer, 'get_batch_logps'):
             trainer.get_batch_logps = partial(get_batch_logps, ulysses=self)
         if hasattr(trainer, '_get_per_token_logps'):
+            trainer.origin_prepare_inputs = trainer._prepare_inputs
             trainer._prepare_inputs = MethodType(partial(_prepare_inputs, ulysses=self), trainer)
+            trainer.origin_training_step = trainer.training_step
+            trainer.training_step = MethodType(partial(training_step, ulysses=self), trainer)
             trainer._get_per_token_logps = MethodType(partial(_get_per_token_logps, ulysses=self), trainer)
             trainer.split_by_mini_batches = MethodType(partial(split_by_mini_batches, ulysses=self), trainer)
         if hasattr(trainer, 'get_nll_loss'):
