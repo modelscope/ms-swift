@@ -294,22 +294,14 @@ def split_by_mini_batches(self, inputs, advantages, ulysses):
 
     mode = 'train' if self.model.training else 'eval'
     bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-    gas = self.args.gradient_accumulation_steps if mode == 'train' else 1
+    spg = self.args.steps_per_generation * ulysses.sp_world_size if mode == 'train' else 1
 
-    assert len(inputs) == bs * gas, f'Expected {bs * gas} inputs, got {len(inputs)}'
-    gas_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(gas)]
-    # Split advantages by GAS chunks
-    advantage_chunks = torch.chunk(advantages, gas)
-    return gas_chunks, advantage_chunks
+    assert len(inputs) == bs * spg, f'Expected {bs * spg} inputs, got {len(inputs)}'
+    spg_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(spg)]
+    # Split advantages by spg chunks
+    advantage_chunks = torch.chunk(advantages, spg)
 
-
-@profiling_decorator
-def _prepare_inputs(self, accumulated_local_batch, ulysses):
-    origin_gas = self.args.gradient_accumulation_steps
-    self.args.gradient_accumulation_steps = self.args.gradient_accumulation_steps * ulysses.sp_world_size
-    res = self.origin_prepare_inputs(accumulated_local_batch)
-    self.args.gradient_accumulation_steps = origin_gas
-    return res
+    return spg_chunks, advantage_chunks
 
 
 class UlyssesSampler(Sampler):
@@ -769,8 +761,6 @@ class Ulysses(SequenceParallel):
         if hasattr(trainer, 'get_batch_logps'):
             trainer.get_batch_logps = partial(get_batch_logps, ulysses=self)
         if hasattr(trainer, '_get_per_token_logps'):
-            trainer.origin_prepare_inputs = trainer._prepare_inputs
-            trainer._prepare_inputs = MethodType(partial(_prepare_inputs, ulysses=self), trainer)
             trainer.origin_training_step = trainer.training_step
             trainer.training_step = MethodType(partial(training_step, ulysses=self), trainer)
             trainer._get_per_token_logps = MethodType(partial(_get_per_token_logps, ulysses=self), trainer)
