@@ -440,7 +440,7 @@ def load_dataset(
     datasets: Union[List[str], str],
     *,
     split_dataset_ratio: float = 0.,
-    seed: Union[int, np.random.RandomState, None] = None,
+    seed: Union[int, np.random.RandomState, None] = 42,
     num_proc: int = 1,
     load_from_cache_file: bool = True,
     shuffle: bool = False,

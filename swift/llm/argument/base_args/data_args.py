@@ -2,8 +2,6 @@
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
-from datasets import enable_caching
-
 from swift.llm import DATASET_MAPPING, register_dataset_info
 from swift.utils import get_logger
 
@@ -36,7 +34,7 @@ class DataArguments:
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     split_dataset_ratio: float = 0.01
 
-    data_seed: Optional[int] = None
+    data_seed: int = 42
     dataset_num_proc: int = 1
     load_from_cache_file: bool = True
     dataset_shuffle: bool = True
@@ -65,8 +63,6 @@ class DataArguments:
             register_dataset_info(path)
 
     def __post_init__(self):
-        if self.data_seed is None:
-            self.data_seed = self.seed
         self.columns = self.parse_to_dict(self.columns)
         if len(self.val_dataset) > 0 or self.streaming:
             self.split_dataset_ratio = 0.
