@@ -2,8 +2,6 @@
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
-from datasets import enable_caching
-
 from swift.llm import DATASET_MAPPING, register_dataset_info
 from swift.utils import get_logger
 
@@ -66,7 +64,7 @@ class DataArguments:
 
     def __post_init__(self):
         if self.data_seed is None:
-            self.data_seed = self.seed
+            self.data_seed = 42
         self.columns = self.parse_to_dict(self.columns)
         if len(self.val_dataset) > 0 or self.streaming:
             self.split_dataset_ratio = 0.
