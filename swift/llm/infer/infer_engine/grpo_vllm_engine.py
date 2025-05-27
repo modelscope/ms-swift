@@ -1,15 +1,21 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import Any, Dict, Optional
+from copy import copy, deepcopy
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 import torch
+from packaging import version
 
-from swift.llm import Template, VllmEngine
+from swift.llm import InferRequest, Template, VllmEngine
+from swift.plugin import Metric
+from ..protocol import ChatCompletionResponse, ChatCompletionStreamResponse, RequestConfig
+from .utils import AdapterRequest
 
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '3600'
+    import vllm
 except Exception:
     raise
 
@@ -77,3 +83,52 @@ class GRPOVllmEngine(VllmEngine):
             engine_kwargs=engine_kwargs,
             template=template,
         )
+
+    def infer(
+        self,
+        infer_requests: List[InferRequest],
+        request_config: Optional[RequestConfig] = None,
+        metrics: Optional[List[Metric]] = None,
+        *,
+        template: Optional[Template] = None,
+        use_tqdm: Optional[bool] = None,
+        adapter_request: Optional[AdapterRequest] = None,
+    ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
+        request_config = deepcopy(request_config or RequestConfig())
+        if template is None:
+            template = self.default_template
+        template.set_mode('vllm')
+        batched_inputs, error_list = self._batch_encode(
+            infer_requests, template=template, strict=getattr(self, 'strict', True))
+        self.set_default_max_tokens(request_config, batched_inputs)
+
+        prompts = []
+        for inputs in batched_inputs:
+            llm_inputs = {'prompt_token_ids': inputs['input_ids']}
+            mm_data = {}
+            for key in ['images', 'audios', 'videos']:
+                media_data = inputs.get(key) or []
+                if media_data:
+                    if version.parse(vllm.__version__) < version.parse('0.6'):
+                        assert len(media_data) == 1, (
+                            f'The current version of vllm only supports single {key}. Please upgrade to vllm >= 0.6.0')
+                        mm_data = {key.rstrip('s'): media_data[0]}
+                    else:
+                        mm_data = {key.rstrip('s'): media_data[0] if len(media_data) == 1 else media_data}
+            if mm_data:
+                llm_inputs['multi_modal_data'] = mm_data
+            prompts.append(llm_inputs)
+
+        generation_configs = []
+        seed = request_config.seed
+        assert seed >= 0, 'Seed is needed for GRPOVllmEngine.'
+        for i, _ in enumerate(prompts):
+            request_config = copy(request_config)
+            request_config.seed = seed + i
+            generation_config = self._prepare_generation_config(request_config)
+            self._add_stop_words(generation_config, request_config, template.template_meta)
+            generation_configs.append(generation_config)
+        outputs = self.engine.generate(prompts, generation_configs, use_tqdm=False)
+        return [
+            self._create_chat_completion_response(result, template, generation_configs[0], '') for result in outputs
+        ]

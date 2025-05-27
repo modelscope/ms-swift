@@ -888,7 +888,7 @@ The table below introduces information about the datasets integrated with ms-swi
 |-|default|huge dataset|-|pretrain, quality|[HuggingFaceFW/fineweb](https://huggingface.co/datasets/HuggingFaceFW/fineweb)|
 |-|auto_math_text<br>khanacademy<br>openstax<br>stanford<br>stories<br>web_samples_v1<br>web_samples_v2<br>wikihow|huge dataset|-|multi-domain, en, qa|[HuggingFaceTB/cosmopedia](https://huggingface.co/datasets/HuggingFaceTB/cosmopedia)|
 |[HumanLLMs/Human-Like-DPO-Dataset](https://modelscope.cn/datasets/HumanLLMs/Human-Like-DPO-Dataset)|default|10884|47.5±7.9, min=32, max=85|rlhf, dpo|[HumanLLMs/Human-Like-DPO-Dataset](https://huggingface.co/datasets/HumanLLMs/Human-Like-DPO-Dataset)|
-|[LLM-Research/xlam-function-calling-60k](https://modelscope.cn/datasets/LLM-Research/xlam-function-calling-60k)|dataset|120000|453.7±219.5, min=164, max=2779|agent|-|
+|[LLM-Research/xlam-function-calling-60k](https://modelscope.cn/datasets/LLM-Research/xlam-function-calling-60k)|default<br>grpo|120000|453.7±219.5, min=164, max=2779|agent, grpo, 🔥|[Salesforce/xlam-function-calling-60k](https://huggingface.co/datasets/Salesforce/xlam-function-calling-60k)|
 |[OmniData/Zhihu-KOL](https://modelscope.cn/datasets/OmniData/Zhihu-KOL)|default|huge dataset|-|zhihu, qa|[wangrui6/Zhihu-KOL](https://huggingface.co/datasets/wangrui6/Zhihu-KOL)|
 |[OmniData/Zhihu-KOL-More-Than-100-Upvotes](https://modelscope.cn/datasets/OmniData/Zhihu-KOL-More-Than-100-Upvotes)|default|271261|1003.4±1826.1, min=28, max=52541|zhihu, qa|[bzb2023/Zhihu-KOL-More-Than-100-Upvotes](https://huggingface.co/datasets/bzb2023/Zhihu-KOL-More-Than-100-Upvotes)|
 |[PowerInfer/LONGCOT-Refine-500K](https://modelscope.cn/datasets/PowerInfer/LONGCOT-Refine-500K)|default|521921|296.5±158.4, min=39, max=4634|chat, sft, 🔥, cot|[PowerInfer/LONGCOT-Refine-500K](https://huggingface.co/datasets/PowerInfer/LONGCOT-Refine-500K)|
@@ -912,6 +912,7 @@ The table below introduces information about the datasets integrated with ms-swi
 |[hjh0119/shareAI-Llama3-DPO-zh-en-emoji](https://modelscope.cn/datasets/hjh0119/shareAI-Llama3-DPO-zh-en-emoji)|default|2449|334.0±162.8, min=36, max=1801|rlhf, dpo|[shareAI/DPO-zh-en-emoji](https://huggingface.co/datasets/shareAI/DPO-zh-en-emoji)|
 |[huangjintao/AgentInstruct_copy](https://modelscope.cn/datasets/huangjintao/AgentInstruct_copy)|alfworld<br>db<br>kg<br>mind2web<br>os<br>webshop|1866|1144.3±635.5, min=206, max=6412|chat, agent, multi-round|-|
 |[iic/100PoisonMpts](https://modelscope.cn/datasets/iic/100PoisonMpts)|default|906|150.6±80.8, min=39, max=656|poison-management, zh|-|
+|[iic/DocQA-RL-1.6K](https://modelscope.cn/datasets/iic/DocQA-RL-1.6K)|default|1591|8307.3±7748.9, min=202, max=32563|docqa, rl, long-sequence|[Tongyi-Zhiwen/DocQA-RL-1.6K](https://huggingface.co/datasets/Tongyi-Zhiwen/DocQA-RL-1.6K)|
 |[iic/MSAgent-MultiRole](https://modelscope.cn/datasets/iic/MSAgent-MultiRole)|default|543|413.0±79.7, min=70, max=936|chat, agent, multi-round, role-play, multi-agent|-|
 |[iic/MSAgent-Pro](https://modelscope.cn/datasets/iic/MSAgent-Pro)|default|21910|1978.1±747.9, min=339, max=8064|chat, agent, multi-round, 🔥|-|
 |[iic/ms_agent](https://modelscope.cn/datasets/iic/ms_agent)|default|30000|645.8±218.0, min=199, max=2070|chat, agent, multi-round, 🔥|-|

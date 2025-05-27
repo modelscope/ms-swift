@@ -524,11 +524,13 @@ class QwenLongPlugin(DefaultRMPlugin):
         for infer_request, completion, ground_truth in zip(inputs, completions, ground_truths):
             # Deep copy to prevent modification of original input
             rm_infer_request = deepcopy(infer_request)
+            problem = infer_request['messages'][0]['content']
+            start_index = problem.index('</text>')
+            end_index = problem.index('Format your response as follows:')
+            question = problem[start_index:end_index].replace('</text>', '').strip()
+            prompt = self.system.format(
+                problem_placeholder=question, answer1_placeholder=completion, answer2_placeholder=ground_truth)
 
-            # answer1: completion
-            # answer2: ground_truth
-            problem = infer_request['prompt']['content']
-            prompt = self.system.format(problem, completion, ground_truth)
             # Construct new messages tailored for the reward model
             rm_messages = [{'role': 'user', 'content': prompt}]
 
@@ -539,7 +541,7 @@ class QwenLongPlugin(DefaultRMPlugin):
 
     @staticmethod
     def extract_reward(model_output: str) -> float:
-        match = re.search(r'\[\[([A-Z]+)\]\]', model_output)
+        match = re.search(r'\[([A-Z]+)\]', model_output)
         if match:
             answer = match.group(1)
             if answer == 'YES':
