@@ -2,8 +2,6 @@
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
-from datasets import enable_caching
-
 from swift.llm import DATASET_MAPPING, register_dataset_info
 from swift.utils import get_logger
 
