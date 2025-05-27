@@ -4,6 +4,7 @@ from copy import copy, deepcopy
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 import torch
+import tqdm
 from packaging import version
 
 from swift.llm import InferRequest, Template, VllmEngine
@@ -15,7 +16,6 @@ try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '3600'
-    import vllm
 except Exception:
     raise
 
@@ -101,34 +101,27 @@ class GRPOVllmEngine(VllmEngine):
         batched_inputs, error_list = self._batch_encode(
             infer_requests, template=template, strict=getattr(self, 'strict', True))
         self.set_default_max_tokens(request_config, batched_inputs)
-
-        prompts = []
+        request_id_list = []
         for inputs in batched_inputs:
-            llm_inputs = {'prompt_token_ids': inputs['input_ids']}
-            mm_data = {}
-            for key in ['images', 'audios', 'videos']:
-                media_data = inputs.get(key) or []
-                if media_data:
-                    if version.parse(vllm.__version__) < version.parse('0.6'):
-                        assert len(media_data) == 1, (
-                            f'The current version of vllm only supports single {key}. Please upgrade to vllm >= 0.6.0')
-                        mm_data = {key.rstrip('s'): media_data[0]}
-                    else:
-                        mm_data = {key.rstrip('s'): media_data[0] if len(media_data) == 1 else media_data}
-            if mm_data:
-                llm_inputs['multi_modal_data'] = mm_data
-            prompts.append(llm_inputs)
-
-        generation_configs = []
-        seed = request_config.seed
-        assert seed >= 0, 'Seed is needed for GRPOVllmEngine.'
-        for i, _ in enumerate(prompts):
-            request_config = copy(request_config)
-            request_config.seed = seed + i
+            request_id = str(self._request_count)
+            request_id_list.append(request_id)
+            self._request_count += 1
             generation_config = self._prepare_generation_config(request_config)
             self._add_stop_words(generation_config, request_config, template.template_meta)
-            generation_configs.append(generation_config)
-        outputs = self.engine.generate(prompts, generation_configs, use_tqdm=False)
-        return [
-            self._create_chat_completion_response(result, template, generation_configs[0], '') for result in outputs
+            self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
+        prog_bar = tqdm(total=len(batched_inputs), dynamic_ncols=True, disable=not use_tqdm)
+        outputs = {}
+        while self.engine.has_unfinished_requests():
+            step_outputs = self.engine.step()
+            for output in step_outputs:
+                if output.finished:
+                    outputs[output.request_id] = output
+                    prog_bar.update()
+        prog_bar.close()
+        outputs = [outputs[request_id] for request_id in request_id_list]
+        res = [
+            self._create_chat_completion_response(result, template, generation_config, request_id)
+            for request_id, result in zip(request_id_list, outputs)
         ]
+        self._update_metrics(res, metrics)
+        return res
