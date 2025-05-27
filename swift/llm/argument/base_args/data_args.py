@@ -66,7 +66,7 @@ class DataArguments:
 
     def __post_init__(self):
         if self.data_seed is None:
-            self.data_seed = self.seed
+            self.data_seed = 42
         self.columns = self.parse_to_dict(self.columns)
         if len(self.val_dataset) > 0 or self.streaming:
             self.split_dataset_ratio = 0.
