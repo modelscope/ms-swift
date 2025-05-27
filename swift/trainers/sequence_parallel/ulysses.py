@@ -171,9 +171,14 @@ def packing_context(self, model: torch.nn.Module):
     def _packing_input_hook(module, args, kwargs):
         attention_mask = kwargs['attention_mask']
         ctx['padding_left'] = (attention_mask[:, -1].sum() == attention_mask.shape[0])
-        kwargs['position_ids'] = torch.arange(kwargs['input_ids'].shape[1]).unsqueeze(0).repeat(
-            kwargs['input_ids'].shape[0], 1).to(kwargs['input_ids'].dtype).to(kwargs['input_ids'].device)
-        kwargs['input_ids'] = kwargs['input_ids'][attention_mask.bool()].unsqueeze(0)
+        if 'input_ids' in kwargs and kwargs.get('input_ids') is not None:
+            kwargs['position_ids'] = torch.arange(kwargs['input_ids'].shape[1]).unsqueeze(0).repeat(
+                kwargs['input_ids'].shape[0], 1).to(kwargs['input_ids'].dtype).to(kwargs['input_ids'].device)
+            kwargs['input_ids'] = kwargs['input_ids'][attention_mask.bool()].unsqueeze(0)
+        else:
+            kwargs['position_ids'] = torch.arange(kwargs['inputs_embeds'].shape[1]).unsqueeze(0).repeat(
+                kwargs['inputs_embeds'].shape[0], 1).to(torch.int64).to(kwargs['inputs_embeds'].device)
+            kwargs['inputs_embeds'] = kwargs['inputs_embeds'][attention_mask.bool()].unsqueeze(0)  
         kwargs['position_ids'] = kwargs['position_ids'][attention_mask.bool()].unsqueeze(0)
         kwargs.pop('attention_mask', None)
         return args, kwargs
