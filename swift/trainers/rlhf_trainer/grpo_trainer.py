@@ -411,11 +411,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def prepare_vllm(self, model):
         from swift.tuners import Swift
         from swift.llm.infer.infer_engine import GRPOVllmEngine
-        if self.vllm_tensor_parallel_size > 1:
-            vllm_kwargs = {'distributed_executor_backend': 'external_launcher'}
-        else:
-            vllm_kwargs = {}
-
         max_num_seqs = (
             self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size
             * self.args.gradient_accumulation_steps)
@@ -436,7 +431,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 max_model_len=self.args.vllm_max_model_len,
                 seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
                 template=self.template,
-                **vllm_kwargs)
+                distributed_executor_backend='external_launcher',
+            )
         return engine
 
     @contextmanager
