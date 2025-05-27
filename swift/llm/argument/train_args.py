@@ -89,7 +89,7 @@ class SwanlabArguments:
 
 
 @dataclass
-class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideArguments, BaseArguments):
+class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrainingOverrideArguments):
     """
     TrainArguments class is a dataclass that inherits from multiple argument classes:
     TunerArguments, Seq2SeqTrainingOverrideArguments, and BaseArguments.
