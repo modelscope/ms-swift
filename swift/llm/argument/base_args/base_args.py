@@ -138,7 +138,9 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         error = ValueError('When using packing across multiple nodes, it is necessary to additionally '
                            'specify `--packing_cache_dir <shared_path>` to store packing data caches '
                            'in a shared disk accessible by all nodes.')
-        check_shared_disk(error)
+        check_shared_disk(error, self.packing_cache_dir)
+        if self.packing_cache_dir:
+            os.environ['PACKING_CACHE_DIR'] = self.packing_cache_dir
 
     def __post_init__(self):
         if self.use_hf or use_hf_hub():

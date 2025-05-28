@@ -403,12 +403,15 @@ def seed_worker(worker_id: int, num_workers: int, rank: int):
     set_seed(worker_seed)
 
 
-def check_shared_disk(error):
+def check_shared_disk(error, cache_dir: Optional[str] = None):
     nnodes = get_node_setting()[1]
     if nnodes <= 1:
         return True
     assert dist.is_initialized()
-    tmp_path = os.path.join(get_cache_dir(), 'tmp', 'check_shared_disk.tmp')
+    if cache_dir is None:
+        cache_dir = os.path.join(get_cache_dir(), 'tmp')
+    os.makedirs(cache_dir, exist_ok=True)
+    tmp_path = os.path.join(cache_dir, 'check_shared_disk.tmp')
     with safe_ddp_context(None, True):
         if os.path.exists(tmp_path):
             os.remove(tmp_path)

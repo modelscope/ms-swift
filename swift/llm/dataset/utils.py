@@ -240,7 +240,8 @@ class IndexedDataset(Dataset):
 
     @staticmethod
     def get_cache_dir(dataset_name: str):
-        cache_dir = os.path.join(get_cache_dir(), 'tmp', dataset_name)
+        cache_dir = os.getenv('PACKING_CACHE_DIR') or os.path.join(get_cache_dir(), 'tmp')
+        cache_dir = os.path.join(cache_dir, dataset_name)
         os.makedirs(cache_dir, exist_ok=True)
         assert dataset_name is not None, f'dataset_name: {dataset_name}'
         return cache_dir
