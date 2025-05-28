@@ -911,7 +911,7 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
         return system
 
-    def _swift_prepare_messages(self, agent_template, messages):
+    def _swift_prepare_messages(self, messages):
         if len(messages) < 2:
             return
         i = 1
@@ -923,7 +923,7 @@ class Template(ProcessorMixin):
                 i_start = i
                 while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool':
                     i += 1
-                pre_message['content'], tool_content = agent_template._format_tool_responses(
+                pre_message['content'], tool_content = self.agent_template._format_tool_responses(
                     pre_content, messages[i_start:i + 1])
                 messages[i_start:i + 1] = [{'role': 'tool', 'content': tool_content}]
                 i = i_start + 1
@@ -937,7 +937,7 @@ class Template(ProcessorMixin):
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
         system = self._get_system(inputs)
-        self._swift_prepare_messages(self.agent_template, inputs.messages)
+        self._swift_prepare_messages(inputs.messages)
 
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2

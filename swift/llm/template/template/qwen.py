@@ -48,8 +48,8 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=q
 
 class ThinkingTemplate(Template):
 
-    def _swift_prepare_messages(self, agent_template, messages):
-        super()._swift_prepare_messages(agent_template, messages)
+    def _swift_prepare_messages(self, messages):
+        super()._swift_prepare_messages(messages)
         for i, message in enumerate(messages):
             if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:
                 message['content'] = message['content'].split('</think>')[-1].strip()
