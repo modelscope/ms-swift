@@ -156,14 +156,6 @@ def get_batch_logps(logits: torch.FloatTensor,
     return (total_per_token_logps * total_loss_mask).sum(-1), total_loss_mask.sum(-1)
 
 
-def training_step(self, model, inputs, num_items_in_batch=None, ulysses=None):
-    origin_gas = self.args.gradient_accumulation_steps
-    self.args.gradient_accumulation_steps = self.args.gradient_accumulation_steps * ulysses.sp_world_size
-    res = self.origin_training_step(model, inputs, num_items_in_batch)
-    self.args.gradient_accumulation_steps = origin_gas
-    return res
-
-
 @contextmanager
 def packing_context(self, model: torch.nn.Module):
     ctx = {}
@@ -261,9 +253,14 @@ def _get_per_token_logps(self, model, inputs, ulysses):
 
     logits_to_keep_sharded = max(
         min(logits_to_keep_padded - (ulysses.sp_world_size - ulysses.sp_rank - 1) * shape1, shape1), 0)
-    logits_kept = logits[:, -logits_to_keep_sharded:, :]
-    logits_kept = logits_kept / self.temperature
-    labels_kept = labels[:, -logits_to_keep_sharded:]
+    if logits_to_keep_sharded != 0:
+        logits_kept = logits[:, -logits_to_keep_sharded:, :]
+        logits_kept = logits_kept / self.temperature
+        labels_kept = labels[:, -logits_to_keep_sharded:]
+    else:
+        logits_kept = logits[:, logits.shape[1]:, :]
+        logits_kept = logits_kept / self.temperature
+        labels_kept = labels[:, labels.shape[1]:]
     left_padding_len = shape1 - logits_to_keep_sharded
     per_token_logps = selective_log_softmax(logits_kept, labels_kept)
     _padding_logps = (
@@ -286,13 +283,17 @@ def _get_per_token_logps(self, model, inputs, ulysses):
 
 
 def split_by_mini_batches(self, inputs, advantages, ulysses):
+    inputs_len = len(inputs)
     output = [None] * ulysses.sp_world_size
     dist.all_gather_object(output, inputs, group=ulysses.sp_group)
     output = [p for sublist in output for p in sublist]
     inputs = output
+
+    rank, local_rank, world_size, local_world_size = get_dist_setting()
+    start_rank = (rank // ulysses.sp_world_size) * ulysses.sp_world_size
     process_slice = slice(
-        ulysses.dp_rank * len(inputs),
-        (ulysses.dp_rank + 1) * len(inputs),
+        start_rank * inputs_len,
+        (start_rank + ulysses.sp_world_size) * inputs_len,
     )
 
     advantages = advantages[process_slice]
@@ -766,8 +767,6 @@ class Ulysses(SequenceParallel):
         if hasattr(trainer, 'get_batch_logps'):
             trainer.get_batch_logps = partial(get_batch_logps, ulysses=self)
         if hasattr(trainer, '_get_per_token_logps'):
-            trainer.origin_training_step = trainer.training_step
-            trainer.training_step = MethodType(partial(training_step, ulysses=self), trainer)
             trainer._get_per_token_logps = MethodType(partial(_get_per_token_logps, ulysses=self), trainer)
             trainer.split_by_mini_batches = MethodType(partial(split_by_mini_batches, ulysses=self), trainer)
         if hasattr(trainer, 'get_nll_loss'):

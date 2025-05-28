@@ -590,7 +590,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # Slice completions for this rank within its TP group.
                 # Each rank generates all outputs — we keep only our share.
                 results = results[start_idx:end_idx]
-
+        t = torch.tensor([r.choices[0].message.content.startswith('<think>') for r in results])
+        print(f'>>>>>>>>>>>>>>>>>>>>>>>>>.{os.environ["RANK"]} {t.sum()}')
         return results
 
     def _get_request_config(self) -> RequestConfig:
