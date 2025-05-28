@@ -300,7 +300,7 @@ def split_by_mini_batches(self, inputs, advantages, ulysses):
 
     mode = 'train' if self.model.training else 'eval'
     bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-    spg = self.args.steps_per_generation * ulysses.sp_world_size if mode == 'train' else 1
+    spg = self.args.steps_per_generation * ulysses.sp_world_size if mode == 'train' else ulysses.sp_world_size
 
     assert len(inputs) == bs * spg, f'Expected {bs * spg} inputs, got {len(inputs)}'
     spg_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(spg)]
