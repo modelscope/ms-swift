@@ -48,11 +48,11 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=q
 
 class ThinkingTemplate(Template):
 
-    def _swift_encode(self, inputs: StdTemplateInputs):
-        for i, message in enumerate(inputs.messages):
-            if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(inputs.messages) - 1:
-                message['content'] = message['content'].split('</think>')[-1].lstrip('\n')
-        return super()._swift_encode(inputs)
+    def _swift_prepare_messages(self, agent_template, messages):
+        super()._swift_prepare_messages(agent_template, messages)
+        for i, message in enumerate(messages):
+            if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:
+                message['content'] = message['content'].split('</think>')[-1].strip()
 
 
 register_template(

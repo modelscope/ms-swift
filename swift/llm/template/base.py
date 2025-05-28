@@ -911,8 +911,7 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
         return system
 
-    @staticmethod
-    def _swift_prepare_messages(agent_template, messages):
+    def _swift_prepare_messages(self, agent_template, messages):
         if len(messages) < 2:
             return
         i = 1
