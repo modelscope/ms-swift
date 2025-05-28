@@ -1,13 +1,16 @@
 import asyncio
 import re
+import textwrap
 from copy import deepcopy
-from typing import List
+from typing import Dict, List, Optional
 
 import json
 import torch
 
-from swift.llm import Template, to_device
+from swift.llm import PtEngine, RequestConfig, Template, to_device
+from swift.llm.infer.protocol import ChatCompletionResponse
 from swift.plugin import ORM, orms, rm_plugins
+from swift.plugin.rm_plugin import DefaultRMPlugin
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -475,4 +478,120 @@ class CustomizedRMPlugin:
             return self.model(**reward_inputs).logits[:, 0]
 
 
+class QwenLongPlugin(DefaultRMPlugin):
+    # https://arxiv.org/abs/2505.17667
+    # NOTE: you should customize the verified reward function, you can refer to
+    # https://github.com/Tongyi-Zhiwen/QwenLong-L1/tree/main/verl/verl/utils/reward_score
+    # hf_dataset: https://huggingface.co/datasets/Tongyi-Zhiwen/DocQA-RL-1.6K/viewer/default/train
+    # ms_dataset: https://modelscope.cn/datasets/iic/DocQA-RL-1.6K
+    def __init__(self, model, template, accuracy_orm=None):
+        super().__init__(model, template)
+        # initilize PTEngine to infer
+        self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+        self.request_config = RequestConfig(temperature=0)  # customise your request config here
+        self.system = textwrap.dedent("""
+            You are an expert in verifying if two answers are the same.
+
+            Your input consists of a problem and two answers: Answer 1 and Answer 2.
+            You need to check if they are equivalent.
+
+            Your task is to determine if the two answers are equivalent, without attempting to solve the original problem.
+            Compare the answers to verify they represent identical values or meanings,
+            even when expressed in different forms or notations.
+
+            Your output must follow this format:
+            1) Provide an explanation for why the answers are equivalent or not.
+            2) Then provide your final answer in the form of: [[YES]] or [[NO]]
+
+            Problem: {problem_placeholder}
+            Answer 1: {answer1_placeholder}
+            Answer 2: {answer2_placeholder}
+        """)  # noqa
+        self.accuracy_orm = accuracy_orm
+
+    def __call__(self, inputs):
+        completions = [example['messages'][-1]['content'] for example in inputs]
+        ground_truths = [example['reward_model']['ground_truth'] for example in inputs]
+        rm_inputs = self.prepare_rm_inputs(inputs, completions, ground_truths)
+
+        results = self.engine.infer(rm_inputs, self.request_config, use_tqdm=False)
+        llm_rewards = self.compute_rewards(results)
+
+        if self.accuracy_orm:
+            verified_rewards = self.accuracy_orm(completions, ground_truths)
+        else:
+            verified_rewards = [0.0] * len(llm_rewards)
+
+        rewards = [max(r1, r2) for r1, r2 in zip(llm_rewards, verified_rewards)]
+        return torch.tensor(rewards, dtype=torch.float32)
+
+    def prepare_rm_inputs(self, inputs: List[Dict], completions, ground_truths) -> List[Dict]:
+        rm_inputs = []
+        for infer_request, completion, ground_truth in zip(inputs, completions, ground_truths):
+            # Deep copy to prevent modification of original input
+            rm_infer_request = deepcopy(infer_request)
+            problem = infer_request['messages'][0]['content']
+            start_index = problem.index('</text>')
+            end_index = problem.index('Format your response as follows:')
+            question = problem[start_index:end_index].replace('</text>', '').strip()
+            prompt = self.system.format(
+                problem_placeholder=question, answer1_placeholder=completion, answer2_placeholder=ground_truth)
+
+            # Construct new messages tailored for the reward model
+            rm_messages = [{'role': 'user', 'content': prompt}]
+
+            # Update the messages in the reward infer request
+            rm_infer_request['messages'] = rm_messages
+            rm_inputs.append(rm_infer_request)
+        return rm_inputs
+
+    @staticmethod
+    def extract_reward(model_output: str) -> float:
+        match = re.search(r'\[([A-Z]+)\]', model_output)
+        if match:
+            answer = match.group(1)
+            if answer == 'YES':
+                return 1.0
+            elif answer == 'NO':
+                return 0.0
+            else:
+                logger.warning("Unexpected answer, expected 'YES' or 'NO'.")
+                return 0.0
+        else:
+            logger.warning("Unable to extract reward score from the model's output, setting reward to 0")
+            return 0.0  # Or raise ValueError("Format incorrect")
+
+    def compute_rewards(self, results: List[ChatCompletionResponse]) -> List[float]:
+        """
+        Compute average reward scores from the reward model's outputs.
+
+        Args:
+            results (List[ChatCompletionResponse]): A list of results from the reward model.
+
+        Returns:
+            List[float]: A list of average reward scores.
+        """
+        rewards = []
+        for idx, output in enumerate(results):
+            try:
+                cur_rewards = []
+                for choice in output.choices:
+                    response = choice.message.content
+                    reward = self.extract_reward(response)
+                    cur_rewards.append(reward)
+                cur_rewards = [r for r in cur_rewards if r is not None]
+                if cur_rewards:
+                    average_reward = sum(cur_rewards) / len(cur_rewards)
+                else:
+                    average_reward = 0.0
+                    logger.warning('No valid rewards extracted. Assigning reward score of 0.0.')
+
+                rewards.append(average_reward)
+            except Exception as e:
+                logger.error(f'Error computing reward: {e}')
+                rewards.append(0.0)  # Assign default reward score on failure
+        return rewards
+
+
 rm_plugins['my_rmplugin'] = CustomizedRMPlugin
+rm_plugins['qwenlong'] = QwenLongPlugin
