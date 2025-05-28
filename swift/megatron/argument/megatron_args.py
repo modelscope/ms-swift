@@ -2,6 +2,7 @@
 import os
 import sys
 from dataclasses import asdict, dataclass, field
+from datetime import timedelta
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import megatron.core
@@ -212,6 +213,18 @@ class MegatronArguments(ExtraMegatronArguments):
         else:
             self.ffn_hidden_size = self.moe_ffn_hidden_size
 
+    @staticmethod
+    def _patch_megatron_timeout(distributed_timeout_minutes: int):
+        from megatron.core import parallel_state
+        create_group_origin = parallel_state.create_group
+
+        def create_group(ranks=None, timeout=None, *args, **kwargs):
+            if timeout is None:
+                timeout = timedelta(minutes=distributed_timeout_minutes)
+            return create_group_origin(ranks, timeout, *args, **kwargs)
+
+        parallel_state.create_group = create_group
+
     def __post_init__(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
         if self.use_flash_attn or self.attention_backend == 'flash':
@@ -220,6 +233,7 @@ class MegatronArguments(ExtraMegatronArguments):
         self._set_default()
         if hasattr(self, 'ddp_timeout'):
             self.distributed_timeout_minutes = self.ddp_timeout // 60
+        self._patch_megatron_timeout(self.distributed_timeout_minutes)
         self.group_query_attention = self.num_query_groups > 1
         if self.rope_scaling is not None:
             self.rope_scaling = ModelArguments.parse_to_dict(self.rope_scaling)
