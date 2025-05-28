@@ -6,4 +6,4 @@ from .register import (MODEL_MAPPING, Model, ModelGroup, ModelMeta, fix_do_sampl
                        get_default_torch_dtype, get_matched_model_meta, get_model_info_meta, get_model_name,
                        get_model_tokenizer, get_model_tokenizer_multimodal, get_model_tokenizer_with_flash_attn,
                        load_by_unsloth, register_model)
-from .utils import HfConfigFactory, ModelInfo, git_clone_github, safe_snapshot_download
+from .utils import HfConfigFactory, ModelInfo, get_llm_model, git_clone_github, safe_snapshot_download
