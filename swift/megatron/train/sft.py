@@ -12,8 +12,8 @@ from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
 from ..utils import patch_megatron_tokenizer
-from .patcher import patch_megatron_data_collator, patch_training_log
-from .utils import build_streaming_dataloader, get_batch, get_swift_datasets_provider
+from .patcher import patch_megatron_data_collator
+from .utils import build_streaming_dataloader, forward_step, get_swift_datasets_provider
 
 logger = get_logger()
 
@@ -113,12 +113,14 @@ class MegatronSft(SwiftSft):
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
         try:
-            with patch_training_log(), patch_megatron_data_collator(data_collator):
+            with patch_megatron_data_collator(data_collator):
+                extra_args_provider = args.megatron_model_meta.extra_args_provider
                 pretrain(
                     datasets_provider,
                     args.megatron_model_meta.model_provider,
                     ModelType.encoder_or_decoder,
-                    self.forward_step,
+                    forward_step,
+                    extra_args_provider=extra_args_provider,
                     args_defaults=args.extra_args)
         finally:
             # Visualization

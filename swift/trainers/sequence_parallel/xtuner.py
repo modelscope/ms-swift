@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from functools import partial
 from typing import Any
 
 import datasets
@@ -6,8 +7,8 @@ import torch
 import torch.distributed as dist
 from datasets import Dataset
 from torch.utils.data import DataLoader
-from transformers.trainer_utils import seed_worker
 
+from swift.utils import seed_worker
 from .base import SequenceParallel
 
 
@@ -122,6 +123,7 @@ class XTuner(SequenceParallel):
             from xtuner.parallel import SequenceParallelSampler
             dataloader_params['sampler'] = SequenceParallelSampler(dataset, seed=1024)
             dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
-            dataloader_params['worker_init_fn'] = seed_worker
+            dataloader_params['worker_init_fn'] = partial(
+                seed_worker, num_workers=trainer.args.dataloader_num_workers, rank=trainer.args.process_index)
 
         return DataLoader(dataset, **dataloader_params)

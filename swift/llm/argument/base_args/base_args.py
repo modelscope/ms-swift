@@ -84,6 +84,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     hub_token: Optional[str] = field(
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     custom_register_path: List[str] = field(default_factory=list)  # .py
+    ddp_timeout: int = 18000000
+    ddp_backend: Optional[str] = None
 
     # extra
     ignore_args_error: bool = False  # True: notebook compatibility
@@ -192,39 +194,52 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             self.load_args_from_ckpt()
 
     def load_args_from_ckpt(self) -> None:
-        from ..train_args import TrainArguments
         args_path = os.path.join(self.ckpt_dir, 'args.json')
         assert os.path.exists(args_path), f'args_path: {args_path}'
         with open(args_path, 'r', encoding='utf-8') as f:
             old_args = json.load(f)
-        all_keys = list(f.name for f in fields(BaseArguments))
-        data_keys = list(f.name for f in fields(DataArguments))
-        load_keys = [
+        force_load_keys = [
+            # base_args
+            'tuner_backend',
+            # model_args
+            'task_type',
             # quant_args
             'bnb_4bit_quant_type',
             'bnb_4bit_use_double_quant',
-            # base_args
-            'train_type',
-            'tuner_backend',
-            'use_swift_lora',
-            # data_args
-            'model_name',
-            'model_author',
-            'split_dataset_ratio',
-            # template_args
-            'use_chat_template',
         ]
-        skip_keys = list(f.name for f in fields(GenerationArguments) + fields(CompatArguments)) + ['adapters']
-        if not isinstance(self, TrainArguments):
-            skip_keys += ['max_length']
-        all_keys = set(all_keys) - set(skip_keys)
+        # If the current value is None or an empty list and it is among the following keys
+        load_keys = [
+            'custom_register_path',
+            # model_args
+            'model',
+            'model_type',
+            'model_revision',
+            'torch_dtype',
+            'attn_impl',
+            'num_labels',
+            'problem_type',
+            # quant_args
+            'quant_method',
+            'quant_bits',
+            'hqq_axis',
+            'bnb_4bit_compute_dtype',
+            # template_args
+            'template',
+            'system',
+            'truncation_strategy',
+            'agent_template',
+            'norm_bbox',
+            'response_prefix',
+        ]
+
+        data_keys = list(f.name for f in fields(DataArguments))
         for key, old_value in old_args.items():
-            if key not in all_keys or old_value is None:
+            if old_value is None:
                 continue
-            if not self.load_data_args and key in data_keys:
-                continue
+            if key in force_load_keys or self.load_data_args and key in data_keys:
+                setattr(self, key, old_value)
             value = getattr(self, key, None)
-            if value is None or isinstance(value, (list, tuple)) and len(value) == 0 or key in load_keys:
+            if key in load_keys and (value is None or isinstance(value, (list, tuple)) and len(value) == 0):
                 setattr(self, key, old_value)
         logger.info(f'Successfully loaded {args_path}.')
 
@@ -241,7 +256,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         if is_dist():
             set_device()
 
-    def get_template(self, processor: 'Processor', template_type: Optional[str] = None) -> 'Template':
+    def get_template(self, processor: Optional['Processor'], template_type: Optional[str] = None) -> 'Template':
         template_kwargs = self.get_template_kwargs()
         template_type = template_type or self.template
         template = get_template(template_type, processor, **template_kwargs)

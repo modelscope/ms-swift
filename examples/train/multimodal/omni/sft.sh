@@ -1,7 +1,6 @@
 # 4*35GB
 # A demo for four modalities that can be run directly
-pip uninstall transformers
-pip install git+https://github.com/huggingface/transformers
+pip install transformers -U
 
 nproc_per_node=4
 

@@ -11,7 +11,7 @@ import torch.utils.checkpoint
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
-from swift.utils import get_dist_setting, get_logger, is_liger_available, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, use_torchacc
 from .optimizers.galore import GaLoreConfig
 
 logger = get_logger()
@@ -28,6 +28,7 @@ class TrainArgumentsMixin:
     gradient_accumulation_steps: Optional[int] = None
 
     gradient_checkpointing: bool = True
+    vit_gradient_checkpointing: Optional[bool] = None
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
     logging_first_step: bool = True
     logging_steps: int = 5
@@ -46,6 +47,9 @@ class TrainArgumentsMixin:
     acc_strategy: Literal['token', 'seq'] = 'token'
     train_dataloader_shuffle: bool = True
     max_epochs: Optional[int] = None
+    aligner_lr: Optional[float] = None
+    vit_lr: Optional[float] = None
+    optimizer: Optional[str] = None
 
     # torchacc
     metric_warmup_step: Optional[float] = 0
@@ -87,7 +91,13 @@ class TrainArgumentsMixin:
             assert is_liger_available(), 'use_liger_kernel requires liger_kernels, try `pip install liger-kernel`'
 
     def __post_init__(self):
+        if is_mp() and self.use_liger_kernel:
+            raise ValueError('liger_kernel does not support device_map. '
+                             'Please use DDP/DeepSpeed for multi-GPU training.')
+
         from swift.llm.argument.base_args.model_args import ModelArguments
+        if self.optimizer is None and (self.vit_lr is not None or self.aligner_lr is not None):
+            self.optimizer = 'multimodal'
         if use_torchacc():
             self.dataloader_drop_last = True
         if self.gradient_accumulation_steps is None:
@@ -96,6 +106,8 @@ class TrainArgumentsMixin:
             logger.info(f'Setting args.gradient_accumulation_steps: {self.gradient_accumulation_steps}')
         if self.lr_scheduler_kwargs:
             self.lr_scheduler_kwargs = ModelArguments.parse_to_dict(self.lr_scheduler_kwargs)
+        if self.vit_gradient_checkpointing is None:
+            self.vit_gradient_checkpointing = self.gradient_checkpointing
         if self.gradient_checkpointing_kwargs:
             self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
         self._fix_gradient_checkpointing()
@@ -123,7 +135,6 @@ class TrainArgumentsMixin:
 class SwiftArgumentsMixin(TrainArgumentsMixin):
     # Value copied from TrainArguments
     train_type: Optional[str] = None
-    optimizer: Optional[str] = None
     local_repo_path: Optional[str] = None
     galore_config: Optional[GaLoreConfig] = None
 
@@ -176,6 +187,11 @@ class GRPOArgumentsMixin:
     reward_model: Optional[List[str]] = None
     reward_model_plugin: Optional[List[str]] = None
 
+    # sync ref model
+    sync_ref_model: bool = False
+    ref_model_sync_steps: int = 512
+    ref_model_mixup_alpha: float = 0.6
+
     async_generate: bool = False
     tensor_parallel_size: Optional[int] = None  # deprecated
 
@@ -199,6 +215,8 @@ class GRPOArgumentsMixin:
 
     # compatible with trl main branch(0.17.0.dev0)
     wandb_log_unique_prompts: Optional[bool] = None
+    generation_batch_size: Optional[int] = None
+    steps_per_generation: Optional[int] = None
 
     # dataset
     dataset_shuffle: Optional[bool] = True

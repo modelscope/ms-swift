@@ -31,9 +31,10 @@ Modified Parameters
 2. intermediate_size: 18944->12288
 3. num_attention_heads: 28->32
 4. num_key_value_heads: 4->8
-5. num_hidden_layers: 28->32
+5. num_hidden_layers: 28->36
 6. vocab_size:152064->151936
 7. max_window_layers:28->36
+8. out_hidden_size: 3584->4096
 
 Newly Added Parameter
 1. head_dim： 128
@@ -64,6 +65,7 @@ qwen3_8b_model = AutoModelForCausalLM.from_pretrained(
 # Load configurations
 old_config = AutoConfig.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
 new_config = AutoConfig.from_pretrained("/path/to/new_config_dir")  # Path to new config directory
+new_visual_config = new_config.vision_config
 
 # Replace merger (aligner) layer
 new_merger = Qwen2_5_VLPatchMerger(
@@ -93,6 +95,7 @@ accelerator.save_model(
 )
 ```
 
+After saving the weights, copy all files from the original Qwen2.5-VL-7B-Instruct model folder, except for the model weights(including `model.safetensors.index.json`), to the new model weights folder, and replace config.json with the newly modified config.json file.
 
 ## Training
 To simplify the process, we skip pre-training and proceed directly to supervised fine-tuning (SFT). The training is divided into two stages:

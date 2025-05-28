@@ -4,7 +4,7 @@ The models built into ms-swift can be used directly by specifying either `model_
 
 ## Model Registration
 
-Custom models are typically implemented using model registration. You can refer to the [built-in model](https://github.com/modelscope/ms-swift/blob/main/swift/llm/model/model/qwen.py), the [built-in dialogue template](https://github.com/modelscope/ms-swift/blob/main/swift/llm/template/template/qwen.py), or the example code in the [examples](https://github.com/modelscope/swift/blob/main/examples/custom). You can specify the `--custom_register_path xxx.py` to parse the externally registered content, which is convenient for users installing via pip instead of git clone.
+Custom models are typically implemented using model registration. You can refer to the [built-in model](https://github.com/modelscope/ms-swift/blob/main/swift/llm/model/model/qwen.py), the [built-in dialogue template](https://github.com/modelscope/ms-swift/blob/main/swift/llm/template/template/qwen.py), or the example code in the [examples](https://github.com/modelscope/ms-swift/blob/main/examples/custom). You can specify the `--custom_register_path xxx.py` to parse the externally registered content, which is convenient for users installing via pip instead of git clone.
 
 The `register_model` function registers a model in the `MODEL_MAPPING`. You can complete the model registration by calling the function `register_model(model_meta)`, where `model_meta` will store the model's metadata. The parameter list for ModelMeta is as follows:
 

@@ -89,7 +89,7 @@ class SwanlabArguments:
 
 
 @dataclass
-class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideArguments, BaseArguments):
+class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrainingOverrideArguments):
     """
     TrainArguments class is a dataclass that inherits from multiple argument classes:
     TunerArguments, Seq2SeqTrainingOverrideArguments, and BaseArguments.
@@ -136,8 +136,13 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
 
     def __post_init__(self) -> None:
-        if self.packing and self.attn_impl != 'flash_attn':
-            raise ValueError('The "packing" feature needs to be used in conjunction with "flash_attn". '
+        if (self.padding_free or self.packing) and self.attn_impl != 'flash_attn':
+            if self.packing:
+                feature = 'packing'
+                self.padding_free = False
+            else:
+                feature = 'padding_free'
+            raise ValueError(f'The "{feature}" feature needs to be used in conjunction with "flash_attn". '
                              'Please specify `--attn_impl flash_attn`.')
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)

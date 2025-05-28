@@ -36,13 +36,14 @@ class TemplateArguments:
     max_pixels: Optional[int] = None
     agent_template: Optional[str] = None
     norm_bbox: Literal['norm1000', 'none', None] = None
-    response_prefix: Optional[str] = None
+    use_chat_template: bool = True
     # train
+    padding_free: bool = False
     padding_side: Literal['left', 'right'] = 'right'
     loss_scale: str = 'default'
     sequence_parallel_size: int = 1
     # infer/deploy
-    use_chat_template: bool = True
+    response_prefix: Optional[str] = None
     template_backend: Literal['swift', 'jinja'] = 'swift'
 
     def __post_init__(self):
@@ -71,10 +72,13 @@ class TemplateArguments:
             'max_pixels': self.max_pixels,
             'agent_template': self.agent_template,
             'norm_bbox': self.norm_bbox,
-            'response_prefix': self.response_prefix,
-            'loss_scale': self.loss_scale,
+            'use_chat_template': self.use_chat_template,
+            # train
+            'padding_free': self.padding_free,
             'padding_side': self.padding_side,
+            'loss_scale': self.loss_scale,
             'sequence_parallel_size': self.sequence_parallel_size,
+            # infer/deploy
+            'response_prefix': self.response_prefix,
             'template_backend': self.template_backend,
-            'use_chat_template': self.use_chat_template
         }

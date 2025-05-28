@@ -11,6 +11,7 @@ SWIFT引入了Megatron的并行技术来加速大模型的训练，包括数据�
 pip install pybind11
 # transformer_engine
 # 若出现安装错误，可以参考该issue解决: https://github.com/modelscope/ms-swift/issues/3793
+# ms-swift使用此版本测试: pip install git+https://github.com/NVIDIA/TransformerEngine.git@9c8ba5c8d1a9a8479ab45fbf7951025a393e7c66
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
 
 # apex
@@ -26,8 +27,9 @@ pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.12.0
 
 或者你也可以使用镜像：
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.26.0-swift3.4.1.post1
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.26.0-swift3.4.1.post1
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.26.0-swift3.4.1.post1
 ```
 
 依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.12.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.12.0)）。
@@ -38,6 +40,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 这里介绍使用2卡80GiB A100对Qwen2.5-7B-Instruct模型进行自我认知微调的快速入门案例，以下最佳实践可以在10分钟内完成。
 
 首先，我们需要将HF格式的权重转为Megatron格式：
+- 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除即可。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -48,6 +51,7 @@ swift export \
 ```
 
 然后，使用以下脚本进行训练，训练所需显存资源为2*80GiB：
+- 若使用多机训练，建议共享磁盘，并将`--save`指定为相同的路径。
 ```shell
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
@@ -155,6 +159,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - no_rope_fusion: 默认为False。指定`--no_rope_fusion true`用于禁止rope融合。
 - no_gradient_accumulation_fusion: 默认为False。指定`--no_gradient_accumulation_fusion true`用于禁用梯度累加融合。
 - 🔥cross_entropy_loss_fusion: 启动交叉熵损失计算融合。默认为False。
+- cross_entropy_fusion_impl: 交叉熵损失融合的实现。可选为'native'和'te'。默认为'native'。
 - calculate_per_token_loss: 根据全局批次中的非填充token数量来对交叉熵损失进行缩放。默认为True。
 - 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 auto。
 - optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
@@ -167,7 +172,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - seq_length: 默认为None，即设置为`max_length`。对数据集长度进行限制请使用基本参数中的`--max_length`控制，无需设置此参数。
 - use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。
 - no_create_attention_mask_in_dataloader: 在dataloader中不创建attention mask，默认为True。
-
+- extra_megatron_kwargs: Additional parameters passed to Megatron, provided as a JSON object. Defaults to None.
 
 **学习率参数**:
 - 🔥lr: 初始学习率，最终会根据学习率预热策略和衰减策略决定每个迭代的学习率，默认为1e-5。
@@ -205,14 +210,14 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥use_distributed_optimizer: 使用分布式优化器。默认为True。
 - 🔥tensor_model_parallel_size: tp数，默认为1。
 - 🔥pipeline_model_parallel_size: pp数，默认为1。
-- decoder_first_pipeline_num_layers: decoder第一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
-- decoder_last_pipeline_num_layers: decoder最后一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
+- 🔥decoder_first_pipeline_num_layers: decoder第一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
+- 🔥decoder_last_pipeline_num_layers: decoder最后一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
 - 🔥sequence_parallel: 启动序列并行的优化器。默认为False。
 - 🔥context_parallel_size: cp数，默认为1。
 - tp_comm_overlap: 启用张量并行通信与GEMM（通用矩阵乘法）内核的重叠（降低通信耗时）。默认为False。
 - overlap_grad_reduce: 启用DDP中grad reduce操作的重叠（降低DP通信耗时）。默认为False。
 - overlap_param_gather: 启用分布式优化器中参数all-gather的重叠（降低DP通信耗时）。默认为False。
-- distributed_timeout_minutes: torch.distributed的timeout时间（单位为分钟），默认为60分钟。
+- distributed_timeout_minutes: torch.distributed的timeout时间（单位为分钟），该参数失效，使用[基础参数](./命令行参数.md#基本参数)中的ddp_timeout控制，默认为300000分钟。
 
 **日志参数**:
 - log_params_norm: 记录参数的norm。默认为False。
@@ -273,8 +278,11 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - moe_router_topk: 每个token路由到的专家数量。默认为None。自动从config.json读取。
 - moe_router_pre_softmax: 为MoE启用预softmax路由，这意味着softmax会在top-k选择之前进行。默认为None。自动从config.json读取。
 - 🔥moe_aux_loss_coeff: 辅助损失的缩放系数：建议的初始值为 1e-2。默认为None。自动从config.json读取。
+- moe_router_dtype: 用于路由计算和专家输出加权平均的数据类型。可选为'fp32'、'fp64'，这增强了数值稳定性，尤其是在专家数量较多时。与`moe_permute_fusion`一起使用时，性能影响可以忽略不计。默认为None，不改变数据类型。
+- moe_permute_fusion: 在令牌分发过程中融合令牌重排操作。默认为False。
 - 🔥expert_model_parallel_size: 专家并行数，默认为1。
-- moe_token_dispatcher_type: 要使用的token分发器类型。可选选项包括 'allgather'、'alltoall' 和 'alltoall_seq'。默认值为 'alltoall'。
+- moe_token_dispatcher_type: 要使用的token分发器类型。可选选项包括 'allgather'、'alltoall'、'flex'和'alltoall_seq'。默认值为'alltoall'。
+- moe_enable_deepep: 实验性功能，启用DeepSeek/DeepEP以实现 MoE 模型中的高效令牌分发与组合。仅在设置`--moe_token_dispatcher_type flex`使用灵活令牌分发器时生效。
 - moe_grouped_gemm: 当每个rank包含多个专家时，通过在多个流中启动多个本地 GEMM 内核，利用 TransformerEngine中的GroupedLinear提高利用率和性能。默认为False。
 - moe_router_load_balancing_type: 确定路由器的负载均衡策略。可选项为"aux_loss"、"seq_aux_loss"、"sinkhorn"、"none"。默认值为 "aux_loss"。
 - moe_z_loss_coeff: z-loss 的缩放系数。默认为None。
@@ -290,6 +298,4 @@ Megatron训练参数继承自Megatron参数和基本参数。基本参数的内�
 - 🔥packing: 是否使用序列packing，默认为False。
 - 🔥streaming: 流式读取并处理数据集，默认False。通常在处理大型数据集时，设置为True。更多流式的参数查看命令行参数文档。
 - lazy_tokenize: 默认为False。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（这可以避免在训练中出现报错）；设置为True，则在训练中对数据集进行tokenize（这可以节约内存）。
-- dataloader_persistent_workers: 透传入dataloader的参数，默认为True。
-- dataloader_prefetch_factor: 透传入dataloader的参数，默认为10。
 - max_epochs: 训练到`max_epochs`时强制退出训练，并对权重进行验证和保存。该参数在使用流式数据集时很有用。默认为None。

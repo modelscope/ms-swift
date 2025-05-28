@@ -16,7 +16,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import PreTrainedModel, dynamic_module_utils, trainer
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
-from swift.llm import to_device, to_float_dtype
+from swift.llm import deep_getattr, to_device, to_float_dtype
 from swift.utils import get_dist_setting, get_logger, is_mp_ddp, safe_ddp_context, use_torchacc
 from swift.utils.torch_utils import _get_max_memory, _sync_max_memory, get_device_count
 from .model_arch import get_model_arch
@@ -58,6 +58,14 @@ def patch_output_clone(module: torch.nn.Module):
         return output.requires_grad_(True).clone()
 
     module.register_forward_hook(_clone_hook)
+
+
+def patch_get_input_embeddings(model, embedding_keys: str):
+
+    def get_input_embeddings(self) -> nn.Module:
+        return deep_getattr(model, embedding_keys)
+
+    model.get_input_embeddings = MethodType(get_input_embeddings, model)
 
 
 def patch_output_normalizer(module: torch.nn.Module, model_meta):
@@ -352,8 +360,8 @@ def patch_get_dynamic_module():
 
 
 @contextmanager
-def patch_tp_plan():
-    if not is_mp_ddp() or version.parse(transformers.__version__) < version.parse('4.50'):
+def patch_tp_plan(load_model: bool):
+    if not load_model or not is_mp_ddp() or version.parse(transformers.__version__) < version.parse('4.50'):
         yield
         return
     WORLD_SIZE = os.environ.get('WORLD_SIZE')

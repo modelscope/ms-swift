@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional, Tuple
@@ -219,7 +220,13 @@ class Qwen2VLTemplate(Template):
             else:
                 return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
-            inputs.videos[index] = fetch_video({'video': inputs.videos[index]}).to(torch.uint8)
+            video = inputs.videos[index]
+            if os.path.isdir(video):
+                video = [os.path.join(video, fname) for fname in os.listdir(video)]
+            video = fetch_video({'video': video})
+            if isinstance(video, torch.Tensor):
+                video = video.to(torch.uint8)
+            inputs.videos[index] = video
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
@@ -243,8 +250,11 @@ class Qwen2VLTemplate(Template):
                         images=images, videos=None, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
-                    media_inputs = processor.image_processor(
-                        images=None, videos=videos, return_tensors='pt', do_resize=False)
+                    if hasattr(processor, 'video_processor'):
+                        processor_func = processor.video_processor
+                    else:
+                        processor_func = processor.image_processor
+                    media_inputs = processor_func(images=None, videos=videos, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
                     if self.version == 'v2_5':
@@ -283,15 +293,16 @@ class Qwen2VLTemplate(Template):
         if not self.is_training:
             return inputs
         input_ids = inputs['input_ids']
-        _model = model.model
-        if not hasattr(_model, 'embed_tokens'):
-            _model = _model.model  # LoRA
         pixel_values = inputs.get('pixel_values')
         pixel_values_videos = inputs.get('pixel_values_videos')
         image_grid_thw = inputs.get('image_grid_thw')
         video_grid_thw = inputs.get('video_grid_thw')
 
-        inputs_embeds = _model.embed_tokens(input_ids)
+        base_model = self.get_base_model(model)
+        if hasattr(base_model.model, 'embed_tokens'):
+            inputs_embeds = base_model.model.embed_tokens(input_ids)
+        else:
+            inputs_embeds = base_model.model.language_model.embed_tokens(input_ids)
 
         dtype = model.visual.get_dtype() if self.version == 'v2' else model.visual.dtype
         if pixel_values is None and pixel_values_videos is None:  # plain-text
@@ -347,7 +358,12 @@ class Qwen2VLTemplate(Template):
         kwargs = {}
         if self.version == 'v2_5':
             kwargs = {'second_per_grid_ts': inputs.get('second_per_grid_ts')}
-        position_ids, _ = self.model.get_rope_index(
+        base_model = self.get_base_model(self.model)
+        if hasattr(base_model, 'get_rope_index'):
+            get_rope_index = base_model.get_rope_index
+        else:
+            get_rope_index = base_model.model.get_rope_index
+        position_ids, _ = get_rope_index(
             inputs['input_ids'],
             inputs.get('image_grid_thw'),
             inputs.get('video_grid_thw'),
@@ -403,7 +419,8 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             inputs.images[index] = fetch_image({'image': inputs.images[index]})
             return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
         elif media_type == 'audio':
-            inputs.audios[index] = load_audio(inputs.audios[index], self.sampling_rate)
+            if self.mode != 'vllm':
+                inputs.audios[index] = load_audio(inputs.audios[index], self.sampling_rate)
             return ['<|audio_bos|><|AUDIO|><|audio_eos|>']
         elif media_type == 'video':
             video = inputs.videos[index]
@@ -435,6 +452,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             audio=inputs.audios or None,
             images=inputs.images or None,
             videos=inputs.videos or None,
+            do_resize=False,
             return_tensors='pt')
         media_inputs.pop('input_ids')
         media_inputs.pop('attention_mask')

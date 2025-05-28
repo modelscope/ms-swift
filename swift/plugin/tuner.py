@@ -1,11 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import torch
 from peft import IA3Config, PeftModel, get_peft_model
 
 from swift.llm import MODEL_ARCH_MAPPING, ModelKeys
 from swift.utils import find_all_linears
+
+if TYPE_CHECKING:
+    from swift.llm import TrainArguments
 
 
 class Tuner:

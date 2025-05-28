@@ -39,6 +39,7 @@ class DeployArguments(InferArguments):
     log_interval: int = 20  # Interval for printing global statistics
 
     max_logprobs: int = 20
+    use_async_engine: bool = True
 
     def __post_init__(self):
         super().__post_init__()

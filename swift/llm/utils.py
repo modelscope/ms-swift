@@ -150,20 +150,24 @@ def _add_gradient_checkpointing(module_list):
         module.__old_forward = __old_forward
 
 
-def dynamic_gradient_checkpointing(model) -> None:
+def dynamic_gradient_checkpointing(model, including_vit: bool = False) -> None:
     from .model import ModelMeta, get_model_arch
     model_meta: ModelMeta = model.model_meta
     model_arch = get_model_arch(model_meta.model_arch)
     if model_meta.is_multimodal and model_arch:
-        tower_names = model_arch.language_model + model_arch.vision_tower
+        tower_names = model_arch.language_model.copy()
+        if including_vit:
+            tower_names += model_arch.vision_tower
     else:
         tower_names = [None]
 
+    model.supports_gradient_checkpointing = True
     for tower_name in tower_names:
         if tower_name is None:
             model_tower = model
         else:
             model_tower = deep_getattr(model, tower_name)
+        model_tower.supports_gradient_checkpointing = True
         module_list = find_module_list(model_tower)
         if module_list is None:
             continue
@@ -247,7 +251,7 @@ def save_checkpoint(model: Optional[PreTrainedModel],
         model_dirs = model_dirs.copy()
     if model and model.model_dir and model.model_dir not in model_dirs:
         model_dirs.append(model.model_dir)
-    for src_file in additional_saved_files or [] + ['preprocessor_config.json', 'args.json']:
+    for src_file in (additional_saved_files or []) + ['preprocessor_config.json', 'args.json']:
         for model_dir in model_dirs:
             src_path: str = os.path.join(model_dir, src_file)
             tgt_path = os.path.join(output_dir, src_file)

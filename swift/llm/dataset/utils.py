@@ -1,9 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import bisect
 import mmap
 import multiprocessing as mp
 import os
 import pickle
+import threading
 import time
+from copy import copy
+from queue import Queue
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -95,7 +99,7 @@ class LazyLLMDataset(Dataset):
             try:
                 return self.encode_func(data)
             except Exception:
-                if n_try == self.n_try_fetch - 1:
+                if n_try == self.n_try_fetch - 1 or self.strict:
                     if self.strict:
                         logger.warning('To avoid errors, you can pass `strict=False`.')
                     raise
@@ -153,36 +157,71 @@ class BasePackingDataset:
 
 
 class IndexedDatasetBuilder:
+    CHUNK_SIZE = 1e10
 
     def __init__(self, dataset_name: str):
         self.cache_dir = IndexedDataset.get_cache_dir(dataset_name)
-        self.bin_path = os.path.join(self.cache_dir, IndexedDataset.BIN_FNAME)
+        self.n_shard = 1
+        self.bin_path = os.path.join(self.cache_dir, IndexedDataset.BIN_FNAME.format(0))
         self.idx_path = os.path.join(self.cache_dir, IndexedDataset.IDX_FNAME)
         if os.path.exists(self.bin_path):
             os.remove(self.bin_path)
         self.bin_file = open(self.bin_path, 'ab')
+        self.length_list = []
         self.idx_list = [0]
+        self.shard_offset = [0]
+        self._thread = None
+        self._queue = Queue(maxsize=1000)
+
+    def _write_worker(self):
+        while True:
+            items = self._queue.get()
+            if items is None:
+                break
+            bin_buffer = []
+            for item in items:
+                item_buffer = pickle.dumps(item)
+                bin_buffer.append(item_buffer)
+                self.idx_list.append(self.idx_list[-1] + len(item_buffer))
+                self.length_list.append(
+                    max([len(item[k]) for k in item.keys() if k.endswith('input_ids') or k.endswith('labels')]))
+            self.bin_file.write(b''.join(bin_buffer))
+            offset = self.idx_list[-1] - self.shard_offset[-1]
+            if offset >= self.CHUNK_SIZE:
+                self.bin_file.close()
+                self.bin_path = os.path.join(self.cache_dir, IndexedDataset.BIN_FNAME.format(self.n_shard))
+                self.shard_offset.append(self.shard_offset[-1] + offset)
+                self.n_shard += 1
+                if os.path.exists(self.bin_path):
+                    os.remove(self.bin_path)
+                self.bin_file = open(self.bin_path, 'ab')
 
     def add_items(self, items: List[Any]) -> None:
-        bin_buffer = []
-        for item in items:
-            item_buffer = pickle.dumps(item)
-            bin_buffer.append(item_buffer)
-            self.idx_list.append(self.idx_list[-1] + len(item_buffer))
-        if bin_buffer:
-            self.bin_file.write(b''.join(bin_buffer))
+        if self._thread is None:
+            self._thread = threading.Thread(target=self._write_worker, daemon=True)
+            self._thread.start()
+        self._queue.put(items)
 
     def finalize(self):
+        if self._thread is not None:
+            self._queue.put(None)
+            self._thread.join()
         self.bin_file.close()
+        idx_obj = {
+            'idx': self.idx_list,
+            'length': self.length_list,
+            'n_shard': self.n_shard,
+            'shard_offset': self.shard_offset,
+        }
         with open(self.idx_path, 'wb') as f:
-            pickle.dump(self.idx_list, f)
+            pickle.dump(idx_obj, f)
 
 
 class BinReader:
 
-    def __init__(self, file_path: str):
-        self.file_path = file_path
-        self.file = open(file_path, 'rb')
+    def __init__(self, bin_path: str):
+        self.bin_path = bin_path
+        self.file = open(bin_path, 'rb')
         self.mm = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
 
     def read_buffer(self, offset: int, size: int) -> bytes:
@@ -196,7 +235,7 @@ class BinReader:
 
 
 class IndexedDataset(Dataset):
-    BIN_FNAME = 'data.bin'
+    BIN_FNAME = 'data-{:05d}.bin'
     IDX_FNAME = 'data.idx'
 
     @staticmethod
@@ -209,17 +248,25 @@ class IndexedDataset(Dataset):
     def __init__(self, dataset_name: str):
         self.dataset_name = dataset_name
         cache_dir = self.get_cache_dir(dataset_name)
-        self.bin_path = os.path.join(cache_dir, IndexedDataset.BIN_FNAME)
-        self.idx_path = os.path.join(cache_dir, IndexedDataset.IDX_FNAME)
-        self.bin_readers = BinReader(self.bin_path)
+        self.idx_path = os.path.join(cache_dir, self.IDX_FNAME)
         with open(self.idx_path, 'rb') as f:
-            self.idx_list = pickle.load(f)
+            idx_obj = pickle.load(f)
+        self.idx_list = idx_obj['idx']
+        self.length_list = idx_obj['length']
+        self.n_shard = idx_obj['n_shard']
+        self.shard_offset = idx_obj['shard_offset']
+        self.bin_readers = []
+        for i in range(self.n_shard):
+            bin_path = os.path.join(cache_dir, self.BIN_FNAME.format(i))
+            self.bin_readers.append(BinReader(bin_path))
 
     def __getitem__(self, index: int):
         if index < 0:
             index = index % len(self)
         idx, idx_next = self.idx_list[index], self.idx_list[index + 1]
-        buffer = self.bin_readers.read_buffer(idx, idx_next - idx)
+        num_shard = bisect.bisect_right(self.shard_offset, idx)
+        offset = self.shard_offset[num_shard - 1]
+        buffer = self.bin_readers[num_shard - 1].read_buffer(idx - offset, idx_next - idx)
         return pickle.loads(buffer)
 
     def __len__(self):
@@ -232,18 +279,26 @@ class PackingDataset(BasePackingDataset, Dataset):
         from datasets.fingerprint import update_fingerprint
         num_proc = min(len(dataset), num_proc)
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
+        template = copy(template)
+        template.model = None  # Avoid hashing the model.
         fingerprint = update_fingerprint(dataset._fingerprint, 'PackingDataset', {
             'template': template,
             'packing_interval': packing_interval,
-            'strict': strict
+            'strict': strict,
+            'version': 'v1',
         })
         self.dataset_name = f'packing-cache-{fingerprint}'
+        with safe_ddp_context(None, True):
+            self.create_packed_dataset()
+
+    def create_packed_dataset(self):
         cache_dir = IndexedDataset.get_cache_dir(self.dataset_name)
         logger.info(f'packing cache_dir: {cache_dir}')
-        if is_master() and not os.path.exists(os.path.join(cache_dir, IndexedDataset.IDX_FNAME)):
-            self._queue = mp.Queue()
+        if not os.path.exists(os.path.join(cache_dir, IndexedDataset.IDX_FNAME)):
+            self._queue = mp.Queue(maxsize=1000)
             self._terminated_workers = 0
-            self.prog_bar = tqdm(total=len(dataset), dynamic_ncols=True, desc=f'Packing (num_proc={num_proc})')
+            self.prog_bar = tqdm(
+                total=len(self.dataset), dynamic_ncols=True, desc=f'Packing (num_proc={self.num_proc})')
             for i in range(self.num_proc):
                 shard_dataset = self.dataset.shard(self.num_proc, i)
                 worker = mp.Process(target=self._producer, args=(shard_dataset, ), daemon=True)
@@ -254,8 +309,7 @@ class PackingDataset(BasePackingDataset, Dataset):
             self.prog_bar.close()
             for worker in self.workers:
                 worker.terminate()
-        with safe_ddp_context(None, True):
-            self.packed_dataset = IndexedDataset(self.dataset_name)
+        self.packed_dataset = IndexedDataset(self.dataset_name)
 
     def fetch_packing_data(self, res: Optional[list] = None):
         res = res or []

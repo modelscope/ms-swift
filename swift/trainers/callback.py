@@ -9,9 +9,11 @@ from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback,
                                            TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length, speed_metrics
 
-from swift.utils import append_to_jsonl, is_pai_training_job, use_torchacc
+from swift.utils import append_to_jsonl, get_logger, is_pai_training_job, use_torchacc
 from ..utils.utils import format_time
 from .arguments import TrainingArguments
+
+logger = get_logger()
 
 
 def add_train_message(logs, state, start_time) -> None:
@@ -93,6 +95,7 @@ class DefaultFlowCallbackNew(DefaultFlowCallback):
         control = super().on_epoch_end(args, state, control, **kwargs)
         evaluation_strategy = args.eval_strategy if hasattr(args, 'eval_strategy') else args.evaluation_strategy
         if args.max_epochs is not None and args.max_epochs <= math.ceil(state.epoch):
+            logger.info('Training has reached `max_epochs`. The model will be saved and the training will be exited.')
             if evaluation_strategy != IntervalStrategy.NO:
                 control.should_evaluate = True
             if args.save_strategy != IntervalStrategy.NO:

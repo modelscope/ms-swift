@@ -13,6 +13,9 @@ pip install -U trl
 GRPOTrainer在swift3.5.dev进行了代码重构，如果你使用的swift版本<3.5, 请参考[stable文档](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md)
 
 **更新日志**
+- **2025-05-23** — 支持自定义采样批量大小，参考 generation_batch_size / steps_per_generation 参数
+- **2025-05-22** — swift rollout 支持 data_parallel_size 参数
+- **2025-05-16** - 增加 ref_model 同步逻辑，参考参数 sync_ref_model
 - **2025-05-13** — 为了代码的可读性和维护性， GRPOTrainer代码重构，Internal mode 支持vLLM>=0.8。
 - **2025-05-11** — 支持生成式奖励模型，通过 reward_model_plugin 自定义奖励模型逻辑。有关更多详细信息，请参阅[自定义奖励模型](#自定义奖励模型)部分。
 - **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`。
@@ -53,7 +56,7 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 3. 在vLLM中使用 Tensor Parallel 技术：
 
 ```bash
---tensor_parallel_size [tp_size]
+--vllm_tensor_parallel_size [tp_size]
 ```
 
 4. 分批 Gather 模型权重（zero3下同步 vLLM 权重时）：
@@ -68,10 +71,23 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 
 使用`swift rollout`命令部署vLLM 服务器, 现仅支持vLLM backend
 ```bash
-CUDA_VISIBLE_DEVICES=2 \
+CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
   --tensor_parallel_size 2 \
+  --data_parallel_size 1
+
+CUDA_VISIBLE_DEVICES=0,1 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+  --data_parallel_size 1
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+  --data_parallel_size 2
 ```
 
 对于更多 vLLM 参数，你可以参考[vLLM参数](./命令行参数.md#vllm参数)
@@ -84,9 +100,6 @@ swift rollout \
 --vllm_server_port <服务端口> \
 --vllm_server_timeout <超时时间> \
 ```
-
-完整脚本可以参考[这里](../../../examples/train/grpo/multi_node/Qwen2_5_32B_full.sh)
-
 
 ## 奖励函数
 ### 自定义奖励函数
@@ -178,7 +191,9 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 参数
 - per_device_train_batch_size: 每个设备训练批量大小，在GRPO中，指 completion 的批次大小。
 - per_device_eval_batch_size: 每个设备评估批量大小，在GRPO中，指 completion 的批次大小。
-- num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_batch_size * gradient_accumulation_steps * nproc_per_node 整除，默认为8
+- generation_batch_size: 采样completion批量大小，需要是 num_processes * per_device_train_batch_size 的倍数，默认等于 per_device_batch_size * gradient_accumulation_steps * num_processes
+- steps_per_generation: 每轮生成的优化步数，默认等于gradient_accumulation_steps。与generation_batch_size 只能同时设置一个
+- num_generations: 每个prompt采样的数量，论文中的G值，需要被 generation_batch_size 或 per_device_batch_size * steps_per_generation * num_processes 整除，默认为8
 - max_completion_length: 采样生成的最大长度，默认为512
 - ds3_gather_for_generation: 该参数适用于DeepSpeed ZeRO-3。如果启用，策略模型权重将被收集用于生成，从而提高生成速度。然而，禁用此选项允许训练超出单个GPU VRAM的模型，尽管生成速度会变慢。禁用此选项与vLLM生成不兼容。默认为True
 - reward_funcs: 奖励函数，根据模型生成结果进行打分，内置accuracy、format、cosine和repetition四个rule-based函数，详细见 swift/plugin/orm.py 文件
@@ -196,7 +211,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
   - vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用.
   - vllm_server_port vLLM server 服务端口，默认为8000.
   - vllm_server_timeout 连接vLLM server的超时时间，默认为120s.
-  - async_generate: 异步rollout以提高训练速度，默认`false`.
+  - async_generate: 异步rollout以提高训练速度，注意开启时采样会使用上一轮更新的模型进行采样，不支持多轮场景。默认`false`.
 - vllm_mode colocate 参数
   - vllm_gpu_memory_utilization: vllm透传参数，默认为0.9.
   - vllm_max_model_len: vllm透传参数，默认为None.
@@ -207,9 +222,12 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - num_iterations: 每个批次代更新次数，默认为1。
 - epsilon: clip 系数，默认为0.2。
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。
-- move_model_batches: 在模型向vLLM/LMDeploy等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。
-- offload_optimizer: 是否在vLLM/LMDeploy推理时offload optimizer参数，默认为False。
-- offload_model: 是否在vLLM/LMDeploy推理时offload 模型本身，默认为False。
+- sync_ref_model: 是否定期同步ref_model，默认为False。
+- ref_model_mixup_alpha: 控制在更新过程中model和先前ref_model之间的混合。更新公式为 $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$。默认为0.6。
+- ref_model_sync_steps：同步频率，默认为512。
+- move_model_batches: 在模型向vLLM等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。
+- offload_optimizer: 是否在vLLM推理时offload optimizer参数，默认为False。
+- offload_model: 是否在vLLM推理时offload 模型本身，默认为False。
 - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False。
 - multi_turn_func: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现。
 - completion_length_limit_scope: 在多轮对话中，`max_completion_length` 的限制范围。
@@ -221,7 +239,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 奖励函数参数，见[内置奖励函数](#内置奖励函数)
 
-运行脚本参考[这里](../../../examples/train/grpo/)
+训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo)
 
 ## 自定义奖励模型
 默认情况下，奖励模型指的是包含数值头的分类模型（通常称为输出奖励模型（ORM））。这些模型对其他模型的输出进行评分，产生一个标量值，表示模型响应的质量。
@@ -233,9 +251,9 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 通过reward_model_plugin，开发者可以针对其应用的特定需求定制奖励评估过程。这种灵活性允许更细致和有效的基于奖励的训练策略。
 
-我们在 [rm_plugin.py](../../../swift/plugin/rm_plugin.py) 中提供了一个简单的生成式奖励模型示例（GenRMPlugin）。
+我们在 [rm_plugin.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/rm_plugin.py) 中提供了一个简单的生成式奖励模型示例（GenRMPlugin）。
 
-您还可以在 [plugin.py](../../../examples/train/grpo/plugin/plugin.py) 中自定义您的奖励模型插件，并使用 `external_plugins` 参数进行注册。
+您还可以在 [plugin.py](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py) 中自定义您的奖励模型插件，并使用 `external_plugins` 参数进行注册。
 
 以下是一个训练脚本示例，用于使用两个奖励模型，包括一个 ORM 和一个 Gen-RM（此处使用 qwen2.5-3B-Instruct）进行 GRPO 训练：
 
@@ -296,26 +314,39 @@ swift rlhf \
 
 在 GRPO 中，batch_size 以 completion（模型生成结果） 为单位。例如，设置 per_device_train_batch_size=8 表示每张 GPU 在训练过程中会同时处理 8 个 completion 的 loss 计算。
 
-训练阶段，在一次完整的梯度累计 batch 中，总的 completion 数量等于：
+训练阶段，在一次完整的梯度累计 batch 中，总的批量大小等于：
 
 ```
-num_processes * per_device_train_batch_size * gradient_accumulation_steps
+effective_batch_size = num_processes * per_device_train_batch_size * gradient_accumulation_steps
 ```
+
+采样阶段，总的批量大小 (completion-level) 数量等于:
+
+1. 设置 generation_batch_size 下，等于 generation_batch_size
+
+2. 设置 steps_per_generation 下， 等于 steps_per_generation * 训练总批量大小
+
+3. 默认等于训练总批量大小(即num_processes * per_device_train_batch_size * gradient_accumulation_steps)
 
 在评估阶段，completion 的数量等于：
 ```
 num_processes * per_device_eval_batch_size
 ```
 
-参数 `num_generations` 必须能够被以上两个值整除，以保证生成任务可以均匀分配到各个设备上。
+参数 `num_generations` 必须能够被以上采样阶段和评估的总批量大小整除，以保证生成任务可以均匀分配到各个设备上。
 
 **示例**
 
-在 8 卡的环境下，若设置 `num_generations = 16`，则要求：
+num_processes = 8
+per_device_train_batch_size = 4
+gradient_accumulation_steps = 8
+generation_batch_size = 512
+num_generations = 64
 
-- per_device_train_batch_size * gradient_accumulation_steps
-- per_device_eval_batch_size
-这两个值都应大于或等于 2，以满足整除条件。
+1. 采样需要的总数据(prompt)量等于 512 / 64 = 8
+2. 每次采样 512 条模型回复
+3. 每次更新模型权重批量大小为 8 *4 * 8 = 256
+
 
 **3. 为什么 KL 出现了NaN**
 
@@ -330,3 +361,8 @@ num_processes * per_device_eval_batch_size
 num_iterations = 1，async_generate = False 下为 on-policy RL，old_policy此时等于policy
 
 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
+
+**6. 为什么没有设置val_dataset，仍然有验证过程，如何取消**
+当没有显式传入`val_dataset`时，参数`split_dataset_ratio`负责切分部分`dataset`为验证数据集，默认切分1%数据
+
+通过设置`--split_dataset_ratio 0` 来取消验证过程

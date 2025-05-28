@@ -14,8 +14,6 @@ from ..base import SwiftPipeline
 from ..dataset import (EncodePreprocessor, GetLengthPreprocessor, IterablePackingDataset, LazyLLMDataset,
                        PackingDataset, load_dataset)
 from ..infer import prepare_generation_config
-from ..model import HfConfigFactory, get_model_arch
-from ..utils import deep_getattr, dynamic_gradient_checkpointing
 from .tuner import TunerMixin
 
 logger = get_logger()
@@ -31,24 +29,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
-
-    def _prepare_gradient_checkpointing(self):
-        args = self.args
-        HfConfigFactory.set_model_config_attr(self.model, 'use_cache', False)
-        if args.gradient_checkpointing:
-            self.model.supports_gradient_checkpointing = True
-            dynamic_gradient_checkpointing(self.model)
-            self.model.enable_input_require_grads()
-        model_meta = self.model.model_meta
-        model_arch = get_model_arch(model_meta.model_arch)
-        if model_meta.is_multimodal and model_arch:
-            for vision_tower_name in model_arch.vision_tower:
-                vision_tower = deep_getattr(self.model, vision_tower_name)
-                if hasattr(vision_tower, 'enable_input_require_grads'):
-                    try:
-                        vision_tower.enable_input_require_grads()
-                    except NotImplementedError:
-                        pass
 
     def _prepare_generation_config(self):
         args = self.args
@@ -70,7 +50,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         logger.info(f'model_info: {self.model.model_info}')
 
         self._prepare_generation_config()
-        self._prepare_gradient_checkpointing()
 
     def _prepare_template(self) -> None:
         template = self.args.get_template(self.processor)
@@ -178,8 +157,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 state.best_model_checkpoint = best_checkpoint
         else:
             state.last_model_checkpoint = None
-            logger.warning('No training was carried out, which may be due to the dataset being too small '
-                           'or incorrect usage of resume_from_checkpoint.')
         logger.info(f'last_model_checkpoint: {state.last_model_checkpoint}')
         logger.info(f'best_model_checkpoint: {state.best_model_checkpoint}')
 
@@ -232,15 +209,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         callbacks += extra_callbacks
         self.callbacks = callbacks
 
-    def _stat_dataset(self, dataset: HfDataset):
+    def _stat_dataset(self, dataset: Union[HfDataset, PackingDataset]):
         args = self.args
         if isinstance(dataset, HfDataset):
             dataset = GetLengthPreprocessor()(dataset, num_proc=args.dataset_num_proc)
             length = dataset['length']
         else:
-            length = []
-            for row in dataset:
-                length.append(max([len(row[k]) for k in row.keys() if k.endswith('input_ids')]))
+            length = dataset.packed_dataset.length_list
         _, stat_str = stat_array(length)
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
@@ -268,13 +243,24 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                         val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             else:
                 preprocessor = EncodePreprocessor(template=template)
-                train_dataset = preprocessor(train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
+                train_dataset = preprocessor(
+                    train_dataset,
+                    num_proc=args.dataset_num_proc,
+                    load_from_cache_file=args.load_from_cache_file,
+                    strict=args.strict)
                 if val_dataset is not None and not predict_with_generate:
-                    val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
+                    val_dataset = preprocessor(
+                        val_dataset,
+                        num_proc=args.dataset_num_proc,
+                        load_from_cache_file=args.load_from_cache_file,
+                        strict=args.strict)
 
             if is_master():
                 inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
                 template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
+            elif hasattr(train_dataset, '__len__'):
+                # Avoid the random mismatch issue in LazyLLMDataset.
+                inputs = train_dataset[0]
             if isinstance(train_dataset, (HfDataset, PackingDataset)):
                 self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
                 if val_dataset is not None and not predict_with_generate:
