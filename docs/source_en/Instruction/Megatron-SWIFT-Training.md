@@ -162,6 +162,7 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
 - no_rope_fusion: Default is False. Specify `--no_rope_fusion true` to disable rope fusion.
 - no_gradient_accumulation_fusion: Default is False. Specify `--no_gradient_accumulation_fusion true` to disable gradient accumulation fusion.
 - 🔥cross_entropy_loss_fusion: Enables cross-entropy loss calculation fusion. Default is False.
+- cross_entropy_fusion_impl: Implementation of cross-entropy loss fusion. Options include 'native' and 'te'. Defaults to 'native'.
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padded tokens in the global batch. Default is True.
 - 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Defaults to auto.
 - optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
@@ -289,6 +290,8 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - moe_router_topk: The number of experts each token is routed to. Default is None. Automatically read from config.json.
 - moe_router_pre_softmax: Enable pre-softmax routing for MoE, meaning that softmax will be applied before top-k selection. Default is None. Automatically read from config.json.
 - 🔥moe_aux_loss_coeff: Scaling coefficient for the auxiliary loss: the recommended initial value is 1e-2. Default is None. Automatically read from config.json.
+- moe_router_dtype: Data type for routing computation and expert output weighted averaging. Options include 'fp32' and 'fp64', which enhance numerical stability, particularly with a large number of experts. When used with `moe_permute_fusion`, the performance impact is negligible. Defaults to None (no dtype change).
+- moe_permute_fusion: Fuses token rearrangement operations during token dispatching. Defaults to False.
 - 🔥expert_model_parallel_size: The degree of expert parallelism, default is 1.
 - moe_token_dispatcher_type: The type of token dispatcher to use. Options include 'allgather', 'alltoall', and 'alltoall_seq'. Default is 'alltoall'.
 - moe_grouped_gemm: When each rank contains multiple experts, improve utilization and performance by launching multiple local GEMM kernels across multiple streams using GroupedLinear in TransformerEngine. Default is False.
