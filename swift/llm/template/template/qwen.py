@@ -49,10 +49,9 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=q
 class ThinkingTemplate(Template):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
-        if not self.is_training:
-            for message in inputs.messages:
-                if message['role'] == 'assistant' and isinstance(message['content'], str):
-                    message['content'] = message['content'].split('</think>')[-1].lstrip('\n')
+        for i, message in enumerate(inputs.messages):
+            if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(inputs.messages) - 1:
+                message['content'] = message['content'].split('</think>')[-1].lstrip('\n')
         return super()._swift_encode(inputs)
 
 
