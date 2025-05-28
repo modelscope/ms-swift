@@ -17,6 +17,13 @@ stimer = StragglerDetector()
 def get_swift_datasets_provider(train_dataset, val_dataset):
 
     def swift_datasets_provider(train_val_test_num_samples):
+        nonlocal val_dataset
+        args = get_args()
+        data_parallel_size = mpu.get_data_parallel_world_size()
+        micro_batch_times_data_parallel_size = \
+            args.micro_batch_size * data_parallel_size
+        if micro_batch_times_data_parallel_size > len(val_dataset):
+            val_dataset = None
         return train_dataset, val_dataset, None
 
     return swift_datasets_provider
