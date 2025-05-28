@@ -133,7 +133,8 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_permute_fusion: bool = False
 
     expert_model_parallel_size: int = 1
-    moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'alltoall_seq'] = 'alltoall'
+    moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex', 'alltoall_seq'] = 'alltoall'
+    moe_enable_deepep: bool = False
     moe_grouped_gemm: bool = False
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = 'aux_loss'
     moe_z_loss_coeff: Optional[float] = None
@@ -259,7 +260,7 @@ class MegatronArguments(ExtraMegatronArguments):
         extra_megatron_kwargs = args_dict.pop('extra_megatron_kwargs')
         args_dict.update(extra_megatron_kwargs)
         use_core_011 = version.parse(megatron.core.__version__) < version.parse('0.12')
-        core_012_arguments = {'recompute_modules', 'moe_router_dtype', 'cross_entropy_fusion_impl'}
+        core_012_arguments = {'recompute_modules', 'moe_router_dtype', 'cross_entropy_fusion_impl', 'moe_enable_deepep'}
         for k, value in args_dict.items():
             if k not in MegatronArguments.__annotations__ and k not in extra_megatron_kwargs:
                 extra_args[k] = value
