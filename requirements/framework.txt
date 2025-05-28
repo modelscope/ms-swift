@@ -33,6 +33,6 @@ tiktoken
 tqdm
 transformers>=4.33,<4.53
 transformers_stream_generator
-trl>=0.15,<0.19
+trl>=0.15,<0.20
 uvicorn
 zstandard
