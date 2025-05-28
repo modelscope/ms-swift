@@ -110,6 +110,7 @@ torch_compile_options = {
 }
 
 
+# TODO not work
 # @torch.compile(dynamic=True, fullgraph=True, options=torch_compile_options)
 def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None, ulysses=None) -> torch.Tensor:
     if hasattr(outputs, 'logits'):

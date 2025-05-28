@@ -34,12 +34,11 @@ from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import nanmax, nanmin
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
+from swift.llm.model.utils import get_llm_model
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_logger, is_vllm_available, is_wandb_available,
                          seed_worker)
-from ... import SwiftModel
-from ...llm.model.utils import get_llm_model
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge, unwrap_model_for_generation
@@ -589,8 +588,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # Slice completions for this rank within its TP group.
                 # Each rank generates all outputs — we keep only our share.
                 results = results[start_idx:end_idx]
-        t = torch.tensor([r.choices[0].message.content.startswith('<think>') for r in results])
-        print(f'>>>>>>>>>>>>>>>>>>>>>>>>>.{os.environ["RANK"]} {t.sum()}')
         return results
 
     def _get_request_config(self) -> RequestConfig:
@@ -983,8 +980,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 batch_encoded_inputs = [template.encode(infer_request) for infer_request in batch]
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
 
-            if batch_encoded_inputs['input_ids'].min() < 0:
-                print()
             # Process labels and masks
             labels = batch_encoded_inputs.pop('labels')
             logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
