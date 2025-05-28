@@ -9,6 +9,7 @@ import datasets
 import numpy as np
 import torch
 import torch.distributed as dist
+import trl
 from packaging import version
 from torch.distributed.device_mesh import init_device_mesh
 from torch.nn import CrossEntropyLoss
@@ -157,7 +158,8 @@ def _prepare_inputs(self, generation_batch):
 
 def old_policy(self):
     ulysses = self.ulysses
-    return self.num_iterations > 1 or self.args.steps_per_generation * ulysses.sp_world_size > self.args.gradient_accumulation_steps
+    return (self.num_iterations > 1
+            or self.args.steps_per_generation * ulysses.sp_world_size > self.args.gradient_accumulation_steps)
 
 
 # For DPO
@@ -789,22 +791,25 @@ class Ulysses(SequenceParallel):
         if trainer.train_dataset is None:
             raise ValueError('Trainer: training requires a train_dataset.')
 
-        trainer.compute_loss_func = partial(loss_scale_sp_func, ulysses=self)
-        if hasattr(trainer, 'get_batch_logps'):
-            trainer.get_batch_logps = partial(get_batch_logps, ulysses=self)
-        if hasattr(trainer, '_get_per_token_logps'):
+        trainer.ulysses = self
+        if trainer.__class__.__name__ in ('Seq2SeqTrainer', 'DPOTrainer'):
+            trainer.compute_loss_func = partial(loss_scale_sp_func, ulysses=self)
+            if trainer.__class__.__name__ == 'DPOTrainer':
+                trainer.get_batch_logps = partial(get_batch_logps, ulysses=self)
+
+                def rlhf_loss_scale_sp_func(_, *args, **kwargs):
+                    return loss_scale_sp_func(*args, ulysses=self, **kwargs)
+
+                trainer.get_nll_loss = MethodType(rlhf_loss_scale_sp_func, trainer)
+
+        elif trainer.__class__.__name__ == 'GRPOTrainer':
+            assert version.parse(trl.__version__) >= version.parse('0.18.0')
             trainer.ulysses = self
             trainer.args.gradient_accumulation_steps = trainer.args.gradient_accumulation_steps * self.sp_world_size
             trainer.old_policy = MethodType(old_policy, trainer)
             trainer._prepare_inputs = MethodType(_prepare_inputs, trainer)
             trainer._get_per_token_logps = MethodType(_get_per_token_logps, trainer)
             trainer.split_by_mini_batches = MethodType(split_by_mini_batches, trainer)
-        if hasattr(trainer, 'get_nll_loss'):
-
-            def rlhf_loss_scale_sp_func(_, *args, **kwargs):
-                return loss_scale_sp_func(*args, ulysses=self, **kwargs)
-
-            trainer.get_nll_loss = MethodType(rlhf_loss_scale_sp_func, trainer)
 
         from swift.plugin import metric
         from swift.trainers import mixin

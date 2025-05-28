@@ -416,8 +416,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.tuners import Swift
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         max_num_seqs = (
-            self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size
-            * self.args.steps_per_generation)
+            self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size * self.args.steps_per_generation)
         current_device = get_device()
         with Swift.grpo_context(model, self.template.processor):
             engine = GRPOVllmEngine(
