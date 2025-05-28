@@ -2,7 +2,7 @@ import asyncio
 import re
 import textwrap
 from copy import deepcopy
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import json
 import torch
@@ -480,7 +480,10 @@ class CustomizedRMPlugin:
 
 class QwenLongPlugin(DefaultRMPlugin):
     # https://arxiv.org/abs/2505.17667
-    # dataset: https://huggingface.co/datasets/Tongyi-Zhiwen/DocQA-RL-1.6K/viewer/default/train
+    # NOTE: you should customize the verified reward function, you can refer to
+    # https://github.com/Tongyi-Zhiwen/QwenLong-L1/tree/main/verl/verl/utils/reward_score
+    # hf_dataset: https://huggingface.co/datasets/Tongyi-Zhiwen/DocQA-RL-1.6K/viewer/default/train
+    # ms_dataset: https://modelscope.cn/datasets/iic/DocQA-RL-1.6K
     def __init__(self, model, template, accuracy_orm=None):
         super().__init__(model, template)
         # initilize PTEngine to infer
@@ -504,7 +507,7 @@ class QwenLongPlugin(DefaultRMPlugin):
             Answer 1: {answer1_placeholder}
             Answer 2: {answer2_placeholder}
         """)  # noqa
-        self.accuracy_orm = accuracy_orm or MathAccuracy()
+        self.accuracy_orm = accuracy_orm
 
     def __call__(self, inputs):
         completions = [example['messages'][-1]['content'] for example in inputs]
@@ -514,7 +517,10 @@ class QwenLongPlugin(DefaultRMPlugin):
         results = self.engine.infer(rm_inputs, self.request_config, use_tqdm=False)
         llm_rewards = self.compute_rewards(results)
 
-        verified_rewards = self.accuracy_orm(completions, ground_truths)
+        if self.accuracy_orm:
+            verified_rewards = self.accuracy_orm(completions, ground_truths)
+        else:
+            verified_rewards = [0.0] * len(llm_rewards)
 
         rewards = [max(r1, r2) for r1, r2 in zip(llm_rewards, verified_rewards)]
         return torch.tensor(rewards, dtype=torch.float32)

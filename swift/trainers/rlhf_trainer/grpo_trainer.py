@@ -591,9 +591,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _get_request_config(self) -> RequestConfig:
         request_config = copy(self.request_config)
-        if self.vllm_mode == 'server':
-            request_config.seed = self.args.seed
-        else:
+        if self.use_vllm and self.vllm_mode == 'colocate':
             # Set request_config.seed
             # 1. Ensure that the seed for vLLM Engines within each TP (Tensor Parallelism) group is the same;
             #   otherwise, the program may hang.
