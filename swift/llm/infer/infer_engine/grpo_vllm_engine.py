@@ -1,17 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from copy import copy, deepcopy
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import Any, Dict, Optional
 
 import torch
-import tqdm
-from packaging import version
 
-from swift.llm import InferRequest, Template, VllmEngine
-from swift.plugin import Metric
-from swift.utils import get_dist_setting, is_dist
-from ..protocol import ChatCompletionResponse, ChatCompletionStreamResponse, RequestConfig
-from .utils import AdapterRequest
+from swift.llm import Template, VllmEngine
 
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.

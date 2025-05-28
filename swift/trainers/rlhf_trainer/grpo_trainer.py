@@ -521,7 +521,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                request_config: RequestConfig,
                is_global_inputs: bool = False) -> OutputsType:
         from swift.llm.infer.protocol import ChatCompletionResponse
-        request_config = self._get_request_config()
+        request_config = copy(self.request_config)
         # keys from InferRequest
         per_device_size = len(inputs)
         if is_global_inputs:
@@ -588,25 +588,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 results = results[start_idx:end_idx]
 
         return results
-
-    def _get_request_config(self) -> RequestConfig:
-        request_config = copy(self.request_config)
-        if self.use_vllm and self.vllm_mode == 'colocate':
-            # Set request_config.seed
-            # 1. Ensure that the seed for vLLM Engines within each TP (Tensor Parallelism) group is the same;
-            #   otherwise, the program may hang.
-            # 2. Ensure that the seed for vLLM Engines across different TP groups is different;
-            #   otherwise, identical completions will be generated.
-            mode = 'train' if self.model.training else 'eval'
-            batch_size = (
-                self.args.per_device_train_batch_size
-                * self.args.gradient_accumulation_steps if mode == 'train' else self.args.per_device_eval_batch_size)
-            batch_size *= self.vllm_tensor_parallel_size
-            # Since the TP (Tensor Parallelism) group gathers the inputs,
-            # multiply the batch size by the TP parallel size.
-            request_config.seed = batch_size * (self.accelerator.process_index // self.vllm_tensor_parallel_size)
-
-        return request_config
 
     def _set_inputs_system(self, inputs: InputsType) -> InputsType:
         if not self.template.template_meta.default_system:
