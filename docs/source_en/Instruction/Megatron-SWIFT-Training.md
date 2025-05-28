@@ -216,8 +216,8 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - 🔥use_distributed_optimizer: Use a distributed optimizer. Default is True.
 - 🔥tensor_model_parallel_size: TP (Tensor Parallelism) size, default is 1.
 - 🔥pipeline_model_parallel_size: PP (Pipeline Parallelism) size, default is 1.
-- decoder_first_pipeline_num_layers: The number of Transformer layers in the first pipeline stage of the decoder. Default is None, which means the Transformer layers are evenly distributed across all pipeline stages.
-- decoder_last_pipeline_num_layers: The number of Transformer layers in the last pipeline stage of the decoder. Default is None, which means the Transformer layers are evenly distributed across all pipeline stages.
+- 🔥decoder_first_pipeline_num_layers: The number of Transformer layers in the first pipeline stage of the decoder. Default is None, which means the Transformer layers are evenly distributed across all pipeline stages.
+- 🔥decoder_last_pipeline_num_layers: The number of Transformer layers in the last pipeline stage of the decoder. Default is None, which means the Transformer layers are evenly distributed across all pipeline stages.
 - 🔥sequence_parallel: Enable sequence parallel optimization. Default is False.
 - 🔥context_parallel_size: CP (Context Parallelism) size, default is 1.
 - tp_comm_overlap: Overlap tensor parallel communication with GEMM (General Matrix Multiplication) kernels (to reduce communication time). Default is False.

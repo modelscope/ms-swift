@@ -209,8 +209,8 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥use_distributed_optimizer: 使用分布式优化器。默认为True。
 - 🔥tensor_model_parallel_size: tp数，默认为1。
 - 🔥pipeline_model_parallel_size: pp数，默认为1。
-- decoder_first_pipeline_num_layers: decoder第一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
-- decoder_last_pipeline_num_layers: decoder最后一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
+- 🔥decoder_first_pipeline_num_layers: decoder第一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
+- 🔥decoder_last_pipeline_num_layers: decoder最后一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
 - 🔥sequence_parallel: 启动序列并行的优化器。默认为False。
 - 🔥context_parallel_size: cp数，默认为1。
 - tp_comm_overlap: 启用张量并行通信与GEMM（通用矩阵乘法）内核的重叠（降低通信耗时）。默认为False。
