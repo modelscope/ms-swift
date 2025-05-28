@@ -441,7 +441,7 @@ def single_all_to_all(input, scatter_idx, gather_idx, group, **kwargs):
     seq_world_size = dist.get_world_size(group)
     num_heads = input.shape[2]
     if num_heads % seq_world_size != 0 and not scatter_idx < 2:
-        raise NotImplementedError
+        raise NotImplementedError(f'num_heads {num_heads} cannot be split by sp world size {seq_world_size}')
     pre_all2all_permute_idx, pre_all2all_inp_shape, post_all2all_permute_idx, post_all2all_res_shape = (
         _generate_layout_params(scatter_idx, seq_world_size, input))
 
