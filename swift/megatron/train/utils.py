@@ -130,7 +130,12 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(attention_mask)
             _broadcast(position_ids)  # compat packing & cp
 
-        batch = {'input_ids': input_ids, 'labels': labels, 'attention_mask': attention_mask, 'position_ids': position_ids}
+        batch = {
+            'input_ids': input_ids,
+            'labels': labels,
+            'attention_mask': attention_mask,
+            'position_ids': position_ids
+        }
 
     return batch
 
