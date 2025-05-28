@@ -140,7 +140,8 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
 
 
 @profiling_decorator
-def _prepare_inputs(self, generation_batch, ulysses=None):
+def _prepare_inputs(self, generation_batch):
+    ulysses = self.ulysses
     mode = 'train' if self.model.training else 'eval'
     if mode == 'train':
         generate_every = self.args.steps_per_generation * self.num_iterations * ulysses.sp_world_size
@@ -152,6 +153,11 @@ def _prepare_inputs(self, generation_batch, ulysses=None):
     else:
         inputs = self._generate_and_score_completions(generation_batch)
     return inputs
+
+
+def old_policy(self):
+    ulysses = self.ulysses
+    return self.num_iterations > 1 or self.args.steps_per_generation * ulysses.sp_world_size > self.args.gradient_accumulation_steps
 
 
 # For DPO
@@ -237,8 +243,9 @@ def packing_context(self, model: torch.nn.Module):
 
 
 @profiling_decorator
-def _get_per_token_logps(self, model, inputs, ulysses):
+def _get_per_token_logps(self, model, inputs):
     from trl.trainer.utils import selective_log_softmax
+    ulysses = self.ulysses
     logits_to_keep = inputs['logits_to_keep']
     input_ids = inputs['input_ids']
     inputs = {
@@ -297,7 +304,8 @@ def _get_per_token_logps(self, model, inputs, ulysses):
     return per_token_logps[:, -logits_to_keep - 1:-1]
 
 
-def split_by_mini_batches(self, inputs, advantages, ulysses):
+def split_by_mini_batches(self, inputs, advantages):
+    ulysses = self.ulysses
     inputs_len = len(inputs)
     output = [None] * ulysses.sp_world_size
     dist.all_gather_object(output, inputs, group=ulysses.sp_group)
@@ -319,6 +327,7 @@ def split_by_mini_batches(self, inputs, advantages, ulysses):
     if mode == 'eval':
         # TODO only take the first bs rows, because eval does not support loop
         inputs = inputs[:bs]
+        advantages = advantages[:bs]
     assert len(inputs) == bs * spg, f'Expected {bs * spg} inputs, got {len(inputs)}'
     spg_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(spg)]
     # Split advantages by spg chunks
@@ -781,13 +790,15 @@ class Ulysses(SequenceParallel):
             raise ValueError('Trainer: training requires a train_dataset.')
 
         trainer.compute_loss_func = partial(loss_scale_sp_func, ulysses=self)
-        trainer.args.gradient_accumulation_steps = trainer.args.gradient_accumulation_steps * self.sp_world_size
         if hasattr(trainer, 'get_batch_logps'):
             trainer.get_batch_logps = partial(get_batch_logps, ulysses=self)
         if hasattr(trainer, '_get_per_token_logps'):
-            trainer._prepare_inputs = MethodType(partial(_prepare_inputs, ulysses=self), trainer)
-            trainer._get_per_token_logps = MethodType(partial(_get_per_token_logps, ulysses=self), trainer)
-            trainer.split_by_mini_batches = MethodType(partial(split_by_mini_batches, ulysses=self), trainer)
+            trainer.ulysses = self
+            trainer.args.gradient_accumulation_steps = trainer.args.gradient_accumulation_steps * self.sp_world_size
+            trainer.old_policy = MethodType(old_policy, trainer)
+            trainer._prepare_inputs = MethodType(_prepare_inputs, trainer)
+            trainer._get_per_token_logps = MethodType(_get_per_token_logps, trainer)
+            trainer.split_by_mini_batches = MethodType(split_by_mini_batches, trainer)
         if hasattr(trainer, 'get_nll_loss'):
 
             def rlhf_loss_scale_sp_func(_, *args, **kwargs):

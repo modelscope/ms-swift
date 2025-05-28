@@ -417,7 +417,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         max_num_seqs = (
             self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size
-            * self.args.gradient_accumulation_steps)
+            * self.args.steps_per_generation)
         current_device = get_device()
         with Swift.grpo_context(model, self.template.processor):
             engine = GRPOVllmEngine(
@@ -607,7 +607,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             mode = 'train' if self.model.training else 'eval'
             batch_size = (
                 self.args.per_device_train_batch_size
-                * self.args.gradient_accumulation_steps if mode == 'train' else self.args.per_device_eval_batch_size)
+                * self.args.steps_per_generation if mode == 'train' else self.args.per_device_eval_batch_size)
             batch_size *= self.vllm_tensor_parallel_size
             # Since the TP (Tensor Parallelism) group gathers the inputs,
             # multiply the batch size by the TP parallel size.
@@ -1002,7 +1002,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             with torch.no_grad():
                 batch_encoded_inputs['old_per_token_logps'] = (
-                    self._get_per_token_logps(self.model, batch_encoded_inputs) if self.old_policy else None)
+                    self._get_per_token_logps(self.model, batch_encoded_inputs) if self.old_policy() else None)
 
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
@@ -1348,7 +1348,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     request['images'][i] = img['path']
         return
 
-    @property
     def old_policy(self):
         return self.num_iterations > 1 or self.args.steps_per_generation > self.args.gradient_accumulation_steps
 
