@@ -139,6 +139,21 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
     return total_loss
 
 
+@profiling_decorator
+def _prepare_inputs(self, generation_batch, ulysses=None):
+    mode = 'train' if self.model.training else 'eval'
+    if mode == 'train':
+        generate_every = self.args.steps_per_generation * self.num_iterations * ulysses.sp_world_size
+        if self._step % generate_every == 0 or self._buffered_inputs is None:
+            generation_batch = self._generate_and_score_completions(generation_batch)
+            self._buffered_inputs = generation_batch  # < this is the change
+        inputs = self._buffered_inputs[self._step % (self.args.steps_per_generation * ulysses.sp_world_size)]
+        self._step += 1
+    else:
+        inputs = self._generate_and_score_completions(generation_batch)
+    return inputs
+
+
 # For DPO
 def get_batch_logps(logits: torch.FloatTensor,
                     labels: torch.LongTensor,
@@ -170,7 +185,7 @@ def packing_context(self, model: torch.nn.Module):
         else:
             kwargs['position_ids'] = torch.arange(kwargs['inputs_embeds'].shape[1]).unsqueeze(0).repeat(
                 kwargs['inputs_embeds'].shape[0], 1).to(torch.int64).to(kwargs['inputs_embeds'].device)
-            kwargs['inputs_embeds'] = kwargs['inputs_embeds'][attention_mask.bool()].unsqueeze(0)  
+            kwargs['inputs_embeds'] = kwargs['inputs_embeds'][attention_mask.bool()].unsqueeze(0)
         kwargs['position_ids'] = kwargs['position_ids'][attention_mask.bool()].unsqueeze(0)
         kwargs.pop('attention_mask', None)
         return args, kwargs
@@ -301,7 +316,9 @@ def split_by_mini_batches(self, inputs, advantages, ulysses):
     mode = 'train' if self.model.training else 'eval'
     bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
     spg = self.args.steps_per_generation * ulysses.sp_world_size if mode == 'train' else 1
-
+    if mode == 'eval':
+        # TODO only take the first bs rows, because eval does not support loop
+        inputs = inputs[:bs]
     assert len(inputs) == bs * spg, f'Expected {bs * spg} inputs, got {len(inputs)}'
     spg_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(spg)]
     # Split advantages by spg chunks
@@ -764,9 +781,11 @@ class Ulysses(SequenceParallel):
             raise ValueError('Trainer: training requires a train_dataset.')
 
         trainer.compute_loss_func = partial(loss_scale_sp_func, ulysses=self)
+        trainer.args.gradient_accumulation_steps = trainer.args.gradient_accumulation_steps * self.sp_world_size
         if hasattr(trainer, 'get_batch_logps'):
             trainer.get_batch_logps = partial(get_batch_logps, ulysses=self)
         if hasattr(trainer, '_get_per_token_logps'):
+            trainer._prepare_inputs = MethodType(partial(_prepare_inputs, ulysses=self), trainer)
             trainer._get_per_token_logps = MethodType(partial(_get_per_token_logps, ulysses=self), trainer)
             trainer.split_by_mini_batches = MethodType(partial(split_by_mini_batches, ulysses=self), trainer)
         if hasattr(trainer, 'get_nll_loss'):
