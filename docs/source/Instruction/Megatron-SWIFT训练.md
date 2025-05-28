@@ -11,6 +11,7 @@ SWIFT引入了Megatron的并行技术来加速大模型的训练，包括数据�
 pip install pybind11
 # transformer_engine
 # 若出现安装错误，可以参考该issue解决: https://github.com/modelscope/ms-swift/issues/3793
+# ms-swift使用此版本测试: pip install git+https://github.com/NVIDIA/TransformerEngine.git@9c8ba5c8d1a9a8479ab45fbf7951025a393e7c66
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
 
 # apex
@@ -158,6 +159,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - no_rope_fusion: 默认为False。指定`--no_rope_fusion true`用于禁止rope融合。
 - no_gradient_accumulation_fusion: 默认为False。指定`--no_gradient_accumulation_fusion true`用于禁用梯度累加融合。
 - 🔥cross_entropy_loss_fusion: 启动交叉熵损失计算融合。默认为False。
+- cross_entropy_fusion_impl: 交叉熵损失融合的实现。可选为'native'和'te'。默认为'native'。
 - calculate_per_token_loss: 根据全局批次中的非填充token数量来对交叉熵损失进行缩放。默认为True。
 - 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 auto。
 - optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
@@ -208,8 +210,8 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥use_distributed_optimizer: 使用分布式优化器。默认为True。
 - 🔥tensor_model_parallel_size: tp数，默认为1。
 - 🔥pipeline_model_parallel_size: pp数，默认为1。
-- decoder_first_pipeline_num_layers: decoder第一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
-- decoder_last_pipeline_num_layers: decoder最后一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
+- 🔥decoder_first_pipeline_num_layers: decoder第一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
+- 🔥decoder_last_pipeline_num_layers: decoder最后一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
 - 🔥sequence_parallel: 启动序列并行的优化器。默认为False。
 - 🔥context_parallel_size: cp数，默认为1。
 - tp_comm_overlap: 启用张量并行通信与GEMM（通用矩阵乘法）内核的重叠（降低通信耗时）。默认为False。
@@ -276,8 +278,11 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - moe_router_topk: 每个token路由到的专家数量。默认为None。自动从config.json读取。
 - moe_router_pre_softmax: 为MoE启用预softmax路由，这意味着softmax会在top-k选择之前进行。默认为None。自动从config.json读取。
 - 🔥moe_aux_loss_coeff: 辅助损失的缩放系数：建议的初始值为 1e-2。默认为None。自动从config.json读取。
+- moe_router_dtype: 用于路由计算和专家输出加权平均的数据类型。可选为'fp32'、'fp64'，这增强了数值稳定性，尤其是在专家数量较多时。与`moe_permute_fusion`一起使用时，性能影响可以忽略不计。默认为None，不改变数据类型。
+- moe_permute_fusion: 在令牌分发过程中融合令牌重排操作。默认为False。
 - 🔥expert_model_parallel_size: 专家并行数，默认为1。
-- moe_token_dispatcher_type: 要使用的token分发器类型。可选选项包括 'allgather'、'alltoall' 和 'alltoall_seq'。默认值为 'alltoall'。
+- moe_token_dispatcher_type: 要使用的token分发器类型。可选选项包括 'allgather'、'alltoall'、'flex'和'alltoall_seq'。默认值为'alltoall'。
+- moe_enable_deepep: 实验性功能，启用DeepSeek/DeepEP以实现 MoE 模型中的高效令牌分发与组合。仅在设置`--moe_token_dispatcher_type flex`使用灵活令牌分发器时生效。
 - moe_grouped_gemm: 当每个rank包含多个专家时，通过在多个流中启动多个本地 GEMM 内核，利用 TransformerEngine中的GroupedLinear提高利用率和性能。默认为False。
 - moe_router_load_balancing_type: 确定路由器的负载均衡策略。可选项为"aux_loss"、"seq_aux_loss"、"sinkhorn"、"none"。默认值为 "aux_loss"。
 - moe_z_loss_coeff: z-loss 的缩放系数。默认为None。

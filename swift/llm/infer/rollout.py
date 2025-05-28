@@ -251,7 +251,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
             if not requests:
                 requests = RolloutInferRequest(messages=[{'role': 'user', 'content': '<placeholder>'}])
             # different seed bewteen vLLM Engine
-            request_config.seed += i * len(requests)
+            if request_config.seed:
+                request_config.seed += i * len(requests)
             kwargs = {'infer_requests': requests, 'request_config': request_config, 'use_tqdm': use_tqdm}
             connection.send({'type': 'call', 'method': 'infer', 'kwargs': kwargs})
 

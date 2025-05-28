@@ -2,6 +2,7 @@
 import os
 import sys
 from dataclasses import asdict, dataclass, field
+from datetime import timedelta
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import megatron.core
@@ -45,6 +46,7 @@ class MegatronArguments(ExtraMegatronArguments):
     no_rope_fusion: bool = False
     no_gradient_accumulation_fusion: bool = False
     cross_entropy_loss_fusion: bool = False
+    cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
     calculate_per_token_loss: bool = True
     use_flash_attn: bool = False
     attention_backend: str = 'auto'  # flash, fused, unfused, local, auto
@@ -127,9 +129,12 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_router_topk: Optional[int] = None
     moe_router_pre_softmax: Optional[bool] = None
     moe_aux_loss_coeff: Optional[float] = None
+    moe_router_dtype: Literal['fp32', 'fp64'] = None
+    moe_permute_fusion: bool = False
 
     expert_model_parallel_size: int = 1
-    moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'alltoall_seq'] = 'alltoall'
+    moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex', 'alltoall_seq'] = 'alltoall'
+    moe_enable_deepep: bool = False
     moe_grouped_gemm: bool = False
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = 'aux_loss'
     moe_z_loss_coeff: Optional[float] = None
@@ -212,6 +217,18 @@ class MegatronArguments(ExtraMegatronArguments):
         else:
             self.ffn_hidden_size = self.moe_ffn_hidden_size
 
+    @staticmethod
+    def _patch_megatron_timeout(distributed_timeout_minutes: int):
+        from megatron.core import parallel_state
+        create_group_origin = parallel_state.create_group
+
+        def create_group(ranks=None, timeout=None, *args, **kwargs):
+            if timeout is None:
+                timeout = timedelta(minutes=distributed_timeout_minutes)
+            return create_group_origin(ranks, timeout, *args, **kwargs)
+
+        parallel_state.create_group = create_group
+
     def __post_init__(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
         if self.use_flash_attn or self.attention_backend == 'flash':
@@ -220,6 +237,7 @@ class MegatronArguments(ExtraMegatronArguments):
         self._set_default()
         if hasattr(self, 'ddp_timeout'):
             self.distributed_timeout_minutes = self.ddp_timeout // 60
+        self._patch_megatron_timeout(self.distributed_timeout_minutes)
         self.group_query_attention = self.num_query_groups > 1
         if self.rope_scaling is not None:
             self.rope_scaling = ModelArguments.parse_to_dict(self.rope_scaling)
@@ -241,11 +259,13 @@ class MegatronArguments(ExtraMegatronArguments):
         extra_args = {}
         extra_megatron_kwargs = args_dict.pop('extra_megatron_kwargs')
         args_dict.update(extra_megatron_kwargs)
+        use_core_011 = version.parse(megatron.core.__version__) < version.parse('0.12')
+        core_012_arguments = {'recompute_modules', 'moe_router_dtype', 'cross_entropy_fusion_impl', 'moe_enable_deepep'}
         for k, value in args_dict.items():
             if k not in MegatronArguments.__annotations__ and k not in extra_megatron_kwargs:
                 extra_args[k] = value
                 continue
-            if k == 'recompute_modules' and version.parse(megatron.core.__version__) < version.parse('0.12'):
+            if use_core_011 and k in core_012_arguments:
                 continue
             if value is None or value is False:
                 continue
