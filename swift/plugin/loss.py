@@ -386,7 +386,11 @@ def online_contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch
 
 
 @register_loss_func(LossType.channel_loss)
-def channel_loss_func(outputs, labels, loss_scale=None, num_items_in_batch=None, channels=None,
+def channel_loss_func(outputs,
+                      labels,
+                      loss_scale=None,
+                      num_items_in_batch=None,
+                      channels=None,
                       trainer=None) -> torch.Tensor:
     logits = outputs.logits
     channel_cid = trainer.channel_cid

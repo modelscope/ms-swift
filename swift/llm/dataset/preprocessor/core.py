@@ -20,8 +20,9 @@ logger = get_logger()
 
 
 class RowPreprocessor:
-    standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects',
-                     'channel']
+    standard_keys = [
+        'messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects', 'channel'
+    ]
 
     def __init__(self,
                  *,
@@ -328,8 +329,10 @@ class RowPreprocessor:
             logger.info(
                 f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
         if channel:
-            dataset_mapped = dataset_mapped.map(lambda example, idx: {**example, 'channel': channel[idx]},
-                                                with_indices=True)
+            dataset_mapped = dataset_mapped.map(
+                lambda example, idx: {
+                    **example, 'channel': channel[idx]
+                }, with_indices=True)
 
         return dataset_mapped
 

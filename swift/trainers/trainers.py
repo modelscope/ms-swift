@@ -88,8 +88,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             self.infer_engine = PtEngine.from_model_template(
                 self.model, self.template, max_batch_size=self.args.per_device_eval_batch_size)
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
-        self.channel_cid=None
-        self.cid_channel=None
+        self.channel_cid = None
+        self.cid_channel = None
 
     @staticmethod
     def _predict_data_collator(batch):
