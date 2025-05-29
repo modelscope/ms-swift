@@ -10,6 +10,8 @@ from accelerate.utils import gather_object
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 from transformers.utils import strtobool
+import torch.distributed as dist
+from swift.plugin import MeanMetric
 
 
 class LossType:
@@ -18,6 +20,7 @@ class LossType:
     contrastive = 'contrastive'
     online_contrastive = 'online_contrastive'
     infonce = 'infonce'
+    channel_loss = 'channel_loss'
 
 
 LOSS_MAPPING = {}
@@ -380,6 +383,58 @@ def online_contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch
     negative_loss = F.relu(margin - negative_pairs).pow(2).sum()
     loss = positive_loss + negative_loss
     return loss
+
+
+@register_loss_func(LossType.channel_loss)
+def channel_loss_func(outputs, labels, loss_scale=None, num_items_in_batch=None, channels=None,
+                      trainer=None) -> torch.Tensor:
+    logits = outputs.logits
+    channel_cid = trainer.channel_cid
+    cid_channel = trainer.cid_channel
+    channels_tensor = torch.tensor([channel_cid[channel] for channel in channels], device=logits.device)
+
+    # compute token loss
+    shift_logits = logits[..., :-1, :].contiguous()
+    shift_labels = labels[..., 1:].contiguous()
+    loss_fct = nn.CrossEntropyLoss(reduction='none')
+    flat_logits = shift_logits.view(-1, shift_logits.size(-1))
+    flat_labels = shift_labels.view(-1)
+    token_loss = loss_fct(flat_logits, flat_labels).view_as(shift_labels)  # [batch_size, seq_len-1]
+
+    mask = shift_labels != -100
+
+    state = trainer.state
+    state.local_step += 1
+
+    for cid in torch.unique(channels_tensor):
+        idx = (channels_tensor == cid)
+        ch_loss_step = token_loss[idx].masked_select(mask[idx])
+        state.ch_loss_steps.setdefault(cid.item(), []).append(ch_loss_step)
+
+    # At the end of a global step, compute the mean loss for each channel
+    if state.local_step % trainer.args.gradient_accumulation_steps == 0:
+        for cid, ch_name in cid_channel.items():
+            ch_loss_steps = state.ch_loss_steps.get(cid, [])
+            if ch_loss_steps:
+                loss_sum_tensor = torch.tensor([sum(torch.sum(x) for x in ch_loss_steps)], device=logits.device)
+                num_items_tensor = torch.tensor([sum(x.numel() for x in ch_loss_steps)], device=logits.device)
+                ch_loss = (loss_sum_tensor / num_items_tensor)
+                if dist.is_initialized():
+                    gather_loss = [torch.zeros_like(ch_loss) for _ in range(dist.get_world_size())]
+                    dist.all_gather(gather_loss, ch_loss)
+                    ch_loss = torch.cat(gather_loss, dim=0)
+                ch_loss = ch_loss.mean().item()
+
+                metric_key = f'loss_{ch_name}'
+                trainer._custom_metrics.setdefault(metric_key, MeanMetric(nan_value=None)).update(ch_loss)
+            # Reset
+            state.ch_loss_steps[cid] = []
+
+    # return loss
+    total_loss = token_loss.masked_select(mask).sum()
+    total_tokens = mask.sum()
+    return total_loss / num_items_in_batch if num_items_in_batch is not None \
+        else total_loss / (total_tokens.float() + 1e-12)
 
 
 def get_loss_func(loss_type: Optional[str]) -> Optional[Callable]:

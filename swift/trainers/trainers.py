@@ -88,6 +88,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             self.infer_engine = PtEngine.from_model_template(
                 self.model, self.template, max_batch_size=self.args.per_device_eval_batch_size)
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
+        self.channel_cid=None
+        self.cid_channel=None
 
     @staticmethod
     def _predict_data_collator(batch):
@@ -156,6 +158,24 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         labels = None
         if (self.label_smoother is not None or self.compute_loss_func is not None) and 'labels' in inputs:
             labels = inputs.pop('labels')
+
+        channels = inputs.pop('channel', None)
+        if channels is not None:
+            self.channel_cid = self.channel_cid or {}
+            self.cid_channel = self.cid_channel or {}
+
+            for ch in set(channels):
+                if ch not in self.channel_cid:
+                    cid = len(self.channel_cid)
+                    self.channel_cid[ch] = cid
+                    self.cid_channel[cid] = ch
+
+            state = self.state
+            setattr(state, 'local_step', getattr(state, 'local_step', 0))
+            setattr(state, 'ch_loss_steps', getattr(state, 'ch_loss_steps', {}))
+
+            loss_kwargs['channels'] = channels
+            loss_kwargs['trainer'] = self
 
         loss_scale = inputs.pop('loss_scale', None)
         if loss_scale is not None:
