@@ -9,10 +9,9 @@
 #   ]}
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --dataset '/path/to/your_channel_dataset' \
+    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --dataset '/path/to/channel_dataset' \
     --train_type full \
-    --dataset '/path/to/dataset' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
