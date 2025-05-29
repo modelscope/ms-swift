@@ -171,17 +171,23 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         use_logits_to_keep = self.args.use_logits_to_keep
         if use_logits_to_keep is None:
             # padding_free or packing
-            use_logits_to_keep = 'labels' in inputs and inputs['labels'].shape[
-                0] == 1 and 'logits_to_keep' in inspect.signature(base_model.forward).parameters
+            use_logits_to_keep = 'labels' in inputs and 'logits_to_keep' in inspect.signature(
+                base_model.forward).parameters
         logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
 
         if use_logits_to_keep:
-            loss_mask = (inputs['labels'] != -100)[0]
-            inputs['labels'] = inputs['labels'][:, loss_mask]
-            inputs['labels'] = nn.functional.pad(inputs['labels'], (1, 0), value=-100)
-            inputs['logits_to_keep'] = nn.functional.pad(loss_mask[1:], (0, 1), value=True)
-            if is_mp():
-                inputs['logits_to_keep'] = inputs['logits_to_keep'].cpu()
+            if inputs['labels'].shape[0] == 1:
+                loss_mask = (inputs['labels'] != -100)[0]
+                inputs['labels'] = inputs['labels'][:, loss_mask]
+                inputs['labels'] = nn.functional.pad(inputs['labels'], (1, 0), value=-100)
+                inputs['logits_to_keep'] = nn.functional.pad(loss_mask[1:], (0, 1), value=True)
+                if is_mp():
+                    inputs['logits_to_keep'] = inputs['logits_to_keep'].cpu()
+            else:
+                inputs['logits_to_keep'] = (inputs['labels'].shape[-1] -
+                                            (torch.ne(inputs['labels'], -100).int().argmax(-1))).max().item() + 1
+                assert inputs['logits_to_keep'] > 0
+                inputs['labels'] = inputs['labels'][:, -inputs['logits_to_keep']:]
         with self.template.compute_loss_context(self.model, inputs):
             outputs = model(**inputs)
         # Save past state if it exists
