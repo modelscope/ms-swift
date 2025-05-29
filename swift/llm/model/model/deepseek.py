@@ -251,6 +251,7 @@ register_model(
             ModelGroup([
                 Model('deepseek-ai/DeepSeek-R1', 'deepseek-ai/DeepSeek-R1'),
                 Model('deepseek-ai/DeepSeek-R1-Zero', 'deepseek-ai/DeepSeek-R1-Zero'),
+                Model('deepseek-ai/DeepSeek-R1-0528', 'deepseek-ai/DeepSeek-R1-0528')
             ]),
             ModelGroup([
                 Model('cognitivecomputations/DeepSeek-R1-awq', 'cognitivecomputations/DeepSeek-R1-AWQ'),
