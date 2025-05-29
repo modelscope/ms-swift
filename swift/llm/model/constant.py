@@ -14,6 +14,7 @@ class LLMModelType:
     qwq = 'qwq'
     qwen3 = 'qwen3'
     qwen3_moe = 'qwen3_moe'
+    qwen3_emb = 'qwen3_emb'
 
     qwen2_gte = 'qwen2_gte'
 
