@@ -861,7 +861,6 @@ register_dataset(
                 preprocess_func=SelfCognitionPreprocessor(
                     query_suffix=' /no_think', response_prefix='<think>\n\n</think>\n\n')),
             SubsetDataset(
-                'empty_think',
-                preprocess_func=SelfCognitionPreprocessor(response_prefix='<think>\n\n</think>\n\n')),
+                'empty_think', preprocess_func=SelfCognitionPreprocessor(response_prefix='<think>\n\n</think>\n\n')),
         ],
         tags=['chat', 'self-cognition', '🔥']))
