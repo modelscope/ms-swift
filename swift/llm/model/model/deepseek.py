@@ -280,9 +280,12 @@ register_model(
                 Model('deepseek-ai/DeepSeek-R1-Distill-Llama-8B', 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B'),
                 Model('deepseek-ai/DeepSeek-R1-Distill-Llama-70B', 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B'),
             ]),
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-R1-0528-Qwen3-8B', 'deepseek-ai/DeepSeek-R1-0528-Qwen3-8B'),
+            ]),
         ],
         TemplateType.deepseek_r1,
         get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen2ForCausalLM', 'LlamaForCausalLM'],
+        architectures=['Qwen2ForCausalLM', 'LlamaForCausalLM', 'Qwen3ForCausalLM'],
         model_arch=ModelArch.llama,
     ))
