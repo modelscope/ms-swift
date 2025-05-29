@@ -72,12 +72,7 @@ class SwiftRLHF(SwiftSft):
             model = prepare_adapter(args, model, adapters)
             if origin_key in {'ref', 'reward'}:
                 if self.args.sequence_parallel_size > 1:
-                    from swift.trainers.sequence_parallel import sequence_parallel
-                    if hasattr(model, 'model_meta'):
-                        is_multimodal = model.model_meta.is_multimodal
-                    else:
-                        is_multimodal = model.model.model_meta.is_multimodal
-                    sequence_parallel.prepare_model(model, processor, split_in_forward=is_multimodal)
+                    sequence_parallel.prepare_model(model, processor)
                 model.requires_grad_(False).eval()
             else:
                 model = self.prepare_model(args, model, task_type=task_type)

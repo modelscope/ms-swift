@@ -74,9 +74,22 @@ def _patch_max_epochs():
     training.cyclic_iter = new_cyclic_iter
 
 
+def _patch__batched_p2p_ops():
+    from megatron.core.pipeline_parallel import p2p_communication
+
+    _batched_p2p_ops_origin = p2p_communication._batched_p2p_ops
+
+    def _batched_p2p_ops(**kwargs):
+        kwargs['group'] = None
+        return _batched_p2p_ops_origin(**kwargs)
+
+    p2p_communication._batched_p2p_ops = _batched_p2p_ops
+
+
 def _patch_megatron():
     _patch_transformer_engine()
     _patch_max_epochs()
+    _patch__batched_p2p_ops()
 
 
 def init_megatron_env() -> None:
