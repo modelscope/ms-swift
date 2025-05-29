@@ -412,6 +412,7 @@ def check_shared_disk(error, cache_dir: Optional[str] = None):
         cache_dir = os.path.join(get_cache_dir(), 'tmp')
     os.makedirs(cache_dir, exist_ok=True)
     tmp_path = os.path.join(cache_dir, 'check_shared_disk.tmp')
+    is_shared_disk = True
     with safe_ddp_context(None, True):
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
@@ -422,7 +423,11 @@ def check_shared_disk(error, cache_dir: Optional[str] = None):
                     pass
             else:
                 if not os.path.exists(tmp_path):
-                    raise error
+                    is_shared_disk = False
     finally:
         if is_master() and os.path.exists(tmp_path):
             os.remove(tmp_path)
+    shared_state = [None] * dist.get_world_size()
+    dist.all_gather_object(shared_state, is_shared_disk)
+    if not all(shared_state):
+        raise error

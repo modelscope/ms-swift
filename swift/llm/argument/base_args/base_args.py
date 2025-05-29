@@ -80,7 +80,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     load_data_args: bool = False
     # dataset
     packing: bool = False
-    packing_cache_dir: Optional[str] = None
+    packing_cache: Optional[str] = None
     custom_register_path: List[str] = field(default_factory=list)  # .py
     # hub
     use_hf: bool = False
@@ -135,12 +135,13 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     def _check_packing(self):
         if not self.packing:
             return
-        error = ValueError('When using packing across multiple nodes, the `--packing_cache_dir '
-                           '<shared_path>` parameter must be specified to centrally store '
-                           'data caches on a shared disk.')
-        check_shared_disk(error, self.packing_cache_dir)
-        if self.packing_cache_dir:
-            os.environ['PACKING_CACHE_DIR'] = self.packing_cache_dir
+        error = ValueError('When using the packing feature across multiple nodes, ensure that all nodes share '
+                           'the same packing cache directory. You can achieve this by setting the '
+                           '`MODELSCOPE_CACHE` environment variable or by adding the `--packing_cache '
+                           '<shared_path>` argument in the command line.')
+        check_shared_disk(error, self.packing_cache)
+        if self.packing_cache:
+            os.environ['PACKING_CACHE'] = self.packing_cache
 
     def __post_init__(self):
         if self.use_hf or use_hf_hub():
