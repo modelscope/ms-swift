@@ -392,6 +392,7 @@ def channel_loss_func(outputs,
                       num_items_in_batch=None,
                       channels=None,
                       trainer=None) -> torch.Tensor:
+    assert channels is not None, "channels should not be None"
     logits = outputs.logits
     channel_cid = trainer.channel_cid
     cid_channel = trainer.cid_channel
