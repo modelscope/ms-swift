@@ -828,6 +828,11 @@ class SelfCognitionPreprocessor(ResponsePreprocessor):
     name: Optional[Tuple[str, str]] = None
     author: Optional[Tuple[str, str]] = None
 
+    def __init__(self, *args, query_suffix: str = '', response_prefix: str = '', **kwargs):
+        self.query_suffix = query_suffix
+        self.response_prefix = response_prefix
+        super().__init__(*args, **kwargs)
+
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         for key in ['name', 'author']:
             val = getattr(self, key)
@@ -839,21 +844,9 @@ class SelfCognitionPreprocessor(ResponsePreprocessor):
             placeholder = '{{' + key.upper() + '}}'
             row['query'] = row['query'].replace(placeholder, val)
             row['response'] = row['response'].replace(placeholder, val)
-        return super().preprocess(row)
 
-
-class Qwen3SelfCognitionPreprocessor(SelfCognitionPreprocessor):
-
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        row['query'] = row['query'] + ' /no_think'
-        row['response'] = '<think>\n\n</think>\n\n' + row['response']
-        return super().preprocess(row)
-
-
-class EmptyThinkSelfCognitionPreprocessor(SelfCognitionPreprocessor):
-
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        row['response'] = '<think>\n\n</think>\n\n' + row['response']
+        row['query'] = row['query'] + self.query_suffix
+        row['response'] = self.response_prefix + row['response']
         return super().preprocess(row)
 
 
@@ -863,7 +856,12 @@ register_dataset(
         hf_dataset_id='modelscope/self-cognition',
         subsets=[
             SubsetDataset(preprocess_func=SelfCognitionPreprocessor()),
-            SubsetDataset('qwen3', preprocess_func=Qwen3SelfCognitionPreprocessor()),
-            SubsetDataset('empty_think', preprocess_func=EmptyThinkSelfCognitionPreprocessor()),
+            SubsetDataset(
+                'qwen3',
+                preprocess_func=SelfCognitionPreprocessor(
+                    query_suffix=' /no_think', response_prefix='<think>\n\n</think>\n\n')),
+            SubsetDataset(
+                'empty_think',
+                preprocess_func=SelfCognitionPreprocessor(response_prefix='<think>\n\n</think>\n\n')),
         ],
         tags=['chat', 'self-cognition', '🔥']))
