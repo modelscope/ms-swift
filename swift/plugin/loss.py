@@ -5,12 +5,13 @@ from typing import Callable, Optional
 
 import numpy as np
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
 from accelerate.utils import gather_object
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 from transformers.utils import strtobool
-import torch.distributed as dist
+
 from swift.plugin import MeanMetric
 
 
@@ -392,7 +393,7 @@ def channel_loss_func(outputs,
                       num_items_in_batch=None,
                       channels=None,
                       trainer=None) -> torch.Tensor:
-    assert channels is not None, "channels should not be None"
+    assert channels is not None, 'channels should not be None'
     logits = outputs.logits
     channel_cid = trainer.channel_cid
     cid_channel = trainer.cid_channel
