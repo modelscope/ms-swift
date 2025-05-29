@@ -24,7 +24,6 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
             if getattr(self, k) is None:
                 setattr(self, k, v)
         MegatronArguments.__post_init__(self)
-        self._check_packing()
         self.extra_args = self.parse_to_megatron()
 
     def _init_save(self):
@@ -43,6 +42,7 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
         self.load = to_abspath(self.load, check_path_exist=True)
         BaseArguments.__post_init__(self)
         self._init_save()
+        self._check_packing()
         self.seq_length = self.seq_length or self.max_length
         if self.streaming:
             self.dataloader_type = 'external'
