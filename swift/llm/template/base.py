@@ -911,8 +911,7 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
         return system
 
-    @staticmethod
-    def _swift_prepare_messages(agent_template, messages):
+    def _swift_prepare_messages(self, messages):
         if len(messages) < 2:
             return
         i = 1
@@ -924,7 +923,7 @@ class Template(ProcessorMixin):
                 i_start = i
                 while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool':
                     i += 1
-                pre_message['content'], tool_content = agent_template._format_tool_responses(
+                pre_message['content'], tool_content = self.agent_template._format_tool_responses(
                     pre_content, messages[i_start:i + 1])
                 messages[i_start:i + 1] = [{'role': 'tool', 'content': tool_content}]
                 i = i_start + 1
@@ -938,7 +937,7 @@ class Template(ProcessorMixin):
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
         system = self._get_system(inputs)
-        self._swift_prepare_messages(self.agent_template, inputs.messages)
+        self._swift_prepare_messages(inputs.messages)
 
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2
@@ -1475,12 +1474,6 @@ class Template(ProcessorMixin):
             else:
                 position_ids = res['position_ids']
             assert padding_side == 'right' or bs == 1, 'Sequence parallel only support padding_side=right'
-            from swift.trainers.sequence_parallel import sequence_parallel
-            if sequence_parallel.world_size() > 1:
-                from swift.trainers.sequence_parallel import sequence_parallel
-                input_ids, _, labels, position_ids, attention_mask, loss_scale = \
-                    sequence_parallel.pad_and_split_inputs(
-                        tokenizer, input_ids, None, labels, position_ids, attention_mask, loss_scale)
             res['position_ids'] = position_ids
         _local_var = locals()
         for key in ['input_ids', 'attention_mask', 'labels', 'loss_scale']:

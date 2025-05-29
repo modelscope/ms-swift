@@ -23,7 +23,7 @@ class InferClient(InferEngine):
                  api_key: str = 'EMPTY',
                  *,
                  base_url: Optional[str] = None,
-                 timeout: Optional[int] = None) -> None:
+                 timeout: Optional[int] = 3600) -> None:
         """
         Initialize the InferClient.
 
@@ -36,9 +36,6 @@ class InferClient(InferEngine):
         self.api_key = api_key
         self.host = host
         self.port = port
-        if timeout is None:
-            timeout = os.getenv('TIMEOUT')
-            timeout = timeout and float(timeout)
         self.timeout = timeout
         if base_url is None:
             base_url = f'http://{self.host}:{self.port}/v1'

@@ -21,7 +21,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.trainer_utils import set_seed
 from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 
-from .env import get_dist_setting, is_dist, is_dist_ta, is_local_master, is_master
+from .env import get_dist_setting, get_node_setting, is_dist, is_dist_ta, is_local_master, is_master
 from .logger import get_logger
 from .utils import deep_getattr
 
@@ -401,3 +401,33 @@ def seed_worker(worker_id: int, num_workers: int, rank: int):
     init_seed = torch.initial_seed() % 2**32
     worker_seed = num_workers * rank + init_seed
     set_seed(worker_seed)
+
+
+def check_shared_disk(error, cache_dir: Optional[str] = None):
+    nnodes = get_node_setting()[1]
+    if nnodes <= 1:
+        return True
+    assert dist.is_initialized()
+    if cache_dir is None:
+        cache_dir = os.path.join(get_cache_dir(), 'tmp')
+    os.makedirs(cache_dir, exist_ok=True)
+    tmp_path = os.path.join(cache_dir, 'check_shared_disk.tmp')
+    is_shared_disk = True
+    with safe_ddp_context(None, True):
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+    try:
+        with safe_ddp_context(None, True):
+            if is_master():
+                with open(tmp_path, 'w'):
+                    pass
+            else:
+                if not os.path.exists(tmp_path):
+                    is_shared_disk = False
+    finally:
+        if is_master() and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+    shared_state = [None] * dist.get_world_size()
+    dist.all_gather_object(shared_state, is_shared_disk)
+    if not all(shared_state):
+        raise error
