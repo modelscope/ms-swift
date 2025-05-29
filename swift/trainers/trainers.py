@@ -170,10 +170,11 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         base_model = self.template.get_base_model(self.model)
         use_logits_to_keep = self.args.use_logits_to_keep
         if use_logits_to_keep is None:
+            # padding_free or packing
             use_logits_to_keep = 'labels' in inputs and inputs['labels'].shape[
                 0] == 1 and 'logits_to_keep' in inspect.signature(base_model.forward).parameters
         logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
-        # padding_free or packing
+
         if use_logits_to_keep:
             loss_mask = (inputs['labels'] != -100)[0]
             inputs['labels'] = inputs['labels'][:, loss_mask]
