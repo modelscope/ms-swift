@@ -135,9 +135,9 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     def _check_packing(self):
         if not self.packing:
             return
-        error = ValueError('When using packing across multiple nodes, it is necessary to additionally '
-                           'specify `--packing_cache_dir <shared_path>` to store packing data caches '
-                           'in a shared disk accessible by all nodes.')
+        error = ValueError('When using packing across multiple nodes, the `--packing_cache_dir '
+                           '<shared_path>` parameter must be specified to centrally store '
+                           'data caches on a shared disk.')
         check_shared_disk(error, self.packing_cache_dir)
         if self.packing_cache_dir:
             os.environ['PACKING_CACHE_DIR'] = self.packing_cache_dir
