@@ -16,7 +16,6 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
     add_version: bool = True
     # dataset
     lazy_tokenize: bool = False
-    packing: bool = False
 
     def init_model_args(self, config):
         self.megatron_model_meta = get_megatron_model_meta(self.model_type)
@@ -43,6 +42,7 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
         self.load = to_abspath(self.load, check_path_exist=True)
         BaseArguments.__post_init__(self)
         self._init_save()
+        self._check_packing()
         self.seq_length = self.seq_length or self.max_length
         if self.streaming:
             self.dataloader_type = 'external'

@@ -1116,17 +1116,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return loss
 
     @contextmanager
-    def packing_context(self, model: torch.nn.Module):
+    def padding_free_context(self, model: torch.nn.Module):
         ctx = {}
 
-        def _packing_input_hook(module, args, kwargs):
+        def _padding_free_input_hook(module, args, kwargs):
             attention_mask = kwargs['attention_mask']
+            # used in _padding_free_output_hook
             ctx['padding_left'] = (attention_mask[:, -1].sum() == attention_mask.shape[0])
             if 'input_ids' in kwargs and kwargs.get('input_ids') is not None:
+                # llm models
                 kwargs['position_ids'] = torch.arange(kwargs['input_ids'].shape[1]).unsqueeze(0).repeat(
                     kwargs['input_ids'].shape[0], 1).to(kwargs['input_ids'].dtype).to(kwargs['input_ids'].device)
                 kwargs['input_ids'] = kwargs['input_ids'][attention_mask.bool()].unsqueeze(0)
             else:
+                # mllm models
                 kwargs['position_ids'] = torch.arange(kwargs['inputs_embeds'].shape[1]).unsqueeze(0).repeat(
                     kwargs['inputs_embeds'].shape[0], 1).to(torch.int64).to(kwargs['inputs_embeds'].device)
                 kwargs['inputs_embeds'] = kwargs['inputs_embeds'][attention_mask.bool()].unsqueeze(0)
@@ -1134,13 +1137,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             kwargs.pop('attention_mask', None)
             return args, kwargs
 
-        def _packing_output_hook(module, args, kwargs, result):
+        def _padding_free_output_hook(module, args, kwargs, result):
             position_ids = kwargs['position_ids']
             seq_lengths = []
             pos = position_ids[0]
             resets = torch.where(pos[1:] < pos[:-1])[0] + 1
 
-            max_length = 0
             if len(resets) == 0:
                 # Only one sequence in this batch item
                 seq_lengths = [pos.max().item() + 1]
@@ -1162,6 +1164,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 padding = torch.zeros(
                     (max_length - length,
                      last_hidden_state.shape[-1])).to(last_hidden_state.dtype).to(last_hidden_state.device)
+                # re-padding
                 if ctx['padding_left']:
                     seq_state = torch.cat((padding, seq_state), dim=0)
                 else:
@@ -1175,8 +1178,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         base_model = llm_model.model
         if self.padding_free:
-            remove_handle1 = base_model.register_forward_pre_hook(_packing_input_hook, with_kwargs=True, prepend=True)
-            remove_handle2 = base_model.register_forward_hook(_packing_output_hook, with_kwargs=True, prepend=True)
+            remove_handle1 = base_model.register_forward_pre_hook(
+                _padding_free_input_hook, with_kwargs=True, prepend=True)
+            remove_handle2 = base_model.register_forward_hook(_padding_free_output_hook, with_kwargs=True, prepend=True)
         yield
         if self.padding_free:
             remove_handle1.remove()
@@ -1195,7 +1199,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             parameters = inspect.signature(unwrapped_model.forward).parameters
         if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
             # save memory
-            with self.packing_context(model):
+            with self.padding_free_context(model):
                 return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
         inputs = {
             k: v
@@ -1205,7 +1209,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             ]
         }
 
-        with self._template_context(self.template), self.packing_context(model):
+        with self._template_context(self.template), self.padding_free_context(model):
             logits = model(**inputs).logits
         # exclude the last logit: it corresponds to the next token pred
         logits = logits[:, -(logits_to_keep + 1):-1, :]

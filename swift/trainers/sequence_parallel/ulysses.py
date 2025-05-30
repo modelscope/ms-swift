@@ -110,7 +110,7 @@ torch_compile_options = {
 }
 
 
-# TODO not work
+# TODO not work with `ChunkedCrossEntropyLoss.apply`
 # @torch.compile(dynamic=True, fullgraph=True, options=torch_compile_options)
 def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None, ulysses=None) -> torch.Tensor:
     if hasattr(outputs, 'logits'):
@@ -146,10 +146,12 @@ def _prepare_inputs(self, generation_batch):
     ulysses = self.ulysses
     mode = 'train' if self.model.training else 'eval'
     if mode == 'train':
+        # changes : `* ulysses.sp_world_size`
         generate_every = self.args.steps_per_generation * self.num_iterations * ulysses.sp_world_size
         if self._step % generate_every == 0 or self._buffered_inputs is None:
             generation_batch = self._generate_and_score_completions(generation_batch)
             self._buffered_inputs = generation_batch  # < this is the change
+        # changes : `* ulysses.sp_world_size`
         inputs = self._buffered_inputs[self._step % (self.args.steps_per_generation * ulysses.sp_world_size)]
         self._step += 1
     else:
@@ -159,6 +161,7 @@ def _prepare_inputs(self, generation_batch):
 
 def old_policy(self):
     ulysses = self.ulysses
+    # changes: `* ulysses.sp_world_size`
     return (self.num_iterations > 1
             or self.args.steps_per_generation * ulysses.sp_world_size > self.args.gradient_accumulation_steps)
 
@@ -181,10 +184,10 @@ def get_batch_logps(logits: torch.FloatTensor,
 
 
 @contextmanager
-def packing_context(self, model: torch.nn.Module):
+def padding_free_context(self, model: torch.nn.Module):
     ctx = {}
 
-    def _packing_input_hook(module, args, kwargs):
+    def _padding_free_input_hook(module, args, kwargs):
         attention_mask = kwargs['attention_mask']
         ctx['padding_left'] = (attention_mask[:, -1].sum() == attention_mask.shape[0])
         if 'input_ids' in kwargs and kwargs.get('input_ids') is not None:
@@ -199,7 +202,7 @@ def packing_context(self, model: torch.nn.Module):
         kwargs.pop('attention_mask', None)
         return args, kwargs
 
-    def _packing_output_hook(module, args, kwargs, result):
+    def _padding_free_output_hook(module, args, kwargs, result):
         position_ids = kwargs['position_ids']
         seq_lengths = []
         pos = position_ids[0]
@@ -237,9 +240,11 @@ def packing_context(self, model: torch.nn.Module):
     llm_model = get_llm_model(model)
 
     if self.padding_free:
-        remove_handle1 = llm_model.model.register_forward_pre_hook(_packing_input_hook, with_kwargs=True, prepend=True)
-        llm_model._unpack_output = _packing_output_hook
-        llm_model._pack_input = _packing_input_hook
+        remove_handle1 = llm_model.model.register_forward_pre_hook(
+            _padding_free_input_hook, with_kwargs=True, prepend=True)
+        # cannot unpack here
+        llm_model._unpack_output = _padding_free_output_hook
+        llm_model._pack_input = _padding_free_input_hook
     yield
     if self.padding_free:
         remove_handle1.remove()
@@ -249,6 +254,7 @@ def packing_context(self, model: torch.nn.Module):
 def _get_per_token_logps(self, model, inputs):
     from trl.trainer.utils import selective_log_softmax
     ulysses = self.ulysses
+    # original logits to keep
     logits_to_keep = inputs['logits_to_keep']
     input_ids = inputs['input_ids']
     inputs = {
@@ -259,23 +265,30 @@ def _get_per_token_logps(self, model, inputs):
         ]
     }
 
-    with self._template_context(self.template), packing_context(self, model):
+    with self._template_context(self.template), padding_free_context(self, model):
         output = model(**inputs)
         logits = output.logits
-
+    # original sequence length sharded
     origin_length = input_ids.shape[-1]
     if self.padding_free:
         _origin_logits_to_keep = logits_to_keep
+        # if padding_free, calculate all logits tokens
         logits_to_keep = inputs['attention_mask'].sum()
+        # packing again
         input_ids = input_ids[inputs['attention_mask'].bool()].unsqueeze(0)
+        # set origin length to all logits length
         origin_length = inputs['attention_mask'].sum()
+    # split input_ids to labels
     _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(None, None, input_ids.clone(), None, None, None)
 
     shape1 = logits.shape[1]
     labels = torch.where(labels == -100, self.tokenizer.pad_token_id, labels)
+    # calculate padding size of ulysses for example, 9 to 10 if sp=2
     padding_size = shape1 * ulysses.sp_world_size - origin_length
+    # left shift one token to leave the last token
     logits_to_keep_padded = logits_to_keep + padding_size + 1
 
+    # ckip logits_to_keep
     logits_to_keep_sharded = max(
         min(logits_to_keep_padded - (ulysses.sp_world_size - ulysses.sp_rank - 1) * shape1, shape1), 0)
     if logits_to_keep_sharded != 0:
@@ -286,6 +299,12 @@ def _get_per_token_logps(self, model, inputs):
         logits_kept = logits[:, logits.shape[1]:, :]
         logits_kept = logits_kept / self.temperature
         labels_kept = labels[:, labels.shape[1]:]
+    # how many padding tokens
+    # for example:
+    # aaaa bbbb cccc dddd
+    # if logits_to_keep+padding_size+1 = 10
+    # then bb cccc dddd will calculate selective_log_softmax
+    # other tokens will be padded with 0.
     left_padding_len = shape1 - logits_to_keep_sharded
     per_token_logps = selective_log_softmax(logits_kept, labels_kept)
     _padding_logps = (
@@ -299,11 +318,13 @@ def _get_per_token_logps(self, model, inputs):
     if self.padding_free:
         llm_model = get_llm_model(model)
         output.logits = per_token_logps
+        # unpack output after sp logps have been calculated
         _, inputs = llm_model._pack_input(None, None, inputs)
         per_token_logps = llm_model._unpack_output(None, None, inputs, output).logits
         delattr(llm_model, '_unpack_output')
         delattr(llm_model, '_pack_input')
         logits_to_keep = _origin_logits_to_keep
+    # ignore the last token
     return per_token_logps[:, -logits_to_keep - 1:-1]
 
 
@@ -311,6 +332,7 @@ def split_by_mini_batches(self, inputs, advantages):
     ulysses = self.ulysses
     inputs_len = len(inputs)
     output = [None] * ulysses.sp_world_size
+    # gather inputs within a sp group
     dist.all_gather_object(output, inputs, group=ulysses.sp_group)
     output = [p for sublist in output for p in sublist]
     inputs = output
@@ -789,6 +811,7 @@ class Ulysses(SequenceParallel):
             return dataloader
 
     def prepare_trainer(self, trainer):
+        # TODO hack methods, not cool
         if trainer.train_dataset is None:
             raise ValueError('Trainer: training requires a train_dataset.')
 

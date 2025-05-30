@@ -13,9 +13,10 @@ pip install -U trl
 GRPOTrainer在swift3.5.dev进行了代码重构，如果你使用的swift版本<3.5, 请参考[stable文档](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md)
 
 **更新日志**
-- **2025-05-23** — 支持自定义采样批量大小，参考 generation_batch_size / steps_per_generation 参数
-- **2025-05-22** — swift rollout 支持 data_parallel_size 参数
-- **2025-05-16** - 增加 ref_model 同步逻辑，参考参数 sync_ref_model
+- **2025-05-29** — 支持了padding_free(--padding_free true)和序列并行(--sequence_parallel_size N)。
+- **2025-05-23** — 支持自定义采样批量大小，参考 generation_batch_size / steps_per_generation 参数。
+- **2025-05-22** — swift rollout 支持 data_parallel_size 参数。
+- **2025-05-16** - 增加 ref_model 同步逻辑，参考参数 sync_ref_model。
 - **2025-05-13** — 为了代码的可读性和维护性， GRPOTrainer代码重构，Internal mode 支持vLLM>=0.8。
 - **2025-05-11** — 支持生成式奖励模型，通过 reward_model_plugin 自定义奖励模型逻辑。有关更多详细信息，请参阅[自定义奖励模型](#自定义奖励模型)部分。
 - **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`。
@@ -236,6 +237,8 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - dynamic_sample：筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
 - max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。
 - overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。
+- padding_free: 去掉所有padding token，并将有效token拼接到一个batch中，仅支持flash_attn.
+- sequence_parallel_size: 序列并行段数
 
 奖励函数参数，见[内置奖励函数](#内置奖励函数)
 

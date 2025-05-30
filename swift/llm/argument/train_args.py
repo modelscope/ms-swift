@@ -108,14 +108,10 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     add_version: bool = True
     resume_only_model: bool = False
     create_checkpoint_symlink: bool = False
-
-    # dataset
-    packing: bool = False
     lazy_tokenize: Optional[bool] = None
 
     # plugin
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
-    optimizer: Optional[str] = None
     metric: Optional[str] = None
     channel_list: List[str] = None
 
@@ -175,8 +171,8 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
             self.accelerator_config = {'dispatch_batches': False}
         self.training_args = TrainerFactory.get_training_args(self)
         self.training_args.remove_unused_columns = False
-
         self._add_version()
+        self._check_packing()
 
         if 'swanlab' in self.report_to:
             self._init_swanlab()

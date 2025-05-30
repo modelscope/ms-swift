@@ -50,6 +50,7 @@ class TrainArgumentsMixin:
     aligner_lr: Optional[float] = None
     vit_lr: Optional[float] = None
     optimizer: Optional[str] = None
+    use_logits_to_keep: Optional[bool] = None
 
     # torchacc
     metric_warmup_step: Optional[float] = 0
@@ -220,8 +221,6 @@ class GRPOArgumentsMixin:
 
     # dataset
     dataset_shuffle: Optional[bool] = True
-
-    padding_free: bool = False
 
 
 @dataclass
