@@ -540,6 +540,7 @@ The table below introduces the models integrated with ms-swift:
 |[XiaomiMiMo/MiMo-7B-SFT](https://modelscope.cn/models/XiaomiMiMo/MiMo-7B-SFT)|mimo|qwen|transformers>=4.37|&#x2718;|-|[XiaomiMiMo/MiMo-7B-SFT](https://huggingface.co/XiaomiMiMo/MiMo-7B-SFT)|
 |[XiaomiMiMo/MiMo-7B-RL-Zero](https://modelscope.cn/models/XiaomiMiMo/MiMo-7B-RL-Zero)|mimo|qwen|transformers>=4.37|&#x2718;|-|[XiaomiMiMo/MiMo-7B-RL-Zero](https://huggingface.co/XiaomiMiMo/MiMo-7B-RL-Zero)|
 |[XiaomiMiMo/MiMo-7B-RL](https://modelscope.cn/models/XiaomiMiMo/MiMo-7B-RL)|mimo|qwen|transformers>=4.37|&#x2718;|-|[XiaomiMiMo/MiMo-7B-RL](https://huggingface.co/XiaomiMiMo/MiMo-7B-RL)|
+|[XiaomiMiMo/MiMo-7B-RL-0530](https://modelscope.cn/models/XiaomiMiMo/MiMo-7B-RL-0530)|mimo_rl|mimo_rl|transformers>=4.37|&#x2718;|-|[XiaomiMiMo/MiMo-7B-RL-0530](https://huggingface.co/XiaomiMiMo/MiMo-7B-RL-0530)|
 |[answerdotai/ModernBERT-base](https://modelscope.cn/models/answerdotai/ModernBERT-base)|modern_bert|dummy|transformers>=4.48|&#x2718;|bert|[answerdotai/ModernBERT-base](https://huggingface.co/answerdotai/ModernBERT-base)|
 |[answerdotai/ModernBERT-large](https://modelscope.cn/models/answerdotai/ModernBERT-large)|modern_bert|dummy|transformers>=4.48|&#x2718;|bert|[answerdotai/ModernBERT-large](https://huggingface.co/answerdotai/ModernBERT-large)|
 |[iic/gte-modernbert-base](https://modelscope.cn/models/iic/gte-modernbert-base)|modern_bert_gte|dummy|transformers>=4.48|&#x2718;|bert, embedding|[Alibaba-NLP/gte-modernbert-base](https://huggingface.co/Alibaba-NLP/gte-modernbert-base)|
@@ -614,6 +615,8 @@ The table below introduces the models integrated with ms-swift:
 |[AIDC-AI/Ovis2-8B](https://modelscope.cn/models/AIDC-AI/Ovis2-8B)|ovis2|ovis2|transformers>=4.46.2, moviepy<2|&#x2718;|vision|[AIDC-AI/Ovis2-8B](https://huggingface.co/AIDC-AI/Ovis2-8B)|
 |[AIDC-AI/Ovis2-16B](https://modelscope.cn/models/AIDC-AI/Ovis2-16B)|ovis2|ovis2|transformers>=4.46.2, moviepy<2|&#x2718;|vision|[AIDC-AI/Ovis2-16B](https://huggingface.co/AIDC-AI/Ovis2-16B)|
 |[AIDC-AI/Ovis2-34B](https://modelscope.cn/models/AIDC-AI/Ovis2-34B)|ovis2|ovis2|transformers>=4.46.2, moviepy<2|&#x2718;|vision|[AIDC-AI/Ovis2-34B](https://huggingface.co/AIDC-AI/Ovis2-34B)|
+|[XiaomiMiMo/MiMo-VL-7B-SFT](https://modelscope.cn/models/XiaomiMiMo/MiMo-VL-7B-SFT)|mimo_vl|mimo_vl|transformers>=4.49, qwen_vl_utils>=0.0.6, decord|&#x2718;|vision, video|[XiaomiMiMo/MiMo-VL-7B-SFT](https://huggingface.co/XiaomiMiMo/MiMo-VL-7B-SFT)|
+|[XiaomiMiMo/MiMo-VL-7B-RL](https://modelscope.cn/models/XiaomiMiMo/MiMo-VL-7B-RL)|mimo_vl|mimo_vl|transformers>=4.49, qwen_vl_utils>=0.0.6, decord|&#x2718;|vision, video|[XiaomiMiMo/MiMo-VL-7B-RL](https://huggingface.co/XiaomiMiMo/MiMo-VL-7B-RL)|
 |[ZhipuAI/glm-4v-9b](https://modelscope.cn/models/ZhipuAI/glm-4v-9b)|glm4v|glm4v|transformers>=4.42,<4.45|&#x2718;|-|[THUDM/glm-4v-9b](https://huggingface.co/THUDM/glm-4v-9b)|
 |[ZhipuAI/cogagent-9b-20241220](https://modelscope.cn/models/ZhipuAI/cogagent-9b-20241220)|glm4v|glm4v|transformers>=4.42|&#x2718;|-|[THUDM/cogagent-9b-20241220](https://huggingface.co/THUDM/cogagent-9b-20241220)|
 |[ZhipuAI/glm-edge-v-2b](https://modelscope.cn/models/ZhipuAI/glm-edge-v-2b)|glm_edge_v|glm_edge_v|transformers>=4.46|&#x2718;|vision|[THUDM/glm-edge-v-2b](https://huggingface.co/THUDM/glm-edge-v-2b)|
