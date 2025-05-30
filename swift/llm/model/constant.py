@@ -114,6 +114,7 @@ class LLMModelType:
     aya = 'aya'
     moonlight = 'moonlight'
     mimo = 'mimo'
+    mimo_rl = 'mimo_rl'
 
 
 class BertModelType:
