@@ -422,7 +422,7 @@ class DatasetLoader:
 
 
 def init_self_cognition_preprocessor(
-    dataset_meta,
+    dataset_meta: Optional[DatasetMeta],
     model_name: Union[Tuple[str, str], List[str], None] = None,
     model_author: Union[Tuple[str, str], List[str], None] = None,
 ) -> None:

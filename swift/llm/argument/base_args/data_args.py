@@ -23,8 +23,7 @@ class DataArguments:
         download_mode (Literal): Mode for downloading datasets. Default is 'reuse_dataset_if_exists'.
         columns: Used for manual column mapping of datasets.
         model_name (List[str]): List containing Chinese and English names of the model. Default is None.
-        model_author (List[str]): List containing Chinese and English names of the model author.
-            Default is None.
+        model_author (List[str]): List containing Chinese and English names of the model author. Default is None.
         custom_dataset_info (Optional[str]): Path to custom dataset_info.json file. Default is None.
     """
     # dataset_id or dataset_dir or dataset_path
