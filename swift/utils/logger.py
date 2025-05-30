@@ -111,10 +111,10 @@ else:
 
 
 @contextmanager
-def ms_logger_ignore_error():
+def ms_logger_context(log_leval):
     ms_logger = get_ms_logger()
     origin_log_level = ms_logger.level
-    ms_logger.setLevel(logging.CRITICAL)
+    ms_logger.setLevel(log_leval)
     try:
         yield
     finally:

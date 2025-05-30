@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
 import inspect
+import logging
 import os
 import shutil
 import time
@@ -33,7 +34,7 @@ from swift.hub import get_hub
 from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
 from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
-from swift.utils import get_logger, is_mp_ddp, seed_worker, use_torchacc
+from swift.utils import get_logger, is_mp_ddp, ms_logger_context, seed_worker, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
 from ..utils.torch_utils import get_device_count
 from .arguments import TrainingArguments
@@ -68,8 +69,7 @@ class SwiftMixin:
             logger.warning('Using IterableDataset, setting args.dataloader_num_workers to 1.')
 
         if args.check_model and hasattr(model, 'model_dir'):
-            from swift.utils.logger import ms_logger_ignore_error
-            with ms_logger_ignore_error():
+            with ms_logger_context(logging.CRITICAL):
                 check_local_model_is_latest(
                     model.model_dir, user_agent={
                         'invoked_by': 'local_trainer',

@@ -7,7 +7,7 @@ from .import_utils import (is_liger_available, is_lmdeploy_available, is_megatro
                            is_unsloth_available, is_vllm_ascend_available, is_vllm_available, is_wandb_available,
                            is_xtuner_available)
 from .io_utils import JsonlWriter, append_to_jsonl, download_ms_file, get_file_mm_type, read_from_jsonl, write_to_jsonl
-from .logger import get_logger
+from .logger import get_logger, ms_logger_context
 from .np_utils import get_seed, stat_array, transform_jsonl_to_df
 from .tb_utils import TB_COLOR, TB_COLOR_SMOOTH, plot_images, read_tensorboard_file, tensorboard_smoothing
 from .torch_utils import (Serializer, activate_parameters, check_shared_disk, find_all_linears, find_embedding,
