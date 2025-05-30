@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
 import inspect
+import logging
 import os
 import shutil
 import time
@@ -68,8 +69,8 @@ class SwiftMixin:
             logger.warning('Using IterableDataset, setting args.dataloader_num_workers to 1.')
 
         if args.check_model and hasattr(model, 'model_dir'):
-            from swift.utils.logger import ms_logger_ignore_error
-            with ms_logger_ignore_error():
+            from swift.utils import ms_logger_context
+            with ms_logger_context(logging.CRITICAL):
                 check_local_model_is_latest(
                     model.model_dir, user_agent={
                         'invoked_by': 'local_trainer',

@@ -13,7 +13,7 @@ from requests.exceptions import HTTPError
 from transformers import trainer
 from transformers.utils import logging, strtobool
 
-from swift.utils.env import use_hf_hub
+from swift.utils import ms_logger_context, use_hf_hub
 
 logger = logging.get_logger(__name__)
 
@@ -287,15 +287,15 @@ class MSHub(HubOperation):
         cls.try_login(token)
         if revision is None or revision == 'main':
             revision = 'master'
-
-        return MsDataset.load(
-            dataset_id,
-            subset_name=subset_name,
-            split=split,
-            version=revision,
-            download_mode=download_mode,
-            use_streaming=streaming,
-        )
+        with ms_logger_context(logging.ERROR):
+            return MsDataset.load(
+                dataset_id,
+                subset_name=subset_name,
+                split=split,
+                version=revision,
+                download_mode=download_mode,
+                use_streaming=streaming,
+            )
 
     @classmethod
     def download_model(cls,
