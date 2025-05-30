@@ -1,4 +1,5 @@
 # use loss_type channel_loss
+# channel_list specifies the channels included in the dataset
 # data should have 'channel' field
 # eg.
 # {"channel": "chat",
@@ -27,4 +28,5 @@ swift sft \
     --system 'You are a helpful assistant.' \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
-    --loss_type channel_loss
+    --loss_type channel_loss \
+    --channel_list 'chat' 'math' 'code'
