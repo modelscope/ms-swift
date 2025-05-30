@@ -833,6 +833,10 @@ class SelfCognitionPreprocessor(ResponsePreprocessor):
         self.author: Optional[Tuple[str, str]] = None
         super().__init__(*args, **kwargs)
 
+    def set_name_author(self, name, author):
+        self.name = name
+        self.author = author
+
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         for key in ['name', 'author']:
             val = getattr(self, key)

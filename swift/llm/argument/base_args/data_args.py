@@ -22,9 +22,9 @@ class DataArguments:
         streaming (bool): Flag to enable streaming of datasets. Default is False.
         download_mode (Literal): Mode for downloading datasets. Default is 'reuse_dataset_if_exists'.
         columns: Used for manual column mapping of datasets.
-        model_name (List[str]): List containing Chinese and English names of the model. Default is [None, None].
+        model_name (List[str]): List containing Chinese and English names of the model. Default is None.
         model_author (List[str]): List containing Chinese and English names of the model author.
-            Default is [None, None].
+            Default is None.
         custom_dataset_info (Optional[str]): Path to custom dataset_info.json file. Default is None.
     """
     # dataset_id or dataset_dir or dataset_path
@@ -49,9 +49,8 @@ class DataArguments:
     strict: bool = False
     remove_unused_columns: bool = True
     # Chinese name and English name
-    model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
-    model_author: List[str] = field(
-        default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
+    model_name: Optional[List[str]] = field(default=None, metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
+    model_author: Optional[List[str]] = field(default=None, metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
 
     custom_dataset_info: List[str] = field(default_factory=list)  # .json
 
