@@ -701,7 +701,6 @@ register_model(
         tags=['vision', 'video']))
 
 
-
 def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor, Qwen2_5OmniConfig
     from qwen_omni_utils import vision_process

@@ -397,8 +397,12 @@ class Qwen2_5VLTemplate(Qwen2VLTemplate):
 
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_vl, template_cls=Qwen2_5VLTemplate))
 
-register_template(QwenTemplateMeta(MLLMTemplateType.mimo_vl, template_cls=Qwen2_5VLTemplate,
-                                   default_system='You are MiMo, an AI assistant developed by Xiaomi.'))
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.mimo_vl,
+        template_cls=Qwen2_5VLTemplate,
+        default_system='You are MiMo, an AI assistant developed by Xiaomi.'))
+
 
 class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
     version = 'omni'
