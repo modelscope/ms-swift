@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from transformers import Seq2SeqTrainingArguments
 from transformers.utils.versions import require_version
@@ -117,6 +117,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
     optimizer: Optional[str] = None
     metric: Optional[str] = None
+    channel_list: List[str] = None
 
     # extra
     max_new_tokens: int = 64

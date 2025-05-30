@@ -62,6 +62,7 @@ class SwiftMixin:
                  callbacks: Optional[List[TrainerCallback]] = None,
                  optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
                  preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
+                 channel_list: Optional[List[str]] = None,
                  **kwargs) -> None:
         if not hasattr(train_dataset, '__len__') and args.dataloader_num_workers > 1:
             args.dataloader_num_workers = 1
@@ -79,6 +80,7 @@ class SwiftMixin:
             args.evaluation_strategy = IntervalStrategy.NO
             args.eval_strategy = IntervalStrategy.NO
 
+        self.channel_list = channel_list
         self._custom_metrics = {}
         self.template = template
         self.max_memory = 0
