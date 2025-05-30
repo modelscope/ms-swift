@@ -426,7 +426,7 @@ def init_self_cognition_preprocessor(
     model_name: Union[Tuple[str, str], List[str], None] = None,
     model_author: Union[Tuple[str, str], List[str], None] = None,
 ) -> None:
-    if dataset_meta is None or model_name is None or model_author is None:
+    if dataset_meta is None or model_name is None and model_author is None:
         return
     kwargs = {}
     # zh, en
@@ -444,8 +444,8 @@ def init_self_cognition_preprocessor(
     for preprocess_func in preprocess_funcs:
         if isinstance(preprocess_func, SelfCognitionPreprocessor):
             preprocess_func.set_name_author(**kwargs)
-    logger.info_once(
-        f"Successfully set name: {kwargs['name']}, author: {kwargs['author']} in SelfCognitionPreprocessor.")
+    logger.info_once(f"SelfCognitionPreprocessor has been successfully configured with name: {kwargs['name']}, "
+                     f"author: {kwargs['author']}.")
 
 
 def load_dataset(
