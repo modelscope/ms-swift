@@ -825,12 +825,12 @@ register_dataset(
 
 
 class SelfCognitionPreprocessor(ResponsePreprocessor):
-    name: Optional[Tuple[str, str]] = None
-    author: Optional[Tuple[str, str]] = None
 
     def __init__(self, *args, query_suffix: str = '', response_prefix: str = '', **kwargs):
         self.query_suffix = query_suffix
         self.response_prefix = response_prefix
+        self.name: Optional[Tuple[str, str]] = None
+        self.author: Optional[Tuple[str, str]] = None
         super().__init__(*args, **kwargs)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
@@ -863,4 +863,5 @@ register_dataset(
             SubsetDataset(
                 'empty_think', preprocess_func=SelfCognitionPreprocessor(response_prefix='<think>\n\n</think>\n\n')),
         ],
+        dataset_name='self-cognition',
         tags=['chat', 'self-cognition', '🔥']))

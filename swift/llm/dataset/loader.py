@@ -422,18 +422,23 @@ class DatasetLoader:
 
 
 def init_self_cognition_preprocessor(
+    dataset_meta,
     model_name: Union[Tuple[str, str], List[str], None] = None,
     model_author: Union[Tuple[str, str], List[str], None] = None,
 ) -> None:
     from .dataset.llm import SelfCognitionPreprocessor
-    # zh, en
-    for key in ['model_name', 'model_author']:
-        val = locals()[key]
-        if isinstance(val, str):
-            val = [val]
-        if val is not None and val[0] is not None and (len(val) == 1 or val[1] is None):
-            val = (val[0], val[0])
-        setattr(SelfCognitionPreprocessor, key[len('model_'):], val)
+    preprocess_funcs = [dataset_meta.preprocess_func]
+    preprocess_funcs += [subset.preprocess_func for subset in dataset_meta.subsets if isinstance(subset, SubsetDataset)]
+    for preprocess_func in preprocess_funcs:
+        if isinstance(preprocess_func, SelfCognitionPreprocessor):
+            # zh, en
+            for key in ['model_name', 'model_author']:
+                val = locals()[key]
+                if isinstance(val, str):
+                    val = [val]
+                if val is not None and val[0] is not None and (len(val) == 1 or val[1] is None):
+                    val = (val[0], val[0])
+                setattr(preprocess_func, key[len('model_'):], val)
 
 
 def load_dataset(
@@ -479,7 +484,7 @@ def load_dataset(
     Returns:
         The train dataset and val dataset
     """
-    init_self_cognition_preprocessor(model_name, model_author)
+    init_self_cognition_preprocessor(DATASET_MAPPING['self-cognition'], model_name, model_author)
     if isinstance(datasets, str):
         datasets = [datasets]
     if not isinstance(seed, np.random.RandomState):
