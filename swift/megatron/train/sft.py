@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from contextlib import contextmanager
 from typing import List, Union
 
 from megatron.core.enums import ModelType
@@ -30,6 +31,21 @@ class MegatronSft(SwiftSft):
         self.template.use_megatron = True
         args.save_args(args.save)
 
+    @contextmanager
+    def _patch_num_train_epochs(self, train_dataset):
+        from megatron.training import training
+        origin_initialize_megatron = training.initialize_megatron
+
+        def initialize_megatron(*args, **kwargs):
+            res = origin_initialize_megatron(*args, **kwargs)
+            return res
+
+        training.initialize_megatron = initialize_megatron
+        try:
+            yield
+        finally:
+            training.initialize_megatron = origin_initialize_megatron
+
     def run(self):
         args = self.args
 
@@ -46,7 +62,7 @@ class MegatronSft(SwiftSft):
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
         try:
-            with patch_megatron_data_collator(data_collator):
+            with patch_megatron_data_collator(data_collator), self._patch_num_train_epochs(train_dataset):
                 extra_args_provider = args.megatron_model_meta.extra_args_provider
                 pretrain(
                     datasets_provider,
