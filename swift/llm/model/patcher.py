@@ -74,7 +74,7 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
         return hidden_states
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
-    llm_model = get_llm_model(module)
+    llm_model = get_llm_model(module, model_meta=model_meta)
 
     found = False
     for lm_head in lm_heads:
