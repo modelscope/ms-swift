@@ -95,3 +95,17 @@ SWIFT提供了两个脚手架训练脚本：
 
 - [gte模型](https://github.com/tastelikefeet/swift/blob/main/examples/train/embedding/train_gte.sh)
 - [gme模型](https://github.com/tastelikefeet/swift/blob/main/examples/train/embedding/train_gme.sh)
+
+## 推理
+
+SWIFT当前没有支持Embedding的模型推理和部署（时间问题），可以使用原模型的代码进行推理：
+
+https://www.modelscope.cn/models/iic/gte_Qwen2-7B-instruct
+
+https://www.modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct
+
+如果使用了其他模型从0训练embedding（例如，原版`qwen2-vl`模型+`--task_type embedding`），也可以使用gme的推理代码，但请注意：
+
+https://www.modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct/file/view/master/gme_inference.py?status=1#L111
+
+这里的模板请修改为模型自身的template，以免最后的embedding对不上。需要额外注意的是，gme模型的template和`qwen2-vl`或`qwen2.5-vl`系列的chatml template并不相同，其推理代码最后的结束字符是`<|endoftext|>`而非`<|im_end|>`.
