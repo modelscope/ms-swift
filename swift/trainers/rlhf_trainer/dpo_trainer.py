@@ -53,7 +53,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         batch = batch.copy()
-        num_examples = batch['labels'].shape[0] // 2
         labels = batch.pop('labels', None)
         if self.is_encoder_decoder:
             batch['labels'] = labels
@@ -61,27 +60,24 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         if self.aux_loss_enabled:
             batch['output_router_logits'] = True
         outputs = model(**batch, use_cache=False)
-        batch['labels'] = labels
-        if outputs.logits.shape[1] != labels.shape[1]:
+        all_logits = outputs.logits
+        if self.template.padding_free:
+            labels, all_logits = self.template.unflatten_row(labels, all_logits, batch['position_ids'])
+        num_examples = all_logits.shape[0] // 2
+        if all_logits.shape[1] != labels.shape[1]:
             # for llava, the model returns logits for the entire sequence, including the image tokens
             # (placed before the text tokens)
-            outputs.logits = outputs.logits[:, -labels.shape[1]:]
-        for key in ['input_ids', 'attention_mask', 'labels']:
-            batch[f'concatenated_{key}'] = batch.pop(key, None)
-        if self.__class__.__name__ == 'ORPOTrainer':  # Pass-through labels
-            batch['concatenated_input_ids'] = batch['concatenated_labels']
+            all_logits = all_logits[:, -labels.shape[1]:]
 
-        all_logits = outputs.logits
-
-        if all_logits.shape[:2] != batch['concatenated_labels'].shape[:2]:
+        if all_logits.shape[:2] != labels.shape[:2]:
             # for llava, the model returns logits for the entire sequence,
             # including the image tokens (placed before the text tokens)
-            seq_len = batch['concatenated_labels'].shape[1]
+            seq_len = labels.shape[1]
             all_logits = all_logits[:, -seq_len:]
 
         all_logps, size_completion = self.get_batch_logps(
             all_logits,
-            batch['concatenated_labels'],
+            labels,
             is_encoder_decoder=self.is_encoder_decoder,
             label_pad_token_id=self.label_pad_token_id,
         )
@@ -89,7 +85,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         output = {}
 
         if self.args.rpo_alpha is not None:
-            labels = batch['concatenated_labels'].clone()
+            labels = labels.clone()
             output['nll_loss'] = self.get_nll_loss(all_logits[:num_examples], labels[:num_examples])
 
         if self.loss_type == 'ipo':
