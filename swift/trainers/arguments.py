@@ -87,9 +87,25 @@ class TrainArgumentsMixin:
         except (ImportError, AttributeError):
             pass
 
+    @staticmethod
+    def _patch_liger_kernel():
+        from liger_kernel.transformers.model import loss_utils
+        origin_LigerForCausalLMLoss = loss_utils.LigerForCausalLMLoss
+
+        def LigerForCausalLMLoss(hidden_states, *args, **kwargs):
+            hidden_states = hidden_states.contiguous()
+            return origin_LigerForCausalLMLoss(hidden_states, *args, **kwargs)
+
+        loss_utils.LigerForCausalLMLoss = LigerForCausalLMLoss
+        logger.info('Patch liger_kernel successfully.')
+
     def _init_liger(self):
         if self.use_liger_kernel:
             assert is_liger_available(), 'use_liger_kernel requires liger_kernels, try `pip install liger-kernel`'
+            try:
+                self._patch_liger_kernel()
+            except Exception:
+                pass
 
     def __post_init__(self):
         if is_mp() and self.use_liger_kernel:

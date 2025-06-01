@@ -62,21 +62,11 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
 
         if use_logits_to_keep:
-            batch['logits_to_keep'] = labels.shape[-1] - (
-                (labels != self.label_pad_token_id).int().argmax(-1).min().item()) + 1
-            assert batch['logits_to_keep'] > 0
-            labels = labels[:, -batch['logits_to_keep']:]
-        num_examples = labels.shape[0] // 2
+            labels, batch['logits_to_keep'], cu_seqlens = self.get_logits_to_keep(labels, batch.get('position_ids'))
         if self.aux_loss_enabled:
             batch['output_router_logits'] = True
-        # liger_kernel optimizes nll_loss more effectively.
-        if self.is_encoder_decoder or self.args.use_liger_kernel:
-            batch['labels'] = labels.clone()
-        if 'labels' in batch:
-            if self.template.padding_free:
-                batch['labels'][num_examples:] = self.label_pad_token_id
-            else:
-                pass
+        if self.is_encoder_decoder:
+            batch['labels'] = labels
         outputs = model(**batch, use_cache=False)
         all_logits = outputs.logits
 
@@ -90,44 +80,58 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             all_logits = all_logits[..., :-1, :].contiguous()
             labels = labels[..., 1:].contiguous()
         loss_mask = labels != self.label_pad_token_id
+        if self.template.padding_free:
+            assert loss_mask.shape[1] == loss_mask.sum().item()
+            loss_mask = None
 
-        all_logps, size_completion = self.get_batch_logps(
+        per_token_logps = self.get_per_token_logps(
             all_logits,
             labels,
             loss_mask,
         )
-
         output = {}
-
-        if self.args.rpo_alpha is not None:
+        if self.template.padding_free:
+            all_logps = per_token_logps.new_zeros((cu_seqlens.shape[0] - 1, ))
+            for i in range(cu_seqlens.shape[0] - 1):
+                start, end = cu_seqlens[i], cu_seqlens[i + 1]
+                all_logps[i] = per_token_logps[:, start:end].sum()
+            num_examples = all_logps.shape[0] // 2
+            num_tokens = cu_seqlens[num_examples]
+            output['nll_loss'] = self.get_nll_loss(all_logits[:, :num_tokens], labels[:, :num_tokens])
+            output['chosen_logps'] = all_logps[:num_examples]
+            output['rejected_logps'] = all_logps[num_examples:]
+            output['mean_chosen_logits'] = all_logits[:, :num_tokens].mean()
+            output['mean_rejected_logits'] = all_logits[:, num_tokens:].mean()
+        else:
+            all_logps = per_token_logps.sum(-1)
+            num_examples = labels.shape[0] // 2
             output['nll_loss'] = self.get_nll_loss(all_logits[:num_examples], labels[:num_examples])
-
-        if self.loss_type == 'ipo':
-            all_logps = all_logps / size_completion
-
-        output['chosen_logps'] = all_logps[:num_examples]
-        output['rejected_logps'] = all_logps[num_examples:]
-        output['mean_chosen_logits'] = all_logits[:num_examples][loss_mask[:num_examples]].mean()
-        output['mean_rejected_logits'] = all_logits[num_examples:][loss_mask[num_examples:]].mean()
-
+            output['chosen_logps'] = all_logps[:num_examples]
+            output['rejected_logps'] = all_logps[num_examples:]
+            output['mean_chosen_logits'] = all_logits[:num_examples][loss_mask[:num_examples]].mean()
+            output['mean_rejected_logits'] = all_logits[num_examples:][loss_mask[num_examples:]].mean()
         if self.aux_loss_enabled:
             output['aux_loss'] = outputs.aux_loss
-
         return output
 
-    def get_batch_logps(
+    def get_per_token_logps(
         self,
         logits: torch.FloatTensor,
         labels: torch.LongTensor,
-        loss_mask: torch.FloatTensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        loss_mask: Optional[torch.FloatTensor],
+    ) -> torch.Tensor:
         if logits.shape[:-1] != labels.shape:
             raise ValueError(f'Logits (batch and sequence length dim) {logits.shape[:-1]}'
                              'and labels must have the same shape {labels.shape}')
-        labels = labels.clone()
-        labels[~loss_mask] = 0
+        if loss_mask is not None:
+            labels = labels.clone()
+            labels[~loss_mask] = 0
         # https://github.com/huggingface/trl/pull/2799
         # Reduce peak vram consumption with efficient selective log_softmax
         per_token_logps = selective_log_softmax(logits, labels)
-        per_token_logps[~loss_mask] = 0
-        return per_token_logps.sum(-1), loss_mask.sum(-1)
+        if loss_mask is not None:
+            per_token_logps[~loss_mask] = 0
+        if self.loss_type == 'ipo':
+            size_completion = labels.shape[1] if loss_mask is None else loss_mask.sum(dim=-1)
+            per_token_logps = per_token_logps / size_completion
+        return per_token_logps
