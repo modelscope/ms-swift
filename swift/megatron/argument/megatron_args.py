@@ -24,7 +24,6 @@ class ExtraMegatronArguments:
 
     model_type: Optional[str] = None
     max_epochs: Optional[int] = None
-    num_train_epochs: Optional[int] = None
 
 
 @dataclass

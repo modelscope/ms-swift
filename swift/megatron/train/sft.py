@@ -1,9 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import math
 import os
 from contextlib import contextmanager
 from functools import partial
 from typing import List, Union
 
+from megatron.core import mpu
 from megatron.core.enums import ModelType
 from megatron.core.utils import StragglerDetector
 from megatron.training import get_args, get_timers, pretrain, training
@@ -13,7 +15,7 @@ from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
 from ..utils import patch_megatron_tokenizer
 from .patcher import patch_megatron_data_collator
-from .utils import build_streaming_dataloader, forward_step, get_swift_datasets_provider
+from .utils import build_streaming_dataloader, get_batch, get_swift_datasets_provider
 
 logger = get_logger()
 
@@ -36,12 +38,19 @@ class MegatronSft(SwiftSft):
         args.save_args(args.save)
 
     @contextmanager
-    def _patch_num_train_epochs(self, train_dataset):
+    def _get_train_iters(self, train_dataset):
         from megatron.training import training
         origin_initialize_megatron = training.initialize_megatron
 
-        def initialize_megatron(*args, **kwargs):
-            res = origin_initialize_megatron(*args, **kwargs)
+        def initialize_megatron(*_args, **kwargs):
+            res = origin_initialize_megatron(*_args, **kwargs)
+            args = get_args()
+            if args.train_iters is None and hasattr(train_dataset, '__len__'):
+                data_parallel_size = mpu.get_data_parallel_world_size()
+                step_batch_size = \
+                    args.micro_batch_size * data_parallel_size
+                dataset_sample = len(train_dataset) // step_batch_size * step_batch_size
+                args.train_iters = (dataset_sample * args.max_epochs // args.global_batch_size) + 1
             return res
 
         training.initialize_megatron = initialize_megatron
@@ -49,6 +58,7 @@ class MegatronSft(SwiftSft):
             yield
         finally:
             training.initialize_megatron = origin_initialize_megatron
+
     @staticmethod
     def new_cyclic_iter(iter):
         args = get_args()
@@ -127,13 +137,13 @@ class MegatronSft(SwiftSft):
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
         try:
-            with patch_megatron_data_collator(data_collator), self._patch_num_train_epochs(train_dataset):
+            with patch_megatron_data_collator(data_collator), self._get_train_iters(train_dataset):
                 extra_args_provider = args.megatron_model_meta.extra_args_provider
                 pretrain(
                     datasets_provider,
                     args.megatron_model_meta.model_provider,
                     ModelType.encoder_or_decoder,
-                    forward_step,
+                    self.forward_step,
                     extra_args_provider=extra_args_provider,
                     args_defaults=args.extra_args)
         finally:

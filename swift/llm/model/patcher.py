@@ -350,8 +350,8 @@ def patch_get_dynamic_module():
 
 @contextmanager
 def patch_tp_plan(load_model: bool):
-    if not load_model or not is_mp_ddp() or version.parse(transformers.__version__
-        ) < version.parse('4.50') or 'WORLD_SIZE' not in os.environ:
+    if not load_model or not is_mp_ddp() or version.parse(
+            transformers.__version__) < version.parse('4.50') or 'WORLD_SIZE' not in os.environ:
         yield
         return
     WORLD_SIZE = os.environ.get('WORLD_SIZE')
