@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
-from contextlib import contextmanager
 
 from swift.llm import git_clone_github
 from swift.utils import get_logger, is_megatron_available, safe_ddp_context, subprocess_run
