@@ -154,6 +154,20 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         labels_list = pad_sequence(labels_list, batch_first=True, padding_value=0)
         return None, response_list, labels_list
 
+    def get_logits_to_keep(self, labels):
+        if labels.shape[0] == 1 and not is_mp():
+            # device_map may encounter device mismatch issues.
+            loss_mask = (labels != -100)[0]
+            labels = labels[:, loss_mask]
+            labels = nn.functional.pad(labels, (1, 0), value=-100)
+            logits_to_keep = nn.functional.pad(loss_mask[1:], (0, 1), value=True)
+        else:
+            logits_to_keep = labels.shape[-1] - (
+                (labels != self.label_pad_token_id).int().argmax(-1).min().item()) + 1
+            assert logits_to_keep > 0
+            labels = labels[:, -logits_to_keep:]
+        return labels, logits_to_keep
+
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         from swift.plugin.loss import get_loss_func
         loss_kwargs = {}
@@ -176,17 +190,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
 
         if use_logits_to_keep:
-            if inputs['labels'].shape[0] == 1 and not is_mp():
-                # device_map may encounter device mismatch issues.
-                loss_mask = (inputs['labels'] != -100)[0]
-                inputs['labels'] = inputs['labels'][:, loss_mask]
-                inputs['labels'] = nn.functional.pad(inputs['labels'], (1, 0), value=-100)
-                inputs['logits_to_keep'] = nn.functional.pad(loss_mask[1:], (0, 1), value=True)
-            else:
-                inputs['logits_to_keep'] = (inputs['labels'].shape[-1] -
-                                            (torch.ne(inputs['labels'], -100).int().argmax(-1))).max().item() + 1
-                assert inputs['logits_to_keep'] > 0
-                inputs['labels'] = inputs['labels'][:, -inputs['logits_to_keep']:]
+            inputs['labels'], inputs['logits_to_keep'] = self.get_logits_to_keep(inputs['labels'])
+
         with self.template.compute_loss_context(self.model, inputs):
             outputs = model(**inputs)
         # Save past state if it exists
