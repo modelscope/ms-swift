@@ -101,11 +101,6 @@ class RLHFTrainerMixin:
         with _patch_concatenated_forward():
             return super().concatenated_forward(model, model_kwargs)
 
-    def get_batch_logps(self, logits: torch.FloatTensor, labels: torch.LongTensor, *args, **kwargs):
-        if self.is_encoder_decoder:
-            labels = labels.clone()  # fix trl bug
-        return super().get_batch_logps(logits, labels, *args, **kwargs)
-
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         res = super().compute_loss(model, inputs, return_outputs=return_outputs)
         # compat transformers>=4.46.*

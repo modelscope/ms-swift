@@ -62,17 +62,15 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
 
         if use_logits_to_keep:
-            batch['logits_to_keep'] = (labels.shape[-1] -
-                                       (torch.ne(labels, self.label_pad_token_id).int().argmax(-1))).max().item() + 1
+            batch['logits_to_keep'] = labels.shape[-1] - ((labels != self.label_pad_token_id).int().argmax(-1).min().item()) + 1
             assert batch['logits_to_keep'] > 0
             labels = labels[:, -batch['logits_to_keep']:]
         num_examples = labels.shape[0] // 2
-        if self.is_encoder_decoder or self.args.use_liger_kernel:
-            batch['labels'] = labels.clone()
-
         if self.aux_loss_enabled:
             batch['output_router_logits'] = True
         # liger_kernel optimizes nll_loss more effectively.
+        if self.is_encoder_decoder or self.args.use_liger_kernel:
+            batch['labels'] = labels.clone()
         if 'labels' in batch:
             if self.template.padding_free:
                 batch['labels'][num_examples:] = self.label_pad_token_id
@@ -80,8 +78,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                 pass
         outputs = model(**batch, use_cache=False)
         all_logits = outputs.logits
-        if self.template.padding_free:
-            labels, all_logits = self.template.unflatten_row(labels, all_logits, batch['position_ids'])
 
         if all_logits.shape[1] != labels.shape[1]:
             # for llava, the model returns logits for the entire sequence, including the image tokens
@@ -123,7 +119,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         logits: torch.FloatTensor,
         labels: torch.LongTensor,
         loss_mask: torch.FloatTensor,
-    ) -> Tuple[torch.FloatTensor, torch.LongTensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         if logits.shape[:-1] != labels.shape:
             raise ValueError(f'Logits (batch and sequence length dim) {logits.shape[:-1]}'
                              'and labels must have the same shape {labels.shape}')
