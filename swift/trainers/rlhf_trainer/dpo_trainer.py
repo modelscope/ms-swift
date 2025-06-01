@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Dict, List, Optional, Tuple, Union
 import inspect
+from typing import Dict, List, Optional, Tuple, Union
+
 import torch
 import torch.nn as nn
 from peft import PeftModel
@@ -8,12 +9,13 @@ from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.utils import selective_log_softmax
 
-from ..mixin import DataLoaderMixin, SwiftMixin
 from swift.utils import get_logger
+from ..mixin import DataLoaderMixin, SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
 del HFDPOTrainer.__init__
 logger = get_logger()
+
 
 class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
@@ -38,10 +40,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         super().__init__(model, ref_model, *_args, **kwargs)
 
     def get_nll_loss(self, logits, labels):
-        if not self.is_encoder_decoder:
-            # Shift so that tokens < n predict n
-            logits = logits[..., :-1, :].contiguous()
-            labels = labels[..., 1:].contiguous()
         # Flatten the tokens
         loss_fct = nn.CrossEntropyLoss(ignore_index=self.label_pad_token_id)
         logits = logits.view(-1, logits.shape[-1])
@@ -60,13 +58,12 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         use_logits_to_keep = self.args.use_logits_to_keep
         if use_logits_to_keep is None:
             # padding_free or packing
-            use_logits_to_keep = 'logits_to_keep' in inspect.signature(
-                base_model.forward).parameters
+            use_logits_to_keep = 'logits_to_keep' in inspect.signature(base_model.forward).parameters
         logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
 
         if use_logits_to_keep:
             batch['logits_to_keep'] = (labels.shape[-1] -
-                                        (torch.ne(labels, -100).int().argmax(-1))).max().item() + 1
+                                       (torch.ne(labels, self.label_pad_token_id).int().argmax(-1))).max().item() + 1
             assert batch['logits_to_keep'] > 0
             labels = labels[:, -batch['logits_to_keep']:]
         num_examples = labels.shape[0] // 2
@@ -78,7 +75,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         # liger_kernel optimizes nll_loss more effectively.
         if 'labels' in batch:
             if self.template.padding_free:
-                batch['labels'][num_examples:] = -100
+                batch['labels'][num_examples:] = self.label_pad_token_id
             else:
                 pass
         outputs = model(**batch, use_cache=False)
@@ -91,17 +88,21 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             # (placed before the text tokens)
             all_logits = all_logits[:, -labels.shape[1]:]
 
+        if not self.is_encoder_decoder:
+            # Shift so that tokens < n predict n
+            all_logits = all_logits[..., :-1, :].contiguous()
+            labels = labels[..., 1:].contiguous()
+        loss_mask = labels != self.label_pad_token_id
+
         all_logps, size_completion = self.get_batch_logps(
             all_logits,
             labels,
-            is_encoder_decoder=self.is_encoder_decoder,
-            label_pad_token_id=self.label_pad_token_id,
+            loss_mask,
         )
 
         output = {}
 
         if self.args.rpo_alpha is not None:
-            labels = labels.clone()
             output['nll_loss'] = self.get_nll_loss(all_logits[:num_examples], labels[:num_examples])
 
         if self.loss_type == 'ipo':
@@ -109,8 +110,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         output['chosen_logps'] = all_logps[:num_examples]
         output['rejected_logps'] = all_logps[num_examples:]
-        output['mean_chosen_logits'] = all_logits[:num_examples].mean()
-        output['mean_rejected_logits'] = all_logits[num_examples:].mean()
+        output['mean_chosen_logits'] = all_logits[:num_examples][loss_mask[:num_examples]].mean()
+        output['mean_rejected_logits'] = all_logits[num_examples:][loss_mask[num_examples:]].mean()
 
         if self.aux_loss_enabled:
             output['aux_loss'] = outputs.aux_loss
@@ -121,20 +122,12 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         self,
         logits: torch.FloatTensor,
         labels: torch.LongTensor,
-        label_pad_token_id: int = -100,
-        is_encoder_decoder: bool = False,
+        loss_mask: torch.FloatTensor,
     ) -> Tuple[torch.FloatTensor, torch.LongTensor]:
         if logits.shape[:-1] != labels.shape:
             raise ValueError(f'Logits (batch and sequence length dim) {logits.shape[:-1]}'
                              'and labels must have the same shape {labels.shape}')
-        if not is_encoder_decoder:
-            labels = labels[:, 1:].clone()
-            logits = logits[:, :-1, :]
-        else:
-            labels = labels.clone()
-
-        loss_mask = labels != label_pad_token_id
-
+        labels = labels.clone()
         labels[~loss_mask] = 0
         # https://github.com/huggingface/trl/pull/2799
         # Reduce peak vram consumption with efficient selective log_softmax
