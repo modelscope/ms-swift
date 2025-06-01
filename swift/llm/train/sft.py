@@ -75,13 +75,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         return train_dataset, val_dataset
 
-    def _get_loss_func(self):
-        args = self.args
-        loss_type = args.loss_type
-        if loss_type is None and args.loss_scale != 'default':
-            loss_type = 'loss_scale'
-        return get_loss_func(loss_type)
-
     def _get_data_collator(self):
         args = self.args
         template = self.template
@@ -141,7 +134,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         return {
             'compute_metrics': compute_metrics,
             'preprocess_logits_for_metrics': preprocess_logits_for_metrics,
-            'compute_loss_func': self._get_loss_func()
+            'compute_loss_func': get_loss_func(args.loss_type)
         }
 
     def _save_trainer_state(self, trainer):

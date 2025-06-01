@@ -13,6 +13,7 @@ pip install -U trl
 The GRPOTrainer has been refactored in swift 3.5.dev. If you are using a version of Swift < 3.5 , please refer to the[stable doc](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source_en/Instruction/GRPO.md)
 
 **Dev Log**
+- **2025-05-29** — Support padding_free(--padding_free true) and sequence_parallel(--sequence_parallel_size N).
 - **2025-05-23** — Added support for custom sampling batch size (see parameters: generation_batch_size / steps_per_generation).
 - **2025-05-22** — swift rollout now supports the data_parallel_size parameter.
 - **2025-05-16** - Implemented ref_model synchronization logic (see parameter: sync_ref_model).
@@ -247,6 +248,8 @@ Arguments
 - dynamic_sample: Exclude data within the group where the reward standard deviation is 0, and additionally sample new data. Default is False.
 - max_resample_times: Under the dynamic_sample setting, limit the number of resampling attempts to a maximum of 3. Default is 3 times.
 - overlong_filter: Skip overlong truncated samples, which will not be included in loss calculation. Default is False.
+- padding_free: Remove all padding tokens，and concat all valid tokens to one batch，only supports flash_attn.
+- sequence_parallel_size: The segment number of sequence parallels.
 The hyperparameters for the reward function can be found in the [Built-in Reward Functions section](#built-in-reward-functions).
 
 You can use vLLM as sampling backends to accelerate training.

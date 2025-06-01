@@ -25,5 +25,6 @@ swift sft \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --use_liger_kernel true \
+    --load_from_cache_file false \
     --model_author swift \
     --model_name swift-robot

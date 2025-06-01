@@ -685,6 +685,21 @@ register_model(
         requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6', 'decord'],
         tags=['vision', 'video']))
 
+register_model(
+    ModelMeta(
+        MLLMModelType.mimo_vl, [
+            ModelGroup([
+                Model('XiaomiMiMo/MiMo-VL-7B-SFT', 'XiaomiMiMo/MiMo-VL-7B-SFT'),
+                Model('XiaomiMiMo/MiMo-VL-7B-RL', 'XiaomiMiMo/MiMo-VL-7B-RL'),
+            ])
+        ],
+        TemplateType.mimo_vl,
+        get_model_tokenizer_qwen2_5_vl,
+        model_arch=ModelArch.qwen2_vl,
+        architectures=['Qwen2_5_VLForConditionalGeneration'],
+        requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6', 'decord'],
+        tags=['vision', 'video']))
+
 
 def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor, Qwen2_5OmniConfig
