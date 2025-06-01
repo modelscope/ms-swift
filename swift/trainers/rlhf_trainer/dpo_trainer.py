@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Dict, List, Optional, Tuple, Union
-
+import inspect
 import torch
 import torch.nn as nn
 from peft import PeftModel
@@ -9,10 +9,11 @@ from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.utils import selective_log_softmax
 
 from ..mixin import DataLoaderMixin, SwiftMixin
+from swift.utils import get_logger
 from .rlhf_mixin import RLHFTrainerMixin
 
 del HFDPOTrainer.__init__
-
+logger = get_logger()
 
 class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
@@ -54,26 +55,41 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         batch = batch.copy()
         labels = batch.pop('labels', None)
-        if self.is_encoder_decoder:
-            batch['labels'] = labels
+
+        base_model = self.template.get_base_model(self.model)
+        use_logits_to_keep = self.args.use_logits_to_keep
+        if use_logits_to_keep is None:
+            # padding_free or packing
+            use_logits_to_keep = 'logits_to_keep' in inspect.signature(
+                base_model.forward).parameters
+        logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
+
+        if use_logits_to_keep:
+            batch['logits_to_keep'] = (labels.shape[-1] -
+                                        (torch.ne(labels, -100).int().argmax(-1))).max().item() + 1
+            assert batch['logits_to_keep'] > 0
+            labels = labels[:, -batch['logits_to_keep']:]
+        num_examples = labels.shape[0] // 2
+        if self.is_encoder_decoder or self.args.use_liger_kernel:
+            batch['labels'] = labels.clone()
 
         if self.aux_loss_enabled:
             batch['output_router_logits'] = True
+        # liger_kernel optimizes nll_loss more effectively.
+        if 'labels' in batch:
+            if self.template.padding_free:
+                batch['labels'][num_examples:] = -100
+            else:
+                pass
         outputs = model(**batch, use_cache=False)
         all_logits = outputs.logits
         if self.template.padding_free:
             labels, all_logits = self.template.unflatten_row(labels, all_logits, batch['position_ids'])
-        num_examples = all_logits.shape[0] // 2
+
         if all_logits.shape[1] != labels.shape[1]:
             # for llava, the model returns logits for the entire sequence, including the image tokens
             # (placed before the text tokens)
             all_logits = all_logits[:, -labels.shape[1]:]
-
-        if all_logits.shape[:2] != labels.shape[:2]:
-            # for llava, the model returns logits for the entire sequence,
-            # including the image tokens (placed before the text tokens)
-            seq_len = labels.shape[1]
-            all_logits = all_logits[:, -seq_len:]
 
         all_logps, size_completion = self.get_batch_logps(
             all_logits,
@@ -101,8 +117,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         return output
 
-    @staticmethod
     def get_batch_logps(
+        self,
         logits: torch.FloatTensor,
         labels: torch.LongTensor,
         label_pad_token_id: int = -100,
@@ -119,8 +135,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         loss_mask = labels != label_pad_token_id
 
-        labels[labels == label_pad_token_id] = 0
+        labels[~loss_mask] = 0
         # https://github.com/huggingface/trl/pull/2799
         # Reduce peak vram consumption with efficient selective log_softmax
         per_token_logps = selective_log_softmax(logits, labels)
-        return (per_token_logps * loss_mask).sum(-1), loss_mask.sum(-1)
+        per_token_logps[~loss_mask] = 0
+        return per_token_logps.sum(-1), loss_mask.sum(-1)
