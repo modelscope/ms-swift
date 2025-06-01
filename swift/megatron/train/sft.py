@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import math
 import os
 from contextlib import contextmanager
 from functools import partial
