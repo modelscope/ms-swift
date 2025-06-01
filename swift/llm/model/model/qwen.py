@@ -713,10 +713,11 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     kwargs['model_config'].enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, True)
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     if model:
-        use_submodel_func(model, 'thinker')
-        model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
-        model.config.talker_config.pad_token_id = None
-        patch_get_input_embeddings(model.thinker.visual, 'patch_embed')
+        base_model = model.model if 'AWQ' in model.__class__.__name__ else model
+        use_submodel_func(base_model, 'thinker')
+        base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
+        base_model.config.talker_config.pad_token_id = None
+        patch_get_input_embeddings(base_model.thinker.visual, 'patch_embed')
     return model, processor
 
 
