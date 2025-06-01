@@ -62,7 +62,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
 
         if use_logits_to_keep:
-            batch['logits_to_keep'] = labels.shape[-1] - ((labels != self.label_pad_token_id).int().argmax(-1).min().item()) + 1
+            batch['logits_to_keep'] = labels.shape[-1] - (
+                (labels != self.label_pad_token_id).int().argmax(-1).min().item()) + 1
             assert batch['logits_to_keep'] > 0
             labels = labels[:, -batch['logits_to_keep']:]
         num_examples = labels.shape[0] // 2
