@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import logging
 import os
 import tempfile
 from contextlib import contextmanager
@@ -11,11 +12,11 @@ from huggingface_hub import RepoUrl
 from huggingface_hub.hf_api import api, future_compatible
 from requests.exceptions import HTTPError
 from transformers import trainer
-from transformers.utils import logging, strtobool
+from transformers.utils import strtobool
 
-from swift.utils.env import use_hf_hub
+from swift.utils import get_logger, ms_logger_context, use_hf_hub
 
-logger = logging.get_logger(__name__)
+logger = get_logger()
 
 
 class HubOperation:
@@ -287,15 +288,15 @@ class MSHub(HubOperation):
         cls.try_login(token)
         if revision is None or revision == 'main':
             revision = 'master'
-
-        return MsDataset.load(
-            dataset_id,
-            subset_name=subset_name,
-            split=split,
-            version=revision,
-            download_mode=download_mode,
-            use_streaming=streaming,
-        )
+        with ms_logger_context(logging.ERROR):
+            return MsDataset.load(
+                dataset_id,
+                subset_name=subset_name,
+                split=split,
+                version=revision,
+                download_mode=download_mode,
+                use_streaming=streaming,
+            )
 
     @classmethod
     def download_model(cls,

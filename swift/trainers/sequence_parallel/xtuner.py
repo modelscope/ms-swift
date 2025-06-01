@@ -52,13 +52,13 @@ class XTuner(SequenceParallel):
         from xtuner.parallel.sequence import init_sequence_parallel
         init_sequence_parallel(size)
 
-    def prepare_model(self, model, tokenizer, split_in_forward):
+    def prepare_model(self, model, tokenizer):
         self.assert_xtuner_runtime_condition()
+        self.tokenizer = tokenizer
         from xtuner.model.modules.dispatch import dispatch_modules
         dispatch_modules(model)
 
     def pad_and_split_inputs(self,
-                             tokenizer,
                              input_ids,
                              input_embeds,
                              labels,
@@ -69,7 +69,7 @@ class XTuner(SequenceParallel):
         self.assert_xtuner_runtime_condition()
         from xtuner.parallel.sequence import (pad_for_sequence_parallel, split_for_sequence_parallel,
                                               get_sequence_parallel_group)
-        input_ids = pad_for_sequence_parallel(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
+        input_ids = pad_for_sequence_parallel(input_ids, padding_value=self.tokenizer.pad_token_id, dim=-1)
         labels = pad_for_sequence_parallel(labels, padding_value=-100, dim=-1)
         position_ids = pad_for_sequence_parallel(position_ids, padding_value=0, dim=-1)
         if attention_mask is not None:

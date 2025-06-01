@@ -13,9 +13,10 @@ pip install -U trl
 GRPOTrainer在swift3.5.dev进行了代码重构，如果你使用的swift版本<3.5, 请参考[stable文档](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md)
 
 **更新日志**
-- **2025-05-23** — 支持自定义采样批量大小，参考 generation_batch_size / steps_per_generation 参数
-- **2025-05-22** — swift rollout 支持 data_parallel_size 参数
-- **2025-05-16** - 增加 ref_model 同步逻辑，参考参数 sync_ref_model
+- **2025-05-29** — 支持了padding_free(--padding_free true)和序列并行(--sequence_parallel_size N)。
+- **2025-05-23** — 支持自定义采样批量大小，参考 generation_batch_size / steps_per_generation 参数。
+- **2025-05-22** — swift rollout 支持 data_parallel_size 参数。
+- **2025-05-16** - 增加 ref_model 同步逻辑，参考参数 sync_ref_model。
 - **2025-05-13** — 为了代码的可读性和维护性， GRPOTrainer代码重构，Internal mode 支持vLLM>=0.8。
 - **2025-05-11** — 支持生成式奖励模型，通过 reward_model_plugin 自定义奖励模型逻辑。有关更多详细信息，请参阅[自定义奖励模型](#自定义奖励模型)部分。
 - **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`。
@@ -219,23 +220,25 @@ A conversation between User and Assistant. The user asks a question, and the Ass
   - vllm_limit_mm_per_prompt: vllm透传参数，默认为None.
   - vllm_enable_prefix_caching: vllm透传参数，默认为True.
   - sleep_level: 训练时释放 vLLM 显存，可选项为[0, 1], 默认为0，不释放.
+  - move_model_batches: 在模型向vLLM等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。
+  - offload_optimizer: 是否在vLLM推理时offload optimizer参数，默认为False。
+  - offload_model: 是否在vLLM推理时offload 模型本身，默认为False。
+  - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False。
+  - completion_length_limit_scope: 在多轮对话中，`max_completion_length` 的限制范围。
+  `total`限制所有对话轮次的总输出长度不超过`max_completion_length`, `per_round`限制每一轮的输出长度。
+  默认为`per_round`, 当前仅对 colocate mode 生效。
 - num_iterations: 每个批次代更新次数，默认为1。
 - epsilon: clip 系数，默认为0.2。
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。
 - sync_ref_model: 是否定期同步ref_model，默认为False。
 - ref_model_mixup_alpha: 控制在更新过程中model和先前ref_model之间的混合。更新公式为 $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$。默认为0.6。
 - ref_model_sync_steps：同步频率，默认为512。
-- move_model_batches: 在模型向vLLM等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。
-- offload_optimizer: 是否在vLLM推理时offload optimizer参数，默认为False。
-- offload_model: 是否在vLLM推理时offload 模型本身，默认为False。
-- gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False。
 - multi_turn_func: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现。
-- completion_length_limit_scope: 在多轮对话中，`max_completion_length` 的限制范围。
-`total`限制所有对话轮次的总输出长度不超过`max_completion_length`, `per_round`限制每一轮的输出长度。
-默认为`per_round`, 当前仅对 colocate mode 生效。
 - dynamic_sample：筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
 - max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。
 - overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。
+- padding_free: 去掉所有padding token，并将有效token拼接到一个batch中，仅支持flash_attn.
+- sequence_parallel_size: 序列并行段数
 
 奖励函数参数，见[内置奖励函数](#内置奖励函数)
 

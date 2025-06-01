@@ -9,12 +9,11 @@ class SequenceParallel(abc.ABC):
         pass
 
     @abstractmethod
-    def prepare_model(self, model, tokenizer, split_in_forward):
+    def prepare_model(self, model, tokenizer):
         pass
 
     @abstractmethod
     def pad_and_split_inputs(self,
-                             tokenizer,
                              input_ids,
                              input_embeds,
                              labels,

@@ -48,12 +48,11 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=q
 
 class ThinkingTemplate(Template):
 
-    def _swift_encode(self, inputs: StdTemplateInputs):
-        if not self.is_training:
-            for message in inputs.messages:
-                if message['role'] == 'assistant' and isinstance(message['content'], str):
-                    message['content'] = message['content'].split('</think>')[-1].lstrip('\n')
-        return super()._swift_encode(inputs)
+    def _swift_prepare_messages(self, messages):
+        super()._swift_prepare_messages(messages)
+        for i, message in enumerate(messages):
+            if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:
+                message['content'] = message['content'].split('</think>')[-1].strip()
 
 
 register_template(
@@ -397,6 +396,12 @@ class Qwen2_5VLTemplate(Qwen2VLTemplate):
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_vl, template_cls=Qwen2_5VLTemplate))
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.mimo_vl,
+        template_cls=Qwen2_5VLTemplate,
+        default_system='You are MiMo, an AI assistant developed by Xiaomi.'))
 
 
 class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
