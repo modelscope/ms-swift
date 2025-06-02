@@ -49,7 +49,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         return loss_fct(logits, labels)
 
     def concatenated_forward(
-        self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
+        self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]], **kwargs
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         batch = batch.copy()
         labels = batch.pop('labels', None)
@@ -68,7 +68,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             batch['output_router_logits'] = True
         if self.is_encoder_decoder:
             batch['labels'] = labels
-        outputs = model(**batch, use_cache=False)
+        position_ids = batch.get('position_ids')
+        with self.template.compute_loss_context(self.model, batch):
+            outputs = model(**batch, use_cache=False)
         all_logits = outputs.logits
 
         if all_logits.shape[1] != labels.shape[1]:
@@ -87,7 +89,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         output = {}
         if self.template.padding_free:
-            cu_seqlens = self.get_cu_seqlens(batch['position_ids'], batch.get('logits_to_keep'))
+            cu_seqlens = self.get_cu_seqlens(position_ids, batch.get('logits_to_keep'))
             all_logps = per_token_logps.new_zeros((cu_seqlens.shape[0] - 1, ))
             for i in range(cu_seqlens.shape[0] - 1):
                 start, end = cu_seqlens[i], cu_seqlens[i + 1]
