@@ -484,7 +484,7 @@ class SwiftMixin:
         self.model.train()
         return eval_dict
 
-    def get_logits_to_keep(self, labels, position_ids=None):
+    def get_logits_to_keep(self, labels):
         if labels.shape[0] == 1 and not is_mp():
             # device_map may encounter device mismatch issues.
             loss_mask = (labels != -100)[0]
@@ -495,24 +495,24 @@ class SwiftMixin:
             logits_to_keep = labels.shape[-1] - ((labels != -100).int().argmax(-1).min().item()) + 1
             assert logits_to_keep > 0
             labels = labels[:, -logits_to_keep:]
-        if labels.shape[0] != 1 or position_ids is None:
-            res_cu_seqlens = None
-        else:
-            assert labels.shape[0] == 1 and position_ids.shape[0] == 1
-            position_ids = position_ids[0]
-            indices = torch.arange(position_ids.shape[0], device=position_ids.device)
-            cu_seqlens = torch.concat([
-                indices[position_ids == 0],
-                torch.tensor(position_ids.shape, device=position_ids.device),
-            ])
-            res_cu_seqlens = cu_seqlens.clone()
-            if isinstance(logits_to_keep, torch.Tensor):
-                for i in range(cu_seqlens.shape[0] - 1):
-                    start, end = cu_seqlens[i], cu_seqlens[i + 1]
-                    res_cu_seqlens[i + 1:] -= (~logits_to_keep[start:end]).sum()
-            else:
-                res_cu_seqlens[1:] -= position_ids.shape[0] + 1 - logits_to_keep
-        return labels, logits_to_keep, res_cu_seqlens
+        return labels, logits_to_keep
+
+    def get_cu_seqlens(self, position_ids, logits_to_keep) -> torch.Tensor:
+        assert position_ids.shape[0] == 1
+        position_ids = position_ids[0]
+        indices = torch.arange(position_ids.shape[0], device=position_ids.device)
+        cu_seqlens = torch.concat([
+            indices[position_ids == 0],
+            torch.tensor(position_ids.shape, device=position_ids.device),
+        ])
+        res_cu_seqlens = cu_seqlens.clone()
+        if isinstance(logits_to_keep, torch.Tensor):
+            for i in range(cu_seqlens.shape[0] - 1):
+                start, end = cu_seqlens[i], cu_seqlens[i + 1]
+                res_cu_seqlens[i + 1:] -= (~logits_to_keep[start:end]).sum()
+        elif isinstance(logits_to_keep, int):
+            res_cu_seqlens[1:] -= position_ids.shape[0] + 1 - logits_to_keep
+        return res_cu_seqlens
 
     def get_batch_samples(self, *args, **kwargs):
         res = super().get_batch_samples(*args, **kwargs)

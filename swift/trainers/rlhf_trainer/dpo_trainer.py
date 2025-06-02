@@ -63,7 +63,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
 
         if use_logits_to_keep:
-            labels, batch['logits_to_keep'], cu_seqlens = self.get_logits_to_keep(labels, batch.get('position_ids'))
+            labels, batch['logits_to_keep'] = self.get_logits_to_keep(labels)
         if self.aux_loss_enabled:
             batch['output_router_logits'] = True
         if self.is_encoder_decoder:
@@ -87,6 +87,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         output = {}
         if self.template.padding_free:
+            cu_seqlens = self.get_cu_seqlens(batch['position_ids'], batch.get('logits_to_keep'))
             all_logps = per_token_logps.new_zeros((cu_seqlens.shape[0] - 1, ))
             for i in range(cu_seqlens.shape[0] - 1):
                 start, end = cu_seqlens[i], cu_seqlens[i + 1]

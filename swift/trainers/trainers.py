@@ -176,7 +176,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
 
         if use_logits_to_keep:
-            inputs['labels'], inputs['logits_to_keep'], _ = self.get_logits_to_keep(inputs['labels'])
+            inputs['labels'], inputs['logits_to_keep'] = self.get_logits_to_keep(inputs['labels'])
 
         with self.template.compute_loss_context(self.model, inputs):
             outputs = model(**inputs)
