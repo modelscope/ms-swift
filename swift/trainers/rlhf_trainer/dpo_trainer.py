@@ -58,7 +58,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         use_logits_to_keep = self.args.use_logits_to_keep
         if use_logits_to_keep is None:
             # padding_free or packing
-            use_logits_to_keep = 'logits_to_keep' in inspect.signature(base_model.forward).parameters
+            use_logits_to_keep = 'logits_to_keep' in inspect.signature(
+                base_model.forward).parameters and self.template.sequence_parallel_size == 1
         logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
 
         if use_logits_to_keep:
@@ -75,16 +76,11 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             # (placed before the text tokens)
             all_logits = all_logits[:, -labels.shape[1]:]
 
-        if not self.is_encoder_decoder:
+        if not self.is_encoder_decoder and self.template.sequence_parallel_size == 1:
             # Shift so that tokens < n predict n
             all_logits = all_logits[..., :-1, :].contiguous()
             labels = labels[..., 1:].contiguous()
-        loss_mask = labels != self.label_pad_token_id
-        per_token_logps = self.get_per_token_logps(
-            all_logits,
-            labels,
-            loss_mask,
-        )
+        per_token_logps, mean_all_logits, loss_mask = self.get_per_token_logps(all_logits, labels)
         output = {}
         if self.template.padding_free:
             all_logps = per_token_logps.new_zeros((cu_seqlens.shape[0] - 1, ))
@@ -104,8 +100,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['nll_loss'] = self.get_nll_loss(all_logits[:num_examples], labels[:num_examples])
             output['chosen_logps'] = all_logps[:num_examples]
             output['rejected_logps'] = all_logps[num_examples:]
-            output['mean_chosen_logits'] = all_logits[:num_examples][loss_mask[:num_examples]].mean()
-            output['mean_rejected_logits'] = all_logits[num_examples:][loss_mask[num_examples:]].mean()
+            output['mean_chosen_logits'] = mean_all_logits[:num_examples][loss_mask[:num_examples]].mean()
+            output['mean_rejected_logits'] = mean_all_logits[num_examples:][loss_mask[num_examples:]].mean()
         if self.aux_loss_enabled:
             output['aux_loss'] = outputs.aux_loss
         return output
@@ -115,10 +111,11 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         logits: torch.FloatTensor,
         labels: torch.LongTensor,
         loss_mask: torch.FloatTensor,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if logits.shape[:-1] != labels.shape:
             raise ValueError(f'Logits (batch and sequence length dim) {logits.shape[:-1]}'
                              'and labels must have the same shape {labels.shape}')
+        loss_mask = labels != self.label_pad_token_id
         labels = labels.clone()
         labels[~loss_mask] = 0
         # https://github.com/huggingface/trl/pull/2799
@@ -128,4 +125,4 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         if self.loss_type == 'ipo':
             size_completion = labels.shape[1] if loss_mask is None else loss_mask.sum(dim=-1)
             per_token_logps = per_token_logps / size_completion
-        return per_token_logps
+        return per_token_logps, logits.mean(-1), loss_mask

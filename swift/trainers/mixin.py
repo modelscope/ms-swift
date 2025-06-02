@@ -495,7 +495,7 @@ class SwiftMixin:
             logits_to_keep = labels.shape[-1] - ((labels != self.label_pad_token_id).int().argmax(-1).min().item()) + 1
             assert logits_to_keep > 0
             labels = labels[:, -logits_to_keep:]
-        if position_ids is None:
+        if labels.shape[0] != 1 or position_ids is None:
             res_cu_seqlens = None
         else:
             assert labels.shape[0] == 1 and position_ids.shape[0] == 1
