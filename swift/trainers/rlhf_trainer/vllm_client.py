@@ -104,7 +104,7 @@ class VLLMClient:
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
     ):
-        url = f'http://{self.host}:{self.server_port}/infer/'
+        url = f'http://{self.host}:{self.server_port}/generate/'
         response = self.session.post(
             url,
             json={
