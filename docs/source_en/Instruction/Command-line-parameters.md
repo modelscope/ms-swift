@@ -82,7 +82,7 @@ Hints:
 - 🔥padding_free: Flattens the data in a batch to avoid padding, thereby reducing memory usage and accelerating training. Default is False. Currently supports `swift pt/sft`.
   - Note: When using `padding_free`, it should be combined with `--attn_impl flash_attn` and "transformers>=4.44". For details, see [this PR](https://github.com/huggingface/transformers/pull/31629). (Same as packing)
   - The supported multimodal models are the same as those supported for multimodal packing. Compared to packing, padding_free does not consume additional time or space.
-  - Megatron-SWIFT uses `padding_free` by default, i.e., `qkv_format='thd'`.
+  - Megatron-SWIFT uses `padding_free` by default, i.e., `qkv_format='thd'`, and no additional configuration is required.
 - padding_side: Padding side when `batch_size>=2` during training. Options are 'left' and 'right', with 'right' as the default. (For inference with batch_size>=2, only left padding is applied.)
 - loss_scale: Weight setting for the loss of training tokens. Default is `'default'`, which means that all responses (including history) are used with a weight of 1 in cross-entropy loss, and the loss from the corresponding `tool_response` in the agent_template is ignored. Possible values include: 'default', 'last_round', 'all', 'ignore_empty_think', and agent-specific options: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi'. For more details about the agent part, please refer to [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
   - 'last_round': Only calculate the loss for the last round of response.
