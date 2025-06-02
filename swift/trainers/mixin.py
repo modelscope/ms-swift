@@ -492,7 +492,7 @@ class SwiftMixin:
             labels = nn.functional.pad(labels, (1, 0), value=-100)
             logits_to_keep = nn.functional.pad(loss_mask[1:], (0, 1), value=True)
         else:
-            logits_to_keep = labels.shape[-1] - ((labels != self.label_pad_token_id).int().argmax(-1).min().item()) + 1
+            logits_to_keep = labels.shape[-1] - ((labels != -100).int().argmax(-1).min().item()) + 1
             assert logits_to_keep > 0
             labels = labels[:, -logits_to_keep:]
         if labels.shape[0] != 1 or position_ids is None:
