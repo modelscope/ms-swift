@@ -81,9 +81,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         padding_to = args.max_length if args.train_type == 'longlora' else None
         return partial(template.data_collator, padding_to=padding_to)
 
-    @staticmethod
-    def _save_val_dataset(output_dir: str, val_dataset):
-        if is_master() and isinstance(val_dataset, HfDataset):
+    def _save_val_dataset(self, val_dataset):
+        args = self.args
+        output_dir = getattr(args, 'output_dir', None) or getattr(args, 'save')
+        if is_master() and isinstance(val_dataset, HfDataset) and not args.val_dataset:
             os.makedirs(output_dir, exist_ok=True)
             val_dataset_path = os.path.join(output_dir, 'val_dataset.jsonl')
             append_to_jsonl(val_dataset_path, val_dataset.to_list())
@@ -216,8 +217,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def _encode_dataset(self, train_dataset, val_dataset):
         template = self.template
         args = self.args
-        output_dir = getattr(args, 'output_dir', None) or getattr(args, 'save')
-        self._save_val_dataset(output_dir, val_dataset)
+        self._save_val_dataset(val_dataset)
         is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
         predict_with_generate = getattr(args, 'predict_with_generate', False)
         if not is_grpo:

@@ -503,12 +503,15 @@ class SwiftMixin:
             indices = torch.arange(position_ids.shape[0], device=position_ids.device)
             cu_seqlens = torch.concat([
                 indices[position_ids == 0],
-                torch.tensor(logits_to_keep.shape, device=position_ids.device),
+                torch.tensor(position_ids.shape, device=position_ids.device),
             ])
             res_cu_seqlens = cu_seqlens.clone()
-            for i in range(cu_seqlens.shape[0] - 1):
-                start, end = cu_seqlens[i], cu_seqlens[i + 1]
-                res_cu_seqlens[i + 1:] -= (~logits_to_keep[start:end]).sum()
+            if isinstance(logits_to_keep, torch.Tensor):
+                for i in range(cu_seqlens.shape[0] - 1):
+                    start, end = cu_seqlens[i], cu_seqlens[i + 1]
+                    res_cu_seqlens[i + 1:] -= (~logits_to_keep[start:end]).sum()
+            else:
+                res_cu_seqlens[1:] -= position_ids.shape[0] + 1 - logits_to_keep
         return labels, logits_to_keep, res_cu_seqlens
 
     def get_batch_samples(self, *args, **kwargs):

@@ -80,10 +80,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             all_logits = all_logits[..., :-1, :].contiguous()
             labels = labels[..., 1:].contiguous()
         loss_mask = labels != self.label_pad_token_id
-        if self.template.padding_free:
-            assert loss_mask.shape[1] == loss_mask.sum().item()
-            loss_mask = None
-
         per_token_logps = self.get_per_token_logps(
             all_logits,
             labels,
@@ -100,8 +96,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['nll_loss'] = self.get_nll_loss(all_logits[:, :num_tokens], labels[:, :num_tokens])
             output['chosen_logps'] = all_logps[:num_examples]
             output['rejected_logps'] = all_logps[num_examples:]
-            output['mean_chosen_logits'] = all_logits[:, :num_tokens].mean()
-            output['mean_rejected_logits'] = all_logits[:, num_tokens:].mean()
+            output['mean_chosen_logits'] = all_logits[:, :num_tokens][loss_mask[:, :num_tokens]].mean()
+            output['mean_rejected_logits'] = all_logits[:, num_tokens:][loss_mask[:, num_tokens:]].mean()
         else:
             all_logps = per_token_logps.sum(-1)
             num_examples = labels.shape[0] // 2
@@ -118,19 +114,17 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         self,
         logits: torch.FloatTensor,
         labels: torch.LongTensor,
-        loss_mask: Optional[torch.FloatTensor],
+        loss_mask: torch.FloatTensor,
     ) -> torch.Tensor:
         if logits.shape[:-1] != labels.shape:
             raise ValueError(f'Logits (batch and sequence length dim) {logits.shape[:-1]}'
                              'and labels must have the same shape {labels.shape}')
-        if loss_mask is not None:
-            labels = labels.clone()
-            labels[~loss_mask] = 0
+        labels = labels.clone()
+        labels[~loss_mask] = 0
         # https://github.com/huggingface/trl/pull/2799
         # Reduce peak vram consumption with efficient selective log_softmax
         per_token_logps = selective_log_softmax(logits, labels)
-        if loss_mask is not None:
-            per_token_logps[~loss_mask] = 0
+        per_token_logps[~loss_mask] = 0
         if self.loss_type == 'ipo':
             size_completion = labels.shape[1] if loss_mask is None else loss_mask.sum(dim=-1)
             per_token_logps = per_token_logps / size_completion
