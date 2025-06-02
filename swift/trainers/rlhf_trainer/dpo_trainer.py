@@ -81,6 +81,10 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             all_logits = all_logits[..., :-1, :].contiguous()
             labels = labels[..., 1:].contiguous()
         per_token_logps, mean_all_logits, loss_mask = self.get_per_token_logps(all_logits, labels)
+        if self.loss_type == 'ipo':
+            size_completion = loss_mask.sum(dim=-1)
+            per_token_logps = per_token_logps / size_completion
+
         output = {}
         if self.template.padding_free:
             all_logps = per_token_logps.new_zeros((cu_seqlens.shape[0] - 1, ))
@@ -110,7 +114,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         self,
         logits: torch.FloatTensor,
         labels: torch.LongTensor,
-        loss_mask: torch.FloatTensor,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if logits.shape[:-1] != labels.shape:
             raise ValueError(f'Logits (batch and sequence length dim) {logits.shape[:-1]}'
@@ -122,7 +125,4 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         # Reduce peak vram consumption with efficient selective log_softmax
         per_token_logps = selective_log_softmax(logits, labels)
         per_token_logps[~loss_mask] = 0
-        if self.loss_type == 'ipo':
-            size_completion = labels.shape[1] if loss_mask is None else loss_mask.sum(dim=-1)
-            per_token_logps = per_token_logps / size_completion
         return per_token_logps, logits.mean(-1), loss_mask

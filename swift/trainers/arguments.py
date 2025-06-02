@@ -89,6 +89,7 @@ class TrainArgumentsMixin:
 
     @staticmethod
     def _patch_liger_kernel():
+        # fix logits_to_keep
         from liger_kernel.transformers.model import loss_utils
         origin_LigerForCausalLMLoss = loss_utils.LigerForCausalLMLoss
 

@@ -1,4 +1,3 @@
-# 4 * 50GiB
 # with padding_free: 4 * 47GiB, 1.90s/it
 # without padding_free: 4 * 57GiB 3.32s/it
 NPROC_PER_NODE=4 \
