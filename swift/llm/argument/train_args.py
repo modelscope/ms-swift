@@ -140,7 +140,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                 feature = 'padding_free'
             if self.attn_impl != 'flash_attn':
                 raise ValueError(f'The "{feature}" feature needs to be used in conjunction with "flash_attn". '
-                                'Please specify `--attn_impl flash_attn`.')
+                                 'Please specify `--attn_impl flash_attn`.')
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
             if self.resume_only_model:
