@@ -497,7 +497,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
                             self.vllm_client.update_named_param(name, param)
                         elif self.vllm_mode == 'colocate':
-                            llm_model = self.llm.llm_engine.model_executor.driver_worker.model_runner.model
+                            llm_model = self.engine.inner_model
                             llm_model.load_weights([(name, param)])
 
                 with patch_lora_unmerge(self.model):
@@ -508,7 +508,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     if self.vllm_mode == 'server' and self.accelerator.is_main_process:
                         self.vllm_client.update_named_param(name, param.data)
                     elif self.vllm_mode == 'colocate':
-                        llm_model = self.llm.llm_engine.model_executor.driver_worker.model_runner.model
+                        llm_model = self.engine.inner_model
                         llm_model.load_weights([(name, param.data)])
 
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
