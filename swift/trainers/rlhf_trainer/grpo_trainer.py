@@ -473,27 +473,31 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if is_peft_model(self.model):
             for i, parameter_group in enumerate(self.parameter_groups):  # < this is the change
                 parameter_group_no_lora = self.parameter_groups_no_lora[i]
-                if parameter_group_no_lora:
-                    parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
                 with gather_if_zero3(list(parameter_group)), patch_lora_merge(self.model, parameter_group):
                     self.model.merge_adapter()
+                    state_dict = self.model.state_dict()
+                    state_dict = {
+                        k.removeprefix('base_model.model.').replace('.base_layer', ''): v
+                        for k, v in state_dict.items()
+                    }
+                    state_dict = {k: v for k, v in state_dict.items() if self.model.prefix not in k}
+                    # When module to save, remove its prefix and discard the original module
+                    state_dict = {
+                        k.replace('modules_to_save.default.', ''): v
+                        for k, v in state_dict.items() if 'original_module' not in k
+                    }
+                    if parameter_group_no_lora:
+                        parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
+                        state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
+                    assert len(state_dict) > 0 and all(
+                        [state.shape != torch.Size([0]) for state in state_dict.values()])
 
-                for name, param in parameter_group:
-                    name = name.removeprefix('base_model.model.').replace('.base_layer', '')
-
-                    # skip lora weights with prefix(example: "_lora")
-                    if self.model.prefix in name:
-                        continue
-                    if 'original_module' in name:
-                        continue
-                    name = name.replace('modules_to_save.default.', '')
-                    if parameter_group_no_lora and name not in parameter_group_no_lora:
-                        continue
-                    if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-                        self.vllm_client.update_named_param(name, param.data)
-                    elif self.vllm_mode == 'colocate':
-                        llm_model = self.llm.llm_engine.model_executor.driver_worker.model_runner.model
-                        llm_model.load_weights([(name, param.data)])
+                    for name, param in state_dict:
+                        if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+                            self.vllm_client.update_named_param(name, param.data)
+                        elif self.vllm_mode == 'colocate':
+                            llm_model = self.llm.llm_engine.model_executor.driver_worker.model_runner.model
+                            llm_model.load_weights([(name, param.data)])
 
                 with patch_lora_unmerge(self.model):
                     self.model.unmerge_adapter()
