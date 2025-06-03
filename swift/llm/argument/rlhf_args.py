@@ -225,6 +225,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                                                       'Please update it by running: pip install -U trl')
 
         if self.use_liger_kernel:
+            if self.delta is not None:
+                raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
             from trl.import_utils import is_liger_kernel_available
             assert is_liger_kernel_available(), (
                 'Please install/update liger-kernel by running: pip install -U liger-kernel')
