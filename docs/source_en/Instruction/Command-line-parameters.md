@@ -467,6 +467,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - num_iterations: number of iterations per batch. Default is 1.
 - epsilon: epsilon value for clipping. Default is 0.2.
 - epsilon_high: Upper clip coefficient, default is None. When set, it forms a clipping range of [epsilon, epsilon_high] together with epsilon.
+- delta: Delta value for the upper clipping bound in two-sided GRPO. Recommended to be > 1 + epsilon. This method was introduced in the [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291).
 - sync_ref_model: Whether to synchronize the reference model. Default is False。
   - ref_model_mixup_alpha: The Parameter controls the mix between the current policy and the previous reference policy during updates. The reference policy is updated according to the equation: $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$. Default is 0.6.
   - ref_model_sync_steps：The parameter determines how frequently the current policy is synchronized with the reference policy. Default is 512.

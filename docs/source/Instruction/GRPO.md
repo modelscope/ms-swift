@@ -230,6 +230,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - num_iterations: 每个批次代更新次数，默认为1。
 - epsilon: clip 系数，默认为0.2。
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。
+- delta: [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291)中双侧 GRPO 上界裁剪值。若设置，建议大于 1 + epsilon。默认为None。
 - sync_ref_model: 是否定期同步ref_model，默认为False。
 - ref_model_mixup_alpha: 控制在更新过程中model和先前ref_model之间的混合。更新公式为 $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$。默认为0.6。
 - ref_model_sync_steps：同步频率，默认为512。
