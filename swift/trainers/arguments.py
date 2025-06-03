@@ -169,6 +169,7 @@ class GRPOArgumentsMixin:
     vllm_enable_prefix_caching: bool = True
     vllm_tensor_parallel_size: int = 1
     # external vllm (server)
+    vllm_server_base_url: Optional[str] = None
     vllm_server_host: Optional[str] = None
     vllm_server_port: int = 8000
     vllm_server_timeout: float = 240.0
