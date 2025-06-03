@@ -25,6 +25,5 @@ swift rlhf \
     --dataset_num_proc 4 \
     --deepspeed zero3 \
     --attn_impl flash_attn \
-    --use_liger_kernel true \
     --save_only_model true \
     --padding_free true

@@ -80,8 +80,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         if not self.is_encoder_decoder and self.template.sequence_parallel_size == 1:
             # Shift so that tokens < n predict n
-            all_logits = all_logits[..., :-1, :].contiguous()
-            labels = labels[..., 1:].contiguous()
+            labels = torch.roll(labels, shifts=-1, dims=1)
         per_token_logps, mean_all_logits, loss_mask = self.get_per_token_logps(all_logits, labels)
         if self.loss_type == 'ipo':
             size_completion = loss_mask.sum(dim=-1)
@@ -99,8 +98,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['nll_loss'] = self.get_nll_loss(all_logits[:, :num_tokens], labels[:, :num_tokens])
             output['chosen_logps'] = all_logps[:num_examples]
             output['rejected_logps'] = all_logps[num_examples:]
-            output['mean_chosen_logits'] = all_logits[:, :num_tokens][loss_mask[:, :num_tokens]].mean()
-            output['mean_rejected_logits'] = all_logits[:, num_tokens:][loss_mask[:, num_tokens:]].mean()
+            output['mean_chosen_logits'] = mean_all_logits[:, :num_tokens][loss_mask[:, :num_tokens]].mean()
+            output['mean_rejected_logits'] = mean_all_logits[:, num_tokens:][loss_mask[:, num_tokens:]].mean()
         else:
             all_logps = per_token_logps.sum(-1)
             num_examples = labels.shape[0] // 2

@@ -26,7 +26,6 @@ swift rlhf \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
-    --use_liger_kernel true \
     --attn_impl flash_attn \
     --save_only_model true \
     --padding_free true
