@@ -266,6 +266,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.model_accepts_loss_kwargs = False
         self.padding_free = self.template.padding_free
         self.template.padding_free = False
+        self.template._packing = False
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 if self.is_deepspeed_enabled:
