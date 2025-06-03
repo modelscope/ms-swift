@@ -287,6 +287,57 @@ swift rlhf \
 1. 在 GRPOTrainer 中，reward_model 会依次append到 reward_funcs 中。因此，reward_weights 的顺序对应 [reward_funcs, reward_model]。
 2. reward_model_plugin 默认为 default，即使用 ORM 处理逻辑。
 
+## 多任务训练
+我们可以在数据集中添加一个用于标识任务类型的列，并在奖励函数/奖励模型插件中根据任务类型进行判断，从而实现多任务训练。假设数据集中包含数学和编程任务，比如：
+
+```
+    {"prompt": "Solve the equation x + 2 = 5", "task": "math"},
+    {"prompt": "Write a function to calculate the Fibonacci sequence", "task": "code"},
+    {"prompt": "What is the integral of x^2?", "task": "math"},
+    {"prompt": "Implement a sorting algorithm in Python", "task": "code"},
+```
+
+下面是针对不同任务的奖励函数的示例：
+
+```python
+from swift.plugin import ORM, orms
+
+# Math-specific reward function
+class MathReward(ORM):
+  ...
+  def __call__(prompts, completions, task, **kwargs):
+      rewards = []
+      for prompt, completion, t in zip(prompts, completions, task):
+          if t == "math":
+              # math accuracy logic
+              acc = math_accuracy(prompt, completion)
+              reward = 1.0 if acc else -1.0
+              rewards.append(reward)
+          else:
+              # Return None for non-math tasks
+              rewards.append(None)
+      return rewards
+
+# Coding-specific reward function
+class CodeReward(ORM):
+  ...
+  def __call__(prompts, completions, task, **kwargs):
+      rewards = []
+      for prompt, completion, t in zip(prompts, completions, task):
+          if t == "coding":
+              # math accuracy logic
+              acc = code_accuracy(prompt, completion)
+              reward = 1.0 if acc else -1.0
+              rewards.append(reward)
+          else:
+              # Return None for non-coding tasks
+              rewards.append(None)
+      return rewards
+
+orms['math_reward'] = MathReward
+orms['code_reward'] = CodeReward
+```
+对于非当前任务的数据， 通过返回 None 来处理，从而使得奖励相关仅计算任务内的数据。
 
 ## DAPO
 [Decoupled Clip and Dynamic sAmpling Policy Optimization (DAPO)](https://arxiv.org/abs/2503.14476)在GRPO的基础上设置了几种trick，分别是
