@@ -34,7 +34,7 @@ from swift.hub import get_hub
 from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
 from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
-from swift.utils import get_logger, is_mp_ddp, ms_logger_context, seed_worker, use_torchacc
+from swift.utils import get_logger, is_mp, is_mp_ddp, ms_logger_context, seed_worker, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
 from ..utils.torch_utils import get_device_count
 from .arguments import TrainingArguments
@@ -483,6 +483,36 @@ class SwiftMixin:
 
         self.model.train()
         return eval_dict
+
+    def get_logits_to_keep(self, labels):
+        if labels.shape[0] == 1 and not is_mp():
+            # device_map may encounter device mismatch issues.
+            loss_mask = (labels != -100)[0]
+            labels = labels[:, loss_mask]
+            labels = nn.functional.pad(labels, (1, 0), value=-100)
+            logits_to_keep = nn.functional.pad(loss_mask[1:], (0, 1), value=True)
+        else:
+            logits_to_keep = labels.shape[-1] - ((labels != -100).int().argmax(-1).min().item()) + 1
+            assert logits_to_keep > 0
+            labels = labels[:, -logits_to_keep:]
+        return labels, logits_to_keep
+
+    def get_cu_seqlens(self, position_ids, logits_to_keep) -> torch.Tensor:
+        assert position_ids.shape[0] == 1
+        position_ids = position_ids[0]
+        indices = torch.arange(position_ids.shape[0], device=position_ids.device)
+        cu_seqlens = torch.concat([
+            indices[position_ids == 0],
+            torch.tensor(position_ids.shape, device=position_ids.device),
+        ])
+        res_cu_seqlens = cu_seqlens.clone()
+        if isinstance(logits_to_keep, torch.Tensor):
+            for i in range(cu_seqlens.shape[0] - 1):
+                start, end = cu_seqlens[i], cu_seqlens[i + 1]
+                res_cu_seqlens[i + 1:] -= (~logits_to_keep[start:end]).sum()
+        elif isinstance(logits_to_keep, int):
+            res_cu_seqlens[1:] -= position_ids.shape[0] + 1 - logits_to_keep
+        return res_cu_seqlens
 
     def get_batch_samples(self, *args, **kwargs):
         res = super().get_batch_samples(*args, **kwargs)

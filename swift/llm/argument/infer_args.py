@@ -158,6 +158,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         if not is_dist():
             return
         assert not self.eval_human and not self.stream, (
+            'In DDP scenarios, interactive interfaces and streaming output are not supported.'
             f'args.eval_human: {self.eval_human}, args.stream: {self.stream}')
         self._init_device()
         init_process_group(backend=self.ddp_backend, timeout=self.ddp_timeout)

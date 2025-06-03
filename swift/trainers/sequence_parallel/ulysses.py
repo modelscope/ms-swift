@@ -167,20 +167,25 @@ def old_policy(self):
 
 
 # For DPO
-def get_batch_logps(logits: torch.FloatTensor,
-                    labels: torch.LongTensor,
-                    label_pad_token_id: int = -100,
-                    is_encoder_decoder: bool = False,
-                    ulysses=None) -> Tuple[torch.FloatTensor, torch.LongTensor]:
+def get_per_token_logps(self,
+                        logits: torch.FloatTensor,
+                        labels: torch.LongTensor,
+                        ulysses=None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(None, None, labels, None, None, None)
+    loss_mask = labels != self.label_pad_token_id
     labels = labels.clone()  # No need to shift, pad and split has shifted the inputs.
-    loss_mask = labels != label_pad_token_id
-    labels[labels == label_pad_token_id] = 0
+    labels[~loss_mask] = 0
     labels = labels.to(logits.device)
     loss_mask = loss_mask.to(logits.device)
+    mean_logits = logits.mean(-1)
     per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
     total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, ulysses.sp_group, 1)
-    return (total_per_token_logps * total_loss_mask).sum(-1), total_loss_mask.sum(-1)
+
+    world_size = dist.get_world_size(group=ulysses.sp_group)
+    total_mean_logits = mean_logits.new_empty((mean_logits.shape[0], mean_logits.shape[1] * world_size))
+    dist.all_gather_into_tensor(total_mean_logits, mean_logits, group=ulysses.sp_group)
+    total_per_token_logps[~total_loss_mask] = 0
+    return total_per_token_logps, total_mean_logits, total_loss_mask
 
 
 @contextmanager
@@ -819,7 +824,7 @@ class Ulysses(SequenceParallel):
         if trainer.__class__.__name__ in ('Seq2SeqTrainer', 'DPOTrainer'):
             trainer.compute_loss_func = partial(loss_scale_sp_func, ulysses=self)
             if trainer.__class__.__name__ == 'DPOTrainer':
-                trainer.get_batch_logps = partial(get_batch_logps, ulysses=self)
+                trainer.get_per_token_logps = MethodType(partial(get_per_token_logps, ulysses=self), trainer)
 
                 def rlhf_loss_scale_sp_func(_, *args, **kwargs):
                     return loss_scale_sp_func(*args, ulysses=self, **kwargs)
@@ -840,7 +845,7 @@ class Ulysses(SequenceParallel):
         compute_acc_origin = metric.compute_acc
 
         def compute_acc(preds, labels, *args, **kwargs) -> Dict[str, List[float]]:
-
+            _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, None, None, None)
             # Gather preds and labels across the sp group
             if isinstance(preds, np.ndarray):
                 preds = torch.from_numpy(preds).to(get_current_device())

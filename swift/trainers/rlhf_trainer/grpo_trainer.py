@@ -266,6 +266,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.model_accepts_loss_kwargs = False
         self.padding_free = self.template.padding_free
         self.template.padding_free = False
+        self.template._packing = False
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 if self.is_deepspeed_enabled:
@@ -523,7 +524,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                request_config: RequestConfig,
                is_global_inputs: bool = False) -> OutputsType:
         from swift.llm.infer.protocol import ChatCompletionResponse
-        request_config = copy(self.request_config)
+        request_config = self._get_request_config()
         # keys from InferRequest
         per_device_size = len(inputs)
         if is_global_inputs:
@@ -589,6 +590,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # Each rank generates all outputs — we keep only our share.
                 results = results[start_idx:end_idx]
         return results
+
+    def _get_request_config(self) -> RequestConfig:
+        request_config = copy(self.request_config)
+        if self.args.vllm_mode == 'colocate' and self.vllm_tensor_parallel_size > 1:
+            # Set request_config.seed
+            # 1. Ensure that the seed for vLLM Engines within each TP (Tensor Parallelism) group is the same;
+            #   otherwise, the program may hang.
+            # 2. Ensure that the seed for vLLM Engines across different TP groups is different;
+            #   otherwise, identical completions will be generated.
+            mode = 'train' if self.model.training else 'eval'
+            batch_size = (
+                self.args.per_device_train_batch_size
+                * self.args.gradient_accumulation_steps if mode == 'train' else self.args.per_device_eval_batch_size)
+            batch_size *= self.vllm_tensor_parallel_size
+            # Since the TP (Tensor Parallelism) group gathers the inputs,
+            # multiply the batch size by the TP parallel size.
+            request_config.seed = batch_size * (self.accelerator.process_index // self.vllm_tensor_parallel_size)
+
+        return request_config
 
     def _set_inputs_system(self, inputs: InputsType) -> InputsType:
         if not self.template.template_meta.default_system:
@@ -1073,6 +1093,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
+        if self.args.delta is not None:
+            coef_1 = torch.clamp(coef_1, max=self.args.delta)
+
         per_token_loss1 = coef_1 * advantages.unsqueeze(1)
         per_token_loss2 = coef_2 * advantages.unsqueeze(1)
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)

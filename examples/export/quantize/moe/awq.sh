@@ -1,6 +1,3 @@
-pip uninstall autoawq
-pip install git+https://github.com/casper-hansen/AutoAWQ.git --no-deps  # or "autoawq>=0.2.9"
-
 CUDA_VISIBLE_DEVICES=0,1 \
 swift export \
     --model Qwen/Qwen3-30B-A3B \

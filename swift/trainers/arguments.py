@@ -87,9 +87,26 @@ class TrainArgumentsMixin:
         except (ImportError, AttributeError):
             pass
 
+    @staticmethod
+    def _patch_liger_kernel():
+        # fix logits_to_keep
+        from liger_kernel.transformers.model import loss_utils
+        origin_LigerForCausalLMLoss = loss_utils.LigerForCausalLMLoss
+
+        def LigerForCausalLMLoss(hidden_states, *args, **kwargs):
+            hidden_states = hidden_states.contiguous()
+            return origin_LigerForCausalLMLoss(hidden_states, *args, **kwargs)
+
+        loss_utils.LigerForCausalLMLoss = LigerForCausalLMLoss
+        logger.info('Patch liger_kernel successfully.')
+
     def _init_liger(self):
         if self.use_liger_kernel:
             assert is_liger_available(), 'use_liger_kernel requires liger_kernels, try `pip install liger-kernel`'
+            try:
+                self._patch_liger_kernel()
+            except Exception:
+                pass
 
     def __post_init__(self):
         if is_mp() and self.use_liger_kernel:
@@ -153,6 +170,7 @@ class SwiftArgumentsMixin(TrainArgumentsMixin):
 class GRPOArgumentsMixin:
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
+    delta: Optional[float] = None
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
@@ -169,6 +187,7 @@ class GRPOArgumentsMixin:
     vllm_enable_prefix_caching: bool = True
     vllm_tensor_parallel_size: int = 1
     # external vllm (server)
+    vllm_server_base_url: Optional[str] = None
     vllm_server_host: Optional[str] = None
     vllm_server_port: int = 8000
     vllm_server_timeout: float = 240.0
