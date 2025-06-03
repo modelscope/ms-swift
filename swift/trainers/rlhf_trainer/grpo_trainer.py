@@ -465,25 +465,37 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             gather_if_zero3 = deepspeed.zero.GatheredParameters
         else:
             gather_if_zero3 = nullcontext
+
+        if self.args.async_generate:
+            # before sync weight, we should wait async generate finish
+            self._wait_queue()
+
         if is_peft_model(self.model):
-            if self.args.async_generate:
-                # before sync weight, we should wait async generate finish
-                self._wait_queue()
-            for parameter_group in self.parameter_groups:  # < this is the change
+            for i, parameter_group in enumerate(self.parameter_groups):  # < this is the change
+                parameter_group_no_lora = self.parameter_groups_no_lora[i]
+                parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
                 with gather_if_zero3(list(parameter_group)), patch_lora_merge(self.model, parameter_group):
                     self.model.merge_adapter()
+
                 for name, param in parameter_group:
                     name = name.removeprefix('base_model.model.').replace('.base_layer', '')
+
+                    # skip lora weights with prefix(example: "_lora")
                     if self.model.prefix in name:
                         continue
                     if 'original_module' in name:
                         continue
                     name = name.replace('modules_to_save.default.', '')
+                    if name not in parameter_group_no_lora:
+                        continue
                     if self.vllm_mode == 'server' and self.accelerator.is_main_process:
                         self.vllm_client.update_named_param(name, param.data)
                     elif self.vllm_mode == 'colocate':
                         llm_model = self.llm.llm_engine.model_executor.driver_worker.model_runner.model
                         llm_model.load_weights([(name, param.data)])
+
+                with patch_lora_unmerge(self.model):
+                    self.model.unmerge_adapter()
         else:
             for name, param in self.model.named_parameters():
                 with gather_if_zero3([param]):
