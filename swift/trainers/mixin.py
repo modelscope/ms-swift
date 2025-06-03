@@ -316,8 +316,8 @@ class SwiftMixin:
     def _prepare_gradient_checkpointing(self, model) -> None:
         from swift.llm import HfConfigFactory, get_model_arch, deep_getattr, dynamic_gradient_checkpointing
         args = self.args
+        HfConfigFactory.set_model_config_attr(model, 'use_cache', False)
         if args.gradient_checkpointing or args.vit_gradient_checkpointing:
-            HfConfigFactory.set_model_config_attr(model, 'use_cache', False)
             dynamic_gradient_checkpointing(model, args.vit_gradient_checkpointing)
         if args.gradient_checkpointing:
             model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
