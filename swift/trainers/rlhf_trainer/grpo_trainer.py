@@ -473,7 +473,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if is_peft_model(self.model):
             for i, parameter_group in enumerate(self.parameter_groups):  # < this is the change
                 parameter_group_no_lora = self.parameter_groups_no_lora[i]
-                parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
+                if parameter_group_no_lora:
+                    parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
                 with gather_if_zero3(list(parameter_group)), patch_lora_merge(self.model, parameter_group):
                     self.model.merge_adapter()
 
@@ -486,7 +487,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     if 'original_module' in name:
                         continue
                     name = name.replace('modules_to_save.default.', '')
-                    if name not in parameter_group_no_lora:
+                    if parameter_group_no_lora and name not in parameter_group_no_lora:
                         continue
                     if self.vllm_mode == 'server' and self.accelerator.is_main_process:
                         self.vllm_client.update_named_param(name, param.data)
