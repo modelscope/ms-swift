@@ -266,6 +266,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.model_accepts_loss_kwargs = False
         self.padding_free = self.template.padding_free
         self.template.padding_free = False
+        self.template._packing = False
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 if self.is_deepspeed_enabled:
@@ -1196,10 +1197,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             result.last_hidden_state = torch.stack(unpacked_logits, dim=0)
             return result
 
-        llm_model = get_llm_model(model)
-
-        base_model = llm_model.model
         if self.padding_free:
+            llm_model = get_llm_model(model)
+            if hasattr(llm_model, 'thinker'):
+                base_model = llm_model.thinker.model
+            else:
+                base_model = llm_model.model
             remove_handle1 = base_model.register_forward_pre_hook(
                 _padding_free_input_hook, with_kwargs=True, prepend=True)
             remove_handle2 = base_model.register_forward_hook(_padding_free_output_hook, with_kwargs=True, prepend=True)
