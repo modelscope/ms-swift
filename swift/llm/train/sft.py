@@ -116,7 +116,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
             callbacks=self.callbacks,
-            channel_list=self.args.channel_list,
             template=self.template,
             **self._get_trainer_kwargs(),
         )

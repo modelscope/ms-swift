@@ -389,8 +389,8 @@ def online_contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch
 @register_loss_func(LossType.channel_loss)
 def channel_loss_func(outputs, labels, num_items_in_batch=None, sample_channels=None, trainer=None) -> torch.Tensor:
     assert sample_channels is not None, 'Data does not have channel field.'
-    channel_list = trainer.channel_list
-    assert channel_list is not None, 'Please pass --channel_list as a hyperparameter.'
+    channels = trainer.args.channels
+    assert channels is not None, 'Please pass --channels as a hyperparameter.'
     logits = outputs.logits
 
     # compute token loss
@@ -413,7 +413,7 @@ def channel_loss_func(outputs, labels, num_items_in_batch=None, sample_channels=
 
     # At the end of a global step, compute the mean loss for each channel
     if state.local_step % trainer.args.gradient_accumulation_steps == 0:
-        for ch in channel_list:
+        for ch in channels:
             ch_loss_steps = state.ch_loss_steps.get(ch, [])
             loss_sum_tensor = torch.tensor([sum(torch.sum(x) for x in ch_loss_steps)],
                                            dtype=torch.float32,

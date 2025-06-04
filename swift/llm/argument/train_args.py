@@ -113,7 +113,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     # plugin
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
     metric: Optional[str] = None
-    channel_list: List[str] = None
 
     # extra
     max_new_tokens: int = 64
