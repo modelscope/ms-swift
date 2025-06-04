@@ -1199,7 +1199,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if self.padding_free:
             llm_model = get_llm_model(model)
-            base_model = llm_model.model
+            if hasattr(llm_model, 'thinker'):
+                base_model = llm_model.thinker.model
+            else:
+                base_model = llm_model.model
             remove_handle1 = base_model.register_forward_pre_hook(
                 _padding_free_input_hook, with_kwargs=True, prepend=True)
             remove_handle2 = base_model.register_forward_hook(_padding_free_output_hook, with_kwargs=True, prepend=True)

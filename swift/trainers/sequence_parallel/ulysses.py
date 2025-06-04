@@ -667,7 +667,10 @@ class Ulysses(SequenceParallel):
 
         llm_model = get_llm_model(model)
 
-        base_model = llm_model.model
+        if hasattr(llm_model, 'thinker'):
+            base_model = llm_model.thinker.model
+        else:
+            base_model = llm_model.model
         if hasattr(base_model, 'language_model'):
             self.causal_mask_func = base_model.language_model._update_causal_mask
         else:
