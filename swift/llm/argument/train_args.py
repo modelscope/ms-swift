@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import Literal, Optional
 
 from transformers import Seq2SeqTrainingArguments
 from transformers.utils.versions import require_version
