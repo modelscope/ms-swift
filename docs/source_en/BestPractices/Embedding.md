@@ -95,3 +95,17 @@ SWIFT provides two scaffold training scripts:
 
 - [GTE Model](https://github.com/tastelikefeet/swift/blob/main/examples/train/embedding/train_gte.sh)
 - [GME Model](https://github.com/tastelikefeet/swift/blob/main/examples/train/embedding/train_gme.sh)
+
+## Inference
+
+SWIFT currently does not support Embedding model inference and deployment (due to time constraints). You can use the original model's code for inference:
+
+https://www.modelscope.cn/models/iic/gte_Qwen2-7B-instruct
+
+https://www.modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct
+
+If you've used other models to train embedding from scratch (for example, the original `qwen2-vl` model + `--task_type embedding`), you can also use gme's inference code, but please note:
+
+https://www.modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct/file/view/master/gme_inference.py?status=1#L111
+
+Please modify the template here to match the model's own template to ensure the final embeddings align correctly. It's particularly important to note that the template for the gme model is different from the chatml template for the `qwen2-vl` or `qwen2.5-vl` series. In its inference code, the ending character is `<|endoftext|>` rather than `<|im_end|>`.

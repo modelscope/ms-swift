@@ -139,7 +139,8 @@ def split_str_parts_by(text: str, delimiters: List[str], regex_mode: bool = Fals
     """
     assert isinstance(text, str), f'text: {text}'
     delimiters_origin = delimiters
-    delimiters = [re.escape(delimiter) for delimiter in delimiters]
+    if not regex_mode:
+        delimiters = [re.escape(delimiter) for delimiter in delimiters]
     parts = _split_str_by_regex(text, delimiters) if delimiters else ['', text]
     res = []
     if regex_mode:

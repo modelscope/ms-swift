@@ -117,7 +117,7 @@ class Template(ProcessorMixin):
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto',  # train
                            'seq_cls', 'embedding', 'prm'] = 'pt'
-        self._packing = False
+        self._packing = self.padding_free
         self.use_megatron = False
         self._handles = []
         self._deepspeed_initialize = None
@@ -1172,7 +1172,7 @@ class Template(ProcessorMixin):
         old_kwargs = to_device(kwargs, model.device)
         kwargs = to_device(self._post_encode(model, old_kwargs), model.device)
         for k, v in old_kwargs.items():
-            if k in {'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states'
+            if k in {'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep'
                      } and k not in kwargs:
                 kwargs[k] = v
         if 'inputs_embeds' in kwargs:
@@ -1359,9 +1359,11 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
-        packing_mode = self.use_megatron or self.padding_free or self._packing and 'position_ids' in batch[0]
+        packing_mode = self.use_megatron or self._packing
         if self.padding_free:
-            batch = self._data_flatten(batch)
+            batch[:] = self._data_flatten(batch)
+        if self._packing:
+            assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
         res = {}
         if packing_mode:
             # only support llm

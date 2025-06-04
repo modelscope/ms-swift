@@ -272,3 +272,9 @@ register_template(
         chat_sep=[],
         suffix=['<|endoftext|>'],
     ))
+
+register_template(
+    QwenTemplateMeta(
+        LLMTemplateType.mimo_rl,
+        default_system='You are MiMo, an AI assistant developed by Xiaomi.',
+    ))

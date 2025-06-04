@@ -332,7 +332,7 @@ def get_llm_model(model: torch.nn.Module, model_meta=None):
 
     llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
     if llm_prefix:
-        llm_model = getattr(model, llm_prefix[0])
+        llm_model = deep_getattr(model, llm_prefix[0])
     else:
         llm_model = model
 

@@ -200,7 +200,10 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
         if is_master():
             self.vllm_client = VLLMClient(
-                self.vllm_server_host, self.vllm_server_port, connection_timeout=self.vllm_server_timeout)
+                base_url=self.vllm_server_base_url,
+                host=self.vllm_server_host,
+                server_port=self.vllm_server_port,
+                connection_timeout=self.vllm_server_timeout)
             self.vllm_client.init_communicator()
 
     def _set_default(self):
@@ -225,6 +228,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                                                       'Please update it by running: pip install -U trl')
 
         if self.use_liger_kernel:
+            if self.delta is not None:
+                raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
             from trl.import_utils import is_liger_kernel_available
             assert is_liger_kernel_available(), (
                 'Please install/update liger-kernel by running: pip install -U liger-kernel')

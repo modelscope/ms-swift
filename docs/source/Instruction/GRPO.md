@@ -209,6 +209,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - use_vllm: 是否使用 vLLM 作为 GRPO 生成的 infer_backend，默认为False。
 - vllm_mode: vLLM 集成模式，可选项为 `server` 和 `colocate`。server 模式使用 `swift rollout` 拉起的 vLLM 服务器进行采样，colocate 模式在程序内部署 vLLM。
 - vllm_mode server 参数
+  - vllm_server_base_url: vLLM server的Base URL(比如 http://local_host:8000), 默认为None。设置后，忽略host和port设置。
   - vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用.
   - vllm_server_port vLLM server 服务端口，默认为8000.
   - vllm_server_timeout 连接vLLM server的超时时间，默认为120s.
@@ -230,6 +231,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - num_iterations: 每个批次代更新次数，默认为1。
 - epsilon: clip 系数，默认为0.2。
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。
+- delta: [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291)中双侧 GRPO 上界裁剪值。若设置，建议大于 1 + epsilon。默认为None。
 - sync_ref_model: 是否定期同步ref_model，默认为False。
 - ref_model_mixup_alpha: 控制在更新过程中model和先前ref_model之间的混合。更新公式为 $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$。默认为0.6。
 - ref_model_sync_steps：同步频率，默认为512。

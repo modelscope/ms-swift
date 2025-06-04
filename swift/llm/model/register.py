@@ -48,8 +48,7 @@ class ModelGroup:
     tags: List[str] = field(default_factory=list)
 
     def __post_init__(self):
-        if not isinstance(self.models, (tuple, list)):
-            self.models = [self.models]
+        assert isinstance(self.models, (tuple, list)), f'self.models: {self.models}'
 
 
 @dataclass
