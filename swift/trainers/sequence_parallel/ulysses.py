@@ -848,7 +848,7 @@ class Ulysses(SequenceParallel):
         compute_acc_origin = metric.compute_acc
 
         def compute_acc(preds, labels, *args, **kwargs) -> Dict[str, List[float]]:
-
+            _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, None, None, None)
             # Gather preds and labels across the sp group
             if isinstance(preds, np.ndarray):
                 preds = torch.from_numpy(preds).to(get_current_device())
