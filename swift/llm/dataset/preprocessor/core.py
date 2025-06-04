@@ -305,14 +305,12 @@ class RowPreprocessor:
         if 'solution' in dataset.features:
             with safe_ddp_context(None, True):
                 dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
-        channel = None
-        if 'channel' in dataset.features:
-            channel = dataset['channel']
         dataset = self._rename_columns(dataset)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
 
         ignore_max_length_error = True if isinstance(dataset, HfDataset) and num_proc > 1 else False
+        keep_columns = ['channel']
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             try:
                 dataset_mapped = dataset.map(
@@ -321,18 +319,13 @@ class RowPreprocessor:
                         'strict': strict,
                         'ignore_max_length_error': ignore_max_length_error
                     },
-                    remove_columns=list(dataset.features.keys()),
+                    remove_columns=[col for col in dataset.features.keys() if col not in keep_columns],
                     **map_kwargs)
             except NotImplementedError:
                 pass
         if isinstance(dataset_mapped, HfDataset) and len(dataset) != len(dataset_mapped):
             logger.info(
                 f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
-        if channel:
-            dataset_mapped = dataset_mapped.map(
-                lambda example, idx: {
-                    **example, 'channel': channel[idx]
-                }, with_indices=True)
 
         return dataset_mapped
 
