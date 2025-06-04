@@ -48,8 +48,7 @@ class ModelGroup:
     tags: List[str] = field(default_factory=list)
 
     def __post_init__(self):
-        if not isinstance(self.models, (tuple, list)):
-            self.models = [self.models]
+        assert isinstance(self.models, (tuple, list)), f'self.models: {self.models}'
 
 
 @dataclass
@@ -536,7 +535,8 @@ def get_model_tokenizer(
         If set to None : It will be automatically selected between sdpa and eager.
     download_model: Whether to download the model weights. If `None`, it will be selected based on load_model.
     """
-    patch_mp_ddp()
+    if load_model:
+        patch_mp_ddp()
     if model_kwargs is None:
         model_kwargs = {}
     if download_model is None:
@@ -567,7 +567,7 @@ def get_model_tokenizer(
     kwargs['attn_impl'] = attn_impl
     kwargs['rope_scaling'] = rope_scaling
     kwargs['model_meta'] = model_meta
-    with patch_get_dynamic_module(), patch_tp_plan():
+    with patch_get_dynamic_module(), patch_tp_plan(load_model):
         model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):

@@ -22,6 +22,7 @@ import torch.nn as nn
 import transformers
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
 from packaging import version
+from peft import PeftModel
 from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
@@ -33,6 +34,7 @@ from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import nanmax, nanmin
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
+from swift.llm.model.utils import get_llm_model
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_logger, is_vllm_available, is_wandb_available,
@@ -262,7 +264,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
         # self.model_accepts_loss_kwargs to False to enable scaling.
         self.model_accepts_loss_kwargs = False
-
+        self.padding_free = self.template.padding_free
+        self.template.padding_free = False
+        self.template._packing = False
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 if self.is_deepspeed_enabled:
@@ -411,16 +415,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def prepare_vllm(self, model):
         from swift.tuners import Swift
         from swift.llm.infer.infer_engine import GRPOVllmEngine
-        if self.vllm_tensor_parallel_size > 1:
-            vllm_kwargs = {'distributed_executor_backend': 'external_launcher'}
-        else:
-            vllm_kwargs = {}
-
-        engine_kwargs = {'seed': self.accelerator.process_index // self.vllm_tensor_parallel_size}
-
         max_num_seqs = (
-            self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size
-            * self.args.gradient_accumulation_steps)
+            self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size * self.args.steps_per_generation)
         current_device = get_device()
         with Swift.grpo_context(model, self.template.processor):
             engine = GRPOVllmEngine(
@@ -434,12 +430,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 enforce_eager=self.args.vllm_enforce_eager,
                 limit_mm_per_prompt=self.args.vllm_limit_mm_per_prompt,
                 enable_sleep_mode=self.args.sleep_level > 0,
-                use_async_engine=False,
                 device=current_device,
                 max_model_len=self.args.vllm_max_model_len,
-                engine_kwargs=engine_kwargs,
+                seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
                 template=self.template,
-                **vllm_kwargs)
+                distributed_executor_backend='external_launcher',
+            )
         return engine
 
     @contextmanager
@@ -593,14 +589,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # Slice completions for this rank within its TP group.
                 # Each rank generates all outputs — we keep only our share.
                 results = results[start_idx:end_idx]
-
         return results
 
     def _get_request_config(self) -> RequestConfig:
         request_config = copy(self.request_config)
-        if self.vllm_mode == 'server':
-            request_config.seed = self.args.seed
-        else:
+        if self.args.vllm_mode == 'colocate' and self.vllm_tensor_parallel_size > 1:
             # Set request_config.seed
             # 1. Ensure that the seed for vLLM Engines within each TP (Tensor Parallelism) group is the same;
             #   otherwise, the program may hang.
@@ -618,6 +611,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return request_config
 
     def _set_inputs_system(self, inputs: InputsType) -> InputsType:
+        if not self.template.template_meta.default_system:
+            return
         if all(_input['messages'][0]['role'] == 'system' for _input in inputs):
             return
         for _input in inputs:
@@ -936,6 +931,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return inputs, rewards, rewards_per_func, completions
 
+    def split_by_mini_batches(self, inputs, advantages):
+        # Slice to keep only the local part of the data
+        # Slice to keep only the local part of the data
+        process_slice = slice(
+            self.accelerator.process_index * len(inputs),
+            (self.accelerator.process_index + 1) * len(inputs),
+        )
+        advantages = advantages[process_slice]
+
+        mode = 'train' if self.model.training else 'eval'
+        bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
+        spg = self.args.steps_per_generation if mode == 'train' else 1
+
+        assert len(inputs) == bs * spg, f'Expected {bs * spg} inputs, got {len(inputs)}'
+        spg_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(spg)]
+        # Split advantages by spg chunks
+        advantage_chunks = torch.chunk(advantages, spg)
+        return spg_chunks, advantage_chunks
+
     def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> List[InputsType]:
         """
         Prepare the final batch inputs with advantages, ref/old_policy logps and other fields for RL training.
@@ -957,28 +971,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         advantages = (rewards - mean_grouped_rewards)
         if self.args.scale_rewards:
             advantages /= (std_grouped_rewards + 1e-4)
-
-        # Slice to keep only the local part of the data
-        process_slice = slice(
-            self.accelerator.process_index * len(inputs),
-            (self.accelerator.process_index + 1) * len(inputs),
-        )
-        advantages = advantages[process_slice]
-
-        mode = 'train' if self.model.training else 'eval'
-        bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-        spg = self.args.steps_per_generation if mode == 'train' else 1
-
-        assert len(inputs) == bs * spg, f'Expected {bs * spg} inputs, got {len(inputs)}'
-        spg_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(spg)]
-
-        ga_batch_encoded_inputs = []
         template = self.template
 
-        # Split advantages by spg chunks
-        advantage_chunks = torch.chunk(advantages, spg)
-
-        for i, (batch, batch_advantages) in enumerate(zip(spg_chunks, advantage_chunks)):
+        gas_chunks, advantage_chunks = self.split_by_mini_batches(inputs, advantages)
+        ga_batch_encoded_inputs = []
+        for i, (batch, batch_advantages) in enumerate(zip(gas_chunks, advantage_chunks)):
             # Encode and process each batch (size=bs)
             with self._template_context(template):
                 batch_encoded_inputs = [template.encode(infer_request) for infer_request in batch]
@@ -1000,7 +997,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             with torch.no_grad():
                 batch_encoded_inputs['old_per_token_logps'] = (
-                    self._get_per_token_logps(self.model, batch_encoded_inputs) if self.old_policy else None)
+                    self._get_per_token_logps(self.model, batch_encoded_inputs) if self.old_policy() else None)
 
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
@@ -1096,6 +1093,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
+        if self.args.delta is not None:
+            coef_1 = torch.clamp(coef_1, max=self.args.delta)
+
         per_token_loss1 = coef_1 * advantages.unsqueeze(1)
         per_token_loss2 = coef_2 * advantages.unsqueeze(1)
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
@@ -1138,6 +1138,76 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return loss
 
+    @contextmanager
+    def padding_free_context(self, model: torch.nn.Module):
+        ctx = {}
+
+        def _padding_free_input_hook(module, args, kwargs):
+            attention_mask = kwargs['attention_mask']
+            # used in _padding_free_output_hook
+            ctx['padding_left'] = (attention_mask[:, -1].sum() == attention_mask.shape[0])
+            if 'input_ids' in kwargs and kwargs.get('input_ids') is not None:
+                # llm models
+                kwargs['position_ids'] = torch.arange(kwargs['input_ids'].shape[1]).unsqueeze(0).repeat(
+                    kwargs['input_ids'].shape[0], 1).to(kwargs['input_ids'].dtype).to(kwargs['input_ids'].device)
+                kwargs['input_ids'] = kwargs['input_ids'][attention_mask.bool()].unsqueeze(0)
+            else:
+                # mllm models
+                kwargs['position_ids'] = torch.arange(kwargs['inputs_embeds'].shape[1]).unsqueeze(0).repeat(
+                    kwargs['inputs_embeds'].shape[0], 1).to(torch.int64).to(kwargs['inputs_embeds'].device)
+                kwargs['inputs_embeds'] = kwargs['inputs_embeds'][attention_mask.bool()].unsqueeze(0)
+            kwargs['position_ids'] = kwargs['position_ids'][attention_mask.bool()].unsqueeze(0)
+            kwargs.pop('attention_mask', None)
+            return args, kwargs
+
+        def _padding_free_output_hook(module, args, kwargs, result):
+            position_ids = kwargs['position_ids']
+            seq_lengths = []
+            pos = position_ids[0]
+            resets = torch.where(pos[1:] < pos[:-1])[0] + 1
+
+            if len(resets) == 0:
+                # Only one sequence in this batch item
+                seq_lengths = [pos.max().item() + 1]
+            else:
+                # Multiple sequences
+                start = 0
+                for end in resets:
+                    seq_lengths.append(end - start)
+                    start = end
+                seq_lengths.append(pos.shape[0] - start)
+
+            max_length = max(seq_lengths)
+            last_hidden_state = result.last_hidden_state.squeeze(0)
+            unpacked_logits = []
+
+            start = 0
+            for length in seq_lengths:
+                seq_state = last_hidden_state[start:start + length]
+                padding = torch.zeros(
+                    (max_length - length,
+                     last_hidden_state.shape[-1])).to(last_hidden_state.dtype).to(last_hidden_state.device)
+                # re-padding
+                if ctx['padding_left']:
+                    seq_state = torch.cat((padding, seq_state), dim=0)
+                else:
+                    seq_state = torch.cat((seq_state, padding), dim=0)
+                unpacked_logits.append(seq_state)
+                start += length
+            result.last_hidden_state = torch.stack(unpacked_logits, dim=0)
+            return result
+
+        if self.padding_free:
+            llm_model = get_llm_model(model)
+            base_model = llm_model.model
+            remove_handle1 = base_model.register_forward_pre_hook(
+                _padding_free_input_hook, with_kwargs=True, prepend=True)
+            remove_handle2 = base_model.register_forward_hook(_padding_free_output_hook, with_kwargs=True, prepend=True)
+        yield
+        if self.padding_free:
+            remove_handle1.remove()
+            remove_handle2.remove()
+
     # Get the per-token log probabilities for the completions for the model and the reference model
     @profiling_decorator
     def _get_per_token_logps(self, model, inputs):
@@ -1151,7 +1221,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             parameters = inspect.signature(unwrapped_model.forward).parameters
         if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
             # save memory
-            return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
+            with self.padding_free_context(model):
+                return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
         inputs = {
             k: v
             for k, v in inputs.items() if k not in [
@@ -1159,7 +1230,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'truncated_mask'
             ]
         }
-        with self._template_context(self.template):
+
+        with self._template_context(self.template), self.padding_free_context(model):
             logits = model(**inputs).logits
         # exclude the last logit: it corresponds to the next token pred
         logits = logits[:, -(logits_to_keep + 1):-1, :]
@@ -1282,7 +1354,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     request['images'][i] = img['path']
         return
 
-    @property
     def old_policy(self):
         return self.num_iterations > 1 or self.args.steps_per_generation > self.args.gradient_accumulation_steps
 

@@ -58,7 +58,7 @@ class VllmArguments:
         pipeline_parallel_size(int): Pipeline parallelism size. Default is 1.
         max_num_seqs (int): Maximum number of sequences. Default is 256.
         max_model_len (Optional[int]): Maximum model length. Default is None.
-        disable_custom_all_reduce (bool): Flag to disable custom all-reduce. Default is False.
+        disable_custom_all_reduce (bool): Flag to disable custom all-reduce. Default is True.
         enforce_eager (bool): Flag to enforce eager execution. Default is False.
         limit_mm_per_prompt (Optional[str]): Limit multimedia per prompt. Default is None.
         vllm_max_lora_rank (int): Maximum LoRA rank. Default is 16.
@@ -70,15 +70,16 @@ class VllmArguments:
     pipeline_parallel_size: int = 1
     max_num_seqs: int = 256
     max_model_len: Optional[int] = None
-    disable_custom_all_reduce: bool = False
+    disable_custom_all_reduce: bool = True
     enforce_eager: bool = False
     limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_max_lora_rank: int = 16
     enable_prefix_caching: bool = False
-    use_async_engine: bool = True
+    use_async_engine: bool = False
+    vllm_quantization: Optional[str] = None
+    # rollout
     data_parallel_size: int = 1
     log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
-    vllm_quantization: Optional[str] = None
 
     def __post_init__(self):
         self.limit_mm_per_prompt = ModelArguments.parse_to_dict(self.limit_mm_per_prompt)
@@ -100,10 +101,9 @@ class VllmArguments:
             'enable_lora': len(adapters) > 0,
             'max_loras': max(len(adapters), 1),
             'enable_prefix_caching': self.enable_prefix_caching,
+            'use_async_engine': self.use_async_engine,
             'quantization': self.vllm_quantization,
         }
-        if dist.is_initialized():
-            kwargs.update({'device': dist.get_rank()})
         return kwargs
 
 
@@ -124,6 +124,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     infer_backend: Literal['vllm', 'pt', 'lmdeploy'] = 'pt'
 
     result_path: Optional[str] = None
+    write_batch_size: int = 1000
     metric: Literal['acc', 'rouge'] = None
     # for pt engine
     max_batch_size: int = 1
@@ -157,6 +158,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         if not is_dist():
             return
         assert not self.eval_human and not self.stream, (
+            'In DDP scenarios, interactive interfaces and streaming output are not supported.'
             f'args.eval_human: {self.eval_human}, args.stream: {self.stream}')
         self._init_device()
         init_process_group(backend=self.ddp_backend, timeout=self.ddp_timeout)

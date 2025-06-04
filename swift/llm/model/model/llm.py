@@ -317,3 +317,14 @@ register_model(
         model_arch=ModelArch.llama,
         architectures=['MiMoForCausalLM'],
         requires=['transformers>=4.37']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.mimo_rl, [ModelGroup([
+            Model('XiaomiMiMo/MiMo-7B-RL-0530', 'XiaomiMiMo/MiMo-7B-RL-0530'),
+        ])],
+        TemplateType.mimo_rl,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['MiMoForCausalLM'],
+        requires=['transformers>=4.37']))

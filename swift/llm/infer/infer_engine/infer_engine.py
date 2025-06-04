@@ -22,8 +22,6 @@ logger = get_logger()
 
 
 class InferEngine(BaseInferEngine, ProcessorMixin):
-    llm_max_batch_size = 1024 * 1024
-    mllm_max_batch_size = 1024
 
     def _post_init(self, template=None):
         processor = self.processor
@@ -159,24 +157,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         tasks = [self.infer_async(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
             use_tqdm = not request_config.stream and len(infer_requests) > 1
-        if request_config.stream:
-            return self._batch_infer_stream(tasks, True, use_tqdm, metrics)
-        else:
-            i = 0
-            result = []
-            max_batch_size = self.llm_max_batch_size
-            if hasattr(self, 'model_meta') and self.model_meta.is_multimodal:
-                # vllm & lmdeploy
-                max_batch_size = self.mllm_max_batch_size
-            prog_bar = tqdm(
-                total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm or len(tasks) <= max_batch_size)
-            while i < len(tasks):
-                tasks_samples = tasks[i:i + max_batch_size]
-                res = self._batch_infer_stream(tasks_samples, False, use_tqdm, metrics)
-                result += res
-                i += max_batch_size
-                prog_bar.update(len(tasks_samples))
-            return result
+        return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
     @staticmethod
     def _get_toolcall(response: str, template: Template) -> Optional[List[ChatCompletionMessageToolCall]]:

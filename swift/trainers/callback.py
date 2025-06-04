@@ -9,9 +9,11 @@ from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback,
                                            TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length, speed_metrics
 
-from swift.utils import append_to_jsonl, is_pai_training_job, use_torchacc
+from swift.utils import append_to_jsonl, get_logger, is_pai_training_job, use_torchacc
 from ..utils.utils import format_time
 from .arguments import TrainingArguments
+
+logger = get_logger()
 
 
 def add_train_message(logs, state, start_time) -> None:

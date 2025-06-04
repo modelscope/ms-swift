@@ -14,12 +14,12 @@ from transformers.utils import is_torch_npu_available
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
-from swift.utils import get_logger, get_seed
+from swift.utils import get_dist_setting, get_logger, get_seed, is_dist
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
-from .utils import AdapterRequest, InferStreamer, patch_npu_vllm
+from .utils import AdapterRequest, InferStreamer, patch_npu_vllm, patch_vllm_memory_leak
 
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
@@ -41,7 +41,7 @@ class VllmEngine(InferEngine):
         model_id_or_path: str,
         torch_dtype: Optional[torch.dtype] = None,
         *,
-        use_async_engine: bool = True,
+        use_async_engine: bool = False,
         model_type: Optional[str] = None,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
@@ -52,10 +52,11 @@ class VllmEngine(InferEngine):
         pipeline_parallel_size: int = 1,
         max_model_len: Optional[int] = None,
         max_num_seqs: int = 256,
-        disable_custom_all_reduce: bool = False,
+        disable_custom_all_reduce: bool = True,
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         device: str = 'auto',
+        seed: Optional[int] = None,
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -67,7 +68,9 @@ class VllmEngine(InferEngine):
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
     ) -> None:
-        os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '0')
+        if engine_kwargs is None:
+            engine_kwargs = {}
+        patch_vllm_memory_leak()
         self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -94,10 +97,11 @@ class VllmEngine(InferEngine):
             max_lora_rank=max_lora_rank,
             enable_prefix_caching=enable_prefix_caching,
             device=device,
+            seed=seed,
             distributed_executor_backend=distributed_executor_backend,
             enable_sleep_mode=enable_sleep_mode,
             quantization=quantization,
-            engine_kwargs=engine_kwargs,
+            **engine_kwargs,
         )
         context = nullcontext()
         if is_torch_npu_available() and (tensor_parallel_size == 1 or pipeline_parallel_size == 1):
@@ -107,6 +111,7 @@ class VllmEngine(InferEngine):
         self._load_generation_config()
         self._fix_vllm_bug()
         self.patch_remove_log()
+        self._request_count = 0
 
     def _prepare_engine(self) -> None:
         with patch_auto_tokenizer(self.tokenizer), patch_auto_config(self.config):
@@ -121,7 +126,7 @@ class VllmEngine(InferEngine):
         pipeline_parallel_size: int = 1,
         max_model_len: Optional[int] = None,
         max_num_seqs: int = 256,
-        disable_custom_all_reduce: bool = False,
+        disable_custom_all_reduce: bool = True,
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         device: str = 'auto',
@@ -131,11 +136,8 @@ class VllmEngine(InferEngine):
         enable_prefix_caching: bool = False,
         distributed_executor_backend: Optional[str] = None,
         enable_sleep_mode: bool = False,
-        quantization: Optional[str] = None,
-        engine_kwargs: Optional[Dict[str, Any]] = None,
+        **engine_kwargs,
     ) -> None:
-        if engine_kwargs is None:
-            engine_kwargs = {}
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
         if self.use_async_engine:
             engine_cls = AsyncEngineArgs
@@ -158,7 +160,6 @@ class VllmEngine(InferEngine):
         if 'enable_sleep_mode' in parameters:
             engine_kwargs['enable_sleep_mode'] = enable_sleep_mode
 
-        engine_kwargs['quantization'] = quantization
         model_info = self.model_info
         if self.config.architectures is None:
             architectures = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM']}[self.model_meta.model_type]
@@ -180,8 +181,6 @@ class VllmEngine(InferEngine):
             device=device,
             **engine_kwargs,
         )
-        if distributed_executor_backend == 'external_launcher':
-            engine_args.disable_custom_all_reduce = True
         self.engine_args = engine_args
         self.enable_lora = enable_lora
         if max_model_len is not None:
@@ -190,7 +189,8 @@ class VllmEngine(InferEngine):
     def _fix_vllm_bug(self) -> None:
         # fix vllm==0.4 bug (very slow)
         tokenizer = self.tokenizer
-        if self._version_ge('0.4') and not tokenizer.__class__.__name__.startswith('Cached'):
+        if self._version_ge(
+                '0.4') and not self._version_ge('0.6') and not tokenizer.__class__.__name__.startswith('Cached'):
             _tokenizer_len = len(tokenizer)
             __old_len__ = tokenizer.__class__.__len__
 
@@ -305,8 +305,6 @@ class VllmEngine(InferEngine):
         for key in ['n', 'best_of', 'frequency_penalty', 'presence_penalty', 'seed']:
             kwargs[key] = getattr(request_config, key)
 
-        if kwargs.get('seed') is None:
-            kwargs['seed'] = get_seed()
         res = SamplingParams(**kwargs)
 
         if hasattr(res, 'output_kind') and res.n > 1:
@@ -332,38 +330,45 @@ class VllmEngine(InferEngine):
         infer_streamers = [InferStreamer(template) for _ in range(generation_config.n)]
         token_idxs = [0 for _ in range(generation_config.n)]
         async for result in result_generator:
-
-            is_diff = False
-            is_finished = False
-            for output in result.outputs:
-                output.token_ids = list(output.token_ids)
-                output.delta_text = infer_streamers[output.index].get_printable_text(
-                    output.token_ids, output.finished())
-                output.is_finished = output.finish_reason is not None
-                is_diff |= bool(output.delta_text)
-                is_finished |= output.is_finished
-            if not is_diff and not is_finished:
+            res = self._create_chat_completion_stream_response(result, template, generation_config, request_id,
+                                                               infer_streamers, token_idxs)
+            if res is None:
                 continue
+            yield res
 
-            num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
-            usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
-            choices = []
-            for output in result.outputs:
-                logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idxs[output.index]:],
-                                              generation_config.top_logprobs)
-                token_idxs[output.index] = len(output.token_ids)
-                toolcall = None
-                if output.is_finished:
-                    toolcall = self._get_toolcall(template.decode(output.token_ids), template)
-                choice = ChatCompletionResponseStreamChoice(
-                    index=output.index,
-                    delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
-                    finish_reason=output.finish_reason,
-                    logprobs=logprobs)
-                choices.append(choice)
-            yield ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
+    def _create_chat_completion_stream_response(self, result, template, generation_config, request_id, infer_streamers,
+                                                token_idxs) -> Optional[ChatCompletionStreamResponse]:
+        is_diff = False
+        is_finished = False
+        for output in result.outputs:
+            output.token_ids = list(output.token_ids)
+            output.delta_text = infer_streamers[output.index].get_printable_text(output.token_ids, output.finished())
+            output.is_finished = output.finish_reason is not None
+            is_diff |= bool(output.delta_text)
+            is_finished |= output.is_finished
+        if not is_diff and not is_finished:
+            return
 
-    def _create_chat_completion_response(self, result, template, generation_config, request_id):
+        num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
+        usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
+        choices = []
+        for output in result.outputs:
+            logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idxs[output.index]:],
+                                          generation_config.top_logprobs)
+            token_idxs[output.index] = len(output.token_ids)
+            toolcall = None
+            if output.is_finished:
+                toolcall = self._get_toolcall(template.decode(output.token_ids), template)
+            choice = ChatCompletionResponseStreamChoice(
+                index=output.index,
+                delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
+                finish_reason=output.finish_reason,
+                logprobs=logprobs)
+            choices.append(choice)
+        return ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
+
+    def _create_chat_completion_response(self, result, template, generation_config,
+                                         request_id) -> ChatCompletionResponse:
         assert result is not None
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
@@ -398,11 +403,6 @@ class VllmEngine(InferEngine):
     def _batch_infer_stream(self, *args, **kwargs):
         if hasattr(self.engine, 'engine'):
             self.engine.engine.model_executor.parallel_worker_tasks = None
-        elif hasattr(self.engine, 'engine_core'):
-            # vllm>=0.8
-            self.engine.engine_core.outputs_queue = None
-            self.engine.engine_core.queue_task = None
-            self.engine.output_handler = None
         return super()._batch_infer_stream(*args, **kwargs)
 
     def infer(
@@ -426,10 +426,13 @@ class VllmEngine(InferEngine):
             )
         else:
             request_config = deepcopy(request_config or RequestConfig())
-            if request_config.stream:
-                raise ValueError('If you want to use stream inference, you need to pass `use_async_engine` as True.')
+            if request_config.stream and len(infer_requests) > 1:
+                raise ValueError('If you want to use stream batch inference, you need to set use_async_engine to True.')
             if use_tqdm is None:
                 use_tqdm = len(infer_requests) > 1
+            rank = get_dist_setting()[0]
+            if is_dist() and rank % self.engine_args.tensor_parallel_size != 0:
+                use_tqdm = False
             if template is None:
                 template = self.default_template
             template.set_mode('vllm')
@@ -438,25 +441,50 @@ class VllmEngine(InferEngine):
             self.set_default_max_tokens(request_config, batched_inputs)
             request_id_list = []
             for inputs in batched_inputs:
-                request_id = random_uuid()
+                request_id = str(self._request_count)
                 request_id_list.append(request_id)
+                self._request_count += 1
                 generation_config = self._prepare_generation_config(request_config)
                 self._add_stop_words(generation_config, request_config, template.template_meta)
                 self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
             prog_bar = tqdm(total=len(batched_inputs), dynamic_ncols=True, disable=not use_tqdm)
             outputs = {}
-            while self.engine.has_unfinished_requests():
-                step_outputs = self.engine.step()
-                for output in step_outputs:
-                    if output.finished:
-                        outputs[output.request_id] = output
-                        prog_bar.update()
-            prog_bar.close()
-            outputs = [outputs[request_id] for request_id in request_id_list]
-            return [
-                self._create_chat_completion_response(result, template, generation_config, request_id)
-                for request_id, result in zip(request_id_list, outputs)
-            ]
+            if request_config.stream:
+
+                def _gen_wrapper():
+                    infer_streamers = [InferStreamer(template) for _ in range(generation_config.n)]
+                    token_idxs = [0 for _ in range(generation_config.n)]
+                    while self.engine.has_unfinished_requests():
+                        result = self.engine.step()
+                        if not result:
+                            continue
+                        result = result[0]
+                        res = self._create_chat_completion_stream_response(result, template, generation_config,
+                                                                           request_id, infer_streamers, token_idxs)
+                        if res is None:
+                            continue
+                        yield res
+                        if result.finished:
+                            break
+
+                    self._update_metrics(res, metrics)
+
+                return [_gen_wrapper()]
+            else:
+                while self.engine.has_unfinished_requests():
+                    step_outputs = self.engine.step()
+                    for output in step_outputs:
+                        if output.finished:
+                            outputs[output.request_id] = output
+                            prog_bar.update()
+                prog_bar.close()
+                outputs = [outputs[request_id] for request_id in request_id_list]
+                res = [
+                    self._create_chat_completion_response(result, template, generation_config, request_id)
+                    for request_id, result in zip(request_id_list, outputs)
+                ]
+                self._update_metrics(res, metrics)
+                return res
 
     async def infer_async(
         self,

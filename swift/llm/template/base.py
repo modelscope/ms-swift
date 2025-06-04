@@ -117,7 +117,7 @@ class Template(ProcessorMixin):
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto',  # train
                            'seq_cls', 'embedding', 'prm'] = 'pt'
-        self._packing = False
+        self._packing = self.padding_free
         self.use_megatron = False
         self._handles = []
         self._deepspeed_initialize = None
@@ -911,8 +911,7 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
         return system
 
-    @staticmethod
-    def _swift_prepare_function_call(agent_template, messages):
+    def _swift_prepare_messages(self, messages):
         if len(messages) < 2:
             return
         i = 1
@@ -924,12 +923,12 @@ class Template(ProcessorMixin):
                 i_start = i
                 while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool':
                     i += 1
-                pre_message['content'], tool_content = agent_template._format_tool_responses(
+                pre_message['content'], tool_content = self.agent_template._format_tool_responses(
                     pre_content, messages[i_start:i + 1])
                 messages[i_start:i + 1] = [{'role': 'tool', 'content': tool_content}]
                 i = i_start + 1
-            elif pre_role == 'assistant' and role == 'assistant':
-                # Consecutive messages from the assistant role need to be merged to prevent errors.
+            elif pre_role == 'assistant' and role == 'assistant' or pre_role == 'user' and role == 'user':
+                # Consecutive messages from the assistant/user role need to be merged to prevent errors.
                 pre_message['content'] = pre_content + content
                 messages.pop(i)
             else:
@@ -938,7 +937,7 @@ class Template(ProcessorMixin):
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
         system = self._get_system(inputs)
-        self._swift_prepare_function_call(self.agent_template, inputs.messages)
+        self._swift_prepare_messages(inputs.messages)
 
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2
@@ -1173,7 +1172,7 @@ class Template(ProcessorMixin):
         old_kwargs = to_device(kwargs, model.device)
         kwargs = to_device(self._post_encode(model, old_kwargs), model.device)
         for k, v in old_kwargs.items():
-            if k in {'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states'
+            if k in {'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep'
                      } and k not in kwargs:
                 kwargs[k] = v
         if 'inputs_embeds' in kwargs:
@@ -1360,9 +1359,11 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
-        packing_mode = self.use_megatron or self.padding_free or self._packing and 'position_ids' in batch[0]
+        packing_mode = self.use_megatron or self._packing
         if self.padding_free:
-            batch = self._data_flatten(batch)
+            batch[:] = self._data_flatten(batch)
+        if self._packing:
+            assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
         res = {}
         if packing_mode:
             # only support llm
@@ -1475,12 +1476,6 @@ class Template(ProcessorMixin):
             else:
                 position_ids = res['position_ids']
             assert padding_side == 'right' or bs == 1, 'Sequence parallel only support padding_side=right'
-            from swift.trainers.sequence_parallel import sequence_parallel
-            if sequence_parallel.world_size() > 1:
-                from swift.trainers.sequence_parallel import sequence_parallel
-                input_ids, _, labels, position_ids, attention_mask, loss_scale = \
-                    sequence_parallel.pad_and_split_inputs(
-                        tokenizer, input_ids, None, labels, position_ids, attention_mask, loss_scale)
             res['position_ids'] = position_ids
         _local_var = locals()
         for key in ['input_ids', 'attention_mask', 'labels', 'loss_scale']:

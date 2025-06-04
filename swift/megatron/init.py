@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
-from contextlib import contextmanager
 
 from swift.llm import git_clone_github
 from swift.utils import get_logger, is_megatron_available, safe_ddp_context, subprocess_run
@@ -30,53 +29,21 @@ def _patch_transformer_engine():
             pass
 
 
-def new_cyclic_iter(iter):
-    from megatron.training import get_args
-    args = get_args()
-    max_epochs = args.max_epochs
-    i = 0
-    while True:
-        if getattr(args, 'is_training', False):
-            if max_epochs and i >= max_epochs:
-                logger.info(f'Training of {i} epochs has been completed, the training has finished.')
-                break
-            logger.info(f'The training of Epoch {i} starts...')
-        for x in iter:
-            yield x
-        i += 1
+def _patch__batched_p2p_ops():
+    from megatron.core.pipeline_parallel import p2p_communication
 
+    _batched_p2p_ops_origin = p2p_communication._batched_p2p_ops
 
-@contextmanager
-def _training_context():
-    from megatron.training import get_args
-    args = get_args()
-    args.is_training = True
-    try:
-        yield
-    finally:
-        args.is_training = False
+    def _batched_p2p_ops(**kwargs):
+        kwargs['group'] = None
+        return _batched_p2p_ops_origin(**kwargs)
 
-
-def _patch_max_epochs():
-    # support max_epochs
-    from megatron.training import training
-    train_step_origin = training.train_step
-
-    def train_step(*args, **kwargs):
-        with _training_context():
-            try:
-                return train_step_origin(*args, **kwargs)
-            except StopIteration:
-                return {}, True, True, True, 0, None, None
-
-    training.train_step = train_step
-
-    training.cyclic_iter = new_cyclic_iter
+    p2p_communication._batched_p2p_ops = _batched_p2p_ops
 
 
 def _patch_megatron():
     _patch_transformer_engine()
-    _patch_max_epochs()
+    _patch__batched_p2p_ops()
 
 
 def init_megatron_env() -> None:

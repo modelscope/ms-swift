@@ -13,6 +13,7 @@ pip install -U trl
 The GRPOTrainer has been refactored in swift 3.5.dev. If you are using a version of Swift < 3.5 , please refer to the[stable doc](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source_en/Instruction/GRPO.md)
 
 **Dev Log**
+- **2025-05-29** — Support padding_free(--padding_free true) and sequence_parallel(--sequence_parallel_size N).
 - **2025-05-23** — Added support for custom sampling batch size (see parameters: generation_batch_size / steps_per_generation).
 - **2025-05-22** — swift rollout now supports the data_parallel_size parameter.
 - **2025-05-16** - Implemented ref_model synchronization logic (see parameter: sync_ref_model).
@@ -218,6 +219,7 @@ Arguments
 - use_vllm: Whether to use vLLM as the infer_backend for GRPO generation, default is False.
 - vllm_mode: Mode to use for vLLM integration when `use_vllm` is set to `True`. Must be one of `server` or `colocate`
 - vllm_mode server parameter
+  - vllm_server_base_url: Base URL for the vLLM server (e.g., 'http://localhost:8000'). If provided, `vllm_server_host` " "and `vllm_server_port` are ignored. Default is None.
   - vllm_server_host: The host address of the vLLM server. Default is None. This is used when connecting to an external vLLM server.
   - vllm_server_port: The service port of the vLLM server. Default is 8000.
   - vllm_server_timeout: The connection timeout for the vLLM server. Default is 120 seconds.
@@ -229,24 +231,27 @@ Arguments
   - vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
   - vllm_tensor_parallel_size: the tensor parallel size of vLLM engine, default is 1.
   - sleep_level: make vllm sleep when model is training. Options are 0 or 1, default is 0, no sleep
+  - move_model_batches: When moving model parameters to fast inference frameworks such as vLLM, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
+  - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM. The default is `False`.
+  - offload_model: Whether to offload the model itself during inference with vLLM. The default is `False`.
+  - gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
+  - completion_length_limit_scope: Specifies the scope of the `max_completion_length` limit in multi-turn conversations.
+  When set to `total`, the total output length across all turns must not exceed `max_completion_length`.
+  When set to `per_round`, each individual turn's output length is limited separately.
+  Defaults to `per_round`. Currently only takes effect in colocate mode.
 - num_iterations: number of iterations per batch. Default is 1.
 - epsilon: epsilon value for clipping. Default is 0.2.
 - epsilon_high: Upper clip coefficient, default is None. When set, it forms a clipping range of [epsilon, epsilon_high] together with epsilon.
+- delta: Delta value for the upper clipping bound in two-sided GRPO. Recommended to be > 1 + epsilon. This method was introduced in the [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291).
 - sync_ref_model: Whether to synchronize the reference model. Default is False。
   - ref_model_mixup_alpha: The Parameter controls the mix between the current policy and the previous reference policy during updates. The reference policy is updated according to the equation: $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$. Default is 0.6.
   - ref_model_sync_steps：The parameter determines how frequently the current policy is synchronized with the reference policy. Default is 512.
-- move_model_batches: When moving model parameters to fast inference frameworks such as vLLM, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
-- offload_optimizer: Whether to offload optimizer parameters during inference with vLLM. The default is `False`.
-- offload_model: Whether to offload the model itself during inference with vLLM. The default is `False`.
-- gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
 - multi_turn_func: The multi turn GRPO plugin name. Add your multi-turn implementation in plugin/multi_turn.py.
-- completion_length_limit_scope: Specifies the scope of the `max_completion_length` limit in multi-turn conversations.
-When set to `total`, the total output length across all turns must not exceed `max_completion_length`.
-When set to `per_round`, each individual turn's output length is limited separately.
-Defaults to `per_round`. Currently only takes effect in colocate mode.
 - dynamic_sample: Exclude data within the group where the reward standard deviation is 0, and additionally sample new data. Default is False.
 - max_resample_times: Under the dynamic_sample setting, limit the number of resampling attempts to a maximum of 3. Default is 3 times.
 - overlong_filter: Skip overlong truncated samples, which will not be included in loss calculation. Default is False.
+- padding_free: Remove all padding tokens，and concat all valid tokens to one batch，only supports flash_attn.
+- sequence_parallel_size: The segment number of sequence parallels.
 The hyperparameters for the reward function can be found in the [Built-in Reward Functions section](#built-in-reward-functions).
 
 You can use vLLM as sampling backends to accelerate training.

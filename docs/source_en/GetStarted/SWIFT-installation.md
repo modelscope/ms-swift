@@ -78,7 +78,7 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 | peft         | >=0.11,<0.16 |             |                                           |
 | trl          | >=0.13,<0.18 | 0.17      | RLHF                                      |
 | deepspeed    | >=0.14       | 0.14.5 | Training                                  |
-| vllm         | >=0.5.1      | 0.7.3/0.8       | Inference/Deployment/Evaluation           |
+| vllm         | >=0.5.1      | 0.8       | Inference/Deployment/Evaluation           |
 | lmdeploy     | >=0.5        | 0.8       | Inference/Deployment/Evaluation           |
 | evalscope | >=0.11       | | Evaluation |
 

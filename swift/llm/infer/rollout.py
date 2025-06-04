@@ -86,7 +86,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.post('/infer/', response_model=None)(self.infer)
 
     def __init__(self, args: Union[List[str], DeployArguments, None] = None):
-        os.environ['VLLM_USE_V1'] = os.environ.get('VLLM_USE_V1', '1')
         super().__init__(args)
         safe_set_start_method()
         self.app = FastAPI(lifespan=self.lifespan)
@@ -252,7 +251,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
             if not requests:
                 requests = RolloutInferRequest(messages=[{'role': 'user', 'content': '<placeholder>'}])
             # different seed bewteen vLLM Engine
-            request_config.seed += i * len(requests)
+            if request_config.seed:
+                request_config.seed += i * len(requests)
             kwargs = {'infer_requests': requests, 'request_config': request_config, 'use_tqdm': use_tqdm}
             connection.send({'type': 'call', 'method': 'infer', 'kwargs': kwargs})
 

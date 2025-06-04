@@ -74,7 +74,8 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
-- 🎁 2025.05.26: We support the training of Qwen3-embedding models, please check the script [here](examples/train/embedding/train_emb.sh).
+- 🎁 2025.06.05: We support the training of Qwen3-embedding models, please check the script [here](examples/train/embedding/train_emb.sh).
+- 🎁 2025.05.29: Support sequence parallel in pt, sft, dpo and grpo, check script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/long_text).
 - 🎁 2025.05.11: GRPO now supports custom processing logic for reward models. See the GenRM example [here](./docs/source_en/Instruction/GRPO.md#customized-reward-models).
 - 🎁 2025.04.15: The ms-swift paper has been accepted by AAAI 2025. You can find the paper at [this link](https://ojs.aaai.org/index.php/AAAI/article/view/35383).
 - 🎁 2025.03.23: Multi-round GRPO is now supported for training multi-turn dialogue scenarios (e.g., agent tool calling). Please refer to the [training script](examples/train/grpo/internal/vllm_multi_round.sh).
@@ -121,7 +122,7 @@ Running Environment:
 | peft | >=0.11,<0.16 | ||
 | trl | >=0.13,<0.18 | 0.17 |RLHF|
 | deepspeed    | >=0.14       | 0.14.5 | Training                                  |
-| vllm         | >=0.5.1      | 0.7.3/0.8       | Inference/Deployment/Evaluation           |
+| vllm         | >=0.5.1      | 0.8       | Inference/Deployment/Evaluation           |
 | lmdeploy     | >=0.5        | 0.8       | Inference/Deployment/Evaluation           |
 | evalscope | >=0.11       |  | Evaluation |
 
