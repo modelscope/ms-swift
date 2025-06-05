@@ -667,7 +667,10 @@ class Ulysses(SequenceParallel):
 
         llm_model = get_llm_model(model)
 
-        base_model = llm_model.model
+        if hasattr(llm_model, 'thinker'):
+            base_model = llm_model.thinker.model
+        else:
+            base_model = llm_model.model
         if hasattr(base_model, 'language_model'):
             self.causal_mask_func = base_model.language_model._update_causal_mask
         else:
@@ -845,12 +848,12 @@ class Ulysses(SequenceParallel):
         compute_acc_origin = metric.compute_acc
 
         def compute_acc(preds, labels, *args, **kwargs) -> Dict[str, List[float]]:
-            _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, None, None, None)
             # Gather preds and labels across the sp group
             if isinstance(preds, np.ndarray):
                 preds = torch.from_numpy(preds).to(get_current_device())
             if isinstance(labels, np.ndarray):
                 labels = torch.from_numpy(labels).to(get_current_device())
+            _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, None, None, None)
             shape0 = preds.shape[0]
             preds_output = torch.empty((shape0 * self.sp_world_size, preds.shape[1]),
                                        dtype=preds.dtype,
