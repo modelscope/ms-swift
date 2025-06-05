@@ -121,7 +121,7 @@ class VLLMClient:
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
     ):
-        url = f'{self.base_url}/generate/'
+        url = f'{self.base_url}/infer/'
         response = self.session.post(
             url,
             json={

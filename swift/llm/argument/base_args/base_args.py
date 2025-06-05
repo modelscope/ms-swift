@@ -216,6 +216,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         force_load_keys = [
             # base_args
             'tuner_backend',
+            'train_type',
             # model_args
             'task_type',
             # quant_args
@@ -225,6 +226,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         # If the current value is None or an empty list and it is among the following keys
         load_keys = [
             'custom_register_path',
+            'external_plugins',
             # model_args
             'model',
             'model_type',
