@@ -473,8 +473,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if is_peft_model(self.model):
             for i, parameter_group in enumerate(self.parameter_groups):  # < this is the change
                 parameter_group_no_lora = self.parameter_groups_no_lora[i]
-                param_list = [dict(self.model.named_parameters())[name] for name in parameter_group]
-                with gather_if_zero3(param_list), patch_lora_merge(self.model, parameter_group):
+                parameters = [
+                    parameter for name, parameter in self.model.named_parameters()
+                    if not parameter_group or name in parameter_group
+                ]
+                with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
                     self.model.merge_adapter()
                     state_dict = self.model.state_dict()
                     state_dict = {
