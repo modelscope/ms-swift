@@ -651,6 +651,10 @@ class Ulysses(SequenceParallel):
             inputs_embeds = kwargs.get('inputs_embeds', None)
             position_ids = kwargs['position_ids']
             attention_mask = kwargs.get('attention_mask', None)
+            if hasattr(_self, 'language_model'):
+                embed_tokens = getattr(_self.language_model, 'embed_tokens', None)
+            else:
+                embed_tokens = getattr(_self, 'embed_tokens', None)
             _input_ids, inputs_embeds, _, position_ids, attention_mask, _ = self.pad_and_split_inputs(
                 input_ids,
                 inputs_embeds,
@@ -658,7 +662,7 @@ class Ulysses(SequenceParallel):
                 position_ids,
                 attention_mask,
                 None,
-                embed_tokens=getattr(_self, 'embed_tokens', None))
+                embed_tokens=embed_tokens)
             kwargs['input_ids'] = _input_ids
             kwargs['inputs_embeds'] = inputs_embeds
             kwargs['position_ids'] = position_ids
@@ -827,6 +831,7 @@ class Ulysses(SequenceParallel):
         if trainer.__class__.__name__ in ('Seq2SeqTrainer', 'DPOTrainer'):
             trainer.compute_loss_func = partial(loss_scale_sp_func, ulysses=self)
             if trainer.__class__.__name__ == 'DPOTrainer':
+                trainer.model_accepts_loss_kwargs = True
                 trainer.get_per_token_logps = MethodType(partial(get_per_token_logps, ulysses=self), trainer)
 
                 def rlhf_loss_scale_sp_func(_, *args, **kwargs):
