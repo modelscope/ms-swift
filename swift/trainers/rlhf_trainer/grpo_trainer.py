@@ -7,7 +7,7 @@ import re
 import time
 from collections import defaultdict, deque
 from concurrent.futures import Future
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
@@ -222,7 +222,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
         set_seed(args.seed, device_specific=True)
-        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
+        if is_peft_model(self.model):
+            self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.use_fast_infer = self.use_vllm  # whether to use the PT backend
         if self.use_vllm:
             if not is_vllm_available():
@@ -458,60 +459,64 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @profiling_decorator
     def _move_model_to_vllm(self):
-        if self.vllm_mode == 'server':
-            return super()._move_model_to_vllm()
+        deepspeed_plugin = self.accelerator.state.deepspeed_plugin
+        zero_stage_3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
+        if zero_stage_3:
+            import deepspeed
+            gather_if_zero3 = deepspeed.zero.GatheredParameters
+        else:
+            gather_if_zero3 = nullcontext
 
-        from accelerate.utils.other import is_compiled_module
+        if self.args.async_generate:
+            # before sync weight, we should wait async generate finish
+            self._wait_queue()
 
-        for i, parameter_group in enumerate(self.parameter_groups):
-            parameter_group_no_lora = self.parameter_groups_no_lora[i]
-            with unwrap_model_for_generation(
-                    self.model,
-                    self.accelerator,
-                    gather_deepspeed3_params=self.args.ds3_gather_for_generation,
-                    gather_parameters=parameter_group) as unwrapped_model:
-
-                if is_compiled_module(unwrapped_model):
-                    unwrapped_model = unwrapped_model._orig_mod
-                if is_peft_model(unwrapped_model):
-                    with patch_lora_merge(unwrapped_model, parameter_group):
-                        unwrapped_model.merge_adapter()
-                    state_dict = unwrapped_model.state_dict()
-                    # Remove base_model and base_layer prefixes
+        if is_peft_model(self.model):
+            for i, parameter_group in enumerate(self.parameter_groups):  # < this is the change
+                parameter_group_no_lora = self.parameter_groups_no_lora[i]
+                parameters = [
+                    parameter for name, parameter in self.model.named_parameters()
+                    if not parameter_group or name in parameter_group
+                ]
+                with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
+                    self.model.merge_adapter()
+                    state_dict = self.model.state_dict()
                     state_dict = {
                         k.removeprefix('base_model.model.').replace('.base_layer', ''): v
                         for k, v in state_dict.items()
                     }
-                    # Remove values with adapter prefix (example: "_lora")
-                    state_dict = {k: v for k, v in state_dict.items() if unwrapped_model.prefix not in k}
+                    state_dict = {k: v for k, v in state_dict.items() if self.model.prefix not in k}
                     # When module to save, remove its prefix and discard the original module
                     state_dict = {
                         k.replace('modules_to_save.default.', ''): v
                         for k, v in state_dict.items() if 'original_module' not in k
                     }
-                else:
-                    state_dict = unwrapped_model.state_dict()
-                if parameter_group_no_lora:
-                    parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
-                    state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
-                assert len(state_dict) > 0 and all([state.shape != torch.Size([0]) for state in state_dict.values()])
-                if self.use_fast_infer:
-                    if self.args.async_generate:
-                        # before sync weight, we should wait async generate finish
-                        self._wait_queue()
-                    if self.use_vllm:
+                    if parameter_group_no_lora:
+                        parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
+                        state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
+                    assert len(state_dict) > 0 and all(
+                        [state.shape != torch.Size([0]) for state in state_dict.values()])
+
+                    if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+                        for name, param in state_dict.items():
+                            self.vllm_client.update_named_param(name, param)
+                    elif self.vllm_mode == 'colocate':
                         llm_model = self.engine.inner_model
-                    else:
-                        llm_model = self.engine.engine.engine
-                    llm_model.load_weights(state_dict.items())
-                    del state_dict
-                    gc_collect()
-                # Unmerge the adapter to restore the model to its original state.
-                # This must be done after loading weights to ensure they correspond to the merged state.
-                if is_peft_model(unwrapped_model):
-                    with patch_lora_unmerge(unwrapped_model):
-                        unwrapped_model.unmerge_adapter()
-        if self.use_vllm and self.vllm_mode == 'colocate':
+                        llm_model.load_weights(state_dict.items())
+                    with patch_lora_unmerge(self.model):
+                        self.model.unmerge_adapter()
+        else:
+            for name, param in self.model.named_parameters():
+                with gather_if_zero3([param]):
+                    if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+                        self.vllm_client.update_named_param(name, param.data)
+                    elif self.vllm_mode == 'colocate':
+                        llm_model = self.engine.inner_model
+                        llm_model.load_weights([(name, param.data)])
+
+        if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+            self.vllm_client.reset_prefix_cache()
+        elif self.vllm_mode == 'colocate':
             # since vLLM model weights has been updated, we should reset the prefix cache
             self.engine.engine.reset_prefix_cache()
 
