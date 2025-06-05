@@ -18,8 +18,6 @@ from .utils import build_streaming_dataloader, get_batch, get_swift_datasets_pro
 
 logger = get_logger()
 
-stimer = StragglerDetector()
-
 
 class MegatronSft(SwiftSft):
     args_class = MegatronTrainArguments
@@ -35,6 +33,7 @@ class MegatronSft(SwiftSft):
         self._prepare_template()
         self.template.use_megatron = True
         args.save_args(args.save)
+        self.stimer = StragglerDetector()
 
     @contextmanager
     def _get_train_iters(self, train_dataset):
@@ -106,14 +105,13 @@ class MegatronSft(SwiftSft):
 
         # Get the batch.
         timers('batch-generator', log_level=2).start()
-        global stimer
-        with stimer(bdata=True):
+        with self.stimer(bdata=True):
             data = get_batch(data_iterator)
         if not data:
             raise StopIteration
         timers('batch-generator').stop()
 
-        with stimer:
+        with self.stimer:
             output_tensor = model(**data)
         labels = data.get('labels')
         loss_mask = None if labels is None else (labels != -100).float()

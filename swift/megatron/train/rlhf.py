@@ -38,8 +38,7 @@ class MegatronRLHF(MegatronSft):
         ref_model = unwrap_model(args.ref_model[0])
         timers = get_timers()
         timers('batch-ref-generator', log_level=2).start()
-        global stimer
-        with stimer(bdata=True):
+        with self.stimer(bdata=True):
             data = get_batch(data_iterator)
         timers('batch-ref-generator').stop()
 
