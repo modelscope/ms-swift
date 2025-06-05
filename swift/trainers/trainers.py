@@ -229,7 +229,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         if getattr(self.args, 'average_tokens_across_devices', False) and self.model_accepts_loss_kwargs:
             loss *= self.accelerator.num_processes
 
-        if outputs.logits is not None and labels is not None:
+        if outputs.logits is not None and labels is not None and not return_outputs:
             # Liger does not have logits
             self._compute_acc(outputs, labels)
         return (loss, outputs) if return_outputs else loss
