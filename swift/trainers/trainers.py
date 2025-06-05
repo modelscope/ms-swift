@@ -200,7 +200,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             outputs.loss = outputs.loss.to(labels.device)
             # fix https://github.com/huggingface/transformers/issues/34263
             if num_items_in_batch is not None:
-                outputs.loss = outputs.loss * (labels[:, 1:] != -100).sum() / num_items_in_batch
+                outputs.loss = outputs.loss * ((labels[:, 1:] != -100).sum() / num_items_in_batch)
 
             if isinstance(outputs, dict) and 'loss' not in outputs:
                 raise ValueError(
