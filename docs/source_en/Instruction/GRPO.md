@@ -301,6 +301,59 @@ Notes:
 1. In the GRPOTrainer, reward_model instances are appended sequentially to reward_funcs. Therefore, the order of reward_weights corresponds to [reward_funcs, reward_model].
 2. The default value for reward_model_plugin is default, which uses the ORM processing logic.
 
+## Multi-task training
+
+We can add a column to the dataset to identify the task type and make judgments based on the task type in the reward function/reward model plugin, thereby enabling multi-task training. Suppose the dataset contains math and programming tasks, such as:
+```
+    {"query": "Solve the equation x + 2 = 5", "solution": "3", "task": "math"},
+    {"query": "Write a function to calculate the Fibonacci sequence", "solution": "xxx", "task": "code"},
+    {"query": "What is the integral of x^2?", "solution": "xxx", "task": "math"},
+    {"query": "Implement a sorting algorithm in Python", "solution": "xxx", "task": "code"},
+```
+
+Below are examples of reward functions for different tasks:
+
+```python
+from swift.plugin import ORM, orms
+
+# Math-specific reward function
+class MathReward(ORM):
+  ...
+  def __call__(prompts, completions, task, **kwargs):
+      rewards = []
+      for prompt, completion, t in zip(prompts, completions, task):
+          if t == "math":
+              # math accuracy logic
+              acc = math_accuracy(prompt, completion)
+              reward = 1.0 if acc else -1.0
+              rewards.append(reward)
+          else:
+              # Return None for non-math tasks
+              rewards.append(None)
+      return rewards
+
+# Coding-specific reward function
+class CodeReward(ORM):
+  ...
+  def __call__(prompts, completions, task, **kwargs):
+      rewards = []
+      for prompt, completion, t in zip(prompts, completions, task):
+          if t == "coding":
+              # math accuracy logic
+              acc = code_accuracy(prompt, completion)
+              reward = 1.0 if acc else -1.0
+              rewards.append(reward)
+          else:
+              # Return None for non-coding tasks
+              rewards.append(None)
+      return rewards
+
+orms['math_reward'] = MathReward
+orms['code_reward'] = CodeReward
+```
+
+For data that does not belong to the current task, it is handled by returning None, ensuring that the reward calculation only applies to data within the task.
+
 
 ## DAPO
 Decoupled Clip and Dynamic Sampling Policy Optimization (DAPO) introduces several tricks based on GRPO, which are:

@@ -291,10 +291,10 @@ swift rlhf \
 我们可以在数据集中添加一个用于标识任务类型的列，并在奖励函数/奖励模型插件中根据任务类型进行判断，从而实现多任务训练。假设数据集中包含数学和编程任务，比如：
 
 ```
-    {"prompt": "Solve the equation x + 2 = 5", "task": "math"},
-    {"prompt": "Write a function to calculate the Fibonacci sequence", "task": "code"},
-    {"prompt": "What is the integral of x^2?", "task": "math"},
-    {"prompt": "Implement a sorting algorithm in Python", "task": "code"},
+    {"query": "Solve the equation x + 2 = 5", "solution": "3", "task": "math"},
+    {"query": "Write a function to calculate the Fibonacci sequence", "solution": "xxx", "task": "code"},
+    {"query": "What is the integral of x^2?", "solution": "xxx", "task": "math"},
+    {"query": "Implement a sorting algorithm in Python", "solution": "xxx", "task": "code"},
 ```
 
 下面是针对不同任务的奖励函数的示例：
