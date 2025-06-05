@@ -500,8 +500,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             llm_model = self.engine.inner_model
                             llm_model.load_weights([(name, param)])
 
-                with patch_lora_unmerge(self.model):
-                    self.model.unmerge_adapter()
+                    with patch_lora_unmerge(self.model):
+                        self.model.unmerge_adapter()
         else:
             for name, param in self.model.named_parameters():
                 with gather_if_zero3([param]):
