@@ -131,7 +131,7 @@ class GRPOVllmEngine(VllmEngine):
                 pre_infer_hook=pre_infer_hook)
         if not self.use_async_engine:
             raise ValueError('If you want to use `infer_async`, you need to pass `use_async_engine` as True.')
-
+        template.set_mode('vllm')
         async def _single_round_infer(current_request: InferRequest) -> ChatCompletionResponse:
             nonlocal template, request_config, adapter_request, pre_infer_hook
             current_config = deepcopy(request_config or RequestConfig())
@@ -139,7 +139,6 @@ class GRPOVllmEngine(VllmEngine):
             if template is None:
                 template = self.default_template
 
-            template.set_mode('vllm')
             loop = asyncio.get_running_loop()
             with torch.inference_mode():
                 inputs = await loop.run_in_executor(None, template.encode, current_request)
