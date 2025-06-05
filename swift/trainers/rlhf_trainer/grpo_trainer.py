@@ -493,13 +493,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     assert len(state_dict) > 0 and all(
                         [state.shape != torch.Size([0]) for state in state_dict.values()])
 
-                    for name, param in state_dict.items():
-                        if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+                    if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+                        for name, param in state_dict.items():
                             self.vllm_client.update_named_param(name, param)
-                        elif self.vllm_mode == 'colocate':
-                            llm_model = self.engine.inner_model
-                            llm_model.load_weights([(name, param)])
-
+                    elif self.vllm_mode == 'colocate':
+                        llm_model = self.engine.inner_model
+                        llm_model.load_weights(state_dict.items())
                     with patch_lora_unmerge(self.model):
                         self.model.unmerge_adapter()
         else:
