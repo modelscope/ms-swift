@@ -924,3 +924,16 @@ register_model(
         architectures=['Qwen2ForRewardModel'],
         requires=['transformers>=4.37'],
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_emb, [
+            ModelGroup([
+                Model('Qwen/Qwen3-Embedding-0.6B', 'Qwen/Qwen3-Embedding-0.6B'),
+                Model('Qwen/Qwen3-Embedding-4B', 'Qwen/Qwen3-Embedding-4B'),
+                Model('Qwen/Qwen3-Embedding-8B', 'Qwen/Qwen3-Embedding-8B'),
+            ]),
+        ],
+        TemplateType.qwen3_emb,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3ForCausalLM']))

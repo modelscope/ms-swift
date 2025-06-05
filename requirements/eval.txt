@@ -1,2 +1,4 @@
+datasets==3.2.0
+evalscope>=0.16
 evalscope[opencompass]
 evalscope[vlmeval]

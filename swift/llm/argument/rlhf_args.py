@@ -200,7 +200,10 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
         if is_master():
             self.vllm_client = VLLMClient(
-                self.vllm_server_host, self.vllm_server_port, connection_timeout=self.vllm_server_timeout)
+                base_url=self.vllm_server_base_url,
+                host=self.vllm_server_host,
+                server_port=self.vllm_server_port,
+                connection_timeout=self.vllm_server_timeout)
             self.vllm_client.init_communicator()
 
     def _set_default(self):
