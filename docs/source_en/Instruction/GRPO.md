@@ -317,15 +317,18 @@ Below are examples of reward functions for different tasks:
 from swift.plugin import ORM, orms
 
 # Math-specific reward function
-class MathReward(ORM):
-  ...
-  def __call__(prompts, completions, task, **kwargs):
+from swift.plugin import ORM, orms
+import random
+
+# Math-specific reward function
+class MathRandomReward(ORM):
+  def __call__(self, completions, task, **kwargs):
       rewards = []
-      for prompt, completion, t in zip(prompts, completions, task):
+      for completion, t in zip(completions, task):
           if t == "math":
-              # math accuracy logic
-              acc = math_accuracy(prompt, completion)
-              reward = 1.0 if acc else -1.0
+              import random
+              # imple math accuracy logic
+              reward = random.random()
               rewards.append(reward)
           else:
               # Return None for non-math tasks
@@ -333,23 +336,21 @@ class MathReward(ORM):
       return rewards
 
 # Coding-specific reward function
-class CodeReward(ORM):
-  ...
-  def __call__(prompts, completions, task, **kwargs):
+class CodeRandomReward(ORM):
+  def __call__(self, completions, task, **kwargs):
       rewards = []
       for prompt, completion, t in zip(prompts, completions, task):
-          if t == "coding":
-              # math accuracy logic
-              acc = code_accuracy(prompt, completion)
-              reward = 1.0 if acc else -1.0
+          if t == "code":
+              # imple coding accuracy logic
+              reward = random.random()
               rewards.append(reward)
           else:
               # Return None for non-coding tasks
               rewards.append(None)
       return rewards
 
-orms['math_reward'] = MathReward
-orms['code_reward'] = CodeReward
+orms['math_reward'] = MathRandomReward
+orms['code_reward'] = CodeRandomReward
 ```
 
 For data that does not belong to the current task, it is handled by returning None, ensuring that the reward calculation only applies to data within the task.
