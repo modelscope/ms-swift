@@ -1,6 +1,5 @@
-# 4 * 22GiB
-# lora_llm_full_vit: acc=
-# lora: acc=
+# lora_llm_full_vit: 23GiB
+# lora: 21.6GiB
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 MAX_PIXELS=1003520 \
@@ -14,7 +13,7 @@ swift sft \
     --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 4 \
     --learning_rate 1e-4 \
-    --vit_lr 5e-6 \
+    --vit_lr 1e-5 \
     --aligner_lr 1e-5 \
     --lora_rank 16 \
     --lora_alpha 32 \
