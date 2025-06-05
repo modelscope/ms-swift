@@ -411,6 +411,7 @@ num_generations = 64
 参考[issue](https://github.com/modelscope/ms-swift/issues/3912)
 
 **5. clip_ratio为什么总是1?**
+在 on-policy 下，old_policy 等于 policy，此时重要性采样系数恒等于1
 
 num_iterations = 1，async_generate = False 下为 on-policy RL，old_policy此时等于policy
 

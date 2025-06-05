@@ -339,7 +339,7 @@ class MathRandomReward(ORM):
 class CodeRandomReward(ORM):
   def __call__(self, completions, task, **kwargs):
       rewards = []
-      for prompt, completion, t in zip(prompts, completions, task):
+      for completion, t in zip(completions, task):
           if t == "code":
               # imple coding accuracy logic
               reward = random.random()
