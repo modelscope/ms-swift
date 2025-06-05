@@ -301,6 +301,60 @@ Notes:
 1. In the GRPOTrainer, reward_model instances are appended sequentially to reward_funcs. Therefore, the order of reward_weights corresponds to [reward_funcs, reward_model].
 2. The default value for reward_model_plugin is default, which uses the ORM processing logic.
 
+## Multi-task training
+
+We can add a column to the dataset to identify the task type and make judgments based on the task type in the reward function/reward model plugin, thereby enabling multi-task training. Suppose the dataset contains math and programming tasks, such as:
+```
+    {"query": "Solve the equation x + 2 = 5", "solution": "3", "task": "math"},
+    {"query": "Write a function to calculate the Fibonacci sequence", "solution": "xxx", "task": "code"},
+    {"query": "What is the integral of x^2?", "solution": "xxx", "task": "math"},
+    {"query": "Implement a sorting algorithm in Python", "solution": "xxx", "task": "code"},
+```
+
+Below are examples of reward functions for different tasks:
+
+```python
+from swift.plugin import ORM, orms
+
+# Math-specific reward function
+from swift.plugin import ORM, orms
+import random
+
+# Math-specific reward function
+class MathRandomReward(ORM):
+  def __call__(self, completions, task, **kwargs):
+      rewards = []
+      for completion, t in zip(completions, task):
+          if t == "math":
+              import random
+              # imple math accuracy logic
+              reward = random.random()
+              rewards.append(reward)
+          else:
+              # Return None for non-math tasks
+              rewards.append(None)
+      return rewards
+
+# Coding-specific reward function
+class CodeRandomReward(ORM):
+  def __call__(self, completions, task, **kwargs):
+      rewards = []
+      for completion, t in zip(completions, task):
+          if t == "code":
+              # imple coding accuracy logic
+              reward = random.random()
+              rewards.append(reward)
+          else:
+              # Return None for non-coding tasks
+              rewards.append(None)
+      return rewards
+
+orms['math_reward'] = MathRandomReward
+orms['code_reward'] = CodeRandomReward
+```
+
+For data that does not belong to the current task, it is handled by returning None, ensuring that the reward calculation only applies to data within the task.
+
 
 ## DAPO
 Decoupled Clip and Dynamic Sampling Policy Optimization (DAPO) introduces several tricks based on GRPO, which are:
@@ -380,7 +434,21 @@ See reference: [issue](https://github.com/modelscope/ms-swift/issues/3912)
 
 **5. Why is clip_ratio always 1?**
 
-When num_iterations = 1 and async_generate = False, it's on-policy RL, and old_policy is equal to policy.
+The core purpose of the Clip mechanism is to limit the magnitude of policy updates, preventing a single update from being too large and causing a collapse in policy performance (i.e., a sudden drop in performance after the policy is updated). The specific formula for the Clip operation is as follows:
+
+$$
+L_{\text{CLIP}}(\theta) = \mathbb{E}_{t} \left[ \min\left(r_{t}(\theta) \hat{A}_{t}, \text{clip}(r_{t}(\theta), 1 - \epsilon, 1 + \epsilon) \hat{A}_{t} \right) \right]
+$$
+
+Where $r_{t}(\theta) = \frac{\pi_{\theta}(a_{t} \mid s_{t})}{\pi_{\text{old}}(a_{t} \mid s_{t})}$ is the importance sampling ratio, measuring the difference between the new and old policies. $\hat{A}_{t}$ is the advantage function, representing the relative reward of an action. $\epsilon$ is used to limit the deviation range of  $r_{t}(\theta)$
+
+
+Therefore, the importance sampling is always equal to 1, and in this case, the clip operation will not take effect.
+
+Under the following parameter settings, the algorithm is off-policy (near-on-policy).
+
+1. num_iterations > 1
+2. steps_per_generation > gradient_accumulation_steps
 
 See reference: [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
 
