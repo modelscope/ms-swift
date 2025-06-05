@@ -434,7 +434,21 @@ See reference: [issue](https://github.com/modelscope/ms-swift/issues/3912)
 
 **5. Why is clip_ratio always 1?**
 
-When num_iterations = 1 and async_generate = False, it's on-policy RL, and old_policy is equal to policy.
+The core purpose of the Clip mechanism is to limit the magnitude of policy updates, preventing a single update from being too large and causing a collapse in policy performance (i.e., a sudden drop in performance after the policy is updated). The specific formula for the Clip operation is as follows:
+
+$$
+L_{\text{CLIP}}(\theta) = \mathbb{E}_{t} \left[ \min\left(r_{t}(\theta) \hat{A}_{t}, \text{clip}(r_{t}(\theta), 1 - \epsilon, 1 + \epsilon) \hat{A}_{t} \right) \right]
+$$
+
+Where $r_{t}(\theta) = \frac{\pi_{\theta}(a_{t} \mid s_{t})}{\pi_{\text{old}}(a_{t} \mid s_{t})}$ is the importance sampling ratio, measuring the difference between the new and old policies. $\hat{A}_{t}$ is the advantage function, representing the relative reward of an action. $\epsilon$ is used to limit the deviation range of  $r_{t}(\theta)$
+
+
+Therefore, the importance sampling is always equal to 1, and in this case, the clip operation will not take effect.
+
+Under the following parameter settings, the algorithm is off-policy (near-on-policy).
+
+1. num_iterations > 1
+2. steps_per_generation > gradient_accumulation_steps
 
 See reference: [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
 
