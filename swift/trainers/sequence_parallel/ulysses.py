@@ -118,8 +118,9 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
     else:
         logits = outputs
     device = logits.device
+    if labels.shape[1] > logits.shape[1]:
+        _, _, labels, _, _, loss_scale = ulysses.pad_and_split_inputs(None, None, labels, None, None, loss_scale)
     logits = logits.view(-1, logits.shape[-1])
-    _, _, labels, _, _, loss_scale = ulysses.pad_and_split_inputs(None, None, labels, None, None, loss_scale)
 
     labels = labels.flatten().to(device)
     sploss_parallel_size = int(os.environ.get('CELOSS_PARALLEL_SIZE', '0'))
@@ -142,7 +143,7 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
 
 
 @profiling_decorator
-def _prepare_inputs(self, generation_batch):
+def _prepare_inputs_grpo(self, generation_batch):
     ulysses = self.ulysses
     mode = 'train' if self.model.training else 'eval'
     if mode == 'train':
@@ -159,6 +160,14 @@ def _prepare_inputs(self, generation_batch):
     return inputs
 
 
+def _prepare_inputs(self, inputs, ulysses):
+    if 'labels' in inputs:
+        labels = inputs['labels']
+        _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(None, None, labels, None, None, None)
+        inputs['labels'] = labels
+    return self._origin_prepare_inputs(inputs)
+
+
 def old_policy(self):
     ulysses = self.ulysses
     # changes: `* ulysses.sp_world_size`
@@ -171,7 +180,8 @@ def get_per_token_logps(self,
                         logits: torch.FloatTensor,
                         labels: torch.LongTensor,
                         ulysses=None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(None, None, labels, None, None, None)
+    if labels.shape[1] > logits.shape[1]:
+        _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(None, None, labels, None, None, None)
     loss_mask = labels != self.label_pad_token_id
     labels = labels.clone()  # No need to shift, pad and split has shifted the inputs.
     labels[~loss_mask] = 0
@@ -651,14 +661,12 @@ class Ulysses(SequenceParallel):
             inputs_embeds = kwargs.get('inputs_embeds', None)
             position_ids = kwargs['position_ids']
             attention_mask = kwargs.get('attention_mask', None)
+            if hasattr(_self, 'language_model'):
+                embed_tokens = getattr(_self.language_model, 'embed_tokens', None)
+            else:
+                embed_tokens = getattr(_self, 'embed_tokens', None)
             _input_ids, inputs_embeds, _, position_ids, attention_mask, _ = self.pad_and_split_inputs(
-                input_ids,
-                inputs_embeds,
-                None,
-                position_ids,
-                attention_mask,
-                None,
-                embed_tokens=getattr(_self, 'embed_tokens', None))
+                input_ids, inputs_embeds, None, position_ids, attention_mask, None, embed_tokens=embed_tokens)
             kwargs['input_ids'] = _input_ids
             kwargs['inputs_embeds'] = inputs_embeds
             kwargs['position_ids'] = position_ids
@@ -824,22 +832,27 @@ class Ulysses(SequenceParallel):
             raise ValueError('Trainer: training requires a train_dataset.')
 
         trainer.ulysses = self
-        if trainer.__class__.__name__ in ('Seq2SeqTrainer', 'DPOTrainer'):
+        if trainer.__class__.__name__ == 'Seq2SeqTrainer':
+            trainer._origin_prepare_inputs = trainer._prepare_inputs
+            trainer._prepare_inputs = MethodType(partial(_prepare_inputs, ulysses=self), trainer)
             trainer.compute_loss_func = partial(loss_scale_sp_func, ulysses=self)
-            if trainer.__class__.__name__ == 'DPOTrainer':
-                trainer.get_per_token_logps = MethodType(partial(get_per_token_logps, ulysses=self), trainer)
 
-                def rlhf_loss_scale_sp_func(_, *args, **kwargs):
-                    return loss_scale_sp_func(*args, ulysses=self, **kwargs)
+        elif trainer.__class__.__name__ == 'DPOTrainer':
+            trainer._origin_prepare_inputs = trainer._prepare_inputs
+            trainer._prepare_inputs = MethodType(partial(_prepare_inputs, ulysses=self), trainer)
+            trainer.get_per_token_logps = MethodType(partial(get_per_token_logps, ulysses=self), trainer)
 
-                trainer.get_nll_loss = MethodType(rlhf_loss_scale_sp_func, trainer)
+            def rlhf_loss_scale_sp_func(_, *args, **kwargs):
+                return loss_scale_sp_func(*args, ulysses=self, **kwargs)
+
+            trainer.get_nll_loss = MethodType(rlhf_loss_scale_sp_func, trainer)
 
         elif trainer.__class__.__name__ == 'GRPOTrainer':
             assert version.parse(trl.__version__) >= version.parse('0.18.0')
             trainer.ulysses = self
             trainer.args.gradient_accumulation_steps = trainer.args.gradient_accumulation_steps * self.sp_world_size
             trainer.old_policy = MethodType(old_policy, trainer)
-            trainer._prepare_inputs = MethodType(_prepare_inputs, trainer)
+            trainer._prepare_inputs = MethodType(_prepare_inputs_grpo, trainer)
             trainer._get_per_token_logps = MethodType(_get_per_token_logps, trainer)
             trainer.split_by_mini_batches = MethodType(split_by_mini_batches, trainer)
 
@@ -853,7 +866,8 @@ class Ulysses(SequenceParallel):
                 preds = torch.from_numpy(preds).to(get_current_device())
             if isinstance(labels, np.ndarray):
                 labels = torch.from_numpy(labels).to(get_current_device())
-            _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, None, None, None)
+            if labels.shape[1] > preds.shape[1]:
+                _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, None, None, None)
             shape0 = preds.shape[0]
             preds_output = torch.empty((shape0 * self.sp_world_size, preds.shape[1]),
                                        dtype=preds.dtype,
