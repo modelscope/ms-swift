@@ -166,7 +166,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 compute_loss_func = get_loss_func('loss_scale')
 
         sample_channels = inputs.pop('channel', None)
-        if sample_channels is not None:
+        if sample_channels is not None and self.args.channels:
             state = self.state
             setattr(state, 'local_step', getattr(state, 'local_step', 0))
             setattr(state, 'ch_loss_steps', getattr(state, 'ch_loss_steps', {}))
