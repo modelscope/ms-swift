@@ -8,13 +8,14 @@ def test_dpo():
     megatron_rlhf_main(
         MegatronRLHFArguments(
             load='Qwen2.5-3B-Instruct-mcore',
-            dataset=['hjh0119/shareAI-Llama3-DPO-zh-en-emoji#1000'],
+            dataset=['hjh0119/shareAI-Llama3-DPO-zh-en-emoji#10000'],
             micro_batch_size=16,
             tensor_model_parallel_size=2,
-            train_iters=100,
-            eval_iters=5,
+            eval_interval=5,
             log_interval=1,
-            finetune=True))
+            finetune=True,
+            max_epochs=1,
+        ))
 
 
 def test_hf():
