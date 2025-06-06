@@ -83,20 +83,20 @@ class MegatronSft(SwiftSft):
             args.is_training = False
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
-        return self._train_step_origin(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config)
+        with self._training_context():
+            try:
+                return self._origin_train_step(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler,
+                                               config)
+            except StopIteration:
+                return {}, True, True, True, 0, None, None
 
-    def _patch_train_step(self):
+    def _patch_megatron(self):
         # support max_epochs
-        def train_step(*args, **kwargs):
-            with self._training_context():
-                try:
-                    return self.train_step(*args, **kwargs)
-                except StopIteration:
-                    return {}, True, True, True, 0, None, None
-
-        self._train_step_origin = training.train_step
-        training.train_step = train_step
+        self._origin_train_step = training.train_step
+        training.train_step = self.train_step
         training.cyclic_iter = MegatronSft.new_cyclic_iter
+        # patch training_log
+        self._origin_training_log = training.training_log
 
     def forward_step(self, data_iterator, model):
         from pretrain_gpt import loss_func
@@ -119,7 +119,7 @@ class MegatronSft(SwiftSft):
 
     def run(self):
         args = self.args
-        self._patch_train_step()
+        self._patch_megatron()
 
         train_dataset, val_dataset = self._get_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
