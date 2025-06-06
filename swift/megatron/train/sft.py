@@ -36,19 +36,21 @@ class MegatronSft(SwiftSft):
         self.stimer = StragglerDetector()
 
     @contextmanager
-    def _get_train_iters(self, train_dataset):
+    def _get_iters(self, train_dataset, val_dataset):
         from megatron.training import training
         origin_initialize_megatron = training.initialize_megatron
 
         def initialize_megatron(*_args, **kwargs):
             res = origin_initialize_megatron(*_args, **kwargs)
             args = get_args()
+            data_parallel_size = mpu.get_data_parallel_world_size()
+            step_batch_size = args.micro_batch_size * data_parallel_size
             if args.train_iters is None and hasattr(train_dataset, '__len__'):
-                data_parallel_size = mpu.get_data_parallel_world_size()
-                step_batch_size = \
-                    args.micro_batch_size * data_parallel_size
                 dataset_sample = len(train_dataset) // step_batch_size * step_batch_size
                 args.train_iters = (dataset_sample * args.max_epochs // args.global_batch_size) + 1
+            if val_dataset is not None and args.eval_iters is None and hasattr(val_dataset, '__len__'):
+                dataset_sample = len(val_dataset) // step_batch_size * step_batch_size
+                args.eval_iters = max(dataset_sample // args.global_batch_size, 1)
             return res
 
         training.initialize_megatron = initialize_megatron
@@ -134,7 +136,7 @@ class MegatronSft(SwiftSft):
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
         try:
-            with patch_megatron_data_collator(data_collator), self._get_train_iters(train_dataset):
+            with patch_megatron_data_collator(data_collator), self._get_iters(train_dataset, val_dataset):
                 extra_args_provider = args.megatron_model_meta.extra_args_provider
                 pretrain(
                     datasets_provider,

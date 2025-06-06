@@ -56,6 +56,7 @@ def _patch_training_log():
     from megatron.core.num_microbatches_calculator import get_num_microbatches
     from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory
 
+    # Code borrowed from megatron-lm
     def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
                      report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad):
         """Log training information such as losses, timing, ...."""

@@ -175,7 +175,7 @@ class MegatronArguments(ExtraMegatronArguments):
     wandb_save_dir: Optional[str] = None
 
     # evaluate
-    eval_iters: int = 100
+    eval_iters: Optional[int] = None
     eval_interval: Optional[int] = None
 
     # other
