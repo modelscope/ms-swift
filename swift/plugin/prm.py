@@ -54,14 +54,14 @@ class QwenMaxPRM(PRM):
         )
 
         for request, ground_truth in zip(infer_requests, ground_truths):
-            previous = request['messages'][:-1]
+            previous = request.messages[:-1]
             if previous[0]['role'] == 'system':
                 previous = previous[1:]
 
-            assert request['messages'][-1]['role'] == 'assistant'
+            assert request.messages[-1]['role'] == 'assistant'
             query = QUERY.replace('#query#', json.dumps(previous))
             query = query.replace('#ground_truth#', ground_truth)
-            query = query.replace('#response#', request['messages'][-1]['content'])
+            query = query.replace('#response#', request.messages[-1]['content'])
             messages = [
                 {
                     'role': 'system',

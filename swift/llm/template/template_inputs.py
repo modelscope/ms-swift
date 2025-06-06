@@ -102,6 +102,7 @@ class StdTemplateInputs:
 
     rejected_response: Optional[str] = None
     label: Optional[int] = None
+    channel: Optional[str] = None
 
     images: List[Union[str, Image.Image]] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)
@@ -133,7 +134,7 @@ class StdTemplateInputs:
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any]) -> 'StdTemplateInputs':
         kwargs = {}
-        for key in ['rejected_response', 'label']:
+        for key in ['rejected_response', 'label', 'channel']:
             if key in inputs:
                 kwargs[key] = inputs[key]
         messages = inputs['messages']
