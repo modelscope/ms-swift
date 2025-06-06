@@ -5,7 +5,7 @@ from typing import List, Tuple, Union
 
 import torch
 from megatron.core import mpu
-from megatron.training import get_args, get_model, get_timers, training
+from megatron.training import get_args, get_model, training
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.utils import unwrap_model
 
@@ -38,6 +38,7 @@ class MegatronRLHF(MegatronSft):
 
     def __init__(self, args: Union[List[str], MegatronRLHFArguments, None] = None) -> None:
         super().__init__(args)
+        self._patch_setup_model_and_optimizer()
         self.dummy_dpo_trainer = DummyDPOTrainer(self.args)
 
     def _prepare_template(self) -> None:
@@ -62,13 +63,10 @@ class MegatronRLHF(MegatronSft):
 
     def ref_forward(self, data_iterator):
         ref_model = unwrap_model(self.ref_model)
-        timers = get_timers()
-        timers('batch-ref-generator', log_level=2).start()
         with self.stimer(bdata=True):
             data = get_batch(data_iterator)
         if not data:
             raise StopIteration
-        timers('batch-ref-generator').stop()
         labels = data['labels']
         with torch.no_grad():
             output_tensor = ref_model(**data)
@@ -87,19 +85,6 @@ class MegatronRLHF(MegatronSft):
             start, end = cu_seqlens[i], cu_seqlens[i + 1]
             all_logps[i] = per_token_logps[:, start:end].sum()
         return all_logps
-
-    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
-        args = get_args()
-        num_iters_per_step = args.global_batch_size // (args.micro_batch_size * mpu.get_data_parallel_world_size())
-        res = []
-        for i in range(num_iters_per_step):
-            with torch.no_grad():
-                res.append(self.ref_forward(data_iterator))
-        return super().train_step(forward_step_func, iter(res), model, optimizer, opt_param_scheduler, config)
-
-    def run(self):
-        self._patch_setup_model_and_optimizer()
-        super().run()
 
     def loss_func(self, output_tensor: torch.Tensor, *, ref_logps: torch.Tensor, labels: torch.Tensor,
                   packed_seq_params):
@@ -135,13 +120,9 @@ class MegatronRLHF(MegatronSft):
         }
 
     def forward_step(self, data_iterator, model):
-        timers = get_timers()
+        with torch.no_grad():
+            data = self.ref_forward(data_iterator)
 
-        # Get the batch.
-        timers('batch-generator', log_level=2).start()
-        with self.stimer(bdata=True):
-            data = next(data_iterator)
-        timers('batch-generator').stop()
         ref_logps = data.pop('logps')
         with self.stimer:
             output_tensor = model(**data)

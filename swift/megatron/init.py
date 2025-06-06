@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import datetime
 import os
 import sys
+from datetime import datetime
 
 import torch
 
@@ -279,7 +279,11 @@ def _patch_training_log():
 def _patch_megatron():
     _patch_transformer_engine()
     _patch__batched_p2p_ops()
-    _patch_training_log()
+    try:
+        _patch_training_log()
+        logger.info('Patch training_log successfully applied.')
+    except Exception:
+        pass
 
 
 def init_megatron_env() -> None:

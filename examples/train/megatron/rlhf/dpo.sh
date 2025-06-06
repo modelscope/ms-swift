@@ -19,7 +19,7 @@ megatron rlhf \
     --lr 1e-5 \
     --lr_warmup_iters 50 \
     --min_lr 1e-6 \
-    --save megatron_output/Qwen3-32B \
+    --save megatron_output/Qwen3-8B-Base \
     --eval_interval 200 \
     --save_interval 200 \
     --max_length 8192 \
