@@ -388,9 +388,9 @@ def online_contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch
 
 @register_loss_func(LossType.channel_loss)
 def channel_loss_func(outputs, labels, num_items_in_batch=None, sample_channels=None, trainer=None) -> torch.Tensor:
-    assert sample_channels is not None, 'Data does not have channel field.'
     channels = trainer.args.channels
     assert channels is not None, 'Please pass --channels as a hyperparameter.'
+    assert sample_channels is not None, 'Data does not have channel field.'
     logits = outputs.logits
 
     # compute token loss
