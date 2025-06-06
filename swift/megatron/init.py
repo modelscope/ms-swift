@@ -45,6 +45,7 @@ def _patch__batched_p2p_ops():
 
 
 def _patch_training_log():
+    # TODO: support swanlab
     from megatron.core import mpu
     from megatron.core.transformer.moe.moe_utils import track_moe_metrics
     from megatron.training.theoretical_memory_usage import report_theoretical_memory
