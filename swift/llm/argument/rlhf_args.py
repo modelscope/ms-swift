@@ -228,6 +228,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                                                       'Please update it by running: pip install -U trl')
 
         if self.use_liger_kernel:
+            assert trl_version >= version.parse('0.18')
             if self.delta is not None:
                 raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
             from trl.import_utils import is_liger_kernel_available
@@ -252,14 +253,14 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         if self.generation_batch_size or self.steps_per_generation:
             from trl.trainer.grpo_config import GRPOConfig
             assert 'generation_batch_size' in GRPOConfig.__dict__, (
-                'generation_batch_size or steps_per_generation needs trl >= 0.18.dev, '
-                'please install trl from source `pip install git+https://github.com/huggingface/trl.git')
+                'generation_batch_size or steps_per_generation needs trl >= 0.18, '
+                'please install trl `pip install trl>=0.18')
 
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
             return
 
-        if self.vllm_device != 'auto':
+        if self.vllm_device is not None:
             logger.warning("Configuration conflict: External vLLM engine detected, but 'vllm_device' is set to '%s'. ",
                            self.vllm_device)
 
@@ -267,7 +268,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             logger.warning(
                 "Configuration conflict: 'vllm_max_model_len=%s' is ignored for external vLLM. "
                 'Please specify it when launching the inference service: '
-                '`swift deploy --max_model_len <value>`', self.vllm_max_model_len)
+                '`swift rollout --max_model_len <value>`', self.vllm_max_model_len)
 
     def _deprecated_warning(self):
         if self.rlhf_type != 'grpo':

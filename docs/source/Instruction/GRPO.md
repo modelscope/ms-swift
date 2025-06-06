@@ -221,7 +221,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
   - vllm_limit_mm_per_prompt: vllm透传参数，默认为None.
   - vllm_enable_prefix_caching: vllm透传参数，默认为True.
   - sleep_level: 训练时释放 vLLM 显存，可选项为[0, 1], 默认为0，不释放.
-  - move_model_batches: 在模型向vLLM等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。
+  - move_model_batches: 在模型向vLLM等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。注意：该参数仅对LoRA(PEFT)训练有意义。
   - offload_optimizer: 是否在vLLM推理时offload optimizer参数，默认为False。
   - offload_model: 是否在vLLM推理时offload 模型本身，默认为False。
   - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False。
@@ -287,6 +287,55 @@ swift rlhf \
 1. 在 GRPOTrainer 中，reward_model 会依次append到 reward_funcs 中。因此，reward_weights 的顺序对应 [reward_funcs, reward_model]。
 2. reward_model_plugin 默认为 default，即使用 ORM 处理逻辑。
 
+## 多任务训练
+我们可以在数据集中添加一个用于标识任务类型的列，并在奖励函数/奖励模型插件中根据任务类型进行判断，从而实现多任务训练。假设数据集中包含数学和编程任务，比如：
+
+```
+    {"query": "Solve the equation x + 2 = 5", "solution": "3", "task": "math"},
+    {"query": "Write a function to calculate the Fibonacci sequence", "solution": "xxx", "task": "code"},
+    {"query": "What is the integral of x^2?", "solution": "xxx", "task": "math"},
+    {"query": "Implement a sorting algorithm in Python", "solution": "xxx", "task": "code"},
+```
+
+下面是针对不同任务的奖励函数的示例：
+
+```python
+from swift.plugin import ORM, orms
+import random
+
+# Math-specific reward function
+class MathRandomReward(ORM):
+  def __call__(self, completions, task, **kwargs):
+      rewards = []
+      for completion, t in zip(completions, task):
+          if t == "math":
+              import random
+              # imple math accuracy logic
+              reward = random.random()
+              rewards.append(reward)
+          else:
+              # Return None for non-math tasks
+              rewards.append(None)
+      return rewards
+
+# Coding-specific reward function
+class CodeRandomReward(ORM):
+  def __call__(self, completions, task, **kwargs):
+      rewards = []
+      for prompt, completion, t in zip(prompts, completions, task):
+          if t == "code":
+              # imple coding accuracy logic
+              reward = random.random()
+              rewards.append(reward)
+          else:
+              # Return None for non-coding tasks
+              rewards.append(None)
+      return rewards
+
+orms['math_reward'] = MathRandomReward
+orms['code_reward'] = CodeRandomReward
+```
+对于非当前任务的数据， 通过返回 None 来处理，从而使得奖励相关仅计算任务内的数据。
 
 ## DAPO
 [Decoupled Clip and Dynamic sAmpling Policy Optimization (DAPO)](https://arxiv.org/abs/2503.14476)在GRPO的基础上设置了几种trick，分别是
@@ -363,7 +412,21 @@ num_generations = 64
 
 **5. clip_ratio为什么总是1?**
 
-num_iterations = 1，async_generate = False 下为 on-policy RL，old_policy此时等于policy
+Clip机制的核心目的是限制策略更新的幅度，防止因单次更新过大而导致策略性能崩溃（即策略更新后表现急剧下降）。
+Clip操作的具体公式如下：
+$$
+L_{\text{CLIP}}(\theta) = \mathbb{E}_{t} \left[ \min\left(r_{t}(\theta) \hat{A}_{t}, \text{clip}(r_{t}(\theta), 1 - \epsilon, 1 + \epsilon) \hat{A}_{t} \right) \right]
+$$
+
+其中：$r_{t}(\theta) = \frac{\pi_{\theta}(a_{t} \mid s_{t})}{\pi_{\text{old}}(a_{t} \mid s_{t})}$ 是重要性采样比，衡量新旧策略的差异。$\hat{A}_{t}$ 是优势函数（advantage function），表示动作的相对收益。$\epsilon$ 用于限制 $r_{t}(\theta)$ 的偏离范围。
+
+在 on-policy 训练过程中，由于每次更新都使用最新策略生成的数据，新旧策略相同，即 $\pi_{\theta} = \pi_{\text{old}}$
+
+因此重要性采样比恒为 1，此时，clip 操作不会生效。
+
+在设置以下参数情况下，算法为off-policy (near-on-policy)
+1. num_iterations > 1
+2. steps_per_generation > gradient_accumulation_steps
 
 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
 

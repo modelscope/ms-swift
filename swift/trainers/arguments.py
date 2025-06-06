@@ -51,6 +51,7 @@ class TrainArgumentsMixin:
     vit_lr: Optional[float] = None
     optimizer: Optional[str] = None
     use_logits_to_keep: Optional[bool] = None
+    channels: List[str] = None
 
     # torchacc
     metric_warmup_step: Optional[float] = 0

@@ -213,6 +213,9 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/Qwen3-235B-A22B-FP8](https://modelscope.cn/models/Qwen/Qwen3-235B-A22B-FP8)|qwen3_moe|qwen3|transformers>=4.51|&#x2718;|-|[Qwen/Qwen3-235B-A22B-FP8](https://huggingface.co/Qwen/Qwen3-235B-A22B-FP8)|
 |[swift/Qwen3-30B-A3B-AWQ](https://modelscope.cn/models/swift/Qwen3-30B-A3B-AWQ)|qwen3_moe|qwen3|transformers>=4.51|&#x2718;|-|[cognitivecomputations/Qwen3-30B-A3B-AWQ](https://huggingface.co/cognitivecomputations/Qwen3-30B-A3B-AWQ)|
 |[swift/Qwen3-235B-A22B-AWQ](https://modelscope.cn/models/swift/Qwen3-235B-A22B-AWQ)|qwen3_moe|qwen3|transformers>=4.51|&#x2718;|-|[cognitivecomputations/Qwen3-235B-A22B-AWQ](https://huggingface.co/cognitivecomputations/Qwen3-235B-A22B-AWQ)|
+|[Qwen/Qwen3-Embedding-0.6B](https://modelscope.cn/models/Qwen/Qwen3-Embedding-0.6B)|qwen3_emb|qwen3_emb|-|&#x2718;|-|[Qwen/Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)|
+|[Qwen/Qwen3-Embedding-4B](https://modelscope.cn/models/Qwen/Qwen3-Embedding-4B)|qwen3_emb|qwen3_emb|-|&#x2718;|-|[Qwen/Qwen3-Embedding-4B](https://huggingface.co/Qwen/Qwen3-Embedding-4B)|
+|[Qwen/Qwen3-Embedding-8B](https://modelscope.cn/models/Qwen/Qwen3-Embedding-8B)|qwen3_emb|qwen3_emb|-|&#x2718;|-|[Qwen/Qwen3-Embedding-8B](https://huggingface.co/Qwen/Qwen3-Embedding-8B)|
 |[iic/gte_Qwen2-1.5B-instruct](https://modelscope.cn/models/iic/gte_Qwen2-1.5B-instruct)|qwen2_gte|dummy|-|&#x2718;|-|[Alibaba-NLP/gte-Qwen2-1.5B-instruct](https://huggingface.co/Alibaba-NLP/gte-Qwen2-1.5B-instruct)|
 |[iic/gte_Qwen2-7B-instruct](https://modelscope.cn/models/iic/gte_Qwen2-7B-instruct)|qwen2_gte|dummy|-|&#x2718;|-|[Alibaba-NLP/gte-Qwen2-7B-instruct](https://huggingface.co/Alibaba-NLP/gte-Qwen2-7B-instruct)|
 |[codefuse-ai/CodeFuse-QWen-14B](https://modelscope.cn/models/codefuse-ai/CodeFuse-QWen-14B)|codefuse_qwen|codefuse|-|&#x2718;|coding|[codefuse-ai/CodeFuse-QWen-14B](https://huggingface.co/codefuse-ai/CodeFuse-QWen-14B)|
