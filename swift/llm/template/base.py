@@ -432,6 +432,8 @@ class Template(ProcessorMixin):
             encoded = self._kto_encode(inputs)
         elif self.mode == 'embedding':
             encoded = self._embedding_encode(inputs)
+        if inputs.channel is not None:
+            encoded['channel'] = inputs.channel
         for key in list(encoded.keys()):
             if encoded[key] is None:
                 encoded.pop(key)

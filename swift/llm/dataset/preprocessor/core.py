@@ -310,7 +310,6 @@ class RowPreprocessor:
         dataset = self._cast_pil_image(dataset)
 
         ignore_max_length_error = True if isinstance(dataset, HfDataset) and num_proc > 1 else False
-        keep_columns = ['channel']
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             try:
                 dataset_mapped = dataset.map(
@@ -319,7 +318,7 @@ class RowPreprocessor:
                         'strict': strict,
                         'ignore_max_length_error': ignore_max_length_error
                     },
-                    remove_columns=[col for col in dataset.features.keys() if col not in keep_columns],
+                    remove_columns=list(dataset.features.keys()),
                     **map_kwargs)
             except NotImplementedError:
                 pass
