@@ -229,7 +229,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 **Logging Parameters**:
 
 - log_params_norm: Logs the norm of parameters. Default is False.
-- log_throughput: Logs throughput per GPU. Default is True.
+- log_throughput: Logs throughput per GPU. Default is False.
   - Note: In non-packing scenarios, log_throughput is not accurate because `seq_length` does not equal the actual sequence length.
 - tensorboard_log_interval: Interval (steps) for logging to TensorBoard, default is 1.
 - tensorboard_queue_size: Queue length (related to disk I/O), similar to write intervals. Default is 50.

@@ -125,12 +125,12 @@ class MegatronRLHF(MegatronSft):
 
         return loss, {
             'loss': reporting_loss,
-            'rewards/chosen': chosen_rewards,
-            'rewards/rejected': rejected_rewards,
-            'rewards/accuracies': reward_accuracies,
-            'rewards/margins': chosen_rewards - rejected_rewards,
-            'logps/chosen': logps[:args.micro_batch_size],
-            'logps/rejected': logps[args.micro_batch_size:],
+            'rewards/chosen': chosen_rewards.mean(),
+            'rewards/rejected': rejected_rewards.mean(),
+            'rewards/accuracies': reward_accuracies.mean(),
+            'rewards/margins': (chosen_rewards - rejected_rewards).mean(),
+            'logps/chosen': logps[:args.micro_batch_size].mean(),
+            'logps/rejected': logps[args.micro_batch_size:].mean(),
             'nll_loss': nll_loss
         }
 

@@ -221,7 +221,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 **日志参数**:
 - log_params_norm: 记录参数的norm。默认为False。
-- log_throughput: 记录每个GPU的吞吐量。默认为True。
+- log_throughput: 记录每个GPU的吞吐量。默认为False。
   - 注意：在非packing情况下，log_throughput并不准确，因为`seq_length`并不等于真实序列长度。
 - tensorboard_log_interval: 记录到tensorboard的间隔（steps），默认为1。
 - tensorboard_queue_size: 队列长度（与磁盘IO相关），类似于写入的间隔。默认为50。

@@ -162,7 +162,7 @@ class MegatronArguments(ExtraMegatronArguments):
 
     # logging
     log_params_norm: bool = False
-    log_throughput: bool = True
+    log_throughput: bool = False
     tensorboard_log_interval: int = 1
     tensorboard_queue_size: int = 50
     log_timers_to_tensorboard: bool = True
