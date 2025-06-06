@@ -1,3 +1,54 @@
+from abc import ABC, abstractmethod
+from typing import Callable, List, Optional, Union
+
+
+class MultiTurnScheduler(ABC):
+
+    def __init__(self, max_turns: Optional[int] = None, *args, **kwargs):
+        super().__init__()
+        self.max_turns = max_turns
+
+    @abstractmethod
+    def step(*args, **kwargs):
+        pass
+
+    def check_finished(self, result, current_turn) -> bool:
+        if result['finished'] or result['finish_reason'] == 'length':
+            return True
+
+        if self.max_turns:
+            if current_turn >= self.max_turns:
+                return True
+
+        return False
+
+    def set_max_turns(self, max_turns):
+        self.max_turns = max_turns
+
+
+class FunctionScheduler(MultiTurnScheduler):
+
+    def __init__(self, callback: Callable, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.callback = callback
+
+    def step(self, *args, **kwargs):
+        return self.callback(*args, **kwargs)
+
+
+class ReToolScheduler(MultiTurnScheduler):
+
+    def __init__(self):
+        super().__init__()
+        self.sandbox = None
+
+    def step(completions: Union[List[str], str]):
+        pass  # TODO
+
+    def extract_code(completions: Union[List[str], str]):
+        pass  # TODO
+
+
 def check_math_result_and_give_tips(inputs):
     from .orm import MathAccuracy
     acc = MathAccuracy()
@@ -37,6 +88,6 @@ def check_math_result_and_give_tips_multi_turn(inputs):
 
 
 multi_turns = {
-    'math_tip_trick': check_math_result_and_give_tips,
-    'math_tip_trick_multi_turn': check_math_result_and_give_tips_multi_turn,
+    'math_tip_trick': FunctionScheduler(check_math_result_and_give_tips),
+    'math_tip_trick_multi_turn': FunctionScheduler(check_math_result_and_give_tips_multi_turn),
 }
