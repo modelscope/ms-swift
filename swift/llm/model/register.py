@@ -255,6 +255,21 @@ def get_model_tokenizer_from_local(model_dir: str,
             InitModelStrategy.init_parameters(model, init_strategy)
 
     model_info.config = model_config if model is None else model.config
+
+    pad_token = tokenizer.pad_token_id
+    if pad_token is None:
+        pad_token = tokenizer.eos_token_id
+    if tokenizer.eos_token_id is None:
+        tokenizer.eos_token_id = pad_token
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = pad_token
+    assert tokenizer.eos_token_id is not None
+    assert tokenizer.pad_token_id is not None
+
+    if model is not None:
+        # fix seq classification task
+        HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token)
+
     return model, tokenizer
 
 
@@ -583,20 +598,7 @@ def get_model_tokenizer(
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
 
-    pad_token = tokenizer.pad_token_id
-    if pad_token is None:
-        pad_token = tokenizer.eos_token_id
-    if tokenizer.eos_token_id is None:
-        tokenizer.eos_token_id = pad_token
-    if tokenizer.pad_token_id is None:
-        tokenizer.pad_token_id = pad_token
-    assert tokenizer.eos_token_id is not None
-    assert tokenizer.pad_token_id is not None
-
     if model is not None:
-        # fix seq classification task
-        HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token)
-
         model.model_info = model_info
         model.model_meta = model_meta
         model.model_dir = model_dir
