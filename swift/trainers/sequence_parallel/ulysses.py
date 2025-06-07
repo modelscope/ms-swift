@@ -176,9 +176,9 @@ def old_policy(self):
 
 
 # For DPO
-def get_per_token_logps(self,
-                        logits: torch.FloatTensor,
+def get_per_token_logps(logits: torch.FloatTensor,
                         labels: torch.LongTensor,
+                        label_pad_token_id=-100,
                         ulysses=None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if labels.shape[1] > logits.shape[1]:
         _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(None, None, labels, None, None, None)

@@ -18,8 +18,6 @@ from .utils import build_streaming_dataloader, get_batch, get_swift_datasets_pro
 
 logger = get_logger()
 
-stimer = StragglerDetector()
-
 
 class MegatronSft(SwiftSft):
     args_class = MegatronTrainArguments
@@ -35,21 +33,24 @@ class MegatronSft(SwiftSft):
         self._prepare_template()
         self.template.use_megatron = True
         args.save_args(args.save)
+        self.stimer = StragglerDetector()
 
     @contextmanager
-    def _get_train_iters(self, train_dataset):
+    def _get_iters(self, train_dataset, val_dataset):
         from megatron.training import training
         origin_initialize_megatron = training.initialize_megatron
 
         def initialize_megatron(*_args, **kwargs):
             res = origin_initialize_megatron(*_args, **kwargs)
             args = get_args()
+            data_parallel_size = mpu.get_data_parallel_world_size()
+            step_batch_size = args.micro_batch_size * data_parallel_size
             if args.train_iters is None and hasattr(train_dataset, '__len__'):
-                data_parallel_size = mpu.get_data_parallel_world_size()
-                step_batch_size = \
-                    args.micro_batch_size * data_parallel_size
                 dataset_sample = len(train_dataset) // step_batch_size * step_batch_size
                 args.train_iters = (dataset_sample * args.max_epochs // args.global_batch_size) + 1
+            if val_dataset is not None and args.eval_iters is None and hasattr(val_dataset, '__len__'):
+                dataset_sample = len(val_dataset) // step_batch_size * step_batch_size
+                args.eval_iters = max(dataset_sample // args.global_batch_size, 1)
             return res
 
         training.initialize_megatron = initialize_megatron
@@ -84,20 +85,20 @@ class MegatronSft(SwiftSft):
             args.is_training = False
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
-        return self._train_step_origin(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config)
+        with self._training_context():
+            try:
+                return self._origin_train_step(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler,
+                                               config)
+            except StopIteration:
+                return {}, True, True, True, 0, None, None
 
-    def _patch_train_step(self):
+    def _patch_megatron(self):
         # support max_epochs
-        def train_step(*args, **kwargs):
-            with self._training_context():
-                try:
-                    return self.train_step(*args, **kwargs)
-                except StopIteration:
-                    return {}, True, True, True, 0, None, None
-
-        self._train_step_origin = training.train_step
-        training.train_step = train_step
+        self._origin_train_step = training.train_step
+        training.train_step = self.train_step
         training.cyclic_iter = MegatronSft.new_cyclic_iter
+        # patch training_log
+        self._origin_training_log = training.training_log
 
     def forward_step(self, data_iterator, model):
         from pretrain_gpt import loss_func
@@ -106,14 +107,13 @@ class MegatronSft(SwiftSft):
 
         # Get the batch.
         timers('batch-generator', log_level=2).start()
-        global stimer
-        with stimer(bdata=True):
+        with self.stimer(bdata=True):
             data = get_batch(data_iterator)
         if not data:
             raise StopIteration
         timers('batch-generator').stop()
 
-        with stimer:
+        with self.stimer:
             output_tensor = model(**data)
         labels = data.get('labels')
         loss_mask = None if labels is None else (labels != -100).float()
@@ -121,7 +121,7 @@ class MegatronSft(SwiftSft):
 
     def run(self):
         args = self.args
-        self._patch_train_step()
+        self._patch_megatron()
 
         train_dataset, val_dataset = self._get_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
@@ -136,7 +136,7 @@ class MegatronSft(SwiftSft):
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
         try:
-            with patch_megatron_data_collator(data_collator), self._get_train_iters(train_dataset):
+            with patch_megatron_data_collator(data_collator), self._get_iters(train_dataset, val_dataset):
                 extra_args_provider = args.megatron_model_meta.extra_args_provider
                 pretrain(
                     datasets_provider,
