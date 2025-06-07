@@ -27,8 +27,10 @@ class Emu3GenTemplate(Template):
         'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, '
         'worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry.')
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def init_processor(self, processor) -> None:
+        if processor is None:
+            return
+        super().init_processor(processor)
         self.bov = self.processor.tokenizer.encode(self.processor.visual_template[0].format(token_id=0))[0]
         self.eov = self.processor.tokenizer.encode(self.processor.visual_template[0].format(token_id=self.COOKBOOK_SIZE
                                                                                             - 1))[0]
