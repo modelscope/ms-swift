@@ -110,6 +110,16 @@ class SwiftMixin:
             from swift.trainers.sequence_parallel import sequence_parallel
             sequence_parallel.prepare_trainer(self)
 
+    def get_use_logits_to_keep(self, default_value: bool):
+        use_logits_to_keep = self.args.use_logits_to_keep
+        if use_logits_to_keep is None:
+            base_model = self.template.get_base_model(self.model)
+            use_logits_to_keep = (not self.model.model_meta.is_multimodal
+                                  and 'logits_to_keep' in inspect.signature(base_model.forward).parameters
+                                  and default_value)
+        logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
+        return use_logits_to_keep
+
     def _save_initial_model(self, output_dir):
         # pissa/olora/lora-ga
         model = unwrap_model(self.model)
