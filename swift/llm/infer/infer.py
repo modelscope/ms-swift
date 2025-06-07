@@ -215,7 +215,7 @@ class SwiftInfer(SwiftPipeline):
                 if self.jsonl_writer:
                     self.jsonl_writer.append(data)
             metrics = self.infer_kwargs.pop('metrics')
-            print({metrics[0].compute()})
+            print(metrics[0].compute())
         else:
             if args.write_batch_size <= 0:
                 args.write_batch_size = len(val_dataset)

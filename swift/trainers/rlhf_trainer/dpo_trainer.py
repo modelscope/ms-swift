@@ -57,16 +57,11 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         batch = batch.copy()
         labels = batch.pop('labels', None)
 
-        base_model = self.template.get_base_model(self.model)
-        use_logits_to_keep = self.args.use_logits_to_keep
-        if use_logits_to_keep is None:
-            # padding_free or packing
-            use_logits_to_keep = 'logits_to_keep' in inspect.signature(
-                base_model.forward).parameters and self.template.sequence_parallel_size == 1
-        logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
-
+        use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
         if use_logits_to_keep:
-            labels, batch['logits_to_keep'] = self.get_logits_to_keep(labels)
+            labels, logits_to_keep = self.get_logits_to_keep(labels)
+            if logits_to_keep is not None:
+                batch['logits_to_keep'] = logits_to_keep
         if self.aux_loss_enabled:
             batch['output_router_logits'] = True
         if self.is_encoder_decoder:

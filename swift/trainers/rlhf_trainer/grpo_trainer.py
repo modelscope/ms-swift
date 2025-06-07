@@ -7,7 +7,7 @@ import re
 import time
 from collections import defaultdict, deque
 from concurrent.futures import Future
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
@@ -28,10 +28,10 @@ from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
 from transformers.trainer import Trainer
 from trl import GRPOTrainer as HFGRPOTrainer
-from trl.extras.profiling import profiling_decorator
+from trl.extras.profiling import profiling_context, profiling_decorator
 from trl.models import prepare_deepspeed
 from trl.trainer.callbacks import SyncRefModelCallback
-from trl.trainer.grpo_trainer import nanmax, nanmin
+from trl.trainer.grpo_trainer import nanmax, nanmin, nanstd
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
 from swift.llm.model.utils import get_llm_model
@@ -222,7 +222,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
         set_seed(args.seed, device_specific=True)
-        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
+        if is_peft_model(self.model):
+            self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.use_fast_infer = self.use_vllm  # whether to use the PT backend
         if self.use_vllm:
             if not is_vllm_available():
@@ -458,60 +459,64 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @profiling_decorator
     def _move_model_to_vllm(self):
-        if self.vllm_mode == 'server':
-            return super()._move_model_to_vllm()
+        deepspeed_plugin = self.accelerator.state.deepspeed_plugin
+        zero_stage_3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
+        if zero_stage_3:
+            import deepspeed
+            gather_if_zero3 = deepspeed.zero.GatheredParameters
+        else:
+            gather_if_zero3 = nullcontext
 
-        from accelerate.utils.other import is_compiled_module
+        if self.args.async_generate:
+            # before sync weight, we should wait async generate finish
+            self._wait_queue()
 
-        for i, parameter_group in enumerate(self.parameter_groups):
-            parameter_group_no_lora = self.parameter_groups_no_lora[i]
-            with unwrap_model_for_generation(
-                    self.model,
-                    self.accelerator,
-                    gather_deepspeed3_params=self.args.ds3_gather_for_generation,
-                    gather_parameters=parameter_group) as unwrapped_model:
-
-                if is_compiled_module(unwrapped_model):
-                    unwrapped_model = unwrapped_model._orig_mod
-                if is_peft_model(unwrapped_model):
-                    with patch_lora_merge(unwrapped_model, parameter_group):
-                        unwrapped_model.merge_adapter()
-                    state_dict = unwrapped_model.state_dict()
-                    # Remove base_model and base_layer prefixes
+        if is_peft_model(self.model):
+            for i, parameter_group in enumerate(self.parameter_groups):  # < this is the change
+                parameter_group_no_lora = self.parameter_groups_no_lora[i]
+                parameters = [
+                    parameter for name, parameter in self.model.named_parameters()
+                    if not parameter_group or name in parameter_group
+                ]
+                with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
+                    self.model.merge_adapter()
+                    state_dict = self.model.state_dict()
                     state_dict = {
                         k.removeprefix('base_model.model.').replace('.base_layer', ''): v
                         for k, v in state_dict.items()
                     }
-                    # Remove values with adapter prefix (example: "_lora")
-                    state_dict = {k: v for k, v in state_dict.items() if unwrapped_model.prefix not in k}
+                    state_dict = {k: v for k, v in state_dict.items() if self.model.prefix not in k}
                     # When module to save, remove its prefix and discard the original module
                     state_dict = {
                         k.replace('modules_to_save.default.', ''): v
                         for k, v in state_dict.items() if 'original_module' not in k
                     }
-                else:
-                    state_dict = unwrapped_model.state_dict()
-                if parameter_group_no_lora:
-                    parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
-                    state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
-                assert len(state_dict) > 0 and all([state.shape != torch.Size([0]) for state in state_dict.values()])
-                if self.use_fast_infer:
-                    if self.args.async_generate:
-                        # before sync weight, we should wait async generate finish
-                        self._wait_queue()
-                    if self.use_vllm:
+                    if parameter_group_no_lora:
+                        parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
+                        state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
+                    assert len(state_dict) > 0 and all(
+                        [state.shape != torch.Size([0]) for state in state_dict.values()])
+
+                    if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+                        for name, param in state_dict.items():
+                            self.vllm_client.update_named_param(name, param)
+                    elif self.vllm_mode == 'colocate':
                         llm_model = self.engine.inner_model
-                    else:
-                        llm_model = self.engine.engine.engine
-                    llm_model.load_weights(state_dict.items())
-                    del state_dict
-                    gc_collect()
-                # Unmerge the adapter to restore the model to its original state.
-                # This must be done after loading weights to ensure they correspond to the merged state.
-                if is_peft_model(unwrapped_model):
-                    with patch_lora_unmerge(unwrapped_model):
-                        unwrapped_model.unmerge_adapter()
-        if self.use_vllm and self.vllm_mode == 'colocate':
+                        llm_model.load_weights(state_dict.items())
+                    with patch_lora_unmerge(self.model):
+                        self.model.unmerge_adapter()
+        else:
+            for name, param in self.model.named_parameters():
+                with gather_if_zero3([param]):
+                    if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+                        self.vllm_client.update_named_param(name, param.data)
+                    elif self.vllm_mode == 'colocate':
+                        llm_model = self.engine.inner_model
+                        llm_model.load_weights([(name, param.data)])
+
+        if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+            self.vllm_client.reset_prefix_cache()
+        elif self.vllm_mode == 'colocate':
             # since vLLM model weights has been updated, we should reset the prefix cache
             self.engine.engine.reset_prefix_cache()
 
@@ -868,19 +873,30 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completions = [example['messages'][-1]['content'] for example in inputs]
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
 
-        for i, (reward_func, reward_model_plugin) in enumerate(zip(self.reward_funcs, self.reward_model_plugins)):
-            # reward model
-            if isinstance(reward_func, nn.Module):
-                rewards_per_func[:, i] = reward_model_plugin(inputs=inputs)
-            # reward function
-            else:
-                # Repeat all input columns (but "messages" and "completion") to match the number of generations
-                reward_kwargs = RowPreprocessor.rows_to_batched(inputs)
-                output_reward_func = reward_func(completions, **reward_kwargs)
+        for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
+                zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
+            with profiling_context(self, reward_func_name):
+                # reward model
+                if isinstance(reward_func, nn.Module):
+                    output_reward_func = reward_model_plugin(inputs=inputs)
+                # reward function
+                else:
+                    # Repeat all input columns (but "messages" and "completion") to match the number of generations
+                    reward_kwargs = RowPreprocessor.rows_to_batched(inputs)
+                    output_reward_func = reward_func(completions, **reward_kwargs)
+                output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
+        # If all reward functions return None for a given row, issue a detailed warning
+        if torch.isnan(rewards_per_func).all(dim=1).any():
+            nan_row_idx = torch.isnan(rewards_per_func).all(dim=1).nonzero(as_tuple=True)[0][0]
+            row_reward_kwargs = {key: value[nan_row_idx] for key, value in reward_kwargs.items()}
+            row_reward_kwargs['completion'] = completions[nan_row_idx]
+            logger.warning(f'All reward functions returned None for the following kwargs: {row_reward_kwargs}. '
+                           'Please ensure that at least one reward function returns a valid reward.')
+
         total_rewards_per_func = gather(rewards_per_func)
-        total_rewards = (total_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).sum(dim=1)
+        total_rewards = (total_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
 
         return total_rewards_per_func, total_rewards, completions
 
@@ -1022,10 +1038,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self._metrics[mode]['completions/clipped_ratio'].append(clipped_completions_ratio)
 
+        # Calculate mean reward per function, but only for samples where the function was applied (non-NaN values)
         for i, reward_func_name in enumerate(self.reward_func_names):
-            mean_rewards = rewards_per_func[:, i].mean().item()
+            mean_rewards = torch.nanmean(rewards_per_func[:, i]).item()
             self._metrics[mode][f'rewards/{reward_func_name}/mean'].append(mean_rewards)
-            std_rewards = rewards_per_func[:, i].std().item()
+            std_rewards = nanstd(rewards_per_func[:, i]).item()
             self._metrics[mode][f'rewards/{reward_func_name}/std'].append(std_rewards)
 
         # Log overall reward stats
@@ -1066,7 +1083,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # apply the completion_mask to exclude loss and metrics for overlong completions
         if self.args.overlong_filter and any(truncated_mask):
             if all(truncated_mask):
-                logger.info('All completions are overlong, loss and KL will be zero')
+                logger.info('All completions are overlong and truncated, '
+                            'resulting in NaN some values for some metrics (e.g., KL)')
             truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask).to(completion_mask.device)
             completion_mask = completion_mask * (~truncated_mask)
 
@@ -1336,11 +1354,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         *,
         use_tqdm: Optional[bool] = False,
     ):
-        if self.vllm_mode == 'server':
-            self._process_infer_requests_images(infer_requests)
-            return self.vllm_client.infer(infer_requests, asdict(request_config), use_tqdm=use_tqdm)
-        else:
-            return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
+        with profiling_context(self, 'generate'):
+            if self.vllm_mode == 'server':
+                self._process_infer_requests_images(infer_requests)
+                return self.vllm_client.infer(infer_requests, asdict(request_config), use_tqdm=use_tqdm)
+            else:
+                return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
 
     def _process_infer_requests_images(self, infer_requests: List[InferRequest]):
         # Process image format into a format that session.post can accept
