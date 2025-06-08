@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Tuple, Union
+
+from swift.llm.infer.protocol import ChatCompletionResponseChoice, InferRequest
 
 
 class MultiTurnScheduler(ABC):
@@ -9,16 +11,16 @@ class MultiTurnScheduler(ABC):
         self.max_turns = max_turns
 
     @abstractmethod
-    def step(*args, **kwargs):
+    def step(infer_request: InferRequest, result: ChatCompletionResponseChoice,
+             **kwargs) -> Tuple[Optional[InferRequest], bool]:
         pass
 
-    def check_finished(self, result, current_turn) -> bool:
-        if result['finished'] or result['finish_reason'] == 'length':
+    def check_finished(self, result:ChatCompletionResponseChoice, current_turn:int) -> bool:
+        if result.finished or result.finish_reason == 'length':
             return True
 
-        if self.max_turns:
-            if current_turn >= self.max_turns:
-                return True
+        if self.max_turns and current_turn >= self.max_turns:
+            return True
 
         return False
 
@@ -42,10 +44,17 @@ class ReToolScheduler(MultiTurnScheduler):
         super().__init__()
         self.sandbox = None
 
-    def step(completions: Union[List[str], str]):
+    def step(infer_request: InferRequest, 
+             result: ChatCompletionResponseChoice,
+             current_turn:int,
+             **kwargs) -> Tuple[Optional[InferRequest], bool]:
+        if current_turn == 0 or not messages[-1]['content'] or messages[-1]['content'] == '<None>':
+            messages = InferRequest.remove_response(infer_request.messages)
+
         pass  # TODO
 
     def extract_code(completions: Union[List[str], str]):
+
         pass  # TODO
 
 
