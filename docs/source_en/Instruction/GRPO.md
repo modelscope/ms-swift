@@ -222,7 +222,7 @@ Arguments
   - vllm_server_base_url: Base URL for the vLLM server (e.g., 'http://localhost:8000'). If provided, `vllm_server_host` " "and `vllm_server_port` are ignored. Default is None.
   - vllm_server_host: The host address of the vLLM server. Default is None. This is used when connecting to an external vLLM server.
   - vllm_server_port: The service port of the vLLM server. Default is 8000.
-  - vllm_server_timeout: The connection timeout for the vLLM server. Default is 120 seconds.
+  - vllm_server_timeout: The connection timeout for the vLLM server. Default is 240 seconds.
   - async_generate: Use async rollout to improve train speed. Note that rollout will use the model updated in the previous round when enabled. Multi-turn scenarios are not supported. Default is `false`.
 - vllm_mode colocate parameter
   - vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.

@@ -212,7 +212,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
   - vllm_server_base_url: vLLM server的Base URL(比如 http://local_host:8000), 默认为None。设置后，忽略host和port设置。
   - vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用.
   - vllm_server_port vLLM server 服务端口，默认为8000.
-  - vllm_server_timeout 连接vLLM server的超时时间，默认为120s.
+  - vllm_server_timeout 连接vLLM server的超时时间，默认为 240s.
   - async_generate: 异步rollout以提高训练速度，注意开启时采样会使用上一轮更新的模型进行采样，不支持多轮场景。默认`false`.
 - vllm_mode colocate 参数
   - vllm_gpu_memory_utilization: vllm透传参数，默认为0.9.
