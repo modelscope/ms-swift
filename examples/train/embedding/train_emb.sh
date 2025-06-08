@@ -7,25 +7,22 @@ nproc_per_node=8
 # --model iic/gte-modernbert-base iic/gte_Qwen2-7B-instruct also supported
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \
-    --model Qwen/Qwen3-Embedding-8B \
-    --train_type lora \
-    --dataset 'sentence-transformers/stsb' \
-    --torch_dtype bfloat16 \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 2 \
-    --per_device_eval_batch_size 1 \
-    --gradient_accumulation_steps $(expr 64 / $nproc_per_node) \
-    --eval_steps 100 \
-    --save_steps 100 \
-    --eval_strategy steps \
-    --use_chat_template false \
-    --save_total_limit 2 \
-    --logging_steps 5 \
-    --output_dir output \
-    --warmup_ratio 0.05 \
-    --learning_rate 5e-6 \
-    --deepspeed zero3 \
-    --dataloader_num_workers 4 \
+    --model Qwen/Qwen3-Embedding-0.6B \
     --task_type embedding \
-    --loss_type cosine_similarity \
+    --model_type qwen3_emb \
+    --train_type full \
+    --dataset sentence-transformers/stsb:positive \
+    --split_dataset_ratio 0.05 \
+    --eval_strategy steps \
+    --output_dir output \
+    --eval_steps 20 \
+    --num_train_epochs 5 \
+    --save_steps 70 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --gradient_accumulation_steps 4 \
+    --learning_rate 6e-6 \
+    --loss_type infonce \
+    --label_names labels \
     --dataloader_drop_last true \
+    --deepspeed zero3
