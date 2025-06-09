@@ -300,14 +300,21 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - loss_type: 默认为'sigmoid'。可选值参考[TRL文档](https://huggingface.co/docs/trl/main/en/dpo_trainer)。
 
 
-### Megatron训练参数
+### 训练参数
 
 Megatron训练参数继承自Megatron参数和基本参数。基本参数的内容可以参考[这里](./命令行参数.md#基本参数)。此外还包括以下参数：
 
 - add_version: 在`save`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
-- 🔥packing: 是否使用序列packing，默认为False。
+- 🔥packing: 是否使用序列packing，默认为False。当前支持`megatron pt/sft`。
 - 🔥packing_cache: 指定 packing 缓存目录。默认值为`None`，表示缓存将存储在环境变量 `$MODELSCOPE_CACHE`所指定的路径下。在跨节点使用 packing 功能时，需确保所有节点的 packing 缓存路径共享且一致。你可以通过设置`MODELSCOPE_CACHE`环境变量，或在命令行中添加 `--packing_cache <shared_path>`参数来实现这一要求。
 - 🔥streaming: 流式读取并处理数据集，默认False。通常在处理大型数据集时，设置为True。更多流式的参数查看命令行参数文档。
 - lazy_tokenize: 默认为False。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（这可以避免在训练中出现报错）；设置为True，则在训练中对数据集进行tokenize（这可以节约内存）。
 - max_epochs: 训练到`max_epochs`时强制退出训练，并对权重进行验证和保存。该参数在使用流式数据集时很有用。默认为None。
   - 注意：如果你使用非流式数据集，该参数会为你自动计算train_iters，你不需要手动传入`train_iters`。
+
+
+### RLHF参数
+除了继承训练参数外，还支持以下参数：
+- rlhf_type: 默认为'dpo'。目前可选择为'dpo'。
+- loss_scale: 覆盖[基本参数](./命令行参数.md)中的loss_scale。默认为'last_round'。
+- calculate_per_token_loss: 覆盖Megatron参数，默认为False。
