@@ -175,7 +175,7 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
 seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the dataset length, please use the `--max_length` parameter in the basic arguments; there is no need to set this parameter.
 - use_cpu_initialization: Initializes weights on the CPU, default is False. Used during HF and MCore weight conversion.
 - no_create_attention_mask_in_dataloader: Does not create an attention mask in the dataloader, default is True.
-- extra_megatron_kwargs: 传入megatron的其他参数，使用json传递。默认为None。
+- extra_megatron_kwargs: Additional parameters passed to Megatron, provided as a JSON object. Defaults to None.
 
 **Learning Rate Parameters**:
 

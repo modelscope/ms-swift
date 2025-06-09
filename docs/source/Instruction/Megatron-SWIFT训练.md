@@ -172,7 +172,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - seq_length: 默认为None，即设置为`max_length`。对数据集长度进行限制请使用基本参数中的`--max_length`控制，无需设置此参数。
 - use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。
 - no_create_attention_mask_in_dataloader: 在dataloader中不创建attention mask，默认为True。
-- extra_megatron_kwargs: Additional parameters passed to Megatron, provided as a JSON object. Defaults to None.
+- extra_megatron_kwargs: 传入megatron的其他参数，使用json传递。默认为None。
 
 **学习率参数**:
 - 🔥lr: 初始学习率，最终会根据学习率预热策略和衰减策略决定每个迭代的学习率，默认为1e-5。
