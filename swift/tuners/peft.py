@@ -278,7 +278,7 @@ def keep_device_forward(self, *args, **kwargs):
 
 def hot_patch_peft_module():
     from peft.tuners.lora import LoraLayer
-    if hasattr('LoraModel', '_create_and_replace_origin'):
+    if hasattr(LoraModel, '_create_and_replace_origin'):
         return
 
     # Fix Lora does not support NonDynamicallyQuantizableLinear
