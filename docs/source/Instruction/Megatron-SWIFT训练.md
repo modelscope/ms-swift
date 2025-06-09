@@ -235,7 +235,8 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - wandb_save_dir: 本地保存 wandb 结果的路径。默认为''。
 
 **评估参数**:
-- 🔥eval_iters: 评估的迭代次数，默认为100。
+- 🔥eval_iters: 评估的迭代次数，默认为-1，根据验证数据集的数量设置合适的值。
+  - 注意：若使用流式数据集，该值需要手动设置。
 - 🔥eval_interval: 评估的间隔（steps），默认为None，即设置为save_interval。
 
 **混合精度参数**:
@@ -288,6 +289,15 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - moe_z_loss_coeff: z-loss 的缩放系数。默认为None。
 - moe_expert_capacity_factor: 每个专家的容量因子，None表示不会丢弃任何token。默认为None。
 - moe_shared_expert_overlap: 启用共享专家计算与调度器通信之间的重叠。如果不启用此选项，共享专家将在路由专家之后执行。仅在设置了`moe_shared_expert_intermediate_size`时有效。默认为False。
+
+**DPO参数**:
+- ref_load: ref_model的加载路径。默认为None，即设置为`load`。
+- beta: 含义与[TRL](https://huggingface.co/docs/trl/main/en/dpo_trainer#trl.DPOConfig)相同。控制与参考模型偏差程度的参数。beta值越高，表示与参考模型的偏差越小。对于 IPO 损失函数 (loss_type="ipo")，beta是[论文](https://huggingface.co/papers/2310.12036)中所指的正则化参数。默认为0.1。
+- rpo_alpha: 来自[RPO 论文](https://huggingface.co/papers/2404.19733)中的参数，用于控制损失函数中NLL项的权重（即SFT损失）。`loss = dpo_loss + rpo_alpha * nll_loss`。默认为1。
+- reference_free: 是否忽略提供的参考模型，并隐式地使用一个对所有响应赋予相等概率的参考模型。默认为False。
+- label_smoothing: 默认为0.。
+- f_divergence_type: 默认为`reverse_kl`。可选值参考[TRL文档](https://huggingface.co/docs/trl/main/en/dpo_trainer)。
+- loss_type: 默认为'sigmoid'。可选值参考[TRL文档](https://huggingface.co/docs/trl/main/en/dpo_trainer)。
 
 
 ### Megatron训练参数

@@ -244,7 +244,8 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 
 **Evaluation Parameters**:
 
-- 🔥eval_iters: Number of evaluation iterations, default is 100.
+- 🔥eval_iters: The number of iterations for evaluation. Defaults to -1, and a suitable value will be set based on the size of the validation dataset.
+  - Note: If using a streaming dataset, this value needs to be set manually.
 - 🔥eval_interval: Evaluation interval (steps), default is None, meaning it will be set to save_interval.
 
 **Mixed Precision Parameters**:
@@ -300,6 +301,16 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - moe_z_loss_coeff: Scaling coefficient for z-loss. Default is None.
 - moe_expert_capacity_factor: Capacity factor for each expert, None means no tokens will be dropped. Default is None.
 - moe_shared_expert_overlap: Enable overlapping of shared expert computation with scheduler communication. If this option is not enabled, shared experts will execute after the routing experts. Only effective when `moe_shared_expert_intermediate_size` is set. Default is False.
+
+**DPO Parameters**
+- ref_load: The path to load the reference model. Defaults to `None`, which means it will be set to `load`.
+- beta: Has the same meaning as in [TRL](https://huggingface.co/docs/trl/main/en/dpo_trainer#trl.DPOConfig). It controls the degree of deviation from the reference model. A higher beta value indicates less deviation from the reference model. For the IPO loss function (`loss_type="ipo"`), beta is the regularization parameter as mentioned in the [paper](https://huggingface.co/papers/2310.12036). Default is 0.1.
+- rpo_alpha: A parameter from the [RPO paper](https://huggingface.co/papers/2404.19733) used to control the weight of the NLL term (i.e., SFT loss) in the loss function. The total loss is calculated as `loss = dpo_loss + rpo_alpha * nll_loss`. Default is 1.
+- reference_free: Whether to ignore the provided reference model and implicitly use a reference model that assigns equal probability to all responses. Default is `False`.
+- label_smoothing: Default is 0.
+- f_divergence_type: Default is `reverse_kl`. See the [TRL documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer) for possible values.
+- loss_type: Default is `'sigmoid'`. See the [TRL documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer) for possible values.
+
 
 ### Megatron Training Parameters
 
