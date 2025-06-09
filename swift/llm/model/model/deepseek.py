@@ -255,6 +255,7 @@ register_model(
             ]),
             ModelGroup([
                 Model('cognitivecomputations/DeepSeek-R1-awq', 'cognitivecomputations/DeepSeek-R1-AWQ'),
+                Model('cognitivecomputations/DeepSeek-R1-0528-AWQ', 'cognitivecomputations/DeepSeek-R1-0528-AWQ'),
             ])
         ],
         TemplateType.deepseek_r1,
