@@ -226,7 +226,7 @@ class SwiftMixin:
                 # For embedding models, they should copy extra sentence_transformers files
                 from swift.utils import copy_files_by_pattern
                 copy_files_by_pattern(self.model.model_dir, output_dir, 'config_sentence_transformers.json')
-                copy_files_by_pattern(self.model.model_dir, output_dir, '1_Pooling')
+                copy_files_by_pattern(self.model.model_dir, output_dir, '1_Pooling/config.json')
                 copy_files_by_pattern(self.model.model_dir, output_dir, 'modules.json')
             else:
 
