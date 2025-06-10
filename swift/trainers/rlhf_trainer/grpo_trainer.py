@@ -762,7 +762,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.args.offload_model:
                 self.offload_model()
             if self.args.offload_ref_model:
-                self.offload_model(model=self.ref_model)
+                self.offload_model(is_ref_model=True)
             if self.args.offload_optimizer:
                 self.offload_optimizer()
             if self.args.gc_collect_after_offload:
@@ -802,7 +802,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.args.offload_model:
                 self.load_model()
             if self.args.offload_ref_model:
-                self.load_model(model=self.ref_model)
+                self.load_model(is_ref_model=True)
             if self.args.offload_optimizer:
                 self.load_optimizer()
         return inputs, outputs
