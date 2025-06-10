@@ -95,6 +95,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # for offload model/optimizer
         self.offload_modules = {}
+        self.offload_ref_modules = {}
         self.offload_states = {}
 
         if not isinstance(reward_funcs, list):
@@ -760,6 +761,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
             if self.args.offload_model:
                 self.offload_model()
+            if self.args.offload_ref_model:
+                self.offload_model(model=self.ref_model)
             if self.args.offload_optimizer:
                 self.offload_optimizer()
             if self.args.gc_collect_after_offload:
@@ -798,6 +801,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 gc_collect()
             if self.args.offload_model:
                 self.load_model()
+            if self.args.offload_ref_model:
+                self.load_model(model=self.ref_model)
             if self.args.offload_optimizer:
                 self.load_optimizer()
         return inputs, outputs
@@ -1387,32 +1392,35 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return self.train_queue
 
     @torch.no_grad()
-    def offload_model(self):
-        if len(self.offload_modules) > 0:
+    def offload_model(self, is_ref_model=False):
+        modules = self.offload_modules if not is_ref_model else self.offload_ref_modules
+        if len(modules) > 0:
             return
         unwrapped_model = self.accelerator.unwrap_model(self.model)
         for name, module in unwrapped_model.named_modules():
             if isinstance(module, torch.nn.Embedding):
-                self.offload_modules[name] = module.weight.device
+                modules[name] = module.weight.device
                 module.to('cpu')
             elif not hasattr(module, 'device'):
                 pass
             elif module.device.type != 'cpu':
-                self.offload_modules[name] = module.device
+                modules[name] = module.device
                 module.to('cpu')
 
     @torch.no_grad()
-    def load_model(self):
-        if len(self.offload_modules) == 0:
+    def load_model(self, is_ref_model=False):
+        modules = self.offload_modules if not is_ref_model else self.offload_ref_modules
+
+        if len(modules) == 0:
             return
         unwrapped_model = self.accelerator.unwrap_model(self.model)
-        for name, device in self.offload_modules.items():
+        for name, device in modules.items():
             module = unwrapped_model.get_submodule(name)
             if isinstance(module, torch.nn.Embedding):
                 module.weight.to(device)
             else:
                 module.to(device)
-        self.offload_modules.clear()
+        modules.clear()
 
     @torch.no_grad()
     def offload_optimizer(self):
