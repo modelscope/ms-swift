@@ -50,13 +50,15 @@ class MegatronSft(SwiftSft):
                     dataset_sample = len(train_dataset) // step_batch_size * step_batch_size
                     args.train_iters = (dataset_sample * args.max_epochs // args.global_batch_size) + 1
                 else:
-                    raise ValueError('You are using a streaming training dataset. Please explicitly specify `--train_iters`.')
+                    raise ValueError(
+                        'You are using a streaming training dataset. Please explicitly specify `--train_iters`.')
             if val_dataset is not None and args.eval_iters < 0:
                 if hasattr(val_dataset, '__len__'):
                     dataset_sample = len(val_dataset) // step_batch_size * step_batch_size
                     args.eval_iters = max(dataset_sample // args.global_batch_size, 1)
                 else:
-                    raise ValueError('You are using a streaming validation dataset. Please explicitly specify `--eval_iters`.')
+                    raise ValueError(
+                        'You are using a streaming validation dataset. Please explicitly specify `--eval_iters`.')
             return res
 
         training.initialize_megatron = initialize_megatron

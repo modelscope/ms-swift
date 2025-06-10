@@ -1,10 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import namedtuple
 from functools import partial
-from typing import List, Tuple, Union
+from typing import List, Union
 
 import torch
 from megatron.core import mpu
+from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
 from megatron.training import get_args, get_model, training
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.utils import unwrap_model
@@ -61,16 +62,45 @@ class MegatronRLHF(MegatronSft):
 
         training.setup_model_and_optimizer = setup_model_and_optimizer
 
+    @staticmethod
+    def _forward_step_helper(model, inputs):
+        args = get_args()
+        if mpu.is_pipeline_first_stage():
+            micro_batch_size = 1  # use qkv_format 'thd'
+            seq_length = inputs['input_ids'].shape[1]
+            if args.sequence_parallel:
+                seq_length //= mpu.get_tensor_model_parallel_world_size()
+            recv_shape_buffer = torch.tensor([seq_length, micro_batch_size, args.hidden_size],
+                                             device=torch.cuda.current_device(),
+                                             dtype=torch.int64)
+        else:
+            recv_shape_buffer = torch.empty((3, ), device=torch.cuda.current_device(), dtype=torch.int64)
+            recv_from_prev_pipeline_rank_(recv_shape_buffer)
+        if not mpu.is_pipeline_last_stage():
+            send_to_next_pipeline_rank(recv_shape_buffer)
+        shape = recv_shape_buffer.tolist()
+
+        if not mpu.is_pipeline_first_stage():
+            recv_buffer = torch.empty(shape, device=torch.cuda.current_device(), dtype=args.params_dtype)
+            recv_from_prev_pipeline_rank_(recv_buffer)
+            model.set_input_tensor(recv_buffer)
+        output_tensor = model(**inputs)
+        if not mpu.is_pipeline_last_stage():
+            send_to_next_pipeline_rank(output_tensor)
+            output_tensor = None
+
+        return output_tensor
+
     def ref_forward(self, data_iterator):
         ref_model = unwrap_model(self.ref_model)
         with self.stimer(bdata=True):
             data = get_batch(data_iterator)
         if not data:
             raise StopIteration
-        labels = data['labels']
+        labels = data.get('labels')
         with torch.no_grad():
-            output_tensor = ref_model(**data)
-        data['logps'] = self.get_logps(output_tensor, labels, data['packed_seq_params'])
+            output_tensor = self._forward_step_helper(ref_model, data)
+        data['logps'] = None if labels is None else self.get_logps(output_tensor, labels, data['packed_seq_params'])
         return data
 
     @staticmethod
@@ -79,11 +109,13 @@ class MegatronRLHF(MegatronSft):
         per_token_logps = -output_tensor
         loss_mask = labels != -100
         per_token_logps = per_token_logps * loss_mask
-        cu_seqlens = packed_seq_params.cu_seqlens_q[:args.micro_batch_size * 2 + 1]
+        cu_seqlens = packed_seq_params.cu_seqlens_q[:args.micro_batch_size * 2 + 1] // args.context_parallel_size
         all_logps = per_token_logps.new_zeros((args.micro_batch_size * 2, ))
         for i in range(args.micro_batch_size * 2):
             start, end = cu_seqlens[i], cu_seqlens[i + 1]
             all_logps[i] = per_token_logps[:, start:end].sum()
+        if args.context_parallel_size > 1:
+            torch.distributed.all_reduce(all_logps, group=mpu.get_context_parallel_group())
         return all_logps
 
     def loss_func(self, output_tensor: torch.Tensor, *, ref_logps: torch.Tensor, labels: torch.Tensor,
@@ -91,9 +123,13 @@ class MegatronRLHF(MegatronSft):
         from swift.trainers import DPOTrainer
         args = get_args()
         loss_mask = labels != -100
-        num_tokens = packed_seq_params.cu_seqlens_q[args.micro_batch_size]
+        num_tokens = packed_seq_params.cu_seqlens_q[args.micro_batch_size] // args.context_parallel_size
         loss_mask[:, num_tokens:] = 0
-        nll_loss = torch.sum(output_tensor * loss_mask) / loss_mask.sum()
+        nll_loss = torch.concat([torch.sum(output_tensor * loss_mask)[None], loss_mask.sum()[None]])
+        if args.context_parallel_size > 1:
+            torch.distributed.all_reduce(nll_loss, group=mpu.get_context_parallel_group())
+        nll_loss = nll_loss[0] / nll_loss[1]
+
         logps = self.get_logps(output_tensor, labels, packed_seq_params)
         loss, chosen_rewards, rejected_rewards = self.dummy_dpo_trainer.dpo_loss(
             logps[:args.micro_batch_size],
@@ -127,7 +163,10 @@ class MegatronRLHF(MegatronSft):
         with self.stimer:
             output_tensor = model(**data)
         return output_tensor, partial(
-            self.loss_func, ref_logps=ref_logps, labels=data['labels'], packed_seq_params=data['packed_seq_params'])
+            self.loss_func,
+            ref_logps=ref_logps,
+            labels=data.get('labels'),
+            packed_seq_params=data.get('packed_seq_params'))
 
 
 def megatron_rlhf_main(args: Union[List[str], MegatronRLHFArguments, None] = None):

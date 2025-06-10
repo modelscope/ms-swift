@@ -13,7 +13,6 @@ megatron rlhf \
     --recompute_method uniform \
     --recompute_num_layers 1 \
     --max_epochs 1 \
-    --eval_iters 20 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
