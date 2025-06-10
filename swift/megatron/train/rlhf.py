@@ -155,9 +155,18 @@ class MegatronRLHF(MegatronSft):
             'nll_loss': nll_loss
         }
 
+    def _replace_data_iterator(self, data_iterator):
+        args = get_args()
+        num_iters_per_step = args.global_batch_size // (args.micro_batch_size * mpu.get_data_parallel_world_size())
+        res = []
+        for i in range(num_iters_per_step):
+            with torch.no_grad():
+                res.append(self.ref_forward(data_iterator))
+        return iter(res)
+
     def forward_step(self, data_iterator, model):
         with torch.no_grad():
-            data = self.ref_forward(data_iterator)
+            data = next(data_iterator)
 
         ref_logps = data.pop('logps')
         with self.stimer:

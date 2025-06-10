@@ -1,13 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import time
 from contextlib import contextmanager
 from functools import partial
 from typing import List, Union
 
+import torch
 from megatron.core import mpu
 from megatron.core.enums import ModelType
+from megatron.core.num_microbatches_calculator import get_num_microbatches
+from megatron.core.pipeline_parallel import get_forward_backward_func
+from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.utils import StragglerDetector
-from megatron.training import get_args, get_timers, pretrain, training
+from megatron.training import ft_integration, get_args, get_timers, is_last_rank, pretrain, print_rank_0, training
 
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
@@ -92,13 +97,139 @@ class MegatronSft(SwiftSft):
         finally:
             args.is_training = False
 
+    def _replace_data_iterator(self, data_iterator):
+        return data_iterator
+
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         with self._training_context():
             try:
+                data_iterator = self._replace_data_iterator(data_iterator)
                 return self._origin_train_step(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler,
                                                config)
             except StopIteration:
                 return {}, True, True, True, 0, None, None
+
+    def evaluate(self,
+                 forward_step_func,
+                 data_iterator,
+                 model,
+                 process_non_loss_data_func,
+                 config,
+                 verbose=False,
+                 non_loss_data_func=None):
+        """Evaluation."""
+        args = get_args()
+        timers = get_timers()
+
+        timers('evaluate', log_level=0).start(barrier=True)
+
+        if args.vision_pretraining and args.vision_pretraining_type == 'dino':
+            from megatron.legacy.model.vision.knn_monitor import compute_feature_bank
+            compute_feature_bank(model)
+
+        # Turn on evaluation mode which disables dropout.
+        for model_module in model:
+            model_module.eval()
+
+        # Disable result validation during evaluation
+        rerun_state_machine = get_rerun_state_machine()
+        rerun_mode = rerun_state_machine.get_mode()
+        rerun_state_machine.set_mode(RerunMode.DISABLED)
+
+        total_loss_dict = {}
+
+        # make validation batch size independent from training batch size
+        eval_batch_size = args.global_batch_size
+        eval_num_microbatches = eval_batch_size // \
+                                (args.micro_batch_size * args.data_parallel_size)
+
+        with torch.no_grad():
+            iteration = 0
+            if verbose:
+                print_rank_0(f'Evaluating on {args.eval_iters * eval_batch_size} samples')
+            while iteration < args.eval_iters:
+                iteration += 1
+                if verbose:
+                    print_rank_0(f'Evaluating iter {iteration}/{args.eval_iters}')
+
+                forward_backward_func = get_forward_backward_func()
+                # Don't care about timing during evaluation
+                config.timers = None
+                ft_integration.on_eval_step_start()
+                data_iterator = self._replace_data_iterator(data_iterator)
+                loss_dicts = forward_backward_func(
+                    forward_step_func=forward_step_func,
+                    data_iterator=data_iterator,
+                    model=model,
+                    num_microbatches=eval_num_microbatches,
+                    seq_length=args.seq_length,
+                    micro_batch_size=args.micro_batch_size,
+                    decoder_seq_length=args.decoder_seq_length,
+                    forward_only=True)
+                ft_integration.on_eval_step_end()
+                config.timers = get_timers()
+
+                # Empty unused memory
+                if args.empty_unused_memory_level >= 1:
+                    torch.cuda.empty_cache()
+
+                if mpu.is_pipeline_last_stage(ignore_virtual=True):
+                    # Reduce across processes.
+                    for loss_dict in loss_dicts:
+                        for key in loss_dict:
+                            if key not in total_loss_dict:
+                                total_loss_dict[key] = torch.tensor([0.0, 0.0], dtype=torch.float).cuda()
+                            val = loss_dict[key]
+                            if isinstance(val, tuple) or isinstance(val, list):
+                                total_loss_dict[key][0] += val[0]
+                                total_loss_dict[key][1] += val[1]
+                            else:
+                                total_loss_dict[key][0] += val
+                                total_loss_dict[key][1] += 1
+
+                args.consumed_valid_samples += eval_batch_size
+
+                if args.exit_duration_in_mins:
+                    train_time = (time.time() - training._TRAIN_START_TIME) / 60.0
+                    done_cuda = torch.tensor([train_time > args.exit_duration_in_mins], dtype=torch.int, device='cuda')
+                    torch.distributed.all_reduce(done_cuda, op=torch.distributed.ReduceOp.MAX)
+                    done = done_cuda.item()
+                    if done:
+                        rerun_state_machine.set_mode(rerun_mode)
+                        print_rank_0('Exiting during evaluation, timelimit reached')
+                        return None, None, True
+
+            collected_non_loss_data = None
+            if non_loss_data_func is not None:
+                collected_non_loss_data = non_loss_data_func(model)
+            elif process_non_loss_data_func is not None and is_last_rank():
+                collected_non_loss_data = forward_backward_func(
+                    forward_step_func=forward_step_func,
+                    data_iterator=data_iterator,
+                    model=model,
+                    num_microbatches=get_num_microbatches(),
+                    seq_length=args.seq_length,
+                    micro_batch_size=args.micro_batch_size,
+                    decoder_seq_length=args.decoder_seq_length,
+                    forward_only=True,
+                    collect_non_loss_data=True)
+
+        # Move model back to the train mode.
+        for model_module in model:
+            model_module.train()
+
+        for key in total_loss_dict:
+            numerator, denominator = total_loss_dict[key]
+            total_loss_dict[key] = numerator / denominator
+
+        timers('evaluate').stop()
+        timers.log(['evaluate'])
+
+        rerun_state_machine.set_mode(rerun_mode)
+
+        rerun_state_machine.set_mode(rerun_mode)
+
+        return total_loss_dict, collected_non_loss_data, False
 
     def _patch_megatron(self):
         # support max_epochs
@@ -107,6 +238,9 @@ class MegatronSft(SwiftSft):
         training.cyclic_iter = MegatronSft.new_cyclic_iter
         # patch training_log
         self._origin_training_log = training.training_log
+        # patch evaluate
+        self._origin_evaluate = training.evaluate
+        training.evaluate = self.evaluate
 
     def forward_step(self, data_iterator, model):
         from pretrain_gpt import loss_func
