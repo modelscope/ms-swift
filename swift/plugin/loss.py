@@ -174,6 +174,8 @@ def calculate_infonce_metrics(embeddings, labels):
     from scipy.stats import pearsonr, spearmanr
     hard_negatives = os.environ.get('INFONCE_HARD_NEGATIVES', None)
     use_batch = strtobool(os.environ.get('INFONCE_USE_BATCH', 'True'))
+    if hard_negatives is not None:
+        hard_negatives = int(hard_negatives)
     split_tensors = _parse_multi_negative_sentences(torch.tensor(embeddings), torch.tensor(labels), hard_negatives)
     split_tensors = [t.numpy() for t in split_tensors]
     can_batched = hard_negatives is not None
