@@ -252,9 +252,11 @@ def save_checkpoint(model: Optional[PreTrainedModel],
     if model and model.model_dir and model.model_dir not in model_dirs:
         model_dirs.append(model.model_dir)
     for src_file in (additional_saved_files or []) + ['preprocessor_config.json', 'args.json']:
+        tgt_path = os.path.join(output_dir, src_file)
+        if os.path.exists(tgt_path) and src_file == 'args.json':
+            continue
         for model_dir in model_dirs:
             src_path: str = os.path.join(model_dir, src_file)
-            tgt_path = os.path.join(output_dir, src_file)
             if os.path.isfile(src_path):
                 shutil.copy(src_path, tgt_path)
                 break
