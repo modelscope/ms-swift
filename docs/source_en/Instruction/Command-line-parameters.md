@@ -457,8 +457,8 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
   - vllm_tensor_parallel_size: the tensor parallel size of vLLM engine, default is 1.
   - sleep_level: make vllm sleep when model is training. Options are 0 or 1, default is 0, no sleep
-  - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM/LMDeploy. The default is `False`.
-  - offload_model: Whether to offload the model during inference with vLLM/LMDeploy. The default is `False`.
+  - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM. The default is `False`.
+  - offload_model: Whether to offload the model during inference with vLLM. The default is `False`.
   - gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
   - completion_length_limit_scope: Specifies the scope of the `max_completion_length` limit in multi-turn conversations.
   When set to `total`, the total output length across all turns must not exceed `max_completion_length`.
