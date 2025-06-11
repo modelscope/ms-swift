@@ -46,7 +46,7 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 --sleep_level 1
 ```
 
-2. 在vLLM 推理阶段，释放训练模型和优化器占用的显存：
+2. 在vLLM 推理阶段，释放模型和优化器占用的显存：
 
 ```bash
 --offload_optimizer true \
@@ -222,7 +222,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
   - vllm_enable_prefix_caching: vllm透传参数，默认为True.
   - sleep_level: 训练时释放 vLLM 显存，可选项为[0, 1], 默认为0，不释放.
   - offload_optimizer: 是否在vLLM推理时offload optimizer参数，默认为False。
-  - offload_model: 是否在vLLM推理时offload 模型本身，默认为False。
+  - offload_model: 是否在vLLM推理时 offload 模型，默认为False。
   - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False。
   - completion_length_limit_scope: 在多轮对话中，`max_completion_length` 的限制范围。
   `total`限制所有对话轮次的总输出长度不超过`max_completion_length`, `per_round`限制每一轮的输出长度。

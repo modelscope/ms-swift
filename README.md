@@ -120,7 +120,7 @@ Running Environment:
 | transformers | >=4.33       | 4.51      |                                           |
 | modelscope   | >=1.23       |             |                                           |
 | peft | >=0.11,<0.16 | ||
-| trl | >=0.13,<0.18 | 0.17 |RLHF|
+| trl | >=0.13,<0.19 | 0.18 |RLHF|
 | deepspeed    | >=0.14       | 0.14.5 | Training                                  |
 | vllm         | >=0.5.1      | 0.8       | Inference/Deployment/Evaluation           |
 | lmdeploy     | >=0.5        | 0.8       | Inference/Deployment/Evaluation           |
