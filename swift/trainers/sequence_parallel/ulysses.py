@@ -851,6 +851,27 @@ class Ulysses(SequenceParallel):
             trainer._get_per_token_logps = MethodType(_get_per_token_logps, trainer)
             trainer.split_by_mini_batches = MethodType(split_by_mini_batches, trainer)
 
+            class DataloaderWrap:
+
+                def __init__(self, dataloader):
+                    self.dataloader = dataloader
+
+                def __getattr__(self, item):
+                    return getattr(self.dataloader, item)
+
+                def __len__(wrapped):
+                    return len(wrapped.dataloader) * self.sp_world_size
+
+                def __iter__(self):
+                    yield from self.dataloader
+
+            def get_train_dataloader(trainer):
+                dataloader = trainer.get_origin_train_dataloader()
+                return DataloaderWrap(dataloader)
+
+            trainer.get_origin_train_dataloader = trainer.get_train_dataloader
+            trainer.get_train_dataloader = MethodType(get_train_dataloader, trainer)
+
         from swift.plugin import metric
         from swift.trainers import mixin
         compute_acc_origin = metric.compute_acc
