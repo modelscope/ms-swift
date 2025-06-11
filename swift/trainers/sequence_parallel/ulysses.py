@@ -842,11 +842,6 @@ class Ulysses(SequenceParallel):
             trainer._prepare_inputs = MethodType(partial(_prepare_inputs, ulysses=self), trainer)
             trainer.get_per_token_logps = partial(get_per_token_logps, ulysses=self)
 
-            def rlhf_loss_scale_sp_func(_, *args, **kwargs):
-                return loss_scale_sp_func(*args, ulysses=self, **kwargs)
-
-            trainer.get_nll_loss = MethodType(rlhf_loss_scale_sp_func, trainer)
-
         elif trainer.__class__.__name__ == 'GRPOTrainer':
             assert version.parse(trl.__version__) >= version.parse('0.18.0')
             trainer.ulysses = self
