@@ -1396,8 +1396,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         modules = self.offload_modules if not is_ref_model else self.offload_ref_modules
         if len(modules) > 0:
             return
-        unwrapped_model = self.accelerator.unwrap_model(self.model)
-        for name, module in unwrapped_model.named_modules():
+        model = self.accelerator.unwrap_model(self.model) if not is_ref_model else self.ref_model
+        for name, module in model.named_modules():
             if isinstance(module, torch.nn.Embedding):
                 modules[name] = module.weight.device
                 module.to('cpu')
@@ -1413,9 +1413,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if len(modules) == 0:
             return
-        unwrapped_model = self.accelerator.unwrap_model(self.model)
+        model = self.accelerator.unwrap_model(self.model) if not is_ref_model else self.ref_model
         for name, device in modules.items():
-            module = unwrapped_model.get_submodule(name)
+            module = model.get_submodule(name)
             if isinstance(module, torch.nn.Embedding):
                 module.weight.to(device)
             else:

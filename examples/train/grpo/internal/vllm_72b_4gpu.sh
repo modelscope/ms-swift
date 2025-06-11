@@ -39,5 +39,6 @@ swift rlhf \
     --move_model_batches 16 \
     --offload_optimizer true \
     --offload_model true \
+    --offload_ref_model true \
     --gc_collect_after_offload true \
     --sleep_level 1

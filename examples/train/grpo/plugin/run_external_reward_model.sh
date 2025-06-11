@@ -17,6 +17,7 @@ swift rlhf \
     --reward_weights 0.1 1 1 \
     --sleep_level 1 \
     --offload_model true \
+    --offload_ref_model true \
     --offload_optimizer true \
     --gc_collect_after_offload true \
     --log_completions true \

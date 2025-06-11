@@ -37,6 +37,7 @@ swift rlhf \
     --async_generate false \
     --offload_optimizer true \
     --offload_model true \
+    --offload_ref_model true \
     --padding_free true \
     --sequence_parallel_size 4 \
     --gc_collect_after_offload true \
