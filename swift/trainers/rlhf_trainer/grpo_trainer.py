@@ -93,11 +93,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.processing_class = kwargs.get('template').tokenizer
 
-        # for offload model/optimizer
-        self.offload_modules = {}
-        self.offload_ref_modules = {}
-        self.offload_states = {}
-
         if not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
 
