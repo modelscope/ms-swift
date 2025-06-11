@@ -172,7 +172,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - seq_length: 默认为None，即设置为`max_length`。对数据集长度进行限制请使用基本参数中的`--max_length`控制，无需设置此参数。
 - use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。
 - no_create_attention_mask_in_dataloader: 在dataloader中不创建attention mask，默认为True。
-- extra_megatron_kwargs: Additional parameters passed to Megatron, provided as a JSON object. Defaults to None.
+- extra_megatron_kwargs: 传入megatron的其他参数，使用json传递。默认为None。
 
 **学习率参数**:
 - 🔥lr: 初始学习率，最终会根据学习率预热策略和衰减策略决定每个迭代的学习率，默认为1e-5。
@@ -221,7 +221,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 **日志参数**:
 - log_params_norm: 记录参数的norm。默认为False。
-- log_throughput: 记录每个GPU的吞吐量。默认为True。
+- log_throughput: 记录每个GPU的吞吐量。默认为False。
   - 注意：在非packing情况下，log_throughput并不准确，因为`seq_length`并不等于真实序列长度。
 - tensorboard_log_interval: 记录到tensorboard的间隔（steps），默认为1。
 - tensorboard_queue_size: 队列长度（与磁盘IO相关），类似于写入的间隔。默认为50。
@@ -235,7 +235,8 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - wandb_save_dir: 本地保存 wandb 结果的路径。默认为''。
 
 **评估参数**:
-- 🔥eval_iters: 评估的迭代次数，默认为100。
+- 🔥eval_iters: 评估的迭代次数，默认为-1，根据验证数据集的数量设置合适的值。
+  - 注意：若使用流式数据集，该值需要手动设置。
 - 🔥eval_interval: 评估的间隔（steps），默认为None，即设置为save_interval。
 
 **混合精度参数**:
@@ -295,7 +296,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 Megatron训练参数继承自Megatron参数和基本参数。基本参数的内容可以参考[这里](./命令行参数.md#基本参数)。此外还包括以下参数：
 
 - add_version: 在`save`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
-- 🔥packing: 是否使用序列packing，默认为False。
+- 🔥packing: 是否使用序列packing，默认为False。当前支持`megatron pt/sft`。
 - 🔥packing_cache: 指定 packing 缓存目录。默认值为`None`，表示缓存将存储在环境变量 `$MODELSCOPE_CACHE`所指定的路径下。在跨节点使用 packing 功能时，需确保所有节点的 packing 缓存路径共享且一致。你可以通过设置`MODELSCOPE_CACHE`环境变量，或在命令行中添加 `--packing_cache <shared_path>`参数来实现这一要求。
 - 🔥streaming: 流式读取并处理数据集，默认False。通常在处理大型数据集时，设置为True。更多流式的参数查看命令行参数文档。
 - lazy_tokenize: 默认为False。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（这可以避免在训练中出现报错）；设置为True，则在训练中对数据集进行tokenize（这可以节约内存）。

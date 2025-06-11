@@ -150,7 +150,7 @@ class MegatronArguments(ExtraMegatronArguments):
 
     # logging
     log_params_norm: bool = False
-    log_throughput: bool = True
+    log_throughput: bool = False
     tensorboard_log_interval: int = 1
     tensorboard_queue_size: int = 50
     log_timers_to_tensorboard: bool = True
@@ -163,7 +163,7 @@ class MegatronArguments(ExtraMegatronArguments):
     wandb_save_dir: Optional[str] = None
 
     # evaluate
-    eval_iters: int = 100
+    eval_iters: int = -1
     eval_interval: Optional[int] = None
 
     # other

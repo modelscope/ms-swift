@@ -175,7 +175,7 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
 seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the dataset length, please use the `--max_length` parameter in the basic arguments; there is no need to set this parameter.
 - use_cpu_initialization: Initializes weights on the CPU, default is False. Used during HF and MCore weight conversion.
 - no_create_attention_mask_in_dataloader: Does not create an attention mask in the dataloader, default is True.
-- extra_megatron_kwargs: 传入megatron的其他参数，使用json传递。默认为None。
+- extra_megatron_kwargs: Additional parameters passed to Megatron, provided as a JSON object. Defaults to None.
 
 **Learning Rate Parameters**:
 
@@ -229,7 +229,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 **Logging Parameters**:
 
 - log_params_norm: Logs the norm of parameters. Default is False.
-- log_throughput: Logs throughput per GPU. Default is True.
+- log_throughput: Logs throughput per GPU. Default is False.
   - Note: In non-packing scenarios, log_throughput is not accurate because `seq_length` does not equal the actual sequence length.
 - tensorboard_log_interval: Interval (steps) for logging to TensorBoard, default is 1.
 - tensorboard_queue_size: Queue length (related to disk I/O), similar to write intervals. Default is 50.
@@ -244,7 +244,8 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 
 **Evaluation Parameters**:
 
-- 🔥eval_iters: Number of evaluation iterations, default is 100.
+- 🔥eval_iters: The number of iterations for evaluation. Defaults to -1, and a suitable value will be set based on the size of the validation dataset.
+  - Note: If using a streaming dataset, this value needs to be set manually.
 - 🔥eval_interval: Evaluation interval (steps), default is None, meaning it will be set to save_interval.
 
 **Mixed Precision Parameters**:
@@ -306,7 +307,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 Megatron training parameters inherit from Megatron parameters and basic parameters. For information on basic parameters, see [here](./Command-line-parameters.md#base-arguments). Additionally, the following parameters are included:
 
 - add_version: Adds a directory `<version>-<timestamp>` to `save` to prevent overwriting weights, default is True.
-- 🔥packing: Whether to use sequence packing, defaults to False.
+- 🔥packing: Whether to use sequence packing, defaults to False. Currently supports `megatron pt/sft`.
 - 🔥packing_cache: Specifies the directory for packing cache. The default value is `None`, which means the cache will be stored in the path defined by the environment variable `$MODELSCOPE_CACHE`. When using the packing feature across multiple nodes, ensure that all nodes share the same packing cache directory. You can achieve this by setting the `MODELSCOPE_CACHE` environment variable or by adding the `--packing_cache <shared_path>` argument in the command line.
 - 🔥streaming: Stream reading and processing of the dataset, default is False. It is typically set to True when handling large datasets. For more information on streaming parameters, refer to the command-line parameters documentation.
 - lazy_tokenize: Default is False. If this parameter is set to False, all dataset samples are tokenized before training (this avoids errors during training); if set to True, tokenization occurs during training (this saves memory).
