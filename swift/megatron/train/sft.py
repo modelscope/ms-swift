@@ -145,7 +145,7 @@ class MegatronSft(SwiftSft):
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
         try:
-            with patch_megatron_data_collator(data_collator), self._get_iters(train_dataset):
+            with patch_megatron_data_collator(data_collator), self._get_iters(train_dataset, val_dataset):
                 extra_args_provider = args.megatron_model_meta.extra_args_provider
                 pretrain(
                     datasets_provider,
