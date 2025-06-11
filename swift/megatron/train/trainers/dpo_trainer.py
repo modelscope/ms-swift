@@ -112,7 +112,6 @@ class MegatronDPOTrainer(MegatronTrainer):
 
     def loss_func(self, output_tensor: torch.Tensor, *, ref_logps: torch.Tensor, labels: torch.Tensor,
                   packed_seq_params):
-        from swift.trainers import DPOTrainer
         args = get_args()
         loss_mask = labels != -100
         num_tokens = packed_seq_params.cu_seqlens_q[args.micro_batch_size] // args.context_parallel_size
