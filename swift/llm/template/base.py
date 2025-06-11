@@ -370,6 +370,7 @@ class Template(ProcessorMixin):
         positive_encoded = self._encode_truncated(positive)
         for key in positive_encoded:
             _encoded[f'positive_{key}'] = positive_encoded[key]
+            _encoded[f'negative_{key}'] = []
         labels.append(float(inputs.label) if inputs.label is not None else 1.0)
 
         rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
@@ -381,7 +382,7 @@ class Template(ProcessorMixin):
             split_multi_medias(negative)
             negative_encoded = self._encode_truncated(negative)
             for key in negative_encoded:
-                _encoded[f'negative{i}_{key}'] = negative_encoded[key]
+                _encoded[f'negative_{key}'].append(negative_encoded[key])
             labels.append(0.0)
 
         _encoded['labels'] = labels
@@ -1314,10 +1315,18 @@ class Template(ProcessorMixin):
         new_batch = []
         for b in batch:
             keys = [key for key in b.keys() if 'negative' in key]
-            max_neg = max([int(re.findall(r'negative(-?\d+)', key)[0]) for key in keys]) if keys else None
+            max_neg = None
+            for key in keys:
+                value_list = b[key]
+                suffix = key[len('negative_'):]
+                max_neg = len(value_list)
+                for i, value in enumerate(value_list):
+                    b[f'negative{i}_{suffix}'] = value
+                b.pop(key)
+
             indexes = ['anchor_', 'positive_']
             if max_neg is not None:
-                for i in range(0, max_neg + 1):
+                for i in range(0, max_neg):
                     indexes.append(f'negative{i}_')
             for prefix in indexes:
                 new_batch += self._fetch_inputs_startswith([b], prefix)
