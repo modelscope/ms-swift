@@ -279,3 +279,13 @@ register_template(
         LLMTemplateType.mimo_rl,
         default_system='You are MiMo, an AI assistant developed by Xiaomi.',
     ))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.dots1,
+        prefix=['<|system|>{{SYSTEM}}<|endofsystem|>'],
+        prompt=['<|userprompt|>{{QUERY}}<|endofuserprompt|><|response|>'],
+        chat_sep=['<|endofresponse|>'],
+        suffix=['<|endofresponse|>'],
+        default_system='You are a helpful assistant.',
+    ))
