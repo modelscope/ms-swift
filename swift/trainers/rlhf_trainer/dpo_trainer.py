@@ -39,20 +39,11 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         super().__init__(model, ref_model, *_args, **kwargs)
 
-    def get_nll_loss(self, logits, labels):
-        # Flatten the tokens
-        loss_fct = nn.CrossEntropyLoss(ignore_index=self.label_pad_token_id)
-        logits = logits.view(-1, logits.shape[-1])
-        labels = labels.view(-1)
-        # Enable model parallelism
-        labels = labels.to(logits.device)
-        return loss_fct(logits, labels)
-
     def concatenated_forward(
         self,
         model: nn.Module,
         batch: Dict[str, Union[List, torch.LongTensor]],
-        is_ref_model=False
+        is_ref_model: bool = False
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         batch = batch.copy()
         labels = batch.pop('labels', None)
