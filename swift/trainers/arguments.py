@@ -220,7 +220,6 @@ class GRPOArgumentsMixin:
     move_model_batches: Optional[int] = None
     offload_optimizer: bool = False
     offload_model: bool = False
-    offload_ref_model: bool = False
     gc_collect_after_offload: bool = False
     multi_turn_func: Optional[str] = None
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'

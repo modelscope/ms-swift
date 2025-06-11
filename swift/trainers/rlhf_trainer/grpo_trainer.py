@@ -756,8 +756,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
             if self.args.offload_model:
                 self.offload_model(self.accelerator.unwrap_model(self.model))
-            if self.args.offload_ref_model:
-                self.offload_model(self.ref_model)
+                if self.ref_model:
+                    self.offload_model(self.ref_model)
             if self.args.offload_optimizer:
                 self.offload_optimizer()
             if self.args.gc_collect_after_offload:
@@ -796,8 +796,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 gc_collect()
             if self.args.offload_model:
                 self.load_model(self.accelerator.unwrap_model(self.model))
-            if self.args.offload_ref_model:
-                self.load_model(self.ref_model)
+                if self.ref_model:
+                    self.load_model(self.ref_model)
             if self.args.offload_optimizer:
                 self.load_optimizer()
         return inputs, outputs
