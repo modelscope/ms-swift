@@ -20,7 +20,7 @@ class MegatronSft(SwiftSft):
     args: args_class
 
     def prepare_trainer(self):
-        return MegatronTrainer()
+        return MegatronTrainer(self.args)
 
     def __init__(self, args: Union[List[str], MegatronTrainArguments, None] = None) -> None:
         self.train_msg = {}
