@@ -14,7 +14,19 @@ from swift.llm.argument.base_args import to_abspath
 
 
 @dataclass
-class ExtraMegatronArguments:
+class RLHFMegatronArgumentsMixin:
+    ref_load: Optional[str] = None
+
+    beta: float = 0.1
+    rpo_alpha: float = 1.
+    reference_free: bool = False
+    label_smoothing: float = 0.
+    f_divergence_type: str = 'reverse_kl'
+    loss_type: str = 'sigmoid'
+
+
+@dataclass
+class ExtraMegatronArguments(RLHFMegatronArgumentsMixin):
     padded_vocab_size: Optional[int] = None
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
