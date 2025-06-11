@@ -256,6 +256,17 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 'generation_batch_size or steps_per_generation needs trl >= 0.18, '
                 'please install trl `pip install trl>=0.18')
 
+        if self.offload_ref_model:
+            if self.train_type == 'lora':
+                logger.info(
+                    'In LoRA training, the reference model is obtained through disable adapter from training model. '
+                    "Therefore, there is no need to offload the reference model, setting 'offload_ref_model' to False.")
+                self.offload_ref_model = False
+            elif self.beta == 0:
+                logger.info('Since beta is equal to 0, there is no reference model during training. '
+                            "Setting 'offload_ref_model' to False")
+                self.offload_ref_model = False
+
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
             return
