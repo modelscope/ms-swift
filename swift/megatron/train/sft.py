@@ -1,16 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from functools import partial
 from typing import List, Union
-
-from megatron.training import ft_integration, get_args, get_timers, is_last_rank, pretrain, print_rank_0, training
 
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
 from ..utils import patch_megatron_tokenizer
 from .trainers import MegatronTrainer
-from .utils import build_streaming_dataloader, get_batch
+from .utils import build_streaming_dataloader
 
 logger = get_logger()
 
