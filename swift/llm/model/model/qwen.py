@@ -936,4 +936,5 @@ register_model(
         ],
         TemplateType.qwen3_emb,
         get_model_tokenizer_with_flash_attn,
+        additional_saved_files=['config_sentence_transformers.json', '1_Pooling', 'modules.json'],
         architectures=['Qwen3ForCausalLM']))

@@ -39,31 +39,20 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         super().__init__(model, ref_model, *_args, **kwargs)
 
-    def get_nll_loss(self, logits, labels):
-        # Flatten the tokens
-        loss_fct = nn.CrossEntropyLoss(ignore_index=self.label_pad_token_id)
-        logits = logits.view(-1, logits.shape[-1])
-        labels = labels.view(-1)
-        # Enable model parallelism
-        labels = labels.to(logits.device)
-        return loss_fct(logits, labels)
-
     def concatenated_forward(
-        self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]], **kwargs
+        self,
+        model: nn.Module,
+        batch: Dict[str, Union[List, torch.LongTensor]],
+        is_ref_model: bool = False
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         batch = batch.copy()
         labels = batch.pop('labels', None)
 
-        base_model = self.template.get_base_model(self.model)
-        use_logits_to_keep = self.args.use_logits_to_keep
-        if use_logits_to_keep is None:
-            # padding_free or packing
-            use_logits_to_keep = 'logits_to_keep' in inspect.signature(
-                base_model.forward).parameters and self.template.sequence_parallel_size == 1
-        logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
-
+        use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
         if use_logits_to_keep:
-            labels, batch['logits_to_keep'] = self.get_logits_to_keep(labels)
+            labels, logits_to_keep = self.get_logits_to_keep(labels)
+            if logits_to_keep is not None:
+                batch['logits_to_keep'] = logits_to_keep
         if self.aux_loss_enabled:
             batch['output_router_logits'] = True
         if self.is_encoder_decoder:
@@ -81,7 +70,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         if not self.is_encoder_decoder and self.template.sequence_parallel_size == 1:
             # Shift so that tokens < n predict n
             labels = torch.roll(labels, shifts=-1, dims=1)
-        per_token_logps, mean_all_logits, loss_mask = self.get_per_token_logps(all_logits, labels)
+        per_token_logps, mean_all_logits, loss_mask = self.get_per_token_logps(
+            all_logits, labels, label_pad_token_id=self.label_pad_token_id)
+        origin_per_token_logps = per_token_logps
         if self.loss_type == 'ipo':
             size_completion = loss_mask.sum(dim=-1)
             per_token_logps = per_token_logps / size_completion
@@ -95,7 +86,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                 all_logps[i] = per_token_logps[:, start:end].sum()
             num_examples = all_logps.shape[0] // 2
             num_tokens = cu_seqlens[num_examples]
-            output['nll_loss'] = self.get_nll_loss(all_logits[:, :num_tokens], labels[:, :num_tokens])
+            if not is_ref_model:
+                output['nll_loss'] = -origin_per_token_logps[:, :num_tokens][loss_mask[:, :num_tokens]].mean()
             output['chosen_logps'] = all_logps[:num_examples]
             output['rejected_logps'] = all_logps[num_examples:]
             output['mean_chosen_logits'] = mean_all_logits[:, :num_tokens][loss_mask[:, :num_tokens]].mean()
@@ -103,7 +95,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         else:
             all_logps = per_token_logps.sum(-1)
             num_examples = labels.shape[0] // 2
-            output['nll_loss'] = self.get_nll_loss(all_logits[:num_examples], labels[:num_examples])
+            if not is_ref_model:
+                output['nll_loss'] = -origin_per_token_logps[:num_examples][loss_mask[:num_examples]].mean()
             output['chosen_logps'] = all_logps[:num_examples]
             output['rejected_logps'] = all_logps[num_examples:]
             output['mean_chosen_logits'] = mean_all_logits[:num_examples][loss_mask[:num_examples]].mean()
@@ -112,15 +105,16 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['aux_loss'] = outputs.aux_loss
         return output
 
+    @staticmethod
     def get_per_token_logps(
-        self,
         logits: torch.FloatTensor,
         labels: torch.LongTensor,
+        label_pad_token_id=-100,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if logits.shape[:-1] != labels.shape:
             raise ValueError(f'Logits (batch and sequence length dim) {logits.shape[:-1]}'
                              'and labels must have the same shape {labels.shape}')
-        loss_mask = labels != self.label_pad_token_id
+        loss_mask = labels != label_pad_token_id
         labels = labels.clone()
         labels[~loss_mask] = 0
         # https://github.com/huggingface/trl/pull/2799

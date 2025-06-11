@@ -46,7 +46,7 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 --sleep_level 1
 ```
 
-2. 在vLLM 推理阶段，释放训练模型和优化器占用的显存：
+2. 在vLLM 推理阶段，释放模型和优化器占用的显存：
 
 ```bash
 --offload_optimizer true \
@@ -212,7 +212,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
   - vllm_server_base_url: vLLM server的Base URL(比如 http://local_host:8000), 默认为None。设置后，忽略host和port设置。
   - vllm_server_host：vLLM server host地址，默认为None，使用外部vLLM server时使用.
   - vllm_server_port vLLM server 服务端口，默认为8000.
-  - vllm_server_timeout 连接vLLM server的超时时间，默认为120s.
+  - vllm_server_timeout 连接vLLM server的超时时间，默认为 240s.
   - async_generate: 异步rollout以提高训练速度，注意开启时采样会使用上一轮更新的模型进行采样，不支持多轮场景。默认`false`.
 - vllm_mode colocate 参数
   - vllm_gpu_memory_utilization: vllm透传参数，默认为0.9.
@@ -221,9 +221,8 @@ A conversation between User and Assistant. The user asks a question, and the Ass
   - vllm_limit_mm_per_prompt: vllm透传参数，默认为None.
   - vllm_enable_prefix_caching: vllm透传参数，默认为True.
   - sleep_level: 训练时释放 vLLM 显存，可选项为[0, 1], 默认为0，不释放.
-  - move_model_batches: 在模型向vLLM等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。注意：该参数仅对LoRA(PEFT)训练有意义。
   - offload_optimizer: 是否在vLLM推理时offload optimizer参数，默认为False。
-  - offload_model: 是否在vLLM推理时offload 模型本身，默认为False。
+  - offload_model: 是否在vLLM推理时 offload 模型，默认为False。
   - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False。
   - completion_length_limit_scope: 在多轮对话中，`max_completion_length` 的限制范围。
   `total`限制所有对话轮次的总输出长度不超过`max_completion_length`, `per_round`限制每一轮的输出长度。
@@ -235,6 +234,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - sync_ref_model: 是否定期同步ref_model，默认为False。
 - ref_model_mixup_alpha: 控制在更新过程中model和先前ref_model之间的混合。更新公式为 $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$。默认为0.6。
 - ref_model_sync_steps：同步频率，默认为512。
+- move_model_batches: 在模型向vLLM等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。注意：该参数仅对LoRA(PEFT)训练有意义。
 - multi_turn_func: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现。
 - dynamic_sample：筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
 - max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。

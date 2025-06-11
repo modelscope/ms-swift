@@ -82,6 +82,7 @@ class LLMTemplateType:
     orion = 'orion'
     moonlight = 'moonlight'
     mimo_rl = 'mimo_rl'
+    dots1 = 'dots1'
 
     aya = 'aya'
     c4ai = 'c4ai'

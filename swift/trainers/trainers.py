@@ -166,7 +166,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 compute_loss_func = get_loss_func('loss_scale')
 
         sample_channels = inputs.pop('channel', None)
-        if sample_channels is not None:
+        if sample_channels is not None and self.args.channels is not None:
             state = self.state
             setattr(state, 'local_step', getattr(state, 'local_step', 0))
             setattr(state, 'ch_loss_steps', getattr(state, 'ch_loss_steps', {}))
@@ -177,17 +177,11 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         if (self.label_smoother is not None or compute_loss_func is not None) and 'labels' in inputs:
             labels = inputs.pop('labels')
 
-        base_model = self.template.get_base_model(self.model)
-        use_logits_to_keep = self.args.use_logits_to_keep
-        if use_logits_to_keep is None:
-            # padding_free or packing
-            use_logits_to_keep = 'labels' in inputs and 'logits_to_keep' in inspect.signature(
-                base_model.forward).parameters
-        logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
-
+        use_logits_to_keep = self.get_use_logits_to_keep('labels' in inputs)
         if use_logits_to_keep:
-            inputs['labels'], inputs['logits_to_keep'] = self.get_logits_to_keep(inputs['labels'])
-
+            inputs['labels'], logits_to_keep = self.get_logits_to_keep(inputs['labels'])
+            if logits_to_keep is not None:
+                inputs['logits_to_keep'] = logits_to_keep
         with self.template.compute_loss_context(self.model, inputs):
             outputs = model(**inputs)
         # Save past state if it exists

@@ -83,11 +83,13 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(batch['position_ids'])
 
         elif mpu.is_pipeline_first_stage():
+            batch['labels'] = None
             _broadcast(batch['input_ids'])
             _broadcast(batch['attention_mask'])
             _broadcast(batch['position_ids'])
 
         elif mpu.is_pipeline_last_stage():
+            batch['input_ids'] = None
             _broadcast(batch['labels'])
             _broadcast(batch['attention_mask'])
             _broadcast(batch['position_ids'])
@@ -205,7 +207,7 @@ def get_batch(data_iterator):
 
     # TODO: this is pretty hacky, find a better way
     if (not mpu.is_pipeline_first_stage()) and (not mpu.is_pipeline_last_stage()):
-        return None, None, None, None, None
+        return {key: None for key in ['input_ids', 'attention_mask', 'position_ids']}
 
     # get batches based on the TP rank you are on
     batch = get_batch_on_this_tp_rank(data_iterator)

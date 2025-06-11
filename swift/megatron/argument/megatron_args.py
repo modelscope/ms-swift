@@ -14,7 +14,19 @@ from swift.llm.argument.base_args import to_abspath
 
 
 @dataclass
-class ExtraMegatronArguments:
+class RLHFMegatronArgumentsMixin:
+    ref_load: Optional[str] = None
+
+    beta: float = 0.1
+    rpo_alpha: float = 1.
+    reference_free: bool = False
+    label_smoothing: float = 0.
+    f_divergence_type: str = 'reverse_kl'
+    loss_type: str = 'sigmoid'
+
+
+@dataclass
+class ExtraMegatronArguments(RLHFMegatronArgumentsMixin):
     padded_vocab_size: Optional[int] = None
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
@@ -150,7 +162,7 @@ class MegatronArguments(ExtraMegatronArguments):
 
     # logging
     log_params_norm: bool = False
-    log_throughput: bool = True
+    log_throughput: bool = False
     tensorboard_log_interval: int = 1
     tensorboard_queue_size: int = 50
     log_timers_to_tensorboard: bool = True
@@ -163,7 +175,7 @@ class MegatronArguments(ExtraMegatronArguments):
     wandb_save_dir: Optional[str] = None
 
     # evaluate
-    eval_iters: int = 100
+    eval_iters: int = -1
     eval_interval: Optional[int] = None
 
     # other

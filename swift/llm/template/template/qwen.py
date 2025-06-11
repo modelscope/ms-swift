@@ -408,8 +408,10 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
     version = 'omni'
     placeholder_tokens = ['<|IMAGE|>', '<|AUDIO|>', '<|VIDEO|>']
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def init_processor(self, processor) -> None:
+        if processor is None:
+            return
+        super().init_processor(processor)
         from transformers.models.qwen2_5_omni.processing_qwen2_5_omni import Qwen2_5OmniProcessorKwargs
         default = Qwen2_5OmniProcessorKwargs._defaults
         self.seconds_per_chunk = default['videos_kwargs']['seconds_per_chunk']
