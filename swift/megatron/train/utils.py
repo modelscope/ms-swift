@@ -83,11 +83,13 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(batch['position_ids'])
 
         elif mpu.is_pipeline_first_stage():
+            batch['labels'] = None
             _broadcast(batch['input_ids'])
             _broadcast(batch['attention_mask'])
             _broadcast(batch['position_ids'])
 
         elif mpu.is_pipeline_last_stage():
+            batch['input_ids'] = None
             _broadcast(batch['labels'])
             _broadcast(batch['attention_mask'])
             _broadcast(batch['position_ids'])
