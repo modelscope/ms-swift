@@ -289,4 +289,3 @@ register_template(
         suffix=['<|endofresponse|>'],
         default_system='You are a helpful assistant.',
     ))
-
