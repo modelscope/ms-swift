@@ -19,8 +19,7 @@ logger = get_logger()
 
 class DummyDPOTrainer(DPOTrainer):
     # For reusing the dpo_loss function in TRL.
-    def __init__(self):
-        args = get_args()
+    def __init__(self, args):
         from trl.trainer import FDivergenceConstants
         self.accelerator = namedtuple('Accelerator', ['device'])(device=get_current_device())
         self.f_alpha_divergence_coef = 1.
@@ -34,10 +33,10 @@ class DummyDPOTrainer(DPOTrainer):
 
 class MegatronDPOTrainer(MegatronTrainer):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, args):
+        super().__init__(args)
         self._patch_setup_model_and_optimizer()
-        self.dummy_dpo_trainer = DummyDPOTrainer()
+        self.dummy_dpo_trainer = DummyDPOTrainer(args)
 
     def _patch_setup_model_and_optimizer(self):
         origin_setup_model_and_optimizer = training.setup_model_and_optimizer

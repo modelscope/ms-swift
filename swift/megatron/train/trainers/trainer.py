@@ -22,7 +22,8 @@ logger = get_logger()
 
 class MegatronTrainer:
 
-    def __init__(self):
+    def __init__(self, args):
+        self.args = args
         self.stimer = StragglerDetector()
         self._patch_megatron()
 
@@ -246,7 +247,7 @@ class MegatronTrainer:
         return output_tensor, partial(loss_func, loss_mask)
 
     def train(self, train_dataset, val_dataset, data_collator):
-        args = get_args()
+        args = self.args
         datasets_provider = get_swift_datasets_provider(train_dataset, val_dataset)
         datasets_provider.is_distributed = True
         with patch_megatron_data_collator(data_collator), self._get_iters(train_dataset, val_dataset):

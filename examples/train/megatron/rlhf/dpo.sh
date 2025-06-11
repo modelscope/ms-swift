@@ -7,7 +7,7 @@ megatron rlhf \
     --load Qwen3-8B-Base-mcore \
     --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji#20000' \
     --tensor_model_parallel_size 4 \
-    --micro_batch_size 16 \
+    --micro_batch_size 8 \
     --global_batch_size 16 \
     --recompute_granularity full \
     --recompute_method uniform \
