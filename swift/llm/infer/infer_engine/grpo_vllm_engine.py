@@ -9,9 +9,8 @@ import tqdm
 
 from swift.llm import InferRequest, Template, VllmEngine
 from swift.plugin import Metric, multi_turns
-from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
-# from ..protocol import ChatCompletionResponse, random_uuid
+from swift.plugin.multi_turn import MultiTurnScheduler
+from ..protocol import ChatCompletionResponse, RequestConfig, random_uuid
 from .utils import AdapterRequest
 
 try:
@@ -94,11 +93,11 @@ class GRPOVllmEngine(VllmEngine):
         if multi_turn_func:
             if isinstance(multi_turn_func, str):
                 assert multi_turn_func in multi_turns
-                self.multi_turn_scheduler = multi_turn_func
-            else:
-                from swift.plugin.multi_turn import FunctionScheduler
-                assert callable(multi_turn_func)
-                self.multi_turn_scheduler = FunctionScheduler(multi_turn_func)
+                self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_func
+            # else:
+            #     from swift.plugin.multi_turn import FunctionScheduler
+            #     assert callable(multi_turn_func)
+            #     self.multi_turn_scheduler = FunctionScheduler(multi_turn_func)
         else:
             self.multi_turn_scheduler = None
 
@@ -113,7 +112,7 @@ class GRPOVllmEngine(VllmEngine):
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
-    ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
+    ) -> List[ChatCompletionResponse]:
         if self.use_async_engine:
             return self._infer_async(
                 infer_requests,
@@ -139,7 +138,7 @@ class GRPOVllmEngine(VllmEngine):
                      metrics: Optional[List[Metric]] = None,
                      *,
                      use_tqdm: Optional[bool] = None,
-                     **kwargs) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
+                     **kwargs) -> List[ChatCompletionResponse]:
         if request_config is None:
             request_config = RequestConfig()
         # in GRPO n always equals 1
@@ -153,12 +152,12 @@ class GRPOVllmEngine(VllmEngine):
 
             while True:
                 result = await self.infer_async(current_request, request_config, **kwargs)
-                should_stop = self.multi_turn_scheduler.check_finished(result, current_turn)
+                should_stop = self.multi_turn_scheduler.check_finished(current_request, result, current_turn)
 
                 if should_stop:
                     return result
 
-                current_request = self.multi_turn_scheduler.step(current_request, result)
+                current_request = self.multi_turn_scheduler.step(current_request, result, current_turn)
 
         tasks = [_infer_async_single(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:

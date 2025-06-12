@@ -99,7 +99,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.post('/update_named_param/')(self.update_named_param)
         self.app.post('/reset_prefix_cache/')(self.reset_prefix_cache)
         self.app.post('/close_communicator/')(self.close_communicator)
-        self.app.post('/generate/', response_model=None)(self.infer)
+        self.app.post('/infer/', response_model=None)(self.infer)
 
     def __init__(self, args: Union[List[str], DeployArguments, None] = None):
         super().__init__(args)

@@ -255,6 +255,12 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             assert 'generation_batch_size' in GRPOConfig.__dict__, (
                 'generation_batch_size or steps_per_generation needs trl >= 0.18, '
                 'please install trl `pip install trl>=0.18')
+        
+        if self.multi_turn_func:
+            if not self.vllm_use_async_engine:
+                self.vllm_use_async_engine = True
+                logger.warning("Switching to the asynchronous engine in multi-turn settings to accelerate rollout.")
+
 
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:

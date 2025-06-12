@@ -647,83 +647,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # infer first turn
         results = self._infer(inputs, request_config, is_global_inputs)
 
-        if not self.multi_turn_func:
-            # Single-turn: combine completions with messages and retain the finish reason.
-            outputs = []
-            for i, output in enumerate(results):
-                _choices = []
-                for choice in output.choices:
-                    _input: Dict = deepcopy(inputs[i])
-                    InferRequest.remove_response(_input['messages'])
-                    _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
-                    _choices.append((_input['messages'], choice.finish_reason))
-                outputs.append(_choices)
-            # flatten 2D list to 1D list
-            outputs = [item for sublist in outputs for item in sublist]
-        else:
-            # Multi-turn: continue to rollout until finished.
-            orig_size = len(inputs)
-            outputs = [None] * orig_size
-            # we remove origin response in first turn
-            first_turn = True
-            next_turn_inputs = inputs.copy()
-            last_turn_results = results
-            while True:
-                has_local_data = len(next_turn_inputs) > 0
-                has_global_data = gather_object([has_local_data])
-                if not any(has_global_data):
-                    break
-                # inputs for current turn
-                current_inputs = []
-                cnt = 0
-                # combine completions from results with messages
-                for i, output in enumerate(last_turn_results):
-                    for choice in output.choices:
-                        current_input = deepcopy(next_turn_inputs[i])
-                        messages = current_input['messages']
-
-                        # Determine whether to append a new message or update the last one based on the current state
-                        if first_turn or not messages[-1]['content'] or messages[-1]['content'] == '<None>':
-                            # If it's the first turn or the last message content is empty(dummy), remove the response
-                            InferRequest.remove_response(messages)
-                        if messages[-1]['role'] == 'assistant':
-                            # If the last message was assistant, concatenate the new content to it
-                            messages[-1]['content'] += choice.message.content
-                        else:
-                            # append a new message from the assistant
-                            messages.append({'role': 'assistant', 'content': choice.message.content})
-
-                        if 'index' not in current_input:
-                            current_input['index'] = cnt
-                        current_input['finish_reason'] = choice.finish_reason
-                        cnt += 1
-                        current_inputs.append(current_input)
-
-                # Process messages in the multi-turn function
-                current_results: List[Dict] = self.multi_turn_func(current_inputs) if has_local_data else []
-
-                # Retain messages that are not yet finished for the next round of rollout
-                pending_inputs = []
-                for r in current_results:
-                    if r['finished'] or r['finish_reason'] == 'length':
-                        outputs[r['index']] = (r['messages'], r['finish_reason'])
-                    else:
-                        if r['messages'][-1]['role'] == 'assistant':
-                            # Sometimes, after processing with multi_turn_func,
-                            # we want to continue reasoning based on the previous assistant content.
-                            # However, _infer will remove the response internally, so we add a dummy response here
-                            # to prevent the assistant content from being removed.
-                            r['messages'].append({'role': 'assistant', 'content': '<None>'})
-                        pending_inputs.append(r)
-
-                current_infer_inputs = pending_inputs if has_local_data else []
-                current_results = self._infer(current_infer_inputs, request_config)
-
-                last_turn_results = current_results
-                next_turn_inputs = pending_inputs
-                first_turn = False
-
-            assert not any([o is None for o in outputs])
+        outputs = []
+        for i, output in enumerate(results):
+            _choices = []
+            for choice in output.choices:
+                _input: Dict = deepcopy(inputs[i])
+                InferRequest.remove_response(_input['messages'])
+                _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
+                _choices.append((_input['messages'], choice.finish_reason))
+            outputs.append(_choices)
+        # flatten 2D list to 1D list
+        outputs = [item for sublist in outputs for item in sublist]
         return outputs
 
     def async_infer(self, all_inputs):

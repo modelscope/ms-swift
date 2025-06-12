@@ -11,7 +11,7 @@ TODO
 4. 续写逻辑, 增加response 为 None
 5. document about scheduler
 6. retool implement and document
-
+7. loss_mask
 """
 
 
@@ -39,16 +39,6 @@ class MultiTurnScheduler(ABC):
 
     def set_max_turns(self, max_turns):
         self.max_turns = max_turns
-
-
-class FunctionScheduler(MultiTurnScheduler):
-
-    def __init__(self, callback: Callable, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.callback = callback
-
-    def step(self, *args, **kwargs):
-        return self.callback(*args, **kwargs)
 
 
 class ReToolScheduler(MultiTurnScheduler):
