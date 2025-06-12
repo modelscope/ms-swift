@@ -1,7 +1,18 @@
 from abc import ABC, abstractmethod
 from typing import Callable, List, Optional, Tuple, Union
 
-from swift.llm.infer.protocol import ChatCompletionResponseChoice, InferRequest
+from swift.llm import RolloutInferRequest
+from swift.llm.infer.protocol import ChatCompletionResponseChoice
+"""
+TODO
+1. add reward_kwargs to InferRequest in training
+2. refactor training multi turn compatible with multi turn scheduler
+3. argument max_turns
+4. 续写逻辑, 增加response 为 None
+5. document about scheduler
+6. retool implement and document
+
+"""
 
 
 class MultiTurnScheduler(ABC):
@@ -11,12 +22,14 @@ class MultiTurnScheduler(ABC):
         self.max_turns = max_turns
 
     @abstractmethod
-    def step(infer_request: InferRequest, result: ChatCompletionResponseChoice,
-             **kwargs) -> Tuple[Optional[InferRequest], bool]:
+    def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoice, current_turn: int,
+             **kwargs) -> RolloutInferRequest:
         pass
 
-    def check_finished(self, result:ChatCompletionResponseChoice, current_turn:int) -> bool:
-        if result.finished or result.finish_reason == 'length':
+    def check_finished(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoice,
+                       current_turn: int) -> bool:
+        # 默认逻辑： 长度截断或到达max_turns
+        if result.finish_reason == 'length':
             return True
 
         if self.max_turns and current_turn >= self.max_turns:
@@ -44,12 +57,11 @@ class ReToolScheduler(MultiTurnScheduler):
         super().__init__()
         self.sandbox = None
 
-    def step(infer_request: InferRequest, 
-             result: ChatCompletionResponseChoice,
-             current_turn:int,
-             **kwargs) -> Tuple[Optional[InferRequest], bool]:
-        if current_turn == 0 or not messages[-1]['content'] or messages[-1]['content'] == '<None>':
-            messages = InferRequest.remove_response(infer_request.messages)
+    def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoice, current_turn: int,
+             **kwargs) -> RolloutInferRequest:
+
+        # if current_turn == 0 or not messages[-1]['content'] or messages[-1]['content'] == '<None>':
+        #     messages = RolloutInferRequest.remove_response(infer_request.messages)
 
         pass  # TODO
 
@@ -58,45 +70,74 @@ class ReToolScheduler(MultiTurnScheduler):
         pass  # TODO
 
 
-def check_math_result_and_give_tips(inputs):
+class MathTipsScheduler(MultiTurnScheduler):
     from .orm import MathAccuracy
-    acc = MathAccuracy()
-    # a trick
-    prompt = 'But wait... It seems I made a mistake,'
-    contents = [input['messages'][-1]['content'] for input in inputs]
-    rewards = acc(contents, [input['solution'] for input in inputs])
-    for reward, input in zip(rewards, inputs):
-        content = input['messages'][-1]['content']
-        if reward < 1 and prompt not in content:
-            if '<answer>' in content:
-                content = content[:content.index('<answer>')]
-            if '</think>' in content:
-                content = content[:content.index('</think>')]
-            content += prompt
-            input['messages'][-1]['content'] = content
-            input['finished'] = False
-        else:
-            input['finished'] = True
-    return inputs
+    tips_prompt = 'But wait... It seems I made a mistake,'
+    acc_func = MathAccuracy()
+
+    def check_finished(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoice,
+                       current_turn: int) -> bool:
+        completion = result.message[-1]['content']
+        # we only give tips once
+        if self.tips_prompt in completion:
+            return True
+        solution = infer_request.data_dict['solution']
+
+        acc = self.acc_func([completion], [solution])[0]
+        if acc == 1:
+            return True
+
+        return super().check_finished(result, current_turn)
+
+    def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoice, current_turn: int,
+             **kwargs) -> RolloutInferRequest:
+        completion = result.message[-1]['content']
+        if '<answer>' in completion:
+            completion = completion[:completion.index('<answer>')]
+        if '</think>' in completion:
+            completion = completion[:completion.index('</think>')]
+        completion += self.tips_prompt
+        infer_request.messages[-1]['content'] = completion
+        return infer_request
 
 
-def check_math_result_and_give_tips_multi_turn(inputs):
+class MathTipsMultiTurnScheduler(MultiTurnScheduler):
     from .orm import MathAccuracy
-    acc = MathAccuracy()
-    prompt = 'The answer is not correct, It seems You made a mistake, you need to recheck very carefully.'
-    contents = [input['messages'][-1]['content'] for input in inputs]
-    rewards = acc(contents, [input['solution'] for input in inputs])
-    for reward, input in zip(rewards, inputs):
-        content = input['messages'][-2]['content']
-        if reward < 1 and prompt not in content:
-            input['messages'].append({'role': 'user', 'content': prompt})
-            input['finished'] = False
-        else:
-            input['finished'] = True
-    return inputs
+    tips_prompt = 'The answer is not correct, It seems You made a mistake, you need to recheck very carefully.'
+    acc_func = MathAccuracy()
+
+    def check_finished(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoice,
+                       current_turn: int) -> bool:
+        query = result.message[-2]['content']
+        # we only give tips once
+        if self.tips_prompt in query:
+            return True
+
+        completion = result.message[-1]['content']
+        solution = infer_request.data_dict['solution']
+        acc = self.acc_func([completion], [solution])[0]
+        if acc == 1:
+            return True
+
+        return super().check_finished(result, current_turn)
+
+    def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoice,
+             **kwargs) -> RolloutInferRequest:
+        completion = result.message[-1]['content']
+        infer_request.messages.append(
+            {
+                'role': 'assistant',
+                'content': completion
+            },
+            {
+                'role': 'user',
+                'content': self.tips_prompt
+            },
+        )
+        return infer_request
 
 
 multi_turns = {
-    'math_tip_trick': FunctionScheduler(check_math_result_and_give_tips),
-    'math_tip_trick_multi_turn': FunctionScheduler(check_math_result_and_give_tips_multi_turn),
+    'math_tip_trick': MathTipsScheduler,
+    'math_tip_trick_multi_turn': MathTipsMultiTurnScheduler,
 }

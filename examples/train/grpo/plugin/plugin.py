@@ -10,22 +10,24 @@ import torch
 from swift.llm import PtEngine, RequestConfig, Template, to_device
 from swift.llm.infer.protocol import ChatCompletionResponse
 from swift.plugin import ORM, orms, rm_plugins
+from swift.plugin.multi_turn import MultiTurnScheduler, multi_turns
 from swift.plugin.rm_plugin import DefaultRMPlugin
 from swift.utils import get_logger
 
 logger = get_logger()
 """
-Step 1: Define a Reward Class
-    Implement your custom reward calculation logic within the __call__ method.
-    The method accepts the model's output completions and dataset columns (passed as kwargs) as input parameters.
+TO CUSTOMIZE REWARD FUNCTION:
+    Step 1: Define a Reward Class
+        Implement your custom reward calculation logic within the __call__ method.
+        The method accepts the model's output completions and dataset columns (passed as kwargs) as input parameters.
 
-Step 2: Register the Reward Class in orms
-    For example:
-    python orms['external_math_acc'] = MathAccuracy
+    Step 2: Register the Reward Class in orms
+        For example:
+        python orms['external_math_acc'] = MathAccuracy
 
-Step 3: Configure the Arguments
-    Use the following arguments when running the script:
-    bash --plugin /path/to/plugin.py --reward_funcs external_math_acc
+    Step 3: Configure the Arguments
+        Use the following arguments when running the script:
+        bash --plugin /path/to/plugin.py --reward_funcs external_math_acc
 """
 
 
@@ -595,3 +597,10 @@ class QwenLongPlugin(DefaultRMPlugin):
 
 rm_plugins['my_rmplugin'] = CustomizedRMPlugin
 rm_plugins['qwenlong'] = QwenLongPlugin
+
+
+class ReToolScheduler(MultiTurnScheduler):
+    pass
+
+
+multi_turns['retool'] = ReToolScheduler

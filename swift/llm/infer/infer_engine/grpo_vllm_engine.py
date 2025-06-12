@@ -102,9 +102,7 @@ class GRPOVllmEngine(VllmEngine):
         else:
             self.multi_turn_scheduler = None
 
-        self.max_turns = kwargs.get('max_turns', None)
-        if self.multi_turn_scheduler:
-            self.max_turns = 1
+        self.max_turns = kwargs.get('max_turns')  # TODO: check in argument initilization
 
     def infer(
         self,
@@ -144,20 +142,23 @@ class GRPOVllmEngine(VllmEngine):
                      **kwargs) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
         if request_config is None:
             request_config = RequestConfig()
+        # in GRPO n always equals 1
         assert request_config.n == 1
 
-        async def _infer_async_single(infer_request: List[InferRequest],
+        async def _infer_async_single(infer_request: InferRequest,
                                       request_config: Optional[RequestConfig] = None,
+                                      current_turn: int = 1,
                                       **kwargs):
             current_request = infer_request
 
             while True:
                 result = await self.infer_async(current_request, request_config, **kwargs)
-                new_request, should_stop = self.multi_turn_scheduler.step(current_request, result)
+                should_stop = self.multi_turn_scheduler.check_finished(result, current_turn)
 
                 if should_stop:
                     return result
-                current_request = new_request
+
+                current_request = self.multi_turn_scheduler.step(current_request, result)
 
         tasks = [_infer_async_single(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
