@@ -34,7 +34,6 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin):
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 10
 
-    model_type: Optional[str] = None
     architectures: Optional[str] = None
     max_epochs: Optional[int] = None
 

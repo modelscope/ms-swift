@@ -14,7 +14,8 @@ def _test_model(model_id, **kwargs):
                 to_hf=True,
                 exist_ok=True,
                 test_convert_precision=True,
-                torch_dtype=torch.bfloat16, **kwargs,
+                torch_dtype=torch.bfloat16,
+                **kwargs,
             ))
     else:
         export_main(
@@ -23,7 +24,8 @@ def _test_model(model_id, **kwargs):
                 to_mcore=True,
                 exist_ok=True,
                 test_convert_precision=True,
-                torch_dtype=torch.bfloat16, **kwargs,
+                torch_dtype=torch.bfloat16,
+                **kwargs,
             ))
 
 
@@ -86,9 +88,11 @@ def test_qwen2_moe():
 def test_qwen3_moe():
     _test_model('Qwen/Qwen3-30B-A3B')
 
+
 def test_mimo():
     # _test_model('XiaomiMiMo/MiMo-7B-RL')
     _test_model('XiaomiMiMo/MiMo-7B-RL-0530')
+
 
 if __name__ == '__main__':
     # test_qwen2()
