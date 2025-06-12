@@ -12,6 +12,7 @@ from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.utils import StragglerDetector
 from megatron.training import ft_integration, get_args, get_timers, is_last_rank, pretrain, print_rank_0, training
+from torch.distributed.nn import all_reduce
 
 from swift.utils import get_logger
 from ..patcher import patch_megatron_data_collator
@@ -250,7 +251,7 @@ class MegatronTrainer:
         loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), total_tokens.view(1)])
 
         if args.context_parallel_size > 1:
-            torch.distributed.all_reduce(loss, group=mpu.get_context_parallel_group())
+            loss = all_reduce(loss, group=mpu.get_context_parallel_group())
 
         # Check individual rank losses are not NaN prior to DP all-reduce.
         rerun_state_machine = get_rerun_state_machine()
@@ -293,7 +294,9 @@ class MegatronTrainer:
         # on loss[0] fixes this
         local_num_tokens = loss[1].clone().detach().to(torch.int)
         return (
-            loss[0].clone(),
+            # fix megatron-lm bug
+            # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
+            loss[0] / mpu.get_context_parallel_world_size(),
             local_num_tokens,
             {
                 'lm loss': (reporting_loss[0], reporting_loss[1])
