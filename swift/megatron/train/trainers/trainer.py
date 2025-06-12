@@ -12,6 +12,7 @@ from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.utils import StragglerDetector
 from megatron.training import ft_integration, get_args, get_timers, is_last_rank, pretrain, print_rank_0, training
+from torch.distributed.nn import all_reduce
 
 from swift.utils import get_logger
 from ..patcher import patch_megatron_data_collator
@@ -59,7 +60,7 @@ class MegatronTrainer:
             training.initialize_megatron = origin_initialize_megatron
 
     @staticmethod
-    def new_cyclic_iter(iter):
+    def new_cyclic_iter(it):
         args = get_args()
         max_epochs = args.max_epochs
         i = 0
@@ -69,7 +70,7 @@ class MegatronTrainer:
                     logger.info(f'Training of {i} epochs has been completed, the training has finished.')
                     break
                 logger.info(f'The training of Epoch {i} starts...')
-            for x in iter:
+            for x in it:
                 yield x
             i += 1
 
@@ -95,6 +96,7 @@ class MegatronTrainer:
             except StopIteration:
                 return {}, True, True, True, 0, None, None
 
+    # Code borrowed from megatron-lm
     def evaluate(self,
                  forward_step_func,
                  data_iterator,
@@ -227,9 +229,81 @@ class MegatronTrainer:
         self._origin_evaluate = training.evaluate
         training.evaluate = self.evaluate
 
-    def forward_step(self, data_iterator, model):
-        from pretrain_gpt import loss_func
+    # Code borrowed from megatron-lm
+    def loss_func(self, output_tensor: torch.Tensor, *, loss_mask: torch.Tensor):
+        """Loss function.
 
+        Args:
+            output_tensor (torch.Tensor): The tensor with the losses
+            loss_mask (torch.Tensor): Used to mask out some portions of the loss
+
+        Returns:
+            the loss scalar for this micro-batch
+            the number of non-padded tokens in this microbatch
+            a dict containing reporting metrics on the loss and number of tokens across
+                the data parallel ranks
+        """
+        args = get_args()
+
+        losses = output_tensor.float()
+        loss_mask = loss_mask.view(-1).float()
+        total_tokens = loss_mask.sum()
+        loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), total_tokens.view(1)])
+
+        if args.context_parallel_size > 1:
+            loss = all_reduce(loss, group=mpu.get_context_parallel_group())
+
+        # Check individual rank losses are not NaN prior to DP all-reduce.
+        rerun_state_machine = get_rerun_state_machine()
+        if args.check_for_nan_in_loss_and_grad:
+            rerun_state_machine.validate_result(
+                result=loss[0],
+                rejection_func=torch.isnan,
+                message='found NaN in local forward loss calculation',
+                tolerance=0.0,  # forward pass calculations are determinisic
+                fatal=True,
+            )
+            rerun_state_machine.validate_result(
+                result=loss[0],
+                rejection_func=torch.isinf,
+                message='found Inf in local forward loss calculation',
+                tolerance=0.0,  # forward pass calculations are determinisic
+                fatal=True,
+            )
+        # Check for spiky loss
+        if args.check_for_spiky_loss:
+            # define spiky loss as a loss that's 10x the max loss observed
+            SPIKY_LOSS_FACTOR = 10
+            rerun_state_machine.validate_result(
+                result=loss[0],
+                rejection_func=partial(
+                    rerun_state_machine.is_unexpectedly_large,
+                    threshold=SPIKY_LOSS_FACTOR,
+                    context='loss',
+                ),
+                message='Spiky loss',
+                tolerance=0.0,  # forward pass calculations are determinisic
+                fatal=False,
+            )
+        # Reduce loss for logging.
+        reporting_loss = loss.clone().detach()
+        torch.distributed.all_reduce(reporting_loss, group=mpu.get_data_parallel_group())
+
+        # loss[0] is a view of loss, so it has ._base not None, which triggers assert error
+        # in core/pipeline_parallel/schedule.py::deallocate_output_tensor, calling .clone()
+        # on loss[0] fixes this
+        local_num_tokens = loss[1].clone().detach().to(torch.int)
+        return (
+            # fix megatron-lm bug
+            # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
+            loss[0] / mpu.get_context_parallel_world_size(),
+            local_num_tokens,
+            {
+                'lm loss': (reporting_loss[0], reporting_loss[1])
+            },
+        )
+
+    def forward_step(self, data_iterator, model):
         timers = get_timers()
 
         # Get the batch.
@@ -244,7 +318,7 @@ class MegatronTrainer:
             output_tensor = model(**data)
         labels = data.get('labels')
         loss_mask = None if labels is None else (labels != -100).float()
-        return output_tensor, partial(loss_func, loss_mask)
+        return output_tensor, partial(self.loss_func, loss_mask=loss_mask)
 
     def train(self, train_dataset, val_dataset, data_collator):
         args = self.args

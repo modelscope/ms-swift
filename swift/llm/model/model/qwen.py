@@ -808,6 +808,12 @@ def get_model_tokenizer_ovis(*args, **kwargs):
         use_submodel_func(model, 'llm', func_list)
         embedding = model.get_input_embeddings()
         patch_output_clone(embedding)
+        if hasattr(model.visual_tokenizer, 'backbone'):
+            backbone = model.visual_tokenizer.backbone
+            if hasattr(backbone, 'vision_model'):
+                patch_get_input_embeddings(model.visual_tokenizer, 'backbone.vision_model.embeddings')
+            elif hasattr(backbone, 'preprocessor'):
+                patch_get_input_embeddings(model.visual_tokenizer, 'backbone.preprocessor.patchifier')
     try:
         # fix device_map
         from transformers.cache_utils import HybridCache
