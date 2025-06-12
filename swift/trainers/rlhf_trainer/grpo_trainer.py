@@ -459,7 +459,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template.max_length = max_length
 
     @profiling_decorator
-    def _move_model_to_vllm(self):
+    def _move_model_to_vllm(self, skip_async_check=False):
         deepspeed_plugin = self.accelerator.state.deepspeed_plugin
         zero_stage_3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
         if zero_stage_3:
@@ -468,7 +468,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         else:
             gather_if_zero3 = nullcontext
 
-        if self.args.async_generate:
+        if self.args.async_generate and not skip_async_check:
             # before sync weight, we should wait async generate finish
             self._wait_queue()
 
@@ -754,6 +754,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _prefetch(self, dataloader: DataLoader):
         inputs = next(iter(dataloader))
         all_inputs = gather_object(inputs)
+        if self.state.global_step != self._last_loaded_step:
+            self._move_model_to_vllm(skip_async_check=True)
+            self._last_loaded_step = self.state.global_step
         outputs = self._infer_single_or_multi_turn(all_inputs, self.request_config, is_global_inputs=True)
         self._queue.put(DataCache(all_inputs, outputs))
 
