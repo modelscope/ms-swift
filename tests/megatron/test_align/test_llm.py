@@ -50,6 +50,10 @@ def test_deepseek_r1_qwen():
     _test_model('deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B')
 
 
+def test_deepseek_r1_qwen_0528():
+    _test_model('deepseek-ai/DeepSeek-R1-0528-Qwen3-8B')
+
+
 def test_yi():
     _test_model('01ai/Yi-1.5-6B-Chat')
 
@@ -70,12 +74,16 @@ def test_qwen3():
     _test_model('Qwen/Qwen3-0.6B-Base')
 
 
+def test_internlm3():
+    _test_model('Shanghai_AI_Laboratory/internlm3-8b-instruct')
+
+
 def test_qwen2_moe():
     _test_model('Qwen/Qwen1.5-MoE-A2.7B-Chat')
 
 
 def test_qwen3_moe():
-    _test_model('Qwen/Qwen3-15B-A2B-Base')
+    _test_model('Qwen/Qwen3-30B-A3B')
 
 
 if __name__ == '__main__':
@@ -85,10 +93,12 @@ if __name__ == '__main__':
     # test_marco_o1()
     # test_deepseek_r1_llama()
     # test_deepseek_r1_qwen()
+    test_deepseek_r1_qwen_0528()
     # test_yi()
     # test_megrez()
     # test_llama3_1()
     # test_llama3_2()
     # test_qwen3()
     # test_qwen2_moe()
-    test_qwen3_moe()
+    # test_qwen3_moe()
+    # test_internlm3()

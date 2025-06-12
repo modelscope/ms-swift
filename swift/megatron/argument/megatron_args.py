@@ -37,6 +37,9 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin):
     model_type: Optional[str] = None
     max_epochs: Optional[int] = None
 
+    original_max_position_embeddings: Optional[int] = None
+    partial_rotary_factor: Optional[float] = None
+
 
 @dataclass
 class MegatronArguments(ExtraMegatronArguments):

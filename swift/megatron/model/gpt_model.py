@@ -11,7 +11,7 @@ from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
 
-from .rope import get_rope_inv_freq
+from .rope import dynamic_rope_update, get_rope_inv_freq
 
 
 class GPTModel(McoreGPTModel):
@@ -30,12 +30,13 @@ class GPTModel(McoreGPTModel):
         position_embedding_type: Literal['learned_absolute', 'rope', 'none'] = 'learned_absolute',
         rotary_percent: float = 1.0,
         rotary_base: int = 10000,
-        rope_scaling: Dict[str, Any] = False,
-        use_rope_scaling: bool = False,
+        hf_rope_scaling: Dict[str, Any] = False,
+        rope_scaling: bool = False,
         rope_scaling_factor: float = 8.0,
         scatter_embedding_sequence_parallel: bool = True,
         seq_len_interpolation_factor: Optional[float] = None,
     ):
+        self.hf_rope_scaling = hf_rope_scaling
         super().__init__(
             config,
             transformer_layer_spec,
@@ -49,13 +50,13 @@ class GPTModel(McoreGPTModel):
             position_embedding_type=position_embedding_type,
             rotary_percent=rotary_percent,
             rotary_base=rotary_base,
-            rope_scaling=use_rope_scaling,
+            rope_scaling=rope_scaling,
             rope_scaling_factor=rope_scaling_factor,
             scatter_embedding_sequence_parallel=scatter_embedding_sequence_parallel,
             seq_len_interpolation_factor=seq_len_interpolation_factor,
         )
         self.attention_scaling = 1.
-        if rope_scaling is not None:
+        if self.hf_rope_scaling is not None:
             inv_freq = self.rotary_pos_emb.inv_freq
             new_inv_freq, self.attention_scaling = get_rope_inv_freq(inv_freq.device)
             inv_freq.data.copy_(new_inv_freq)
@@ -128,6 +129,10 @@ class GPTModel(McoreGPTModel):
             else:
                 rotary_seq_len = self.rotary_pos_emb.get_rotary_seq_len(inference_params, self.decoder, decoder_input,
                                                                         self.config, packed_seq_params)
+                if self.hf_rope_scaling is not None:
+                    attention_scaling = dynamic_rope_update(self, self.rotary_pos_emb.inv_freq, rotary_seq_len)
+                    if attention_scaling is not None:
+                        self.attention_scaling = attention_scaling
                 rotary_pos_emb = self.rotary_pos_emb(
                     rotary_seq_len,
                     packed_seq=packed_seq_params is not None and packed_seq_params.qkv_format == 'thd',
