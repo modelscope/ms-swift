@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import OrderedDict
+from contextlib import contextmanager
 from typing import Any, Dict, Literal, Optional
 
 import torch
@@ -10,7 +11,7 @@ from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
 
-from .rope import update_rope_inv_freq
+from .rope import get_rope_inv_freq
 
 
 class GPTModel(McoreGPTModel):
@@ -53,7 +54,30 @@ class GPTModel(McoreGPTModel):
             scatter_embedding_sequence_parallel=scatter_embedding_sequence_parallel,
             seq_len_interpolation_factor=seq_len_interpolation_factor,
         )
-        update_rope_inv_freq(self.rotary_pos_emb.inv_freq, rope_scaling)
+        self.attention_scaling = 1.
+        if rope_scaling is not None:
+            inv_freq = self.rotary_pos_emb.inv_freq
+            new_inv_freq, self.attention_scaling = get_rope_inv_freq(inv_freq.device)
+            inv_freq.data.copy_(new_inv_freq)
+
+    @contextmanager
+    def _patch_apply_rotary_pos_emb(self):
+        if self.attention_scaling == 1.:
+            yield
+            return
+
+        from megatron.core.transformer import attention
+        origin_apply_rotary_pos_emb = attention.apply_rotary_pos_emb
+
+        def apply_rotary_pos_emb(*args, **kwargs):
+            kwargs['mscale'] = self.attention_scaling
+            return origin_apply_rotary_pos_emb(*args, **kwargs)
+
+        attention.apply_rotary_pos_emb = apply_rotary_pos_emb
+        try:
+            yield
+        finally:
+            attention.apply_rotary_pos_emb = origin_apply_rotary_pos_emb
 
     def forward(
         self,
@@ -66,7 +90,6 @@ class GPTModel(McoreGPTModel):
         packed_seq_params: PackedSeqParams = None,
         extra_block_kwargs: dict = None,
         runtime_gather_output: Optional[bool] = None,
-        logits_to_keep: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Forward function of the GPT Model This function passes the input tensors
         through the embedding layer, and then the decoeder and finally into the post
@@ -120,17 +143,18 @@ class GPTModel(McoreGPTModel):
             sequence_len_offset = None
 
         # Run decoder.
-        hidden_states = self.decoder(
-            hidden_states=decoder_input,
-            attention_mask=attention_mask,
-            inference_params=inference_params,
-            rotary_pos_emb=rotary_pos_emb,
-            rotary_pos_cos=rotary_pos_cos,
-            rotary_pos_sin=rotary_pos_sin,
-            packed_seq_params=packed_seq_params,
-            sequence_len_offset=sequence_len_offset,
-            **(extra_block_kwargs or {}),
-        )
+        with self._patch_apply_rotary_pos_emb():
+            hidden_states = self.decoder(
+                hidden_states=decoder_input,
+                attention_mask=attention_mask,
+                inference_params=inference_params,
+                rotary_pos_emb=rotary_pos_emb,
+                rotary_pos_cos=rotary_pos_cos,
+                rotary_pos_sin=rotary_pos_sin,
+                packed_seq_params=packed_seq_params,
+                sequence_len_offset=sequence_len_offset,
+                **(extra_block_kwargs or {}),
+            )
 
         if not self.post_process:
             return hidden_states
