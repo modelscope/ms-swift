@@ -234,8 +234,8 @@ class MegatronTrainer:
         """Loss function.
 
         Args:
-            loss_mask (torch.Tensor): Used to mask out some portions of the loss
             output_tensor (torch.Tensor): The tensor with the losses
+            loss_mask (torch.Tensor): Used to mask out some portions of the loss
 
         Returns:
             the loss scalar for this micro-batch
