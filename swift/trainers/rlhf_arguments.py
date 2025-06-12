@@ -9,7 +9,10 @@ from trl import ORPOConfig as HfORPOConfig
 from trl import PPOConfig as HfPPOConfig
 from trl import RewardConfig as HfRewardConfig
 
+from swift.utils import get_logger
 from .arguments import GRPOArgumentsMixin, SwiftArgumentsMixin
+
+logger = get_logger()
 
 
 @dataclass
@@ -67,3 +70,8 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
             self.steps_per_generation = self.gradient_accumulation_steps
         if self.generation_batch_size is None:
             self.generation_batch_size = self.per_device_train_batch_size * num_processes * self.steps_per_generation
+
+        if self.multi_turn_func:
+            if not self.vllm_use_async_engine:
+                self.vllm_use_async_engine = True
+                logger.warning('Switching to the asynchronous engine in multi-turn settings to accelerate rollout.')
