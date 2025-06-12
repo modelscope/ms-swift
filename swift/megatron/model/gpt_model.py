@@ -13,6 +13,8 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 
 from .rope import dynamic_rope_update, get_rope_inv_freq
 
+from swift.utils import get_logger
+logger = get_logger()
 
 class GPTModel(McoreGPTModel):
 
@@ -60,6 +62,10 @@ class GPTModel(McoreGPTModel):
             inv_freq = self.rotary_pos_emb.inv_freq
             new_inv_freq, self.attention_scaling = get_rope_inv_freq(inv_freq.device)
             inv_freq.data.copy_(new_inv_freq)
+        if self.attention_scaling != 1 and config.apply_rope_fusion:
+            config.apply_rope_fusion = False
+            logger.warning('`apply_rope_fusion` does not support `attention_scaling`. '
+                           f'Setting `config.apply_rope_fusion`: {config.apply_rope_fusion}')
 
     @contextmanager
     def _patch_apply_rotary_pos_emb(self):

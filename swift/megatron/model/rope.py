@@ -21,8 +21,9 @@ def _get_dummy_config(args):
         hidden_size=args.hidden_size,
         num_attention_heads=args.num_attention_heads,
     )
-    if args.original_max_position_embeddings is not None:
-        dummy_config.original_max_position_embeddings = args.original_max_position_embeddings
+    original_max_position_embeddings = args.original_max_position_embeddings or args.rope_scaling.get('original_max_position_embeddings')
+    if original_max_position_embeddings is not None:
+        dummy_config.original_max_position_embeddings = original_max_position_embeddings
     if args.partial_rotary_factor is not None:
         dummy_config.partial_rotary_factor = args.partial_rotary_factor
     return dummy_config
@@ -36,10 +37,6 @@ def get_rope_inv_freq(device, seq_len=None):
     inv_freq, attention_scaling = rope_init_fn(dummy_config, device, seq_len=seq_len)
     if attention_scaling is None:
         attention_scaling = 1.
-    if attention_scaling != 1 and args.apply_rope_fusion:
-        args.apply_rope_fusion = False
-        logger.warning('`apply_rope_fusion` does not support `attention_scaling`. '
-                       f'Setting `args.apply_rope_fusion`: {args.apply_rope_fusion}')
     return inv_freq, attention_scaling
 
 

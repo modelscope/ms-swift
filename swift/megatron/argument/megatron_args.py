@@ -35,6 +35,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin):
     dataloader_prefetch_factor: int = 10
 
     model_type: Optional[str] = None
+    architectures: Optional[str] = None
     max_epochs: Optional[int] = None
 
     original_max_position_embeddings: Optional[int] = None
