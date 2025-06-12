@@ -177,7 +177,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.completion_length_limit_scope = args.completion_length_limit_scope
         model.warnings_issued['estimate_tokens'] = True
 
-        kwargs['data_collator'] = identity_data_collator
+        kwargs['data_collator'] = identity_data_collator  # No data collation is needed in GRPO
         self.shuffle_dataset = args.dataset_shuffle
 
         self.use_vllm = args.use_vllm
