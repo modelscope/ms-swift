@@ -33,7 +33,7 @@ class GPTModel(McoreGPTModel):
         position_embedding_type: Literal['learned_absolute', 'rope', 'none'] = 'learned_absolute',
         rotary_percent: float = 1.0,
         rotary_base: int = 10000,
-        hf_rope_scaling: Dict[str, Any] = False,
+        hf_rope_scaling: Dict[str, Any] = None,
         rope_scaling: bool = False,
         rope_scaling_factor: float = 8.0,
         scatter_embedding_sequence_parallel: bool = True,

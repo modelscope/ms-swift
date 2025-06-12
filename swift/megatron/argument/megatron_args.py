@@ -256,6 +256,8 @@ class MegatronArguments(ExtraMegatronArguments):
         self.group_query_attention = self.num_query_groups > 1
         if self.rope_scaling is not None:
             self.rope_scaling = ModelArguments.parse_to_dict(self.rope_scaling)
+            if 'type' in self.rope_scaling and 'rope_type' not in self.rope_scaling:
+                self.rope_scaling['rope_type'] = self.rope_scaling['type']
         if self.eval_interval is None:
             self.eval_interval = self.save_interval
         if self.seq_length is None:
