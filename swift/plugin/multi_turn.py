@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Callable, List, Optional, Tuple, Union
 
-from swift.llm import RolloutInferRequest
 from swift.llm.infer.protocol import ChatCompletionResponseChoice
+from swift.llm.template import RolloutInferRequest
 """
 TODO
 1. add reward_kwargs to InferRequest in training
@@ -12,6 +12,7 @@ TODO
 5. document about scheduler
 6. retool implement and document
 7. loss_mask
+8. token increment in infer request
 """
 
 
