@@ -143,7 +143,8 @@ class MegatronDPOTrainer(MegatronTrainer):
             'rewards/margins': (chosen_rewards - rejected_rewards).mean(),
         }
         reporting_metric = loss.new_tensor(list(metric.values()))
-        torch.distributed.all_reduce(reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
+        torch.distributed.all_reduce(
+            reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
         reporting_metric = {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
         return (
             # fix megatron-lm bug
