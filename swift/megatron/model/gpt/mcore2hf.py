@@ -26,9 +26,12 @@ def set_attn_state(args, mg_attn, hf_attn):
 
 
 def _set_mlp_state(mg_mlp, hf_mlp):
-    ffn_hidden_size = hf_mlp.gate_proj.weight.shape[0]
-    hf_mlp.gate_proj.weight.data.copy_(mg_mlp.linear_fc1.weight[:ffn_hidden_size])
-    hf_mlp.up_proj.weight.data.copy_(mg_mlp.linear_fc1.weight[ffn_hidden_size:])
+    if hasattr(hf_mlp, 'gate_up_proj'):
+        hf_mlp.gate_up_proj.weight.data.copy_(mg_mlp.linear_fc1.weight)
+    else:
+        ffn_hidden_size = hf_mlp.gate_proj.weight.shape[0]
+        hf_mlp.gate_proj.weight.data.copy_(mg_mlp.linear_fc1.weight[:ffn_hidden_size])
+        hf_mlp.up_proj.weight.data.copy_(mg_mlp.linear_fc1.weight[ffn_hidden_size:])
     hf_mlp.down_proj.weight.data.copy_(mg_mlp.linear_fc2.weight)
 
 

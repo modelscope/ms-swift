@@ -31,7 +31,10 @@ def set_attn_state(args, mg_attn, hf_attn):
 
 
 def _set_mlp_state(mg_mlp, hf_mlp):
-    mg_mlp.linear_fc1.weight.data.copy_(torch.cat([hf_mlp.gate_proj.weight, hf_mlp.up_proj.weight], dim=0))
+    if hasattr(hf_mlp, 'gate_up_proj'):
+        mg_mlp.linear_fc1.weight.data.copy_(hf_mlp.gate_up_proj.weight)
+    else:
+        mg_mlp.linear_fc1.weight.data.copy_(torch.cat([hf_mlp.gate_proj.weight, hf_mlp.up_proj.weight], dim=0))
     mg_mlp.linear_fc2.weight.data.copy_(hf_mlp.down_proj.weight)
 
 

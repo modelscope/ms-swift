@@ -142,7 +142,8 @@ class Template(ProcessorMixin):
         logger.info(f'max_length: {self.max_length}')
         logger.info(f'response_prefix: {repr(self.template_meta.response_prefix)}')
         logger.info(f'agent_template: {self._agent_template}')
-        logger.info(f'norm_bbox: {self.norm_bbox}')
+        if self.model_meta.is_multimodal:
+            logger.info(f'norm_bbox: {self.norm_bbox}')
         tokenizer = self.tokenizer
 
         for i, token in enumerate(self.placeholder_tokens):

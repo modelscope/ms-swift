@@ -62,16 +62,18 @@ megatron sft \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
     --tensor_model_parallel_size 2 \
-    --micro_batch_size 4 \
+    --sequence_parallel true \
+    --micro_batch_size 16 \
     --global_batch_size 16 \
-    --recompute_granularity selective \
-    --train_iters 100 \
-    --eval_iters 5 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
     --lr_warmup_iters 10 \
     --min_lr 1e-6 \
+    --max_epochs 1 \
     --save megatron_output/Qwen2.5-7B-Instruct \
     --save_interval 100 \
     --max_length 2048 \
@@ -280,7 +282,6 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - transformer_impl: Which transformer implementation to use, options are 'local' and 'transformer_engine'. Default is transformer_engine.
 - padded_vocab_size: Full vocabulary size, default is None.
 - rope_scaling: Related parameters for rope_scaling, default is None. Refer to the format in [llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1). Pass the value as a JSON string.
-- model_type: The model_type in the config.json of the Huggingface model weights.
 
 
 **MoE Parameters**:

@@ -61,16 +61,18 @@ megatron sft \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
     --tensor_model_parallel_size 2 \
-    --micro_batch_size 4 \
+    --sequence_parallel true \
+    --micro_batch_size 16 \
     --global_batch_size 16 \
-    --recompute_granularity selective \
-    --train_iters 100 \
-    --eval_iters 5 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
     --lr_warmup_iters 10 \
     --min_lr 1e-6 \
+    --max_epochs 1 \
     --save megatron_output/Qwen2.5-7B-Instruct \
     --save_interval 100 \
     --max_length 2048 \
@@ -269,7 +271,6 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - transformer_impl: 使用哪种transformer实现，可选项为'local'和'transformer_engine'。默认为transformer_engine。
 - padded_vocab_size: 完整词表大小，默认为None。
 - rope_scaling: rope_scaling相关参数，默认为None。格式参考[llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1)，传入json字符串。
-- model_type: Huggingface模型权重中config.json中的model_type。
 
 
 **MoE参数**:

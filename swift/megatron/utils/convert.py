@@ -8,7 +8,7 @@ from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoin
 from megatron.training.initialize import initialize_megatron
 from megatron.training.utils import get_ltor_masks_and_position_ids
 
-from swift.llm import ExportArguments, get_model_tokenizer, get_template, save_checkpoint
+from swift.llm import ExportArguments, HfConfigFactory, get_model_tokenizer, get_template, save_checkpoint
 from swift.utils import get_logger, get_n_params_grads
 from ..argument import MegatronArguments
 from ..model import get_megatron_model_meta
@@ -24,6 +24,7 @@ def test_convert_precision(hf_model, mg_model, processor):
     input_ids = torch.tensor(input_ids)[None].to('cuda')
     hf_model.to('cuda')
     hf_model.to(torch.float32)
+    HfConfigFactory.set_model_config_attr(hf_model, 'use_cache', False)
     with torch.inference_mode():
         hf_logits = hf_model(input_ids).logits
     hf_model.to(torch_dtype)
