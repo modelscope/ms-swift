@@ -21,7 +21,8 @@ def _get_dummy_config(args):
         hidden_size=args.hidden_size,
         num_attention_heads=args.num_attention_heads,
     )
-    original_max_position_embeddings = args.original_max_position_embeddings or args.rope_scaling.get('original_max_position_embeddings')
+    original_max_position_embeddings = args.original_max_position_embeddings or args.rope_scaling.get(
+        'original_max_position_embeddings')
     if original_max_position_embeddings is not None:
         dummy_config.original_max_position_embeddings = original_max_position_embeddings
     if args.partial_rotary_factor is not None:

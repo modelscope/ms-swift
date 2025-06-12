@@ -11,10 +11,11 @@ from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
 
+from swift.utils import get_logger
 from .rope import dynamic_rope_update, get_rope_inv_freq
 
-from swift.utils import get_logger
 logger = get_logger()
+
 
 class GPTModel(McoreGPTModel):
 
