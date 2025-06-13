@@ -5,9 +5,10 @@ import logging
 import os
 import shutil
 import time
+import torch.utils.checkpoint
 from contextlib import contextmanager
 from copy import copy
-from functools import partial
+from functools import partial, wraps
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
