@@ -96,7 +96,7 @@ class MegatronTrainer:
             except StopIteration:
                 return {}, True, True, True, 0, None, None
 
-    # Code borrowed from megatron-lm
+    # Code borrowed from NVIDIA/Megatron-LM
     def evaluate(self,
                  forward_step_func,
                  data_iterator,
@@ -229,7 +229,7 @@ class MegatronTrainer:
         self._origin_evaluate = training.evaluate
         training.evaluate = self.evaluate
 
-    # Code borrowed from megatron-lm
+    # Code borrowed from NVIDIA/Megatron-LM
     def loss_func(self, output_tensor: torch.Tensor, *, loss_mask: torch.Tensor):
         """Loss function.
 

@@ -87,6 +87,7 @@ class GPTModel(McoreGPTModel):
         finally:
             attention.apply_rotary_pos_emb = origin_apply_rotary_pos_emb
 
+    # Code borrowed from NVIDIA/Megatron-LM
     def forward(
         self,
         input_ids: torch.Tensor,
