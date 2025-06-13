@@ -328,7 +328,7 @@ class LLMTrain(BaseUI):
                     for key, value in kwargs.items()
                 })
         except Exception as e:
-            if 'using `--model`' in str(e):  # TODO a dirty fix
+            if 'Please set --model' in str(e):  # TODO a dirty fix
                 kwargs['model'] = kwargs.pop('resume_from_checkpoint')
                 sft_args = RLHFArguments(
                     **{
