@@ -103,7 +103,6 @@ class TrainArgumentsMixin:
             self.vit_gradient_checkpointing = self.gradient_checkpointing
         if self.gradient_checkpointing_kwargs:
             self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
-        self._fix_gradient_checkpointing()
         self._init_liger()
         if self.dataloader_num_workers is None:
             if platform.system() == 'Windows':
