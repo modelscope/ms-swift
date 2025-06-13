@@ -60,6 +60,9 @@ class GRPOVllmEngine(VllmEngine):
         template: Optional[Template] = None,
         **kwargs,
     ) -> None:
+        if use_async_engine:
+            self._patch_vllm_init_worker_distributed_environment()
+
         super().__init__(
             model_id_or_path=model_id_or_path,
             torch_dtype=torch_dtype,
@@ -89,15 +92,14 @@ class GRPOVllmEngine(VllmEngine):
             template=template,
         )
 
-        multi_turn_func: Union[Callable, str] = kwargs.get('multi_turn_func', None)
+        multi_turn_func: Union[MultiTurnScheduler, str] = kwargs.get('multi_turn_func', None)
         if multi_turn_func:
             if isinstance(multi_turn_func, str):
                 assert multi_turn_func in multi_turns
                 self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_func
-            # else:
-            #     from swift.plugin.multi_turn import FunctionScheduler
-            #     assert callable(multi_turn_func)
-            #     self.multi_turn_scheduler = FunctionScheduler(multi_turn_func)
+            else:
+                assert isinstance(multi_turn_func, MultiTurnScheduler)
+                self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_func
         else:
             self.multi_turn_scheduler = None
 
@@ -163,3 +165,48 @@ class GRPOVllmEngine(VllmEngine):
         if use_tqdm is None:
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
+
+    def _patch_vllm_init_worker_distributed_environment(self):
+        """Patched version of init_worker_distributed_environment.
+        Behavior:
+            1. Reads WORLD_SIZE from environment variables
+            2. Temporarily overrides parallel_config.world_size
+            3. Calls original initialization
+            4. Restores original world_size
+        """
+
+        import vllm.envs as envs
+        from functools import wraps
+
+        vllm_use_v1 = envs.VLLM_USE_V1
+        if vllm_use_v1:
+            from vllm.v1.worker.gpu_worker import init_worker_distributed_environment as original_init
+        else:
+            from vllm.worker.worker import init_worker_distributed_environment as original_init
+
+        @wraps(original_init)
+        def patched_init(
+            vllm_config,
+            rank: int,
+            distributed_init_method: Optional[str] = None,
+            local_rank: int = -1,
+        ) -> None:
+            world_size = os.environ.get('WORLD_SIZE')
+            if world_size is not None and world_size.isdigit():
+                world_size = int(world_size)
+                original_world_size = vllm_config.parallel_config.world_size
+
+                try:
+                    vllm_config.parallel_config.world_size = world_size
+                    return original_init(vllm_config, rank, distributed_init_method, local_rank)
+                finally:
+                    vllm_config.parallel_config.world_size = original_world_size
+            else:
+                return original_init(vllm_config, rank, distributed_init_method, local_rank)
+
+        if vllm_use_v1:
+            from vllm.v1.worker import gpu_worker
+            gpu_worker.init_worker_distributed_environment = patched_init
+        else:
+            from vllm.worker import worker
+            worker.init_worker_distributed_environment = patched_init
