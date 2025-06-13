@@ -73,16 +73,6 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
     def check_num_generations(self):
         # check num_generations for trl < 0.18
         num_processes = self.world_size
-        # The current default effective batch size
-        if self.generation_batch_size is not None and self.steps_per_generation is not None:
-            raise ValueError(
-                "'generation_batch_size' and 'steps_per_generation' can not be both configured at the same time")
-
-        if self.steps_per_generation is None:
-            self.steps_per_generation = self.gradient_accumulation_steps
-
-        if self.generation_batch_size is None:
-            self.generation_batch_size = self.per_device_train_batch_size * num_processes * self.steps_per_generation
 
         if self.generation_batch_size % self.per_device_train_batch_size * num_processes != 0:
             raise ValueError(
