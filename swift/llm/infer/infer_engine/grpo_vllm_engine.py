@@ -61,7 +61,8 @@ class GRPOVllmEngine(VllmEngine):
         template: Optional[Template] = None,
         **kwargs,
     ) -> None:
-        distributed_executor_backend = PatchedExecutorWithExternalLauncher if use_async_engine else distributed_executor_backend
+        if use_async_engine:
+            self._patch_executor()
         super().__init__(
             model_id_or_path=model_id_or_path,
             torch_dtype=torch_dtype,
@@ -165,11 +166,21 @@ class GRPOVllmEngine(VllmEngine):
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
+    def _patch_executor(self):
 
-class PatchedExecutorWithExternalLauncher(ExecutorWithExternalLauncher):
+        class PatchedExecutorWithExternalLauncher(ExecutorWithExternalLauncher):
 
-    def _init_executor(self) -> None:
-        origin_world_size = self.vllm_config.parallel_config.world_size
-        self.vllm_config.parallel_config.world_size = os.environ.get('WORLD_SIZE')
-        super()._init_executor()
-        self.vllm_config.parallel_config.world_size = origin_world_size
+            def _init_executor(self) -> None:
+                origin_world_size = self.vllm_config.parallel_config.world_size
+                self.vllm_config.parallel_config.world_size = os.environ.get('WORLD_SIZE')
+                super()._init_executor()
+                self.vllm_config.parallel_config.world_size = origin_world_size
+
+        import vllm.envs as envs
+        if envs.VLLM_USE_V1:
+            from vllm.v1.executor import abstract
+            abstract.ExecutorWithExternalLauncher = PatchedExecutorWithExternalLauncher
+        else:
+            from vllm.executor import uniproc_executor
+            uniproc_executor.ExecutorWithExternalLauncher = PatchedExecutorWithExternalLauncher
+
