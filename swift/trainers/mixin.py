@@ -5,7 +5,6 @@ import logging
 import os
 import shutil
 import time
-import torch.utils.checkpoint
 from contextlib import contextmanager
 from copy import copy
 from functools import partial, wraps
@@ -16,6 +15,7 @@ import safetensors
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+import torch.utils.checkpoint
 import transformers
 from datasets import Dataset as HfDataset
 from modelscope import check_local_model_is_latest
@@ -35,7 +35,7 @@ from swift.hub import get_hub
 from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
 from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
-from swift.utils import get_logger, is_mp, is_mp_ddp, ms_logger_context, seed_worker, use_torchacc
+from swift.utils import get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
 from ..utils.torch_utils import get_device_count
 from .arguments import TrainingArguments
@@ -331,9 +331,16 @@ class SwiftMixin:
             return
         args = self.args
         # Consistent with the default behavior of transformers.
-        use_reentrant_ = (
-            args.gradient_checkpointing_kwargs.get('use_reentrant', True)
-            if args.gradient_checkpointing_kwargs else True)
+        if args.gradient_checkpointing_kwargs:
+            use_reentrant_ = args.gradient_checkpointing_kwargs.get('use_reentrant')
+        else:
+            use_reentrant_ = None
+        if use_reentrant_ is None:
+            if is_dist() and not self.is_deepspeed_enabled and not self.is_fsdp_enabled:
+                use_reentrant_ = False
+            else:
+                use_reentrant_ = True
+        logger.info(f'use_reentrant: {use_reentrant_}')
         _old_checkpoint = torch.utils.checkpoint.checkpoint
 
         @wraps(_old_checkpoint)
