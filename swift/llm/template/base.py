@@ -115,7 +115,7 @@ class Template(ProcessorMixin):
         if self.is_encoder_decoder:
             self.skip_prompt = False
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
-                           'train', 'rlhf', 'kto',  # train
+                           'train', 'rlhf', 'kto', 'gkd',  # train
                            'seq_cls', 'embedding', 'prm'] = 'pt'
         self._packing = self.padding_free
         self.use_megatron = False
@@ -336,6 +336,13 @@ class Template(ProcessorMixin):
         encoded['label'] = bool(label)
         return encoded
 
+    def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = self._encode_truncated(inputs, return_prompt_answer=True)
+        encoded['prompts'] = encoded.pop('prompt_input_ids')
+        encoded['labels'] = encoded['prompts'] + encoded['labels']
+        encoded.pop('answer_input_ids')
+        return encoded
+
     def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         _encoded = {}
         labels = []
@@ -432,6 +439,8 @@ class Template(ProcessorMixin):
             encoded = self._rlhf_encode(inputs)
         elif self.mode == 'kto':
             encoded = self._kto_encode(inputs)
+        elif self.mode == 'gkd':
+            encoded = self._gkd_encode(inputs)
         elif self.mode == 'embedding':
             encoded = self._embedding_encode(inputs)
         if inputs.channel is not None:
@@ -1021,13 +1030,13 @@ class Template(ProcessorMixin):
             answer_len = 0
         return res_context_list, loss_scale_list, answer_len
 
-    def _encode_truncated(self, inputs):
+    def _encode_truncated(self, inputs, return_prompt_answer: bool = False):
         if self.mode in {'vllm', 'lmdeploy'}:
             encoded = Template._encode(self, inputs)
             for key in ['images', 'audios', 'videos']:
                 encoded[key] = getattr(inputs, key)
         else:
-            encoded = self._encode(inputs)
+            encoded = self._encode(inputs, return_prompt_answer=return_prompt_answer)
 
         input_ids = encoded.get('input_ids')
         labels = encoded.get('labels')
@@ -1068,7 +1077,7 @@ class Template(ProcessorMixin):
         encoded['loss_scale'] = loss_scale
         return encoded
 
-    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs, return_prompt_answer: bool = False) -> Dict[str, Any]:
         template_backend = self.template_backend
         if (self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training
                 and self.mode != 'seq_cls'):
@@ -1077,7 +1086,7 @@ class Template(ProcessorMixin):
         res_context_list, loss_scale_list, answer_len = (
             self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
         encoded = {}
-        if self.is_encoder_decoder:
+        if self.is_encoder_decoder or return_prompt_answer:
             # tokenizer_kwargs: use prompt (qwen-audio)
             total_len = len(res_context_list)
             for key, _slice in zip(['prompt', 'answer'],
@@ -1192,7 +1201,7 @@ class Template(ProcessorMixin):
     def is_training(self):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
-    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto']) -> None:
+    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto', 'gkd']) -> None:
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -1238,6 +1247,8 @@ class Template(ProcessorMixin):
             return self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
             return self._kto_data_collator(batch, padding_to=padding_to)
+        elif self.mode == 'gkd':
+            return self._gkd_data_collator(batch, padding_to=padding_to)
         elif self.mode in {'pt', 'train', 'prm'}:
             return self._data_collator(batch, padding_to=padding_to)
         elif self.mode == 'seq_cls':
@@ -1306,6 +1317,13 @@ class Template(ProcessorMixin):
         label = [b['label'] for b in batch if b.get('label') is not None]
         if label:
             res['label'] = label
+        return res
+
+    def _gkd_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        prompts_batch = [{'input_ids': b['prompts']} for b in batch]
+        res = self._data_collator(batch, padding_to=padding_to)
+        prompts_res = self._data_collator(prompts_batch, padding_to=padding_to)
+        res['prompts'] = prompts_res['input_ids']
         return res
 
     def _embedding_data_collator(self,

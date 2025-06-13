@@ -21,6 +21,15 @@ class RewardModelArguments:
 
 
 @dataclass
+class TeacherModelArguments:
+    teacher_model: Optional[List[str]] = None
+    teacher_adapters: List[str] = field(default_factory=list)
+    teacher_model_type: Optional[List[str]] = field(
+        default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+    teacher_model_revision: Optional[List[str]] = None
+
+
+@dataclass
 class PPOArguments:
     num_ppo_epochs: int = 4
     whiten_rewards: bool = False
@@ -57,7 +66,7 @@ class GRPOArguments(GRPOArgumentsMixin):
 
 
 @dataclass
-class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArguments):
+class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardModelArguments, TrainArguments):
     """
     RLHFArguments is a dataclass that holds arguments specific to the Reinforcement
         Learning with Human Feedback (RLHF) training backend.
@@ -93,10 +102,14 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     # KTO
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
-    # PPO/GRPO
+    # PPO/GRPO/GKD
     temperature: float = 0.9
     # RM
     center_rewards_coefficient: Optional[float] = None
+    # GKD
+    lmbda: float = 0.5
+    seq_kd: bool = False
+    max_new_tokens: int = 128
 
     def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
         if self.rlhf_type == 'ppo':
@@ -107,7 +120,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         self._init_grpo()
         self._init_rm()
         self._init_simpo()
-        self._init_ppo()
+        self._init_padding_side()
         self._set_default()
         self._init_external_vllm()
         super().__post_init__()
@@ -168,8 +181,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                         self.vllm_mode = 'colocate'
                         logger.warning('set vllm_mode to `colocate` since vllm_server_host is not provided')
 
-    def _init_ppo(self):
-        if self.rlhf_type == 'ppo':
+    def _init_padding_side(self):
+        if self.rlhf_type in {'ppo', 'gkd'}:
             self.padding_side = 'left'
             # TODO: streaming, MLLM
 
@@ -208,7 +221,10 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
     def _set_default(self):
         if self.beta is None:
-            self.beta = 0.1
+            if self.rlhf_type == 'gkd':
+                self.beta = 0.5
+            else:
+                self.beta = 0.1
         if self.loss_type is None:
             if self.rlhf_type in ['dpo', 'cpo']:
                 self.loss_type = 'sigmoid'  # else None
