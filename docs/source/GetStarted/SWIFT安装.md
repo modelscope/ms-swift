@@ -72,12 +72,12 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | python | >=3.9        | 3.10 ||
 | cuda |              | cuda12 |使用cpu、npu、mps则无需安装|
 | torch | >=2.0        |  ||
-| transformers | >=4.33       | 4.51 ||
+| transformers | >=4.33       | 4.51.3 ||
 | modelscope | >=1.23       |  ||
 | peft | >=0.11,<0.16 | ||
 | trl | >=0.13,<0.19 | 0.18 |RLHF|
-| deepspeed | >=0.14       | 0.14.5 |训练|
-| vllm | >=0.5.1      | 0.8 |推理/部署/评测|
+| deepspeed | >=0.14       | 0.14.5/0.16.9 |训练|
+| vllm | >=0.5.1      | 0.8.5.post1 |推理/部署/评测|
 | lmdeploy | >=0.5        | 0.8 |推理/部署/评测|
 | evalscope | >=0.11       | |评测|
 
