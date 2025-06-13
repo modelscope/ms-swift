@@ -109,6 +109,7 @@ class SwiftMixin:
         if self.template.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
             sequence_parallel.prepare_trainer(self)
+        self._fix_gradient_checkpointing()
 
     def get_use_logits_to_keep(self, default_value: bool):
         use_logits_to_keep = self.args.use_logits_to_keep
@@ -322,6 +323,30 @@ class SwiftMixin:
             yield
         finally:
             Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
+
+    def _fix_gradient_checkpointing(self):
+        # fix use_reentrant
+        if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
+            return
+        args = self.args
+        # Consistent with the default behavior of transformers.
+        use_reentrant_ = (
+            args.gradient_checkpointing_kwargs.get('use_reentrant', True)
+            if args.gradient_checkpointing_kwargs else True)
+        _old_checkpoint = torch.utils.checkpoint.checkpoint
+
+        @wraps(_old_checkpoint)
+        def _new_checkpoint(*args, use_reentrant=None, **kwargs):
+            return _old_checkpoint(*args, use_reentrant=use_reentrant_, **kwargs)
+
+        torch.utils.checkpoint._old_checkpoint = _old_checkpoint
+        torch.utils.checkpoint.checkpoint = _new_checkpoint
+        try:
+            # Fix the old version of transformers.
+            import transformers.modeling_utils
+            transformers.modeling_utils.checkpoint = _new_checkpoint
+        except (ImportError, AttributeError):
+            pass
 
     def _prepare_gradient_checkpointing(self, model) -> None:
         from swift.llm import HfConfigFactory, get_model_arch, deep_getattr, dynamic_gradient_checkpointing

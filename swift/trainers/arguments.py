@@ -65,29 +65,6 @@ class TrainArgumentsMixin:
     eval_datasets_args: Optional[Union[str, dict]] = None
     eval_generation_config: Optional[Union[str, dict]] = None
 
-    def _fix_gradient_checkpointing(self):
-        # fix use_reentrant
-        if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
-            return
-        # Consistent with the default behavior of transformers.
-        use_reentrant_ = (
-            self.gradient_checkpointing_kwargs.get('use_reentrant', True)
-            if self.gradient_checkpointing_kwargs else True)
-        _old_checkpoint = torch.utils.checkpoint.checkpoint
-
-        @wraps(_old_checkpoint)
-        def _new_checkpoint(*args, use_reentrant=None, **kwargs):
-            return _old_checkpoint(*args, use_reentrant=use_reentrant_, **kwargs)
-
-        torch.utils.checkpoint._old_checkpoint = _old_checkpoint
-        torch.utils.checkpoint.checkpoint = _new_checkpoint
-        try:
-            # Fix the old version of transformers.
-            import transformers.modeling_utils
-            transformers.modeling_utils.checkpoint = _new_checkpoint
-        except (ImportError, AttributeError):
-            pass
-
     @staticmethod
     def _patch_liger_kernel():
         # fix logits_to_keep
