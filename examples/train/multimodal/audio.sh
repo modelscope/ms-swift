@@ -1,3 +1,4 @@
+# pip install "transformers==4.48.*"
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2-Audio-7B-Instruct \
