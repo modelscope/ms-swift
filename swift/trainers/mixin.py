@@ -330,7 +330,6 @@ class SwiftMixin:
         if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
             return
         args = self.args
-        # Consistent with the default behavior of transformers.
         if args.gradient_checkpointing_kwargs:
             use_reentrant_ = args.gradient_checkpointing_kwargs.get('use_reentrant')
         else:
