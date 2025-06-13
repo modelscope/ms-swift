@@ -80,6 +80,7 @@ class RolloutInferRequest(InferRequest):
     The strings can represent image URLs or Base64 encoded images.
     """
     images: List[str] = field(default_factory=list)
+    data_dict: Dict = field(default_factory=dict)
 
 
 @dataclass

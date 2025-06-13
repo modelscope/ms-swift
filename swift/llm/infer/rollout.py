@@ -29,6 +29,22 @@ try:
 
 except ImportError:
     pass
+"""
+This module defines the execution logic for `swift rollout`.
+It adds weight synchronization logic based on `vLLMEngine`.
+
+Usage:
+    swift rollout \
+        --model xxx \
+        --tensor_parallel_size xxx \
+        --data_parallel_size xxx \
+        --... \
+        --other_vllm_arguments
+
+Note:
+- Rollout is intended solely for GRPO training sampling.
+- For inference or deployment, please use the `swift infer` or `swift deploy` commands.
+"""
 
 logger = get_logger()
 
@@ -130,17 +146,13 @@ class SwiftRolloutDeploy(SwiftPipeline):
             'model_type': args.model_type,
             'revision': args.model_revision,
             'torch_dtype': args.torch_dtype,
+            'use_async_engine': args.use_async_engine
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
         if infer_backend != 'vllm':
             infer_backend = 'vllm'
             logger.info('Currently, rollout only supports the vLLM backend. Set vLLM backend')
-        use_async_engine = args.use_async_engine
-        if use_async_engine:
-            use_async_engine = False
-            logger.info("currently, rollout don't support async engine, set use_async_engine False")
         kwargs.update(args.get_vllm_engine_kwargs())
-        kwargs.update({'use_async_engine': use_async_engine})
         # used for RL external rollout backend
         engine_kwargs = kwargs.get('engine_kwargs', {})
         # for RL rollout model weight sync
