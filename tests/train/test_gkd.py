@@ -21,5 +21,6 @@ def test_llm():
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
+
 if __name__ == '__main__':
     test_llm()
