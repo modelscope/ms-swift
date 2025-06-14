@@ -15,9 +15,12 @@ def test_llm():
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='gkd',
-            model='Qwen/Qwen2.5-7B-Instruct',
+            model='Qwen/Qwen2.5-0.5B',
+            teacher_model='Qwen/Qwen2.5-1.5B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-en#2000'],
-            **kwargs))
+            load_from_cache_file=False,
+            **kwargs,
+        ))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
