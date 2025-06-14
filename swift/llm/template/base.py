@@ -337,10 +337,11 @@ class Template(ProcessorMixin):
         return encoded
 
     def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded = self._encode_truncated(inputs, return_prompt_answer=True)
-        encoded['prompts'] = encoded.pop('prompt_input_ids')
-        encoded['labels'] = encoded['prompts'] + encoded['labels']
-        encoded.pop('answer_input_ids')
+        encoded = self._encode_truncated(inputs)
+        encoded['prompts'] = encoded['input_ids'][:-len(encoded.pop('answer_input_ids'))]
+        for k in list(encoded.keys()):
+            if k.startswith('prompt_') or k.endswith('answer_'):
+                encoded.pop(k, None)
         return encoded
 
     def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -550,12 +551,29 @@ class Template(ProcessorMixin):
     def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:
         raise NotImplementedError
 
+    @contextmanager
+    def generate_context(self):
+        origin_mode = self.mode
+        if self.mode in {'train', 'rlhf', 'kto', 'gkd'}:
+            self.set_mode('pt')
+        is_multimodal = self.model_meta.is_multimodal
+        if is_multimodal:
+            models = self.remove_post_encode_hook()
+        try:
+            yield
+        finally:
+            if is_multimodal:
+                self.register_post_encode_hook(models)
+            self.set_mode(origin_mode)
+
     def generate(self, model, *args, **kwargs):
         base_model = self.get_base_model(model)
         signature = inspect.signature(base_model.generate)
         if 'use_model_defaults' in signature.parameters and 'use_model_defaults' not in kwargs:
             kwargs['use_model_defaults'] = False
-        return model.generate(*args, **kwargs)
+
+        with self.generate_context():
+            return model.generate(*args, **kwargs)
 
     def _skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
         # Do not print template_meta.suffix[-1] and eos_token.
@@ -1030,13 +1048,13 @@ class Template(ProcessorMixin):
             answer_len = 0
         return res_context_list, loss_scale_list, answer_len
 
-    def _encode_truncated(self, inputs, return_prompt_answer: bool = False):
+    def _encode_truncated(self, inputs):
         if self.mode in {'vllm', 'lmdeploy'}:
             encoded = Template._encode(self, inputs)
             for key in ['images', 'audios', 'videos']:
                 encoded[key] = getattr(inputs, key)
         else:
-            encoded = self._encode(inputs, return_prompt_answer=return_prompt_answer)
+            encoded = self._encode(inputs)
 
         input_ids = encoded.get('input_ids')
         labels = encoded.get('labels')
@@ -1077,7 +1095,7 @@ class Template(ProcessorMixin):
         encoded['loss_scale'] = loss_scale
         return encoded
 
-    def _encode(self, inputs: StdTemplateInputs, return_prompt_answer: bool = False) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         template_backend = self.template_backend
         if (self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training
                 and self.mode != 'seq_cls'):
@@ -1086,7 +1104,7 @@ class Template(ProcessorMixin):
         res_context_list, loss_scale_list, answer_len = (
             self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
         encoded = {}
-        if self.is_encoder_decoder or return_prompt_answer:
+        if self.is_encoder_decoder or self.mode == 'gkd':
             # tokenizer_kwargs: use prompt (qwen-audio)
             total_len = len(res_context_list)
             for key, _slice in zip(['prompt', 'answer'],
@@ -1096,10 +1114,13 @@ class Template(ProcessorMixin):
                                                                        loss_scale_list[_slice], inputs)
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(context_list, loss_scale)
                 encoded[f'{key}_input_ids'] = input_ids
-                if key == 'answer':
-                    encoded['labels'] = labels
-                    encoded['loss_scale'] = loss_scale
+                encoded[f'{key}_labels'] = labels
+                encoded[f'{key}_loss_scale'] = loss_scale
             input_ids = encoded['prompt_input_ids'] + encoded['answer_input_ids']
+            labels = encoded['prompt_labels'] + encoded['answer_labels']
+            loss_scale = None
+            if isinstance(encoded['prompt_loss_scale'], list):
+                loss_scale = encoded['prompt_loss_scale'] + encoded['answer_loss_scale']
         else:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
@@ -1323,7 +1344,8 @@ class Template(ProcessorMixin):
         prompts_batch = [{'input_ids': b['prompts']} for b in batch]
         res = self._data_collator(batch, padding_to=padding_to)
         prompts_res = self._data_collator(prompts_batch, padding_to=padding_to)
-        res['prompts'] = prompts_res['input_ids']
+        res['prompts'] = prompts_res.pop('input_ids')
+        res.update({f'prompt_{k}': v for k, v in prompts_res.items()})
         return res
 
     def _embedding_data_collator(self,

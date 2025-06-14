@@ -824,10 +824,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.use_fast_infer:
             inputs, outputs = self._fast_infer(inputs)
         else:
-            # pt infer
-            is_multimodal = self.model.model_meta.is_multimodal
-            if is_multimodal:
-                models = self.template.remove_post_encode_hook()
             with unwrap_model_for_generation(
                     self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
             ), self.multi_turn_completion_length_context():
@@ -836,8 +832,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     # In training mode, ensure the model is returned to train() mode after inference
                     # This is necessary as pt engines set the model to eval mode during generation
                     self.model.train()
-            if is_multimodal:
-                self.template.register_post_encode_hook(models)
 
         for i, output in enumerate(outputs):
             inputs[i]['messages'] = output[0]

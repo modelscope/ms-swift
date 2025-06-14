@@ -336,14 +336,18 @@ def get_device_count() -> int:
         return 0
 
 
-def gc_collect() -> None:
-    gc.collect()
+def empty_cache():
     if is_torch_npu_available():
         torch.npu.empty_cache()
     elif is_torch_mps_available():
         torch.mps.empty_cache()
     elif is_torch_cuda_available():
         torch.cuda.empty_cache()
+
+
+def gc_collect() -> None:
+    gc.collect()
+    empty_cache()
 
 
 class Serializer:
