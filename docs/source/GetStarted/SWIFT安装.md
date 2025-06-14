@@ -61,7 +61,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 ```
 </details>
 
-更多镜像可以查看[这里](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F)
+更多镜像可以查看[这里](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F)。
 
 ## 支持的硬件
 
@@ -97,6 +97,6 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 
 Swift支持训练的绝大多数模型都可以在`A10`显卡上使用，用户可以使用ModelScope官方提供的免费显卡资源：
 
-1. 进入[ModelScope](https://www.modelscope.cn)官方网站并登录
-2. 点击左侧的`我的Notebook`并开启一个免费GPU实例
-3. 愉快地薅A10显卡羊毛
+1. 进入[ModelScope](https://www.modelscope.cn)官方网站并登录。
+2. 点击左侧的`我的Notebook`并开启一个免费GPU实例。
+3. 愉快地薅A10显卡羊毛。
