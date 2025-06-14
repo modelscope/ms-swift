@@ -73,7 +73,7 @@ def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
         try:
             command = connection.recv()
         except KeyboardInterrupt:
-            engine.inner_model_executor.collective_rpc(method='close_communicator')
+            engine.engine.collective_rpc(method='close_communicator')
             break
 
         # Handle commands
@@ -198,8 +198,9 @@ class SwiftRolloutDeploy(SwiftPipeline):
         # So with collective_rpc we need to call it this way:
         # llm.collective_rpc(method="init_communicator", args=(host, port, world_size))
         kwargs = {'method': 'init_communicator', 'args': (request.host, request.port, world_size)}
+        method = 'collective_rpc_async' if self.args.use_async_engine else 'collective_rpc'
         for connection in self.connections:
-            connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
+            connection.send({'type': 'fire_and_forget', 'method': method, 'kwargs': kwargs})
 
         return {'message': 'Request received, initializing communicator'}
 

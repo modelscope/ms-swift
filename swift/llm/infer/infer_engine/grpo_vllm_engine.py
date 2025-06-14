@@ -168,14 +168,6 @@ class GRPOVllmEngine(VllmEngine):
 
     def _patch_executor(self):
 
-        class PatchedExecutorWithExternalLauncher(ExecutorWithExternalLauncher):
-
-            def _init_executor(self) -> None:
-                origin_world_size = self.vllm_config.parallel_config.world_size
-                self.vllm_config.parallel_config.world_size = os.environ.get('WORLD_SIZE')
-                super()._init_executor()
-                self.vllm_config.parallel_config.world_size = origin_world_size
-
         import vllm.envs as envs
         if envs.VLLM_USE_V1:
             from vllm.v1.executor import abstract
@@ -184,3 +176,11 @@ class GRPOVllmEngine(VllmEngine):
             from vllm.executor import uniproc_executor
             uniproc_executor.ExecutorWithExternalLauncher = PatchedExecutorWithExternalLauncher
 
+
+class PatchedExecutorWithExternalLauncher(ExecutorWithExternalLauncher):
+
+    def _init_executor(self) -> None:
+        origin_world_size = self.vllm_config.parallel_config.world_size
+        self.vllm_config.parallel_config.world_size = int(os.environ.get('WORLD_SIZE'))
+        super()._init_executor()
+        self.vllm_config.parallel_config.world_size = origin_world_size
