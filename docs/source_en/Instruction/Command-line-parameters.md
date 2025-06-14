@@ -50,6 +50,7 @@ Hints:
 - data_seed: Random seed for the dataset, default is 42.
 - 🔥dataset_num_proc: Number of processes for dataset preprocessing, default is 1.
 - 🔥load_from_cache_file: Whether to load the dataset from the cache, default is True.
+  - Note: It is recommended to set this parameter to False during the debug phase.
 - dataset_shuffle: Whether to shuffle the dataset. Defaults to True.
   - Note: The shuffling in CPT/SFT consists of two parts: dataset shuffling, controlled by `dataset_shuffle`; and shuffling in the train_dataloader, controlled by `train_dataloader_shuffle`.
 - val_dataset_shuffle: Whether to perform shuffling on the val_dataset. Default is False.
@@ -385,11 +386,11 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 
 RLHF arguments inherit from the [training arguments](#training-arguments).
 
-- 🔥rlhf_type: Type of human alignment algorithm, supporting `dpo`, `orpo`, `simpo`, `kto`, `cpo`, `rm`, `ppo` and `grpo`. Default is 'dpo'.
+- 🔥rlhf_type: Type of human alignment algorithm, supporting 'dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo' and 'gkd'. Default is 'dpo'.
 - ref_model: Required for full parameter training when using the dpo, kto, ppo or grpo algorithms. Default is None.
 - ref_model_type: Same as model_type. Default is None.
 - ref_model_revision: Same as model_revision. Default is None.
-- 🔥beta: Coefficient for the KL regularization term. Default is `None`, meaning `simpo` algorithm defaults to `2.`, `grpo` algorithm defaults to `0.04`, and other algorithms default to `0.1`. For more details, refer to the [documentation](./RLHF.md).
+- 🔥beta: Coefficient for the KL regularization term. Default is `None`, meaning `simpo` algorithm defaults to `2.`, `grpo` algorithm defaults to `0.04`, `gkd` algorithm defaults to `0.5`, and other algorithms default to `0.1`. For more details, refer to the [documentation](./RLHF.md).
 - label_smoothing: Whether to use DPO smoothing, default value is `0`.
 - 🔥rpo_alpha: The weight of sft_loss added to DPO, default is `1`. The final loss is `KL_loss + rpo_alpha * sft_loss`.
 - cpo_alpha: Coefficient for nll loss in CPO/SimPO loss, default is `1.`.

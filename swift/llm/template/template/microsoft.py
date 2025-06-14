@@ -41,7 +41,7 @@ class FlorenceTemplate(Template):
         encoded = super()._encode(inputs)
         input_ids = encoded['prompt_input_ids']
         images = inputs.images or []
-        labels = encoded['labels']
+        labels = encoded['answer_labels']
         if labels is not None:
             labels = [0] + labels
         if images:
