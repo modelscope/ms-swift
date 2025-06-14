@@ -11,8 +11,7 @@ SWIFT引入了Megatron的并行技术来加速大模型的训练，包括数据�
 pip install pybind11
 # transformer_engine
 # 若出现安装错误，可以参考该issue解决: https://github.com/modelscope/ms-swift/issues/3793
-# ms-swift使用此版本测试: pip install git+https://github.com/NVIDIA/TransformerEngine.git@9c8ba5c8d1a9a8479ab45fbf7951025a393e7c66
-pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
+pip install git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.3
 
 # apex
 git clone https://github.com/NVIDIA/apex
@@ -27,9 +26,9 @@ pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.12.0
 
 或者你也可以使用镜像：
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.26.0-swift3.4.1.post1
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.26.0-swift3.4.1.post1
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.26.0-swift3.4.1.post1
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.27.0-swift3.5.1
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.27.0-swift3.5.1
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.27.0-swift3.5.1
 ```
 
 依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.12.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.12.0)）。
