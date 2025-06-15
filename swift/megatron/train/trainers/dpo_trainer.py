@@ -2,14 +2,12 @@
 from collections import namedtuple
 from functools import partial
 
-import megatron.core
 import torch
 from megatron.core import mpu
 from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
 from megatron.training import get_args, get_model, training
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.utils import unwrap_model
-from packaging import version
 from torch.distributed.nn import all_reduce
 
 from swift.trainers import DPOTrainer
@@ -120,7 +118,6 @@ class MegatronDPOTrainer(MegatronTrainer):
         num_tokens = packed_seq_params.cu_seqlens_q[args.micro_batch_size] // args.context_parallel_size
         loss_mask[:, num_tokens:] = 0
         nll_loss = torch.concat([torch.sum(output_tensor * loss_mask)[None], loss_mask.sum()[None]])
-        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
         if args.context_parallel_size > 1:
             nll_loss = all_reduce(nll_loss, group=mpu.get_context_parallel_group())
         nll_loss = nll_loss[0] / nll_loss[1]
