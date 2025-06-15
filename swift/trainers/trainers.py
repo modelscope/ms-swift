@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
-import inspect
 import os
 from contextlib import contextmanager, nullcontext
 from functools import wraps
@@ -98,6 +97,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
 
     @contextmanager
     def _patch_predict_with_generate(self):
+        origin_data_collator = self.data_collator
         self.data_collator = self._predict_data_collator
         try:
             yield
