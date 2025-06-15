@@ -21,7 +21,7 @@ del HFSFTTrainer.__init__
 class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     def __init__(self, model: Optional[Union[PreTrainedModel, nn.Module, str]] = None, *_args, **kwargs):
-        teacher_model = kwargs.pop('teacher_model', None)
+        teacher_model = kwargs.pop('teacher_model')
         super().__init__(model, *_args, **kwargs)
         args = kwargs['args']
         self.lmbda = args.lmbda
