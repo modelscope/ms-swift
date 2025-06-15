@@ -399,8 +399,12 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - undesirable_weight: Loss weight $\lambda_U$ for undesirable response in the KTO algorithm, default is `1.`.
 - loss_scale: Override template arguments, default is 'last_round'.
 - temperature: Default is 0.9; this parameter will be used in PPO and GRPO.
+- lmbda: Default is 0.5. This parameter is used in GKD. It is the lambda parameter that controls the student data fraction (i.e., the proportion of on-policy student-generated outputs).
+- seq_kd: Default is False. This parameter is used in GKD. It is the `seq_kd` parameter that controls whether to perform Sequence-Level KD (can be viewed as supervised fine-tuning on teacher-generated output).
+- max_new_tokens: Default is 128. This parameter is used in GKD.
+  - Note: The meaning of this parameter is the same as `response_length` in PPO and `max_completion_length` in GRPO. It is just used under different training methods.
 
-#### Reward Model Parameters
+#### Reward/Teacher Model Parameters
 
 The reward model parameters will be used in PPO and GRPO.
 
@@ -408,6 +412,10 @@ The reward model parameters will be used in PPO and GRPO.
 - reward_adapters: Default is `[]`.
 - reward_model_type: Default is None.
 - reward_model_revision: Default is None.
+- teacher_model: Default is None. This parameter must be provided when `rlhf_type` is `'gkd'`.
+- teacher_adapters: Default is `[]`.
+- teacher_model_type: Default is None.
+- teacher_model_revision: Default is None.
 
 #### PPO Arguments
 
