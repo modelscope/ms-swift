@@ -2,14 +2,12 @@
 from collections import namedtuple
 from functools import partial
 
-import megatron.core
 import torch
 from megatron.core import mpu
 from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
 from megatron.training import get_args, get_model, training
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.utils import unwrap_model
-from packaging import version
 from torch.distributed.nn import all_reduce
 
 from swift.trainers import DPOTrainer
