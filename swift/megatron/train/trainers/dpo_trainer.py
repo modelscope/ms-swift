@@ -145,13 +145,10 @@ class MegatronDPOTrainer(MegatronTrainer):
             'rewards/accuracies': (chosen_rewards > rejected_rewards).float().mean(),
             'rewards/margins': (chosen_rewards - rejected_rewards).mean(),
         }
-        if not megatron_core_013:
-            reporting_metric = loss.new_tensor(list(metric.values()))
-            torch.distributed.all_reduce(
-                reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
-            reporting_metric = {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
-        else:
-            reporting_metric = metric
+        reporting_metric = loss.new_tensor(list(metric.values()))
+        torch.distributed.all_reduce(
+            reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
+        reporting_metric = {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
         # fix megatron-lm bug
         # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
         loss = loss / mpu.get_context_parallel_world_size()
