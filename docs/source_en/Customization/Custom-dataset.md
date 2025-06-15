@@ -80,6 +80,22 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 ```
 - Note: GRPO will pass through all additional field content to the ORM, unlike other training methods that, by default, delete extra fields. For example, you can additionally pass in 'solution'. The custom ORM needs to include a positional argument called `completions`, with other arguments as keyword arguments passed through from the additional dataset fields.
 
+#### GKD
+
+If `seq_kd` is not enabled (i.e., the parameter is set to `False`), the dataset format should be as follows:
+
+```jsonl
+{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}, {"role": "assistant", "content": "Tomorrow's weather will be sunny"}]}
+{"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}]}
+```
+
+If `seq_kd` is enabled, the final `assistant` turn is not required in the dataset. The format should be:
+
+```jsonl
+{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}]}
+{"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}]}
+```
+
 ### Sequence Classification
 
 **Single-label Task**:

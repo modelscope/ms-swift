@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
-import inspect
 import os
 from contextlib import contextmanager, nullcontext
 from functools import wraps
@@ -98,21 +97,12 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
 
     @contextmanager
     def _patch_predict_with_generate(self):
-        origin_mode = self.template.mode
-        self.template.set_mode('pt')
-        is_multimodal = self.model.model_meta.is_multimodal
         origin_data_collator = self.data_collator
-
-        if is_multimodal:
-            models = self.template.remove_post_encode_hook()
         self.data_collator = self._predict_data_collator
         try:
             yield
         finally:
-            if is_multimodal:
-                self.template.register_post_encode_hook(models)
             self.data_collator = origin_data_collator
-            self.template.set_mode(origin_mode)
 
     def evaluate(self, *args, **kwargs):
         context = self._patch_predict_with_generate() if self.args.predict_with_generate else nullcontext()
