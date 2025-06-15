@@ -22,7 +22,7 @@ class RewardModelArguments:
 
 @dataclass
 class TeacherModelArguments:
-    teacher_model: Optional[List[str]] = None
+    teacher_model: Optional[str] = None
     teacher_adapters: List[str] = field(default_factory=list)
     teacher_model_type: Optional[List[str]] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
