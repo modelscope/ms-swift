@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Code partially sourced from Hugging Face TRL
 
+import asyncio
 import inspect
 import multiprocessing
 import os
@@ -88,6 +89,46 @@ def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
             break
 
 
+async def async_llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
+                           connection: Connection) -> None:
+    os.environ['VLLM_DP_RANK'] = str(data_parallel_rank)
+    os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
+    os.environ['VLLM_DP_SIZE'] = str(args.data_parallel_size)
+    os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
+    kwargs = {}
+    if args.tensor_parallel_size == 1 and args.data_parallel_size > 1:
+        kwargs['device'] = get_device(str(data_parallel_rank))
+    engine = SwiftRolloutDeploy.get_infer_engine(args, **kwargs)
+    # Send ready signal to parent process
+    connection.send({'status': 'ready'})
+
+    loop = asyncio.get_running_loop()
+    while True:
+        try:
+            command = await loop.run_in_executor(None, connection.recv)
+        except KeyboardInterrupt:
+            await engine.engine.collective_rpc(method='close_communicator')
+            break
+
+        # Handle commands
+        if command['type'] in ['call', 'fire_and_forget']:
+            method_name = command['method']
+            args, kwargs = command.get('args', ()), command.get('kwargs', {})
+            method = getattr(engine, method_name, None) or getattr(engine.engine, method_name, None)
+            if asyncio.iscoroutinefunction(method):
+                result = await method(*args, **kwargs)
+            else:
+                result = await loop.run_in_executor(None, method, *args, **kwargs)
+            if command['type'] == 'call':
+                connection.send(result)
+        elif command['type'] == 'shutdown':
+            break
+
+
+def llm_worker_entry(*args, **kwargs):
+    asyncio.run(async_llm_worker(*args, **kwargs))
+
+
 class SwiftRolloutDeploy(SwiftPipeline):
     args_class = DeployArguments
     args: args_class
@@ -102,6 +143,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.post('/infer/', response_model=None)(self.infer)
 
     def __init__(self, args: Union[List[str], DeployArguments, None] = None):
+        self.use_async_engine = args.use_async_engine
         super().__init__(args)
         safe_set_start_method()
         self.app = FastAPI(lifespan=self.lifespan)
@@ -114,7 +156,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
     def _start_data_parallel_workers(self):
         for data_parallel_rank in range(self.args.data_parallel_size):
             parent_conn, child_conn = Pipe()
-            process = Process(target=llm_worker, args=(self.args, data_parallel_rank, self.master_port, child_conn))
+            worker_func = async_llm_worker if self.use_async_engine else llm_worker
+            process = Process(target=worker_func, args=(self.args, data_parallel_rank, self.master_port, child_conn))
             process.start()
             self.connections.append(parent_conn)
             self.processes.append(process)
@@ -198,7 +241,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         # So with collective_rpc we need to call it this way:
         # llm.collective_rpc(method="init_communicator", args=(host, port, world_size))
         kwargs = {'method': 'init_communicator', 'args': (request.host, request.port, world_size)}
-        method = 'collective_rpc_async' if self.args.use_async_engine else 'collective_rpc'
+        method = 'collective_rpc_async' if self.use_async_engine else 'collective_rpc'
         for connection in self.connections:
             connection.send({'type': 'fire_and_forget', 'method': method, 'kwargs': kwargs})
 
