@@ -120,7 +120,6 @@ class MegatronDPOTrainer(MegatronTrainer):
         num_tokens = packed_seq_params.cu_seqlens_q[args.micro_batch_size] // args.context_parallel_size
         loss_mask[:, num_tokens:] = 0
         nll_loss = torch.concat([torch.sum(output_tensor * loss_mask)[None], loss_mask.sum()[None]])
-        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
         if args.context_parallel_size > 1:
             nll_loss = all_reduce(nll_loss, group=mpu.get_context_parallel_group())
         nll_loss = nll_loss[0] / nll_loss[1]
