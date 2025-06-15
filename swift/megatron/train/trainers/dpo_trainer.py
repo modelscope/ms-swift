@@ -2,12 +2,14 @@
 from collections import namedtuple
 from functools import partial
 
+import megatron.core
 import torch
 from megatron.core import mpu
 from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
 from megatron.training import get_args, get_model, training
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.utils import unwrap_model
+from packaging import version
 from torch.distributed.nn import all_reduce
 
 from swift.trainers import DPOTrainer
@@ -118,6 +120,7 @@ class MegatronDPOTrainer(MegatronTrainer):
         num_tokens = packed_seq_params.cu_seqlens_q[args.micro_batch_size] // args.context_parallel_size
         loss_mask[:, num_tokens:] = 0
         nll_loss = torch.concat([torch.sum(output_tensor * loss_mask)[None], loss_mask.sum()[None]])
+        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
         if args.context_parallel_size > 1:
             nll_loss = all_reduce(nll_loss, group=mpu.get_context_parallel_group())
         nll_loss = nll_loss[0] / nll_loss[1]
@@ -142,15 +145,17 @@ class MegatronDPOTrainer(MegatronTrainer):
             'rewards/accuracies': (chosen_rewards > rejected_rewards).float().mean(),
             'rewards/margins': (chosen_rewards - rejected_rewards).mean(),
         }
-        reporting_metric = loss.new_tensor(list(metric.values()))
-        torch.distributed.all_reduce(
-            reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
-        reporting_metric = {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
-        return (
-            # fix megatron-lm bug
-            # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
-            loss / mpu.get_context_parallel_world_size(),
-            reporting_metric)
+        if not megatron_core_013:
+            reporting_metric = loss.new_tensor(list(metric.values()))
+            torch.distributed.all_reduce(
+                reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
+            reporting_metric = {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
+        else:
+            reporting_metric = metric
+        # fix megatron-lm bug
+        # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
+        loss = loss / mpu.get_context_parallel_world_size()
+        return (loss, reporting_metric)
 
     def _replace_data_iterator(self, data_iterator):
         args = get_args()
