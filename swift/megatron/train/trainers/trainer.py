@@ -78,11 +78,11 @@ class MegatronTrainer:
                         next_x = [next(it) for _ in range(num_batches)]
                     except StopIteration:
                         break
-                    yield x
+                    yield from x
                     x = next_x
                 logger.info(f'Training of {i + 1} epochs has been completed, the training has finished.')
                 args.train_iters = args.curr_iteration + 1
-                yield x
+                yield from x
             else:
                 for x in iterable:
                     yield x
