@@ -232,7 +232,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                   'Please install vLLM with `pip install vllm -U` to use it.')
             if self.vllm_mode == 'server':
                 self.vllm_client: VLLMClient = vllm_client
-                self.vllm_use_async_engine = self.vllm_client.get_engine_type() == 'AsyncLLMEngine'
+                if self.accelerator.is_main_process:
+                    vllm_use_async_engine = [self.vllm_client.get_engine_type() == 'AsyncLLMEngine']
+                else:
+                    vllm_use_async_engine = [None]
+                self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
 
             elif self.vllm_mode == 'colocate':
                 if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:
