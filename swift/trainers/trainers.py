@@ -15,7 +15,7 @@ from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.utils import JsonlWriter, Serializer, gc_collect, get_logger
+from swift.utils import JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
 
@@ -125,11 +125,13 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         from swift.llm import RequestConfig, InferRequest
         data_list = inputs['_data']
         labels_list = [InferRequest.remove_response(data['messages']) for data in data_list]
-        resp_list = self.infer_engine.infer(
-            data_list,
-            RequestConfig(max_tokens=self.model.generation_config.max_new_tokens),
-            use_tqdm=False,
-            template=self.template)
+        with unwrap_model_for_generation(self.model_wrapped, self.accelerator,
+                                         self.args.gather_deepspeed3_params), self.template.generate_context():
+            resp_list = self.infer_engine.infer(
+                data_list,
+                RequestConfig(max_tokens=self.model.generation_config.max_new_tokens),
+                use_tqdm=False,
+                template=self.template)
 
         response_list = []
         jsonl_cache = []

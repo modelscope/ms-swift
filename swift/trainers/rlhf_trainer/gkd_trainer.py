@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 from collections import defaultdict
 from contextlib import nullcontext
 from typing import Optional, Union
@@ -49,14 +50,17 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
         model_inputs = {k: v for k, v in inputs.items() if not k.startswith('prompt') and k != 'labels'}
         model_inputs['input_ids'] = inputs['prompts']
         model_inputs.update({k[len('prompt_'):]: v for k, v in inputs.items() if k.startswith('prompt_')})
+
+        kwargs = {}
+        base_model = self.template.get_base_model(model)
+        parameters = inspect.signature(base_model.generate).parameters
+        if 'use_model_defaults' in parameters:
+            kwargs['use_model_defaults'] = False
         with self.template.generate_context():
             if self.model.model_meta.is_multimodal:
                 _, model_inputs = self.template.pre_forward_hook(model, None, model_inputs)
             generated_outputs = model.generate(
-                **model_inputs,
-                generation_config=generation_config,
-                return_dict_in_generate=True,
-            )
+                **model_inputs, generation_config=generation_config, return_dict_in_generate=True, **kwargs)
         # Get the generated token IDs
         generated_tokens = generated_outputs.sequences
         if not self.template.skip_prompt:
