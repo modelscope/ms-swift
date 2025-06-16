@@ -150,7 +150,6 @@ register_model(
         LLMModelType.minimax, [
             ModelGroup([
                 Model('MiniMax/MiniMax-Text-01', 'MiniMaxAI/MiniMax-Text-01'),
-                Model('MiniMax/MiniMax-Text-01-hf', 'MiniMaxAI/MiniMax-Text-01-hf'),
             ]),
         ],
         TemplateType.minimax,
