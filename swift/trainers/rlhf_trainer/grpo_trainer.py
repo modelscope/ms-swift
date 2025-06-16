@@ -656,14 +656,33 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         results = self._infer(inputs, request_config, is_global_inputs)
 
         outputs = []
-        for i, output in enumerate(results):
-            _choices = []
-            for choice in output.choices:
-                _input: Dict = deepcopy(inputs[i])
-                InferRequest.remove_response(_input['messages'])
-                _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
-                _choices.append((_input['messages'], choice.finish_reason))
-            outputs.append(_choices)
+        if not self.multi_turn_scheduler:
+            for i, output in enumerate(results):
+                _choices = []
+                for choice in output.choices:
+                    _input: Dict = deepcopy(inputs[i])
+                    InferRequest.remove_response(_input['messages'])
+                    _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
+                    _choices.append((_input['messages'], choice.finish_reason))
+                outputs.append(_choices)
+        else:
+            import asyncio
+
+            async def task_run(single_request):
+
+                while True:
+                    result = self._engine_infer(single_request)
+                    finished = self.multi_turn_func.check_finished(result)
+                    if finished:
+                        break
+                    single_request = self.multi_turn_func.step(...)
+
+            async def _run(requests):
+                tasks = [task_run(single_request) for single_request in requests]
+                return await asyncio.gather(*tasks)
+
+            resp_list = asyncio.run(_run())
+            pass
         # flatten 2D list to 1D list
         outputs = [item for sublist in outputs for item in sublist]
         return outputs
@@ -1307,7 +1326,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:
                 return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
 
-    def _process_infer_requests_images(self, infer_requests: List[InferRequest, Dict]):
+    def _process_infer_requests_images(self, infer_requests: List[Union[InferRequest, Dict]]):
         # Process image format into a format that session.post can accept
         import base64
         if not any('images' in request for request in infer_requests):

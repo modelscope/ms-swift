@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Callable, List, Optional, Tuple, Union
 
-from swift.llm.infer.protocol import ChatCompletionResponseChoice
+from swift.llm.infer.protocol import ChatCompletionResponseChoice, ChatCompletionResponseChoiceWithHistory
 from swift.llm.template import RolloutInferRequest
 """
 TODO
@@ -23,11 +23,11 @@ class MultiTurnScheduler(ABC):
         self.max_turns = max_turns
 
     @abstractmethod
-    def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoice, current_turn: int,
-             **kwargs) -> RolloutInferRequest:
+    def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoiceWithHistory,
+             current_turn: int, **kwargs) -> RolloutInferRequest:
         pass
 
-    def check_finished(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoice,
+    def check_finished(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoiceWithHistory,
                        current_turn: int) -> bool:
         # 默认逻辑： 长度截断或到达max_turns
         if result.finish_reason == 'length':
@@ -48,8 +48,8 @@ class ReToolScheduler(MultiTurnScheduler):
         super().__init__()
         self.sandbox = None
 
-    def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoice, current_turn: int,
-             **kwargs) -> RolloutInferRequest:
+    def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoiceWithHistory,
+             current_turn: int, **kwargs) -> RolloutInferRequest:
 
         # if current_turn == 0 or not messages[-1]['content'] or messages[-1]['content'] == '<None>':
         #     messages = RolloutInferRequest.remove_response(infer_request.messages)
@@ -66,7 +66,7 @@ class MathTipsScheduler(MultiTurnScheduler):
     tips_prompt = 'But wait... It seems I made a mistake,'
     acc_func = MathAccuracy()
 
-    def check_finished(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoice,
+    def check_finished(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoiceWithHistory,
                        current_turn: int) -> bool:
         completion = result.message[-1]['content']
         # we only give tips once
@@ -80,8 +80,8 @@ class MathTipsScheduler(MultiTurnScheduler):
 
         return super().check_finished(result, current_turn)
 
-    def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoice, current_turn: int,
-             **kwargs) -> RolloutInferRequest:
+    def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoiceWithHistory,
+             current_turn: int, **kwargs) -> RolloutInferRequest:
         completion = result.message[-1]['content']
         if '<answer>' in completion:
             completion = completion[:completion.index('<answer>')]
@@ -97,7 +97,7 @@ class MathTipsMultiTurnScheduler(MultiTurnScheduler):
     tips_prompt = 'The answer is not correct, It seems You made a mistake, you need to recheck very carefully.'
     acc_func = MathAccuracy()
 
-    def check_finished(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoice,
+    def check_finished(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoiceWithHistory,
                        current_turn: int) -> bool:
         query = result.message[-2]['content']
         # we only give tips once
@@ -112,7 +112,7 @@ class MathTipsMultiTurnScheduler(MultiTurnScheduler):
 
         return super().check_finished(result, current_turn)
 
-    def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoice,
+    def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoiceWithHistory,
              **kwargs) -> RolloutInferRequest:
         completion = result.message[-1]['content']
         infer_request.messages.append(

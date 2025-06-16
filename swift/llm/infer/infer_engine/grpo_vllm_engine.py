@@ -11,13 +11,15 @@ from vllm.executor.uniproc_executor import ExecutorWithExternalLauncher
 from swift.llm import InferRequest, Template, VllmEngine
 from swift.plugin import Metric, multi_turns
 from swift.plugin.multi_turn import MultiTurnScheduler
-from ..protocol import ChatCompletionResponse, RequestConfig, random_uuid
+from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoiceWithHistory, ChatMessage, RequestConfig,
+                        random_uuid)
 from .utils import AdapterRequest
 
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '3600'
+    from vllm import SamplingParams
 
 except Exception:
     raise
@@ -180,3 +182,39 @@ class GRPOVllmEngine(VllmEngine):
         new_tasks = [_new_run(task) for task in tasks]
 
         return await self.batch_run(new_tasks)
+
+    async def _infer_full_async(
+        self,
+        template: Template,
+        inputs: Dict[str, Any],
+        generation_config: SamplingParams,
+        adapter_request: Optional[AdapterRequest] = None,
+    ) -> ChatCompletionResponse:
+        request_id = random_uuid()
+        result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
+        result = None
+        async for result in result_generator:
+            pass
+        return self._create_chat_completion_response(result, template, generation_config, request_id,
+                                                     inputs['input_ids'])
+
+    def _create_chat_completion_response(self, result, template: Template, generation_config, request_id,
+                                         history_input_ids) -> ChatCompletionResponse:
+        assert result is not None
+        num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
+        usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
+        choices = []
+        for output in result.outputs:
+            output.token_ids = list(output.token_ids)
+            response = template.decode(output.token_ids)
+            logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
+            toolcall = self._get_toolcall(response, template)
+            history = template.decode(history_input_ids)
+            choice = ChatCompletionResponseChoiceWithHistory(
+                index=output.index,
+                message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+                finish_reason=output.finish_reason,
+                logprobs=logprobs,
+                history=history)
+            choices.append(choice)
+        return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
