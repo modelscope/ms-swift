@@ -225,6 +225,7 @@ class BinReader:
         try:
             self.mm = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
         except ValueError:
+            # For example, self.file is an empty file.
             self.mm = None
 
     def read_buffer(self, offset: int, size: int) -> bytes:
