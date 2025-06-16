@@ -1,9 +1,8 @@
-# 4 * 50GiB
+# 4 * 45GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 MASTER_PORT=29501 \
 NPROC_PER_NODE=4 \
-MAX_PIXELS=1003520 \
 swift rlhf \
     --rlhf_type gkd \
     --model OpenGVLab/InternVL3-2B-Pretrained \
@@ -18,8 +17,8 @@ swift rlhf \
     --learning_rate 1e-5 \
     --freeze_vit true \
     --gradient_accumulation_steps 1 \
-    --eval_steps 100 \
-    --save_steps 100 \
+    --eval_steps 50 \
+    --save_steps 50 \
     --save_total_limit 2 \
     --deepspeed zero2 \
     --attn_impl flash_attn \
