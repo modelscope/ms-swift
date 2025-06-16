@@ -105,7 +105,9 @@ async def async_llm_worker(args: DeployArguments, data_parallel_rank: int, maste
     loop = asyncio.get_running_loop()
     while True:
         try:
-            command = await loop.run_in_executor(None, connection.recv)
+            command = await asyncio.wait_for(loop.run_in_executor(None, connection.recv), timeout=1.0)
+        except asyncio.TimeoutError:
+            continue
         except KeyboardInterrupt:
             await engine.engine.collective_rpc(method='close_communicator')
             break
@@ -115,7 +117,12 @@ async def async_llm_worker(args: DeployArguments, data_parallel_rank: int, maste
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
             method = getattr(engine, method_name, None) or getattr(engine.engine, method_name, None)
-            result = await method(*args, **kwargs)
+            try:
+                result = await method(*args, **kwargs)
+            except Exception as e:
+                logger.error(f'Method execution failed: {e}')
+                result = None
+
             if command['type'] == 'call':
                 connection.send(result)
         elif command['type'] == 'shutdown':

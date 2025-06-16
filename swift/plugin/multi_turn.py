@@ -87,7 +87,14 @@ class MathTipsScheduler(MultiTurnScheduler):
         if '</think>' in completion:
             completion = completion[:completion.index('</think>')]
         completion += self.tips_prompt
-        infer_request.messages[-1]['content'] = completion
+        if infer_request.messages[-1] == 'assistant':
+            infer_request.messages[-1]['content'] = completion
+        else:
+            infer_request.messages.append({'role': 'assistant', 'content': completion})
+        # NOTE: engine will discard last response during inference
+        # To allow the engine to continue generating content, a dummy response must be added.
+        infer_request.messages.append({'role': 'assistant', 'content': None})
+
         return infer_request
 
 
