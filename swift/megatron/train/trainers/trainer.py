@@ -80,7 +80,7 @@ class MegatronTrainer:
                         break
                     yield x
                     x = next_x
-                logger.info(f'Training of {i} epochs has been completed, the training has finished.')
+                logger.info(f'Training of {i + 1} epochs has been completed, the training has finished.')
                 args.train_iters = args.curr_iteration + 1
                 yield x
             else:
