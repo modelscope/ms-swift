@@ -115,7 +115,7 @@ class GRPOVllmEngine(VllmEngine):
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
     ) -> List[ChatCompletionResponse]:
-        assert self.use_async_engine, 'for Async Engine, use infer_async instead'
+        assert not self.use_async_engine, 'for Async Engine, use infer_async instead'
         return super().infer(
             infer_requests,
             request_config,
@@ -125,7 +125,7 @@ class GRPOVllmEngine(VllmEngine):
             adapter_request=adapter_request,
         )
 
-    async def infer_async(self,
+    async def async_infer(self,
                           infer_requests: List[InferRequest],
                           request_config: Optional[RequestConfig] = None,
                           metrics: Optional[List[Metric]] = None,

@@ -306,7 +306,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
             if request_config.seed:
                 request_config.seed += i * len(requests)
             kwargs = {'infer_requests': requests, 'request_config': request_config, 'use_tqdm': use_tqdm}
-            method = 'infer_async' if self.use_async_engine else 'infer'
+            method = 'async_infer' if self.use_async_engine else 'infer'
             connection.send({'type': 'call', 'method': method, 'kwargs': kwargs})
 
         all_outputs = [connection.recv() for connection in self.connections]
