@@ -141,5 +141,5 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
             inputs['input_ids'] = new_input_ids
             inputs['attention_mask'] = new_attention_mask
             inputs['labels'] = new_labels
-        loss = HFSFTTrainer.training_step(model, inputs, num_items_in_batch)
+        loss = HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
         return loss
