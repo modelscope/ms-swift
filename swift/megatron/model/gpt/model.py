@@ -6,6 +6,7 @@ from megatron.training.arguments import core_transformer_config_from_args
 from ..gpt_model import GPTModel
 
 
+# Code borrowed from NVIDIA/Megatron-LM
 def model_provider(pre_process=True, post_process=True):
     args = get_args()
     config = core_transformer_config_from_args(args)

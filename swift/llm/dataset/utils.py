@@ -222,7 +222,11 @@ class BinReader:
     def __init__(self, bin_path: str):
         self.bin_path = bin_path
         self.file = open(bin_path, 'rb')
-        self.mm = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
+        try:
+            self.mm = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
+        except ValueError:
+            # For example, self.file is an empty file.
+            self.mm = None
 
     def read_buffer(self, offset: int, size: int) -> bytes:
         if offset < 0 or size < 0 or offset + size > len(self.mm):

@@ -46,9 +46,8 @@ def build_streaming_dataloader(args, dataset, collate_fn):
     return iter(cyclic_iter(MegatronDataLoaderDispatcher(base_dataloader)))
 
 
+# Code borrowed from NVIDIA/Megatron-LM
 def get_batch_on_this_tp_rank(data_iterator):
-    # copy from megatron-lm
-
     args = get_args()
 
     def _broadcast(item):
