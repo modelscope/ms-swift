@@ -77,7 +77,7 @@ class MathTipsScheduler(MultiTurnScheduler):
         if acc == 1:
             return True
 
-        return super().check_finished(result, current_turn)
+        return super().check_finished(infer_request, result, current_turn)
 
     def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoiceWithHistory,
              current_turn: int, **kwargs) -> RolloutInferRequest:
@@ -109,7 +109,7 @@ class MathTipsMultiTurnScheduler(MultiTurnScheduler):
         if acc == 1:
             return True
 
-        return super().check_finished(result, current_turn)
+        return super().check_finished(infer_request, result, current_turn)
 
     def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoiceWithHistory,
              **kwargs) -> RolloutInferRequest:
