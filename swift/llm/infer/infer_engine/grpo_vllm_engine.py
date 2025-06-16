@@ -155,23 +155,27 @@ class GRPOVllmEngine(VllmEngine):
         tasks = [_infer_async_single(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
             use_tqdm = not request_config.stream and len(infer_requests) > 1
-        return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
+        return await self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
-    def _patch_executor(self):
+    async def _batch_infer_stream(self,
+                                  tasks,
+                                  stream: bool = True,
+                                  use_tqdm: bool = True,
+                                  metrics: Optional[List[Metric]] = None):
+        prog_bar = tqdm(total=len(tasks), dynamic_ncols=True, disable=not use_tqdm)
+        assert not stream
 
-        import vllm.envs as envs
-        if envs.VLLM_USE_V1:
-            from vllm.v1.executor import abstract
-            abstract.ExecutorWithExternalLauncher = PatchedExecutorWithExternalLauncher
-        else:
-            from vllm.executor import uniproc_executor
-            uniproc_executor.ExecutorWithExternalLauncher = PatchedExecutorWithExternalLauncher
+        async def _new_run(task):
+            try:
+                res = await task
+            except Exception as e:
+                if getattr(self, 'strict', True):
+                    raise
+                res = e
+            prog_bar.update()
+            self._update_metrics(res, metrics)
+            return res
 
+        new_tasks = [_new_run(task) for task in tasks]
 
-class PatchedExecutorWithExternalLauncher(ExecutorWithExternalLauncher):
-
-    def _init_executor(self) -> None:
-        origin_world_size = self.vllm_config.parallel_config.world_size
-        self.vllm_config.parallel_config.world_size = int(os.environ.get('WORLD_SIZE'))
-        super()._init_executor()
-        self.vllm_config.parallel_config.world_size = origin_world_size
+        return await self.batch_run(new_tasks)
