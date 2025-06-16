@@ -64,25 +64,29 @@ class MegatronTrainer:
     @staticmethod
     def new_cyclic_iter(iterable):
         args = get_args()
-        max_epochs = args.max_epochs
         i = 0
         while True:
-            if getattr(args, 'is_training', False):
+            is_training = getattr(args, 'is_training', False)
+            if is_training:
                 logger.info(f'The training of Epoch {i} starts...')
-            it = iter(iterable)
-            x = next(it)
-            while True:
-                try:
-                    next_x = next(it)
-                except StopIteration:
-                    break
-                yield x
-                x = next_x
-            i += 1
-            if max_epochs and i >= max_epochs:
+            if is_training and args.max_epochs and i >= args.max_epochs - 1:
+                it = iter(iterable)
+                num_batches = args.global_batch_size // (args.micro_batch_size * args.data_parallel_size)
+                x = [next(it) for _ in range(num_batches)]
+                while True:
+                    try:
+                        next_x = [next(it) for _ in range(num_batches)]
+                    except StopIteration:
+                        break
+                    yield x
+                    x = next_x
                 logger.info(f'Training of {i} epochs has been completed, the training has finished.')
                 args.train_iters = args.curr_iteration + 1
-            yield x
+                yield x
+            else:
+                for x in iterable:
+                    yield x
+            i += 1
 
     @staticmethod
     @contextmanager
