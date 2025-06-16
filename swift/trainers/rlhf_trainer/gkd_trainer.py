@@ -1,8 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
+import random
 from collections import defaultdict
 from contextlib import nullcontext
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -11,7 +12,7 @@ from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
 from trl.models.utils import prepare_deepspeed
 
-from swift.utils import empty_cache
+from swift.utils import empty_cache, unwrap_model_for_generation
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -108,3 +109,37 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         # Return loss
         return (loss, outputs_student) if return_outputs else loss
+
+    # Code borrowed from huggingface/trl
+    def training_step(self,
+                      model: nn.Module,
+                      inputs: dict[str, Union[torch.Tensor, Any]],
+                      num_items_in_batch: Optional[int] = None) -> torch.Tensor:
+        """
+        Perform a training step for the Generalized Knowledge Distillation (GKD) model.
+
+        This method implements the on-policy learning approach described in the GKD paper.
+        With probability `self.lmbda`, it generates new responses using the student model,
+        which are then used for training instead of the original inputs.
+        """
+
+        if random.random() <= self.lmbda:
+            with unwrap_model_for_generation(
+                    model, self.accelerator,
+                    gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_model:
+                new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
+                    unwrapped_model, inputs, self.generation_config, self.processing_class.pad_token_id)
+            inputs['input_ids'] = new_input_ids
+            inputs['attention_mask'] = new_attention_mask
+            inputs['labels'] = new_labels
+        elif self.seq_kd:
+            with unwrap_model_for_generation(
+                    self.teacher_model, self.accelerator,
+                    gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_model:
+                new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
+                    unwrapped_model, inputs, self.generation_config, self.processing_class.pad_token_id)
+            inputs['input_ids'] = new_input_ids
+            inputs['attention_mask'] = new_attention_mask
+            inputs['labels'] = new_labels
+        loss = HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
+        return loss
