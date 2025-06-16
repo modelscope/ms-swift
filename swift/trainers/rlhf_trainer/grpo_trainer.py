@@ -424,7 +424,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 model.model_dir,
                 model.model_info.torch_dtype,
                 model_type=model.model_meta.model_type,
-                use_async_engine=self.args.vllm_use_async_engine,
+                use_async_engine=False,  # TODO: async engine for colocate
                 tensor_parallel_size=self.vllm_tensor_parallel_size,
                 gpu_memory_utilization=self.vllm_gpu_memory_utilization,
                 enable_prefix_caching=self.args.vllm_enable_prefix_caching,

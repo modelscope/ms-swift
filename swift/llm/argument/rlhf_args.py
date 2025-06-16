@@ -292,3 +292,9 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 "The parameter 'num_infer_workers' has been deprecated and will be removed in version 3.6. "
                 'If you wish to use colocate mode, please use `vllm_mode colocate` instead. '
                 'If you wish to use async mode, please use `vllm_mode server` and external vLLM server instead.')
+
+        if self.multi_turn_func:
+            logger.warning("The parameter 'multi_turn_func' has been deprecated and will be removed in version 3.6. "
+                           "Please use 'multi_turn_scheduler' instead")
+
+            self.multi_turn_scheduler = self.multi_turn_func

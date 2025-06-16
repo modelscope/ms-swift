@@ -70,8 +70,3 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
             self.steps_per_generation = self.gradient_accumulation_steps
         if self.generation_batch_size is None:
             self.generation_batch_size = self.per_device_train_batch_size * num_processes * self.steps_per_generation
-
-        if self.multi_turn_scheduler:
-            if not self.vllm_use_async_engine:
-                self.vllm_use_async_engine = True
-                logger.warning('Switching to the asynchronous engine in multi-turn settings to accelerate rollout.')
