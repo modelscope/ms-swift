@@ -164,6 +164,9 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - calculate_per_token_loss: 根据全局批次中的非填充token数量来对交叉熵损失进行缩放。默认为True。
 - 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 auto。
 - optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
+- optimizer_cpu_offload: 将优化器状态卸载到 CPU。默认为False。
+- optimizer_offload_fraction: 卸载到 CPU 的优化器状态所占比例。默认为1.。
+- use_precision_aware_optimizer: 使用 TransformerEngine 中的精度感知优化器，该优化器允许将主参数和优化器状态设置为较低精度，例如 fp16 和 fp8。
 - dataloader_type: 默认为'cyclic'，可选为'single', 'cyclic', 'external'。若开启`--streaming`，则设置为`external`。
 - manual_gc: 禁用默认垃圾回收器，手动触发垃圾回收。默认为False。
 - manual_gc_interval: 触发垃圾回收的间隔。默认为0。
@@ -179,7 +182,8 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥lr: 初始学习率，最终会根据学习率预热策略和衰减策略决定每个迭代的学习率，默认为1e-5。
 - lr_decay_style: 学习率衰减策略，默认为'cosine'。通常设置为'cosine', 'linear', 'constant'。
 - 🔥lr_decay_iters: 学习率衰减的迭代次数。默认为None，则设置为`--train_iters`。
-- 🔥lr_warmup_iters: 线性学习率预热的迭代次数，默认为0。
+- lr_warmup_iters: 线性学习率预热的迭代次数，默认为0。
+- 🔥lr_warmup_fraction: 线性学习率预热阶段所占比例，默认为None。
 - 🔥min_lr: 学习率的最小值，将低于改阈值的学习率裁剪为该值，默认为0。
 
 **正则化参数**:
