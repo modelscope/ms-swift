@@ -186,7 +186,9 @@ class SwiftRolloutDeploy(SwiftPipeline):
             'model_type': args.model_type,
             'revision': args.model_revision,
             'torch_dtype': args.torch_dtype,
-            'use_async_engine': args.use_async_engine
+            'use_async_engine': args.use_async_engine,
+            'multi_turn': args.multi_turn_func,
+            'max_turn': args.max_turns
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
         if infer_backend != 'vllm':

@@ -5,7 +5,7 @@ from copy import deepcopy
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import torch
-import tqdm
+from tqdm.asyncio import tqdm_asyncio
 from vllm.executor.uniproc_executor import ExecutorWithExternalLauncher
 
 from swift.llm import InferRequest, Template, VllmEngine
@@ -18,7 +18,6 @@ try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '3600'
-    from vllm import SamplingParams
 
 except Exception:
     raise
@@ -61,8 +60,6 @@ class GRPOVllmEngine(VllmEngine):
         template: Optional[Template] = None,
         **kwargs,
     ) -> None:
-        if use_async_engine:
-            self._patch_executor()
         super().__init__(
             model_id_or_path=model_id_or_path,
             torch_dtype=torch_dtype,
@@ -91,19 +88,18 @@ class GRPOVllmEngine(VllmEngine):
             engine_kwargs=engine_kwargs,
             template=template,
         )
+        self.max_turns = kwargs.get('max_turns', 3)
 
         multi_turn_func: Union[MultiTurnScheduler, str] = kwargs.get('multi_turn_func', None)
         if multi_turn_func:
             if isinstance(multi_turn_func, str):
                 assert multi_turn_func in multi_turns
-                self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_func
+                self.multi_turn_scheduler: MultiTurnScheduler = multi_turns[multi_turn_func](max_turns=self.max_turns)
             else:
                 assert isinstance(multi_turn_func, MultiTurnScheduler)
                 self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_func
         else:
             self.multi_turn_scheduler = None
-
-        self.max_turns = kwargs.get('max_turns')  # TODO: check in argument initilization
 
     def infer(
         self,
@@ -154,7 +150,7 @@ class GRPOVllmEngine(VllmEngine):
 
         tasks = [_infer_async_single(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
-            use_tqdm = not request_config.stream and len(infer_requests) > 1
+            use_tqdm = len(infer_requests) > 1
         return await self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
     async def _batch_infer_stream(self,
@@ -162,8 +158,8 @@ class GRPOVllmEngine(VllmEngine):
                                   stream: bool = True,
                                   use_tqdm: bool = True,
                                   metrics: Optional[List[Metric]] = None):
-        prog_bar = tqdm(total=len(tasks), dynamic_ncols=True, disable=not use_tqdm)
         assert not stream
+        prog_bar = tqdm_asyncio(total=len(tasks), dynamic_ncols=True, disable=not use_tqdm)
 
         async def _new_run(task):
             try:
