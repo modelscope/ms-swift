@@ -251,7 +251,7 @@ class ChatCompletionResponseChoice:
 
 @dataclass
 class ChatCompletionResponseChoiceWithHistory(ChatCompletionResponseChoice):
-    history: str
+    history: Optional[str] = None
 
 
 @dataclass
