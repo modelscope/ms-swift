@@ -4,15 +4,15 @@ from typing import Callable, List, Optional, Tuple, Union
 from swift.llm.infer.protocol import ChatCompletionResponseChoice, ChatCompletionResponseChoiceWithHistory
 from swift.llm.template import RolloutInferRequest
 """
-TODO
-1. add reward_kwargs to InferRequest in training
-2. refactor training multi turn compatible with multi turn scheduler
-3. argument max_turns
-4. 续写逻辑, 增加response 为 None
-5. document about scheduler
-6. retool implement and document
-7. loss_mask
-8. token increment in infer request
+TODO:
+    (done) 1. add reward_kwargs to InferRequest in training
+    2. refactor training multi turn compatible with multi turn scheduler
+    (done) 3. argument max_turns
+    4. 续写逻辑, 增加response 为 None
+    5. document about scheduler
+    6. retool implement and document
+    7. loss_mask
+    8. token increment in infer request
 """
 
 
@@ -29,7 +29,6 @@ class MultiTurnScheduler(ABC):
 
     def check_finished(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoiceWithHistory,
                        current_turn: int) -> bool:
-        # 默认逻辑： 长度截断或到达max_turns
         if result.finish_reason == 'length':
             return True
 

@@ -143,17 +143,18 @@ class GRPOVllmEngine(VllmEngine):
             current_request = infer_request
 
             while True:
-                result = await self.infer_async(current_request, request_config, **kwargs)
+                result: ChatCompletionResponse = await self.infer_async(current_request, request_config, **kwargs)
+                result_choice: ChatCompletionResponseChoiceWithHistory = result.choices[0]
 
                 if self.multi_turn_scheduler:
-                    should_stop = self.multi_turn_scheduler.check_finished(current_request, result, current_turn)
+                    should_stop = self.multi_turn_scheduler.check_finished(current_request, result_choice, current_turn)
                 else:
                     should_stop = True
 
                 if should_stop:
                     return result
 
-                current_request = self.multi_turn_scheduler.step(current_request, result, current_turn)
+                current_request = self.multi_turn_scheduler.step(current_request, result_choice, current_turn)
 
         tasks = [_infer_async_single(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:

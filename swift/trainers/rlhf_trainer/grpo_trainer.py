@@ -542,8 +542,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if self.multi_turn_scheduler:
             # process image to the format that post can accept
-            inputs = self._process_infer_requests_images(inputs)
+            self._process_infer_requests_images(inputs)
             multi_turn_kwargs: Dict = RowPreprocessor.rows_to_batched(inputs)
+            multi_turn_kwargs.pop('messages', None)  # messages are already included in infer_inputs
             for i, inputs in enumerate(infer_inputs):
                 inputs['data_dict'] = {}
                 for k in multi_turn_kwargs.keys():
@@ -669,7 +670,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     _choices.append((_input['messages'], choice.finish_reason))
                 outputs.append(_choices)
         else:
-            pass # TODO: reverse and compatible with scheduler
+            pass  # TODO: reverse and compatible with scheduler
         # flatten 2D list to 1D list
         outputs = [item for sublist in outputs for item in sublist]
         return outputs

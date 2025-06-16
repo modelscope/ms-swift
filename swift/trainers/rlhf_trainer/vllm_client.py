@@ -15,7 +15,7 @@ from dacite import from_dict
 from requests import ConnectionError
 from torch import nn
 
-from swift.llm import AdapterRequest, InferRequest, Template
+from swift.llm import AdapterRequest, RolloutInferRequest, Template
 from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig
 from swift.plugin import Metric
 from swift.utils import is_vllm_ascend_available, is_vllm_available
@@ -113,7 +113,7 @@ class VLLMClient:
 
     def infer(
         self,
-        infer_requests: List[InferRequest],
+        infer_requests: List[RolloutInferRequest],
         request_config: Optional[RequestConfig] = None,
         metrics: Optional[List[Metric]] = None,
         *,
