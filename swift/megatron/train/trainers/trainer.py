@@ -81,7 +81,7 @@ class MegatronTrainer:
             i += 1
             if max_epochs and i >= max_epochs:
                 logger.info(f'Training of {i} epochs has been completed, the training has finished.')
-                args.train_iters = args.iteration + 1
+                args.train_iters = args.curr_iteration + 1
             yield x
 
     @staticmethod
