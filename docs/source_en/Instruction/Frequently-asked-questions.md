@@ -56,10 +56,10 @@ Reference the [example](https://github.com/modelscope/ms-swift/tree/main/example
 You can try variations of `lora` like `piassa/olora/dora`, or `fourierft`. Refer to the tricks in the `sft` parameters, as some may not apply to multi-modal.
 
 ### Q16: The accuracy from eval during training and the accuracy computed from re-inference with the saved checkpoint are not consistent.
-The methods for calculating eval accuracy during training and inference are different. The default `acc_strategy` is `token`, and the selectable values are: `token`, `sentence`.
+The methods for calculating eval accuracy during training and inference are different. The default `acc_strategy` is `token`, and the selectable values are: `token`, `seq`.
 
 ### Q17: Official Magic Mirror image and Swift environment.
-You can start the container using `docker run`, for example: `docker run --gpus all -p 8000:8000 -it -d --name ms registry.cn-beijing.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.1.0-py310-torch2.3.0-tf2.16.1-1.16.0 /bin/bash`. After starting the container, pull the latest code to install Swift.
+You can start the container using `docker run`, for example: `docker run --gpus all -p 8000:8000 -it -d --name ms modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-1.26.0-LLM /bin/bash`. After starting the container, pull the latest code to install Swift. Additionally, for large model training scenarios, the `ms-swift` image is provided, which includes additional dependencies for `Megatron-SWIFT`, such as: `modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.26.0-swift3.4.1.post1`. For more details, refer to the [Swift installation documentation](https://swift.readthedocs.io/en/latest/GetStarted/SWIFT-installation.html).
 
 ### Q18: Command line for multi-machine multi-card training.
 For details, see the [Multi-node Example](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node).
@@ -71,10 +71,10 @@ See [issue](https://github.com/modelscope/ms-swift/issues/1813).
 `swift sft` uses `torchrun`.
 
 ### Q21: I have a question about my SFT dataset being too large; tokenizing takes a long time. Is there a solution?
-Use `lazy_tokenize`. See [Command Line Parameters documentation](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html).
+Use `lazy_tokenize`or stream reading (`streaming`). See [Command Line Parameters documentation](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html).
 
 ### Q22: When two datasets are simply appended together in the training set, does the model shuffle internally during training, or does it take data in order to train?
-The trainer will shuffle randomly.
+Command-line parameter `dataset_shuffle`. For more details, see the [command-line parameters documentation](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
 
 ### Q23: If the model is on two cards and the data is not parallelized, deepspeed will throw an error. How to handle this?
 `deepspeed` and `device_map` are incompatible; you can only choose one.
@@ -83,7 +83,7 @@ The trainer will shuffle randomly.
 The data file contains URLs, which do not support offline training.
 
 ### Q25: How to reduce GPU memory usage when training VLM models?
-Set `--freeze_vit true`.
+Set `--freeze_vit true` and the parameter `--max_pixels` to limit the maximum pixels.
 
 ### Q26: Why are there fewer models supported in the WEB-UI interface than in the documentation?
 Upgrade `ms-swift`.
@@ -103,194 +103,182 @@ Use fp32 for training with the V100 machine.
 ### Q31: Does Swift support distillation?
 Refer to this [example](https://github.com/modelscope/ms-swift/blob/main/examples/sampler/distill/distill.sh).
 
-### Q32: Encountered the error `cannot import name 'ftp_head' from 'datasets.utils.file_utils'`. Has anyone faced this issue?
-Try `pip install datasets==2.*`.
-
-### Q33: The default maximum number of checkpoints saved after training is two. How can I increase this number?
+### Q32: The default maximum number of checkpoints saved after training is two. How can I increase this number?
 Use `--save_total_limit`. See the [Command Line Parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
 
-### Q34: In grounding tasks, does the universal data format support multiple instances for one category?
-Currently, it supports one object corresponding to multiple bounding boxes. Refer to the documentation on [Custom Dataset](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html).
+### Q33: In grounding tasks, does the universal data format support multiple instances for one category?
+Currently, it supports one object corresponding to multiple bounding boxes. Refer to the documentation on [Custom Dataset](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html#grounding).
 
-### Q35: Why am I getting the error that numpy.object cannot be found?
+### Q34: Why am I getting the error that numpy.object cannot be found?
 Try using `numpy==1.26.3`.
 
-### Q36: Does the Swift framework support sequence parallelism now?
-Yes, it supports it. It implements this using `xtuner`.
+### Q35: Does the Swift framework support sequence parallelism now?
+Yes, it supports it. Refer to the [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/long_text) here.
 
-### Q37: When fine-tuning qwen2-1.5B on a V100, I see `loss': 0.0, 'acc': 0.0, 'grad_norm': nan`. What is the issue?
+### Q36: When fine-tuning qwen2-1.5B on a V100, I see `loss': 0.0, 'acc': 0.0, 'grad_norm': nan`. What is the issue?
 Try using fp32.
 
-### Q38: Is it possible to fully fine-tune GPTQ quantized models?
+### Q37: Is it possible to fully fine-tune GPTQ quantized models?
 No, GPTQ model's int-type parameters cannot participate in gradients; they can only be updated with additional structures like LoRA.
 
-### Q39: What parameters should I set for fine-tuning using QLoRA on glm4-chat?
+### Q38: What parameters should I set for fine-tuning using QLoRA on glm4-chat?
 Refer to the QLoRA [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/qlora).
 
-### Q40: I encounter the issue "AdamW' object has no attribute 'train" when training my dataset on qwen2-vl-7b.
-Try `accelerate 0.34.0`.
-
-### Q41: How do I expand my vocabulary within the Swift framework?
+### Q39: How do I expand my vocabulary within the Swift framework?
 Swift currently does not support vocabulary expansion.
 
-### Q42: Can I directly use models with the same name from Hugging Face?
+### Q40: Can I directly use models with the same name from Hugging Face?
 Set the environment variable `USE_HF=1`.
 
-### Q43: Can Qwen2-VL-2B conduct incremental pre-training? Is there guidance available?
+### Q41: Can Qwen2-VL-2B conduct incremental pre-training? Is there guidance available?
 Yes, it supports incremental pre-training. Just include all the content in the response.
 
-### Q44: When training with videos, how can I control the frame sampling rate in the parameters? The `frame_rate` setting doesn't seem to work, and I'm using MiniCPMV.
+### Q42: When training with videos, how can I control the frame sampling rate in the parameters? The `frame_rate` setting doesn't seem to work, and I'm using MiniCPMV.
 Set the environment variable `MAX_NUM_FRAMES`.
 
-### Q45: Can I save the inference results of the validation set during training in Swift?
+### Q43: Can I save the inference results of the validation set during training in Swift?
 After training, run `swift infer` to save the results.
 
-### Q46: Why is the saved checkpoint larger than the original model file after full parameter DPO?
+### Q44: Why is the saved checkpoint larger than the original model file after full parameter DPO?
 Using V100 for fine-tuning stores the data in fp32 format.
 
-### Q47: Training speed slows down when using multi-machine training; using Swift framework for LLM training with deepspeed zero3 causes significant performance drop.
+### Q45: Training speed slows down when using multi-machine training; using Swift framework for LLM training with deepspeed zero3 causes significant performance drop.
 See the [issue](https://github.com/modelscope/ms-swift/issues/1825).
 
-### Q48: Does Swift now support multi-stage pre-training for qwen2-vl? It looks like the official best practices only show SFT training with vit+llm together, not sure if separate fine-tuning is supported.
-Refer to the [issue](https://github.com/modelscope/ms-swift/issues/2222).
+### Q46: Does Swift now support multi-stage pre-training for qwen2-vl? It looks like the official best practices only show SFT training with vit+llm together, not sure if separate fine-tuning is supported.
+You can control this using the parameters `--freeze_vit`, `--freeze_aligner`, and `--freeze_llm`. For more details, see the [Command Line Parameters Documentation](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html#tuner-arguments).
 
-### Q49: Does qwen2-vl support mixing pure text data?
+### Q47: Does qwen2-vl support mixing pure text data?
 It supports both mixed visual-text and pure text data.
 
-### Q50: Can I plot loss curves for different datasets during fine-tuning?
-This is not supported; datasets are trained in a mixed manner.
+### Q48: Can I plot loss curves for different datasets during fine-tuning?
+Channel loss is supported. Please refer to this [example](https://github.com/modelscope/ms-swift/blob/main/examples/train/plugins/channel_loss.sh).
 
-### Q51: After model training, the responses have a lot of repeated content.
+### Q49: After model training, the responses have a lot of repeated content.
 Refer to the [Pre-training and Fine-tuning](https://swift.readthedocs.io/en/latest/Instruction/Pre-training-and-Fine-tuning.html). If you notice repetitions during training, try training for more epochs, cleaning the data, and conducting full parameter training, using RLHF to mitigate this issue.
 
-### Q52: Does Swift currently support prompt tuning or prefix tuning?
+### Q50: Does Swift currently support prompt tuning or prefix tuning?
 No, it does not support these methods, as both methods suffer from serious forgetting issues and are not currently recommended.
 
-### Q53: I encountered the following error when training with two A10s:
+### Q51: I encountered the following error when training with two A10s:
 ```text
 [rank0]: torch.distributed.DistBackendError: NCCL error in:../torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:1970， unhandled system error (run with NCCL_DEBUG=INFO for details),NCCL version 2.20.5
 [rank0]:ncclSystemError: System call (e.g. socket,malloc) or external library call failed or device error.
 ```
 Please check if shared memory is too small; NCCL requires shared memory.
 
-### Q54: How to solve the issue of certain parameters not participating in backpropagation when freezing layers during DDP fine-tuning?
+### Q52: How to solve the issue of certain parameters not participating in backpropagation when freezing layers during DDP fine-tuning?
 Set the parameter `--ddp_find_unused_parameters true`.
 
-### Q55: Does Swift have a dataset quality inspection tool?
+### Q53: Does Swift have a dataset quality inspection tool?
 [data-juicer](https://github.com/modelscope/data-juicer).
 
-### Q56: Where to start model parallelism on the web? I only found the option to check for data parallelism.
+### Q54: Where to start model parallelism on the web? I only found the option to check for data parallelism.
 You can specify visible GPUs to enable model parallelism.
 
-### Q57: How can I turn off automatic shuffling?
-Currently, you can only modify the [transformers code](https://github.com/huggingface/transformers/blob/main/src/transformers/trainer.py).
-
-### Q58: What is the parameter 'num_items_in_batch'? I can't find it.
-Upgrade to `ms-swift==2.5.2` or downgrade to `transformers<4.46`.
-
-### Q59: How can I set a fixed location for dataset downloads when using --dataset? I can't find this in command line parameters. How can I read from the download location next time?
+### Q55: How can I set a fixed location for dataset downloads when using --dataset? I can't find this in command line parameters. How can I read from the download location next time?
 `dataset_path` supports folders, typically for datasets downloaded via `git clone`. See [Custom Dataset Documentation](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html#dataset-info-json).
 
-### Q60: When using --streaming true, I get an error asking me to set max_steps when setting num_train_epochs. Can't I just set num_train_epochs?
-Streaming dataset loading requires setting `max_steps`.
+### Q56: When using --streaming true, I get an error asking me to set max_steps when setting num_train_epochs. Can't I just set num_train_epochs?
+See the streaming parameter description, [Command Line Parameters Documentation](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html#data-arguments).
 
-### Q61: Why is tools in "[]" format rather than directly using []? Could you explain why tools uses this "[]" format instead of direct [] notation?
+### Q57: Why is tools in "[]" format rather than directly using []? Could you explain why tools uses this "[]" format instead of direct [] notation?
 This is because the underlying pyarrow in datasets has strict type control. For the same reason, the objects part in our official grounding dataset also uses str, otherwise pyarrow would report errors about inconsistent types across rows.
 
-### Q62: Can't this parameter be used? check_dataset_strategy==discard
+### Q58: Can't this parameter be used? check_dataset_strategy==discard
 This parameter no longer exists in swift3.0, use the `strict` parameter instead.
 
-### Q63: Getting this error when running sft command:
+### Q59: Getting this error when running sft command:
 ```text
 RuntimeError: Expected to mark a variable ready only once.This error is caused by one of the following reasons: 1) Use of a module parameter outsid forward function. Please make sure model parameters are not shared across multiple concurrent forward-backward passes. or try to use _set_static_graph( ) as round if this module graph does not change during training loop.2) Reused parameters in multiple reentrant backward passes. For example, if you use multiple oint` functions to wrap the same part of your model, it would result in the same set of parameters been used by different reentrant backward passes multiple and hence marking a variable ready multiple times. DDP does not support such use cases in default. You can try to use _set_static_graph( ) as a workaround if dule graph does not change over iterations.
 ```
 Add this parameter: `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`.
 
-### Q64: Have you encountered this issue? AttributeError:'TrainerState' object has no attribute 'last_model_checkpoint'
+### Q60: Have you encountered this issue? AttributeError:'TrainerState' object has no attribute 'last_model_checkpoint'
 Dataset is too small, need to add more data. Error occurs when data quantity is less than one step.
 
-### Q65: I see preprocess can be defined in CustomPreprocessor. Is this processed all at once before training starts, or loaded during training?
+### Q61: I see preprocess can be defined in CustomPreprocessor. Is this processed all at once before training starts, or loaded during training?
 If `--streaming true` is set, it loads while training. By default, it processes everything before training.
 
-### Q66: For full-parameter training of internvl2_5, why do vision_model and mlp1 appear in freeze parameters by default? Documentation shows freeze_parameters defaults to [], and command line settings for freeze vit, freeze aligner, freeze llm are all False. It prints trainable parameters: ['mlp1'] - unclear if only mlp1 is trainable or all parameters
+### Q62: For full-parameter training of internvl2_5, why do vision_model and mlp1 appear in freeze parameters by default? Documentation shows freeze_parameters defaults to [], and command line settings for freeze vit, freeze aligner, freeze llm are all False. It prints trainable parameters: ['mlp1'] - unclear if only mlp1 is trainable or all parameters
 First freeze parameters then active parameters. The three parameters `freeze vit/freeze aligner/freeze llm` adjust freeze parameters and trainable parameters. Since some models' `vit` contains `aligner`, aligner is separately added to trainable_parameters.
 
-### Q67: Does LlamaPro in swift support multimodal adaptation?
+### Q63: Does LlamaPro in swift support multimodal adaptation?
 Yes, it's supported.
 
-### Q68: I noticed 2.x supports MAX_PIXELS. Is the --max_pixel parameter in 3.x documentation the same thing? What's the processing logic? Using 12000*9000 images with internvl still crashes in 2.x even with resacle_image
+### Q64: I noticed 2.x supports MAX_PIXELS. Is the --max_pixel parameter in 3.x documentation the same thing? What's the processing logic? Using 12000*9000 images with internvl still crashes in 2.x even with resacle_image
 Environment variable parameters correspond to model parameters. `MAX_PIXELS` only supports qwen2vl, internvl has its own environment variables. See [Specific Model Parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html#specific-model-argumen).
 
-### Q69: Is there documentation for fine-tuning qwen base model to chat model? Any special configurations needed?
+### Q65: Is there documentation for fine-tuning qwen base model to chat model? Any special configurations needed?
 Use `swift sft`, no special configuration needed. See [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/base_to_chat).
 
-### Q70:  Where can I find sequence parallel examples?
+### Q66:  Where can I find sequence parallel examples?
 See this example: [sequence_parallel](https://github.com/modelscope/ms-swift/tree/main/examples/train/long_text).
 
-### Q71: Can swift support training custom model structures?
+### Q67: Can swift support training custom model structures?
 Yes, just customize the `get_model_tokenizer_xxx` function to return `model` and `tokenizer`.
 
-### Q72: Getting an error using longlora with "name_or_path": "/mnt/workspace/model/Qwen2.5-14B-Instruct". Is longlora only for llama series?
+### Q68: Getting an error using longlora with "name_or_path": "/mnt/workspace/model/Qwen2.5-14B-Instruct". Is longlora only for llama series?
 Yes, `longlora` only works with llama series.
 
-### Q73: How to add custom special tokens in swift?
+### Q69: How to add custom special tokens in swift?
 Add them in the `get_model_tokenizer` function.
 
-### Q74: For --freeze_parameters_ratio parameter, if set to 0.7, does it mean only 30% of llm parameters are updated during training? Is it random 30%? What's the update mechanism?
+### Q70: For --freeze_parameters_ratio parameter, if set to 0.7, does it mean only 30% of llm parameters are updated during training? Is it random 30%? What's the update mechanism?
 Freezes from bottom to top.
 
-### Q75: Why is the map process so slow? Is this normal?
+### Q71: Why is the map process so slow? Is this normal?
 ```text
 Map: 4%|██ | 9000/203823 [02:18<50:34, 64.19 examples/s]
 ```
 Use `--dataset_num_proc` parameter to enable multiple processes.
 
-### Q76: How can I delete and redownload a dataset? I think there might be an issue with the dataset.
+### Q72: How can I delete and redownload a dataset? I think there might be an issue with the dataset.
 Set the `--download_mode` parameter.
 
-### Q77: How to solve this error: safetensors_rust.SafetensorError: Error while deserializing header: HeaderTooLarge?
+### Q73: How to solve this error: safetensors_rust.SafetensorError: Error while deserializing header: HeaderTooLarge?
 The disk space is insufficient, and the model wasn't saved completely.
 
-### Q78: Does swift3.0 not support get_default_template_type?
+### Q74: Does swift3.0 not support get_default_template_type?
 Please check `model.model_meta.template`, the information is available in `model.model_meta` and `model.model_info`.
 
-### Q79: Does ModelScope Swift support hermes format agent fine-tuning? I see qwen2.5 uses vllm with native support for hermes format tool calling, why don't I see it in Swift?
+### Q75: Does ModelScope Swift support hermes format agent fine-tuning? I see qwen2.5 uses vllm with native support for hermes format tool calling, why don't I see it in Swift?
 Currently, `hermes` format is not supported. We mainly support `toolbench` and `react` formats, as `react` is more widely used. Swift's deploy currently supports parsing these two formats and provides `openai tool calling`.
 
-### Q80: Is the default model training using left padding?
+### Q76: Is the default model training using left padding?
 Training can use either left or right padding. The default is right padding, while `batch infer` uses left padding.
 
-### Q81: Does it support grounding tasks now?
+### Q77: Does it support grounding tasks now?
 Yes, there's an [example](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/grounding.sh) under examples.
 
-### Q82: Does ms-swift support contrastive learning for training llm_emb?
+### Q78: Does ms-swift support contrastive learning for training llm_emb?
 Yes, here's an [example](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding).
 
-### Q83: Is there a big difference in performance between manually coding fine-tuning and GRPO using peft and trl libraries compared to Swift official training with the same parameters?
+### Q79: Is there a big difference in performance between manually coding fine-tuning and GRPO using peft and trl libraries compared to Swift official training with the same parameters?
 The difference is minimal, with Swift additionally supporting multimodality.
 
-### Q84: Does Swift currently not support audio modal input training for minicpmo2_6? It shows error: assert media_type in {'image', 'video'}
+### Q80: Does Swift currently not support audio modal input training for minicpmo2_6? It shows error: assert media_type in {'image', 'video'}
 Audio is not currently supported.
 
-### Q85: Can Swift fine-tune deepseek R1 671B?
+### Q81: Can Swift fine-tune deepseek R1 671B?
 Yes, the template is integrated, but the process is complicated as it requires converting fp8 to bf16 first.
 
-### Q86: Isn't the latest Swift framework supposed to specify the model location using this command? This is the location of the model I've already downloaded, but I don't know why it still tries to download and fails with a git clone error
+### Q82: Isn't the latest Swift framework supposed to specify the model location using this command? This is the location of the model I've already downloaded, but I don't know why it still tries to download and fails with a git clone error
 ```shell
 --model /mnt/workspace/.cache/modelscope/hub/deepseek-ai/deepseek-vl2/ \
 ```
 Some models require cloning the repo and then specifying through `local_repo_path`.
 
-### Q87: Does Swift now support multimodal GRPO?
+### Q83: Does Swift now support multimodal GRPO?
 Yes, it does.
 
-### Q88: Can the GRPO reward function be customized?
+### Q84: Can the GRPO reward function be customized?
 Yes, refer to [examples/train/grpo/plugin](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin).
 
-### Q89: Why do I get the error when using --torch_dtype float16 (card cannot use bf16): lib/python3.12/site-packages/torch/amp/grad_scaler.py", line 260, in unscale_grads raise ValueError("Attempting to unscale FP16 gradients.") ValueError: Attempting to unscale FP16 gradients.
+### Q85: Why do I get the error when using --torch_dtype float16 (card cannot use bf16): lib/python3.12/site-packages/torch/amp/grad_scaler.py", line 260, in unscale_grads raise ValueError("Attempting to unscale FP16 gradients.") ValueError: Attempting to unscale FP16 gradients.
 FP16 does not support full-parameter training.
 
-### Q90: I have a question. I trained a reward model using Swift (baseline is qwen2.5-7b), but when loading it in PPO or GRPO, it shows an error. The reward model was trained using LoRA.
+### Q86: I have a question. I trained a reward model using Swift (baseline is qwen2.5-7b), but when loading it in PPO or GRPO, it shows an error. The reward model was trained using LoRA.
 ```shell
 --rlhf_type ppo \
 --model Qwen/Qwen2.5-14B-Instruct \
@@ -302,28 +290,28 @@ FP16 does not support full-parameter training.
 ```
 The LoRA-trained reward model needs to be merged.
 
-### Q91: What version of transformers is needed to fine-tune deepseek_vl2? Official docs say <4.42, but it also shows errors with 4.42 and below. Does the peft version need to be lowered too?
+### Q87: What version of transformers is needed to fine-tune deepseek_vl2? Official docs say <4.42, but it also shows errors with 4.42 and below. Does the peft version need to be lowered too?
 Use `peft==0.11.*`.
 
-### Q92: Generate train split is too slow (about 30+ datasets with around a million total data points). Previously Swift 2.x wasn't this slow. Lazy tokenize is already enabled.
+### Q88: Generate train split is too slow (about 30+ datasets with around a million total data points). Previously Swift 2.x wasn't this slow. Lazy tokenize is already enabled.
 Set `--dataset_num_proc 16`.
 
-### Q93: How can I full-parameter fine-tune the visual encoder while using LoRA to fine-tune LLM when fine-tuning qwen2.5vl?
+### Q89: How can I full-parameter fine-tune the visual encoder while using LoRA to fine-tune LLM when fine-tuning qwen2.5vl?
 Refer to this [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/lora_llm_full_vit).
 
-### Q94: How to use custom loss functions in Swift?
+### Q90: How to use custom loss functions in Swift?
 Add it in the plugin.
 
-### Q95: What are the parameters for MoE? Can't find keywords in the parameter table. How to set expert numbers and expert routing parameters?
+### Q91: What are the parameters for MoE? Can't find keywords in the parameter table. How to set expert numbers and expert routing parameters?
 Use parameters directly from `config.json`.
 
-### Q96: Using lmdeploy in grpo training reports missing functions. The load_weights function isn't found in lmdeployengine class.
+### Q92: Using lmdeploy in grpo training reports missing functions. The load_weights function isn't found in lmdeployengine class.
 Only supported under turbomind engine.
 
-### Q97: Getting errors when fine-tuning Moonlight-16B-A3B-Instruct model. Seems ms-swift doesn't support fine-tuning this model?
+### Q93: Getting errors when fine-tuning Moonlight-16B-A3B-Instruct model. Seems ms-swift doesn't support fine-tuning this model?
 Training is disabled in model files. Refer to deepseek_vl2's solution in the issues.
 
-### Q98: How to solve this error: RuntimeError: "triu_tril_cuda_template" not implemented for 'BFloat16'?
+### Q94: How to solve this error: RuntimeError: "triu_tril_cuda_template" not implemented for 'BFloat16'?
 ```shell
 CUDA_VISIBLE_DEVICES=01,2,3,4,5,6,7 \
 swift sft \
@@ -348,10 +336,7 @@ swift sft \
 ```
 Upgrade torch.
 
-### Q99: Does it support custom rewards?
-Yes, please check this [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin).
-
-### Q100: Is it normal that both loss and grad_norm are 0 during GRPO training?
+### Q95: Is it normal that both loss and grad_norm are 0 during GRPO training?
 ```text
 {'loss':    0.0.    'grad norm':0.0,    'learning_rate':9e-08,    'memory(GiB)':88.1，    'train_speed(iter/s)':0.009252，    'completion_length':    150.00000763，    'response_clip ratio': 0.0,    'rewards/Format':1.0,    'reward
 : 1.0,    'reward std':0.0，    'kl': 0.0, 'clip_ratio': 0.0,    'epoch': 0.0， 'qlobal step/max steps':'1/1052'，    'percentage':'0.10%    'elapsed time':    '36s    'remaining time': '10h 43m 54s'}
@@ -360,68 +345,105 @@ Yes, please check this [example](https://github.com/modelscope/ms-swift/tree/mai
 ```
 Training with loss close to 0 is normal, refer to this [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851).
 
-### Q101: Where can I pass in accuracy_orm for GRPO's built-in reward function?
+### Q96: Where can I pass in accuracy_orm for GRPO's built-in reward function?
 Currently it requires modifying the code directly.
 
-### Q102: I notice the reward function has a solution parameter, does it need to be passed from the dataset? Does my dataset must have a solution field?
+### Q97: I notice the reward function has a solution parameter, does it need to be passed from the dataset? Does my dataset must have a solution field?
 Yes, it's necessary for math problems to calculate accuracy.
 
-### Q103: Why is there no token_acc during training?
+### Q98: Why is there no token_acc during training?
 Some models have mismatched `logits` and `labels` counts, so token accuracy isn't calculated.
 
-### Q104: When fine-tuning Ovis2, LoRA parameters don't seem to work? Memory usage doesn't change with or without --train_type lora.
+### Q99: When fine-tuning Ovis2, LoRA parameters don't seem to work? Memory usage doesn't change with or without --train_type lora.
 Limit `--max_length`, this model is special and needs padding to max_length.
 
-### Q105: Getting ValueError when running classification task with Qwen2.5: The model did not return a loss from the inputs, only the following keys: logits. For reference, the inputs it received are input_ids,attention_mask.
+### Q100: Getting ValueError when running classification task with Qwen2.5: The model did not return a loss from the inputs, only the following keys: logits. For reference, the inputs it received are input_ids,attention_mask.
 dataset format: {"messages": [{"role": "user", "content": "xxxxx"}, {"label": 1}]}
 Put `label` at the same level as `messages`, not inside it.
 
-### Q106: Does anyone know what's wrong with this? The training method is VERA
-```text
-KeyError("The 'metric_for_best_model' training argument is set to 'eval_loss', which is not found in the evaluati on metrics. The available evaluation metrics are:['eval_runtime', 'eval_samples_per_second', 'eval_steps_per_sec ond', 'epoch', 'global_step/max_steps', 'percentage', 'elapsed_time', 'remaining_time']. consider changing the 'metric_for_best_model' via the TrainingArguments.")
-Train: 45%|    100/220[09:47<11:44，5.87s/it]
-```
-```shell
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-swift sft \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --dataset '/mnt/workspace/data.json' \
-    --train_type vera \
-    --torch_dtype bfloat16 \
-    --num_train_epochs 4 \
-    --per_device_train_batch_size 1 \
-    --learning_rate 1e-4 \
-    --gradient_accumulation_steps 16 \
-    --eval_steps 100 \
-    --save_steps 100 \
-    --save_total_limit 5 \
-    --logging_steps 5 \
-    --max_length 4096 \
-    --warmup_ratio 0.05 \
-    --output_dir output/Qwen2.5-7B-vera \
-```
-Add `--label_names labels` parameter.
-
-### Q107: How to exit VllmEngine? I want to release GPU memory after inference rather than keeping it occupied.
+### Q101: How to exit VllmEngine? I want to release GPU memory after inference rather than keeping it occupied.
 Use sleep mode: `engine.sleep(level=1)/engine.wake_up()` with `enable_sleep_mode=True` during initialization.
 
-### Q108: Does trainer_sampler_random have no effect in streaming mode?
+### Q102: Does trainer_sampler_random have no effect in streaming mode?
 Streaming is not random.
 
-### Q109: Can trust_remote_code be set when using VLLM for GRPO training?
+### Q103: Can trust_remote_code be set when using VLLM for GRPO training?
 It's true by default.
 
-### Q110: For large dataset pretraining using streaming and packing, is there a way to calculate total steps based on epochs, batch size etc when setting max_steps?
-Training will end based on whichever is smaller between `epochs` and `max_steps`.
+### Q104: For large dataset pretraining using streaming and packing, is there a way to calculate total steps based on epochs, batch size etc when setting max_steps?
+Set `--max_steps` or `--max_epochs`. For more details, see the streaming parameter description in the [Command Line Parameters Documentation](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html#data-arguments).
 
-### Q111: Unsloth training error: "assert(type(target modules) in (list,tuple,))" when using --target_modules all-linear
+### Q105: Unsloth training error: "assert(type(target modules) in (list,tuple,))" when using --target_modules all-linear
 Don't use `all-linear`, specify concrete module list like `--target_modules q k v`.
 
-### Q112: Does Swift support multi-label classification now?
+### Q106: Does Swift support multi-label classification now?
 Yes. Check custom dataset docs for format and search for `problem_type` in command line parameter docs.
 
-### Q113: How does flash_attn handle packing - separately or merged?
+### Q107: How does flash_attn handle packing - separately or merged?
 Flash attention is required to avoid errors, otherwise attention_mask will have issues.
+
+### Q108: For qwen2.5-omni, does setting --freeze_vit false mean both the visual encoder and the audio encoder are enabled? Is there a way to enable only the audio encoder without enabling the visual encoder?
+Use `--target_regex`.
+
+### Q109: Does swift currently support sequence parallelism for those reinforcement learning training methods?
+It supports pt, sft, dpo, and grpo.
+
+### Q110: After using lora sft, is tokenizer.json not saved?
+Lora doesn't save it; it is migrated after merging because the lora directory needs to work with the original model.
+
+### Q111: Can the reward_model and reward_funcs of GRPO be used together?
+Yes, they can.
+
+### Q112: I want to ask if there is a parameter that can be adjusted to avoid introducing the KL term in GRPO?
+Search for `beta` in the command line parameters.
+
+### Q113: When doing GRPO, how can I access the original labels in the orm custom reward function? I printed the messages field in kwargs, and the value of assistant's content in each item is replaced by the generated result.
+Place it in another column.
+
+### Q114: If you use the default num_iterations=1, does clip become ineffective? The clip higher in dapo is also useless. I see that veRL has a micro batch setting to update the policy model in small batches for the clip term to take effect. In ms-swift, it seems mini batch only does gradient accumulation according to the source code?
+Yes, num_iterations needs to be >1.
+
+### Q115: Does qwen2.5-omni training support full parameter training, and does it support talker training?
+Currently, it does not support talker training, only thinker.
+
+### Q116: Can sequence parallel be enabled at the same time as the liger kernel?
+Yes, it can.
+
+### Q117: What are the requirements for rm and policy in ppo training?
+PPO currently only supports rm and policy being from the same model series (tokenizer/template).
+
+### Q118: I want to use the 3.2 1B model for fine-tuning because llama3.1 doesn't have models smaller than 8B. Can I still use the Llama-3.1 reward model?
+The requirement is that template and tokenizer must be the same, so 3.1 and 3.2 should be fine.
+
+### Q119: Can swift cache a mapped version of data for troubleshooting training data issues?
+Set `--load_from_cache_file false`.
+
+### Q120: Why is there a warning: none of the inputs have requires_grad=True during full parameter training?
+If vit is not being trained, getting this warning is normal; if it is being trained, then it should not occur.
+
+### Q121: Does qwen2.5vl ulysses currently support sdpa?
+The vl model currently only supports flash-attn, but both are supported for pure text.
+
+### Q122: Is the image list format for videos now supported? The format is as follows:
+```json
+{"messages": [{"role": "assistant", "content": "<video>是一只狮子在跑步"}], "videos": [["1.jpg","2.jpg"]]}
+```
+It is supported, using the file directory method.
+
+### Q123: In the grpo script, does save_steps refer to step or global step? The local training shows a global step of 18, while wandb shows a step of 628.
+It refers to global_step, as shown by local tqdm.
+
+### Q124: Can use_logits_to_keep be used on large multimodal models now?
+If the expansion of multimodal tokens occurs within the model's forward, it will cause an error.
+
+### Q125: Why does memory increase significantly multiple times during training, even after 50 or 100 steps?
+Set the environment variable `PYTORCH_CUDA_ALLOC_CONF`, and check the torch documentation for details.
+
+### Q126: With the packing_cache parameter set, I am encountering errors when training on multiple machines, even after setting the folder path. Are there any special requirements?
+The path must be set to a shared disk directory.
+
+### Q127: For Qwen3, are there differences in datasets and parameter settings between non-thinking and thinking modes?
+Check this [issue](https://github.com/modelscope/ms-swift/issues/4030).
 
 ## Inference
 
@@ -556,6 +578,41 @@ CUDA_VISIBLE_DEVICES=0 NPROC_PER_NODE=1 MAX_PIXELS=1003520 swift sft --model Qwe
 ```
 The assistant field in the dataset is empty. If this is for inference, delete this empty string because it will cause NaN during training and will be checked.
 
+### Q35: Inference error, ImportError: cannot import name 'shard_checkpoint' from 'transformers.modeling_utils' (/usr/local/lib/python3.10/dist-packages/transformers/modeling_utils.py)
+Try uninstalling autoawq.
+
+### Q36: When using swift sample, it seems that batch processing is not supported? It appears to sample examples one by one in a loop, which is somewhat slow.
+There is a [script](https://github.com/modelscope/ms-swift/blob/main/examples/train/rft/rft.py) that can use multiprocessing to split and sample the dataset.
+
+### Q37: Does swift support inference of embedding models? The following error occurred:
+```text
+[rank0]:[W511 17:18:01.815062493ProcessGroupNCCL.cpp:1250]Warning: WARNING: process group has NOT been destroyed before we destruct ProcessGroupNCCL. On normal program exit, the application should call destroy_process_group to ensure that any pending NCCL operations have finished in this process. In rare cases this process can exit before this point and block the progress of another member of the process group. This constraint has always been present, but this warning has only been added since PyTorch 2.4 (function operator( ))
+```
+For embedding model inference, please use the official model code, as swift does not yet support it.
+
+### Q38: Does the swift framework support model or tensor parallelism for inference? There is no OOM during training, but OOM occurs during inference.
+```shell
+CUDA_VISIBLE_DEVICES=0,1 \
+MAX_PIXELS=1003520 \
+swift infer \
+    --adapters /path/to/checkpoint-xxx \
+    --merge_lora true \
+    --infer_backend vllm \
+    --load_data_args true \
+    --gpu_memory_utilization 0.9 \
+    --tensor_parallel_size 2 \
+    --max_model_len 32768 \
+    --max_new_tokens 15536 \
+    --limit_mm_per_prompt '{"image": 8, "video": 2}'
+```
+```text
+Failed: Cuda error /workspace/csrc/custom_all_reduce.cuh:368 'invalid argument'
+```
+Add the option `--disable_custom_all_reduce true`.
+
+### Q39: Does streaming inference support DDP?
+Streaming does not support DDP.
+
 ## Deployment
 
 ### Q1: How to deploy a trained model?
@@ -570,7 +627,7 @@ See [client examples](https://github.com/modelscope/ms-swift/tree/main/examples/
 ### Q4: I have a question about deploying qwen2-7b and using it with a client. When calling the OpenAI API, should I use `client.completions.create` instead of `client.chat.completions.create`, but when using `qwen2-7b-instruct-q5_k_m.gguf`, I can use `client.chat.completions.create`. Why is that?
 The base model can use `client.chat.completions.create`, but this is a compatibility behavior.
 
-### Q5: Q5: After launching the server with swift deploy using two cards, when I exit with Ctrl+C, there is always a Python process that continues to occupy the memory of one card. Is this a normal phenomenon?
+### Q5: After launching the server with swift deploy using two cards, when I exit with Ctrl+C, there is always a Python process that continues to occupy the memory of one card. Is this a normal phenomenon?
 You may need to kill it. This is an issue with vllm.
 
 ### Q6: Where to check if a model supports lmdeploy or vllm acceleration?
@@ -608,6 +665,15 @@ Check this [client example](https://github.com/modelscope/ms-swift/blob/main/exa
 
 ### Q15: When deploying, which parameter should be set to output multiple results in a single response?
 The parameter `n` in `RequestConfig`.
+
+### Q16: When deploying using swift deploy with the parameter --infer_backend vllm, the performance was nearly 10 points worse compared to deploying directly with vllm: vllm serve. Does anyone know the reason for this?
+It's likely that the template did not match.
+
+### Q17: How can I disable the deep thinking mode of qwem3 in the deployment command?
+Check this [issue](https://github.com/modelscope/ms-swift/issues/4030).
+
+### Q18: When I use ms-swift for vllm deployment inference, it is much slower compared to native vllm. Is this a problem with the swift framework?
+The main branch should be using the V1 engine by default. Try adding `VLLM_USE_V1=1`. Also, make sure to align the image resolution.
 
 ## Evaluation
 
@@ -712,5 +778,38 @@ eval_backend: OpenCompass supported datasets: ['C3', 'summedits', 'WiC', 'csl', 
 ```
 OpenCompass doesn't support custom datasets; use native mode for custom datasets.
 
-### Q20: When I run the RAGAS evaluation task from the evalscope official documentation (https://evalscope.readthedocs.io/zh-cn/latest/user_guides/backend/rageval_backend/ragas.html) locally on a single A100, it takes 10 minutes to run the two examples in the documentation. Is this normal? Are there ways to optimize the running speed?
+### Q20: When I run the [RAGAS evaluation task](https://evalscope.readthedocs.io/zh-cn/latest/user_guides/backend/rageval_backend/ragas.html) from the evalscope official documentation locally on a single A100, it takes 10 minutes to run the two examples in the documentation. Is this normal? Are there ways to optimize the running speed?
 RAG evaluation itself is resource-intensive, and using a local critic LLM will indeed be slower as it can't handle batch requests. It's recommended to use frameworks like vllm to launch tasks.
+
+### Q21: I'm using evalscope to evaluate RAG, but I also want to use the API method to call the embedded model. Is this supported? I don't see it mentioned in the documentation.
+Currently, embedding models do not support API calls, but this will be supported in the future.
+
+### Q22: When testing a locally trained model using evalscope, the output for the test data is very simple, but the data was constructed in an inferential way during model training, leading to lower test results. How can evalscope be used to test only the data within xxx from the model's output?
+Set `{"filters": {"remove_until": "</think>"}}` in dataset-args, and refer to this [documentation](https://evalscope.readthedocs.io/en/latest/get_started/parameters.html#dataset-parameters). Setting this parameter will remove `<think>` when calculating metrics.
+
+### Q23: Evalscope can natively generate reports, but other backends like OpenCompass do not support report visualization, correct?
+Currently, only native visualization is supported; other backends are not yet supported.
+
+### Q24: Could you explain what causes the following error when using ifeval for evaluation?
+```text
+[Errno 20] Not a directory: '/root/nltk_data/tokenizers/punkt_tab.zip/punkt_tab/english/collocations.tab'
+```
+Unzip the file using `unzip /path/to/nltk_data/tokenizers/punkt_tab.zip`.
+
+### Q25: When evaluating with eval_backend='OpenCompass', how can I specify the path to offline datasets?
+Check the [data preparation guide](https://evalscope.readthedocs.io/en/latest/user_guides/backend/opencompass_backend.html#data-preparation), download and unzip the dataset. You don't need to specify `dataset-args`; just place the dataset folder (the data folder) in the current working directory.
+
+### Q26: What causes the following error when using evalscope?
+```text
+unzip: cannot find or open /root/nltk_data/tokenizers/punkt_tab.zip, /root/nltk_data/tokenizers/punkt_tab.zip.zip or /root/nltk_data/tokenizers/punkt_tab.zip.ZIP
+```
+This occurs during the download of nltk dependencies. Manually download [punkt_tab.zip](https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/open_data/nltk_data/punkt_tab.zip) and unzip it under `~/nltk_data/tokenizers`.
+
+### Q27: Why is there no issue with plain text, but when testing multi-modal data, even though we specify the path, it still fails to detect the dataset and attempts to download it?
+The vlmevalkit process differs from native; it will automatically download data to `~/LMUData/`.
+
+### Q28: Could you explain how the score in evalscope is calculated? Is there any documentation about this part?
+Please refer to this [issue](https://github.com/modelscope/evalscope/issues/610).
+
+### Q29: When using swift eval for benchmark evaluation, can I specify an llm as a judge and how should I pass in the parameters?
+Yes, you can use swift to pass `judge-model-args` parameters from `extra_eval_args`, which include `api_key, api_url, and model_id`, as a JSON string.
