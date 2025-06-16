@@ -543,8 +543,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.multi_turn_scheduler:
             # process image to the format that post can accept
             inputs = self._process_infer_requests_images(inputs)
-            multi_turn_kwargs = RowPreprocessor.rows_to_batched(inputs)
-            infer_inputs['data_dict'] = multi_turn_kwargs
+            multi_turn_kwargs: Dict = RowPreprocessor.rows_to_batched(inputs)
+            for i, inputs in enumerate(infer_inputs):
+                inputs['data_dict'] = {}
+                for k in multi_turn_kwargs.keys():
+                    inputs['data_dict'][k] = multi_turn_kwargs[k][i]
 
         if self.vllm_mode == 'server':
             # for server mode, we gather all the inputs and send to remote vllm server in main process
@@ -666,23 +669,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     _choices.append((_input['messages'], choice.finish_reason))
                 outputs.append(_choices)
         else:
-            import asyncio
-
-            async def task_run(single_request):
-
-                while True:
-                    result = self._engine_infer(single_request)
-                    finished = self.multi_turn_func.check_finished(result)
-                    if finished:
-                        break
-                    single_request = self.multi_turn_func.step(...)
-
-            async def _run(requests):
-                tasks = [task_run(single_request) for single_request in requests]
-                return await asyncio.gather(*tasks)
-
-            resp_list = asyncio.run(_run())
-            pass
+            pass # TODO: reverse and compatible with scheduler
         # flatten 2D list to 1D list
         outputs = [item for sublist in outputs for item in sublist]
         return outputs

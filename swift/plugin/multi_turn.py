@@ -68,7 +68,7 @@ class MathTipsScheduler(MultiTurnScheduler):
 
     def check_finished(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoiceWithHistory,
                        current_turn: int) -> bool:
-        completion = result.message[-1]['content']
+        completion = result.message.content
         # we only give tips once
         if self.tips_prompt in completion:
             return True
@@ -82,7 +82,7 @@ class MathTipsScheduler(MultiTurnScheduler):
 
     def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoiceWithHistory,
              current_turn: int, **kwargs) -> RolloutInferRequest:
-        completion = result.message[-1]['content']
+        completion = result.message.content
         if '<answer>' in completion:
             completion = completion[:completion.index('<answer>')]
         if '</think>' in completion:
@@ -99,12 +99,12 @@ class MathTipsMultiTurnScheduler(MultiTurnScheduler):
 
     def check_finished(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoiceWithHistory,
                        current_turn: int) -> bool:
-        query = result.message[-2]['content']
+        history = result.history
         # we only give tips once
-        if self.tips_prompt in query:
+        if self.tips_prompt in history:
             return True
 
-        completion = result.message[-1]['content']
+        completion = result.message.content
         solution = infer_request.data_dict['solution']
         acc = self.acc_func([completion], [solution])[0]
         if acc == 1:
@@ -114,7 +114,7 @@ class MathTipsMultiTurnScheduler(MultiTurnScheduler):
 
     def step(self, infer_request: RolloutInferRequest, result: ChatCompletionResponseChoiceWithHistory,
              **kwargs) -> RolloutInferRequest:
-        completion = result.message[-1]['content']
+        completion = result.message.content
         infer_request.messages.append(
             {
                 'role': 'assistant',
