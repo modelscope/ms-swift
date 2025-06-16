@@ -88,8 +88,6 @@ class MegatronDPOTrainer(MegatronTrainer):
         ref_model = unwrap_model(self.ref_model)
         with self.stimer(bdata=True):
             data = get_batch(data_iterator)
-        if not data:
-            raise StopIteration
         labels = data.get('labels')
         with torch.no_grad():
             output_tensor = self._forward_step_helper(ref_model, data)

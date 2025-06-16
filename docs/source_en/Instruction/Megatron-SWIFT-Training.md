@@ -116,6 +116,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 - For pretraining, you can use `megatron pt` instead of `megatron sft`, which will use a generative template for training.
 - **More examples**: Including packing, multi-node training, 32K context, DPO, MoE models, and pre-training, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
+- The custom dataset format is the same as `ms-swift`. Refer to the [custom dataset documentation](../Customization/Custom-dataset.md).
 
 ## Benchmark
 The speed comparison of full-parameter training for Dense/MoE models using `megatron sft` and `swift sft` on a single machine with eight A800 GPUs is shown below. The corresponding scripts can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/benchmark).
@@ -167,6 +168,9 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padded tokens in the global batch. Default is True.
 - 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Defaults to auto.
 - optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
+- optimizer_cpu_offload: Offloads the optimizer state to CPU. Default is `False`.
+- optimizer_offload_fraction: The fraction of the optimizer state to offload to CPU. Default is `1.0`.
+- use_precision_aware_optimizer: Use the precision-aware optimizer in TransformerEngine, which allows setting the main parameters and optimizer states to lower precision, such as fp16 and fp8.
 - dataloader_type: Default is 'cyclic', options are 'single', 'cyclic', 'external'. If `--streaming` is enabled, set it to external.
 - manual_gc: Disables the default garbage collector and manually triggers garbage collection. Default is False.
 - manual_gc_interval: Interval at which garbage collection is triggered. Default is 0.
@@ -183,7 +187,8 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - 🔥lr: Initial learning rate, which will ultimately determine the learning rate for each iteration based on the warm-up and decay strategy, default is 1e-5.
 - lr_decay_style: Learning rate decay strategy, default is 'cosine'. Commonly set to 'cosine', 'linear', or 'constant'.
 - 🔥lr_decay_iters: Number of iterations for learning rate decay. Default is None, meaning it will be set to `--train_iters`.
-- 🔥lr_warmup_iters: Number of iterations for linear learning rate warm-up, default is 0.
+- lr_warmup_iters: Number of iterations for linear learning rate warm-up, default is 0.
+- 🔥lr_warmup_fraction: The fraction of the linear learning rate warmup phase, defaults to None.
 - 🔥min_lr: Minimum value of the learning rate, clipping any learning rate below this threshold to this value, default is 0.
 
 **Regularization Parameters**:
@@ -330,5 +335,5 @@ Megatron training parameters inherit from Megatron parameters and basic paramete
 In addition to inheriting the training parameters, the following parameters are also supported:
 
 - rlhf_type: Default is 'dpo'. Currently, only 'dpo' is available.
-- loss_scale: Overrides the `loss_scale` in [basic parameters](https://idealab.alibaba-inc.com/command_line_arguments.md). Default is 'last_round'.
+- loss_scale: Overrides the `loss_scale` in [basic parameters](./Command-line-parameters.md). Default is 'last_round'.
 - calculate_per_token_loss: Overrides the Megatron parameter. Default is False.

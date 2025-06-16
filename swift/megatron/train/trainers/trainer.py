@@ -42,7 +42,7 @@ class MegatronTrainer:
             if args.train_iters is None and args.max_epochs is not None:
                 if hasattr(train_dataset, '__len__'):
                     dataset_sample = len(train_dataset) // step_batch_size * step_batch_size
-                    args.train_iters = (dataset_sample * args.max_epochs // args.global_batch_size) + 1
+                    args.train_iters = dataset_sample * args.max_epochs // args.global_batch_size
                 else:
                     raise ValueError(
                         'You are using a streaming training dataset. Please explicitly specify `--train_iters`.')
@@ -62,18 +62,30 @@ class MegatronTrainer:
             training.initialize_megatron = origin_initialize_megatron
 
     @staticmethod
-    def new_cyclic_iter(it):
+    def new_cyclic_iter(iterable):
         args = get_args()
-        max_epochs = args.max_epochs
         i = 0
         while True:
-            if getattr(args, 'is_training', False):
-                if max_epochs and i >= max_epochs:
-                    logger.info(f'Training of {i} epochs has been completed, the training has finished.')
-                    break
+            is_training = getattr(args, 'is_training', False)
+            if is_training:
                 logger.info(f'The training of Epoch {i} starts...')
-            for x in it:
-                yield x
+            if is_training and args.max_epochs and i >= args.max_epochs - 1:
+                it = iter(iterable)
+                num_batches = args.global_batch_size // (args.micro_batch_size * args.data_parallel_size)
+                x = [next(it) for _ in range(num_batches)]
+                while True:
+                    try:
+                        next_x = [next(it) for _ in range(num_batches)]
+                    except StopIteration:
+                        break
+                    yield from x
+                    x = next_x
+                logger.info(f'Training of {i + 1} epochs has been completed, the training has finished.')
+                args.train_iters = args.curr_iteration + 1
+                yield from x
+            else:
+                for x in iterable:
+                    yield x
             i += 1
 
     @staticmethod
@@ -91,12 +103,9 @@ class MegatronTrainer:
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         with self._training_context():
-            try:
-                data_iterator = self._replace_data_iterator(data_iterator)
-                return self._origin_train_step(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler,
-                                               config)
-            except StopIteration:
-                return {}, True, True, True, 0, None, None
+            data_iterator = self._replace_data_iterator(data_iterator)
+            return self._origin_train_step(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler,
+                                           config)
 
     # Code borrowed from NVIDIA/Megatron-LM
     def evaluate(self,
@@ -331,8 +340,6 @@ class MegatronTrainer:
         timers('batch-generator', log_level=2).start()
         with self.stimer(bdata=True):
             data = get_batch(data_iterator)
-        if not data:
-            raise StopIteration
         timers('batch-generator').stop()
 
         with self.stimer:
