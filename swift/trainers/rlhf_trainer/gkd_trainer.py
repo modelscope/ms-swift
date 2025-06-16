@@ -51,7 +51,7 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
         model_inputs = {k: v for k, v in inputs.items() if not k.startswith('prompt') and k != 'labels'}
         model_inputs['input_ids'] = inputs['prompts']
         model_inputs.update({k[len('prompt_'):]: v for k, v in inputs.items() if k.startswith('prompt_')})
-
+        model_inputs.pop('position_ids', None)
         kwargs = {}
         base_model = self.template.get_base_model(model)
         parameters = inspect.signature(base_model.generate).parameters
@@ -141,5 +141,5 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
             inputs['input_ids'] = new_input_ids
             inputs['attention_mask'] = new_attention_mask
             inputs['labels'] = new_labels
-        loss = super().training_step(model, inputs, num_items_in_batch)
+        loss = HFSFTTrainer.training_step(model, inputs, num_items_in_batch)
         return loss
