@@ -28,6 +28,7 @@ class LLMTemplateType:
     sus = 'sus'
 
     minimax = 'minimax'
+    minimax_m1 = 'minimax_m1'
     minimax_vl = 'minimax_vl'
 
     numina = 'numina'

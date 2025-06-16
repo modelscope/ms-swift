@@ -225,6 +225,8 @@ class MegatronArguments(ExtraMegatronArguments):
             os.environ['NVTE_APPLY_QK_LAYER_SCALING'] = '1'
 
     def _init_moe(self):
+        if self.num_experts is None:
+            return
         if self.moe_shared_expert_intermediate_size == 0:
             self.moe_shared_expert_intermediate_size = None
         if self.moe_ffn_hidden_size is None:

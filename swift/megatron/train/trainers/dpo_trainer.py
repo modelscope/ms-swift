@@ -146,11 +146,10 @@ class MegatronDPOTrainer(MegatronTrainer):
         torch.distributed.all_reduce(
             reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())
         reporting_metric = {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
-        return (
-            # fix megatron-lm bug
-            # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
-            loss / mpu.get_context_parallel_world_size(),
-            reporting_metric)
+        # fix megatron-lm bug
+        # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
+        loss = loss / mpu.get_context_parallel_world_size()
+        return (loss, reporting_metric)
 
     def _replace_data_iterator(self, data_iterator):
         args = get_args()
