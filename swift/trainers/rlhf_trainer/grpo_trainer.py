@@ -573,7 +573,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:
                 results = results if self.accelerator.is_main_process else []
         else:
-            # pt / vllm
+            # pt / vllm colocate
             if self.vllm_tensor_parallel_size > 1:
                 # Gather prompts from all ranks in the TP group and flatten.
                 # Each rank starts with its own prompts; after gathering, all ranks see the full group set.
