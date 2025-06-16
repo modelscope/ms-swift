@@ -125,8 +125,9 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         from swift.llm import RequestConfig, InferRequest
         data_list = inputs['_data']
         labels_list = [InferRequest.remove_response(data['messages']) for data in data_list]
-        with unwrap_model_for_generation(self.model_wrapped, self.accelerator,
-                                         self.args.gather_deepspeed3_params), self.template.generate_context():
+        with unwrap_model_for_generation(
+                self.model_wrapped, self.accelerator,
+                gather_deepspeed3_params=self.args.ds3_gather_for_generation), self.template.generate_context():
             resp_list = self.infer_engine.infer(
                 data_list,
                 RequestConfig(max_tokens=self.model.generation_config.max_new_tokens),

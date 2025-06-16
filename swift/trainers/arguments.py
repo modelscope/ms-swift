@@ -49,7 +49,7 @@ class TrainArgumentsMixin:
     optimizer: Optional[str] = None
     use_logits_to_keep: Optional[bool] = None
     channels: List[str] = None
-    gather_deepspeed3_params: bool = False
+    ds3_gather_for_generation: bool = True
 
     # torchacc
     metric_warmup_step: Optional[float] = 0
