@@ -116,6 +116,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 - For pretraining, you can use `megatron pt` instead of `megatron sft`, which will use a generative template for training.
 - **More examples**: Including packing, multi-node training, 32K context, DPO, MoE models, and pre-training, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
+- The custom dataset format is the same as `ms-swift`. Refer to the [custom dataset documentation](../Customization/Custom-dataset.md).
 
 ## Benchmark
 The speed comparison of full-parameter training for Dense/MoE models using `megatron sft` and `swift sft` on a single machine with eight A800 GPUs is shown below. The corresponding scripts can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/benchmark).
@@ -334,5 +335,5 @@ Megatron training parameters inherit from Megatron parameters and basic paramete
 In addition to inheriting the training parameters, the following parameters are also supported:
 
 - rlhf_type: Default is 'dpo'. Currently, only 'dpo' is available.
-- loss_scale: Overrides the `loss_scale` in [basic parameters](https://idealab.alibaba-inc.com/command_line_arguments.md). Default is 'last_round'.
+- loss_scale: Overrides the `loss_scale` in [basic parameters](./Command-line-parameters.md). Default is 'last_round'.
 - calculate_per_token_loss: Overrides the Megatron parameter. Default is False.

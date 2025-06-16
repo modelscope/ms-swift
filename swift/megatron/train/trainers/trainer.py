@@ -42,7 +42,7 @@ class MegatronTrainer:
             if args.train_iters is None and args.max_epochs is not None:
                 if hasattr(train_dataset, '__len__'):
                     dataset_sample = len(train_dataset) // step_batch_size * step_batch_size
-                    args.train_iters = (dataset_sample * args.max_epochs // args.global_batch_size) + 1
+                    args.train_iters = dataset_sample * args.max_epochs // args.global_batch_size
                 else:
                     raise ValueError(
                         'You are using a streaming training dataset. Please explicitly specify `--train_iters`.')
@@ -62,19 +62,27 @@ class MegatronTrainer:
             training.initialize_megatron = origin_initialize_megatron
 
     @staticmethod
-    def new_cyclic_iter(it):
+    def new_cyclic_iter(iterable):
         args = get_args()
         max_epochs = args.max_epochs
         i = 0
         while True:
             if getattr(args, 'is_training', False):
-                if max_epochs and i >= max_epochs:
-                    logger.info(f'Training of {i} epochs has been completed, the training has finished.')
-                    break
                 logger.info(f'The training of Epoch {i} starts...')
-            for x in it:
+            it = iter(iterable)
+            x = next(it)
+            while True:
+                try:
+                    next_x = next(it)
+                except StopIteration:
+                    break
                 yield x
+                x = next_x
             i += 1
+            if max_epochs and i >= max_epochs:
+                logger.info(f'Training of {i} epochs has been completed, the training has finished.')
+                args.train_iters = args.iteration + 1
+            yield x
 
     @staticmethod
     @contextmanager

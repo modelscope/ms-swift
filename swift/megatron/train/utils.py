@@ -5,7 +5,6 @@ import torch
 from megatron.core import mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.training import get_args, get_timers
-from megatron.training.training import cyclic_iter
 
 from swift.llm import DataLoaderDispatcher
 
@@ -34,6 +33,7 @@ class MegatronDataLoaderDispatcher(DataLoaderDispatcher):
 
 
 def build_streaming_dataloader(args, dataset, collate_fn):
+    from megatron.training.training import cyclic_iter
     base_dataloader = torch.utils.data.DataLoader(
         dataset,
         num_workers=args.num_workers,
