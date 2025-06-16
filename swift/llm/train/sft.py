@@ -255,6 +255,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             elif hasattr(train_dataset, '__len__'):
                 # Avoid the random mismatch issue in LazyLLMDataset.
                 inputs = train_dataset[0]
+            if val_dataset is not None and hasattr(val_dataset, '__len__') and len(val_dataset) == 0:
+                val_dataset = None
             if isinstance(train_dataset, (HfDataset, PackingDataset)):
                 self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
                 if val_dataset is not None and not predict_with_generate:
