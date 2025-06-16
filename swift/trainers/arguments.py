@@ -224,7 +224,7 @@ class GRPOArgumentsMixin:
     gc_collect_after_offload: bool = False
 
     # multi turn
-    multi_turn_func: Optional[str] = None
+    multi_turn_scheduler: Optional[str] = None
     max_turns: Optional[int] = None
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
 

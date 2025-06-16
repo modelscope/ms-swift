@@ -187,7 +187,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
             'revision': args.model_revision,
             'torch_dtype': args.torch_dtype,
             'use_async_engine': args.use_async_engine,
-            'multi_turn': args.multi_turn_func,
+            'multi_turn_scheduler': args.multi_turn_scheduler,
             'max_turn': args.max_turns
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend

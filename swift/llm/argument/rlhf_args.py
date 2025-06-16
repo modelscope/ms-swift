@@ -247,7 +247,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             self.vllm_tensor_parallel_size = 1
             logger.warning('set vllm_tensor_parallel_size to 1 since use_vllm false')
 
-        if self.async_generate and self.multi_turn_func is not None:
+        if self.async_generate and self.multi_turn_scheduler is not None:
             raise NotImplementedError('Currently, async_generate is not supported with multi-turn functionality.')
 
         if self.generation_batch_size or self.steps_per_generation:

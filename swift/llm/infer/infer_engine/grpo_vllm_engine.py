@@ -88,16 +88,17 @@ class GRPOVllmEngine(VllmEngine):
             engine_kwargs=engine_kwargs,
             template=template,
         )
-        self.max_turns = kwargs.get('max_turns', 3)
+        self.max_turns = kwargs.get('max_turns')
 
-        multi_turn_func: Union[MultiTurnScheduler, str] = kwargs.get('multi_turn_func', None)
-        if multi_turn_func:
-            if isinstance(multi_turn_func, str):
-                assert multi_turn_func in multi_turns
-                self.multi_turn_scheduler: MultiTurnScheduler = multi_turns[multi_turn_func](max_turns=self.max_turns)
+        multi_turn_scheduler: Union[MultiTurnScheduler, str] = kwargs.get('multi_turn_scheduler', None)
+        if multi_turn_scheduler:
+            if isinstance(multi_turn_scheduler, str):
+                assert multi_turn_scheduler in multi_turns
+                self.multi_turn_scheduler: MultiTurnScheduler = multi_turns[multi_turn_scheduler](
+                    max_turns=self.max_turns)
             else:
-                assert isinstance(multi_turn_func, MultiTurnScheduler)
-                self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_func
+                assert isinstance(multi_turn_scheduler, MultiTurnScheduler)
+                self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_scheduler
         else:
             self.multi_turn_scheduler = None
 
@@ -141,7 +142,11 @@ class GRPOVllmEngine(VllmEngine):
 
             while True:
                 result = await self.infer_async(current_request, request_config, **kwargs)
-                should_stop = self.multi_turn_scheduler.check_finished(current_request, result, current_turn)
+
+                if self.multi_turn_scheduler:
+                    should_stop = self.multi_turn_scheduler.check_finished(current_request, result, current_turn)
+                else:
+                    should_stop = True
 
                 if should_stop:
                     return result

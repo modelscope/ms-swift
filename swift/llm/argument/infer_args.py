@@ -133,7 +133,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     val_dataset_sample: Optional[int] = None
 
     # only for GRPO rollout with AsyncEngine, see details in swift/plugin/multi_turn
-    multi_turn_func: Optional[str] = None
+    multi_turn_scheduler: Optional[str] = None
     max_turns: Optional[int] = None
 
     def _get_result_path(self, folder_name: str) -> str:

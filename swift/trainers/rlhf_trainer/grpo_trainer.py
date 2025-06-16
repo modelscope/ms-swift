@@ -154,14 +154,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         else:
             self.reward_weights = torch.ones(len(reward_funcs), dtype=torch.float32)
 
-        self.multi_turn_func = None
-        if self.args.multi_turn_func:
-            if isinstance(self.args.multi_turn_func, str):
-                assert self.args.multi_turn_func in multi_turns
-                multi_turn_func = multi_turns[self.args.multi_turn_func]
-                self.multi_turn_func = multi_turn_func
+        self.multi_turn_scheduler = None
+        if self.args.multi_turn_scheduler:
+            if isinstance(self.args.multi_turn_scheduler, str):
+                assert self.args.multi_turn_scheduler in multi_turns
+                multi_turn_scheduler = multi_turns[self.args.multi_turn_scheduler](self.args.max_turns)
+                self.multi_turn_scheduler = multi_turn_scheduler
             else:
-                self.multi_turn_func = self.args.multi_turn_func
+                self.multi_turn_scheduler = self.args.multi_turn_scheduler
 
         self.num_generations = args.num_generations
         self.temperature = args.temperature
@@ -449,7 +449,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template.set_mode('train')
         template.max_length = None
         loss_scale = template.loss_scale
-        if self.multi_turn_func:
+        if self.multi_turn_scheduler:
             template.loss_scale = loss_scale_map['default']()
         try:
             yield
@@ -539,6 +539,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             k: v
             for k, v in inp.items() if k in ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
         } for inp in inputs] if inputs else []
+
+        if self.multi_turn_scheduler:
+            # process image to the format that post can accept
+            inputs = self._process_infer_requests_images(inputs)
+            multi_turn_kwargs = RowPreprocessor.rows_to_batched(inputs)
+            infer_inputs['data_dict'] = multi_turn_kwargs
+
         if self.vllm_mode == 'server':
             # for server mode, we gather all the inputs and send to remote vllm server in main process
             if is_global_inputs:
@@ -1300,7 +1307,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:
                 return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
 
-    def _process_infer_requests_images(self, infer_requests: List[InferRequest]):
+    def _process_infer_requests_images(self, infer_requests: List[InferRequest, Dict]):
         # Process image format into a format that session.post can accept
         import base64
         if not any('images' in request for request in infer_requests):
@@ -1368,7 +1375,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         Ensures the total sequence length (prompt + completion) never exceeds:
             min(original_max_len, prompt_tokens + max_completion_length)
         """
-        if not (self.multi_turn_func and
+        if not (self.multi_turn_scheduler and
                 self.use_fast_infer) or self.vllm_mode == 'server' or self.completion_length_limit_scope == 'per_round':
             yield
             return
