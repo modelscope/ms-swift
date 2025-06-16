@@ -51,6 +51,9 @@ class MegatronArguments(ExtraMegatronArguments):
     use_flash_attn: bool = False
     attention_backend: str = 'auto'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
+    optimizer_cpu_offload: bool = False
+    optimizer_offload_fraction: float = 1.
+    use_precision_aware_optimizer: bool = False
     dataloader_type: Literal['single', 'cyclic', 'external'] = 'cyclic'
     manual_gc: bool = False
     manual_gc_interval: int = 0
@@ -61,6 +64,7 @@ class MegatronArguments(ExtraMegatronArguments):
     # The default is None, which will be set to `train_iters`.
     lr_decay_iters: Optional[int] = None
     lr_warmup_iters: int = 0
+    lr_warmup_fraction: Optional[float] = None
     min_lr: float = 0
 
     # regularization

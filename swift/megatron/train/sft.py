@@ -48,7 +48,7 @@ class MegatronSft(SwiftSft):
             if args.train_iters is None:
                 if hasattr(train_dataset, '__len__'):
                     dataset_sample = len(train_dataset) // step_batch_size * step_batch_size
-                    args.train_iters = (dataset_sample * args.max_epochs // args.global_batch_size) + 1
+                    args.train_iters = dataset_sample * args.max_epochs // args.global_batch_size
                 else:
                     raise ValueError(
                         'You are using a streaming training dataset. Please explicitly specify `--train_iters`.')
@@ -68,18 +68,30 @@ class MegatronSft(SwiftSft):
             training.initialize_megatron = origin_initialize_megatron
 
     @staticmethod
-    def new_cyclic_iter(iter):
+    def new_cyclic_iter(iterable):
         args = get_args()
-        max_epochs = args.max_epochs
         i = 0
         while True:
-            if getattr(args, 'is_training', False):
-                if max_epochs and i >= max_epochs:
-                    logger.info(f'Training of {i} epochs has been completed, the training has finished.')
-                    break
+            is_training = getattr(args, 'is_training', False)
+            if is_training:
                 logger.info(f'The training of Epoch {i} starts...')
-            for x in iter:
-                yield x
+            if is_training and args.max_epochs and i >= args.max_epochs - 1:
+                it = iter(iterable)
+                num_batches = args.global_batch_size // (args.micro_batch_size * args.data_parallel_size)
+                x = [next(it) for _ in range(num_batches)]
+                while True:
+                    try:
+                        next_x = [next(it) for _ in range(num_batches)]
+                    except StopIteration:
+                        break
+                    yield from x
+                    x = next_x
+                logger.info(f'Training of {i + 1} epochs has been completed, the training has finished.')
+                args.train_iters = args.curr_iteration + 1
+                yield from x
+            else:
+                for x in iterable:
+                    yield x
             i += 1
 
     @staticmethod
@@ -99,10 +111,7 @@ class MegatronSft(SwiftSft):
         # support max_epochs
         def train_step(*args, **kwargs):
             with self._training_context():
-                try:
-                    return self.train_step(*args, **kwargs)
-                except StopIteration:
-                    return {}, True, True, True, 0, None, None
+                return self.train_step(*args, **kwargs)
 
         self._train_step_origin = training.train_step
         training.train_step = train_step
@@ -118,8 +127,6 @@ class MegatronSft(SwiftSft):
         global stimer
         with stimer(bdata=True):
             data = get_batch(data_iterator)
-        if not data:
-            raise StopIteration
         timers('batch-generator').stop()
 
         with stimer:
