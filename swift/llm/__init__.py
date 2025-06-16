@@ -51,7 +51,7 @@ else:
         'template': [
             'TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template',
             'TemplateInputs', 'TemplateMeta', 'get_template_meta', 'InferRequest', 'load_image', 'MaxLengthError',
-            'load_file', 'draw_bbox'
+            'load_file', 'draw_bbox', 'RolloutInferRequest'
         ],
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',

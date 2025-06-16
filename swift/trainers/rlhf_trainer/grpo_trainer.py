@@ -660,7 +660,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         results = self._infer(inputs, request_config, is_global_inputs)
 
         outputs = []
-        if not self.multi_turn_scheduler:
+        if not self.multi_turn_scheduler or self.args.vllm_use_async_engine:
             for i, output in enumerate(results):
                 _choices = []
                 for choice in output.choices:
