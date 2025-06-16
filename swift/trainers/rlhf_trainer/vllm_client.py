@@ -213,6 +213,14 @@ class VLLMClient:
         if response.status_code != 200:
             raise Exception(f'Request failed: {response.status_code}, {response.text}')
 
+    def get_engine_type(self):
+        url = f'{self.base_url}/get_engine_type/'
+        response = self.session.post(url)
+        if response.status_code == 200:
+            return response.json()['engine_type']
+        else:
+            raise Exception(f'Request failed: {response.status_code}, {response.text}')
+
     def close_communicator(self):
         """
         Closes the weight update group and cleans up the communication group.

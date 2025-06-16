@@ -187,7 +187,6 @@ class GRPOArgumentsMixin:
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_enable_prefix_caching: bool = True
     vllm_tensor_parallel_size: int = 1
-    vllm_use_async_engine: Optional[bool] = None
 
     # external vllm (server)
     vllm_server_base_url: Optional[str] = None

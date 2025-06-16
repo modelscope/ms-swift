@@ -256,9 +256,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 'generation_batch_size or steps_per_generation needs trl >= 0.18, '
                 'please install trl `pip install trl>=0.18')
 
-        if self.use_vllm and self.vllm_mode == 'colocate' and self.vllm_use_async_engine:
-            raise NotImplementedError("currently colocate mode don't support async engine, use server mode instead")
-
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
             return

@@ -138,6 +138,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.post('/reset_prefix_cache/')(self.reset_prefix_cache)
         self.app.post('/close_communicator/')(self.close_communicator)
         self.app.post('/infer/', response_model=None)(self.infer)
+        self.app.post('/get_engine_type/')(self.get_engine_type)
 
     def __init__(self, args: Union[List[str], DeployArguments, None] = None):
         super().__init__(args)
@@ -278,6 +279,15 @@ class SwiftRolloutDeploy(SwiftPipeline):
         all_outputs = [connection.recv() for connection in self.connections]
         success = all(output for output in all_outputs)
         return {'message': 'Request received, resetting prefix cache status: ' + str(success)}
+
+    async def get_engine_type(self):
+        """
+        Health check endpoint to verify that the server is running.
+        """
+        if self.use_async_engine:
+            return {'engine_type': 'AsyncLLMEngine'}
+        else:
+            return {'engine_type': 'LLMEngine'}
 
     async def close_communicator(self):
         """
