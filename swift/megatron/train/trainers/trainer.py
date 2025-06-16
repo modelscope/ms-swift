@@ -91,12 +91,9 @@ class MegatronTrainer:
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         with self._training_context():
-            try:
-                data_iterator = self._replace_data_iterator(data_iterator)
-                return self._origin_train_step(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler,
-                                               config)
-            except StopIteration:
-                return {}, True, True, True, 0, None, None
+            data_iterator = self._replace_data_iterator(data_iterator)
+            return self._origin_train_step(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler,
+                                           config)
 
     # Code borrowed from NVIDIA/Megatron-LM
     def evaluate(self,
@@ -331,8 +328,6 @@ class MegatronTrainer:
         timers('batch-generator', log_level=2).start()
         with self.stimer(bdata=True):
             data = get_batch(data_iterator)
-        if not data:
-            raise StopIteration
         timers('batch-generator').stop()
 
         with self.stimer:
