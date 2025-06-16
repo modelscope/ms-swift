@@ -115,10 +115,7 @@ async def async_llm_worker(args: DeployArguments, data_parallel_rank: int, maste
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
             method = getattr(engine, method_name, None) or getattr(engine.engine, method_name, None)
-            if asyncio.iscoroutinefunction(method):
-                result = await method(*args, **kwargs)
-            else:
-                result = await loop.run_in_executor(None, method, *args, **kwargs)
+            result = await method(*args, **kwargs)
             if command['type'] == 'call':
                 connection.send(result)
         elif command['type'] == 'shutdown':
@@ -143,8 +140,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.post('/infer/', response_model=None)(self.infer)
 
     def __init__(self, args: Union[List[str], DeployArguments, None] = None):
-        self.use_async_engine = args.use_async_engine
         super().__init__(args)
+        self.use_async_engine = self.args.use_async_engine
         safe_set_start_method()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_rl_rollout_app()
@@ -156,7 +153,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
     def _start_data_parallel_workers(self):
         for data_parallel_rank in range(self.args.data_parallel_size):
             parent_conn, child_conn = Pipe()
-            worker_func = async_llm_worker if self.use_async_engine else llm_worker
+            worker_func = llm_worker_entry if self.use_async_engine else llm_worker
             process = Process(target=worker_func, args=(self.args, data_parallel_rank, self.master_port, child_conn))
             process.start()
             self.connections.append(parent_conn)
@@ -241,9 +238,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
         # So with collective_rpc we need to call it this way:
         # llm.collective_rpc(method="init_communicator", args=(host, port, world_size))
         kwargs = {'method': 'init_communicator', 'args': (request.host, request.port, world_size)}
-        method = 'collective_rpc_async' if self.use_async_engine else 'collective_rpc'
         for connection in self.connections:
-            connection.send({'type': 'fire_and_forget', 'method': method, 'kwargs': kwargs})
+            connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 
         return {'message': 'Request received, initializing communicator'}
 
@@ -310,7 +306,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
             if request_config.seed:
                 request_config.seed += i * len(requests)
             kwargs = {'infer_requests': requests, 'request_config': request_config, 'use_tqdm': use_tqdm}
-            connection.send({'type': 'call', 'method': 'infer', 'kwargs': kwargs})
+            method = 'infer_async' if self.use_async_engine else 'infer'
+            connection.send({'type': 'call', 'method': method, 'kwargs': kwargs})
 
         all_outputs = [connection.recv() for connection in self.connections]
         # Handle empty prompts (see above)

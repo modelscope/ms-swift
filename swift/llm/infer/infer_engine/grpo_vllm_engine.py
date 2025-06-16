@@ -115,32 +115,23 @@ class GRPOVllmEngine(VllmEngine):
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
     ) -> List[ChatCompletionResponse]:
-        if self.use_async_engine:
-            return self._infer_async(
-                infer_requests,
-                request_config,
-                metrics,
-                template=template,
-                use_tqdm=use_tqdm,
-                adapter_request=adapter_request,
-            )
-        else:
-            return super().infer(
-                infer_requests,
-                request_config,
-                metrics,
-                template=template,
-                use_tqdm=use_tqdm,
-                adapter_request=adapter_request,
-            )
+        assert self.use_async_engine, 'for Async Engine, use infer_async instead'
+        return super().infer(
+            infer_requests,
+            request_config,
+            metrics,
+            template=template,
+            use_tqdm=use_tqdm,
+            adapter_request=adapter_request,
+        )
 
-    def _infer_async(self,
-                     infer_requests: List[InferRequest],
-                     request_config: Optional[RequestConfig] = None,
-                     metrics: Optional[List[Metric]] = None,
-                     *,
-                     use_tqdm: Optional[bool] = None,
-                     **kwargs) -> List[ChatCompletionResponse]:
+    async def infer_async(self,
+                          infer_requests: List[InferRequest],
+                          request_config: Optional[RequestConfig] = None,
+                          metrics: Optional[List[Metric]] = None,
+                          *,
+                          use_tqdm: Optional[bool] = None,
+                          **kwargs) -> List[ChatCompletionResponse]:
         if request_config is None:
             request_config = RequestConfig()
         # in GRPO n always equals 1
