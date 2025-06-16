@@ -432,3 +432,29 @@ def check_shared_disk(error, cache_dir: Optional[str] = None):
             os.remove(tmp_path)
     if not all(shared_state):
         raise error
+
+
+@contextmanager
+def unwrap_model_for_generation(
+    model,
+    accelerator,
+    gather_deepspeed3_params=True,
+    gather_parameters: List[nn.Parameter] = None,
+):
+    unwrapped_model = accelerator.unwrap_model(model)
+    if accelerator.state.deepspeed_plugin is not None and accelerator.state.deepspeed_plugin.zero_stage == 3:
+        if not gather_deepspeed3_params:
+            yield accelerator.unwrap_model(model)
+        else:
+            import deepspeed
+            parameters = [
+                parameter for name, parameter in model.named_parameters()
+                if not gather_parameters or name in gather_parameters
+            ]
+            with deepspeed.zero.GatheredParameters(parameters):
+                from trl.models.utils import remove_hooks, add_hooks
+                remove_hooks(model)
+                yield accelerator.unwrap_model(model)
+                add_hooks(model)
+    else:
+        yield unwrapped_model

@@ -37,10 +37,10 @@ from swift.llm.model.utils import get_llm_model
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
 from swift.utils import (JsonlWriter, gc_collect, get_current_device, get_device, get_logger, is_vllm_available,
-                         is_wandb_available, seed_worker)
+                         is_wandb_available, seed_worker, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge, unwrap_model_for_generation
+from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge
 from .vllm_client import VLLMClient
 
 del HFGRPOTrainer.__init__
