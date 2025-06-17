@@ -132,12 +132,31 @@ class IgnoreEmptyThink(REACTLossScale):
     loss_scale_config = 'ignore_empty_think.json'
 
 
+class LastRoundWithIgnoreEmptyThink(LossScale):
+    loss_scale_config = 'ignore_empty_think.json'
+
+    def get_loss_scale(self,
+                       context: str,
+                       context_type: ContextType,
+                       is_last_round: bool,
+                       *,
+                       query: Optional[str] = None):
+        if context_type == ContextType.RESPONSE:
+            if not is_last_round:
+                return [context], [float(is_last_round)]
+            else:
+                return calculate_loss_scale(query, context, self.loss_scale_map)
+
+        return super().get_loss_scale(context, context_type, is_last_round)
+
+
 # Add your loss scale here, use --loss_scale xxx to train
 loss_scale_map = {
     'last_round': LastRoundLossScale,
     'default': LossScale,
     'all': TrainAllLossScale,
     'ignore_empty_think': IgnoreEmptyThink,
+    'last_round_with_ignore_empty_think': LastRoundWithIgnoreEmptyThink,
     # agent
     'react': REACTLossScale,
     'hermes': HermesLossScale,
