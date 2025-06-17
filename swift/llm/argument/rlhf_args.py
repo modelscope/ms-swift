@@ -43,14 +43,13 @@ class PPOArguments:
     num_mini_batches: int = 1
     local_rollout_forward_batch_size: int = 64
     num_sample_generations: int = 10
-    response_length: int = 512
+    response_length: Optional[int] = None  # compat. use max_completion_length instead
     missing_eos_penalty: Optional[float] = None
 
 
 @dataclass
 class GRPOArguments(GRPOArgumentsMixin):
     num_generations: int = 8  # G in the GRPO paper
-    max_completion_length: int = 512
     reward_funcs: List[str] = field(default_factory=list)
     reward_weights: List[float] = None
     log_completions: bool = False
@@ -92,6 +91,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     beta: Optional[float] = None
     label_smoothing: float = 0
     loss_scale: Optional[str] = None  # 'last_round'
+    max_completion_length: int = 512
     # DPO
     rpo_alpha: float = 1.
     # CPO
@@ -108,7 +108,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     # GKD
     lmbda: float = 0.5
     seq_kd: bool = False
-    max_new_tokens: int = 128
+    # compat
+    max_new_tokens: Optional[int] = None  # use max_completion_length instead
 
     def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
         if self.rlhf_type == 'ppo':
@@ -119,6 +120,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         self._init_grpo()
         self._init_rm()
         self._init_simpo()
+        self._init_max_completion_length()
         self._init_padding_side()
         self._set_default()
         self._init_external_vllm()
@@ -184,6 +186,15 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if self.rlhf_type in {'ppo', 'gkd'}:
             self.padding_side = 'left'
             # TODO: streaming, MLLM
+
+    def _init_max_completion_length(self):
+        if self.response_length is not None:
+            max_completion_length = self.response_length
+        elif self.max_new_tokens is not None:
+            max_completion_length = self.max_new_tokens
+        else:
+            max_completion_length = self.max_completion_length
+        self.max_completion_length = self.max_new_tokens = self.response_length = max_completion_length
 
     def _init_metric_for_best_model(self):
         if self.rlhf_type not in {'ppo', 'grpo'}:

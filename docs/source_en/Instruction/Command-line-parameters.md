@@ -402,8 +402,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - temperature: Default is 0.9; this parameter will be used in PPO, GRPO and GKD.
 - lmbda: Default is 0.5. This parameter is used in GKD. It is the lambda parameter that controls the student data fraction (i.e., the proportion of on-policy student-generated outputs).
 - seq_kd: Default is False. This parameter is used in GKD. It is the `seq_kd` parameter that controls whether to perform Sequence-Level KD (can be viewed as supervised fine-tuning on teacher-generated output).
-- max_new_tokens: Default is 128. This parameter is used in GKD.
-  - Note: The meaning of this parameter is the same as `response_length` in PPO and `max_completion_length` in GRPO. It is just used under different training methods.
+- max_completion_length: The maximum generation length in the GRPO/PPO/GKD algorithms. Default is 512.
 
 #### Reward/Teacher Model Parameters
 
@@ -433,7 +432,6 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - num_mini_batches: Defaults to 1
 - local_rollout_forward_batch_size: Defaults to 64
 - num_sample_generations: Defaults to 10
-- response_length: Defaults to 512
 - missing_eos_penalty: Defaults to None
 
 
@@ -443,7 +441,6 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - generation_batch_size: Batch size to use for generation. It defaults to the effective training batch size: per_device_train_batch_size * num_processes * gradient_accumulation_steps`
 - steps_per_generation: Number of optimization steps per generation. It defaults to gradient_accumulation_steps. This parameter and generation_batch_size cannot be set simultaneously
 - num_generations: The number of samples for each prompt, referred to as the G value in the paper, needs to be divisible by per_device_batch_size * - gradient_accumulation_steps * num_processes, default is 8.
-- max_completion_length: The maximum generation length in the GRPO algorithm, default is 512.
 - ds3_gather_for_generation: This parameter applies to DeepSpeed ZeRO-3. If enabled, the policy model weights are gathered for generation, improving generation speed. However, disabling this option allows training models that exceed the VRAM capacity of a single GPU, albeit at the cost of slower generation. Disabling this option is not compatible with vLLM generation. The default is True.
 - reward_funcs: Reward functions in the GRPO algorithm; options include `accuracy`,`format`,`cosine` and `repetition`, as seen in `swift/plugin/orm.py`. You can also customize your own reward functions in the plugin. Default is `[]`.
 - reward_weights: Weights for each reward function. The number should be equal to the sum of the number of reward functions and reward models. If `None`, all rewards are weighted equally with weight `1.0`.

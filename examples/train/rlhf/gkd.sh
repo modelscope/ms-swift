@@ -20,7 +20,7 @@ swift rlhf \
     --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 4096 \
-    --max_new_tokens 1024 \
+    --max_completion_length 1024 \
     --output_dir output \
     --warmup_ratio 0.05 \
     --save_only_model true \

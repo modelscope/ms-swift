@@ -24,7 +24,7 @@ swift rlhf \
     --attn_impl flash_attn \
     --logging_steps 5 \
     --max_length 4096 \
-    --max_new_tokens 512 \
+    --max_completion_length 512 \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
