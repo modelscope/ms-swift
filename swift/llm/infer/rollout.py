@@ -105,9 +105,7 @@ async def async_llm_worker(args: DeployArguments, data_parallel_rank: int, maste
     loop = asyncio.get_running_loop()
     while True:
         try:
-            command = await asyncio.wait_for(loop.run_in_executor(None, connection.recv), timeout=1.0)
-        except asyncio.TimeoutError:
-            continue
+            command = await loop.run_in_executor(None, connection.recv)
         except KeyboardInterrupt:
             await engine.engine.collective_rpc(method='close_communicator')
             break

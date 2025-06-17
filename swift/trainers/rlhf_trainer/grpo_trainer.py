@@ -20,7 +20,7 @@ import datasets
 import torch
 import torch.nn as nn
 import transformers
-from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
+from accelerate.utils import broadcast, broadcast_object_list, gather, gather_object, is_peft_model, set_seed
 from packaging import version
 from peft import PeftModel
 from torch.nn import ModuleList
@@ -233,10 +233,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.vllm_mode == 'server':
                 self.vllm_client: VLLMClient = vllm_client
                 if self.accelerator.is_main_process:
-                    vllm_use_async_engine = [self.vllm_client.get_engine_type() == 'AsyncLLMEngine']
+                    vllm_use_async_engine = torch.tensor(
+                        self.vllm_client.get_engine_type() == 'AsyncLLMEngine', dtype=torch.bool)
                 else:
-                    vllm_use_async_engine = [None]
-                self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
+                    vllm_use_async_engine = torch.tensor(False, dtype=torch.bool)
+                self.vllm_use_async_engine = bool(broadcast(vllm_use_async_engine, from_process=0))
 
             elif self.vllm_mode == 'colocate':
                 if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:
