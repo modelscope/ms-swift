@@ -90,8 +90,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
 
     beta: Optional[float] = None
     label_smoothing: float = 0
-    loss_scale: Optional[str] = None  # 'last_round'
     max_completion_length: int = 512
+    loss_scale: Optional[str] = None  # 'last_round'
     # DPO
     rpo_alpha: float = 1.
     # CPO

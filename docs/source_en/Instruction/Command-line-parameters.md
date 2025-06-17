@@ -393,6 +393,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - ref_model_revision: Same as model_revision. Default is None.
 - 🔥beta: Coefficient for the KL regularization term. Default is `None`, meaning `simpo` algorithm defaults to `2.`, `grpo` algorithm defaults to `0.04`, `gkd` algorithm defaults to `0.5`, and other algorithms default to `0.1`. For more details, refer to the [documentation](./RLHF.md).
 - label_smoothing: Whether to use DPO smoothing, default value is `0`.
+- max_completion_length: The maximum generation length in the GRPO/PPO/GKD algorithms. Default is 512.
 - 🔥rpo_alpha: The weight of sft_loss added to DPO, default is `1`. The final loss is `KL_loss + rpo_alpha * sft_loss`.
 - cpo_alpha: Coefficient for nll loss in CPO/SimPO loss, default is `1.`.
 - simpo_gamma: Reward margin term in the SimPO algorithm, with a paper-suggested setting of 0.5-1.5, default is `1.`.
@@ -402,7 +403,6 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - temperature: Default is 0.9; this parameter will be used in PPO, GRPO and GKD.
 - lmbda: Default is 0.5. This parameter is used in GKD. It is the lambda parameter that controls the student data fraction (i.e., the proportion of on-policy student-generated outputs).
 - seq_kd: Default is False. This parameter is used in GKD. It is the `seq_kd` parameter that controls whether to perform Sequence-Level KD (can be viewed as supervised fine-tuning on teacher-generated output).
-- max_completion_length: The maximum generation length in the GRPO/PPO/GKD algorithms. Default is 512.
 
 #### Reward/Teacher Model Parameters
 
