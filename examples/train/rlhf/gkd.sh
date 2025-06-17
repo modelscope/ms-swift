@@ -6,6 +6,7 @@ swift rlhf \
     --rlhf_type gkd \
     --model Qwen/Qwen3-4B-Base \
     --teacher_model Qwen/Qwen3-8B \
+    --lmbda 0 \
     --train_type full \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-en#2000' 'AI-ModelScope/alpaca-gpt4-data-zh#2000' \
     --seq_kd true \
@@ -20,7 +21,7 @@ swift rlhf \
     --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 4096 \
-    --max_completion_length 1024 \
+    --max_completion_length 2048 \
     --output_dir output \
     --warmup_ratio 0.05 \
     --save_only_model true \
