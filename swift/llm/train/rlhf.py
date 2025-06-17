@@ -158,7 +158,7 @@ class SwiftRLHF(SwiftSft):
         for key in ['ref', 'reward', 'value', 'teacher']:
             key = f'{key}_model'
             model = getattr(self, key, None)
-            if model or self.args.rlhf_type == 'ppo':
+            if model or self.args.rlhf_type == 'ppo' and key != 'teacher_model':
                 trainer_kwargs[key] = model
         if hasattr(self, 'reward_template'):
             trainer_kwargs['reward_template'] = self.reward_template
