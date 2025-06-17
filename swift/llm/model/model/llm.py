@@ -261,7 +261,10 @@ def get_model_tokenizer_qwen2_gte(model_dir: str,
     model_config.torch_dtype = torch_dtype
     HfConfigFactory.compat_zero3(model_config)
     if load_model:
-        model = SentenceTransformer(model_dir, trust_remote_code=True)
+        model = SentenceTransformer(
+            model_dir, trust_remote_code=True, model_kwargs={
+                'torch_dtype': torch_dtype,
+            })
         model.config = model_config
 
         def enable_input_require_grads(self):
@@ -298,3 +301,45 @@ register_model(
         None,
         get_model_tokenizer_qwen2_gte,
         architectures=['Qwen2ForCausalLM']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.mimo, [
+            ModelGroup([
+                Model('XiaomiMiMo/MiMo-7B-Base', 'XiaomiMiMo/MiMo-7B-Base'),
+                Model('XiaomiMiMo/MiMo-7B-SFT', 'XiaomiMiMo/MiMo-7B-SFT'),
+                Model('XiaomiMiMo/MiMo-7B-RL-Zero', 'XiaomiMiMo/MiMo-7B-RL-Zero'),
+                Model('XiaomiMiMo/MiMo-7B-RL', 'XiaomiMiMo/MiMo-7B-RL'),
+            ])
+        ],
+        TemplateType.qwen,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['MiMoForCausalLM'],
+        requires=['transformers>=4.37']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.mimo_rl, [ModelGroup([
+            Model('XiaomiMiMo/MiMo-7B-RL-0530', 'XiaomiMiMo/MiMo-7B-RL-0530'),
+        ])],
+        TemplateType.mimo_rl,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['MiMoForCausalLM'],
+        requires=['transformers>=4.37']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.dots1,
+        [
+            ModelGroup([
+                Model('rednote-hilab/dots.llm1.base', 'rednote-hilab/dots.llm1.base'),
+                Model('rednote-hilab/dots.llm1.inst', 'rednote-hilab/dots.llm1.inst'),
+            ])
+        ],
+        TemplateType.dots1,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Dots1ForCausalLM'],
+        requires=['transformers>=4.53.0.dev0'],
+    ))

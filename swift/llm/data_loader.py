@@ -4,6 +4,8 @@ import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 
+from swift.llm import to_device
+
 
 class BatchSamplerShard:
 
@@ -56,18 +58,28 @@ class BatchSamplerShard:
 
 class DataLoaderShard(DataLoader):
 
-    def __init__(self, dataset, batch_sampler: BatchSamplerShard, **dataloader_params):
-        self.batch_sampler = batch_sampler
-        super().__init__(dataset, batch_sampler=self.batch_sampler, **dataloader_params)
+    def __init__(self, dataset, device=None, **dataloader_params):
+        self.device = device
+        super().__init__(dataset, **dataloader_params)
 
     def set_epoch(self, epoch: int):
-        self.batch_sampler.set_epoch(epoch)
+        if self.batch_sampler is not None and hasattr(self.batch_sampler, 'set_epoch'):
+            self.batch_sampler.set_epoch(epoch)
+        elif self.sampler is not None and hasattr(self.sampler, 'set_epoch'):
+            self.sampler.set_epoch(epoch)
+
+    def __iter__(self):
+        for item in super().__iter__():
+            if self.device:
+                item = to_device(item, self.device)
+            yield item
 
 
 class DataLoaderDispatcher:
 
-    def __init__(self, base_dataloader):
+    def __init__(self, base_dataloader, device=None):
         self.base_dataloader = base_dataloader
+        self.device = device
 
     @property
     def rank(self):
@@ -81,21 +93,18 @@ class DataLoaderDispatcher:
     def group(self):
         return dist.group.WORLD if dist.is_initialized() else 1
 
-    @property
-    def src_rank(self):
-        return 0
-
     def _scatter_object_list(self, inputs):
         if not dist.is_initialized():
             return inputs[0]
         outputs = [None]
-        dist.scatter_object_list(outputs, inputs, self.src_rank, group=self.group)
+        global_src_rank = dist.get_global_rank(self.group, 0)
+        dist.scatter_object_list(outputs, inputs, global_src_rank, group=self.group)
         return outputs[0]
 
     def __iter__(self):
         base_iter = iter(self.base_dataloader)
         while True:
-            if self.rank == self.src_rank:
+            if self.rank == 0:
                 try:
                     data = [next(base_iter) for _ in range(self.world_size)]
                 except StopIteration:
@@ -105,4 +114,6 @@ class DataLoaderDispatcher:
                 data = self._scatter_object_list(None)
             if data is None:
                 break
+            if self.device:
+                data = to_device(data, self.device)
             yield data

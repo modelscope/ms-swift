@@ -3,15 +3,12 @@ import math
 import os
 import platform
 from dataclasses import dataclass, field
-from functools import wraps
 from typing import List, Literal, Optional, Union
 
-import torch
-import torch.utils.checkpoint
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
-from swift.utils import get_dist_setting, get_logger, is_liger_available, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, use_torchacc
 from .optimizers.galore import GaLoreConfig
 
 logger = get_logger()
@@ -28,6 +25,7 @@ class TrainArgumentsMixin:
     gradient_accumulation_steps: Optional[int] = None
 
     gradient_checkpointing: bool = True
+    vit_gradient_checkpointing: Optional[bool] = None
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
     logging_first_step: bool = True
     logging_steps: int = 5
@@ -39,17 +37,24 @@ class TrainArgumentsMixin:
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     dataloader_num_workers: Optional[int] = None
     dataloader_prefetch_factor: Optional[int] = None
+    use_liger_kernel: bool = False
 
     # extra
     check_model: bool = True
     acc_strategy: Literal['token', 'seq'] = 'token'
     train_dataloader_shuffle: bool = True
+    max_epochs: Optional[int] = None
+    aligner_lr: Optional[float] = None
+    vit_lr: Optional[float] = None
+    optimizer: Optional[str] = None
+    use_logits_to_keep: Optional[bool] = None
+    channels: List[str] = None
+    ds3_gather_for_generation: bool = True
 
     # torchacc
     metric_warmup_step: Optional[float] = 0
     fsdp_num: int = 1
     acc_steps: int = 1
-    use_liger_kernel: bool = False
 
     # train-eval loop args
     eval_use_evalscope: bool = False
@@ -58,35 +63,35 @@ class TrainArgumentsMixin:
     eval_datasets_args: Optional[Union[str, dict]] = None
     eval_generation_config: Optional[Union[str, dict]] = None
 
-    def _fix_gradient_checkpointing(self):
-        # fix use_reentrant
-        if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
-            return
-        # Consistent with the default behavior of transformers.
-        use_reentrant_ = (
-            self.gradient_checkpointing_kwargs.get('use_reentrant', True)
-            if self.gradient_checkpointing_kwargs else True)
-        _old_checkpoint = torch.utils.checkpoint.checkpoint
+    @staticmethod
+    def _patch_liger_kernel():
+        # fix logits_to_keep
+        from liger_kernel.transformers.model import loss_utils
+        origin_LigerForCausalLMLoss = loss_utils.LigerForCausalLMLoss
 
-        @wraps(_old_checkpoint)
-        def _new_checkpoint(*args, use_reentrant=None, **kwargs):
-            return _old_checkpoint(*args, use_reentrant=use_reentrant_, **kwargs)
+        def LigerForCausalLMLoss(hidden_states, *args, **kwargs):
+            hidden_states = hidden_states.contiguous()
+            return origin_LigerForCausalLMLoss(hidden_states, *args, **kwargs)
 
-        torch.utils.checkpoint._old_checkpoint = _old_checkpoint
-        torch.utils.checkpoint.checkpoint = _new_checkpoint
-        try:
-            # Fix the old version of transformers.
-            import transformers.modeling_utils
-            transformers.modeling_utils.checkpoint = _new_checkpoint
-        except (ImportError, AttributeError):
-            pass
+        loss_utils.LigerForCausalLMLoss = LigerForCausalLMLoss
+        logger.info('Patch liger_kernel successfully.')
 
     def _init_liger(self):
         if self.use_liger_kernel:
             assert is_liger_available(), 'use_liger_kernel requires liger_kernels, try `pip install liger-kernel`'
+            try:
+                self._patch_liger_kernel()
+            except Exception:
+                pass
 
     def __post_init__(self):
+        if is_mp() and self.use_liger_kernel:
+            raise ValueError('liger_kernel does not support device_map. '
+                             'Please use DDP/DeepSpeed for multi-GPU training.')
+
         from swift.llm.argument.base_args.model_args import ModelArguments
+        if self.optimizer is None and (self.vit_lr is not None or self.aligner_lr is not None):
+            self.optimizer = 'multimodal'
         if use_torchacc():
             self.dataloader_drop_last = True
         if self.gradient_accumulation_steps is None:
@@ -95,9 +100,10 @@ class TrainArgumentsMixin:
             logger.info(f'Setting args.gradient_accumulation_steps: {self.gradient_accumulation_steps}')
         if self.lr_scheduler_kwargs:
             self.lr_scheduler_kwargs = ModelArguments.parse_to_dict(self.lr_scheduler_kwargs)
+        if self.vit_gradient_checkpointing is None:
+            self.vit_gradient_checkpointing = self.gradient_checkpointing
         if self.gradient_checkpointing_kwargs:
             self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
-        self._fix_gradient_checkpointing()
         self._init_liger()
         if self.dataloader_num_workers is None:
             if platform.system() == 'Windows':
@@ -122,7 +128,6 @@ class TrainArgumentsMixin:
 class SwiftArgumentsMixin(TrainArgumentsMixin):
     # Value copied from TrainArguments
     train_type: Optional[str] = None
-    optimizer: Optional[str] = None
     local_repo_path: Optional[str] = None
     galore_config: Optional[GaLoreConfig] = None
 
@@ -140,15 +145,29 @@ class SwiftArgumentsMixin(TrainArgumentsMixin):
 class GRPOArgumentsMixin:
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
+    delta: Optional[float] = None
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
-    # vllm_device, vllm_gpu_memory_utilization, and vllm_max_model_len are defined in HfGRPOConfig.
-    num_infer_workers: int = 1
-    vllm_max_num_seqs: int = 256
+    num_infer_workers: Optional[int] = None  # deprecated
+    # vllm
+    vllm_mode: Literal['server', 'colocate'] = 'colocate'
+    # internal vllm (colocate)
+    vllm_device: Optional[List[str]] = None  # deprecated
+    vllm_gpu_memory_utilization: float = 0.9
+    vllm_max_model_len: Optional[int] = None
+    vllm_max_num_seqs: Optional[int] = None  # deprecated
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_enable_prefix_caching: bool = True
+    vllm_tensor_parallel_size: int = 1
+    # external vllm (server)
+    vllm_server_base_url: Optional[str] = None
+    vllm_server_host: Optional[str] = None
+    vllm_server_port: int = 8000
+    vllm_server_timeout: float = 240.0
+    vllm_client = None  # Not required to set, used for client instantiation
+
     # reward function args, see details in swift/plugin/orm.py
     # cosine reward, https://arxiv.org/abs/2502.03373
     cosine_min_len_value_wrong: float = -0.5  # r^w_0 in paper, Reward for wrong answers with zero completion length.
@@ -160,23 +179,24 @@ class GRPOArgumentsMixin:
     repetition_n_grams: int = 3
     repetition_max_penalty: float = -1.0
 
-    # LMDeploy in GRPO
-    use_lmdeploy: bool = False
-    lmdeploy_device: Optional[str] = 'auto'
-    lmdeploy_session_len: Optional[int] = None
-    lmdeploy_cache_max_entry_count: float = 0.8
+    reward_model: Optional[List[str]] = None
+    reward_model_plugin: Optional[List[str]] = None
+
+    # sync ref model
+    sync_ref_model: bool = False
+    ref_model_sync_steps: int = 512
+    ref_model_mixup_alpha: float = 0.6
 
     async_generate: bool = False
-    tensor_parallel_size: int = 1
+    tensor_parallel_size: Optional[int] = None  # deprecated
+
     sleep_level: int = 0
     move_model_batches: Optional[int] = None
     offload_optimizer: bool = False
     offload_model: bool = False
     gc_collect_after_offload: bool = False
     multi_turn_func: Optional[str] = None
-
-    # mini-batch
-    mini_batch_size: Optional[int] = None
+    completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
 
     # DAPO, https://arxiv.org/abs/2503.14476
     dynamic_sample: bool = False
@@ -188,14 +208,12 @@ class GRPOArgumentsMixin:
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
     scale_rewards: bool = True
 
-    # compatible with trl main branch(0.17.0.dev0)
     wandb_log_unique_prompts: Optional[bool] = None
+    generation_batch_size: Optional[int] = None
+    steps_per_generation: Optional[int] = None
 
-    # external vllm
-    vllm_server_host: Optional[str] = None
-    vllm_server_port: int = 8000
-    vllm_server_timeout: float = 120.0
-    vllm_client = None
+    # dataset
+    dataset_shuffle: Optional[bool] = True
 
 
 @dataclass

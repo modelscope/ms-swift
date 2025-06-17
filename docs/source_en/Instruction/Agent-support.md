@@ -5,11 +5,11 @@
 Example data samples for the pure text Agent and multimodal Agent are as follows:
 
 ```jsonl
-{"tools": ["{\"type\": \"function\", \"function\": {\"name\": \"realtime_aqi\", \"description\": \"Weather forecast. Get real-time air quality, including current air quality, PM2.5, and PM10 information.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g., Shanghai\"}}, \"required\": [\"city\"]}}}"], "messages": [{"role": "user", "content": "What is the weather like in Beijing and Shanghai today?"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Beijing\"}}"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Shanghai\"}}"}, {"role": "tool_response", "content": "{\"city\": \"Beijing\", \"aqi\": \"10\", \"unit\": \"celsius\"}"}, {"role": "tool_response", "content": "{\"city\": \"Shanghai\", \"aqi\": \"72\", \"unit\": \"fahrenheit\"}"}, {"role": "assistant", "content": "According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution."}]}
-{"tools": ["{\"type\": \"function\", \"function\": {\"name\": \"click\", \"description\": \"Click on a position on the screen\", \"parameters\": {\"type\": \"object\", \"properties\": {\"x\": {\"type\": \"integer\", \"description\": \"X-coordinate representing the horizontal position on the screen\"}, \"y\": {\"type\": \"integer\", \"description\": \"Y-coordinate representing the vertical position on the screen\"}}, \"required\": [\"x\", \"y\"]}}}"], "messages": [{"role": "user", "content": "<image>What time is it now?"}, {"role": "assistant", "content": "<think>\nI can check the current time by opening the calendar app.\n</think>\n"}, {"role": "tool_call", "content": "{\"name\": \"click\", \"arguments\": {\"x\": 105, \"y\": 132}}"}, {"role": "tool_response", "content": "{\"images\": \"<image>\", \"status\": \"success\"}"}, {"role": "assistant", "content": "Successfully opened the calendar app. The current time is 11 o'clock in the morning."}], "images": ["desktop.png", "calendar.png"]}
+{"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"realtime_aqi\", \"description\": \"Weather forecast. Get real-time air quality, including current air quality, PM2.5, and PM10 information.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g., Shanghai\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "What is the weather like in Beijing and Shanghai today?"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Beijing\"}}"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Shanghai\"}}"}, {"role": "tool_response", "content": "{\"city\": \"Beijing\", \"aqi\": \"10\", \"unit\": \"celsius\"}"}, {"role": "tool_response", "content": "{\"city\": \"Shanghai\", \"aqi\": \"72\", \"unit\": \"fahrenheit\"}"}, {"role": "assistant", "content": "According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution."}]}
+{"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"click\", \"description\": \"Click on a position on the screen\", \"parameters\": {\"type\": \"object\", \"properties\": {\"x\": {\"type\": \"integer\", \"description\": \"X-coordinate representing the horizontal position on the screen\"}, \"y\": {\"type\": \"integer\", \"description\": \"Y-coordinate representing the vertical position on the screen\"}}, \"required\": [\"x\", \"y\"]}}}]", "messages": [{"role": "user", "content": "<image>What time is it now?"}, {"role": "assistant", "content": "<think>\nI can check the current time by opening the calendar app.\n</think>\n"}, {"role": "tool_call", "content": "{\"name\": \"click\", \"arguments\": {\"x\": 105, \"y\": 132}}"}, {"role": "tool_response", "content": "{\"images\": \"<image>\", \"status\": \"success\"}"}, {"role": "assistant", "content": "Successfully opened the calendar app. The current time is 11 o'clock in the morning."}], "images": ["desktop.png", "calendar.png"]}
 ```
 - When the `agent_template` is set to "react_en", "hermes", etc., this format is compatible with training for all model Agents and allows easy switching between different models.
-- Here, `tools` is a `List[str]`, where each tool needs to be a JSON string. Additionally, the `content` part of the messages where the role is `'tool_call'` or `'tool_response/tool'` must also be in JSON string format.
+- Among them, `tools` is a JSON string containing a list of tools, and the `content` section of `messages` where the `role` is `'tool_call'` or `'tool_response/tool'` must also be a JSON string.
 - The `tools` field will be combined with the `{"role": "system", ...}` section during training/inference according to the `agent_template`, forming a complete system section.
 - The `{"role": "tool_call", ...}` part will automatically be converted into corresponding formats of `{"role": "assistant", ...}` based on the `agent_template`. Multiple consecutive `{"role": "assistant", ...}` entries will be concatenated to form a complete assistant_content.
 - The `{"role": "tool_response", ...}` can also be written as `{"role": "tool", ...}`, these two forms are equivalent. This part will also be automatically converted according to the `agent_template`. During training, this part does not participate in loss calculations, similar to `{"role": "user", ...}`.
@@ -146,7 +146,7 @@ Action Input: {'city': 'Shanghai'}
 Observation:[-100 * 45]According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution.<|im_end|>
 ```
 
-The following code can be used to experiment with more models and `agent_template` options. For more selectable values of `agent_template`, refer to [here](https://github.com/modelscope/swift/blob/main/swift/plugin/agent_template/__init__.py).
+The following code can be used to experiment with more models and `agent_template` options. For more selectable values of `agent_template`, refer to [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/agent_template/__init__.py).
 
 ```python
 from swift.llm import get_model_tokenizer, get_template
@@ -190,7 +190,7 @@ tools = [{
 
 ## Usage of loss_scale
 
-`loss_scale` can be used to adjust the training loss weight for the model's output section. For example, in the ReACT format, you can set `--loss_scale react` (the loss_scale configuration file is written [here](https://github.com/modelscope/swift/blob/main/swift/plugin/loss_scale/config/react.json)). The role of this parameter is as follows:
+`loss_scale` can be used to adjust the training loss weight for the model's output section. For example, in the ReACT format, you can set `--loss_scale react` (the loss_scale configuration file is written [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/react.json)). The role of this parameter is as follows:
 
 - The weight for the 'Thought:' and 'Final Answer:' sections is 1.
 - The weight for the 'Action:' and 'Action Input:' sections is 2.
@@ -208,7 +208,7 @@ For the detailed design of the `loss_scale` plugin, please refer to the [Plugin-
 ## Inference
 
 - 🚀For inference of the original model or fully trained model, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_agent.py).
-- For inference after LoRA training, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent/loss_scale/infer.md).
+- For inference after LoRA training, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/agent/loss_scale/infer_lora.py).
 
 ## Deployment
 

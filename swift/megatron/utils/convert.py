@@ -8,7 +8,7 @@ from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoin
 from megatron.training.initialize import initialize_megatron
 from megatron.training.utils import get_ltor_masks_and_position_ids
 
-from swift.llm import ExportArguments, get_model_tokenizer, get_template, save_checkpoint
+from swift.llm import ExportArguments, HfConfigFactory, get_model_tokenizer, get_template, save_checkpoint
 from swift.utils import get_logger, get_n_params_grads
 from ..argument import MegatronArguments
 from ..model import get_megatron_model_meta
@@ -24,6 +24,7 @@ def test_convert_precision(hf_model, mg_model, processor):
     input_ids = torch.tensor(input_ids)[None].to('cuda')
     hf_model.to('cuda')
     hf_model.to(torch.float32)
+    HfConfigFactory.set_model_config_attr(hf_model, 'use_cache', False)
     with torch.inference_mode():
         hf_logits = hf_model(input_ids).logits
     hf_model.to(torch_dtype)
@@ -74,7 +75,8 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     megatron_args = MegatronArguments(**kwargs, **convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
-    initialize_megatron(args_defaults=extra_args)
+    extra_args_provider = megatron_model_meta.extra_args_provider
+    initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
 
     mg_model = megatron_model_meta.model_provider()
     logger.info('Megatron model created successfully.')
@@ -101,7 +103,8 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     megatron_args = MegatronArguments(**kwargs, **convert_kwargs, load=args.mcore_model, torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
-    initialize_megatron(args_defaults=extra_args)
+    extra_args_provider = megatron_model_meta.extra_args_provider
+    initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
 
     mg_model = megatron_model_meta.model_provider()
     load_checkpoint([mg_model], None, None, strict=True)

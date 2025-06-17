@@ -8,6 +8,7 @@ import time
 import uuid
 from bisect import bisect_right
 from contextlib import contextmanager, nullcontext
+from datetime import timedelta
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -17,9 +18,10 @@ import torch.nn as nn
 from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
 from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.trainer_utils import set_seed
 from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 
-from .env import get_dist_setting, is_dist, is_dist_ta, is_master
+from .env import get_dist_setting, get_node_setting, is_dist, is_dist_ta, is_local_master, is_master
 from .logger import get_logger
 from .utils import deep_getattr
 
@@ -84,7 +86,10 @@ def show_layers(model: nn.Module, max_lines: Optional[int] = 20) -> None:
         logger.info(f'[{n}]: requires_grad={p.requires_grad}, dtype={p.dtype}, device={p.device}')
 
 
-def freeze_parameters(model: nn.Module, freeze_parameters_ratio: float, freeze_parameters: List[str]) -> None:
+def freeze_parameters(model: nn.Module,
+                      freeze_parameters_ratio: float,
+                      freeze_parameters: List[str],
+                      freeze_parameters_regex: Optional[str] = None) -> None:
     if freeze_parameters_ratio > 0:
         n_parameters = get_n_params_grads(model)[0]
         n_parameters = np.array(n_parameters, dtype=np.int64)
@@ -100,19 +105,48 @@ def freeze_parameters(model: nn.Module, freeze_parameters_ratio: float, freeze_p
                 if n.startswith(freeze_p):
                     p.requires_grad = False
 
+    if freeze_parameters_regex is not None:
+        try:
+            pattern = re.compile(freeze_parameters_regex)
+        except re.error as e:
+            logger.warning(f"Invalid freeze_parameters_regex '{freeze_parameters_regex}': {e}")
+            return
 
-def activate_parameters(model: nn.Module, additional_trainable_parameters: List[str]) -> None:
-    if len(additional_trainable_parameters) == 0:
-        return
+        for n, p in model.named_parameters():
+            if pattern.search(n):
+                p.requires_grad = False
+
+
+def activate_parameters(model: nn.Module,
+                        additional_trainable_parameters: List[str],
+                        trainable_parameters_regex: Optional[str] = None) -> None:
     has_activate = False
-    for n, p in model.named_parameters():
-        for additional_tp in additional_trainable_parameters:
-            if n.startswith(additional_tp):
+    if len(additional_trainable_parameters) > 0:
+        for n, p in model.named_parameters():
+            for additional_tp in additional_trainable_parameters:
+                if n.startswith(additional_tp):
+                    p.requires_grad = True
+                    has_activate = True
+        if not has_activate:
+            logger.warning('len(additional_trainable_parameters) > 0 but no parameters are activated. '
+                           f'additional_trainable_parameters: {additional_trainable_parameters}')
+
+    has_activate = False
+    if trainable_parameters_regex is not None:
+        try:
+            pattern = re.compile(trainable_parameters_regex)
+        except re.error as e:
+            logger.warning(f"Invalid trainable_parameters_regex '{trainable_parameters_regex}': {e}")
+            return
+
+        for n, p in model.named_parameters():
+            if pattern.search(n):
                 p.requires_grad = True
                 has_activate = True
-    if not has_activate:
-        logger.warning('len(additional_trainable_parameters) > 0 but no parameters are activated. '
-                       f'additional_trainable_parameters: {additional_trainable_parameters}')
+
+        if not has_activate:
+            logger.warning('trainable_parameters_regex is provided but no parameters are activated. '
+                           f'trainable_parameters_regex: {trainable_parameters_regex}')
 
 
 def time_synchronize() -> float:
@@ -154,9 +188,12 @@ def _sync_max_memory(max_memory: Dict[Union[int, str], int]) -> Dict[Union[int, 
     return new_max_memory
 
 
-def find_layers(model: nn.Module,
-                cond: Callable[[str, nn.Module], bool],
-                sub_module: Optional[str] = None) -> List[str]:
+def find_layers(
+    model: nn.Module,
+    cond: Callable[[str, nn.Module], bool],
+    sub_module: Optional[str] = None,
+    min_name_len: Optional[int] = None,
+) -> List[str]:
     # The content of target_module_names cannot exist in inner_nodes.
     sub_module_str = sub_module
     if sub_module is None:
@@ -170,13 +207,17 @@ def find_layers(model: nn.Module,
             inner_nodes.add(name)
     target_module_names = set()
     for name, module in sub_module.named_modules():
-        name = f'{sub_module_str}.{name}'
+        if sub_module_str:
+            name = f'{sub_module_str}.{name}' if name else sub_module_str
         if cond(name, module):
             module_name_list = name.split('.')
             module_name = module_name_list.pop()
+            i = 1
             for inner_node in inner_nodes:
-                while module_name_list and inner_node.endswith(re.sub(r'\d+\.', '{}.', module_name)):
+                while module_name_list and inner_node.endswith(re.sub(
+                        r'\d+\.', '{}.', module_name)) or min_name_len and i < min_name_len:
                     module_name = f'{module_name_list.pop()}.{module_name}'
+                    i += 1
             target_module_names.add(module_name)
     return list(target_module_names)
 
@@ -223,20 +264,30 @@ def find_all_linears(model, model_arch=None, extra_layers=None, sub_module=None)
 
 
 @contextmanager
-def safe_ddp_context(hash_id: str, use_barrier: bool = False):
+def safe_ddp_context(hash_id: Optional[str], use_barrier: bool = False):
     if use_barrier and dist.is_initialized():
-        if (is_dist() or is_dist_ta()) and not is_master():
-            dist.barrier()
+        if is_dist() or is_dist_ta():
+            if not is_master():
+                dist.barrier()
+            if not is_local_master():
+                # Compatible with multi-machine scenarios,
+                # where each machine uses different storage hardware.
+                dist.barrier()
         yield
-        if (is_dist() or is_dist_ta()) and is_master():
-            dist.barrier()
-    else:
+        if is_dist() or is_dist_ta():
+            if is_master():
+                dist.barrier()
+            if is_local_master():
+                dist.barrier()
+    elif hash_id is not None:
         lock_dir = os.path.join(get_cache_dir(), 'lockers')
         os.makedirs(lock_dir, exist_ok=True)
         file_path = hashlib.sha256(hash_id.encode('utf-8')).hexdigest() + '.lock'
         file_path = os.path.join(lock_dir, file_path)
         with FileLock(file_path):
             yield
+    else:
+        yield
 
 
 def get_device(local_rank: Optional[Union[str, int]] = None) -> str:
@@ -285,14 +336,18 @@ def get_device_count() -> int:
         return 0
 
 
-def gc_collect() -> None:
-    gc.collect()
+def empty_cache():
     if is_torch_npu_available():
         torch.npu.empty_cache()
     elif is_torch_mps_available():
         torch.mps.empty_cache()
     elif is_torch_cuda_available():
         torch.cuda.empty_cache()
+
+
+def gc_collect() -> None:
+    gc.collect()
+    empty_cache()
 
 
 class Serializer:
@@ -328,15 +383,78 @@ def set_default_ddp_config():
         os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
 
 
-def init_process_group(ddp_backend: Optional[str] = None):
+def init_process_group(backend: Optional[str] = None, timeout: int = 18000000):
     if dist.is_initialized():
         return
     set_device()
-    if ddp_backend is None:
+    if backend is None:
         if is_torch_npu_available():
-            ddp_backend = 'hccl'
+            backend = 'hccl'
         elif torch.cuda.is_available():
-            ddp_backend = 'nccl'
+            backend = 'nccl'
         else:
-            ddp_backend = 'gloo'
-    dist.init_process_group(backend=ddp_backend)
+            backend = 'gloo'
+    timeout = timedelta(seconds=timeout)
+    dist.init_process_group(backend=backend, timeout=timeout)
+
+
+def seed_worker(worker_id: int, num_workers: int, rank: int):
+    """
+    Helper function to set worker seed during Dataloader initialization.
+    """
+    init_seed = torch.initial_seed() % 2**32
+    worker_seed = num_workers * rank + init_seed
+    set_seed(worker_seed)
+
+
+def check_shared_disk(error, cache_dir: Optional[str] = None):
+    nnodes = get_node_setting()[1]
+    if nnodes <= 1:
+        return True
+    assert dist.is_initialized()
+    if cache_dir is None:
+        cache_dir = os.path.join(get_cache_dir(), 'tmp')
+    os.makedirs(cache_dir, exist_ok=True)
+    tmp_path = os.path.join(cache_dir, 'check_shared_disk.tmp')
+    is_shared_disk = True
+
+    try:
+        with safe_ddp_context(None, True):
+            if is_master():
+                with open(tmp_path, 'w'):
+                    pass
+            if not os.path.exists(tmp_path):
+                is_shared_disk = False
+        shared_state = [None] * dist.get_world_size()
+        dist.all_gather_object(shared_state, is_shared_disk)
+    finally:
+        if is_master() and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+    if not all(shared_state):
+        raise error
+
+
+@contextmanager
+def unwrap_model_for_generation(
+    model,
+    accelerator,
+    gather_deepspeed3_params=True,
+    gather_parameters: List[nn.Parameter] = None,
+):
+    unwrapped_model = accelerator.unwrap_model(model)
+    if accelerator.state.deepspeed_plugin is not None and accelerator.state.deepspeed_plugin.zero_stage == 3:
+        if not gather_deepspeed3_params:
+            yield accelerator.unwrap_model(model)
+        else:
+            import deepspeed
+            parameters = [
+                parameter for name, parameter in model.named_parameters()
+                if not gather_parameters or name in gather_parameters
+            ]
+            with deepspeed.zero.GatheredParameters(parameters):
+                from trl.models.utils import remove_hooks, add_hooks
+                remove_hooks(model)
+                yield accelerator.unwrap_model(model)
+                add_hooks(model)
+    else:
+        yield unwrapped_model

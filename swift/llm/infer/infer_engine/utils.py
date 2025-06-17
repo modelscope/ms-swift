@@ -67,7 +67,10 @@ class InferStreamer(InferTools):
 
     def _get_response(self, response: str, is_finished: bool, token_len: int) -> str:
         # After the symbol for a new line, we flush the cache.
-        if response.endswith('\n') or is_finished:
+        if self.first_token:
+            printable_text = response
+            self.first_token = False
+        elif response.endswith('\n') or is_finished:
             printable_text = response[self.print_idx:]
             self.cache_idx += token_len
             self.first_num_space = -1
@@ -85,9 +88,10 @@ class InferStreamer(InferTools):
 
     def get_printable_text(self, raw_tokens: List[int], is_finished: bool) -> str:
         raw_tokens = raw_tokens[self.cache_idx:]
+        if self.first_token:
+            raw_tokens = []
         response = self.template.decode(
             raw_tokens, is_finished=is_finished, tokenizer_kwargs=self.decode_kwargs, first_token=self.first_token)
-        self.first_token = False
         response = self._align_blank_suffix(response)
         return self._get_response(response, is_finished, len(raw_tokens))
 
@@ -354,102 +358,6 @@ def patch_lmdeploy(load_weights=False):
     TurboMindInstance._create_model_instance = _create_model_instance
 
 
-def patch_vllm(world_size=1):
-
-    @contextmanager
-    def _get_context():
-        from vllm.distributed.parallel_state import GroupCoordinator
-        from unittest.mock import patch
-        try:
-            from vllm.worker.worker import Worker
-            getattr(Worker, '_assert_memory_footprint_increased_during_profiling')
-            profiling_patch = patch(
-                'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
-        except (ImportError, AttributeError):
-            profiling_patch = nullcontext()
-
-        __origin_init__ = GroupCoordinator.__init__
-
-        def get_world_size(group=None) -> int:
-            if not group:
-                # Given size
-                return world_size
-            else:
-                return torch.distributed.get_world_size_origin(group)
-
-        def __init__(self, group_ranks, local_rank, *args, **kwargs):
-            node_rank, nnodes = get_node_setting()
-            device_count = get_device_count()
-            num_infer_workers = world_size // nnodes
-
-            def map_rank_to_real_device(obj):
-                # Use the last devices
-                # world_size=4 gpus=8 [0,1,2,3] will map to [4,5,6,7]
-                diff = device_count - num_infer_workers
-                if diff < 0:
-                    diff = 0
-                if isinstance(obj, list):
-                    return [map_rank_to_real_device(o) for o in obj]
-                elif isinstance(obj, int):
-                    return obj + diff
-                else:
-                    raise ValueError(f'Unsupported type: {obj}')
-
-            if kwargs.get('group_name') == 'world':
-                local_rank = local_rank + node_rank * num_infer_workers
-            else:
-                local_rank = map_rank_to_real_device(local_rank - node_rank * num_infer_workers)
-            rank = dist.get_rank()
-            if world_size == 1 and [rank] not in group_ranks:
-                # for ddp inference
-                group_ranks = [[rank]]
-            if nnodes > 1 and num_infer_workers < device_count:
-                """
-                Map group_ranks to global ranks
-
-                Example:
-                  - Number of nodes (nnodes): 2
-                  - Devices per node (device_count): 4
-                  - Inference workers per node (num_infer_workers): 1
-
-                  Initial group_ranks:
-                      [[0, 1]]
-
-                  After mapping to global ranks:
-                      [[0, 3]]  # Global ranks corresponding to the local ranks
-                """
-                train_device_count = device_count - num_infer_workers
-                # vllm.worker.init_distributed_environment
-                if len(group_ranks) == 1:
-                    group_ranks = group_ranks[0]
-                    for i in range(nnodes):
-                        group_ranks[i * num_infer_workers:(i + 1) * num_infer_workers] = [
-                            train_device_count * i + j for j in range(num_infer_workers)
-                        ]
-                    group_ranks = [group_ranks]
-                # vllm.worker.ensure_model_parallel_initialized
-                else:
-                    for i in range(nnodes):
-                        for j in range(num_infer_workers):
-                            group_ranks[i * num_infer_workers + j] = [train_device_count * i + j]
-
-            return __origin_init__(self, group_ranks, local_rank, *args, **kwargs)
-
-        GroupCoordinator.__init__ = __init__
-
-        try:
-            with profiling_patch, restore_torch_device_after_vllm_init():
-                torch.distributed.get_world_size_origin = torch.distributed.get_world_size
-                torch.distributed.get_world_size = get_world_size
-                yield
-                torch.distributed.get_world_size = torch.distributed.get_world_size_origin
-                del torch.distributed.get_world_size_origin
-        finally:
-            GroupCoordinator.__init__ = __origin_init__
-
-    return _get_context() if dist.is_initialized() else nullcontext()
-
-
 def patch_npu_vllm(vllm_device: str):
     if isinstance(vllm_device, int):
         vllm_device = get_device(vllm_device)
@@ -468,37 +376,9 @@ def patch_npu_vllm(vllm_device: str):
     return new_group_context() if device_type == 'npu' else nullcontext()
 
 
-@contextmanager
-def set_device_context(device: Union[str, int]):
-    origin_device = get_current_device()
-    set_device(device)
-    try:
-        yield
-    finally:
-        set_device(origin_device)
-
-
-@contextmanager
-def restore_torch_device_after_vllm_init():
-    """
-    A context manager to restore the original CUDA device after potential modifications.
-
-    This is specifically designed to address an issue in Distributed Data Parallel (DDP)
-    scenarios where the initialization of the vLLM engine may inadvertently modify the
-    default CUDA device. The context manager saves the current device at the start and
-    ensures it is restored upon exit, even if the device is modified within the context.
-
-    """
-    origin_device = get_current_device()
-    try:
-        yield
-    finally:
-        current_device = get_current_device()
-        if origin_device != current_device:
-            set_device(origin_device)
-
-
 def patch_vllm_memory_leak():
+    # fix vllm 0.7.3 memory leak
+    # https://github.com/vllm-project/vllm/pull/14326
     import vllm
     if version.parse(vllm.__version__) != version.parse('0.7.3'):
         return

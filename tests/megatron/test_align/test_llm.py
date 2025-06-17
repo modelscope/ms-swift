@@ -1,11 +1,36 @@
 import os
 
+import torch
+
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
-def _test_model(model_id):
+def _test_model(model_id, **kwargs):
     from swift.llm import export_main, ExportArguments
-    export_main(ExportArguments(model=model_id, to_mcore=True, exist_ok=True, test_convert_precision=True))
+    if model_id.endswith('mcore'):
+        export_main(
+            ExportArguments(
+                mcore_model=model_id,
+                to_hf=True,
+                exist_ok=True,
+                test_convert_precision=True,
+                torch_dtype=torch.bfloat16,
+                **kwargs,
+            ))
+    else:
+        export_main(
+            ExportArguments(
+                model=model_id,
+                to_mcore=True,
+                exist_ok=True,
+                test_convert_precision=True,
+                torch_dtype=torch.bfloat16,
+                **kwargs,
+            ))
+
+
+def test_qwen2():
+    _test_model('Qwen/Qwen2-0.5B-Instruct')
 
 
 def test_llama2():
@@ -21,12 +46,15 @@ def test_marco_o1():
 
 
 def test_deepseek_r1_llama():
-    # TODO: FIX rope
     _test_model('deepseek-ai/DeepSeek-R1-Distill-Llama-8B')
 
 
 def test_deepseek_r1_qwen():
     _test_model('deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B')
+
+
+def test_deepseek_r1_qwen_0528():
+    _test_model('deepseek-ai/DeepSeek-R1-0528-Qwen3-8B')
 
 
 def test_yi():
@@ -45,13 +73,41 @@ def test_llama3_2():
     _test_model('LLM-Research/Llama-3.2-1B-Instruct')
 
 
+def test_qwen3():
+    _test_model('Qwen/Qwen3-0.6B-Base')
+
+
+def test_internlm3():
+    _test_model('Shanghai_AI_Laboratory/internlm3-8b-instruct')
+
+
+def test_qwen2_moe():
+    _test_model('Qwen/Qwen1.5-MoE-A2.7B-Chat')
+
+
+def test_qwen3_moe():
+    _test_model('Qwen/Qwen3-30B-A3B')
+
+
+def test_mimo():
+    # _test_model('XiaomiMiMo/MiMo-7B-RL')
+    _test_model('XiaomiMiMo/MiMo-7B-RL-0530')
+
+
 if __name__ == '__main__':
+    # test_qwen2()
     # test_llama2()
     # test_llama3()
     # test_marco_o1()
     # test_deepseek_r1_llama()
     # test_deepseek_r1_qwen()
+    test_deepseek_r1_qwen_0528()
     # test_yi()
     # test_megrez()
     # test_llama3_1()
-    test_llama3_2()
+    # test_llama3_2()
+    # test_qwen3()
+    # test_qwen2_moe()
+    # test_qwen3_moe()
+    # test_internlm3()
+    # test_mimo()

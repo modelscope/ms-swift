@@ -21,8 +21,8 @@ from transformers.utils.versions import require_version
 from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr, use_torchacc
 from .constant import ModelType
 from .patcher import (patch_automodel, patch_automodel_for_sequence_classification, patch_get_dynamic_module,
-                      patch_mp_ddp)
-from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
+                      patch_mp_ddp, patch_tp_plan)
+from .utils import AttnImpl, HfConfigFactory, InitModelStrategy, ModelInfo, safe_snapshot_download
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 logger = get_logger()
@@ -48,8 +48,7 @@ class ModelGroup:
     tags: List[str] = field(default_factory=list)
 
     def __post_init__(self):
-        if not isinstance(self.models, (tuple, list)):
-            self.models = [self.models]
+        assert isinstance(self.models, (tuple, list)), f'self.models: {self.models}'
 
 
 @dataclass
@@ -251,11 +250,26 @@ def get_model_tokenizer_from_local(model_dir: str,
             from swift.llm.model.patcher import patch_output_normalizer
             patch_output_normalizer(model, model_meta=model_meta)
 
+        init_strategy = kwargs.get('init_strategy')
+        if init_strategy is not None:
+            InitModelStrategy.init_parameters(model, init_strategy)
+
     model_info.config = model_config if model is None else model.config
-    if model:
+
+    pad_token = tokenizer.pad_token_id
+    if pad_token is None:
+        pad_token = tokenizer.eos_token_id
+    if tokenizer.eos_token_id is None:
+        tokenizer.eos_token_id = pad_token
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = pad_token
+    assert tokenizer.eos_token_id is not None
+    assert tokenizer.pad_token_id is not None
+
+    if model is not None:
         # fix seq classification task
-        pad_token_id = model.config.pad_token_id or tokenizer.pad_token_id
-        HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token_id)
+        HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token)
+
     return model, tokenizer
 
 
@@ -536,7 +550,8 @@ def get_model_tokenizer(
         If set to None : It will be automatically selected between sdpa and eager.
     download_model: Whether to download the model weights. If `None`, it will be selected based on load_model.
     """
-    patch_mp_ddp()
+    if load_model:
+        patch_mp_ddp()
     if model_kwargs is None:
         model_kwargs = {}
     if download_model is None:
@@ -567,7 +582,7 @@ def get_model_tokenizer(
     kwargs['attn_impl'] = attn_impl
     kwargs['rope_scaling'] = rope_scaling
     kwargs['model_meta'] = model_meta
-    with patch_get_dynamic_module():
+    with patch_get_dynamic_module(), patch_tp_plan(load_model):
         model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
@@ -582,16 +597,6 @@ def get_model_tokenizer(
         model_info.config.problem_type = problem_type
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
-
-    pad_token = tokenizer.pad_token_id
-    if pad_token is None:
-        pad_token = tokenizer.eos_token_id
-    if tokenizer.eos_token_id is None:
-        tokenizer.eos_token_id = pad_token
-    if tokenizer.pad_token_id is None:
-        tokenizer.pad_token_id = pad_token
-    assert tokenizer.eos_token_id is not None
-    assert tokenizer.pad_token_id is not None
 
     if model is not None:
         model.model_info = model_info

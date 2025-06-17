@@ -124,6 +124,29 @@ class Runtime(BaseUI):
         },
     ]
 
+    grpo_plot = [
+        {
+            'name': 'train/loss',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'train/reward',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'train/learning_rate',
+            'smooth': None,
+        },
+        {
+            'name': 'train/completions/mean_length',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'train/kl',
+            'smooth': 0.9,
+        },
+    ]
+
     locale_dict = {
         'runtime_tab': {
             'label': {
@@ -292,6 +315,8 @@ class Runtime(BaseUI):
             return cls.kto_plot
         elif train_type == 'orpo':
             return cls.orpo_plot
+        elif train_type == 'grpo':
+            return cls.grpo_plot
 
     @classmethod
     def update_log(cls, task):
@@ -404,7 +429,7 @@ class Runtime(BaseUI):
     def refresh_tasks(running_task=None):
         output_dir = running_task if not running_task or 'pid:' not in running_task else None
         process_name = 'swift'
-        negative_name = 'swift.exe'
+        negative_names = ['swift.exe', 'swift-script.py']
         cmd_name = ['pt', 'sft', 'rlhf']
         process = []
         selected = None
@@ -413,10 +438,12 @@ class Runtime(BaseUI):
                 cmdlines = proc.cmdline()
             except (psutil.ZombieProcess, psutil.AccessDenied, psutil.NoSuchProcess):
                 cmdlines = []
-            if any([process_name in cmdline
-                    for cmdline in cmdlines]) and not any([negative_name in cmdline
-                                                           for cmdline in cmdlines]) and any(  # noqa
-                                                               [cmdline in cmd_name for cmdline in cmdlines]):  # noqa
+            if any([
+                    process_name in cmdline for cmdline in cmdlines  # noqa
+            ]) and not any([  # noqa
+                    negative_name in cmdline for negative_name in negative_names  # noqa
+                    for cmdline in cmdlines  # noqa
+            ]) and any([cmdline in cmd_name for cmdline in cmdlines]):  # noqa
                 process.append(Runtime.construct_running_task(proc))
                 if output_dir is not None and any(  # noqa
                     [output_dir == cmdline for cmdline in cmdlines]):  # noqa

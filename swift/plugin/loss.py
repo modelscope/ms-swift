@@ -5,11 +5,14 @@ from typing import Callable, Optional
 
 import numpy as np
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
 from accelerate.utils import gather_object
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 from transformers.utils import strtobool
+
+from swift.plugin import MeanMetric
 
 
 class LossType:
@@ -18,6 +21,7 @@ class LossType:
     contrastive = 'contrastive'
     online_contrastive = 'online_contrastive'
     infonce = 'infonce'
+    channel_loss = 'channel_loss'
 
 
 LOSS_MAPPING = {}
@@ -170,6 +174,8 @@ def calculate_infonce_metrics(embeddings, labels):
     from scipy.stats import pearsonr, spearmanr
     hard_negatives = os.environ.get('INFONCE_HARD_NEGATIVES', None)
     use_batch = strtobool(os.environ.get('INFONCE_USE_BATCH', 'True'))
+    if hard_negatives is not None:
+        hard_negatives = int(hard_negatives)
     split_tensors = _parse_multi_negative_sentences(torch.tensor(embeddings), torch.tensor(labels), hard_negatives)
     split_tensors = [t.numpy() for t in split_tensors]
     can_batched = hard_negatives is not None
@@ -380,6 +386,61 @@ def online_contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch
     negative_loss = F.relu(margin - negative_pairs).pow(2).sum()
     loss = positive_loss + negative_loss
     return loss
+
+
+@register_loss_func(LossType.channel_loss)
+def channel_loss_func(outputs, labels, num_items_in_batch=None, sample_channels=None, trainer=None) -> torch.Tensor:
+    channels = trainer.args.channels
+    assert channels is not None, 'Please pass --channels as a hyperparameter.'
+    assert sample_channels is not None, 'Data does not have channel field.'
+    logits = outputs.logits
+
+    # compute token loss
+    shift_logits = logits[..., :-1, :].contiguous()
+    shift_labels = labels[..., 1:].contiguous()
+    loss_fct = nn.CrossEntropyLoss(reduction='none')
+    flat_logits = shift_logits.view(-1, shift_logits.size(-1))
+    flat_labels = shift_labels.view(-1)
+    token_loss = loss_fct(flat_logits, flat_labels).view_as(shift_labels)  # [batch_size, seq_len-1]
+
+    mask = shift_labels != -100
+
+    state = trainer.state
+    state.local_step += 1
+
+    for ch in set(sample_channels):
+        idx = torch.tensor([s == ch for s in sample_channels], device=logits.device)
+        ch_loss_step = token_loss[idx].masked_select(mask[idx])
+        state.ch_loss_steps.setdefault(ch, []).append(ch_loss_step)
+
+    # At the end of a global step, compute the mean loss for each channel
+    if state.local_step % trainer.args.gradient_accumulation_steps == 0:
+        for ch in channels:
+            ch_loss_steps = state.ch_loss_steps.get(ch, [])
+            loss_sum_tensor = torch.tensor([sum(torch.sum(x) for x in ch_loss_steps)],
+                                           dtype=torch.float32,
+                                           device=logits.device)
+            num_items_tensor = torch.tensor([sum(x.numel() for x in ch_loss_steps)],
+                                            dtype=torch.float32,
+                                            device=logits.device)
+            if dist.is_initialized():
+                dist.all_reduce(loss_sum_tensor, op=dist.ReduceOp.SUM)
+                dist.all_reduce(num_items_tensor, op=dist.ReduceOp.SUM)
+            loss_sum = loss_sum_tensor.item()
+            num_items = num_items_tensor.item()
+            ch_loss = loss_sum / (num_items + 1e-12)
+
+            if ch_loss > 0.0:
+                metric_key = f'loss_{ch}'
+                trainer._custom_metrics.setdefault(metric_key, MeanMetric(nan_value=None)).update(ch_loss)
+            # Reset
+            state.ch_loss_steps[ch] = []
+
+    # return loss
+    total_loss = token_loss.masked_select(mask).sum()
+    total_tokens = mask.sum()
+    return total_loss / num_items_in_batch if num_items_in_batch is not None \
+        else total_loss / (total_tokens.float() + 1e-12)
 
 
 def get_loss_func(loss_type: Optional[str]) -> Optional[Callable]:

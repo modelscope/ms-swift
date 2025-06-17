@@ -5,6 +5,7 @@ from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
     from .infer import infer_main, SwiftInfer
+    from .rollout import rollout_main
     from .deploy import deploy_main, SwiftDeploy, run_deploy
     from .protocol import RequestConfig, Function
     from .utils import prepare_model_template
@@ -12,6 +13,7 @@ if TYPE_CHECKING:
                                prepare_generation_config, AdapterRequest, BaseInferEngine)
 else:
     _import_structure = {
+        'rollout': ['rollout_main'],
         'infer': ['infer_main', 'SwiftInfer'],
         'deploy': ['deploy_main', 'SwiftDeploy', 'run_deploy'],
         'protocol': ['RequestConfig', 'Function'],

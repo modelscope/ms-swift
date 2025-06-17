@@ -12,6 +12,16 @@ from .utils import calculate_loss_scale
 class LossScale:
     loss_scale_config = None  # path
 
+    def _set_keep_loss_scale(self):
+        self.keep_loss_scale = False
+        if self.loss_scale_map is None:
+            return
+        res = set()
+        for v in self.loss_scale_map.values():
+            res.update(v)
+        if len(res - {0., 1.}) > 0:
+            self.keep_loss_scale = True
+
     def __init__(self):
         if self.loss_scale_config is not None:
             path = os.path.dirname(os.path.abspath(__file__))
@@ -20,6 +30,7 @@ class LossScale:
                 self.loss_scale_map = json.load(json_file)
         else:
             self.loss_scale_map = None
+        self._set_keep_loss_scale()
 
     def get_loss_scale(self,
                        context: str,
@@ -117,15 +128,39 @@ class TrainAllLossScale(LossScale):
         return [context], [1.]
 
 
+class IgnoreEmptyThink(REACTLossScale):
+    loss_scale_config = 'ignore_empty_think.json'
+
+
+class LastRoundWithIgnoreEmptyThink(LossScale):
+    loss_scale_config = 'ignore_empty_think.json'
+
+    def get_loss_scale(self,
+                       context: str,
+                       context_type: ContextType,
+                       is_last_round: bool,
+                       *,
+                       query: Optional[str] = None):
+        if context_type == ContextType.RESPONSE:
+            if not is_last_round:
+                return [context], [float(is_last_round)]
+            else:
+                return calculate_loss_scale(query, context, self.loss_scale_map)
+
+        return super().get_loss_scale(context, context_type, is_last_round)
+
+
 # Add your loss scale here, use --loss_scale xxx to train
 loss_scale_map = {
-    'last_round': LastRoundLossScale(),
-    'default': LossScale(),
-    'all': TrainAllLossScale(),
+    'last_round': LastRoundLossScale,
+    'default': LossScale,
+    'all': TrainAllLossScale,
+    'ignore_empty_think': IgnoreEmptyThink,
+    'last_round_with_ignore_empty_think': LastRoundWithIgnoreEmptyThink,
     # agent
-    'agentflan': AgentFlanLossScale(),
-    'react': REACTLossScale(),
-    'alpha_umi': AlphaUmiLossScale(),
-    'qwen': QwenLossScale(),
-    'hermes': HermesLossScale()
+    'react': REACTLossScale,
+    'hermes': HermesLossScale,
+    'qwen': QwenLossScale,
+    'agentflan': AgentFlanLossScale,
+    'alpha_umi': AlphaUmiLossScale,
 }

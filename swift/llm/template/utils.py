@@ -138,22 +138,20 @@ def split_str_parts_by(text: str, delimiters: List[str], regex_mode: bool = Fals
         The split text in list of dicts.
     """
     assert isinstance(text, str), f'text: {text}'
-    if delimiters:
-        if not regex_mode:
-            delimiters = [re.escape(delimiter) for delimiter in delimiters]
-        parts = _split_str_by_regex(text, delimiters)
-    else:
-        parts = ['', text]
+    delimiters_origin = delimiters
+    if not regex_mode:
+        delimiters = [re.escape(delimiter) for delimiter in delimiters]
+    parts = _split_str_by_regex(text, delimiters) if delimiters else ['', text]
     res = []
     if regex_mode:
         parts = [part for part in parts if part]
         for part in parts:
-            for delimiter in delimiters:
+            for delimiter, delimiter_origin in zip(delimiters, delimiters_origin):
                 if re.match(delimiter, part, re.DOTALL):
                     break
             else:
-                delimiter = ''
-            res.append({'key': delimiter, 'content': part})
+                delimiter_origin = ''
+            res.append({'key': delimiter_origin, 'content': part})
     else:
         for key, content in zip(parts[::2], parts[1::2]):
             res.append({'key': key, 'content': content})

@@ -11,10 +11,12 @@ def get_mg_model_tokenizer(model_id):
     megatron_model_meta = get_megatron_model_meta(processor.model_meta.model_type)
     model_info = processor.model_info
     kwargs = megatron_model_meta.convert_hf_config(model_info.config)
-    megatron_args = MegatronArguments(**kwargs, seq_length=1, use_cpu_initialization=True, no_initialization=True)
+    megatron_args = MegatronArguments(
+        **kwargs, seq_length=1, use_cpu_initialization=True, no_initialization=True, torch_dtype=torch.float32)
+    extra_args_provider = megatron_model_meta.extra_args_provider
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
-    initialize_megatron(args_defaults=extra_args)
+    initialize_megatron(args_defaults=extra_args, extra_args_provider=extra_args_provider)
     mg_model = megatron_model_meta.model_provider()
     megatron_model_meta.convert_hf2mcore(hf_model, mg_model)
     return hf_model, mg_model, processor

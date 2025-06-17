@@ -27,7 +27,7 @@ Hyperparameters:
 It is recommended to perform SFT training on the preferred answers from the preference dataset before starting DPO training to ensure the data meets the distribution requirements of the DPO algorithm.
 We also mixed SFT loss into the DPO loss for stable training. You can adjust the coefficient of SFT loss with the hyperparameter `rpo_alpha`, which defaults to `1.`.
 
-Reference the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/dpo.sh).
+Reference the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/dpo).
 
 ## RM
 [Paper on arXiv](https://arxiv.org/abs/2203.02155)

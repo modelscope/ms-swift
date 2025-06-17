@@ -9,7 +9,7 @@ import transformers
 from packaging import version
 from transformers import TrainingArguments
 
-from swift.llm import TrainArguments, get_model_arch
+from swift.llm import TrainArguments, deep_getattr, get_model_arch
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
 from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
@@ -21,9 +21,9 @@ logger = get_logger()
 def apply_liger(model_type: str):
     from liger_kernel.transformers import (apply_liger_kernel_to_llama, apply_liger_kernel_to_mistral,
                                            apply_liger_kernel_to_mixtral, apply_liger_kernel_to_gemma,
-                                           apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen2_vl,
-                                           apply_liger_kernel_to_gemma2, apply_liger_kernel_to_phi3,
-                                           apply_liger_kernel_to_mllama)
+                                           apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen3,
+                                           apply_liger_kernel_to_qwen2_vl, apply_liger_kernel_to_qwen2_5_vl,
+                                           apply_liger_kernel_to_phi3, apply_liger_kernel_to_mllama)
     from swift.llm import ModelType
     if model_type in (ModelType.llama, ModelType.llama3, ModelType.llama3_1, ModelType.llama3_2):
         apply_liger_kernel_to_llama()
@@ -35,12 +35,16 @@ def apply_liger(model_type: str):
         apply_liger_kernel_to_gemma()
     elif model_type in (ModelType.qwen2, ModelType.qwen2_5):
         apply_liger_kernel_to_qwen2()
+    elif model_type in (ModelType.qwen3):
+        apply_liger_kernel_to_qwen3()
     elif model_type in (ModelType.phi3):
         apply_liger_kernel_to_phi3()
     elif model_type in (ModelType.llama3_2_vision):
         apply_liger_kernel_to_mllama()
     elif model_type in (ModelType.qwen2_vl):
         apply_liger_kernel_to_qwen2_vl()
+    elif model_type in (ModelType.qwen2_5_vl):
+        apply_liger_kernel_to_qwen2_5_vl()
     else:
         raise ValueError(f'Unsupported liger model_type: {model_type}')
 
@@ -55,30 +59,33 @@ def get_multimodal_target_regex(
 ) -> str:
     model_arch = get_model_arch(model.model_meta.model_arch)
     modules = []
-    rejected_modules = []
     if not freeze_llm:
         modules += model_arch.language_model
     if not freeze_vit:
         modules += model_arch.vision_tower
     if not freeze_aligner:
         modules += model_arch.aligner
-    elif not freeze_vit:
-        rejected_modules += model_arch.aligner
-
     assert len(modules) > 0, f'modules: {modules}'
-    prefix_pattern = '|'.join(modules)
-    rejected_pattern = '|'.join(rejected_modules)
 
     extra_layers = []
     if include_embedding:
         extra_layers.append(nn.Embedding)
-    target_modules = []
+    res = []
     for module in modules:
-        target_modules += find_all_linears(model, model_arch, extra_layers, sub_module=module)
-    target_regex = rf'^({prefix_pattern}).*\.({"|".join(target_modules)})$'
-    if rejected_pattern:
-        target_regex = rf'(?!^({rejected_pattern}))' + target_regex
-    return target_regex
+        rejected_modules = []
+        if not freeze_vit:
+            for aligner in model_arch.aligner:
+                if aligner.startswith(f'{module}.'):
+                    rejected_modules.append(aligner)
+
+        sub_module = deep_getattr(model, module)
+        target_modules = find_all_linears(sub_module, model_arch, extra_layers)
+        target_modules = [tm for tm in target_modules if tm]
+        target_pattern = rf'.*\.({"|".join(target_modules)})' if target_modules else ''
+        rejected_pattern = rf'(?!({"|".join(rejected_modules)}))' if rejected_modules else ''
+        res.append(rf'{rejected_pattern}{module}{target_pattern}')
+
+    return rf'^({"|".join(res)})$'
 
 
 def get_target_modules(args, model) -> Union[str, List[str]]:
@@ -371,9 +378,9 @@ class TunerMixin:
             model.train()
             model.requires_grad_(True)
 
-            freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters)
-            if len(args.trainable_parameters) > 0:
-                activate_parameters(model, args.trainable_parameters)
+            freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
+            if len(args.trainable_parameters) > 0 or args.trainable_parameters_regex is not None:
+                activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
             if use_torchacc() and args.resume_from_checkpoint:
                 torchacc_resume_from_checkpoint(args, model)
         else:
@@ -405,7 +412,7 @@ class TunerMixin:
             args.training_args.galore_config = args.galore_config
 
         if args.sequence_parallel_size > 1:
-            from swift.trainers.xtuner import dispatch_module_xtuner
-            dispatch_module_xtuner(model)
+            from swift.trainers.sequence_parallel import sequence_parallel
+            sequence_parallel.prepare_model(model, template.tokenizer)
 
         return model

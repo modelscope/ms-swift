@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
+import os
 from collections import Counter
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -11,7 +12,7 @@ from datasets import IterableDataset as HfIterableDataset
 from datasets import Sequence, Value
 
 from swift.llm import history_to_messages
-from swift.utils import get_logger
+from swift.utils import get_logger, is_dist, is_master, safe_ddp_context
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
@@ -19,13 +20,15 @@ logger = get_logger()
 
 
 class RowPreprocessor:
-    standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
+    standard_keys = [
+        'messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects', 'channel'
+    ]
 
     def __init__(self,
                  *,
                  columns: Optional[Dict[str, str]] = None,
                  dataset_sample: Optional[int] = None,
-                 random_state: Union[np.random.RandomState, int, None] = None,
+                 random_state: Union[np.random.RandomState, int, None] = 42,
                  traceback_limit: int = 10) -> None:
         self.columns = columns or {}
         self.origin_columns = self.columns.copy()  # Higher priority and raise Error
@@ -279,6 +282,7 @@ class RowPreprocessor:
         dataset: DATASET_TYPE,
         *,
         num_proc: int = 1,
+        load_from_cache_file: bool = True,
         strict: bool = False,
         batch_size: Optional[int] = None,
     ) -> DATASET_TYPE:
@@ -290,17 +294,23 @@ class RowPreprocessor:
 
         map_kwargs = {'batched': True, 'batch_size': batch_size}
         if isinstance(dataset, HfDataset):
-            map_kwargs['num_proc'] = num_proc
+            if not load_from_cache_file and is_dist() and not is_master():
+                load_from_cache_file = True
+            map_kwargs.update({
+                'num_proc': num_proc,
+                'load_from_cache_file': load_from_cache_file,
+            })
         # compat GRPO: The solution field will be retained.
         dataset = RowPreprocessor.get_features_dataset(dataset)
         if 'solution' in dataset.features:
-            dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
+            with safe_ddp_context(None, True):
+                dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
         dataset = self._rename_columns(dataset)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
 
         ignore_max_length_error = True if isinstance(dataset, HfDataset) and num_proc > 1 else False
-        with self._patch_arrow_writer():
+        with self._patch_arrow_writer(), safe_ddp_context(None, True):
             try:
                 dataset_mapped = dataset.map(
                     self.batched_preprocess,
@@ -339,8 +349,12 @@ class ResponsePreprocessor(RowPreprocessor):
         response = row.pop('response', None)
         if response is not None:
             if isinstance(response, (list, tuple)):
+                from transformers.utils import strtobool
                 # sometimes response is a list, pick one randomly
-                response = self.random_state.choice(response)
+                if strtobool(os.environ.get('RANDOM_DATASET_RESPONSE', 'True')):
+                    response = self.random_state.choice(response)
+                else:
+                    response = response[0]
         history = row.pop('history', None) or []
         query = row.pop('query', None)
         system = row.pop('system', None)
@@ -509,8 +523,9 @@ class AutoPreprocessor:
         dataset: DATASET_TYPE,
         *,
         num_proc: int = 1,
+        load_from_cache_file: bool = True,
         strict: bool = False,
     ) -> DATASET_TYPE:
         dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns)
         preprocessor = self._get_preprocessor(dataset)
-        return preprocessor(dataset, num_proc=num_proc, strict=strict)
+        return preprocessor(dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)

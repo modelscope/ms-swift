@@ -30,6 +30,7 @@ class ModelArguments:
         rope_scaling (Literal): Type of rope scaling to use. Default is None.
         device_map (Optional[str]): Configuration for device mapping. Default is None.
         local_repo_path (Optional[str]): Path to the local github repository for model. Default is None.
+        init_strategy (Literal): Strategy to initialize all uninitialized parameters. Default is None.
     """
     model: Optional[str] = None  # model id or model path
     model_type: Optional[str] = field(
@@ -44,12 +45,14 @@ class ModelArguments:
 
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
-    rope_scaling: Literal['linear', 'dynamic'] = None
+    rope_scaling: Literal['linear', 'dynamic', 'yarn'] = None
     device_map: Optional[Union[dict, str]] = None
     max_memory: Optional[Union[dict, str]] = None
     # When some model code needs to be downloaded from GitHub,
     # this parameter specifies the path to the locally downloaded repository.
     local_repo_path: Optional[str] = None
+    init_strategy: Literal['zero', 'uniform', 'normal', 'xavier_uniform', 'xavier_normal', 'kaiming_uniform',
+                           'kaiming_normal', 'orthogonal'] = None
 
     @staticmethod
     def parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Union[str, Dict]:
@@ -171,4 +174,5 @@ class ModelArguments:
             'task_type': self.task_type,
             'num_labels': self.num_labels,
             'problem_type': self.problem_type,
+            'init_strategy': self.init_strategy,
         }

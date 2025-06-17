@@ -117,6 +117,7 @@ def test_valley():
 
 def test_qwen2_5_vl():
     os.environ['FPS'] = '1'
+    os.environ['VIDEO_MAX_PIXELS'] = str(360 * 420)
     pt_engine = PtEngine('Qwen/Qwen2.5-VL-7B-Instruct')
     messages = [{'role': 'user', 'content': '<video>What happened in the video?'}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
@@ -124,10 +125,11 @@ def test_qwen2_5_vl():
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, videos=videos)
     assert response == response2 == (
-        'In the video, a baby is sitting on a bed and appears to be interacting with an open book. '
-        'The baby seems curious and is touching the pages of the book, possibly exploring its contents or '
-        'simply playing with it. The setting looks like a cozy bedroom, and the baby is wearing sunglasses, '
-        'which adds a playful and endearing touch to the scene.')
+        'In the video, a young child is sitting on a bed and appears to be reading or flipping '
+        'through a book. The child is wearing sunglasses and seems focused on the book. '
+        'The setting looks like a cozy bedroom with various items such as clothes and '
+        "possibly toys around. The child's actions suggest they might be exploring or "
+        'learning about the book.')
 
 
 def test_qwen2_5_omni():
@@ -151,7 +153,7 @@ def test_qwen2_5_omni():
 
 
 if __name__ == '__main__':
-    from swift.llm import PtEngine, RequestConfig, get_template
+    from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen2_vl()

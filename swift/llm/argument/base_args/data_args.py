@@ -2,8 +2,6 @@
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
-from datasets import enable_caching
-
 from swift.llm import DATASET_MAPPING, register_dataset_info
 from swift.utils import get_logger
 
@@ -22,12 +20,10 @@ class DataArguments:
         data_seed (Optional[int]): Seed for dataset shuffling. Default is None.
         dataset_num_proc (int): Number of processes to use for data loading and preprocessing. Default is 1.
         streaming (bool): Flag to enable streaming of datasets. Default is False.
-        enable_cache (bool): Flag to load dataset from cache file. Default is False.
         download_mode (Literal): Mode for downloading datasets. Default is 'reuse_dataset_if_exists'.
         columns: Used for manual column mapping of datasets.
-        model_name (List[str]): List containing Chinese and English names of the model. Default is [None, None].
-        model_author (List[str]): List containing Chinese and English names of the model author.
-            Default is [None, None].
+        model_name (List[str]): List containing Chinese and English names of the model. Default is None.
+        model_author (List[str]): List containing Chinese and English names of the model author. Default is None.
         custom_dataset_info (Optional[str]): Path to custom dataset_info.json file. Default is None.
     """
     # dataset_id or dataset_dir or dataset_path
@@ -37,8 +33,9 @@ class DataArguments:
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     split_dataset_ratio: float = 0.01
 
-    data_seed: Optional[int] = None
+    data_seed: int = 42
     dataset_num_proc: int = 1
+    load_from_cache_file: bool = True
     dataset_shuffle: bool = True
     val_dataset_shuffle: bool = False
     streaming: bool = False
@@ -46,15 +43,13 @@ class DataArguments:
     stopping_strategy: Literal['first_exhausted', 'all_exhausted'] = 'first_exhausted'
     shuffle_buffer_size: int = 1000
 
-    enable_cache: bool = False
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists'
     columns: Optional[Union[dict, str]] = None
     strict: bool = False
     remove_unused_columns: bool = True
     # Chinese name and English name
-    model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
-    model_author: List[str] = field(
-        default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
+    model_name: Optional[List[str]] = field(default=None, metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
+    model_author: Optional[List[str]] = field(default=None, metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
 
     custom_dataset_info: List[str] = field(default_factory=list)  # .json
 
@@ -66,11 +61,7 @@ class DataArguments:
             register_dataset_info(path)
 
     def __post_init__(self):
-        if self.data_seed is None:
-            self.data_seed = self.seed
         self.columns = self.parse_to_dict(self.columns)
-        if self.enable_cache:
-            enable_caching()
         if len(self.val_dataset) > 0 or self.streaming:
             self.split_dataset_ratio = 0.
             if len(self.val_dataset) > 0:
@@ -84,6 +75,7 @@ class DataArguments:
         return {
             'seed': self.data_seed,
             'num_proc': self.dataset_num_proc,
+            'load_from_cache_file': self.load_from_cache_file,
             'streaming': self.streaming,
             'interleave_prob': self.interleave_prob,
             'stopping_strategy': self.stopping_strategy,

@@ -47,8 +47,7 @@ class PtEngine(InferEngine):
             torch_dtype: Optional[torch.dtype] = None,
             *,
             adapters: List[str] = None,
-            max_batch_size: int = 1,
-            #
+            max_batch_size: int = 1,  # 0/1: no limit
             model_type: Optional[str] = None,
             use_hf: Optional[bool] = None,
             revision: Optional[str] = None,
@@ -59,6 +58,7 @@ class PtEngine(InferEngine):
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
             quantization_config=None,
             model_kwargs: Optional[Dict[str, Any]] = None,
+            template: Optional[Template] = None,
             **kwargs):
         self.model, self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -80,10 +80,10 @@ class PtEngine(InferEngine):
         self.adapters = adapters or []
         for adapter in self.adapters:
             self._add_adapter(safe_snapshot_download(adapter, use_hf=use_hf, hub_token=hub_token))
-        self._post_init()
+        self._post_init(template)
 
-    def _post_init(self):
-        super()._post_init()
+    def _post_init(self, template=None):
+        super()._post_init(template)
         self.engine = self.model  # dummy
         self.generation_config = self.model.generation_config
         self._queue = Queue()
@@ -106,7 +106,9 @@ class PtEngine(InferEngine):
         if len(self._task_pool) == 0:
             return
         key, (kwargs, data) = next(iter(self._task_pool.items()))
-        max_batch_size = self.max_batch_size or len(data)
+        max_batch_size = self.max_batch_size
+        if max_batch_size <= 0:
+            max_batch_size = len(data)
         data, remain_data = data[:max_batch_size], data[max_batch_size:]
         if remain_data:
             self._task_pool[key] = kwargs, remain_data
@@ -146,10 +148,9 @@ class PtEngine(InferEngine):
     def from_model_template(cls, model, template=None, *, max_batch_size: int = 1):
         self = super().__new__(cls)
         self.model = model
-        self.default_template = template
         self.processor = template.processor
         self.max_batch_size = max_batch_size
-        self._post_init()
+        self._post_init(template)
         return self
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> _GenerationConfig:
@@ -168,7 +169,8 @@ class PtEngine(InferEngine):
 
     @staticmethod
     def preprocess_logits(batched_logits: Optional[List[torch.Tensor]], batched_generate_ids: torch.Tensor,
-                          top_logprobs: int):
+                          top_logprobs: Optional[int]):
+        top_logprobs = top_logprobs or 1
         batch_size = batched_generate_ids.shape[0]
         if batched_logits is None:
             return None
@@ -256,7 +258,7 @@ class PtEngine(InferEngine):
 
             batched_generate_ids = template.get_generate_ids(raw_batched_generate_ids, num_prompt_tokens)
             self._update_batched_logprobs(batched_logprobs, logits_streamer, batched_generate_ids,
-                                          generation_config.top_logprobs or 1)
+                                          generation_config.top_logprobs)
 
             res = []
             for i in range(batched_generate_ids.shape[0]):
@@ -533,8 +535,10 @@ class PtEngine(InferEngine):
         if use_tqdm is None:
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm)
-        # If self.max_batch_size is None or 0, then process all infer_requests at once.
-        max_batch_size = self.max_batch_size or len(infer_requests)
+        # If self.max_batch_size <= 0, then process all infer_requests at once.
+        max_batch_size = self.max_batch_size
+        if max_batch_size <= 0:
+            max_batch_size = len(infer_requests)
         res = []
         i = 0
         while i < len(infer_requests):

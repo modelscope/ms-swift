@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 import torch
 from accelerate.utils import find_device
 from modelscope.hub.utils.utils import get_cache_dir
+from torch import nn
 from transformers import PretrainedConfig
 
 from swift.hub import get_hub
@@ -317,6 +318,29 @@ def git_clone_github(github_url: str,
     return local_repo_path
 
 
+def get_llm_model(model: torch.nn.Module, model_meta=None):
+    from swift import SwiftModel
+    from peft import PeftModel
+    from swift.llm import get_model_arch
+    from accelerate.utils import extract_model_from_parallel
+    model = extract_model_from_parallel(model)
+
+    if isinstance(model, (SwiftModel, PeftModel)):
+        model = model.model
+    if model_meta is None:
+        model_meta = model.model_meta
+
+    llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
+    if llm_prefix:
+        llm_model = deep_getattr(model, llm_prefix[0])
+    else:
+        llm_model = model
+
+    if 'CausalLM' not in llm_model.__class__.__name__:
+        llm_model = model
+    return llm_model
+
+
 def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] = None) -> None:
     if func_list is None:
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
@@ -348,3 +372,103 @@ def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] 
             submodel.__class__.device = model.device
         if key == 'forward' and 'generate' in func_list:
             setattr(submodel, key, MethodType(_get_new_func(key), submodel))  # fix device_map
+
+
+class InitModelStrategy:
+
+    @staticmethod
+    def is_uninitialized(param: torch.Tensor) -> bool:
+        """
+        Check if a parameter is uninitialized or has numerically unstable values.
+        Criteria:
+            - Tensor has NaN or Inf values
+            - Tensor stats (mean or std) are outside reasonable range
+        """
+        if param.numel() == 0:
+            return False
+
+        with torch.no_grad():
+            mean_abs = param.abs().mean()
+            std = param.std()
+
+            # NaN or Inf
+            if not torch.isfinite(mean_abs) or not torch.isfinite(std):
+                return True
+
+            # Use empirically safe threshold
+            MAX_THRESHOLD = 1e7
+            if mean_abs > MAX_THRESHOLD or std > MAX_THRESHOLD:
+                return True
+
+            return False
+
+    @staticmethod
+    def constant_init(param: torch.Tensor, c: float = 0) -> None:
+        nn.init.constant_(param, c)
+
+    @staticmethod
+    def uniform_init(param: torch.Tensor, a: float = -0.1, b: float = 0.1) -> None:
+        nn.init.uniform_(param, a, b)
+
+    @staticmethod
+    def normal_init(param: torch.Tensor, mean: float = 0.0, std: float = 0.01) -> None:
+        nn.init.normal_(param, mean, std)
+
+    @staticmethod
+    def _init_high_dim(param: torch.Tensor, init_func, *args, **kwargs) -> None:
+        """Helper for high-dimensional initialization methods."""
+        if param.dim() > 1:
+            init_func(param, *args, **kwargs)
+        elif param.dim() == 1 and param.size(0) > 0:
+            InitModelStrategy.constant_init(param)
+
+    @staticmethod
+    def xavier_uniform_init(param: torch.Tensor) -> None:
+        InitModelStrategy._init_high_dim(param, nn.init.xavier_uniform_)
+
+    @staticmethod
+    def xavier_normal_init(param: torch.Tensor) -> None:
+        InitModelStrategy._init_high_dim(param, nn.init.xavier_normal_)
+
+    @staticmethod
+    def kaiming_uniform_init(param: torch.Tensor) -> None:
+        InitModelStrategy._init_high_dim(
+            param, nn.init.kaiming_uniform_, mode='fan_out', nonlinearity='leaky_relu', a=0.1)
+
+    @staticmethod
+    def kaiming_normal_init(param: torch.Tensor) -> None:
+        InitModelStrategy._init_high_dim(param, nn.init.kaiming_normal_, mode='fan_in', nonlinearity='relu')
+
+    @staticmethod
+    def orthogonal_init(param: torch.Tensor) -> None:
+        nn.init.orthogonal_(param, gain=1.0)
+
+    _INIT_STRATEGY_MAP = {
+        'zero': constant_init,
+        'uniform': uniform_init,
+        'normal': normal_init,
+        'xavier_uniform': xavier_uniform_init,
+        'xavier_normal': xavier_normal_init,
+        'kaiming_uniform': kaiming_uniform_init,
+        'kaiming_normal': kaiming_normal_init,
+        'orthogona': orthogonal_init,
+    }
+
+    @staticmethod
+    def init_parameters(model: nn.Module, init_strategy: str) -> None:
+        """Initialize model parameters using the specified strategy.
+        Args:
+            model: The model whose parameters to initialize
+            init_strategy: Name of initialization strategy
+        """
+        if init_strategy not in InitModelStrategy._INIT_STRATEGY_MAP:
+            raise ValueError(f'Unknown initialization strategy: {init_strategy}')
+
+        logger.info(f'initialization strategy: {init_strategy}')
+
+        init_func = InitModelStrategy._INIT_STRATEGY_MAP[init_strategy]
+
+        for name, param in model.named_parameters():
+            if InitModelStrategy.is_uninitialized(param):
+                logger.info(f'Initializing parameters: {name}.')
+                init_func(param)
