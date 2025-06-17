@@ -81,7 +81,7 @@ class MegatronTrainer:
                     yield from x
                     x = next_x
                 logger.info(f'Training of {i + 1} epochs has been completed, the training has finished.')
-                args.train_iters = args.curr_iteration + 1
+                x[0]['is_finished'] = True
                 yield from x
             else:
                 for x in iterable:
