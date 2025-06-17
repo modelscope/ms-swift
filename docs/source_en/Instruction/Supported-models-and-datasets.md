@@ -187,7 +187,6 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/Qwen3-4B-Base](https://modelscope.cn/models/Qwen/Qwen3-4B-Base)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-4B-Base](https://huggingface.co/Qwen/Qwen3-4B-Base)|
 |[Qwen/Qwen3-8B-Base](https://modelscope.cn/models/Qwen/Qwen3-8B-Base)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-8B-Base](https://huggingface.co/Qwen/Qwen3-8B-Base)|
 |[Qwen/Qwen3-14B-Base](https://modelscope.cn/models/Qwen/Qwen3-14B-Base)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-14B-Base](https://huggingface.co/Qwen/Qwen3-14B-Base)|
-|[Qwen/Qwen3-32B-Base](https://modelscope.cn/models/Qwen/Qwen3-32B-Base)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-32B-Base](https://huggingface.co/Qwen/Qwen3-32B-Base)|
 |[Qwen/Qwen3-0.6B](https://modelscope.cn/models/Qwen/Qwen3-0.6B)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B)|
 |[Qwen/Qwen3-1.7B](https://modelscope.cn/models/Qwen/Qwen3-1.7B)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B)|
 |[Qwen/Qwen3-4B](https://modelscope.cn/models/Qwen/Qwen3-4B)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-4B](https://huggingface.co/Qwen/Qwen3-4B)|
@@ -206,7 +205,6 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/Qwen3-32B-AWQ](https://modelscope.cn/models/Qwen/Qwen3-32B-AWQ)|qwen3|qwen3|transformers>=4.51|&#x2718;|-|[Qwen/Qwen3-32B-AWQ](https://huggingface.co/Qwen/Qwen3-32B-AWQ)|
 |[swift/Qwen3-32B-AWQ](https://modelscope.cn/models/swift/Qwen3-32B-AWQ)|qwen3|qwen3|transformers>=4.51|&#x2718;|-|-|
 |[Qwen/Qwen3-30B-A3B-Base](https://modelscope.cn/models/Qwen/Qwen3-30B-A3B-Base)|qwen3_moe|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-30B-A3B-Base](https://huggingface.co/Qwen/Qwen3-30B-A3B-Base)|
-|[Qwen/Qwen3-235B-A22B-Base](https://modelscope.cn/models/Qwen/Qwen3-235B-A22B-Base)|qwen3_moe|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-235B-A22B-Base](https://huggingface.co/Qwen/Qwen3-235B-A22B-Base)|
 |[Qwen/Qwen3-30B-A3B](https://modelscope.cn/models/Qwen/Qwen3-30B-A3B)|qwen3_moe|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-30B-A3B](https://huggingface.co/Qwen/Qwen3-30B-A3B)|
 |[Qwen/Qwen3-235B-A22B](https://modelscope.cn/models/Qwen/Qwen3-235B-A22B)|qwen3_moe|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-235B-A22B](https://huggingface.co/Qwen/Qwen3-235B-A22B)|
 |[Qwen/Qwen3-30B-A3B-FP8](https://modelscope.cn/models/Qwen/Qwen3-30B-A3B-FP8)|qwen3_moe|qwen3|transformers>=4.51|&#x2718;|-|[Qwen/Qwen3-30B-A3B-FP8](https://huggingface.co/Qwen/Qwen3-30B-A3B-FP8)|
