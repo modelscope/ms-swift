@@ -33,10 +33,13 @@ from trl.models import prepare_deepspeed
 from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import nanmax, nanmin, nanstd
 
-from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
+from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInferRequest, RowPreprocessor,
+                       get_model_arch, to_device)
+from swift.llm.infer.protocol import ChatCompletionResponse
 from swift.llm.model.utils import get_llm_model
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
+from swift.plugin.multi_turn import MultiTurnScheduler
 from swift.utils import (JsonlWriter, gc_collect, get_current_device, get_device, get_logger, is_vllm_available,
                          is_wandb_available, seed_worker)
 from ..mixin import SwiftMixin
@@ -158,10 +161,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.args.multi_turn_scheduler:
             if isinstance(self.args.multi_turn_scheduler, str):
                 assert self.args.multi_turn_scheduler in multi_turns
-                multi_turn_scheduler = multi_turns[self.args.multi_turn_scheduler](self.args.max_turns)
-                self.multi_turn_scheduler = multi_turn_scheduler
+                multi_turn_scheduler = multi_turns[self.args.multi_turn_scheduler](max_turns=self.args.max_turns)
+                self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_scheduler
             else:
-                self.multi_turn_scheduler = self.args.multi_turn_scheduler
+                assert isinstance(multi_turn_scheduler, MultiTurnScheduler)
+                self.multi_turn_scheduler: MultiTurnScheduler = self.args.multi_turn_scheduler
 
         self.num_generations = args.num_generations
         self.temperature = args.temperature
@@ -537,7 +541,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                inputs: Optional[InputsType],
                request_config: RequestConfig,
                is_global_inputs: bool = False) -> OutputsType:
-        from swift.llm.infer.protocol import ChatCompletionResponse
         request_config = self._get_request_config()
         # keys from InferRequest
         per_device_size = len(inputs)
@@ -665,10 +668,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         self._set_inputs_system(inputs)
         # infer first turn
-        results = self._infer(inputs, request_config, is_global_inputs)
+        results: List[ChatCompletionResponse] = self._infer(inputs, request_config, is_global_inputs)
 
         outputs = []
-        if not self.multi_turn_scheduler or self.vllm_use_async_engine:
+        if not self.multi_turn_scheduler:
             for i, output in enumerate(results):
                 _choices = []
                 for choice in output.choices:
@@ -678,7 +681,74 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     _choices.append((_input['messages'], choice.finish_reason))
                 outputs.append(_choices)
         else:
-            pass  # TODO: reverse and compatible with scheduler
+            # vLLMAsyncLLMEngine, only server mode is supported right now.
+            if self.vllm_use_async_engine:
+                for i, output in enumerate(results):
+                    _choices = []
+                    for choice in output.choices:
+                        # concated in Engine
+                        _choices.append((choice.messages, choice.finish_reason))
+                    outputs.append(_choices)
+            else:
+                # PTEngine or vLLMLLMEngine
+                orig_size = len(inputs)
+                outputs = [None] * orig_size
+                # we remove origin response in first turn
+                first_turn = True
+                next_turn_inputs = inputs.copy()
+                last_turn_results = results
+                while True:
+                    has_local_data = len(next_turn_inputs) > 0
+                    has_global_data = gather_object([has_local_data])
+                    if not any(has_global_data):
+                        break
+                    # inputs for current turn
+                    current_inputs = []
+                    cnt = 0
+                    # combine completions from results with messages
+                    for i, output in enumerate(last_turn_results):
+                        for choice in output.choices:
+                            current_input = deepcopy(next_turn_inputs[i])
+                            messages = current_input['messages']
+
+                            #  Whether to append a new message or update the last one based on the current state
+                            if first_turn or not messages[-1]['content'] or messages[-1]['content'] == '<None>':
+                                # first turn or the last message content is empty(dummy), remove the response
+                                InferRequest.remove_response(messages)
+                            if messages[-1]['role'] == 'assistant':
+                                # If the last message was assistant, concatenate the new content to it
+                                messages[-1]['content'] += choice.message.content
+                            else:
+                                # append a new message from the assistant
+                                messages.append({'role': 'assistant', 'content': choice.message.content})
+
+                            if 'index' not in current_input:
+                                current_input['index'] = cnt
+                            current_input['finish_reason'] = choice.finish_reason
+                            cnt += 1
+                            current_inputs.append(current_input)
+
+                    # Process messages in the multi-turn function
+                    should_stops = [
+                        self.multi_turn_scheduler.check_finished(RolloutInferRequest(**_input), result)
+                        for _input, result in zip(current_inputs, current_results)
+                    ]
+
+                    # Retain messages that are not yet finished for the next round of rollout
+                    pending_inputs = []
+                    for should_stop, r in zip(should_stops, current_results):
+                        if should_stop:
+                            outputs[r['index']] = (r['messages'], r['finish_reason'])
+                        else:
+                            infer_request = self.multi_turn_scheduler.step(...)
+                            pending_inputs.append(infer_request)
+
+                    current_infer_inputs = pending_inputs if has_local_data else []
+                    current_results = self._infer(current_infer_inputs, request_config)
+
+                    last_turn_results = current_results
+                    next_turn_inputs = pending_inputs
+
         # flatten 2D list to 1D list
         outputs = [item for sublist in outputs for item in sublist]
         return outputs

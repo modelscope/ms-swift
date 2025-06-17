@@ -6,13 +6,11 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import torch
 from tqdm.asyncio import tqdm_asyncio
-from vllm.executor.uniproc_executor import ExecutorWithExternalLauncher
 
-from swift.llm import InferRequest, Template, VllmEngine
+from swift.llm import InferRequest, RolloutInferRequest, Template, VllmEngine
 from swift.plugin import Metric, multi_turns
 from swift.plugin.multi_turn import MultiTurnScheduler
-from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoiceWithHistory, ChatMessage, RequestConfig,
-                        random_uuid)
+from ..protocol import ChatCompletionResponse, ChatMessage, RequestConfig, RolloutResponseChoice, random_uuid
 from .utils import AdapterRequest
 
 try:
@@ -97,7 +95,7 @@ class GRPOVllmEngine(VllmEngine):
             if isinstance(multi_turn_scheduler, str):
                 assert multi_turn_scheduler in multi_turns
                 self.multi_turn_scheduler: MultiTurnScheduler = multi_turns[multi_turn_scheduler](
-                    max_turns=self.max_turns)
+                    template=template, max_turns=self.max_turns)
             else:
                 assert isinstance(multi_turn_scheduler, MultiTurnScheduler)
                 self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_scheduler
@@ -106,7 +104,7 @@ class GRPOVllmEngine(VllmEngine):
 
     def infer(
         self,
-        infer_requests: List[InferRequest],
+        infer_requests: List[RolloutInferRequest],
         request_config: Optional[RequestConfig] = None,
         metrics: Optional[List[Metric]] = None,
         *,
@@ -125,7 +123,7 @@ class GRPOVllmEngine(VllmEngine):
         )
 
     async def async_infer(self,
-                          infer_requests: List[InferRequest],
+                          infer_requests: List[RolloutInferRequest],
                           request_config: Optional[RequestConfig] = None,
                           metrics: Optional[List[Metric]] = None,
                           *,
@@ -136,15 +134,27 @@ class GRPOVllmEngine(VllmEngine):
         # in GRPO n always equals 1
         assert request_config.n == 1
 
-        async def _infer_async_single(infer_request: InferRequest,
+        # change here, multi turn loop
+        async def _infer_async_single(infer_request: RolloutInferRequest,
                                       request_config: Optional[RequestConfig] = None,
-                                      current_turn: int = 1,
                                       **kwargs):
+            # discard origin last turn reponse in first turn
             current_request = infer_request
-
+            current_turn = 1
             while True:
+                messages = current_request.messages
+                if current_turn == 1 or not messages[-1]['content']:
+                    # If it's the first turn or the last message content is empty(dummy), remove the response
+                    InferRequest.remove_response(messages)
+
                 result: ChatCompletionResponse = await self.infer_async(current_request, request_config, **kwargs)
-                result_choice: ChatCompletionResponseChoiceWithHistory = result.choices[0]
+                result_choice: RolloutResponseChoice = result.choices[0]
+
+                completion = result_choice.message.content
+                if messages[-1]['role'] == 'assistant':
+                    messages[-1]['content'] += completion
+                else:
+                    messages.append({'role': 'assistant', 'content': completion})
 
                 if self.multi_turn_scheduler:
                     should_stop = self.multi_turn_scheduler.check_finished(current_request, result_choice, current_turn)
@@ -152,9 +162,17 @@ class GRPOVllmEngine(VllmEngine):
                     should_stop = True
 
                 if should_stop:
+                    result_choice.messages = messages
                     return result
 
                 current_request = self.multi_turn_scheduler.step(current_request, result_choice, current_turn)
+                if current_request.messages[-1]['role'] == 'assistant':
+                    # NOTE: engine will discard last response during inference
+                    # https://github.com/modelscope/ms-swift/blob/v3.5.1/swift/llm/template/base.py#L416-L419
+                    # To allow the engine to continue generating content, add a dummy response here.
+                    current_request.messages.append({'role': 'assistant', 'content': None})
+
+                current_turn += 1
 
         tasks = [_infer_async_single(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
@@ -184,23 +202,8 @@ class GRPOVllmEngine(VllmEngine):
 
         return await self.batch_run(new_tasks)
 
-    async def _infer_full_async(
-        self,
-        template: Template,
-        inputs: Dict[str, Any],
-        generation_config: SamplingParams,
-        adapter_request: Optional[AdapterRequest] = None,
-    ) -> ChatCompletionResponse:
-        request_id = random_uuid()
-        result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
-        result = None
-        async for result in result_generator:
-            pass
-        return self._create_chat_completion_response(result, template, generation_config, request_id,
-                                                     inputs['input_ids'])
-
-    def _create_chat_completion_response(self, result, template: Template, generation_config, request_id,
-                                         history_input_ids) -> ChatCompletionResponse:
+    def _create_chat_completion_response(self, result, template: Template, generation_config,
+                                         request_id) -> ChatCompletionResponse:
         assert result is not None
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
@@ -210,12 +213,10 @@ class GRPOVllmEngine(VllmEngine):
             response = template.decode(output.token_ids)
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
             toolcall = self._get_toolcall(response, template)
-            history = template.decode(history_input_ids)
-            choice = ChatCompletionResponseChoiceWithHistory(
+            choice = RolloutResponseChoice(
                 index=output.index,
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
                 finish_reason=output.finish_reason,
-                logprobs=logprobs,
-                history=history)
+                logprobs=logprobs)
             choices.append(choice)
         return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
