@@ -188,12 +188,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             # TODO: streaming, MLLM
 
     def _init_max_completion_length(self):
-        if self.response_length is not None:
-            max_completion_length = self.response_length
-        elif self.max_new_tokens is not None:
-            max_completion_length = self.max_new_tokens
-        else:
-            max_completion_length = self.max_completion_length
+        max_completion_length = self.response_length or self.max_new_tokens or self.max_completion_length
         self.max_completion_length = self.max_new_tokens = self.response_length = max_completion_length
 
     def _init_metric_for_best_model(self):
