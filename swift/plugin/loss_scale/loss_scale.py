@@ -141,7 +141,6 @@ class LastRoundWithIgnoreEmptyThink(LossScale):
                        is_last_round: bool,
                        *,
                        query: Optional[str] = None):
-        
         if context_type == ContextType.RESPONSE:
             if not is_last_round:
                 return [context], [float(is_last_round)]
