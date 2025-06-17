@@ -175,6 +175,7 @@ def test_glm_edge():
 
 
 def test_llama():
+    from swift.llm import VllmEngine
     # pt_engine = PtEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct-BNB-NF4')
     # pt_engine = PtEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct')
     # pt_engine = PtEngine('LLM-Research/Meta-Llama-3-8B-Instruct')
