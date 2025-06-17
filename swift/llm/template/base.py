@@ -115,7 +115,7 @@ class Template(ProcessorMixin):
         if self.is_encoder_decoder:
             self.skip_prompt = False
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
-                           'train', 'rlhf', 'kto',  # train
+                           'train', 'rlhf', 'kto', 'gkd',  # train
                            'seq_cls', 'embedding', 'prm'] = 'pt'
         self._packing = self.padding_free
         self.use_megatron = False
@@ -336,6 +336,14 @@ class Template(ProcessorMixin):
         encoded['label'] = bool(label)
         return encoded
 
+    def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = self._encode_truncated(inputs)
+        encoded['prompts'] = encoded['input_ids'][:-len(encoded.pop('answer_input_ids'))]
+        for k in list(encoded.keys()):
+            if k.startswith('prompt_') or k.endswith('answer_'):
+                encoded.pop(k, None)
+        return encoded
+
     def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         _encoded = {}
         labels = []
@@ -432,6 +440,8 @@ class Template(ProcessorMixin):
             encoded = self._rlhf_encode(inputs)
         elif self.mode == 'kto':
             encoded = self._kto_encode(inputs)
+        elif self.mode == 'gkd':
+            encoded = self._gkd_encode(inputs)
         elif self.mode == 'embedding':
             encoded = self._embedding_encode(inputs)
         if inputs.channel is not None:
@@ -540,6 +550,21 @@ class Template(ProcessorMixin):
 
     def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:
         raise NotImplementedError
+
+    @contextmanager
+    def generate_context(self):
+        origin_mode = self.mode
+        if self.mode in {'train', 'rlhf', 'kto', 'gkd'}:
+            self.set_mode('pt')
+        is_multimodal = self.model_meta.is_multimodal
+        if is_multimodal:
+            models = self.remove_post_encode_hook()
+        try:
+            yield
+        finally:
+            if is_multimodal:
+                self.register_post_encode_hook(models)
+            self.set_mode(origin_mode)
 
     def generate(self, model, *args, **kwargs):
         base_model = self.get_base_model(model)
@@ -1077,7 +1102,7 @@ class Template(ProcessorMixin):
         res_context_list, loss_scale_list, answer_len = (
             self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
         encoded = {}
-        if self.is_encoder_decoder:
+        if self.is_encoder_decoder or self.mode == 'gkd':
             # tokenizer_kwargs: use prompt (qwen-audio)
             total_len = len(res_context_list)
             for key, _slice in zip(['prompt', 'answer'],
@@ -1087,10 +1112,13 @@ class Template(ProcessorMixin):
                                                                        loss_scale_list[_slice], inputs)
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(context_list, loss_scale)
                 encoded[f'{key}_input_ids'] = input_ids
-                if key == 'answer':
-                    encoded['labels'] = labels
-                    encoded['loss_scale'] = loss_scale
+                encoded[f'{key}_labels'] = labels
+                encoded[f'{key}_loss_scale'] = loss_scale
             input_ids = encoded['prompt_input_ids'] + encoded['answer_input_ids']
+            labels = encoded['prompt_labels'] + encoded['answer_labels']
+            loss_scale = None
+            if isinstance(encoded['prompt_loss_scale'], list):
+                loss_scale = encoded['prompt_loss_scale'] + encoded['answer_loss_scale']
         else:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
@@ -1192,7 +1220,7 @@ class Template(ProcessorMixin):
     def is_training(self):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
-    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto']) -> None:
+    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto', 'gkd']) -> None:
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -1238,6 +1266,8 @@ class Template(ProcessorMixin):
             return self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
             return self._kto_data_collator(batch, padding_to=padding_to)
+        elif self.mode == 'gkd':
+            return self._gkd_data_collator(batch, padding_to=padding_to)
         elif self.mode in {'pt', 'train', 'prm'}:
             return self._data_collator(batch, padding_to=padding_to)
         elif self.mode == 'seq_cls':
@@ -1306,6 +1336,14 @@ class Template(ProcessorMixin):
         label = [b['label'] for b in batch if b.get('label') is not None]
         if label:
             res['label'] = label
+        return res
+
+    def _gkd_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        prompts_batch = [{'input_ids': b['prompts']} for b in batch]
+        res = self._data_collator(batch, padding_to=padding_to)
+        prompts_res = self._data_collator(prompts_batch, padding_to=padding_to)
+        res['prompts'] = prompts_res.pop('input_ids')
+        res.update({f'prompt_{k}': v for k, v in prompts_res.items()})
         return res
 
     def _embedding_data_collator(self,

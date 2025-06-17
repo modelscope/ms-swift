@@ -3,6 +3,7 @@ from typing import List
 
 from trl import CPOConfig as HfCPOConfig
 from trl import DPOConfig as HfDPOConfig
+from trl import GKDConfig as HfGKDConfig
 from trl import GRPOConfig as HfGRPOConfig
 from trl import KTOConfig as HfKTOConfig
 from trl import ORPOConfig as HfORPOConfig
@@ -39,6 +40,11 @@ class RewardConfig(SwiftArgumentsMixin, HfRewardConfig):
 
 @dataclass
 class PPOConfig(SwiftArgumentsMixin, HfPPOConfig):
+    pass
+
+
+@dataclass
+class GKDConfig(SwiftArgumentsMixin, HfGKDConfig):
     pass
 
 
