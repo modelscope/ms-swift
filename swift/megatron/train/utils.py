@@ -58,6 +58,7 @@ def get_batch_on_this_tp_rank(data_iterator):
     if mpu.get_tensor_model_parallel_rank() == 0:
 
         data = next(data_iterator)
+        is_finished = data.pop('is_finished', False)
         input_ids = data['input_ids']
         seq_length = input_ids.shape[1]
         batch = {
@@ -66,6 +67,8 @@ def get_batch_on_this_tp_rank(data_iterator):
             'attention_mask': None if 'attention_mask' not in data else data['attention_mask'].cuda(non_blocking=True),
             'position_ids': data['position_ids'].cuda(non_blocking=True)
         }
+        if is_finished:
+            seq_length = -seq_length  # add flag
         seq_length = torch.tensor(seq_length).cuda(non_blocking=True)
         _broadcast(seq_length)
         if args.pipeline_model_parallel_size == 1:
@@ -89,6 +92,11 @@ def get_batch_on_this_tp_rank(data_iterator):
     else:
         seq_length = torch.empty((), dtype=torch.int64, device=torch.cuda.current_device())
         _broadcast(seq_length)
+        if seq_length.item() < 0:
+            seq_length = -seq_length
+            is_finished = True
+        else:
+            is_finished = False
         micro_batch_size = 1  # use qkv_format 'thd'
         input_ids = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
         labels = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
@@ -128,6 +136,8 @@ def get_batch_on_this_tp_rank(data_iterator):
             'attention_mask': attention_mask,
             'position_ids': position_ids
         }
+    if is_finished:
+        args.train_iters = args.curr_iteration + 1
 
     return batch
 
