@@ -234,7 +234,8 @@ class BinReader:
         return self.mm[offset:offset + size]
 
     def __del__(self):
-        self.mm.close()
+        if self.mm is not None:
+            self.mm.close()
         self.file.close()
 
 
