@@ -128,6 +128,9 @@ class LmdeployEngine(InferEngine):
         if os.path.isfile(generation_config_path):
             generation_config = GenerationConfig.from_pretrained(self.model_dir)
             kwargs = generation_config.to_dict()
+            max_new_tokens = kwargs.get('max_new_tokens')
+            if max_new_tokens is None:
+                kwargs.pop('max_new_tokens', None)
             parameters = inspect.signature(LmdeployGenerationConfig).parameters
             for k, v in kwargs.copy().items():
                 if k not in parameters or v is None:
