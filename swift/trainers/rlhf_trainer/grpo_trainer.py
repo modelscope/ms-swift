@@ -668,6 +668,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         outputs = []
         if not self.multi_turn_scheduler and not self.vllm_use_async_engine:
+            # message concatenation
             for i, output in enumerate(results):
                 _choices = []
                 for choice in output.choices:
@@ -676,8 +677,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
                     _choices.append((_input['messages'], choice.finish_reason))
                 outputs.append(_choices)
+            outputs = [item for sublist in outputs for item in sublist]
         else:
             # vLLMAsyncLLMEngine, only server mode is supported right now.
+            # NOTE: The message concatenation has already been done in the engine.
             if self.vllm_use_async_engine:
                 for i, output in enumerate(results):
                     _choices = []
@@ -740,16 +743,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             infer_request = self.multi_turn_scheduler.step(request, result.choices[0], current_turn)
                             pending_input = asdict(infer_request)
                             pending_input['index'] = index
-                            pending_inputs.append(asdict(infer_request))
+                            pending_inputs.append(pending_input)
 
                     current_infer_inputs = pending_inputs if has_local_data else []
                     results = self._infer(current_infer_inputs, request_config)
 
                     inputs = pending_inputs
                     current_turn += 1
+                assert not any([o is None for o in outputs])
 
         # flatten 2D list to 1D list
-        outputs = [item for sublist in outputs for item in sublist]
         return outputs
 
     def async_infer(self, all_inputs):

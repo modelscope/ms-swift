@@ -105,9 +105,9 @@ class MathTipsMultiTurnScheduler(MultiTurnScheduler):
     def check_finished(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice, current_turn: int,
                        **kwargs) -> bool:
 
-        last_response = infer_request.messages[-1]['content']
+        last_query = infer_request.messages[-2]['content']
         # we only give tips once
-        if self.tips_prompt in last_response:
+        if self.tips_prompt in last_query:
             return True
 
         completion = result.message.content
