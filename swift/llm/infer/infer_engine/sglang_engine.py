@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import os
 from copy import deepcopy
@@ -6,6 +7,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 import sglang as sgl
 import torch
 from sglang.srt.sampling.sampling_params import SamplingParams
+from sglang.srt.server_args import ServerArgs
 from transformers import GenerationConfig
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
@@ -26,7 +28,23 @@ class SglangEngine(InferEngine):
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
         revision: Optional[str] = None,
+        # engine kwargs
+        tp_size: int = 1,
+        pp_size: int = 1,
+        dp_size: int = 1,
+        ep_size: int = 1,
+        mem_fraction_static: Optional[float] = None,
+        context_length: Optional[int] = None,
+        disable_cuda_graph: bool = False,
+        disable_radix_cache: bool = False,
+        quantization: Optional[str] = None,
+        kv_cache_dtype: str = 'auto',
+        enable_dp_attention: bool = False,
+        log_level='error',
+        engine_kwargs: Optional[Dict[str, Any]] = None,
     ):
+        if engine_kwargs is None:
+            engine_kwargs = {}
         self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
@@ -37,7 +55,27 @@ class SglangEngine(InferEngine):
             hub_token=hub_token,
             revision=revision)[1]
         self._post_init()
-        self.engine = sgl.Engine(model_path=self.model_dir, dtype=self.model_info.torch_dtype)
+        if self.max_model_len is not None:
+            self.max_model_len -= 1
+
+        self.server_args = ServerArgs(
+            model_path=self.model_dir,
+            dtype=self.model_info.torch_dtype,
+            tp_size=tp_size,
+            pp_size=pp_size,
+            dp_size=dp_size,
+            ep_size=ep_size,
+            mem_fraction_static=mem_fraction_static,
+            context_length=context_length,
+            disable_cuda_graph=disable_cuda_graph,
+            disable_radix_cache=disable_radix_cache,
+            quantization=quantization,
+            kv_cache_dtype=kv_cache_dtype,
+            enable_dp_attention=enable_dp_attention,
+            log_level=log_level,
+            **engine_kwargs,
+        )
+        self.engine = sgl.Engine(server_args=self.server_args)
         self._load_generation_config()
 
     def _load_generation_config(self) -> None:
@@ -80,7 +118,7 @@ class SglangEngine(InferEngine):
         meta_info = output['meta_info']
         usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
         response = output['text']
-        toolcall = self._get_toolcall(response, template.tools_prompt)
+        toolcall = self._get_toolcall(response, template)
         choice = ChatCompletionResponseChoice(
             index=0,
             message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
@@ -88,35 +126,45 @@ class SglangEngine(InferEngine):
             logprobs=None)
         return ChatCompletionResponse(model=self.model_name, choices=[choice], usage=usage_info, id=random_uuid())
 
-    def infer(self,
-              infer_requests: List[InferRequest],
-              request_config: Optional[RequestConfig] = None,
-              metrics: Optional[List[Metric]] = None,
-              *,
-              template: Optional[Template] = None,
-              **kwargs) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
+    def infer(
+        self,
+        infer_requests: List[InferRequest],
+        request_config: Optional[RequestConfig] = None,
+        metrics: Optional[List[Metric]] = None,
+        *,
+        template: Optional[Template] = None,
+        use_tqdm: Optional[bool] = None,
+    ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
+        return super().infer(infer_requests, request_config, metrics, template=template, use_tqdm=use_tqdm)
+
+    async def infer_async(self,
+                          infer_request: InferRequest,
+                          request_config: Optional[RequestConfig] = None,
+                          *,
+                          template: Optional[Template] = None,
+                          pre_infer_hook=None,
+                          **kwargs) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         request_config = deepcopy(request_config or RequestConfig())
         if template is None:
             template = self.default_template
-        batched_inputs, error_list = self._batch_encode(
-            infer_requests, template=template, strict=getattr(self, 'strict', True))
-        self.set_default_max_tokens(request_config, batched_inputs)
+
+        template.set_mode('pt')
+        loop = asyncio.get_running_loop()
+        with torch.inference_mode():
+            inputs = await loop.run_in_executor(None, template.encode, infer_request)
+
+        self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)
-        input_ids = [inputs['input_ids'] for inputs in batched_inputs]
+        kwargs.update({'template': template, 'inputs': inputs, 'generation_config': generation_config})
+        if pre_infer_hook:
+            kwargs = pre_infer_hook(kwargs)
         if request_config.stream:
-            pass
+            return self._infer_stream_async(**kwargs)
         else:
-            outputs = self.engine.generate(input_ids=input_ids, sampling_params=generation_config)
+            return await self._infer_full_async(**kwargs)
 
-            return [self._create_chat_completion_response(output, template) for output in outputs]
-
-    async def infer_async(
-        self,
-        infer_request: InferRequest,
-        request_config: Optional[RequestConfig] = None,
-        *,
-        template: Optional[Template] = None,
-        pre_infer_hook=None,
-    ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
-        pass
+    async def _infer_full_async(self, template: Template, inputs: Dict[str, Any],
+                                generation_config: Dict[str, Any]) -> ChatCompletionResponse:
+        output = await self.engine.async_generate(**inputs, sampling_params=generation_config)
+        return self._create_chat_completion_response(output, template)
