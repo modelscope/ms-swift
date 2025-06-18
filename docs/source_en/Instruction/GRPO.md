@@ -371,7 +371,7 @@ The token-level loss is implemented by using the loss type bnpo.
 
 | Parameter                 | Type      | Value      |
 |----------------------|-----------|-------------|
-｜`--loss_type`        | `str`      | `bnpo`     |
+| `--loss_type`        | `str`      | `bnpo`     |
 | `--epsilon_high`     | `float`   | `0.28`      |
 | `--dynamic_sample`   | `bool`    | `true`      |
 | `--overlong_filter`  | `bool`    | `true`      |
