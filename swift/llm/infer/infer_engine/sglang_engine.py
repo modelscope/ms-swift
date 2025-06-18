@@ -15,6 +15,7 @@ from swift.plugin import Metric
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
+from .utils import InferStreamer
 
 
 class SglangEngine(InferEngine):
@@ -173,35 +174,35 @@ class SglangEngine(InferEngine):
     async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any],
                                   generation_config: Dict[str, Any]) -> AsyncIterator[ChatCompletionStreamResponse]:
         result_generator = await self.engine.async_generate(**inputs, sampling_params=generation_config, stream=True)
-        total_response = ['']
+        infer_streamer = InferStreamer(template)
+        token_idx = 0
         async for output in result_generator:
-            res = self._create_chat_completion_stream_response(output, template, generation_config,
-                                                                               total_response)
+            res = self._create_chat_completion_stream_response(output, template, generation_config, infer_streamer,
+                                                               token_idx)
             if res is None:
                 continue
             yield res
 
-    def _create_chat_completion_stream_response(self, output, template, generation_config,
-                                                total_response) -> Optional[ChatCompletionStreamResponse]:
+    def _create_chat_completion_stream_response(self, output, template, generation_config, infer_streamer,
+                                                token_idx) -> Optional[ChatCompletionStreamResponse]:
         assert output is not None
-        delta = output['text']
-        if not delta:
-            return None
-        total_response[0] += delta
+        response = output['text']
         meta_info = output['meta_info']
         finish_reason = meta_info['finish_reason']
+        delta_text = infer_streamer.get_printable_text(output.token_ids, bool(finish_reason))
+        if not delta_text:
+            return None
+        if finish_reason:
+            finish_reason = finish_reason['type']
+            toolcall = self._get_toolcall(response, template)
+        else:
+            toolcall = None
         meta_info = output['meta_info']
         usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
         # TODO: logprobs
-        if finish_reason:
-            finish_reason = finish_reason['type']
-            toolcall = self._get_toolcall(total_response[0], template)
-        else:
-            toolcall = None
-        choice = ChatCompletionResponseChoice(
+        choice = ChatCompletionResponseStreamChoice(
             index=0,
-            message=ChatMessage(role='assistant', content=delta, tool_calls=toolcall),
+            delta=DeltaMessage(role='assistant', content=delta_text, tool_calls=toolcall),
             finish_reason=finish_reason,
             logprobs=None)
-
         return ChatCompletionStreamResponse(model=self.model_name, choices=[choice], usage=usage_info)
