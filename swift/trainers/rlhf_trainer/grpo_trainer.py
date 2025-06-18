@@ -558,10 +558,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._process_infer_requests_images(inputs)
                 multi_turn_kwargs: Dict = RowPreprocessor.rows_to_batched(inputs)
                 multi_turn_kwargs.pop('messages', None)  # messages are already included in infer_inputs
-                for i, infer_input in enumerate(infer_inputs):
-                    infer_input['data_dict'] = {}
-                    for k in multi_turn_kwargs.keys():
-                        infer_input['data_dict'][k] = multi_turn_kwargs[k][i]
 
             if is_global_inputs:
                 all_inputs = infer_inputs
@@ -572,10 +568,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             if not any(inputs for inputs in all_inputs):
                 return []
-
+            requests = self.inputs_to_rolloutrequest(all_inputs, multi_turn_kwargs)
             if self.accelerator.is_main_process:
                 results: List[ChatCompletionResponse] = self._engine_infer(
-                    infer_requests=all_inputs, request_config=request_config)
+                    infer_requests=requests, request_config=request_config)
             else:
                 results = [None] * len(all_inputs)
             # Broadcast the results from the main process to all processes,
@@ -691,10 +687,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     outputs.append(_choices)
             else:
                 # PTEngine or vLLMLLMEngine
+                multi_turn_kwargs = RowPreprocessor.rows_to_batched(inputs)
+                multi_turn_kwargs.pop('messages', None)  # messages are already included
                 orig_size = len(inputs)
                 outputs = [None] * orig_size
                 # we remove origin response in first turn
-                first_turn = True
                 current_turn = 1
                 while True:
                     has_local_data = len(inputs) > 0
@@ -710,8 +707,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             current_input = deepcopy(inputs[i])
                             messages = current_input['messages']
 
-                            #  Whether to append a new message or update the last one based on the current state
-                            if first_turn or not messages[-1]['content'] or messages[-1]['content'] == '<None>':
+                            if current_turn == 1 or not messages[-1]['content'] or messages[-1]['content'] == '<None>':
                                 # first turn or the last message content is empty(dummy), remove the response
                                 InferRequest.remove_response(messages)
                             if messages[-1]['role'] == 'assistant':
@@ -729,7 +725,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
                     # Process messages in the multi-turn function
                     should_stops = [
-                        self.multi_turn_scheduler.check_finished(RolloutInferRequest(**_input), result, current_turn)
+                        self.multi_turn_scheduler.check_finished(
+                            self.inputs_to_rolloutrequest(_input, multi_turn_kwargs), result, current_turn)
                         for _input, result in zip(current_inputs, results)
                     ]
 
@@ -740,8 +737,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             outputs[r['index']] = (r['messages'], r['finish_reason'])
                         else:
                             infer_request = self.multi_turn_scheduler.step(
-                                RolloutInferRequest(**_input), r, current_turn)
-                            pending_inputs.append(infer_request)
+                                self.inputs_to_rolloutrequest(_input, multi_turn_kwargs), r, current_turn)
+                            pending_inputs.append(asdict(infer_request))
 
                     current_infer_inputs = pending_inputs if has_local_data else []
                     results = self._infer(current_infer_inputs, request_config)
@@ -1380,11 +1377,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _engine_infer(
         self,
-        infer_requests: List[InferRequest],
+        infer_requests: List[Union[RolloutInferRequest, InputsType]],
         request_config: Optional[RequestConfig] = None,
         *,
         use_tqdm: Optional[bool] = False,
-    ):
+    ) -> List[ChatCompletionResponse]:
         with profiling_context(self, 'generate'):
             if self.vllm_mode == 'server':
                 self._process_infer_requests_images(infer_requests)
@@ -1392,7 +1389,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:
                 return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
 
-    def _process_infer_requests_images(self, infer_requests: List[Union[InferRequest, Dict]]):
+    def _process_infer_requests_images(self, infer_requests: InputsType):
         # Process image format into a format that session.post can accept
         import base64
         if not any('images' in request for request in infer_requests):
@@ -1566,3 +1563,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def is_async_generate_train_rollout_done(self):
         return not self.train_queue.empty()
+
+    def inputs_to_rolloutrequest(self,
+                                 inputs: InputsType,
+                                 data_dict: Optional[Dict[str, Any]] = None) -> RolloutInferRequest:
+        requests = [RolloutInferRequest(_input['messages']) for _input in inputs]
+        if requests[0].data_dict:
+            return requests
+
+        for i, (request, _input) in enumerate(zip(requests, inputs)):
+            request['data_dict'] = {}
+            for k in data_dict.keys():
+                if 'index' in _input:
+                    request['data_dict'][k] = data_dict[k][_input['index']]
+                else:
+                    request['data_dict'][k] = data_dict[k][i]
+
+        return requests
