@@ -551,18 +551,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             for k, v in inp.items() if k in ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
         } for inp in inputs] if inputs else []
 
-        if self.multi_turn_scheduler:
-            # process image to the format that post can accept
-            self._process_infer_requests_images(inputs)
-            multi_turn_kwargs: Dict = RowPreprocessor.rows_to_batched(inputs)
-            multi_turn_kwargs.pop('messages', None)  # messages are already included in infer_inputs
-            for i, inputs in enumerate(infer_inputs):
-                inputs['data_dict'] = {}
-                for k in multi_turn_kwargs.keys():
-                    inputs['data_dict'][k] = multi_turn_kwargs[k][i]
-
         if self.vllm_mode == 'server':
             # for server mode, we gather all the inputs and send to remote vllm server in main process
+            if self.multi_turn_scheduler:
+                # process image to the format that post can accept
+                self._process_infer_requests_images(inputs)
+                multi_turn_kwargs: Dict = RowPreprocessor.rows_to_batched(inputs)
+                multi_turn_kwargs.pop('messages', None)  # messages are already included in infer_inputs
+                for i, infer_input in enumerate(infer_inputs):
+                    infer_input['data_dict'] = {}
+                    for k in multi_turn_kwargs.keys():
+                        infer_input['data_dict'][k] = multi_turn_kwargs[k][i]
+
             if is_global_inputs:
                 all_inputs = infer_inputs
                 all_input_lengths = [per_device_size] + [0] * (self.accelerator.num_processes - 1)
@@ -671,7 +671,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         results: List[ChatCompletionResponse] = self._infer(inputs, request_config, is_global_inputs)
 
         outputs = []
-        if not self.multi_turn_scheduler:
+        if not self.multi_turn_scheduler and not self.vllm_use_async_engine:
             for i, output in enumerate(results):
                 _choices = []
                 for choice in output.choices:
@@ -707,7 +707,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     # combine completions from results with messages
                     for i, output in enumerate(results):
                         for choice in output.choices:
-                            current_input = deepcopy(next_turn_inputs[i])
+                            current_input = deepcopy(inputs[i])
                             messages = current_input['messages']
 
                             #  Whether to append a new message or update the last one based on the current state

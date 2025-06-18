@@ -8,6 +8,8 @@
 - Token level Loss
 - Soft Overlong Punishment
 
+
+
 以上trick，我们可以基于GRPOTrainer，设置以下参数实现。
 
 其中Token level Loss是通过使用参数 loss type `bnpo` 实现
