@@ -724,20 +724,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             current_inputs.append(current_input)
 
                     # Process messages in the multi-turn function
+                    requests = self.inputs_to_rolloutrequest(current_inputs, multi_turn_kwargs)
                     should_stops = [
-                        self.multi_turn_scheduler.check_finished(
-                            self.inputs_to_rolloutrequest(_input, multi_turn_kwargs), result, current_turn)
-                        for _input, result in zip(current_inputs, results)
+                        self.multi_turn_scheduler.check_finished(request, result, current_turn)
+                        for request, result in zip(requests, results)
                     ]
 
                     # Retain messages that are not yet finished for the next round of rollout
                     pending_inputs = []
-                    for stop, _input, r in zip(should_stops, current_inputs, results):
+                    for stop, request, r in zip(should_stops, requests, results):
                         if stop:
                             outputs[r['index']] = (r['messages'], r['finish_reason'])
                         else:
-                            infer_request = self.multi_turn_scheduler.step(
-                                self.inputs_to_rolloutrequest(_input, multi_turn_kwargs), r, current_turn)
+                            infer_request = self.multi_turn_scheduler.step(request, r, current_turn)
                             pending_inputs.append(asdict(infer_request))
 
                     current_infer_inputs = pending_inputs if has_local_data else []
@@ -1565,15 +1564,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                  inputs: InputsType,
                                  data_dict: Optional[Dict[str, Any]] = None) -> RolloutInferRequest:
         requests = [RolloutInferRequest(_input['messages']) for _input in inputs]
-        if requests[0].data_dict:
+        if requests[0].data_dict or not data_dict:
             return requests
 
         for i, (request, _input) in enumerate(zip(requests, inputs)):
-            request['data_dict'] = {}
             for k in data_dict.keys():
                 if 'index' in _input:
-                    request['data_dict'][k] = data_dict[k][_input['index']]
+                    request.data_dict[k] = data_dict[k][_input['index']]
                 else:
-                    request['data_dict'][k] = data_dict[k][i]
+                    request.data_dict[k] = data_dict[k][i]
 
         return requests
