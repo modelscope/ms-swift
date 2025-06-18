@@ -26,8 +26,8 @@ class MultiTurnScheduler(ABC):
              **kwargs) -> RolloutInferRequest:
         pass
 
-    def check_finished(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice,
-                       current_turn: int) -> bool:
+    def check_finished(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice, current_turn: int,
+                       **kwargs) -> bool:
         if result.finish_reason == 'length':
             return True
 
@@ -64,8 +64,8 @@ class MathTipsScheduler(MultiTurnScheduler):
     tips_prompt = 'But wait... It seems I made a mistake,'
     acc_func = MathAccuracy()
 
-    def check_finished(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice,
-                       current_turn: int) -> bool:
+    def check_finished(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice, current_turn: int,
+                       **kwargs) -> bool:
         completion = result.message.content
         # we only give tips once
         if self.tips_prompt in completion:
@@ -76,7 +76,7 @@ class MathTipsScheduler(MultiTurnScheduler):
         if acc == 1:
             return True
 
-        return super().check_finished(infer_request, result, current_turn)
+        return super().check_finished(infer_request, result, current_turn, **kwargs)
 
     def step(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice, current_turn: int,
              **kwargs) -> RolloutInferRequest:
@@ -102,8 +102,8 @@ class MathTipsMultiTurnScheduler(MultiTurnScheduler):
     tips_prompt = 'The answer is not correct, It seems You made a mistake, you need to recheck very carefully.'
     acc_func = MathAccuracy()
 
-    def check_finished(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice,
-                       current_turn: int) -> bool:
+    def check_finished(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice, current_turn: int,
+                       **kwargs) -> bool:
         history = result.prompt
         # we only give tips once
         if self.tips_prompt in history:
@@ -115,7 +115,7 @@ class MathTipsMultiTurnScheduler(MultiTurnScheduler):
         if acc == 1:
             return True
 
-        return super().check_finished(infer_request, result, current_turn)
+        return super().check_finished(infer_request, result, current_turn, **kwargs)
 
     def step(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice, **kwargs) -> RolloutInferRequest:
         completion = result.message.content

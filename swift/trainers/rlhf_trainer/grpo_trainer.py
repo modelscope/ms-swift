@@ -695,10 +695,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs = [None] * orig_size
                 # we remove origin response in first turn
                 first_turn = True
-                next_turn_inputs = inputs.copy()
-                last_turn_results = results
+                current_turn = 1
                 while True:
-                    has_local_data = len(next_turn_inputs) > 0
+                    has_local_data = len(inputs) > 0
                     has_global_data = gather_object([has_local_data])
                     if not any(has_global_data):
                         break
@@ -706,7 +705,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     current_inputs = []
                     cnt = 0
                     # combine completions from results with messages
-                    for i, output in enumerate(last_turn_results):
+                    for i, output in enumerate(results):
                         for choice in output.choices:
                             current_input = deepcopy(next_turn_inputs[i])
                             messages = current_input['messages']
@@ -730,24 +729,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
                     # Process messages in the multi-turn function
                     should_stops = [
-                        self.multi_turn_scheduler.check_finished(RolloutInferRequest(**_input), result)
-                        for _input, result in zip(current_inputs, current_results)
+                        self.multi_turn_scheduler.check_finished(RolloutInferRequest(**_input), result, current_turn)
+                        for _input, result in zip(current_inputs, results)
                     ]
 
                     # Retain messages that are not yet finished for the next round of rollout
                     pending_inputs = []
-                    for should_stop, r in zip(should_stops, current_results):
-                        if should_stop:
+                    for stop, _input, r in zip(should_stops, current_inputs, results):
+                        if stop:
                             outputs[r['index']] = (r['messages'], r['finish_reason'])
                         else:
-                            infer_request = self.multi_turn_scheduler.step(...)
+                            infer_request = self.multi_turn_scheduler.step(
+                                RolloutInferRequest(**_input), r, current_turn)
                             pending_inputs.append(infer_request)
 
                     current_infer_inputs = pending_inputs if has_local_data else []
-                    current_results = self._infer(current_infer_inputs, request_config)
+                    results = self._infer(current_infer_inputs, request_config)
 
-                    last_turn_results = current_results
-                    next_turn_inputs = pending_inputs
+                    inputs = pending_inputs
+                    current_turn += 1
 
         # flatten 2D list to 1D list
         outputs = [item for sublist in outputs for item in sublist]
