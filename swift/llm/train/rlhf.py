@@ -70,7 +70,7 @@ class SwiftRLHF(SwiftSft):
 
             adapters = args.adapters if key == 'ref' else args.reward_adapters
             model = prepare_adapter(args, model, adapters)
-            if origin_key in {'ref', 'reward'}:
+            if origin_key in {'ref', 'reward', 'teacher'}:
                 if self.args.sequence_parallel_size > 1:
                     sequence_parallel.prepare_model(model, processor)
                 model.requires_grad_(False).eval()
@@ -85,11 +85,14 @@ class SwiftRLHF(SwiftSft):
             return model, processor
 
         # Handle ref and value models
-        for key in ['ref', 'value']:
+        for key in ['ref', 'value', 'teacher']:
             setattr(self, f'{key}_model', None)
+            if key == 'ref' and args.rlhf_type == 'gkd':
+                continue
             if key == 'value' and args.rlhf_type != 'ppo':
                 continue
-
+            if key == 'teacher' and args.rlhf_type != 'gkd':
+                continue
             model_key = 'reward' if key == 'value' else key
             model_type = getattr(args, f'{model_key}_model_type')
             model_revision = getattr(args, f'{model_key}_model_revision')
@@ -137,7 +140,7 @@ class SwiftRLHF(SwiftSft):
     def _prepare_template(self) -> None:
         args = self.args
         super()._prepare_template()
-        model_mapping = {'kto': 'kto', 'ppo': 'pt', 'grpo': 'pt'}
+        model_mapping = {'kto': 'kto', 'gkd': 'gkd', 'ppo': 'pt', 'grpo': 'pt'}
         self.template.set_mode(model_mapping.get(args.rlhf_type, 'rlhf'))
 
         if args.rlhf_type == 'ppo':
@@ -152,10 +155,10 @@ class SwiftRLHF(SwiftSft):
 
     def _get_trainer_kwargs(self):
         trainer_kwargs = {}
-        for key in ['ref', 'reward', 'value']:
+        for key in ['ref', 'reward', 'value', 'teacher']:
             key = f'{key}_model'
             model = getattr(self, key, None)
-            if model or self.args.rlhf_type == 'ppo':
+            if model or self.args.rlhf_type == 'ppo' and key != 'teacher_model':
                 trainer_kwargs[key] = model
         if hasattr(self, 'reward_template'):
             trainer_kwargs['reward_template'] = self.reward_template

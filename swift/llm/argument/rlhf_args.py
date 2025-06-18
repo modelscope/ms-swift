@@ -21,6 +21,15 @@ class RewardModelArguments:
 
 
 @dataclass
+class TeacherModelArguments:
+    teacher_model: Optional[str] = None
+    teacher_adapters: List[str] = field(default_factory=list)
+    teacher_model_type: Optional[List[str]] = field(
+        default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+    teacher_model_revision: Optional[List[str]] = None
+
+
+@dataclass
 class PPOArguments:
     num_ppo_epochs: int = 4
     whiten_rewards: bool = False
@@ -34,15 +43,13 @@ class PPOArguments:
     num_mini_batches: int = 1
     local_rollout_forward_batch_size: int = 64
     num_sample_generations: int = 10
-    response_length: int = 512
+    response_length: Optional[int] = None  # compat. use max_completion_length instead
     missing_eos_penalty: Optional[float] = None
 
 
 @dataclass
 class GRPOArguments(GRPOArgumentsMixin):
     num_generations: int = 8  # G in the GRPO paper
-    max_completion_length: int = 512
-    ds3_gather_for_generation: bool = True
     reward_funcs: List[str] = field(default_factory=list)
     reward_weights: List[float] = None
     log_completions: bool = False
@@ -57,7 +64,7 @@ class GRPOArguments(GRPOArgumentsMixin):
 
 
 @dataclass
-class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArguments):
+class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardModelArguments, TrainArguments):
     """
     RLHFArguments is a dataclass that holds arguments specific to the Reinforcement
         Learning with Human Feedback (RLHF) training backend.
@@ -75,7 +82,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         desirable_weight (float): Weight for desirable outcomes in KTO. Default is 1.0.
         undesirable_weight (float): Weight for undesirable outcomes in KTO. Default is 1.0.
     """
-    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo'] = 'dpo'
+    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo', 'gkd'] = 'dpo'
     ref_model: Optional[str] = None
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
@@ -83,6 +90,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
     beta: Optional[float] = None
     label_smoothing: float = 0
+    max_completion_length: int = 512
     loss_scale: Optional[str] = None  # 'last_round'
     # DPO
     rpo_alpha: float = 1.
@@ -93,10 +101,15 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     # KTO
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
-    # PPO/GRPO
+    # PPO/GRPO/GKD
     temperature: float = 0.9
     # RM
     center_rewards_coefficient: Optional[float] = None
+    # GKD
+    lmbda: float = 0.5
+    seq_kd: bool = False
+    # compat
+    max_new_tokens: Optional[int] = None  # use max_completion_length instead
 
     def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
         if self.rlhf_type == 'ppo':
@@ -107,7 +120,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         self._init_grpo()
         self._init_rm()
         self._init_simpo()
-        self._init_ppo()
+        self._init_max_completion_length()
+        self._init_padding_side()
         self._set_default()
         self._init_external_vllm()
         super().__post_init__()
@@ -168,10 +182,14 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                         self.vllm_mode = 'colocate'
                         logger.warning('set vllm_mode to `colocate` since vllm_server_host is not provided')
 
-    def _init_ppo(self):
-        if self.rlhf_type == 'ppo':
+    def _init_padding_side(self):
+        if self.rlhf_type in {'ppo', 'gkd'}:
             self.padding_side = 'left'
             # TODO: streaming, MLLM
+
+    def _init_max_completion_length(self):
+        max_completion_length = self.response_length or self.max_new_tokens or self.max_completion_length
+        self.max_completion_length = self.max_new_tokens = self.response_length = max_completion_length
 
     def _init_metric_for_best_model(self):
         if self.rlhf_type not in {'ppo', 'grpo'}:
@@ -208,7 +226,10 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
     def _set_default(self):
         if self.beta is None:
-            self.beta = 0.1
+            if self.rlhf_type == 'gkd':
+                self.beta = 0.5
+            else:
+                self.beta = 0.1
         if self.loss_type is None:
             if self.rlhf_type in ['dpo', 'cpo']:
                 self.loss_type = 'sigmoid'  # else None

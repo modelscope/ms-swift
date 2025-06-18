@@ -175,6 +175,7 @@ def test_glm_edge():
 
 
 def test_llama():
+    from swift.llm import VllmEngine
     # pt_engine = PtEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct-BNB-NF4')
     # pt_engine = PtEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct')
     # pt_engine = PtEngine('LLM-Research/Meta-Llama-3-8B-Instruct')
@@ -397,6 +398,30 @@ def test_mimo():
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
+def test_minicpm():
+    pt_engine = PtEngine('OpenBMB/MiniCPM4-0.5B')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
+def test_minimax():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3,4,5,6,7'
+    from transformers import QuantoConfig
+    quantization_config = QuantoConfig(weights='int8')
+    messages = [{
+        'role': 'system',
+        'content': 'You are a helpful assistant.'
+    }, {
+        'role': 'user',
+        'content': 'who are you?'
+    }]
+    pt_engine = PtEngine('MiniMax/MiniMax-M1-40k', quantization_config=quantization_config)
+    res = _infer_model(pt_engine, messages=messages)
+    print(f'res: {res}')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -435,4 +460,6 @@ if __name__ == '__main__':
     # test_gemma3()
     # test_glm4_0414()
     # test_qwen3()
-    test_mimo()
+    # test_mimo()
+    # test_minicpm()
+    test_minimax()

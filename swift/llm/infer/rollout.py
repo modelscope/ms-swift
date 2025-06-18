@@ -64,6 +64,7 @@ def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
     kwargs = {}
     if args.tensor_parallel_size == 1 and args.data_parallel_size > 1:
         kwargs['device'] = get_device(str(data_parallel_rank))
+    kwargs['template'] = args.get_template(None)
     engine = SwiftRolloutDeploy.get_infer_engine(args, **kwargs)
 
     # Send ready signal to parent process
@@ -186,12 +187,13 @@ class SwiftRolloutDeploy(SwiftPipeline):
                 process.join()  # ensure process termination after calling terminate()
 
     @staticmethod
-    def get_infer_engine(args: InferArguments, **kwargs):
+    def get_infer_engine(args: InferArguments, template=None, **kwargs):
         kwargs.update({
             'model_id_or_path': args.model,
             'model_type': args.model_type,
             'revision': args.model_revision,
             'torch_dtype': args.torch_dtype,
+            'template': template,
             'use_async_engine': args.use_async_engine,
             'multi_turn_scheduler': args.multi_turn_scheduler,
             'max_turn': args.max_turns

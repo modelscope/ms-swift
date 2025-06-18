@@ -1,4 +1,4 @@
-# 14GiB * 2
+# 80GiB * 2
 nproc_per_node=2
 
 CUDA_VISIBLE_DEVICES=0,1 \

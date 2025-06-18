@@ -63,7 +63,7 @@ def get_model_info_table():
                 if is_megatron_available():
                     from swift.megatron import model
                     support_megatron = getattr(model_meta, 'support_megatron', False)
-                    for word in ['gptq', 'awq', 'bnb', 'aqlm', 'int', 'nf4', 'fp8']:
+                    for word in ['gptq', 'awq', 'bnb', 'aqlm', 'int4', 'int8', 'nf4', 'fp8']:
                         if word in ms_model_id.lower():
                             support_megatron = False
                             break

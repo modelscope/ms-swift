@@ -7,16 +7,18 @@ megatron sft \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
     --tensor_model_parallel_size 2 \
-    --micro_batch_size 4 \
+    --sequence_parallel true \
+    --micro_batch_size 16 \
     --global_batch_size 16 \
-    --recompute_granularity selective \
-    --train_iters 100 \
-    --eval_iters 5 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
     --lr_warmup_iters 10 \
     --min_lr 1e-6 \
+    --max_epochs 1 \
     --save megatron_output/Qwen2.5-7B-Instruct \
     --save_interval 100 \
     --max_length 2048 \

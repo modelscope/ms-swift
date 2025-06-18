@@ -4,6 +4,7 @@ import time
 from contextlib import contextmanager
 from functools import partial
 
+import megatron.core
 import torch
 from megatron.core import mpu
 from megatron.core.enums import ModelType
@@ -12,6 +13,7 @@ from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.utils import StragglerDetector
 from megatron.training import ft_integration, get_args, get_timers, is_last_rank, pretrain, print_rank_0, training
+from packaging import version
 from torch.distributed.nn import all_reduce
 
 from swift.utils import get_logger
@@ -37,10 +39,10 @@ class MegatronTrainer:
             args = get_args()
             data_parallel_size = mpu.get_data_parallel_world_size()
             step_batch_size = args.micro_batch_size * data_parallel_size
-            if args.train_iters is None:
+            if args.train_iters is None and args.max_epochs is not None:
                 if hasattr(train_dataset, '__len__'):
                     dataset_sample = len(train_dataset) // step_batch_size * step_batch_size
-                    args.train_iters = (dataset_sample * args.max_epochs // args.global_batch_size) + 1
+                    args.train_iters = dataset_sample * args.max_epochs // args.global_batch_size
                 else:
                     raise ValueError(
                         'You are using a streaming training dataset. Please explicitly specify `--train_iters`.')
@@ -60,18 +62,30 @@ class MegatronTrainer:
             training.initialize_megatron = origin_initialize_megatron
 
     @staticmethod
-    def new_cyclic_iter(it):
+    def new_cyclic_iter(iterable):
         args = get_args()
-        max_epochs = args.max_epochs
         i = 0
         while True:
-            if getattr(args, 'is_training', False):
-                if max_epochs and i >= max_epochs:
-                    logger.info(f'Training of {i} epochs has been completed, the training has finished.')
-                    break
+            is_training = getattr(args, 'is_training', False)
+            if is_training:
                 logger.info(f'The training of Epoch {i} starts...')
-            for x in it:
-                yield x
+            if is_training and args.max_epochs and i >= args.max_epochs - 1:
+                it = iter(iterable)
+                num_batches = args.global_batch_size // (args.micro_batch_size * args.data_parallel_size)
+                x = [next(it) for _ in range(num_batches)]
+                while True:
+                    try:
+                        next_x = [next(it) for _ in range(num_batches)]
+                    except StopIteration:
+                        break
+                    yield from x
+                    x = next_x
+                logger.info(f'Training of {i + 1} epochs has been completed, the training has finished.')
+                x[0]['is_finished'] = True
+                yield from x
+            else:
+                for x in iterable:
+                    yield x
             i += 1
 
     @staticmethod
@@ -89,14 +103,11 @@ class MegatronTrainer:
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         with self._training_context():
-            try:
-                data_iterator = self._replace_data_iterator(data_iterator)
-                return self._origin_train_step(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler,
-                                               config)
-            except StopIteration:
-                return {}, True, True, True, 0, None, None
+            data_iterator = self._replace_data_iterator(data_iterator)
+            return self._origin_train_step(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler,
+                                           config)
 
-    # Code borrowed from megatron-lm
+    # Code borrowed from NVIDIA/Megatron-LM
     def evaluate(self,
                  forward_step_func,
                  data_iterator,
@@ -129,7 +140,7 @@ class MegatronTrainer:
         # make validation batch size independent from training batch size
         eval_batch_size = args.global_batch_size
         eval_num_microbatches = eval_batch_size // (args.micro_batch_size * args.data_parallel_size)
-
+        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
         with torch.no_grad():
             iteration = 0
             if verbose:
@@ -161,19 +172,35 @@ class MegatronTrainer:
                     torch.cuda.empty_cache()
 
                 if mpu.is_pipeline_last_stage(ignore_virtual=True):
-                    # Reduce across processes.
-                    for loss_dict in loss_dicts:
-                        for key in loss_dict:
+                    if megatron_core_013:
+                        for key in loss_dicts[0].keys():
                             if key not in total_loss_dict:
                                 total_loss_dict[key] = torch.tensor([0.0, 0.0], dtype=torch.float).cuda()
-                            val = loss_dict[key]
-                            if isinstance(val, tuple) or isinstance(val, list):
-                                total_loss_dict[key][0] += val[0]
-                                total_loss_dict[key][1] += val[1]
-                            else:
+                            val = [x[key].view(-1) for x in loss_dicts]
+                            if val[0].numel() == 2:
+                                val = torch.vstack(val).sum(dim=0)
+                                torch.distributed.all_reduce(
+                                    val, group=mpu.get_data_parallel_group(with_context_parallel=True))
+                                total_loss_dict[key] += val
+                            elif val[0].numel() == 1:
+                                val = torch.cat(val).sum()
                                 total_loss_dict[key][0] += val
-                                total_loss_dict[key][1] += 1
-
+                                total_loss_dict[key][1] += len(loss_dicts)
+                            else:
+                                raise ValueError(f'Invalid value shape: {val[0].shape} for key {key}')
+                    else:
+                        # Reduce across processes.
+                        for loss_dict in loss_dicts:
+                            for key in loss_dict:
+                                if key not in total_loss_dict:
+                                    total_loss_dict[key] = torch.tensor([0.0, 0.0], dtype=torch.float).cuda()
+                                val = loss_dict[key]
+                                if isinstance(val, tuple) or isinstance(val, list):
+                                    total_loss_dict[key][0] += val[0]
+                                    total_loss_dict[key][1] += val[1]
+                                else:
+                                    total_loss_dict[key][0] += val
+                                    total_loss_dict[key][1] += 1
                 args.consumed_valid_samples += eval_batch_size
 
                 if args.exit_duration_in_mins:
@@ -229,7 +256,7 @@ class MegatronTrainer:
         self._origin_evaluate = training.evaluate
         training.evaluate = self.evaluate
 
-    # Code borrowed from megatron-lm
+    # Code borrowed from NVIDIA/Megatron-LM
     def loss_func(self, output_tensor: torch.Tensor, *, loss_mask: torch.Tensor):
         """Loss function.
 
@@ -250,7 +277,8 @@ class MegatronTrainer:
         total_tokens = loss_mask.sum()
         loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), total_tokens.view(1)])
 
-        if args.context_parallel_size > 1:
+        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+        if args.context_parallel_size > 1 and not megatron_core_013:
             loss = all_reduce(loss, group=mpu.get_context_parallel_group())
 
         # Check individual rank losses are not NaN prior to DP all-reduce.
@@ -287,19 +315,21 @@ class MegatronTrainer:
             )
         # Reduce loss for logging.
         reporting_loss = loss.clone().detach()
-        torch.distributed.all_reduce(reporting_loss, group=mpu.get_data_parallel_group())
-
-        # loss[0] is a view of loss, so it has ._base not None, which triggers assert error
-        # in core/pipeline_parallel/schedule.py::deallocate_output_tensor, calling .clone()
-        # on loss[0] fixes this
-        local_num_tokens = loss[1].clone().detach().to(torch.int)
-        return (
+        lm_loss = loss[0]
+        if not megatron_core_013:
             # fix megatron-lm bug
             # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
-            loss[0] / mpu.get_context_parallel_world_size(),
+            torch.distributed.all_reduce(reporting_loss, group=mpu.get_data_parallel_group())
+            lm_loss = lm_loss / mpu.get_context_parallel_world_size()
+            reporting_loss = (reporting_loss[0], reporting_loss[1])
+        else:
+            lm_loss = lm_loss.clone()
+        local_num_tokens = loss[1].clone().detach().to(torch.int)
+        return (
+            lm_loss,
             local_num_tokens,
             {
-                'lm loss': (reporting_loss[0], reporting_loss[1])
+                'lm loss': reporting_loss
             },
         )
 
@@ -310,8 +340,6 @@ class MegatronTrainer:
         timers('batch-generator', log_level=2).start()
         with self.stimer(bdata=True):
             data = get_batch(data_iterator)
-        if not data:
-            raise StopIteration
         timers('batch-generator').stop()
 
         with self.stimer:
