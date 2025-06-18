@@ -351,7 +351,7 @@ orms['code_reward'] = CodeRandomReward
 
 | 参数                 | 类型      | 值      |
 |----------------------|-----------|-------------|
-｜`--loss_type`        | `str`      | `bnpo`     |
+|`--loss_type`        | `str`      | `bnpo`     |
 | `--epsilon_high`     | `float`   | `0.28`      |
 | `--dynamic_sample`   | `bool`    | `true`      |
 | `--overlong_filter`  | `bool`    | `true`      |
@@ -414,6 +414,7 @@ num_generations = 64
 
 Clip机制的核心目的是限制策略更新的幅度，防止因单次更新过大而导致策略性能崩溃（即策略更新后表现急剧下降）。
 Clip操作的具体公式如下：
+
 $$
 L_{\text{CLIP}}(\theta) = \mathbb{E}_{t} \left[ \min\left(r_{t}(\theta) \hat{A}_{t}, \text{clip}(r_{t}(\theta), 1 - \epsilon, 1 + \epsilon) \hat{A}_{t} \right) \right]
 $$
