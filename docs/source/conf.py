@@ -118,6 +118,6 @@ intersphinx_mapping = {'https://docs.python.org/': None}
 
 myst_enable_extensions = [
     'amsmath',
-    'dollarmath',  # 支持 $...$ 行内公式
-    'colon_fence',  # 支持 ```math 块级公式
+    'dollarmath',
+    'colon_fence',
 ]

@@ -53,7 +53,7 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 
 ### cosine_similarity loss对应的格式
 
-```json lines
+```jsonl
 # LLM
 {"query": "sentence1", "response":  "sentence2", "label": 0.8}
 # MLLM
@@ -64,7 +64,7 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 
 ### contrastive/online_contrastive loss对应的格式
 
-```json lines
+```jsonl
 # LLM
 {"query": "sentence1", "response":  "sentence2", "label": 1}
 # MLLM
@@ -76,7 +76,7 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 
 ### infonce 格式
 
-```json lines
+```jsonl
 # LLM
 {"query": "sentence1", "response":  "sentence2"}
 # MLLM
