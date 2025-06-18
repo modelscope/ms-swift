@@ -91,10 +91,12 @@ orms['external_countdown'] = CountdownORM
 We first present the GRPO formula:
 
 $$
+{\scriptstyle
 \begin{aligned}
 \mathcal{J}_{G R P O}(\theta) & =\mathbb{E}\left[q \sim P(Q),\left\{o_i\right\}_{i=1}^G \sim \pi_{\theta_{o l d}}(O \mid q)\right] \\
 & \frac{1}{G} \sum_{i=1}^G \frac{1}{\left|o_i\right|} \sum_{t=1}^{\left|o_i\right|}\left\{\min \left[\frac{\pi_\theta\left(o_{i, t} \mid q, o_{i,<t}\right)}{\pi_{\theta_{o l d}}\left(o_{i, t} \mid q, o_{i,<t}\right)} \hat{A}_{i, t}, \operatorname{clip}\left(\frac{\pi_\theta\left(o_{i, t} \mid q, o_{i,<t}\right)}{\pi_{\theta_{o l d}}\left(o_{i, t} \mid q, o_{i,<t}\right)}, 1-\varepsilon, 1+\varepsilon\right) \hat{A}_{i, t}\right]-\beta \mathbb{D}_{K L}\left[\pi_\theta| | \pi_{r e f}\right]\right\}
 \end{aligned}
+}
 $$
 
 ### Training Parameters
@@ -105,9 +107,10 @@ Since the task is relatively simple, we set both `max_completion_length` to 1024
 
 In our experiment, the total batch size is:
 
-$$
-\text{total batch size} = \text{num\_processes} \times \text{per\_device\_train\_batch\_size} \times \text{gradient\_accumulation\_steps} = 2 \times 8 \times 8 = 128
-$$
+```
+num_processes * per_device_train_batch_size * gradient_accumulation_steps = 2 * 8 * 8 = 128
+```
+
 
 Note that the single-GPU batch size is also closely related to GPU memory capacity, so set an appropriate value based on memory limits. Additionally, the total number of steps can be calculated as:
 
