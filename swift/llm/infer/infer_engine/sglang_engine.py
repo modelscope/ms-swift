@@ -37,12 +37,13 @@ class SglangEngine(InferEngine):
         mem_fraction_static: Optional[float] = None,
         context_length: Optional[int] = None,
         disable_cuda_graph: bool = False,
-        disable_radix_cache: bool = False,
+        disable_radix_cache: bool = True,
         quantization: Optional[str] = None,
         kv_cache_dtype: str = 'auto',
         enable_dp_attention: bool = False,
         log_level='error',
         engine_kwargs: Optional[Dict[str, Any]] = None,
+        template: Optional[Template] = None,
     ):
         if engine_kwargs is None:
             engine_kwargs = {}
@@ -55,7 +56,7 @@ class SglangEngine(InferEngine):
             use_hf=use_hf,
             hub_token=hub_token,
             revision=revision)[1]
-        self._post_init()
+        self._post_init(template)
         if self.max_model_len is not None:
             self.max_model_len -= 1
         parameters = inspect.signature(ServerArgs).parameters
@@ -174,24 +175,23 @@ class SglangEngine(InferEngine):
     async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any],
                                   generation_config: Dict[str, Any]) -> AsyncIterator[ChatCompletionStreamResponse]:
         result_generator = await self.engine.async_generate(**inputs, sampling_params=generation_config, stream=True)
-        infer_streamer = InferStreamer(template)
-        token_idx = 0
+        idx = [0]
         async for output in result_generator:
-            res = self._create_chat_completion_stream_response(output, template, generation_config, infer_streamer,
-                                                               token_idx)
+            res = self._create_chat_completion_stream_response(output, template, generation_config, idx)
             if res is None:
                 continue
             yield res
 
-    def _create_chat_completion_stream_response(self, output, template, generation_config, infer_streamer,
-                                                token_idx) -> Optional[ChatCompletionStreamResponse]:
+    def _create_chat_completion_stream_response(self, output, template, generation_config,
+                                                idx) -> Optional[ChatCompletionStreamResponse]:
         assert output is not None
         response = output['text']
         meta_info = output['meta_info']
         finish_reason = meta_info['finish_reason']
-        delta_text = infer_streamer.get_printable_text(output.token_ids, bool(finish_reason))
+        delta_text = response[idx[0]:]
+        idx[0] = len(response)
         if not delta_text:
-            return None
+            return
         if finish_reason:
             finish_reason = finish_reason['type']
             toolcall = self._get_toolcall(response, template)

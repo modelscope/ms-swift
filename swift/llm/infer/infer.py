@@ -72,6 +72,10 @@ class SwiftInfer(SwiftPipeline):
                 seed += get_dist_setting()[0] // args.tensor_parallel_size
                 kwargs['distributed_executor_backend'] = 'external_launcher'
             kwargs['seed'] = seed
+        elif infer_backend == 'sglang':
+            from .infer_engine import SglangEngine
+            infer_engine_cls = SglangEngine
+            kwargs.update(args.get_sglang_engine_kwargs())
         else:
             from .infer_engine import LmdeployEngine
             infer_engine_cls = LmdeployEngine
