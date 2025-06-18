@@ -118,18 +118,9 @@ class MathTipsMultiTurnScheduler(MultiTurnScheduler):
 
         return super().check_finished(infer_request, result, current_turn, **kwargs)
 
-    def step(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice, **kwargs) -> RolloutInferRequest:
-        completion = result.message.content
-        infer_request.messages.append(
-            {
-                'role': 'assistant',
-                'content': completion
-            },
-            {
-                'role': 'user',
-                'content': self.tips_prompt
-            },
-        )
+    def step(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice, current_turn: int,
+             **kwargs) -> RolloutInferRequest:
+        infer_request.messages.append({'role': 'user', 'content': self.tips_prompt})
         return infer_request
 
 
