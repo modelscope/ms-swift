@@ -57,12 +57,13 @@ class SglangEngine(InferEngine):
         self._post_init()
         if self.max_model_len is not None:
             self.max_model_len -= 1
-
+        parameters = inspect.signature(ServerArgs).parameters
+        if 'pp_size' in parameters:
+            engine_kwargs['pp_size'] = pp_size
         self.server_args = ServerArgs(
             model_path=self.model_dir,
             dtype=self.model_info.torch_dtype,
             tp_size=tp_size,
-            pp_size=pp_size,
             dp_size=dp_size,
             ep_size=ep_size,
             mem_fraction_static=mem_fraction_static,
@@ -168,3 +169,39 @@ class SglangEngine(InferEngine):
                                 generation_config: Dict[str, Any]) -> ChatCompletionResponse:
         output = await self.engine.async_generate(**inputs, sampling_params=generation_config)
         return self._create_chat_completion_response(output, template)
+
+    async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any],
+                                  generation_config: Dict[str, Any]) -> AsyncIterator[ChatCompletionStreamResponse]:
+        result_generator = await self.engine.async_generate(**inputs, sampling_params=generation_config, stream=True)
+        total_response = ['']
+        async for output in result_generator:
+            res = self._create_chat_completion_stream_response(output, template, generation_config,
+                                                                               total_response)
+            if res is None:
+                continue
+            yield res
+
+    def _create_chat_completion_stream_response(self, output, template, generation_config,
+                                                total_response) -> Optional[ChatCompletionStreamResponse]:
+        assert output is not None
+        delta = output['text']
+        if not delta:
+            return None
+        total_response[0] += delta
+        meta_info = output['meta_info']
+        finish_reason = meta_info['finish_reason']
+        meta_info = output['meta_info']
+        usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
+        # TODO: logprobs
+        if finish_reason:
+            finish_reason = finish_reason['type']
+            toolcall = self._get_toolcall(total_response[0], template)
+        else:
+            toolcall = None
+        choice = ChatCompletionResponseChoice(
+            index=0,
+            message=ChatMessage(role='assistant', content=delta, tool_calls=toolcall),
+            finish_reason=finish_reason,
+            logprobs=None)
+
+        return ChatCompletionStreamResponse(model=self.model_name, choices=[choice], usage=usage_info)
