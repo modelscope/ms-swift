@@ -104,7 +104,7 @@ class GRPOVllmEngine(VllmEngine):
 
     def infer(
         self,
-        infer_requests: List[RolloutInferRequest],
+        infer_requests: List[Union[InferRequest, Dict[str, Any]]],
         request_config: Optional[RequestConfig] = None,
         metrics: Optional[List[Metric]] = None,
         *,
@@ -123,7 +123,7 @@ class GRPOVllmEngine(VllmEngine):
         )
 
     async def async_infer(self,
-                          infer_requests: List[RolloutInferRequest],
+                          infer_requests: List[Union[RolloutInferRequest, Dict[str, Any]]],
                           request_config: Optional[RequestConfig] = None,
                           metrics: Optional[List[Metric]] = None,
                           *,
@@ -135,10 +135,13 @@ class GRPOVllmEngine(VllmEngine):
         assert request_config.n == 1
 
         # change here, multi turn loop
-        async def _infer_async_single(infer_request: RolloutInferRequest,
+        async def _infer_async_single(infer_request: Union[RolloutInferRequest, Dict[str, Any]],
                                       request_config: Optional[RequestConfig] = None,
                                       **kwargs):
             # discard origin last turn reponse in first turn
+            if isinstance(infer_request, Dict):
+                infer_request = RolloutInferRequest(
+                    messages=infer_request['messages'], data_dict=infer_request.get('data_dict', None))
             current_request = infer_request
             current_turn = 1
             while True:

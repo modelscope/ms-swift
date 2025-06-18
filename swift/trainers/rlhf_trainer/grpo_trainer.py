@@ -545,32 +545,43 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         per_device_size = len(inputs)
         if is_global_inputs:
             per_device_size //= self.accelerator.num_processes
-        infer_inputs = [{
-            k: v
-            for k, v in inp.items() if k in ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
-        } for inp in inputs] if inputs else []
-
         if self.vllm_mode == 'server':
             # for server mode, we gather all the inputs and send to remote vllm server in main process
+            request_keys = ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
+            infer_inputs = [{
+                k: v
+                for k, v in inp.items() if k in request_keys
+            } for inp in inputs] if inputs else []
             if self.multi_turn_scheduler:
-                # process image to the format that post can accept
-                self._process_infer_requests_images(inputs)
                 multi_turn_kwargs: Dict = RowPreprocessor.rows_to_batched(inputs)
                 multi_turn_kwargs.pop('messages', None)  # messages are already included in infer_inputs
 
             if is_global_inputs:
+                # async generate, pre-gather to avoid potential communicate operator
                 all_inputs = infer_inputs
                 all_input_lengths = [per_device_size] + [0] * (self.accelerator.num_processes - 1)
             else:
                 all_inputs = gather_object(infer_inputs)
                 all_input_lengths = gather_object([len(infer_inputs)])
+                if self.multi_turn_scheduler:
+                    multi_turn_kwargs = {key: gather_object(value) for key, value in multi_turn_kwargs.items()}
+
+                # process image to the format that post can accept
+            if self.multi_turn_scheduler:
+                for i in enumerate(all_inputs):
+                    all_inputs['data_dict'] = {}
+                    for key in multi_turn_kwargs.keys():
+                        all_inputs['data_dict'][key] = multi_turn_kwargs[key][i]
+
+            self._process_infer_requests_images(all_inputs)
+
 
             if not any(inputs for inputs in all_inputs):
                 return []
-            requests = self.inputs_to_rolloutrequest(all_inputs, multi_turn_kwargs)
+
             if self.accelerator.is_main_process:
                 results: List[ChatCompletionResponse] = self._engine_infer(
-                    infer_requests=requests, request_config=request_config)
+                    infer_requests=all_inputs, request_config=request_config)
             else:
                 results = [None] * len(all_inputs)
             # Broadcast the results from the main process to all processes,

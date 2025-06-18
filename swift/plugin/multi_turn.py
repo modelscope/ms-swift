@@ -3,17 +3,19 @@ from typing import Callable, List, Optional, Tuple, Union
 
 from swift.llm.infer.protocol import ChatCompletionResponseChoice, RolloutResponseChoice
 from swift.llm.template import RolloutInferRequest, Template
+
+
 """
 TODO:
     (done) 1. add reward_kwargs to InferRequest in training
-    2. refactor training multi turn compatible with multi turn scheduler
+    (done) 2. refactor training multi turn compatible with multi turn scheduler
     (done) 3. argument max_turns
     (done) 4. continue generate (dummy response)
-    5. document about scheduler
+    (doing) 5. document about scheduler
     6. retool implement and document
-    (done?) 7. loss_mask
-    8. token increment in infer request
-"""
+    (done) 7. loss_mask
+    (pending)8. token increment in infer request
+""" # noqa
 
 
 class MultiTurnScheduler(ABC):
