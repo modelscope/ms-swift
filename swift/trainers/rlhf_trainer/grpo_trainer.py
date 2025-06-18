@@ -20,7 +20,7 @@ import datasets
 import torch
 import torch.nn as nn
 import transformers
-from accelerate.utils import broadcast, broadcast_object_list, gather, gather_object, is_peft_model, set_seed
+from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
 from packaging import version
 from torch.nn import ModuleList
 from torch.utils.data import DataLoader
@@ -32,7 +32,7 @@ from trl.models import prepare_deepspeed
 from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import nanmax, nanmin, nanstd
 
-from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInferRequest, RowPreprocessor,
+from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInferRequest, RowPreprocessor, Template,
                        get_model_arch, to_device)
 from swift.llm.infer.protocol import ChatCompletionResponse
 from swift.llm.model.utils import get_llm_model
@@ -237,11 +237,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.vllm_mode == 'server':
                 self.vllm_client: VLLMClient = vllm_client
                 if self.accelerator.is_main_process:
-                    vllm_use_async_engine = torch.tensor(
-                        self.vllm_client.get_engine_type() == 'AsyncLLMEngine', dtype=torch.bool)
+                    vllm_use_async_engine = [self.vllm_client.get_engine_type() == 'AsyncLLMEngine']
                 else:
-                    vllm_use_async_engine = torch.tensor(False, dtype=torch.bool)
-                self.vllm_use_async_engine = bool(broadcast(vllm_use_async_engine, from_process=0))
+                    vllm_use_async_engine = [False]
+                self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
 
             elif self.vllm_mode == 'colocate':
                 if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:
@@ -453,7 +452,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return engine
 
     @contextmanager
-    def _template_context(self, template):
+    def _template_context(self, template: Template):
         # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
         max_length = template.max_length
         mode = template.mode
