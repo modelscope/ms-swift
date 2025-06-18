@@ -540,7 +540,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _infer(self,
                inputs: Optional[InputsType],
                request_config: RequestConfig,
-               is_global_inputs: bool = False) -> OutputsType:
+               is_global_inputs: bool = False) -> List[ChatCompletionResponse]:
         request_config = self._get_request_config()
         # keys from InferRequest
         per_device_size = len(inputs)
@@ -726,17 +726,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     # Process messages in the multi-turn function
                     requests = self.inputs_to_rolloutrequest(current_inputs, multi_turn_kwargs)
                     should_stops = [
-                        self.multi_turn_scheduler.check_finished(request, result, current_turn)
+                        self.multi_turn_scheduler.check_finished(request, result.choices[0], current_turn)
                         for request, result in zip(requests, results)
                     ]
 
                     # Retain messages that are not yet finished for the next round of rollout
                     pending_inputs = []
-                    for stop, request, r in zip(should_stops, requests, results):
+                    for stop, _input, request, result in zip(should_stops, current_inputs, requests, results):
+                        index = _input['index']
                         if stop:
-                            outputs[r['index']] = (r['messages'], r['finish_reason'])
+                            outputs[index] = (_input['messages'], _input['finish_reason'])
                         else:
-                            infer_request = self.multi_turn_scheduler.step(request, r, current_turn)
+                            infer_request = self.multi_turn_scheduler.step(request, result.choices[0], current_turn)
+                            pending_input = asdict(infer_request)
+                            pending_input['index'] = index
                             pending_inputs.append(asdict(infer_request))
 
                     current_infer_inputs = pending_inputs if has_local_data else []
