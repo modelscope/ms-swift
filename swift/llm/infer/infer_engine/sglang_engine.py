@@ -15,7 +15,6 @@ from swift.plugin import Metric
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
-from .utils import InferStreamer
 
 
 class SglangEngine(InferEngine):
