@@ -445,10 +445,3 @@ class EncodePreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return self.template.encode(row)
-
-
-class GetLengthPreprocessor(RowPreprocessor):
-
-    def preprocess(self, row):
-        length = max([len(row[k]) for k in row.keys() if k.endswith('input_ids')])
-        return {'length': length}
