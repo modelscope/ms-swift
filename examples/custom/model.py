@@ -29,5 +29,5 @@ if __name__ == '__main__':
     engine.default_template.template_backend = 'jinja'
     response = engine.infer([infer_request], request_config)
     jinja_response = response[0].choices[0].message.content
-    assert swift_response == jinja_response, (f'swift_response: {swift_response}\njinja_response: {jinja_response}')
+    assert swift_response == jinja_response, f'swift_response: {swift_response}\njinja_response: {jinja_response}'
     print(f'response: {swift_response}')
