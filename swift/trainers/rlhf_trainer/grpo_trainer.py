@@ -547,34 +547,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             per_device_size //= self.accelerator.num_processes
         if self.vllm_mode == 'server':
             # for server mode, we gather all the inputs and send to remote vllm server in main process
-            request_keys = ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
-            infer_inputs = [{
-                k: v
-                for k, v in inp.items() if k in request_keys
-            } for inp in inputs] if inputs else []
-            if self.multi_turn_scheduler:
-                multi_turn_kwargs: Dict = RowPreprocessor.rows_to_batched(inputs)
-                multi_turn_kwargs.pop('messages', None)  # messages are already included in infer_inputs
-
             if is_global_inputs:
                 # async generate, pre-gather to avoid potential communicate operator
-                all_inputs = infer_inputs
+                all_inputs = inputs
                 all_input_lengths = [per_device_size] + [0] * (self.accelerator.num_processes - 1)
             else:
-                all_inputs = gather_object(infer_inputs)
-                all_input_lengths = gather_object([len(infer_inputs)])
-                if self.multi_turn_scheduler:
-                    multi_turn_kwargs = {key: gather_object(value) for key, value in multi_turn_kwargs.items()}
-
-                # process image to the format that post can accept
-            if self.multi_turn_scheduler:
-                for i in enumerate(all_inputs):
-                    all_inputs['data_dict'] = {}
-                    for key in multi_turn_kwargs.keys():
-                        all_inputs['data_dict'][key] = multi_turn_kwargs[key][i]
-
-            self._process_infer_requests_images(all_inputs)
-
+                all_inputs = gather_object(inputs)
+                all_input_lengths = gather_object([len(inputs)])
 
             if not any(inputs for inputs in all_inputs):
                 return []
@@ -700,8 +679,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     outputs.append(_choices)
             else:
                 # PTEngine or vLLMLLMEngine
-                multi_turn_kwargs = RowPreprocessor.rows_to_batched(inputs)
-                multi_turn_kwargs.pop('messages', None)  # messages are already included
                 orig_size = len(inputs)
                 outputs = [None] * orig_size
                 # we remove origin response in first turn
@@ -737,20 +714,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             current_inputs.append(current_input)
 
                     # Process messages in the multi-turn function
-                    requests = self.inputs_to_rolloutrequest(current_inputs, multi_turn_kwargs)
                     should_stops = [
                         self.multi_turn_scheduler.check_finished(request, result.choices[0], current_turn)
-                        for request, result in zip(requests, results)
+                        for request, result in zip(self.inputs_to_rolloutrequest(current_inputs), results)
                     ]
 
                     # Retain messages that are not yet finished for the next round of rollout
                     pending_inputs = []
-                    for stop, _input, request, result in zip(should_stops, current_inputs, requests, results):
+                    for stop, _input, result in zip(should_stops, current_inputs, results):
                         index = _input['index']
                         if stop:
                             outputs[index] = (_input['messages'], _input['finish_reason'])
                         else:
-                            infer_request = self.multi_turn_scheduler.step(request, result.choices[0], current_turn)
+                            current_request = self.inputs_to_rolloutrequest([current_inputs])[0]
+                            infer_request = self.multi_turn_scheduler.step(current_request, result.choices[0],
+                                                                           current_turn)
                             pending_input = asdict(infer_request)
                             pending_input['index'] = index
                             pending_inputs.append(pending_input)
@@ -1389,13 +1367,22 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _engine_infer(
         self,
-        infer_requests: List[Union[RolloutInferRequest, InputsType]],
+        infer_requests: InputsType,
         request_config: Optional[RequestConfig] = None,
         *,
         use_tqdm: Optional[bool] = False,
     ) -> List[ChatCompletionResponse]:
         with profiling_context(self, 'generate'):
             if self.vllm_mode == 'server':
+                request_keys = ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
+                infer_requests = [{
+                    **{k: request[k]
+                       for k in request_keys if k in request},
+                    **({
+                        'data_dict': {k: request[k]
+                                      for k in request if k not in request_keys}
+                    } if self.multi_turn_scheduler and self.vllm_use_async_engine else {})
+                } for request in infer_requests]
                 self._process_infer_requests_images(infer_requests)
                 return self.vllm_client.infer(infer_requests, asdict(request_config), use_tqdm=use_tqdm)
             else:
@@ -1576,18 +1563,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def is_async_generate_train_rollout_done(self):
         return not self.train_queue.empty()
 
-    def inputs_to_rolloutrequest(self,
-                                 inputs: InputsType,
-                                 data_dict: Optional[Dict[str, Any]] = None) -> RolloutInferRequest:
-        requests = [RolloutInferRequest(_input['messages']) for _input in inputs]
-        if requests[0].data_dict or not data_dict:
-            return requests
+    def inputs_to_rolloutrequest(self, inputs: InputsType) -> RolloutInferRequest:
 
-        for i, (request, _input) in enumerate(zip(requests, inputs)):
-            for k in data_dict.keys():
-                if 'index' in _input:
-                    request.data_dict[k] = data_dict[k][_input['index']]
-                else:
-                    request.data_dict[k] = data_dict[k][i]
+        request_keys = ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
+        infer_requests = [
+            RolloutInferRequest({
+                **{k: request[k]
+                   for k in request_keys if k in request},
+                **{
+                    'data_dict': {k: request[k]
+                                  for k in request if k not in request_keys}
+                }
+            }) for request in inputs
+        ]
 
-        return requests
+        return infer_requests

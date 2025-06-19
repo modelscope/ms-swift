@@ -42,25 +42,6 @@ class MultiTurnScheduler(ABC):
         self.max_turns = max_turns
 
 
-class ReToolScheduler(MultiTurnScheduler):
-
-    def __init__(self):
-        super().__init__()
-        self.sandbox = None
-
-    def step(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice, current_turn: int,
-             **kwargs) -> RolloutInferRequest:
-
-        # if current_turn == 0 or not messages[-1]['content'] or messages[-1]['content'] == '<None>':
-        #     messages = RolloutInferRequest.remove_response(infer_request.messages)
-
-        pass  # TODO
-
-    def extract_code(completions: Union[List[str], str]):
-
-        pass  # TODO
-
-
 class MathTipsScheduler(MultiTurnScheduler):
     from .orm import MathAccuracy
     tips_prompt = 'But wait... It seems I made a mistake,'
