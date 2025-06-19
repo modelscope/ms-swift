@@ -1,6 +1,6 @@
 # Qwen3最佳实践
 
-讨论区：[https://github.com/modelscope/ms-swift/issues/4030](https://github.com/modelscope/ms-swift/issues/4030)
+讨论区：[issue 4030](https://github.com/modelscope/ms-swift/issues/4030)
 
 Qwen文档: [https://qwen.readthedocs.io/en/latest/training/ms_swift.html](https://qwen.readthedocs.io/en/latest/training/ms_swift.html)
 
@@ -46,6 +46,15 @@ swift infer \
     --response_prefix '<think>\n\n</think>\n\n'
 ```
 
+```text
+<<< who are you?
+<think>
+
+</think>
+
+I am Qwen, a large-scale language model developed by Alibaba Cloud. I am designed to assist with a wide range of tasks, including answering questions, creating content, and providing information. How can I assist you today?
+```
+
 ## 训练
 
 在开始训练之前，请确保您的环境已正确配置。
@@ -56,7 +65,7 @@ pip install transformers -U
 
 pip install deepspeed # 多GPU训练
 pip install liger-kernel # 节约显存资源
-pip install flash-attn --no-build-isolation
+pip install flash-attn --no-build-isolation  # packing需要
 ```
 
 ## 监督微调 (SFT)
@@ -65,7 +74,7 @@ pip install flash-attn --no-build-isolation
 
 使用 ms-swift 进行 SFT 的自定义数据集格式如下（system 字段是可选的）。您可以将其组织为 JSON、JSONL 或 CSV 格式。在训练脚本中指定 `--dataset <dataset_path>`。有关完整的数据集格式指南，请参考[自定义数据集文档](../Customization/自定义数据集.md)。
 
-```json
+```text
 # 通用格式
 {"messages": [
     {"role": "system", "content": "<system-prompt>"},
@@ -79,9 +88,9 @@ pip install flash-attn --no-build-isolation
 ]}
 ```
 
-如果您想使用不含思维链的数据进行训练，同时保留模型的推理能力，可以通过以下两种方法尽量减少微调期间的干扰：
+如果您想使用不含思维链的数据进行训练，同时保留模型的推理能力，可以通过以下两种方法尽量减少微调的影响：
 
-**选项 1**【推荐】：在训练期间，指定 `--loss_scale ignore_empty_think`，以忽略对 `<think>\n\n</think>\n\n` 的损失计算，从而避免推理能力的丧失。训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/think_model/qwen3_demo1.sh)。该方式同样适用于deepseek-r1等模型。自定义数据集格式如下：
+**选项 1**：【推荐】在训练期间，指定 `--loss_scale ignore_empty_think`，以忽略对 `<think>\n\n</think>\n\n` 的损失计算，从而避免推理能力的丧失。训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/think_model/qwen3_demo1.sh)。该方式同样适用于deepseek-r1等模型。自定义数据集格式如下：
 
 ```json
 {"messages": [
@@ -217,19 +226,19 @@ swift sft \
 
 ## 强化学习 (RL)
 
-ms-swift 支持 DPO、GRPO、DAPO、PPO、KTO、GKD 等 RLHF 方法。本章将着重介绍使用 ms-swift 对 Qwen3-8B 进行 GRPO 训练。更多关于GRPO的内容，可以参考[GRPO文档](../Instruction/GRPO.md)。
+ms-swift 支持 DPO、GRPO、DAPO、PPO、KTO、GKD 等 RLHF 方法。本章将着重介绍使用 ms-swift 对 Qwen3-8B 进行 GRPO 训练。更多关于GRPO的内容，可以参考[GRPO文档](../Instruction/GRPO.md)。更多RLHF训练脚本，参考[examples/train/rlhf](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf)。
 
 ### 环境设置
 
 除了安装上述介绍的 ms-swift 相关依赖项外，还需要安装以下依赖项：
 ```
 pip install "math_verify==0.5.2"
-pip install vllm
+pip install vllm==0.8.5.post1
 ```
 
 ### 数据准备
 
-使用 ms-swift 进行 GRPO 训练的数据集格式与 SFT 类似，但不需要最后一轮的 assistant 部分。如果使用 accuracy 作为奖励，则需要一个 `solution` 列来计算准确率。
+使用 ms-swift 进行 GRPO 训练的数据集格式与 SFT 类似，但不需要最后一轮的 assistant 部分。如果使用 accuracy 作为奖励，则需要额外的 `solution` 列来计算准确率。
 
 示例数据集格式：
 
@@ -239,7 +248,7 @@ pip install vllm
 {"messages": [{"role": "user", "content": "What is your name?"}]}
 ```
 
-关于其他 RLHF 算法的数据集准备，请参考：[自定义数据集文档](../Customization/自定义数据集.md#rlhf)。
+关于其他 RLHF 算法的数据集准备，请参考[自定义数据集文档](../Customization/自定义数据集.md#rlhf)。
 
 数据集要求的注意事项：
 
@@ -296,9 +305,9 @@ swift rlhf \
 
 ## Megatron-SWIFT
 
-ms-swift 引入了 Megatron 并行技术以加速大模型的训练。支持的模型可以在[支持的模型文档](../Instruction/支持的模型和数据集.md)中找到。
+ms-swift 引入了 Megatron 并行技术以加速大模型的CPT/SFT/DPO。支持的模型可以在[支持的模型文档](../Instruction/支持的模型和数据集.md)中找到。
 
-关于环境准备以及 HF 和 MCore 模型权重的转换，可以参考[Megatron-SWIFT训练文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Megatron-SWIFT%E8%AE%AD%E7%BB%83.html)
+关于环境准备以及 HF 和 MCore 模型权重的转换，可以参考[Megatron-SWIFT训练文档](../Instruction/Megatron-SWIFT训练.md)。
 
 我们将使用阿里云 DLC 启动训练。训练环境由2台配备8卡 80GiB A800 GPU 组成。关于多节点启动方法的更多信息，请参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node)。
 
