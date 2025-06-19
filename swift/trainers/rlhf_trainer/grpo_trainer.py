@@ -677,6 +677,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         # concated in Engine
                         _choices.append((choice.messages, choice.finish_reason))
                     outputs.append(_choices)
+                outputs = [item for sublist in outputs for item in sublist]
             else:
                 # PTEngine or vLLMLLMEngine
                 orig_size = len(inputs)

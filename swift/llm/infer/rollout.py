@@ -11,7 +11,7 @@ from dataclasses import asdict
 from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import torch
 import uvicorn
@@ -307,7 +307,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
 
     async def infer(
         self,
-        infer_requests: List[RolloutInferRequest],
+        infer_requests: List[Union[Dict, RolloutInferRequest]],
         request_config: Optional[RequestConfig] = None,
         *,
         use_tqdm: Optional[bool] = None,
