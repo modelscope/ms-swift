@@ -243,7 +243,7 @@ class DatasetLoader:
             # The dataset downloaded from modelscope will have an additional dataset_infos.json file.
             dataset_infos_path = os.path.join(dataset_id, 'dataset_infos.json')
             if os.path.isfile(dataset_infos_path):
-                os.rename(dataset_infos_path, f'{dataset_infos_path}.bak')
+                os.rename(dataset_infos_path, f'{dataset_infos_path}_bak')
         elif dataset_id.startswith('/'):
             raise ValueError(f'The local path does not exist, dataset_id: `{dataset_id}`. '
                              f'os.path.exists(dataset_id): {os.path.exists(dataset_id)}')
@@ -422,25 +422,37 @@ class DatasetLoader:
 
 
 def init_self_cognition_preprocessor(
+    dataset_meta: Optional[DatasetMeta],
     model_name: Union[Tuple[str, str], List[str], None] = None,
     model_author: Union[Tuple[str, str], List[str], None] = None,
 ) -> None:
-    from .dataset.llm import SelfCognitionPreprocessor
+    if dataset_meta is None or model_name is None and model_author is None:
+        return
+    kwargs = {}
     # zh, en
-    for key in ['model_name', 'model_author']:
-        val = locals()[key]
+    for key in ['name', 'author']:
+        val = locals()[f'model_{key}']
         if isinstance(val, str):
             val = [val]
         if val is not None and val[0] is not None and (len(val) == 1 or val[1] is None):
             val = (val[0], val[0])
-        setattr(SelfCognitionPreprocessor, key[len('model_'):], val)
+        kwargs[key] = val
+
+    from .dataset.llm import SelfCognitionPreprocessor
+    preprocess_funcs = [dataset_meta.preprocess_func]
+    preprocess_funcs += [subset.preprocess_func for subset in dataset_meta.subsets if isinstance(subset, SubsetDataset)]
+    for preprocess_func in preprocess_funcs:
+        if isinstance(preprocess_func, SelfCognitionPreprocessor):
+            preprocess_func.set_name_author(**kwargs)
+    logger.info_once(f"SelfCognitionPreprocessor has been successfully configured with name: {kwargs['name']}, "
+                     f"author: {kwargs['author']}.")
 
 
 def load_dataset(
     datasets: Union[List[str], str],
     *,
     split_dataset_ratio: float = 0.,
-    seed: Union[int, np.random.RandomState, None] = None,
+    seed: Union[int, np.random.RandomState, None] = 42,
     num_proc: int = 1,
     load_from_cache_file: bool = True,
     shuffle: bool = False,
@@ -479,7 +491,7 @@ def load_dataset(
     Returns:
         The train dataset and val dataset
     """
-    init_self_cognition_preprocessor(model_name, model_author)
+    init_self_cognition_preprocessor(DATASET_MAPPING.get('self-cognition'), model_name, model_author)
     if isinstance(datasets, str):
         datasets = [datasets]
     if not isinstance(seed, np.random.RandomState):

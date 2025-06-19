@@ -3,11 +3,8 @@ import math
 import os
 import platform
 from dataclasses import dataclass, field
-from functools import wraps
 from typing import List, Literal, Optional, Union
 
-import torch
-import torch.utils.checkpoint
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
@@ -28,6 +25,7 @@ class TrainArgumentsMixin:
     gradient_accumulation_steps: Optional[int] = None
 
     gradient_checkpointing: bool = True
+    vit_gradient_checkpointing: Optional[bool] = None
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
     logging_first_step: bool = True
     logging_steps: int = 5
@@ -49,6 +47,9 @@ class TrainArgumentsMixin:
     aligner_lr: Optional[float] = None
     vit_lr: Optional[float] = None
     optimizer: Optional[str] = None
+    use_logits_to_keep: Optional[bool] = None
+    channels: List[str] = None
+    ds3_gather_for_generation: bool = True
 
     # torchacc
     metric_warmup_step: Optional[float] = 0
@@ -62,32 +63,26 @@ class TrainArgumentsMixin:
     eval_datasets_args: Optional[Union[str, dict]] = None
     eval_generation_config: Optional[Union[str, dict]] = None
 
-    def _fix_gradient_checkpointing(self):
-        # fix use_reentrant
-        if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
-            return
-        # Consistent with the default behavior of transformers.
-        use_reentrant_ = (
-            self.gradient_checkpointing_kwargs.get('use_reentrant', True)
-            if self.gradient_checkpointing_kwargs else True)
-        _old_checkpoint = torch.utils.checkpoint.checkpoint
+    @staticmethod
+    def _patch_liger_kernel():
+        # fix logits_to_keep
+        from liger_kernel.transformers.model import loss_utils
+        origin_LigerForCausalLMLoss = loss_utils.LigerForCausalLMLoss
 
-        @wraps(_old_checkpoint)
-        def _new_checkpoint(*args, use_reentrant=None, **kwargs):
-            return _old_checkpoint(*args, use_reentrant=use_reentrant_, **kwargs)
+        def LigerForCausalLMLoss(hidden_states, *args, **kwargs):
+            hidden_states = hidden_states.contiguous()
+            return origin_LigerForCausalLMLoss(hidden_states, *args, **kwargs)
 
-        torch.utils.checkpoint._old_checkpoint = _old_checkpoint
-        torch.utils.checkpoint.checkpoint = _new_checkpoint
-        try:
-            # Fix the old version of transformers.
-            import transformers.modeling_utils
-            transformers.modeling_utils.checkpoint = _new_checkpoint
-        except (ImportError, AttributeError):
-            pass
+        loss_utils.LigerForCausalLMLoss = LigerForCausalLMLoss
+        logger.info('Patch liger_kernel successfully.')
 
     def _init_liger(self):
         if self.use_liger_kernel:
             assert is_liger_available(), 'use_liger_kernel requires liger_kernels, try `pip install liger-kernel`'
+            try:
+                self._patch_liger_kernel()
+            except Exception:
+                pass
 
     def __post_init__(self):
         if is_mp() and self.use_liger_kernel:
@@ -105,9 +100,10 @@ class TrainArgumentsMixin:
             logger.info(f'Setting args.gradient_accumulation_steps: {self.gradient_accumulation_steps}')
         if self.lr_scheduler_kwargs:
             self.lr_scheduler_kwargs = ModelArguments.parse_to_dict(self.lr_scheduler_kwargs)
+        if self.vit_gradient_checkpointing is None:
+            self.vit_gradient_checkpointing = self.gradient_checkpointing
         if self.gradient_checkpointing_kwargs:
             self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
-        self._fix_gradient_checkpointing()
         self._init_liger()
         if self.dataloader_num_workers is None:
             if platform.system() == 'Windows':
@@ -149,6 +145,7 @@ class SwiftArgumentsMixin(TrainArgumentsMixin):
 class GRPOArgumentsMixin:
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
+    delta: Optional[float] = None
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
@@ -165,6 +162,7 @@ class GRPOArgumentsMixin:
     vllm_enable_prefix_caching: bool = True
     vllm_tensor_parallel_size: int = 1
     # external vllm (server)
+    vllm_server_base_url: Optional[str] = None
     vllm_server_host: Optional[str] = None
     vllm_server_port: int = 8000
     vllm_server_timeout: float = 240.0
@@ -210,8 +208,9 @@ class GRPOArgumentsMixin:
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
     scale_rewards: bool = True
 
-    # compatible with trl main branch(0.17.0.dev0)
     wandb_log_unique_prompts: Optional[bool] = None
+    generation_batch_size: Optional[int] = None
+    steps_per_generation: Optional[int] = None
 
     # dataset
     dataset_shuffle: Optional[bool] = True

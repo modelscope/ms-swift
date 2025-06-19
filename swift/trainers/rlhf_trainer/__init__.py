@@ -11,8 +11,9 @@ if TYPE_CHECKING:
     from .orpo_trainer import ORPOTrainer
     from .ppo_trainer import PPOTrainer
     from .reward_trainer import RewardTrainer
+    from .gkd_trainer import GKDTrainer
     from .rlhf_mixin import RLHFTrainerMixin
-    from .utils import patch_lora_merge, patch_lora_unmerge, round_robin
+    from .utils import patch_lora_merge, patch_lora_unmerge, round_robin, _ForwardRedirection
 else:
     _import_structure = {
         'cpo_trainer': ['CPOTrainer'],
@@ -22,8 +23,9 @@ else:
         'orpo_trainer': ['ORPOTrainer'],
         'ppo_trainer': ['PPOTrainer'],
         'reward_trainer': ['RewardTrainer'],
+        'gkd_trainer': ['GKDTrainer'],
         'rlhf_mixin': ['RLHFTrainerMixin'],
-        'utils': ['patch_lora_merge', 'patch_lora_unmerge', 'round_robin'],
+        'utils': ['patch_lora_merge', 'patch_lora_unmerge', 'round_robin', '_ForwardRedirection'],
     }
 
     import sys

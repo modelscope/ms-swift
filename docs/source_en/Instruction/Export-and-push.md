@@ -35,7 +35,7 @@ We provide a series of scripts to demonstrate SWIFT's quantization export capabi
 - Supports [AWQ](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/awq.sh)/[GPTQ](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/gptq.sh)/[BNB](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/bnb.sh) quantization exports.
 - Multimodal quantization: Supports quantizing multimodal models using GPTQ and AWQ, with limited multimodal models supported by AWQ. Refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/mllm).
 - Support for more model series: Supports quantization exports for [BERT](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/bert) and [Reward Model](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/reward_model).
-- Models exported with SWIFT's quantization support inference acceleration using vllm/lmdeploy; they also support further SFT/RLHF using QLoRA.
+- Models exported with SWIFT's quantization support inference acceleration using vllm/sglang/lmdeploy; they also support further SFT/RLHF using QLoRA.
 
 
 ## Push Model

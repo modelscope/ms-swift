@@ -318,6 +318,29 @@ def git_clone_github(github_url: str,
     return local_repo_path
 
 
+def get_llm_model(model: torch.nn.Module, model_meta=None):
+    from swift import SwiftModel
+    from peft import PeftModel
+    from swift.llm import get_model_arch
+    from accelerate.utils import extract_model_from_parallel
+    model = extract_model_from_parallel(model)
+
+    if isinstance(model, (SwiftModel, PeftModel)):
+        model = model.model
+    if model_meta is None:
+        model_meta = model.model_meta
+
+    llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
+    if llm_prefix:
+        llm_model = deep_getattr(model, llm_prefix[0])
+    else:
+        llm_model = model
+
+    if 'CausalLM' not in llm_model.__class__.__name__:
+        llm_model = model
+    return llm_model
+
+
 def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] = None) -> None:
     if func_list is None:
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']

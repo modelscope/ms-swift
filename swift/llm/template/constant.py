@@ -13,6 +13,7 @@ class LLMTemplateType:
     qwen2_5_math = 'qwen2_5_math'
     qwen2_5_math_prm = 'qwen2_5_math_prm'
     qwen3 = 'qwen3'
+    qwen3_emb = 'qwen3_emb'
     qwq_preview = 'qwq_preview'
     qwq = 'qwq'
     marco_o1 = 'marco_o1'
@@ -27,6 +28,7 @@ class LLMTemplateType:
     sus = 'sus'
 
     minimax = 'minimax'
+    minimax_m1 = 'minimax_m1'
     minimax_vl = 'minimax_vl'
 
     numina = 'numina'
@@ -80,6 +82,8 @@ class LLMTemplateType:
     bluelm = 'bluelm'
     orion = 'orion'
     moonlight = 'moonlight'
+    mimo_rl = 'mimo_rl'
+    dots1 = 'dots1'
 
     aya = 'aya'
     c4ai = 'c4ai'
@@ -102,6 +106,7 @@ class MLLMTemplateType:
     ovis1_6 = 'ovis1_6'
     ovis1_6_llama3 = 'ovis1_6_llama3'
     ovis2 = 'ovis2'
+    mimo_vl = 'mimo_vl'
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'

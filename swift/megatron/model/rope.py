@@ -1,40 +1,87 @@
-import math
-from typing import Any, Dict
+from megatron.training import get_args
 
-import torch
+from swift.utils import get_logger
 
-
-def _to_llama3_rope(inv_freq: torch.Tensor, rope_scaling: Dict[str, Any]):
-    # copy from transformers
-    factor = rope_scaling['factor']  # `8` in the original implementation
-    low_freq_factor = rope_scaling['low_freq_factor']  # `1` in the original implementation
-    high_freq_factor = rope_scaling['high_freq_factor']  # `4` in the original implementation
-    old_context_len = rope_scaling['original_max_position_embeddings']  # `8192` in the original implementation
-
-    low_freq_wavelen = old_context_len / low_freq_factor
-    high_freq_wavelen = old_context_len / high_freq_factor
-
-    wavelen = 2 * math.pi / inv_freq
-    # wavelen < high_freq_wavelen: do nothing
-    # wavelen > low_freq_wavelen: divide by factor
-    inv_freq_llama = torch.where(wavelen > low_freq_wavelen, inv_freq / factor, inv_freq)
-    # otherwise: interpolate between the two, using a smooth factor
-    smooth_factor = (old_context_len / wavelen - low_freq_factor) / (high_freq_factor - low_freq_factor)
-    smoothed_inv_freq = (1 - smooth_factor) * inv_freq_llama / factor + smooth_factor * inv_freq_llama
-    is_medium_freq = ~(wavelen < high_freq_wavelen) * ~(wavelen > low_freq_wavelen)
-    inv_freq_llama = torch.where(is_medium_freq, smoothed_inv_freq, inv_freq_llama)
-    return inv_freq_llama
+logger = get_logger()
 
 
-def _to_linear_rope(inv_freq: torch.Tensor, rope_scaling: Dict[str, Any]):
-    factor = rope_scaling['factor']
-    inv_freq /= factor
-    return inv_freq
+class DummyConfig:
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
 
-ROPE_MAPPING = {'llama3': _to_llama3_rope, 'linear': _to_linear_rope}
+def _get_dummy_config(args):
+    dummy_config = DummyConfig(
+        rope_scaling=args.rope_scaling,
+        rope_theta=args.rotary_base,
+        max_position_embeddings=args.max_position_embeddings,
+        head_dim=args.kv_channels,
+        hidden_size=args.hidden_size,
+        num_attention_heads=args.num_attention_heads,
+    )
+    original_max_position_embeddings = args.original_max_position_embeddings or args.rope_scaling.get(
+        'original_max_position_embeddings')
+    if original_max_position_embeddings is not None:
+        dummy_config.original_max_position_embeddings = original_max_position_embeddings
+    if args.partial_rotary_factor is not None:
+        dummy_config.partial_rotary_factor = args.partial_rotary_factor
+    return dummy_config
 
 
-def update_rope_inv_freq(inv_freq: torch.Tensor, rope_scaling: Dict[str, Any]) -> None:
-    new_inv_freq = ROPE_MAPPING[rope_scaling['rope_type']](inv_freq, rope_scaling)
-    inv_freq.data.copy_(new_inv_freq)
+def get_rope_inv_freq(device, seq_len=None):
+    from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
+    args = get_args()
+    dummy_config = _get_dummy_config(args)
+    rope_init_fn = ROPE_INIT_FUNCTIONS[args.rope_scaling['rope_type']]
+    inv_freq, attention_scaling = rope_init_fn(dummy_config, device, seq_len=seq_len)
+    if attention_scaling is None:
+        attention_scaling = 1.
+    return inv_freq, attention_scaling
+
+
+# borrowed from huggingface/transformers
+def longrope_frequency_update(args, model, inv_freq, seq_len: int):
+    if args.original_max_position_embeddings is not None:
+        original_max_position_embeddings = args.original_max_position_embeddings
+    else:
+        original_max_position_embeddings = args.max_position_embeddings
+
+    if not hasattr(model, 'long_inv_freq'):
+        model.long_inv_freq, _ = get_rope_inv_freq(inv_freq.device, seq_len=original_max_position_embeddings + 1)
+        model.original_inv_freq = inv_freq.clone()
+
+    if seq_len > original_max_position_embeddings:
+        inv_freq.data.copy_(model.long_inv_freq)
+    else:
+        inv_freq.data.copy_(model.original_inv_freq)
+
+
+# borrowed from huggingface/transformers
+def dynamic_frequency_update(args, model, inv_freq, seq_len: int):
+    if not hasattr(model, 'max_seq_len_cached'):
+        model.max_seq_len_cached = args.max_position_embeddings
+        model.original_max_seq_len = args.max_position_embeddings
+        model.original_inv_freq = inv_freq.clone()
+    attention_scaling = None
+    if seq_len > model.max_seq_len_cached:  # growth
+        new_inv_freq, attention_scaling = get_rope_inv_freq(inv_freq.device, seq_len=seq_len)
+        inv_freq.data.copy_(new_inv_freq)
+        model.max_seq_len_cached = seq_len
+
+    if seq_len < model.original_max_seq_len and model.max_seq_len_cached > model.original_max_seq_len:  # reset
+        inv_freq.data.copy_(model.original_inv_freq)
+        model.max_seq_len_cached = model.original_max_seq_len
+    return attention_scaling
+
+
+def dynamic_rope_update(model, inv_freq, seq_len: int):
+    args = get_args()
+    rope_type = args.rope_scaling['rope_type']
+    attention_scaling = None
+    if rope_type == 'dynamic':
+        attention_scaling = dynamic_frequency_update(args, model, inv_freq, seq_len)
+    elif rope_type == 'longrope':
+        attention_scaling = longrope_frequency_update(args, model, inv_freq, seq_len)
+    return attention_scaling

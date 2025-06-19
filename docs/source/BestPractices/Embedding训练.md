@@ -10,14 +10,23 @@ SWIFT已经支持Embedding模型的训练，包括纯文本和多模态两个类
 3. gme embedding模型
    - 2B: [ModelScope](https://www.modelscope.cn/models/iic/gme-Qwen2-VL-2B-Instruct) [Hugging Face](https://huggingface.co/Alibaba-NLP/gme-Qwen2-VL-2B-Instruct)
    - 7B: [ModelScope](https://www.modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct) [Hugging Face](https://huggingface.co/Alibaba-NLP/gme-Qwen2-VL-7B-Instruct)
+4. qwen3-embedding模型
+   - 0.6B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Embedding-0.6B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)
+   - 4B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Embedding-4B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Embedding-4B)
+   - 8B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Embedding-8B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Embedding-8B)
 
 开发者可以自行集成自己的模型，模型forward输出值需要满足：
 
-```json
+```text
 {"last_hidden_state": some-embedding-tensor}
 ```
 
-返回值是一个json，具有`last_hidden_state` key，value是embedding tensor即可，输入部分可以使用我们已经支持的template。
+返回值是一个json，具有`last_hidden_state` key，value是embedding tensor即可，输入部分可以使用我们已经支持的template。用户也可以通过指定
+
+```shell
+   --task_type embedding
+```
+参数来将任意一个其他模型转换为embedding模型进行训练。
 
 需要注意的是，SWIFT目前支持的embedding模型均为符合纯文本或多模态LLM，目前并不支持CLIP类型的模型训练。
 
@@ -37,10 +46,10 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 ## 数据集格式
 
 > 注：
-> 1. 下面的多模态部分<image>标签可以出现在query/response/rejected_response的任意位置，只需要标签数量和images的值数量相等即可
-> 2. 标签和images的对应顺序为先对应query中的<image>标签，然后是response中的，之后按顺序解析rejected_response中的
+> 1. 下面的多模态部分`<image>`标签可以出现在query/response/rejected_response的任意位置，只需要标签数量和images的值数量相等即可
+> 2. 标签和images的对应顺序为先对应query中的`<image>`标签，然后是response中的，之后按顺序解析rejected_response中的
 > 3. query代表anchor sample，response代表positive sample或对比sample，rejected_response是hard negative samples
-> 4. 也支持<video>, <audio>标签，即天然支持video和audio的embedding
+> 4. 也支持`<video>`, `<audio>`标签，即天然支持video和audio的embedding
 
 ### cosine_similarity loss对应的格式
 
@@ -95,3 +104,17 @@ SWIFT提供了两个脚手架训练脚本：
 
 - [gte模型](https://github.com/tastelikefeet/swift/blob/main/examples/train/embedding/train_gte.sh)
 - [gme模型](https://github.com/tastelikefeet/swift/blob/main/examples/train/embedding/train_gme.sh)
+
+## 推理
+
+SWIFT当前没有支持Embedding的模型推理和部署（时间问题），可以使用原模型的代码进行推理：
+
+https://www.modelscope.cn/models/iic/gte_Qwen2-7B-instruct
+
+https://www.modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct
+
+如果使用了其他模型从0训练embedding（例如，原版`qwen2-vl`模型+`--task_type embedding`），也可以使用gme的推理代码，但请注意：
+
+https://www.modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct/file/view/master/gme_inference.py?status=1#L111
+
+这里的模板请修改为模型自身的template，以免最后的embedding对不上。需要额外注意的是，gme模型的template和`qwen2-vl`或`qwen2.5-vl`系列的chatml template并不相同，其推理代码最后的结束字符是`<|endoftext|>`而非`<|im_end|>`.

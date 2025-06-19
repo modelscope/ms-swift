@@ -7,9 +7,10 @@ import re
 import time
 from collections import defaultdict, deque
 from concurrent.futures import Future
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from dataclasses import asdict, dataclass, field
+from functools import partial
 from math import ceil
 from queue import Queue
 from types import MethodType
@@ -25,20 +26,21 @@ from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
 from transformers.trainer import Trainer
-from transformers.trainer_utils import seed_worker
 from trl import GRPOTrainer as HFGRPOTrainer
-from trl.extras.profiling import profiling_decorator
+from trl.extras.profiling import profiling_context, profiling_decorator
 from trl.models import prepare_deepspeed
 from trl.trainer.callbacks import SyncRefModelCallback
-from trl.trainer.grpo_trainer import nanmax, nanmin
+from trl.trainer.grpo_trainer import nanmax, nanmin, nanstd
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
+from swift.llm.model.utils import get_llm_model
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
-from swift.utils import JsonlWriter, gc_collect, get_device, get_logger, is_vllm_available, is_wandb_available
+from swift.utils import (JsonlWriter, gc_collect, get_current_device, get_device, get_logger, is_vllm_available,
+                         is_wandb_available, seed_worker, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import patch_lora_merge, patch_lora_unmerge, unwrap_model_for_generation
+from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge
 from .vllm_client import VLLMClient
 
 del HFGRPOTrainer.__init__
@@ -71,6 +73,10 @@ class DataCache:
     outputs: List[Dict] = field(default_factory=list)
 
 
+def identity_data_collator(features):
+    return features
+
+
 class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
@@ -89,10 +95,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.eval_queue = Queue()
 
         self.processing_class = kwargs.get('template').tokenizer
-
-        # for offload model/optimizer
-        self.offload_modules = {}
-        self.offload_states = {}
 
         if not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
@@ -173,7 +175,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.max_completion_length = args.max_completion_length
         self.completion_length_limit_scope = args.completion_length_limit_scope
         model.warnings_issued['estimate_tokens'] = True
-        kwargs['data_collator'] = lambda features: features
+
+        kwargs['data_collator'] = identity_data_collator  # No data collation is needed in GRPO
         self.shuffle_dataset = args.dataset_shuffle
 
         self.use_vllm = args.use_vllm
@@ -181,6 +184,26 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         vllm_client = kwargs.pop('vllm_client')  # for external vllm
 
         super().__init__(model, ref_model, *_args, **kwargs)
+        # Multi-step
+        self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
+
+        self.epsilon_low = args.epsilon
+        self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
+
+        self.use_liger_loss = self.args.use_liger_kernel
+        if self.use_liger_loss:
+            from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
+
+            self.liger_grpo_loss = LigerFusedLinearGRPOLoss(
+                beta=self.beta,
+                epsilon_low=self.epsilon_low,
+                epsilon_high=self.epsilon_high,
+                temperature=self.temperature,
+                use_ref_model=self.beta != 0.0,
+                loss_type=self.loss_type,
+                max_completion_length=self.max_completion_length,
+            )
+            self._forward_redirection = _ForwardRedirection()
 
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self.log_completions = args.log_completions
@@ -189,42 +212,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
         # maxlen is set to the total number of forward passes per step. This value of `maxlen` ensures we log only the
         # final optimization step.
-        maxlen = self.accelerator.num_processes * args.per_device_train_batch_size * args.gradient_accumulation_steps
+        maxlen = self.accelerator.num_processes * args.per_device_train_batch_size * args.steps_per_generation
         self._textual_logs = {
             'prompt': deque(maxlen=maxlen),
             'completion': deque(maxlen=maxlen),
             'rewards': defaultdict(lambda: deque(maxlen=maxlen)),
         }
-
-        # num_generation check
-        num_processes = self.accelerator.num_processes
-        self.effective_train_batch_size = effective_batch_size = \
-            args.per_device_train_batch_size * num_processes * args.gradient_accumulation_steps
-        possible_values = [n_gen for n_gen in range(2, effective_batch_size + 1) if (effective_batch_size) % n_gen == 0]
-
-        if self.num_generations not in possible_values:
-            raise ValueError(
-                f'The effective train batch size ({num_processes} x {args.per_device_train_batch_size} x '
-                f'{args.gradient_accumulation_steps}) must be evenly divisible by the number of generations per '
-                f'prompt ({self.num_generations}). Given the current effective train batch size, the valid values for '
-                f'the number of generations are: {possible_values}.')
-        if self.args.eval_strategy != 'no':
-            effective_batch_size = args.per_device_eval_batch_size * num_processes
-            possible_values = [
-                n_gen for n_gen in range(2, effective_batch_size + 1) if (effective_batch_size) % n_gen == 0
-            ]
-            if self.num_generations not in possible_values:
-                raise ValueError(
-                    f'The effective eval batch size ({num_processes} x {args.per_device_eval_batch_size}) must be '
-                    f'evenly divisible by the number of generations per prompt ({self.num_generations}). Given the '
-                    'current effective eval batch size, the valid values for the number of generations are: '
-                    f'{possible_values}.')
-
         # Ensure each process receives a unique seed to prevent duplicate completions when generating with
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
         set_seed(args.seed, device_specific=True)
-        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
+        if is_peft_model(self.model):
+            self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.use_fast_infer = self.use_vllm  # whether to use the PT backend
         if self.use_vllm:
             if not is_vllm_available():
@@ -247,11 +246,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     ])
 
                 self.engine = self.prepare_vllm(model)
-                # Avoid thread-unsafe modifications of the mode.
-                self.engine.default_template = copy(self.template)  # Avoid thread-unsafe modifications of the mode.
         else:
             from swift.llm import PtEngine
-            self.engine = PtEngine.from_model_template(self.model, copy(self.template), max_batch_size=0)  # 0: no limit
+            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
 
         self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
         self.request_config = RequestConfig(
@@ -268,7 +265,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
         # self.model_accepts_loss_kwargs to False to enable scaling.
         self.model_accepts_loss_kwargs = False
-
+        self.padding_free = self.template.padding_free
+        self.template.padding_free = False
+        self.template._packing = False
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 if self.is_deepspeed_enabled:
@@ -276,11 +275,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 else:
                     self.reward_funcs[i] = self.accelerator.prepare_model(
                         reward_func, evaluation_mode=True, device_placement=True)
-
-        # Multi-step
-        self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
-        self.epsilon_low = args.epsilon
-        self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
 
         # Tracks the number of iterations (forward + backward passes), including those within a gradient accumulation cycle. # noqa
         self._step = 0
@@ -307,18 +301,31 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.eval_flag = False
 
     @profiling_decorator
-    def _prepare_inputs(
-            self, accumulated_local_batch: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
+    def _prepare_inputs(self, generation_batch: dict[str, Union[torch.Tensor,
+                                                                Any]]) -> dict[str, Union[torch.Tensor, Any]]:
+        # Prepares inputs for model training/evaluation by managing completion generation and batch handling.
+        # During training:
+        #   - Receives the local generation batch (Per-GPU batch size × steps per generation)
+        #     from the modified training dataloader instead of the standard local batch
+        #   - Generates completions once for the entire generation batch and splits it into batches of size
+        #     `per_device_train_batch_size`
+        #   - Buffers these completions and returns the appropriate slice for the current accumulation step
+        #   - Optimizes by regenerating completions only periodically (every steps_per_generation * num_iterations)
+        # During evaluation:
+        #   - The input is treated as a standard local batch (no accumulation, no multiple iterations)
+        #   - Completions are generated for each batch without buffering or reuse
+        # Returns a single local batch in both cases.
+
         mode = 'train' if self.model.training else 'eval'
         if mode == 'train':
-            generate_every = self.args.gradient_accumulation_steps * self.num_iterations
+            generate_every = self.args.steps_per_generation * self.num_iterations
             if self._step % generate_every == 0 or self._buffered_inputs is None:
-                accumulated_local_batch = self._generate_and_score_completions(accumulated_local_batch)
-                self._buffered_inputs = accumulated_local_batch  # < this is the change
-            inputs = self._buffered_inputs[self._step % self.args.gradient_accumulation_steps]
+                generation_batch = self._generate_and_score_completions(generation_batch)
+                self._buffered_inputs = generation_batch  # < this is the change
+            inputs = self._buffered_inputs[self._step % self.args.steps_per_generation]
             self._step += 1
         else:
-            inputs = self._generate_and_score_completions(accumulated_local_batch)
+            inputs = self._generate_and_score_completions(generation_batch)
         return inputs
 
     def split_batches(self):
@@ -409,16 +416,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def prepare_vllm(self, model):
         from swift.tuners import Swift
         from swift.llm.infer.infer_engine import GRPOVllmEngine
-        if self.vllm_tensor_parallel_size > 1:
-            vllm_kwargs = {'distributed_executor_backend': 'external_launcher'}
-        else:
-            vllm_kwargs = {}
-
-        engine_kwargs = {'seed': self.accelerator.process_index // self.vllm_tensor_parallel_size}
-
         max_num_seqs = (
-            self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size
-            * self.args.gradient_accumulation_steps)
+            self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size * self.args.steps_per_generation)
         current_device = get_device()
         with Swift.grpo_context(model, self.template.processor):
             engine = GRPOVllmEngine(
@@ -432,12 +431,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 enforce_eager=self.args.vllm_enforce_eager,
                 limit_mm_per_prompt=self.args.vllm_limit_mm_per_prompt,
                 enable_sleep_mode=self.args.sleep_level > 0,
-                use_async_engine=False,
                 device=current_device,
                 max_model_len=self.args.vllm_max_model_len,
-                engine_kwargs=engine_kwargs,
-                **vllm_kwargs)
-            engine.default_template = self.template
+                seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
+                template=self.template,
+                distributed_executor_backend='external_launcher',
+            )
         return engine
 
     @contextmanager
@@ -459,61 +458,65 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template.max_length = max_length
 
     @profiling_decorator
-    def _move_model_to_vllm(self):
-        if self.vllm_mode == 'server':
-            return super()._move_model_to_vllm()
+    def _move_model_to_vllm(self, skip_async_check=False):
+        deepspeed_plugin = self.accelerator.state.deepspeed_plugin
+        zero_stage_3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
+        if zero_stage_3:
+            import deepspeed
+            gather_if_zero3 = deepspeed.zero.GatheredParameters
+        else:
+            gather_if_zero3 = nullcontext
 
-        from accelerate.utils.other import is_compiled_module
+        if self.args.async_generate and not skip_async_check:
+            # before sync weight, we should wait async generate finish
+            self._wait_queue()
 
-        for i, parameter_group in enumerate(self.parameter_groups):
-            parameter_group_no_lora = self.parameter_groups_no_lora[i]
-            with unwrap_model_for_generation(
-                    self.model,
-                    self.accelerator,
-                    gather_deepspeed3_params=self.args.ds3_gather_for_generation,
-                    gather_parameters=parameter_group) as unwrapped_model:
-
-                if is_compiled_module(unwrapped_model):
-                    unwrapped_model = unwrapped_model._orig_mod
-                if is_peft_model(unwrapped_model):
-                    with patch_lora_merge(unwrapped_model, parameter_group):
-                        unwrapped_model.merge_adapter()
-                    state_dict = unwrapped_model.state_dict()
-                    # Remove base_model and base_layer prefixes
+        if is_peft_model(self.model):
+            for i, parameter_group in enumerate(self.parameter_groups):  # < this is the change
+                parameter_group_no_lora = self.parameter_groups_no_lora[i]
+                parameters = [
+                    parameter for name, parameter in self.model.named_parameters()
+                    if not parameter_group or name in parameter_group
+                ]
+                with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
+                    self.model.merge_adapter()
+                    state_dict = self.model.state_dict()
                     state_dict = {
                         k.removeprefix('base_model.model.').replace('.base_layer', ''): v
                         for k, v in state_dict.items()
                     }
-                    # Remove values with adapter prefix (example: "_lora")
-                    state_dict = {k: v for k, v in state_dict.items() if unwrapped_model.prefix not in k}
+                    state_dict = {k: v for k, v in state_dict.items() if self.model.prefix not in k}
                     # When module to save, remove its prefix and discard the original module
                     state_dict = {
                         k.replace('modules_to_save.default.', ''): v
                         for k, v in state_dict.items() if 'original_module' not in k
                     }
-                else:
-                    state_dict = unwrapped_model.state_dict()
-                if parameter_group_no_lora:
-                    parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
-                    state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
-                assert len(state_dict) > 0 and all([state.shape != torch.Size([0]) for state in state_dict.values()])
-                if self.use_fast_infer:
-                    if self.args.async_generate:
-                        # before sync weight, we should wait async generate finish
-                        self._wait_queue()
-                    if self.args.use_vllm:
+                    if parameter_group_no_lora:
+                        parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
+                        state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
+                    assert len(state_dict) > 0 and all(
+                        [state.shape != torch.Size([0]) for state in state_dict.values()])
+
+                    if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+                        for name, param in state_dict.items():
+                            self.vllm_client.update_named_param(name, param)
+                    elif self.vllm_mode == 'colocate':
                         llm_model = self.engine.inner_model
-                    else:
-                        llm_model = self.engine.engine.engine
-                    llm_model.load_weights(state_dict.items())
-                    del state_dict
-                    gc_collect()
-                # Unmerge the adapter to restore the model to its original state.
-                # This must be done after loading weights to ensure they correspond to the merged state.
-                if is_peft_model(unwrapped_model):
-                    with patch_lora_unmerge(unwrapped_model):
-                        unwrapped_model.unmerge_adapter()
-        if self.use_vllm and self.vllm_mode == 'colocate':
+                        llm_model.load_weights(state_dict.items())
+                    with patch_lora_unmerge(self.model):
+                        self.model.unmerge_adapter()
+        else:
+            for name, param in self.model.named_parameters():
+                with gather_if_zero3([param]):
+                    if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+                        self.vllm_client.update_named_param(name, param.data)
+                    elif self.vllm_mode == 'colocate':
+                        llm_model = self.engine.inner_model
+                        llm_model.load_weights([(name, param.data)])
+
+        if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+            self.vllm_client.reset_prefix_cache()
+        elif self.vllm_mode == 'colocate':
             # since vLLM model weights has been updated, we should reset the prefix cache
             self.engine.engine.reset_prefix_cache()
 
@@ -526,7 +529,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                request_config: RequestConfig,
                is_global_inputs: bool = False) -> OutputsType:
         from swift.llm.infer.protocol import ChatCompletionResponse
-        request_config = copy(request_config)
+        request_config = self._get_request_config()
         # keys from InferRequest
         per_device_size = len(inputs)
         if is_global_inputs:
@@ -584,15 +587,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             #   otherwise, the program may hang.
             # 2. Ensure that the seed for vLLM Engines across different TP groups is different;
             #   otherwise, identical completions will be generated.
-            mode = 'train' if self.model.training else 'eval'
-            batch_size = (
-                self.args.per_device_train_batch_size
-                * self.args.gradient_accumulation_steps if mode == 'train' else self.args.per_device_eval_batch_size)
-            # Since the TP (Tensor Parallelism) group gathers the inputs,
-            # multiply the batch size by the TP parallel size.
-            batch_size *= self.vllm_tensor_parallel_size
-            request_config.seed = batch_size * (self.accelerator.process_index // self.vllm_tensor_parallel_size)
-
             results: List[ChatCompletionResponse] = self._engine_infer(
                 infer_requests=inputs, request_config=request_config)
 
@@ -600,10 +594,30 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # Slice completions for this rank within its TP group.
                 # Each rank generates all outputs — we keep only our share.
                 results = results[start_idx:end_idx]
-
         return results
 
+    def _get_request_config(self) -> RequestConfig:
+        request_config = copy(self.request_config)
+        if self.args.vllm_mode == 'colocate' and self.vllm_tensor_parallel_size > 1:
+            # Set request_config.seed
+            # 1. Ensure that the seed for vLLM Engines within each TP (Tensor Parallelism) group is the same;
+            #   otherwise, the program may hang.
+            # 2. Ensure that the seed for vLLM Engines across different TP groups is different;
+            #   otherwise, identical completions will be generated.
+            mode = 'train' if self.model.training else 'eval'
+            batch_size = (
+                self.args.per_device_train_batch_size
+                * self.args.gradient_accumulation_steps if mode == 'train' else self.args.per_device_eval_batch_size)
+            batch_size *= self.vllm_tensor_parallel_size
+            # Since the TP (Tensor Parallelism) group gathers the inputs,
+            # multiply the batch size by the TP parallel size.
+            request_config.seed = batch_size * (self.accelerator.process_index // self.vllm_tensor_parallel_size)
+
+        return request_config
+
     def _set_inputs_system(self, inputs: InputsType) -> InputsType:
+        if not self.template.template_meta.default_system:
+            return
         if all(_input['messages'][0]['role'] == 'system' for _input in inputs):
             return
         for _input in inputs:
@@ -739,13 +753,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _prefetch(self, dataloader: DataLoader):
         inputs = next(iter(dataloader))
         all_inputs = gather_object(inputs)
+        if self.state.global_step != self._last_loaded_step:
+            self._move_model_to_vllm(skip_async_check=True)
+            self._last_loaded_step = self.state.global_step
         outputs = self._infer_single_or_multi_turn(all_inputs, self.request_config, is_global_inputs=True)
         self._queue.put(DataCache(all_inputs, outputs))
 
     def _fast_infer(self, inputs: InputsType) -> Tuple[InputsType, OutputsType]:
         if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
             if self.args.offload_model:
-                self.offload_model()
+                self.offload_model(self.accelerator.unwrap_model(self.model))
+                if self.ref_model:
+                    self.offload_model(self.ref_model)
             if self.args.offload_optimizer:
                 self.offload_optimizer()
             if self.args.gc_collect_after_offload:
@@ -783,7 +802,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.args.gc_collect_after_offload:
                 gc_collect()
             if self.args.offload_model:
-                self.load_model()
+                self.load_model(self.accelerator.unwrap_model(self.model))
+                if self.ref_model:
+                    self.load_model(self.ref_model)
             if self.args.offload_optimizer:
                 self.load_optimizer()
         return inputs, outputs
@@ -802,20 +823,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.use_fast_infer:
             inputs, outputs = self._fast_infer(inputs)
         else:
-            # pt infer
-            is_multimodal = self.model.model_meta.is_multimodal
-            if is_multimodal:
-                models = self.template.remove_post_encode_hook()
             with unwrap_model_for_generation(
                     self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
-            ), self.multi_turn_completion_length_context():
+            ), self.template.generate_context(), self.multi_turn_completion_length_context():
                 outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
                 if mode == 'train':
                     # In training mode, ensure the model is returned to train() mode after inference
                     # This is necessary as pt engines set the model to eval mode during generation
                     self.model.train()
-            if is_multimodal:
-                self.template.register_post_encode_hook(models)
 
         for i, output in enumerate(outputs):
             inputs[i]['messages'] = output[0]
@@ -859,19 +874,30 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completions = [example['messages'][-1]['content'] for example in inputs]
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
 
-        for i, (reward_func, reward_model_plugin) in enumerate(zip(self.reward_funcs, self.reward_model_plugins)):
-            # reward model
-            if isinstance(reward_func, nn.Module):
-                rewards_per_func[:, i] = reward_model_plugin(inputs=inputs)
-            # reward function
-            else:
-                # Repeat all input columns (but "messages" and "completion") to match the number of generations
-                reward_kwargs = RowPreprocessor.rows_to_batched(inputs)
-                output_reward_func = reward_func(completions, **reward_kwargs)
+        for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
+                zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
+            with profiling_context(self, reward_func_name):
+                # reward model
+                if isinstance(reward_func, nn.Module):
+                    output_reward_func = reward_model_plugin(inputs=inputs)
+                # reward function
+                else:
+                    # Repeat all input columns (but "messages" and "completion") to match the number of generations
+                    reward_kwargs = RowPreprocessor.rows_to_batched(inputs)
+                    output_reward_func = reward_func(completions, **reward_kwargs)
+                output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
+        # If all reward functions return None for a given row, issue a detailed warning
+        if torch.isnan(rewards_per_func).all(dim=1).any():
+            nan_row_idx = torch.isnan(rewards_per_func).all(dim=1).nonzero(as_tuple=True)[0][0]
+            row_reward_kwargs = {key: value[nan_row_idx] for key, value in reward_kwargs.items()}
+            row_reward_kwargs['completion'] = completions[nan_row_idx]
+            logger.warning(f'All reward functions returned None for the following kwargs: {row_reward_kwargs}. '
+                           'Please ensure that at least one reward function returns a valid reward.')
+
         total_rewards_per_func = gather(rewards_per_func)
-        total_rewards = (total_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).sum(dim=1)
+        total_rewards = (total_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
 
         return total_rewards_per_func, total_rewards, completions
 
@@ -898,7 +924,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             valid_completions.extend(
                 [inp['messages'][-1]['content'] for inp, mask in zip(all_inputs, valid_mask) if mask])
 
-            if len(valid_samples) >= self.effective_train_batch_size:
+            if len(valid_samples) >= self.args.generation_batch_size:
                 break
 
             inputs = next(self.resample_iterator)
@@ -907,43 +933,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             rewards_per_func, rewards, completions = self._score_completions(inputs)
             resample_count += 1
 
-        if len(valid_samples) >= self.effective_train_batch_size:
+        if len(valid_samples) >= self.args.generation_batch_size:
             process_slice = slice(
                 self.accelerator.process_index * len(inputs),
                 (self.accelerator.process_index + 1) * len(inputs),
             )
-            inputs = valid_samples[:self.effective_train_batch_size][process_slice]
-            rewards = torch.cat(valid_rewards)[:self.effective_train_batch_size]
-            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.effective_train_batch_size]
-            completions = valid_completions[:self.effective_train_batch_size][process_slice]
+            inputs = valid_samples[:self.args.generation_batch_size][process_slice]
+            rewards = torch.cat(valid_rewards)[:self.args.generation_batch_size]
+            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.args.generation_batch_size]
+            completions = valid_completions[:self.args.generation_batch_size][process_slice]
         else:
             logger.warning(f'There are still std=0 groups present after {self.args.max_resample_times} retries.')
             inputs, rewards, rewards_per_func, completions = origin_data
 
         return inputs, rewards, rewards_per_func, completions
 
-    def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> List[InputsType]:
-        """
-        Prepare the final batch inputs with advantages, ref/old_policy logps and other fields for RL training.
-
-        Args:
-            inputs (InputsType): List of input samples. Original shape is [gas*bs] where:
-                - gas: gradient accumulation steps
-                - bs: per-device batch size
-            rewards (torch.Tensor): Tensor of rewards corresponding to the inputs.
-                Shape should match the total number of samples (gas*bs*num_generations)
-
-        Returns:
-            List[InputsType]: A list of prepared batch inputs, organized as [gas][bs]
-        """
-        # Compute advantages
-        grouped_rewards = rewards.view(-1, self.num_generations)
-        mean_grouped_rewards = grouped_rewards.mean(dim=1).repeat_interleave(self.num_generations, dim=0)
-        std_grouped_rewards = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations, dim=0)
-        advantages = (rewards - mean_grouped_rewards)
-        if self.args.scale_rewards:
-            advantages /= (std_grouped_rewards + 1e-4)
-
+    def split_by_mini_batches(self, inputs, advantages):
+        # Slice to keep only the local part of the data
         # Slice to keep only the local part of the data
         process_slice = slice(
             self.accelerator.process_index * len(inputs),
@@ -953,17 +959,39 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         mode = 'train' if self.model.training else 'eval'
         bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-        gas = self.args.gradient_accumulation_steps if mode == 'train' else 1
+        spg = self.args.steps_per_generation if mode == 'train' else 1
 
-        assert len(inputs) == bs * gas, f'Expected {bs * gas} inputs, got {len(inputs)}'
-        gas_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(gas)]
+        assert len(inputs) == bs * spg, f'Expected {bs * spg} inputs, got {len(inputs)}'
+        spg_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(spg)]
+        # Split advantages by spg chunks
+        advantage_chunks = torch.chunk(advantages, spg)
+        return spg_chunks, advantage_chunks
 
-        ga_batch_encoded_inputs = []
+    def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> List[InputsType]:
+        """
+        Prepare the final batch inputs with advantages, ref/old_policy logps and other fields for RL training.
+
+        Args:
+            inputs (InputsType): List of input samples. Original shape is [spg*bs] where:
+                - spg: steps_per_generation
+                - bs: per-device batch size
+            rewards (torch.Tensor): Tensor of rewards corresponding to the inputs.
+                Shape should match the total number of samples (spg*bs*num_generations)
+
+        Returns:
+            List[InputsType]: A list of prepared batch inputs, organized as [spg][bs]
+        """
+        # Compute advantages
+        grouped_rewards = rewards.view(-1, self.num_generations)
+        mean_grouped_rewards = grouped_rewards.mean(dim=1).repeat_interleave(self.num_generations, dim=0)
+        std_grouped_rewards = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations, dim=0)
+        advantages = (rewards - mean_grouped_rewards)
+        if self.args.scale_rewards:
+            advantages /= (std_grouped_rewards + 1e-4)
         template = self.template
 
-        # Split advantages by GAS chunks
-        advantage_chunks = torch.chunk(advantages, gas)
-
+        gas_chunks, advantage_chunks = self.split_by_mini_batches(inputs, advantages)
+        ga_batch_encoded_inputs = []
         for i, (batch, batch_advantages) in enumerate(zip(gas_chunks, advantage_chunks)):
             # Encode and process each batch (size=bs)
             with self._template_context(template):
@@ -986,16 +1014,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             with torch.no_grad():
                 batch_encoded_inputs['old_per_token_logps'] = (
-                    self._get_per_token_logps(self.model, batch_encoded_inputs) if self.old_policy else None)
-
-                if self.beta == 0.0:
-                    ref_per_token_logps = None
-                elif self.ref_model is not None:
-                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, batch_encoded_inputs)
-                else:
-                    with self.accelerator.unwrap_model(self.model).disable_adapter():
-                        ref_per_token_logps = self._get_per_token_logps(self.model, batch_encoded_inputs)
-                batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
+                    self._get_per_token_logps(self.model, batch_encoded_inputs) if self.old_policy() else None)
 
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
@@ -1020,10 +1039,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self._metrics[mode]['completions/clipped_ratio'].append(clipped_completions_ratio)
 
+        # Calculate mean reward per function, but only for samples where the function was applied (non-NaN values)
         for i, reward_func_name in enumerate(self.reward_func_names):
-            mean_rewards = rewards_per_func[:, i].mean().item()
+            mean_rewards = torch.nanmean(rewards_per_func[:, i]).item()
             self._metrics[mode][f'rewards/{reward_func_name}/mean'].append(mean_rewards)
-            std_rewards = rewards_per_func[:, i].std().item()
+            std_rewards = nanstd(rewards_per_func[:, i]).item()
             self._metrics[mode][f'rewards/{reward_func_name}/std'].append(std_rewards)
 
         # Log overall reward stats
@@ -1052,12 +1072,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if isinstance(inputs, list):
             assert len(inputs) == 1
             inputs = inputs[0]
+        if self.use_liger_loss:
+            unwrapped_model = self.accelerator.unwrap_model(model)
+            return self._forward_redirection(model, unwrapped_model, self.compute_liger_loss, unwrapped_model, inputs)
+        else:
+            return self._compute_loss(model, inputs)
+
+    def _compute_loss(self, model, inputs):
         completion_mask = inputs['completion_mask']
         truncated_mask = inputs['truncated_mask']
         # apply the completion_mask to exclude loss and metrics for overlong completions
         if self.args.overlong_filter and any(truncated_mask):
             if all(truncated_mask):
-                logger.info('All completions are overlong, loss and KL will be zero')
+                logger.info('All completions are overlong and truncated, '
+                            'resulting in NaN some values for some metrics (e.g., KL)')
             truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask).to(completion_mask.device)
             completion_mask = completion_mask * (~truncated_mask)
 
@@ -1065,14 +1093,28 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Compute the KL divergence between the model and the reference model
         if self.beta != 0.0:
-            ref_per_token_logps = inputs['ref_per_token_logps']
+            with torch.no_grad():
+                if self.ref_model is not None:
+                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, inputs)
+                else:
+                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                        ref_per_token_logps = self._get_per_token_logps(self.model, inputs)
+
             per_token_kl = (
                 torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
         advantages = inputs['advantages']
-        old_per_token_logps = inputs['old_per_token_logps'] if self.old_policy else per_token_logps.detach()
+        # When using num_iterations == 1 and steps_per_generation <= gradient_accumulation_steps
+        # old_per_token_logps == per_token_logps, so we can skip it's computation
+        # (see _generate_and_score_completions) and use per_token_logps.detach() instead.
+        old_per_token_logps = (
+            per_token_logps.detach() if inputs['old_per_token_logps'] is None else inputs['old_per_token_logps'])
+
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
+        if self.args.delta is not None:
+            coef_1 = torch.clamp(coef_1, max=self.args.delta)
+
         per_token_loss1 = coef_1 * advantages.unsqueeze(1)
         per_token_loss2 = coef_2 * advantages.unsqueeze(1)
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
@@ -1115,6 +1157,79 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return loss
 
+    @contextmanager
+    def padding_free_context(self, model: torch.nn.Module):
+        ctx = {}
+
+        def _padding_free_input_hook(module, args, kwargs):
+            attention_mask = kwargs['attention_mask']
+            # used in _padding_free_output_hook
+            ctx['padding_left'] = (attention_mask[:, -1].sum() == attention_mask.shape[0])
+            if 'input_ids' in kwargs and kwargs.get('input_ids') is not None:
+                # llm models
+                kwargs['position_ids'] = torch.arange(kwargs['input_ids'].shape[1]).unsqueeze(0).repeat(
+                    kwargs['input_ids'].shape[0], 1).to(kwargs['input_ids'].dtype).to(kwargs['input_ids'].device)
+                kwargs['input_ids'] = kwargs['input_ids'][attention_mask.bool()].unsqueeze(0)
+            else:
+                # mllm models
+                kwargs['position_ids'] = torch.arange(kwargs['inputs_embeds'].shape[1]).unsqueeze(0).repeat(
+                    kwargs['inputs_embeds'].shape[0], 1).to(torch.int64).to(kwargs['inputs_embeds'].device)
+                kwargs['inputs_embeds'] = kwargs['inputs_embeds'][attention_mask.bool()].unsqueeze(0)
+            kwargs['position_ids'] = kwargs['position_ids'][attention_mask.bool()].unsqueeze(0)
+            kwargs.pop('attention_mask', None)
+            return args, kwargs
+
+        def _padding_free_output_hook(module, args, kwargs, result):
+            position_ids = kwargs['position_ids']
+            seq_lengths = []
+            pos = position_ids[0]
+            resets = torch.where(pos[1:] < pos[:-1])[0] + 1
+
+            if len(resets) == 0:
+                # Only one sequence in this batch item
+                seq_lengths = [pos.max().item() + 1]
+            else:
+                # Multiple sequences
+                start = 0
+                for end in resets:
+                    seq_lengths.append(end - start)
+                    start = end
+                seq_lengths.append(pos.shape[0] - start)
+
+            max_length = max(seq_lengths)
+            last_hidden_state = result.last_hidden_state.squeeze(0)
+            unpacked_logits = []
+
+            start = 0
+            for length in seq_lengths:
+                seq_state = last_hidden_state[start:start + length]
+                padding = torch.zeros(
+                    (max_length - length,
+                     last_hidden_state.shape[-1])).to(last_hidden_state.dtype).to(last_hidden_state.device)
+                # re-padding
+                if ctx['padding_left']:
+                    seq_state = torch.cat((padding, seq_state), dim=0)
+                else:
+                    seq_state = torch.cat((seq_state, padding), dim=0)
+                unpacked_logits.append(seq_state)
+                start += length
+            result.last_hidden_state = torch.stack(unpacked_logits, dim=0)
+            return result
+
+        if self.padding_free:
+            llm_model = get_llm_model(model)
+            if hasattr(llm_model, 'thinker'):
+                base_model = llm_model.thinker.model
+            else:
+                base_model = llm_model.model
+            remove_handle1 = base_model.register_forward_pre_hook(
+                _padding_free_input_hook, with_kwargs=True, prepend=True)
+            remove_handle2 = base_model.register_forward_hook(_padding_free_output_hook, with_kwargs=True, prepend=True)
+        yield
+        if self.padding_free:
+            remove_handle1.remove()
+            remove_handle2.remove()
+
     # Get the per-token log probabilities for the completions for the model and the reference model
     @profiling_decorator
     def _get_per_token_logps(self, model, inputs):
@@ -1128,7 +1243,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             parameters = inspect.signature(unwrapped_model.forward).parameters
         if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
             # save memory
-            return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
+            with self.padding_free_context(model):
+                return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
         inputs = {
             k: v
             for k, v in inputs.items() if k not in [
@@ -1136,13 +1252,80 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'truncated_mask'
             ]
         }
-        with self._template_context(self.template):
+
+        with self._template_context(self.template), self.padding_free_context(model):
             logits = model(**inputs).logits
         # exclude the last logit: it corresponds to the next token pred
         logits = logits[:, -(logits_to_keep + 1):-1, :]
         logits = logits / self.temperature
         input_ids = input_ids[:, -logits_to_keep:]
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
+
+    @profiling_decorator
+    def _get_last_hidden_state(self, unwrapped_model, inputs, logits_to_keep):
+        # unwrap the model to access the model.model
+        if is_peft_model(unwrapped_model):
+            unwrapped_model = unwrapped_model.base_model.model
+        if not unwrapped_model.model_meta.is_multimodal:
+            last_hidden_state = unwrapped_model.model(
+                input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask']).last_hidden_state
+        else:
+            inputs = {
+                k: v
+                for k, v in inputs.items() if k not in [
+                    'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
+                    'truncated_mask'
+                ]
+            }
+            with self._template_context(self.template):
+                outputs = unwrapped_model(**inputs, output_hidden_states=True)
+                last_hidden_state = outputs.hidden_states[-1]
+
+        last_hidden_state = last_hidden_state[:, :-1, :]  # (B, L-1, H)
+        if logits_to_keep is not None:
+            last_hidden_state = last_hidden_state[:, -logits_to_keep:, :]  # (B, logits_to_keep, H)
+        return last_hidden_state
+
+    def compute_liger_loss(self, unwrapped_model, inputs):
+        # Compute the per-token log probabilities for the model
+        input_ids = inputs['input_ids']
+        logits_to_keep = inputs['logits_to_keep']
+        completion_ids = input_ids[:, -logits_to_keep:]
+        completion_mask = inputs['completion_mask']
+
+        # Compute the KL divergence between the model and the reference model
+        ref_per_token_logps = None
+        if self.beta != 0.0:
+            with torch.no_grad():
+                if self.ref_model is not None:
+                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, inputs)
+                else:
+                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                        ref_per_token_logps = self._get_per_token_logps(self.model, inputs)
+
+        # get the last hidden state of the model
+        last_hidden_state = self._get_last_hidden_state(unwrapped_model, inputs, logits_to_keep)
+        # compute loss and metrics using liger grpo loss
+        loss, metrics = self.liger_grpo_loss(
+            _input=last_hidden_state,
+            lin_weight=unwrapped_model.lm_head.weight,
+            selected_token_ids=completion_ids,
+            attention_mask=completion_mask,
+            advantages=inputs['advantages'],
+            bias=unwrapped_model.lm_head.bias,
+            old_per_token_logps=inputs['old_per_token_logps'],
+            ref_per_token_logps=ref_per_token_logps,
+        )
+        # Extract metrics from the liger_grpo_loss output
+        # KL divergence is the first metric when beta is non-zero
+        mean_kl = metrics[0] if self.beta != 0.0 else None
+        clip_ratio = metrics[-1]
+
+        mode = 'eval' if self.control.should_evaluate else 'train'
+        if self.beta != 0.0:
+            self._metrics[mode]['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
+        self._metrics[mode]['clip_ratio'].append(self.accelerator.gather_for_metrics(clip_ratio).mean().item())
+        return loss
 
     def evaluation_loop(self, dataloader, *args, **kwargs):
         # Wait for the training rollout to complete
@@ -1172,11 +1355,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         *,
         use_tqdm: Optional[bool] = False,
     ):
-        if self.vllm_mode == 'server':
-            self._process_infer_requests_images(infer_requests)
-            return self.vllm_client.infer(infer_requests, asdict(request_config), use_tqdm=use_tqdm)
-        else:
-            return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
+        with profiling_context(self, 'generate'):
+            if self.vllm_mode == 'server':
+                self._process_infer_requests_images(infer_requests)
+                return self.vllm_client.infer(infer_requests, asdict(request_config), use_tqdm=use_tqdm)
+            else:
+                return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
 
     def _process_infer_requests_images(self, infer_requests: List[InferRequest]):
         # Process image format into a format that session.post can accept
@@ -1193,9 +1377,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     request['images'][i] = img['path']
         return
 
-    @property
     def old_policy(self):
-        return self.num_iterations > 1
+        return self.num_iterations > 1 or self.args.steps_per_generation > self.args.gradient_accumulation_steps
 
     @property
     def _queue(self):
@@ -1205,37 +1388,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return self.train_queue
 
     @torch.no_grad()
-    def offload_model(self):
-        if len(self.offload_modules) > 0:
-            return
-        unwrapped_model = self.accelerator.unwrap_model(self.model)
-        for name, module in unwrapped_model.named_modules():
-            if isinstance(module, torch.nn.Embedding):
-                self.offload_modules[name] = module.weight.device
-                module.to('cpu')
-            elif not hasattr(module, 'device'):
-                pass
-            elif module.device.type != 'cpu':
-                self.offload_modules[name] = module.device
-                module.to('cpu')
+    def offload_model(self, model):
+        for param in model.parameters():
+            param.data = param.data.to(torch.device('cpu'), non_blocking=True)
 
     @torch.no_grad()
-    def load_model(self):
-        if len(self.offload_modules) == 0:
-            return
-        unwrapped_model = self.accelerator.unwrap_model(self.model)
-        for name, device in self.offload_modules.items():
-            module = unwrapped_model.get_submodule(name)
-            if isinstance(module, torch.nn.Embedding):
-                module.weight.to(device)
-            else:
-                module.to(device)
-        self.offload_modules.clear()
+    def load_model(self, model):
+        device = get_current_device()
+        for param in model.parameters():
+            param.data = param.data.to(device, non_blocking=True)
 
     @torch.no_grad()
     def offload_optimizer(self):
-        if len(self.offload_states) > 0:
-            return
         if not self.optimizer.state:
             return
         for param_group in self.optimizer.param_groups:
@@ -1243,13 +1407,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 state = self.optimizer.state[param]
                 for key, value in state.items():
                     if isinstance(value, torch.Tensor):
-                        self.offload_states[key] = value.device
                         state[key] = value.to('cpu', non_blocking=True)
 
     @torch.no_grad()
     def load_optimizer(self):
-        if len(self.offload_states) == 0:
-            return
+        device = get_current_device()
         if not self.optimizer.state:
             return
         for param_group in self.optimizer.param_groups:
@@ -1257,8 +1419,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 state = self.optimizer.state[param]
                 for key, value in state.items():
                     if isinstance(value, torch.Tensor):
-                        state[key] = value.to(self.offload_states[key], non_blocking=True)
-        self.offload_states.clear()
+                        state[key] = value.to(device, non_blocking=True)
 
     @contextmanager
     def multi_turn_completion_length_context(self):
@@ -1315,7 +1476,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             data_collator = self._get_collator_with_removed_columns(data_collator, description='training')
 
         dataloader_params = {
-            'batch_size': self._train_batch_size * self.args.gradient_accumulation_steps,
+            'batch_size': self._train_batch_size * self.args.steps_per_generation,
             'collate_fn': data_collator,
             'num_workers': self.args.dataloader_num_workers,
             'pin_memory': self.args.dataloader_pin_memory,
@@ -1333,7 +1494,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with seed_context(self):  # Set a different seed for resampling than the train_dataset.
                 dataloader_params['sampler'] = self._get_train_sampler()
             dataloader_params['drop_last'] = self.args.dataloader_drop_last
-            dataloader_params['worker_init_fn'] = seed_worker
+            dataloader_params['worker_init_fn'] = partial(
+                seed_worker, num_workers=self.args.dataloader_num_workers, rank=self.args.process_index)
             dataloader_params['prefetch_factor'] = self.args.dataloader_prefetch_factor
 
         return self.accelerator.prepare(DataLoader(resample_dataset, **dataloader_params))

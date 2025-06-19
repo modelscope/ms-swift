@@ -11,7 +11,7 @@ from swift.llm import TemplateType
 from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
+from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone, patch_output_to_input_device
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal, get_model_tokenizer_reward_model,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import AttnImpl, ModelInfo, use_submodel_func
@@ -500,7 +500,6 @@ register_model(
                 Model('Qwen/Qwen3-4B-Base', 'Qwen/Qwen3-4B-Base'),
                 Model('Qwen/Qwen3-8B-Base', 'Qwen/Qwen3-8B-Base'),
                 Model('Qwen/Qwen3-14B-Base', 'Qwen/Qwen3-14B-Base'),
-                Model('Qwen/Qwen3-32B-Base', 'Qwen/Qwen3-32B-Base'),
                 # instruct
                 Model('Qwen/Qwen3-0.6B', 'Qwen/Qwen3-0.6B'),
                 Model('Qwen/Qwen3-1.7B', 'Qwen/Qwen3-1.7B'),
@@ -536,7 +535,6 @@ register_model(
         [
             ModelGroup([
                 Model('Qwen/Qwen3-30B-A3B-Base', 'Qwen/Qwen3-30B-A3B-Base'),
-                Model('Qwen/Qwen3-235B-A22B-Base', 'Qwen/Qwen3-235B-A22B-Base'),
                 # instruct
                 Model('Qwen/Qwen3-30B-A3B', 'Qwen/Qwen3-30B-A3B'),
                 Model('Qwen/Qwen3-235B-A22B', 'Qwen/Qwen3-235B-A22B'),
@@ -582,9 +580,15 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
     from transformers import Qwen2VLForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2VLForConditionalGeneration
     model, tokenizer = get_model_tokenizer_multimodal(*args, **kwargs)
-    if model is not None and hasattr(model.model, 'embed_tokens'):
-        patch_output_clone(model.model.embed_tokens)
-        patch_output_to_input_device(model.model.embed_tokens)
+    if model is not None:
+        base_model = model.model if 'AWQ' in model.__class__.__name__ else model
+        if hasattr(base_model.model, 'embed_tokens'):
+            embed_tokens = base_model.model.embed_tokens
+        else:
+            embed_tokens = base_model.model.language_model.embed_tokens
+        patch_output_clone(embed_tokens)
+        patch_output_to_input_device(embed_tokens)
+        patch_get_input_embeddings(base_model.visual, 'patch_embed')
 
     from qwen_vl_utils import vision_process
     patch_qwen_vl_utils(vision_process)
@@ -680,6 +684,21 @@ register_model(
         requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6', 'decord'],
         tags=['vision', 'video']))
 
+register_model(
+    ModelMeta(
+        MLLMModelType.mimo_vl, [
+            ModelGroup([
+                Model('XiaomiMiMo/MiMo-VL-7B-SFT', 'XiaomiMiMo/MiMo-VL-7B-SFT'),
+                Model('XiaomiMiMo/MiMo-VL-7B-RL', 'XiaomiMiMo/MiMo-VL-7B-RL'),
+            ])
+        ],
+        TemplateType.mimo_vl,
+        get_model_tokenizer_qwen2_5_vl,
+        model_arch=ModelArch.qwen2_vl,
+        architectures=['Qwen2_5_VLForConditionalGeneration'],
+        requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6', 'decord'],
+        tags=['vision', 'video']))
+
 
 def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor, Qwen2_5OmniConfig
@@ -692,9 +711,11 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     kwargs['model_config'].enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, True)
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     if model:
-        use_submodel_func(model, 'thinker')
-        model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
-        model.config.talker_config.pad_token_id = None
+        base_model = model.model if 'AWQ' in model.__class__.__name__ else model
+        use_submodel_func(base_model, 'thinker')
+        base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
+        base_model.config.talker_config.pad_token_id = None
+        patch_get_input_embeddings(base_model.thinker.visual, 'patch_embed')
     return model, processor
 
 
@@ -785,6 +806,12 @@ def get_model_tokenizer_ovis(*args, **kwargs):
         use_submodel_func(model, 'llm', func_list)
         embedding = model.get_input_embeddings()
         patch_output_clone(embedding)
+        if hasattr(model.visual_tokenizer, 'backbone'):
+            backbone = model.visual_tokenizer.backbone
+            if hasattr(backbone, 'vision_model'):
+                patch_get_input_embeddings(model.visual_tokenizer, 'backbone.vision_model.embeddings')
+            elif hasattr(backbone, 'preprocessor'):
+                patch_get_input_embeddings(model.visual_tokenizer, 'backbone.preprocessor.patchifier')
     try:
         # fix device_map
         from transformers.cache_utils import HybridCache
@@ -901,3 +928,17 @@ register_model(
         architectures=['Qwen2ForRewardModel'],
         requires=['transformers>=4.37'],
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_emb, [
+            ModelGroup([
+                Model('Qwen/Qwen3-Embedding-0.6B', 'Qwen/Qwen3-Embedding-0.6B'),
+                Model('Qwen/Qwen3-Embedding-4B', 'Qwen/Qwen3-Embedding-4B'),
+                Model('Qwen/Qwen3-Embedding-8B', 'Qwen/Qwen3-Embedding-8B'),
+            ]),
+        ],
+        TemplateType.qwen3_emb,
+        get_model_tokenizer_with_flash_attn,
+        additional_saved_files=['config_sentence_transformers.json', '1_Pooling', 'modules.json'],
+        architectures=['Qwen3ForCausalLM']))

@@ -1,27 +1,36 @@
 # Embedding Training
 
-SWIFT has already supported the training of Embedding models, including both pure text and multimodal types. The currently supported models are:
+SWIFT has already supported the training of embedding models, including both pure text and multimodal types. Currently supported models include:
 
-1. **ModernBERT Embedding Model**
-   - [ModelScope](https://modelscope.cn/models/iic/gte-modernbert-base) | [Hugging Face](https://huggingface.co/Alibaba-NLP/gte-modernbert-base)
-2. **GTE Embedding Models**
-   - **1.5B**: [ModelScope](https://www.modelscope.cn/models/iic/gte_Qwen2-1.5B-instruct) | [Hugging Face](https://huggingface.co/Alibaba-NLP/gte-Qwen2-1.5B-instruct)
-   - **7B**: [ModelScope](https://www.modelscope.cn/models/iic/gte_Qwen2-7B-instruct) | [Hugging Face](https://huggingface.co/Alibaba-NLP/gte-Qwen2-7B-instruct)
-3. **GME Embedding Models**
-   - **2B**: [ModelScope](https://www.modelscope.cn/models/iic/gme-Qwen2-VL-2B-Instruct) | [Hugging Face](https://huggingface.co/Alibaba-NLP/gme-Qwen2-VL-2B-Instruct)
-   - **7B**: [ModelScope](https://www.modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct) | [Hugging Face](https://huggingface.co/Alibaba-NLP/gme-Qwen2-VL-7B-Instruct)
+1. modernbert embedding model
+   - [ModelScope](https://modelscope.cn/models/iic/gte-modernbert-base) [Hugging Face](https://huggingface.co/Alibaba-NLP/gte-modernbert-base)
+2. gte embedding models
+   - 1.5B: [ModelScope](https://www.modelscope.cn/models/iic/gte_Qwen2-1.5B-instruct) [Hugging Face](https://huggingface.co/Alibaba-NLP/gte-Qwen2-1.5B-instruct)
+   - 7B: [ModelScope](https://www.modelscope.cn/models/iic/gte_Qwen2-7B-instruct) [Hugging Face](https://huggingface.co/Alibaba-NLP/gte-Qwen2-7B-instruct)
+3. gme embedding models
+   - 2B: [ModelScope](https://www.modelscope.cn/models/iic/gme-Qwen2-VL-2B-Instruct) [Hugging Face](https://huggingface.co/Alibaba-NLP/gme-Qwen2-VL-2B-Instruct)
+   - 7B: [ModelScope](https://www.modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct) [Hugging Face](https://huggingface.co/Alibaba-NLP/gme-Qwen2-VL-7B-Instruct)
+4. qwen3-embedding models
+   - 0.6B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Embedding-0.6B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)
+   - 4B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Embedding-4B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Embedding-4B)
+   - 8B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Embedding-8B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Embedding-8B)
 
-Developers can integrate their own models independently. The `forward` output of the model needs to satisfy:
+Developers can integrate their own models by ensuring the model forward output satisfies:
 
-```json
+```text
 {"last_hidden_state": some-embedding-tensor}
 ```
 
-The return value should be a JSON with the key `last_hidden_state`, and the value should be the embedding tensor. For the input part, you can use the templates we have already supported.
+The return value should be a JSON with a `last_hidden_state` key, where the value is an embedding tensor. For the input part, you can use our already supported templates. Users can also specify the
 
-**Note:** Currently, SWIFT supports embedding models that conform to pure text or multimodal LLMs. It does not support the training of CLIP-type models at this time.
+```shell
+   --task_type embedding
+```
+parameter to convert any other model into an embedding model for training.
 
-Besides, All Embedding models supported by SWIFT have a normalize layer at last, consider add one when you are adding new models.
+It should be noted that the embedding models currently supported by SWIFT are all based on pure text or multimodal LLMs, and CLIP-type model training is not currently supported.
+
+Additionally, all embedding models supported by SWIFT have normalization added at the end of the model forward pass. If you add new models yourself, please remember to include a normalization layer.
 
 ## Loss
 
@@ -95,3 +104,17 @@ SWIFT provides two scaffold training scripts:
 
 - [GTE Model](https://github.com/tastelikefeet/swift/blob/main/examples/train/embedding/train_gte.sh)
 - [GME Model](https://github.com/tastelikefeet/swift/blob/main/examples/train/embedding/train_gme.sh)
+
+## Inference
+
+SWIFT currently does not support Embedding model inference and deployment (due to time constraints). You can use the original model's code for inference:
+
+https://www.modelscope.cn/models/iic/gte_Qwen2-7B-instruct
+
+https://www.modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct
+
+If you've used other models to train embedding from scratch (for example, the original `qwen2-vl` model + `--task_type embedding`), you can also use gme's inference code, but please note:
+
+https://www.modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct/file/view/master/gme_inference.py?status=1#L111
+
+Please modify the template here to match the model's own template to ensure the final embeddings align correctly. It's particularly important to note that the template for the gme model is different from the chatml template for the `qwen2-vl` or `qwen2.5-vl` series. In its inference code, the ending character is `<|endoftext|>` rather than `<|im_end|>`.

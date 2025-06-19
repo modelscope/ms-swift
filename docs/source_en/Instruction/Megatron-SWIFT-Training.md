@@ -12,7 +12,7 @@ To use Megatron-SWIFT, in addition to installing the `swift` dependencies, you a
 pip install pybind11
 # transformer_engine
 # If an installation error occurs, you can refer to this issue for resolution: https://github.com/modelscope/ms-swift/issues/3793
-pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
+pip install git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.3
 
 # apex
 git clone https://github.com/NVIDIA/apex
@@ -27,8 +27,9 @@ pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.12.0
 
 Alternatively, you can also use the image:
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.3-modelscope1.25.0-swift3.3.0.post1
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.27.0-swift3.5.1
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.27.0-swift3.5.1
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.27.0-swift3.5.1
 ```
 
 The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.12.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.12.0)).
@@ -60,16 +61,18 @@ megatron sft \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
     --tensor_model_parallel_size 2 \
-    --micro_batch_size 4 \
+    --sequence_parallel true \
+    --micro_batch_size 16 \
     --global_batch_size 16 \
-    --recompute_granularity selective \
-    --train_iters 100 \
-    --eval_iters 5 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
     --lr_warmup_iters 10 \
     --min_lr 1e-6 \
+    --max_epochs 1 \
     --save megatron_output/Qwen2.5-7B-Instruct \
     --save_interval 100 \
     --max_length 2048 \
@@ -112,7 +115,8 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 ```
 
 - For pretraining, you can use `megatron pt` instead of `megatron sft`, which will use a generative template for training.
-- **More examples**: Including packing, multi-node training, 32K context, MoE models, and pre-training, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
+- **More examples**: Including packing, multi-node training, 32K context, DPO, MoE models, and pre-training, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
+- The custom dataset format is the same as `ms-swift`. Refer to the [custom dataset documentation](../Customization/Custom-dataset.md).
 
 ## Benchmark
 The speed comparison of full-parameter training for Dense/MoE models using `megatron sft` and `swift sft` on a single machine with eight A800 GPUs is shown below. The corresponding scripts can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/benchmark).
@@ -160,9 +164,13 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
 - no_rope_fusion: Default is False. Specify `--no_rope_fusion true` to disable rope fusion.
 - no_gradient_accumulation_fusion: Default is False. Specify `--no_gradient_accumulation_fusion true` to disable gradient accumulation fusion.
 - 🔥cross_entropy_loss_fusion: Enables cross-entropy loss calculation fusion. Default is False.
+- cross_entropy_fusion_impl: Implementation of cross-entropy loss fusion. Options include 'native' and 'te'. Defaults to 'native'.
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padded tokens in the global batch. Default is True.
 - 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Defaults to auto.
 - optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
+- optimizer_cpu_offload: Offloads the optimizer state to CPU. Default is `False`.
+- optimizer_offload_fraction: The fraction of the optimizer state to offload to CPU. Default is `1.0`.
+- use_precision_aware_optimizer: Use the precision-aware optimizer in TransformerEngine, which allows setting the main parameters and optimizer states to lower precision, such as fp16 and fp8.
 - dataloader_type: Default is 'cyclic', options are 'single', 'cyclic', 'external'. If `--streaming` is enabled, set it to external.
 - manual_gc: Disables the default garbage collector and manually triggers garbage collection. Default is False.
 - manual_gc_interval: Interval at which garbage collection is triggered. Default is 0.
@@ -172,13 +180,15 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
 seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the dataset length, please use the `--max_length` parameter in the basic arguments; there is no need to set this parameter.
 - use_cpu_initialization: Initializes weights on the CPU, default is False. Used during HF and MCore weight conversion.
 - no_create_attention_mask_in_dataloader: Does not create an attention mask in the dataloader, default is True.
+- extra_megatron_kwargs: Additional parameters passed to Megatron, provided as a JSON object. Defaults to None.
 
 **Learning Rate Parameters**:
 
 - 🔥lr: Initial learning rate, which will ultimately determine the learning rate for each iteration based on the warm-up and decay strategy, default is 1e-5.
 - lr_decay_style: Learning rate decay strategy, default is 'cosine'. Commonly set to 'cosine', 'linear', or 'constant'.
 - 🔥lr_decay_iters: Number of iterations for learning rate decay. Default is None, meaning it will be set to `--train_iters`.
-- 🔥lr_warmup_iters: Number of iterations for linear learning rate warm-up, default is 0.
+- lr_warmup_iters: Number of iterations for linear learning rate warm-up, default is 0.
+- 🔥lr_warmup_fraction: The fraction of the linear learning rate warmup phase, defaults to None.
 - 🔥min_lr: Minimum value of the learning rate, clipping any learning rate below this threshold to this value, default is 0.
 
 **Regularization Parameters**:
@@ -213,8 +223,8 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - 🔥use_distributed_optimizer: Use a distributed optimizer. Default is True.
 - 🔥tensor_model_parallel_size: TP (Tensor Parallelism) size, default is 1.
 - 🔥pipeline_model_parallel_size: PP (Pipeline Parallelism) size, default is 1.
-- decoder_first_pipeline_num_layers: The number of Transformer layers in the first pipeline stage of the decoder. Default is None, which means the Transformer layers are evenly distributed across all pipeline stages.
-- decoder_last_pipeline_num_layers: The number of Transformer layers in the last pipeline stage of the decoder. Default is None, which means the Transformer layers are evenly distributed across all pipeline stages.
+- 🔥decoder_first_pipeline_num_layers: The number of Transformer layers in the first pipeline stage of the decoder. Default is None, which means the Transformer layers are evenly distributed across all pipeline stages.
+- 🔥decoder_last_pipeline_num_layers: The number of Transformer layers in the last pipeline stage of the decoder. Default is None, which means the Transformer layers are evenly distributed across all pipeline stages.
 - 🔥sequence_parallel: Enable sequence parallel optimization. Default is False.
 - 🔥context_parallel_size: CP (Context Parallelism) size, default is 1.
 - tp_comm_overlap: Overlap tensor parallel communication with GEMM (General Matrix Multiplication) kernels (to reduce communication time). Default is False.
@@ -225,7 +235,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 **Logging Parameters**:
 
 - log_params_norm: Logs the norm of parameters. Default is False.
-- log_throughput: Logs throughput per GPU. Default is True.
+- log_throughput: Logs throughput per GPU. Default is False.
   - Note: In non-packing scenarios, log_throughput is not accurate because `seq_length` does not equal the actual sequence length.
 - tensorboard_log_interval: Interval (steps) for logging to TensorBoard, default is 1.
 - tensorboard_queue_size: Queue length (related to disk I/O), similar to write intervals. Default is 50.
@@ -240,7 +250,8 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 
 **Evaluation Parameters**:
 
-- 🔥eval_iters: Number of evaluation iterations, default is 100.
+- 🔥eval_iters: The number of iterations for evaluation. Defaults to -1, and a suitable value will be set based on the size of the validation dataset.
+  - Note: If using a streaming dataset, this value needs to be set manually.
 - 🔥eval_interval: Evaluation interval (steps), default is None, meaning it will be set to save_interval.
 
 **Mixed Precision Parameters**:
@@ -275,7 +286,6 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - transformer_impl: Which transformer implementation to use, options are 'local' and 'transformer_engine'. Default is transformer_engine.
 - padded_vocab_size: Full vocabulary size, default is None.
 - rope_scaling: Related parameters for rope_scaling, default is None. Refer to the format in [llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1). Pass the value as a JSON string.
-- model_type: The model_type in the config.json of the Huggingface model weights.
 
 
 **MoE Parameters**:
@@ -286,22 +296,44 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - moe_router_topk: The number of experts each token is routed to. Default is None. Automatically read from config.json.
 - moe_router_pre_softmax: Enable pre-softmax routing for MoE, meaning that softmax will be applied before top-k selection. Default is None. Automatically read from config.json.
 - 🔥moe_aux_loss_coeff: Scaling coefficient for the auxiliary loss: the recommended initial value is 1e-2. Default is None. Automatically read from config.json.
+- moe_router_dtype: Data type for routing computation and expert output weighted averaging. Options include 'fp32' and 'fp64', which enhance numerical stability, particularly with a large number of experts. When used with `moe_permute_fusion`, the performance impact is negligible. Defaults to None (no dtype change).
+- moe_permute_fusion: Fuses token rearrangement operations during token dispatching. Defaults to False.
 - 🔥expert_model_parallel_size: The degree of expert parallelism, default is 1.
-- moe_token_dispatcher_type: The type of token dispatcher to use. Options include 'allgather', 'alltoall', and 'alltoall_seq'. Default is 'alltoall'.
+- moe_token_dispatcher_type: The type of token dispatcher to use. Options include 'allgather', 'alltoall', 'flex', and 'alltoall_seq'. Default is 'alltoall'.
+- moe_enable_deepep: Experimental feature, Enables DeepSeek/DeepEP for efficient token dispatching and combination in MoE models. Only works when using the flexible token dispatcher by setting `--moe_token_dispatcher_type flex`.
 - moe_grouped_gemm: When each rank contains multiple experts, improve utilization and performance by launching multiple local GEMM kernels across multiple streams using GroupedLinear in TransformerEngine. Default is False.
 - moe_router_load_balancing_type: Determines the load balancing strategy for the router. Options are "aux_loss", "seq_aux_loss", "sinkhorn", "none". Default is "aux_loss".
 - moe_z_loss_coeff: Scaling coefficient for z-loss. Default is None.
 - moe_expert_capacity_factor: Capacity factor for each expert, None means no tokens will be dropped. Default is None.
 - moe_shared_expert_overlap: Enable overlapping of shared expert computation with scheduler communication. If this option is not enabled, shared experts will execute after the routing experts. Only effective when `moe_shared_expert_intermediate_size` is set. Default is False.
 
-### Megatron Training Parameters
+**DPO Parameters**
+- ref_load: The path to load the reference model. Defaults to `None`, which means it will be set to `load`.
+- beta: Has the same meaning as in [TRL](https://huggingface.co/docs/trl/main/en/dpo_trainer#trl.DPOConfig). It controls the degree of deviation from the reference model. A higher beta value indicates less deviation from the reference model. For the IPO loss function (`loss_type="ipo"`), beta is the regularization parameter as mentioned in the [paper](https://huggingface.co/papers/2310.12036). Default is 0.1.
+- rpo_alpha: A parameter from the [RPO paper](https://huggingface.co/papers/2404.19733) used to control the weight of the NLL term (i.e., SFT loss) in the loss function. The total loss is calculated as `loss = dpo_loss + rpo_alpha * nll_loss`. Default is 1.
+- reference_free: Whether to ignore the provided reference model and implicitly use a reference model that assigns equal probability to all responses. Default is `False`.
+- label_smoothing: Default is 0.
+- f_divergence_type: Default is `reverse_kl`. See the [TRL documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer) for possible values.
+- loss_type: Default is `'sigmoid'`. See the [TRL documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer) for possible values.
+
+
+### Training Parameters
 
 Megatron training parameters inherit from Megatron parameters and basic parameters. For information on basic parameters, see [here](./Command-line-parameters.md#base-arguments). Additionally, the following parameters are included:
 
 - add_version: Adds a directory `<version>-<timestamp>` to `save` to prevent overwriting weights, default is True.
-- 🔥packing: Whether to use sequence packing, defaults to False.
+- 🔥packing: Whether to use sequence packing, defaults to False. Currently supports `megatron pt/sft`.
+- 🔥packing_cache: Specifies the directory for packing cache. The default value is `None`, which means the cache will be stored in the path defined by the environment variable `$MODELSCOPE_CACHE`. When using the packing feature across multiple nodes, ensure that all nodes share the same packing cache directory. You can achieve this by setting the `MODELSCOPE_CACHE` environment variable or by adding the `--packing_cache <shared_path>` argument in the command line.
 - 🔥streaming: Stream reading and processing of the dataset, default is False. It is typically set to True when handling large datasets. For more information on streaming parameters, refer to the command-line parameters documentation.
 - lazy_tokenize: Default is False. If this parameter is set to False, all dataset samples are tokenized before training (this avoids errors during training); if set to True, tokenization occurs during training (this saves memory).
-- dataloader_persistent_workers: A parameter passed directly to the dataloader, with a default value of True.
-- dataloader_prefetch_factor: A parameter passed directly to the dataloader, with a default value of 10.
 - max_epochs: Forces the training to exit after reaching `max_epochs`, and performs validation and saving of the model weights. This parameter is especially useful when using a streaming dataset. Default is None.
+  - Note: If you use a non-streaming dataset, this parameter will automatically calculate train_iters for you, so there is no need to pass `train_iters` manually.
+
+
+### RLHF Parameters
+
+In addition to inheriting the training parameters, the following parameters are also supported:
+
+- rlhf_type: Default is 'dpo'. Currently, only 'dpo' is available.
+- loss_scale: Overrides the `loss_scale` in [basic parameters](./Command-line-parameters.md). Default is 'last_round'.
+- calculate_per_token_loss: Overrides the Megatron parameter. Default is False.

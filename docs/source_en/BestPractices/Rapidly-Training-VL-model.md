@@ -31,9 +31,10 @@ Modified Parameters
 2. intermediate_size: 18944->12288
 3. num_attention_heads: 28->32
 4. num_key_value_heads: 4->8
-5. num_hidden_layers: 28->32
+5. num_hidden_layers: 28->36
 6. vocab_size:152064->151936
 7. max_window_layers:28->36
+8. out_hidden_size: 3584->4096
 
 Newly Added Parameter
 1. head_dim： 128

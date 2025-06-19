@@ -1,20 +1,21 @@
-# 8 * 65GiB
+# 8 * 64GiB
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-megatron sft \
+megatron rlhf \
+    --rlhf_type dpo \
     --load Qwen1.5-MoE-A2.7B-mcore \
-    --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji#20000' \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 4 \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
     --moe_aux_loss_coeff 0.01 \
-    --micro_batch_size 1 \
+    --micro_batch_size 4 \
     --global_batch_size 16 \
-    --packing true \
-    --recompute_granularity selective \
-    --train_iters 2000 \
-    --eval_iters 50 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
+    --max_epochs 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
@@ -29,4 +30,7 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --use_flash_attn true
+    --attention_backend flash \
+    --beta 0.1 \
+    --rpo_alpha 1 \
+    --loss_type sigmoid

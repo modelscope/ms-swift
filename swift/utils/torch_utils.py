@@ -18,9 +18,10 @@ import torch.nn as nn
 from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
 from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.trainer_utils import set_seed
 from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 
-from .env import get_dist_setting, is_dist, is_dist_ta, is_local_master, is_master
+from .env import get_dist_setting, get_node_setting, is_dist, is_dist_ta, is_local_master, is_master
 from .logger import get_logger
 from .utils import deep_getattr
 
@@ -335,14 +336,18 @@ def get_device_count() -> int:
         return 0
 
 
-def gc_collect() -> None:
-    gc.collect()
+def empty_cache():
     if is_torch_npu_available():
         torch.npu.empty_cache()
     elif is_torch_mps_available():
         torch.mps.empty_cache()
     elif is_torch_cuda_available():
         torch.cuda.empty_cache()
+
+
+def gc_collect() -> None:
+    gc.collect()
+    empty_cache()
 
 
 class Serializer:
@@ -391,3 +396,65 @@ def init_process_group(backend: Optional[str] = None, timeout: int = 18000000):
             backend = 'gloo'
     timeout = timedelta(seconds=timeout)
     dist.init_process_group(backend=backend, timeout=timeout)
+
+
+def seed_worker(worker_id: int, num_workers: int, rank: int):
+    """
+    Helper function to set worker seed during Dataloader initialization.
+    """
+    init_seed = torch.initial_seed() % 2**32
+    worker_seed = num_workers * rank + init_seed
+    set_seed(worker_seed)
+
+
+def check_shared_disk(error, cache_dir: Optional[str] = None):
+    nnodes = get_node_setting()[1]
+    if nnodes <= 1:
+        return True
+    assert dist.is_initialized()
+    if cache_dir is None:
+        cache_dir = os.path.join(get_cache_dir(), 'tmp')
+    os.makedirs(cache_dir, exist_ok=True)
+    tmp_path = os.path.join(cache_dir, 'check_shared_disk.tmp')
+    is_shared_disk = True
+
+    try:
+        with safe_ddp_context(None, True):
+            if is_master():
+                with open(tmp_path, 'w'):
+                    pass
+            if not os.path.exists(tmp_path):
+                is_shared_disk = False
+        shared_state = [None] * dist.get_world_size()
+        dist.all_gather_object(shared_state, is_shared_disk)
+    finally:
+        if is_master() and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+    if not all(shared_state):
+        raise error
+
+
+@contextmanager
+def unwrap_model_for_generation(
+    model,
+    accelerator,
+    gather_deepspeed3_params=True,
+    gather_parameters: List[nn.Parameter] = None,
+):
+    unwrapped_model = accelerator.unwrap_model(model)
+    if accelerator.state.deepspeed_plugin is not None and accelerator.state.deepspeed_plugin.zero_stage == 3:
+        if not gather_deepspeed3_params:
+            yield accelerator.unwrap_model(model)
+        else:
+            import deepspeed
+            parameters = [
+                parameter for name, parameter in model.named_parameters()
+                if not gather_parameters or name in gather_parameters
+            ]
+            with deepspeed.zero.GatheredParameters(parameters):
+                from trl.models.utils import remove_hooks, add_hooks
+                remove_hooks(model)
+                yield accelerator.unwrap_model(model)
+                add_hooks(model)
+    else:
+        yield unwrapped_model

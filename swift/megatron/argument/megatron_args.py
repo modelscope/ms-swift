@@ -2,6 +2,7 @@
 import os
 import sys
 from dataclasses import asdict, dataclass, field
+from datetime import timedelta
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import megatron.core
@@ -13,16 +14,31 @@ from swift.llm.argument.base_args import to_abspath
 
 
 @dataclass
-class ExtraMegatronArguments:
+class RLHFMegatronArgumentsMixin:
+    ref_load: Optional[str] = None
+
+    beta: float = 0.1
+    rpo_alpha: float = 1.
+    reference_free: bool = False
+    label_smoothing: float = 0.
+    f_divergence_type: str = 'reverse_kl'
+    loss_type: str = 'sigmoid'
+
+
+@dataclass
+class ExtraMegatronArguments(RLHFMegatronArgumentsMixin):
     padded_vocab_size: Optional[int] = None
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
-
+    # streaming dataloader
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 10
 
-    model_type: Optional[str] = None
+    architectures: Optional[str] = None
     max_epochs: Optional[int] = None
+
+    original_max_position_embeddings: Optional[int] = None
+    partial_rotary_factor: Optional[float] = None
 
 
 @dataclass
@@ -45,10 +61,14 @@ class MegatronArguments(ExtraMegatronArguments):
     no_rope_fusion: bool = False
     no_gradient_accumulation_fusion: bool = False
     cross_entropy_loss_fusion: bool = False
+    cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
     calculate_per_token_loss: bool = True
     use_flash_attn: bool = False
     attention_backend: str = 'auto'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
+    optimizer_cpu_offload: bool = False
+    optimizer_offload_fraction: float = 1.
+    use_precision_aware_optimizer: bool = False
     dataloader_type: Literal['single', 'cyclic', 'external'] = 'cyclic'
     manual_gc: bool = False
     manual_gc_interval: int = 0
@@ -59,6 +79,7 @@ class MegatronArguments(ExtraMegatronArguments):
     # The default is None, which will be set to `train_iters`.
     lr_decay_iters: Optional[int] = None
     lr_warmup_iters: int = 0
+    lr_warmup_fraction: Optional[float] = None
     min_lr: float = 0
 
     # regularization
@@ -127,9 +148,12 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_router_topk: Optional[int] = None
     moe_router_pre_softmax: Optional[bool] = None
     moe_aux_loss_coeff: Optional[float] = None
+    moe_router_dtype: Literal['fp32', 'fp64'] = None
+    moe_permute_fusion: bool = False
 
     expert_model_parallel_size: int = 1
-    moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'alltoall_seq'] = 'alltoall'
+    moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex', 'alltoall_seq'] = 'alltoall'
+    moe_enable_deepep: bool = False
     moe_grouped_gemm: bool = False
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = 'aux_loss'
     moe_z_loss_coeff: Optional[float] = None
@@ -145,7 +169,7 @@ class MegatronArguments(ExtraMegatronArguments):
 
     # logging
     log_params_norm: bool = False
-    log_throughput: bool = True
+    log_throughput: bool = False
     tensorboard_log_interval: int = 1
     tensorboard_queue_size: int = 50
     log_timers_to_tensorboard: bool = True
@@ -158,7 +182,7 @@ class MegatronArguments(ExtraMegatronArguments):
     wandb_save_dir: Optional[str] = None
 
     # evaluate
-    eval_iters: int = 100
+    eval_iters: int = -1
     eval_interval: Optional[int] = None
 
     # other
@@ -166,6 +190,9 @@ class MegatronArguments(ExtraMegatronArguments):
     seq_length: Optional[int] = None
     num_workers: int = 4
     no_create_attention_mask_in_dataloader: bool = True
+
+    # extra_args for megatron
+    extra_megatron_kwargs: Optional[Union[dict, str]] = None
 
     def _set_default(self):
         if self.num_query_groups is None:
@@ -202,12 +229,26 @@ class MegatronArguments(ExtraMegatronArguments):
             os.environ['NVTE_APPLY_QK_LAYER_SCALING'] = '1'
 
     def _init_moe(self):
+        if self.num_experts is None:
+            return
         if self.moe_shared_expert_intermediate_size == 0:
             self.moe_shared_expert_intermediate_size = None
         if self.moe_ffn_hidden_size is None:
             self.moe_ffn_hidden_size = self.ffn_hidden_size
         else:
             self.ffn_hidden_size = self.moe_ffn_hidden_size
+
+    @staticmethod
+    def _patch_megatron_timeout(distributed_timeout_minutes: int):
+        from megatron.core import parallel_state
+        create_group_origin = parallel_state.create_group
+
+        def create_group(ranks=None, timeout=None, *args, **kwargs):
+            if timeout is None:
+                timeout = timedelta(minutes=distributed_timeout_minutes)
+            return create_group_origin(ranks, timeout, *args, **kwargs)
+
+        parallel_state.create_group = create_group
 
     def __post_init__(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
@@ -217,9 +258,12 @@ class MegatronArguments(ExtraMegatronArguments):
         self._set_default()
         if hasattr(self, 'ddp_timeout'):
             self.distributed_timeout_minutes = self.ddp_timeout // 60
+        self._patch_megatron_timeout(self.distributed_timeout_minutes)
         self.group_query_attention = self.num_query_groups > 1
         if self.rope_scaling is not None:
             self.rope_scaling = ModelArguments.parse_to_dict(self.rope_scaling)
+            if 'type' in self.rope_scaling and 'rope_type' not in self.rope_scaling:
+                self.rope_scaling['rope_type'] = self.rope_scaling['type']
         if self.eval_interval is None:
             self.eval_interval = self.save_interval
         if self.seq_length is None:
@@ -230,16 +274,21 @@ class MegatronArguments(ExtraMegatronArguments):
         self._init_mixed_precision()
 
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
+        self.extra_megatron_kwargs = ModelArguments.parse_to_dict(self.extra_megatron_kwargs)
 
     def _args_to_argv(self) -> Tuple[List[Any], Dict[str, Any]]:
         new_args = []
         args_dict = asdict(self)
         extra_args = {}
+        extra_megatron_kwargs = args_dict.pop('extra_megatron_kwargs')
+        args_dict.update(extra_megatron_kwargs)
+        use_core_011 = version.parse(megatron.core.__version__) < version.parse('0.12')
+        core_012_arguments = {'recompute_modules', 'moe_router_dtype', 'cross_entropy_fusion_impl', 'moe_enable_deepep'}
         for k, value in args_dict.items():
-            if k == 'recompute_modules' and version.parse(megatron.core.__version__) < version.parse('0.12'):
-                continue
-            if k not in MegatronArguments.__annotations__:
+            if k not in MegatronArguments.__annotations__ and k not in extra_megatron_kwargs:
                 extra_args[k] = value
+                continue
+            if use_core_011 and k in core_012_arguments:
                 continue
             if value is None or value is False:
                 continue

@@ -32,6 +32,7 @@ register_template(
     ))
 
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_gme, template_cls=Qwen2VLTemplate, suffix=['<|endoftext|>']))
+register_template(TemplateMeta(LLMTemplateType.qwen3_emb, suffix=[], prefix=[], chat_sep=[], prompt=['{{QUERY}}']))
 
 register_template(
     TemplateMeta(LLMTemplateType.baichuan, prefix=['{{SYSTEM}}'], prompt=[[195], '{{QUERY}}', [196]], chat_sep=[]))
@@ -271,4 +272,20 @@ register_template(
         prompt=['<role>HUMAN</role>{{QUERY}}<role>ASSISTANT</role>'],
         chat_sep=[],
         suffix=['<|endoftext|>'],
+    ))
+
+register_template(
+    QwenTemplateMeta(
+        LLMTemplateType.mimo_rl,
+        default_system='You are MiMo, an AI assistant developed by Xiaomi.',
+    ))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.dots1,
+        prefix=['<|system|>{{SYSTEM}}<|endofsystem|>'],
+        prompt=['<|userprompt|>{{QUERY}}<|endofuserprompt|><|response|>'],
+        chat_sep=['<|endofresponse|>'],
+        suffix=['<|endofresponse|>'],
+        default_system='You are a helpful assistant.',
     ))

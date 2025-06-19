@@ -37,4 +37,7 @@ register_megatron_model(
         ModelType.qwen3,
         ModelType.qwen2_moe,
         ModelType.qwen3_moe,
+        ModelType.internlm3,
+        ModelType.mimo,
+        ModelType.mimo_rl,
     ], model_provider, convert_gpt_hf_config, convert_mcore2hf, convert_hf2mcore))

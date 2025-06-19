@@ -1,11 +1,11 @@
 # 4*35GB
 # A demo for four modalities that can be run directly
-pip uninstall transformers
-pip install git+https://github.com/huggingface/transformers
+pip install transformers -U
 
 nproc_per_node=4
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
+ENABLE_AUDIO_OUTPUT=1 \
 NPROC_PER_NODE=$nproc_per_node \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \

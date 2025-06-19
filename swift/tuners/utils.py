@@ -279,7 +279,7 @@ class OffloadHelper:
 
 class SwiftAdapter:
 
-    offload_helper = OffloadHelper()
+    offload_helper = None
 
     @staticmethod
     def prepare_model(model: torch.nn.Module, config: SwiftConfig, adapter_name: str) -> SwiftOutput:
@@ -311,6 +311,8 @@ class SwiftAdapter:
                 module.to('cpu')
         elif offload == 'meta':
             if str(device) != 'meta':
+                if SwiftAdapter.offload_helper is None:
+                    SwiftAdapter.offload_helper = OffloadHelper()
                 SwiftAdapter.offload_helper.offload_disk(module, adapter_name=adapter_name, module_key=module_key)
                 module.to('meta')
         else:

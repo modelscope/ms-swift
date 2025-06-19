@@ -2,15 +2,12 @@
 import os
 from typing import List, Union
 
-from megatron.core.enums import ModelType
-from megatron.training import pretrain
-
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
 from ..utils import patch_megatron_tokenizer
-from .patcher import patch_megatron_data_collator
-from .utils import build_streaming_dataloader, forward_step, get_swift_datasets_provider
+from .trainers import MegatronTrainer
+from .utils import build_streaming_dataloader
 
 logger = get_logger()
 
@@ -18,6 +15,9 @@ logger = get_logger()
 class MegatronSft(SwiftSft):
     args_class = MegatronTrainArguments
     args: args_class
+
+    def prepare_trainer(self):
+        return MegatronTrainer(self.args)
 
     def __init__(self, args: Union[List[str], MegatronTrainArguments, None] = None) -> None:
         self.train_msg = {}
@@ -29,6 +29,7 @@ class MegatronSft(SwiftSft):
         self._prepare_template()
         self.template.use_megatron = True
         args.save_args(args.save)
+        self.trainer = self.prepare_trainer()
 
     def run(self):
         args = self.args
@@ -40,19 +41,11 @@ class MegatronSft(SwiftSft):
             train_dataset = build_streaming_dataloader(args, train_dataset, data_collator)
             if val_dataset is not None:
                 val_dataset = build_streaming_dataloader(args, val_dataset, data_collator)
-        datasets_provider = get_swift_datasets_provider(train_dataset, val_dataset)
-        datasets_provider.is_distributed = True
 
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
         try:
-            with patch_megatron_data_collator(data_collator):
-                pretrain(
-                    datasets_provider,
-                    args.megatron_model_meta.model_provider,
-                    ModelType.encoder_or_decoder,
-                    forward_step,
-                    args_defaults=args.extra_args)
+            self.trainer.train(train_dataset, val_dataset, data_collator)
         finally:
             # Visualization
             if is_master():

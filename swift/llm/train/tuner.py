@@ -413,12 +413,6 @@ class TunerMixin:
 
         if args.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
-            if hasattr(model, 'model_meta'):
-                is_multimodal = model.model_meta.is_multimodal
-            else:
-                is_multimodal = model.model.model_meta.is_multimodal
-            # multimodal model must do split in basemodel's forward
-            # or the media embedding may occur error
-            sequence_parallel.prepare_model(model, template.tokenizer, split_in_forward=is_multimodal)
+            sequence_parallel.prepare_model(model, template.tokenizer)
 
         return model

@@ -222,7 +222,11 @@ class BinReader:
     def __init__(self, bin_path: str):
         self.bin_path = bin_path
         self.file = open(bin_path, 'rb')
-        self.mm = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
+        try:
+            self.mm = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
+        except ValueError:
+            # For example, self.file is an empty file.
+            self.mm = None
 
     def read_buffer(self, offset: int, size: int) -> bytes:
         if offset < 0 or size < 0 or offset + size > len(self.mm):
@@ -230,7 +234,8 @@ class BinReader:
         return self.mm[offset:offset + size]
 
     def __del__(self):
-        self.mm.close()
+        if self.mm is not None:
+            self.mm.close()
         self.file.close()
 
 
@@ -240,7 +245,8 @@ class IndexedDataset(Dataset):
 
     @staticmethod
     def get_cache_dir(dataset_name: str):
-        cache_dir = os.path.join(get_cache_dir(), 'tmp', dataset_name)
+        cache_dir = os.getenv('PACKING_CACHE') or os.path.join(get_cache_dir(), 'tmp')
+        cache_dir = os.path.join(cache_dir, dataset_name)
         os.makedirs(cache_dir, exist_ok=True)
         assert dataset_name is not None, f'dataset_name: {dataset_name}'
         return cache_dir

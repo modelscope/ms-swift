@@ -1,10 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 from collections import defaultdict
 from contextlib import contextmanager
+from functools import partial
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from trl.models.utils import prepare_deepspeed
 
@@ -47,6 +50,20 @@ class RLHFTrainerMixin:
 
         self.padding_value = self.tokenizer.pad_token_id
 
+    def get_train_dataloader(self):
+        train_dataloader = super().get_train_dataloader()
+        base_dataloader = train_dataloader.base_dataloader if hasattr(
+            train_dataloader, 'base_dataloader') and isinstance(train_dataloader.base_dataloader,
+                                                                DataLoader) else train_dataloader
+        if base_dataloader.worker_init_fn is not None and not isinstance(
+                base_dataloader.worker_init_fn, partial) and 'num_workers' in inspect.signature(
+                    base_dataloader.worker_init_fn).parameters:
+            base_dataloader.worker_init_fn = partial(
+                base_dataloader.worker_init_fn,
+                num_workers=self.args.dataloader_num_workers,
+                rank=self.args.process_index)
+        return train_dataloader
+
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
@@ -84,11 +101,6 @@ class RLHFTrainerMixin:
         with _patch_concatenated_forward():
             return super().concatenated_forward(model, model_kwargs)
 
-    def get_batch_logps(self, logits: torch.FloatTensor, labels: torch.LongTensor, *args, **kwargs):
-        if self.is_encoder_decoder:
-            labels = labels.clone()  # fix trl bug
-        return super().get_batch_logps(logits, labels, *args, **kwargs)
-
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         res = super().compute_loss(model, inputs, return_outputs=return_outputs)
         # compat transformers>=4.46.*
@@ -97,3 +109,9 @@ class RLHFTrainerMixin:
             loss /= self.args.gradient_accumulation_steps
             return (loss, res[1:]) if return_outputs else loss
         return res
+
+    def _get_train_sampler(self, train_dataset=None):
+        get_train_sampler = super()._get_train_sampler
+        parameters = inspect.signature(get_train_sampler).parameters
+        kwargs = {'train_dataset': train_dataset} if 'train_dataset' in parameters else {}
+        return get_train_sampler(**kwargs)
