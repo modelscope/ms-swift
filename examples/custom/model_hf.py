@@ -44,7 +44,9 @@ register_model(
         ],
         template='custom',
         get_function=get_function,
-        ignore_patterns=['nemo']))
+        ignore_patterns=['nemo'],
+        is_multimodal=False,
+    ))
 
 if __name__ == '__main__':
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
