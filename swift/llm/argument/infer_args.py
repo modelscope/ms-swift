@@ -116,7 +116,6 @@ class SglangArguments:
     sglang_mem_fraction_static: Optional[float] = None
     sglang_context_length: Optional[int] = None
     sglang_disable_cuda_graph: bool = False
-    sglang_disable_radix_cache: bool = True
     sglang_quantization: Optional[str] = None
     sglang_kv_cache_dtype: str = 'auto'
     sglang_enable_dp_attention: bool = False
@@ -131,7 +130,6 @@ class SglangArguments:
             'mem_fraction_static': self.sglang_mem_fraction_static,
             'context_length': self.sglang_context_length,
             'disable_cuda_graph': self.sglang_disable_cuda_graph,
-            'disable_radix_cache': self.sglang_disable_radix_cache,
             'quantization': self.sglang_quantization,
             'kv_cache_dtype': self.sglang_kv_cache_dtype,
             'enable_dp_attention': self.sglang_enable_dp_attention,
