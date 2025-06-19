@@ -24,12 +24,12 @@ class MultiTurnScheduler(ABC):
         self.max_turns = max_turns
 
     @abstractmethod
-    def step(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice, current_turn: int,
-             **kwargs) -> RolloutInferRequest:
+    def step(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice,
+             current_turn: int) -> RolloutInferRequest:
         pass
 
-    def check_finished(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice, current_turn: int,
-                       **kwargs) -> bool:
+    def check_finished(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice,
+                       current_turn: int) -> bool:
         if result.finish_reason == 'length':
             return True
 
@@ -38,17 +38,14 @@ class MultiTurnScheduler(ABC):
 
         return False
 
-    def set_max_turns(self, max_turns):
-        self.max_turns = max_turns
-
 
 class MathTipsScheduler(MultiTurnScheduler):
     from .orm import MathAccuracy
     tips_prompt = 'But wait... It seems I made a mistake,'
     acc_func = MathAccuracy()
 
-    def check_finished(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice, current_turn: int,
-                       **kwargs) -> bool:
+    def check_finished(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice,
+                       current_turn: int) -> bool:
         completion = result.message.content
         # we only give tips once
         if self.tips_prompt in completion:
@@ -59,10 +56,10 @@ class MathTipsScheduler(MultiTurnScheduler):
         if acc == 1:
             return True
 
-        return super().check_finished(infer_request, result, current_turn, **kwargs)
+        return super().check_finished(infer_request, result, current_turn)
 
-    def step(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice, current_turn: int,
-             **kwargs) -> RolloutInferRequest:
+    def step(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice,
+             current_turn: int) -> RolloutInferRequest:
         completion = result.message.content
         if '<answer>' in completion:
             completion = completion[:completion.index('<answer>')]
@@ -85,8 +82,8 @@ class MathTipsMultiTurnScheduler(MultiTurnScheduler):
     tips_prompt = 'The answer is not correct, It seems You made a mistake, you need to recheck very carefully.'
     acc_func = MathAccuracy()
 
-    def check_finished(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice, current_turn: int,
-                       **kwargs) -> bool:
+    def check_finished(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice,
+                       current_turn: int) -> bool:
 
         last_query = infer_request.messages[-2]['content']
         # we only give tips once
@@ -99,10 +96,14 @@ class MathTipsMultiTurnScheduler(MultiTurnScheduler):
         if acc == 1:
             return True
 
-        return super().check_finished(infer_request, result, current_turn, **kwargs)
+        return super().check_finished(infer_request, result, current_turn)
 
-    def step(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice, current_turn: int,
-             **kwargs) -> RolloutInferRequest:
+    def step(
+        self,
+        infer_request: RolloutInferRequest,
+        result: RolloutResponseChoice,
+        current_turn: int,
+    ) -> RolloutInferRequest:
         infer_request.messages.append({'role': 'user', 'content': self.tips_prompt})
         return infer_request
 

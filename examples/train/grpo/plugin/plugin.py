@@ -21,13 +21,13 @@ TO CUSTOMIZE REWARD FUNCTION:
         Implement your custom reward calculation logic within the __call__ method.
         The method accepts the model's output completions and dataset columns (passed as kwargs) as input parameters.
 
-    Step 2: Register the Reward Class in orms
-        For example:
-        python orms['external_math_acc'] = MathAccuracy
+    Step 2: Add your scheduler to the orms registry:
+        orms['my_reward_function'] = MyRewardFunction
 
     Step 3: Configure the Arguments
-        Use the following arguments when running the script:
-        bash --plugin /path/to/plugin.py --reward_funcs external_math_acc
+        Run the script with:
+        --plugin /path/to/plugin.py \
+        --reward_funcs my_reward_function
 """
 
 
@@ -597,6 +597,26 @@ class QwenLongPlugin(DefaultRMPlugin):
 
 rm_plugins['my_rmplugin'] = CustomizedRMPlugin
 rm_plugins['qwenlong'] = QwenLongPlugin
+"""
+TO CUSTOMIZE MULTITURN SCHEDULER:
+    Step 1: Define a Scheduler Class
+        Implement your custom scheduler with the following methods:
+            - step() (Required): Constructs the next round of the infer request.
+            - check_finished() (Optional): Determines whether the current round has finished,
+                which defaults to ending when the inference result is truncated (over length) or
+                when the maximum number of rounds is reached.
+        Both methods accept
+            - the last turn's InferRequest/result
+            The current turn count
+
+    Step 2: Add your scheduler to the multi_turns registry:
+        multi_turns['my_scheduler'] = MyScheduler
+
+    Step 3: Configure the Arguments
+        Run the script with:
+        --plugin /path/to/plugin.py \
+        --multi_turn_scheduler my_scheduler
+"""
 
 
 class ReToolScheduler(MultiTurnScheduler):
