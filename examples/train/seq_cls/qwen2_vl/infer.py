@@ -1,6 +1,6 @@
 import os
 
-from swift.llm import BaseArguments, InferRequest, PtEngine, RequestConfig, get_template, safe_snapshot_download
+from swift.llm import BaseArguments, InferRequest, PtEngine, get_template
 
 os.environ['MAX_PIXELS'] = '1003520'
 
