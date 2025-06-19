@@ -72,7 +72,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             else:
                 queue.put(None)
 
-        thread = Thread(target=lambda: asyncio.run(_run_async_iter()))
+        loop = asyncio.get_event_loop()
+        thread = Thread(target=lambda: loop.run_until_complete(_run_async_iter()))
         thread.start()
         pre_output = None
         while True:
@@ -257,7 +258,12 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
     @staticmethod
     def safe_asyncio_run(coro):
-        return InferEngine.thread_run(asyncio.run, args=(coro, ))
+        loop = asyncio.get_event_loop()
+
+        def asyncio_run(core):
+            return loop.run_until_complete(core)
+
+        return InferEngine.thread_run(asyncio_run, args=(coro, ))
 
     @staticmethod
     def _batch_encode(infer_requests: List[InferRequest], template: Template, strict: bool):

@@ -41,6 +41,9 @@ if __name__ == '__main__':
     elif infer_backend == 'vllm':
         from swift.llm import VllmEngine
         engine = VllmEngine(model, max_model_len=8192)
+    elif infer_backend == 'sglang':
+        from swift.llm import SglangEngine
+        engine = SglangEngine(model)
     elif infer_backend == 'lmdeploy':
         from swift.llm import LmdeployEngine
         engine = LmdeployEngine(model)

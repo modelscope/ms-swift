@@ -320,32 +320,47 @@ The following parameters are effective when `train_type` is set to `reft`.
 - reft_intervention_type: Type of ReFT, supports 'NoreftIntervention', 'LoreftIntervention', 'ConsreftIntervention', 'LobireftIntervention', 'DireftIntervention', 'NodireftIntervention', default is `LoreftIntervention`.
 - reft_args: Other supported parameters for ReFT Intervention, input in json-string format.
 
-### LMDeploy Arguments
-
-Parameter meanings can be found in the [lmdeploy documentation](https://lmdeploy.readthedocs.io/en/latest/api/pipeline.html#turbomindengineconfig).
-
-- 🔥tp: tensor parallelism degree. Default is `1`.
-- session_len: Default is `None`.
-- cache_max_entry_count: Default is `0.8`.
-- quant_policy: Default is `0`.
-- vision_batch_size: Default is `1`.
-
 ### vLLM Arguments
 
 Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 
-- 🔥gpu_memory_utilization: Default value is `0.9`.
-- 🔥tensor_parallel_size: Default is `1`.
-- pipeline_parallel_size: Default is `1`.
-- max_num_seqs: Default is `256`.
-- 🔥max_model_len: Default is `None`.
-- disable_custom_all_reduce: Default is `True`.
+- 🔥gpu_memory_utilization: GPU memory ratio, ranging from 0 to 1. Default is `0.9`.
+- 🔥tensor_parallel_size: Tensor parallelism size. Default is `1`.
+- pipeline_parallel_size: Pipeline parallelism size. Default is `1`.
+- max_num_seqs: Maximum number of sequences to be processed in a single iteration. Default is `256`.
+- 🔥max_model_len: Default is `None`, meaning it will be read from `config.json`.
+- disable_custom_all_reduce: Disables the custom all-reduce kernel and falls back to NCCL. For stability, the default is `True`.
 - enforce_eager: Determines whether vllm uses PyTorch eager mode or constructs a CUDA graph, default is `False`. Setting it to True can save memory but may affect efficiency.
 - 🔥limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--limit_mm_per_prompt '{"image": 5, "video": 2}'`.
 - vllm_max_lora_rank: Default is `16`. This is the parameter supported by vllm for lora.
 - vllm_quantization: vllm is able to quantize model with this argument，supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 - enable_prefix_caching: Enable the automatic prefix caching of vllm to save processing time for querying repeated prefixes. The default is `False`.
 - use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
+
+### SGLang Arguments
+Parameter meanings can be found in the [sglang documentation](https://docs.sglang.ai/backend/server_arguments.html).
+
+- sglang_tp_size: Tensor parallelism size. Default is 1.
+- sglang_pp_size: Pipeline parallelism size. Default is 1.
+- sglang_dp_size: Data parallelism size. Default is 1.
+- sglang_ep_size: Expert parallelism size. Default is 1.
+- sglang_mem_fraction_static: The fraction of GPU memory used for static allocation (model weights and KV cache memory pool). If you encounter out-of-memory errors, try reducing this value. Default is None.
+- sglang_context_length: The maximum context length of the model. Default is None, which means it will use the value from the model's `config.json`.
+- sglang_disable_cuda_graph: Disables CUDA graph. Default is False.
+- sglang_quantization: Quantization method. Default is None.
+- sglang_kv_cache_dtype: Data type for KV cache storage. 'auto' means it will use the model's data type. 'fp8_e5m2' and 'fp8_e4m3' are supported on CUDA 11.8 and above. Default is 'auto'.
+- sglang_enable_dp_attention: Enables data parallelism for attention and tensor parallelism for FFN. The data parallelism size (dp size) should be equal to the tensor parallelism size (tp size). Currently supports DeepSeek-V2/3 and Qwen2/3 MoE models. Default is False.
+- sglang_disable_custom_all_reduce: Disables the custom all-reduce kernel and falls back to NCCL. For stability, the default is True.
+
+### LMDeploy Arguments
+
+Parameter meanings can be found in the [lmdeploy documentation](https://lmdeploy.readthedocs.io/en/latest/api/pipeline.html#turbomindengineconfig).
+
+- 🔥tp: tensor parallelism degree. Default is `1`.
+- session_len: Maximum session length. Default is `None`.
+- cache_max_entry_count: The percentage of GPU memory occupied by the k/v cache. Default is `0.8`.
+- quant_policy: Default is `0`. Set it to `4` or `8` when quantizing k/v to 4-bit or 8-bit, respectively.
+- vision_batch_size: The `max_batch_size` parameter passed to `VisionConfig`. Default is `1`.
 
 ### Merge Arguments
 
@@ -519,7 +534,7 @@ Soft overlong reward parameters:
 
 Inference arguments include the [base arguments](#base-arguments), [merge arguments](#merge-arguments), [vLLM arguments](#vllm-arguments), [LMDeploy arguments](#LMDeploy-arguments), and also contain the following:
 
-- 🔥infer_backend: Inference acceleration backend, supporting three inference engines: 'pt', 'vllm', and 'lmdeploy'. The default is 'pt'.
+- 🔥infer_backend: Inference acceleration backend, supporting four inference engines: 'pt', 'vllm', 'sglang', and 'lmdeploy'. The default is 'pt'.
 - 🔥max_batch_size: Effective when infer_backend is set to 'pt'; used for batch inference, with a default value of 1. If set to -1, there is no restriction.
 - 🔥result_path: Path to store inference results (jsonl). The default is None, meaning results are saved in the checkpoint directory (with args.json file) or './result' directory. The final storage path will be printed in the command line.
   - Note: If the `result_path` file already exists, it will be appended to.
