@@ -1,6 +1,6 @@
 CUDA_VISIBLE_DEVICES=0,1 \
 swift infer \
-    --model /mnt/data/jintao/.cache/modelscope/models/Qwen/Qwen2___5-72B-Instruct/ \
+    --model Qwen/Qwen3-8B \
     --infer_backend sglang \
     --stream true \
     --max_new_tokens 2048 \
