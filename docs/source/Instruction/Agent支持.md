@@ -13,6 +13,7 @@
 - `{"role": "tool_call", ...}`部分将根据agent_template自动转成对应格式的`{"role": "assistant", ...}`，多条连续的`{"role": "assistant", ...}`将拼接在一起组成完整的assistant_content。
 - `{"role": "tool_response", ...}`也可以写成`{"role": "tool", ...}`，这两种写法是等价的。该部分也将根据`agent_template`自动转换格式。该部分在训练时将不进行损失的计算，角色类似于`{"role": "user", ...}`。
 - 该格式支持并行调用工具，例子参考第一条数据样本。多模态Agent数据样本中`<image>`标签数量应与"images"长度相同，其标签位置代表图像特征的插入位置。当然也支持其他模态，例如audios, videos。
+- 注意：您也可以手动将数据处理为role为system/user/assistant的messages格式。agent_template的作用是将其中的tools字段以及role为tool_call和tool_response的messages部分，自动映射为标准的role为system/user/assistant的messages格式。
 
 以下为上述两条数据样本由qwen2_5和qwen2_5_vl的template进行encode后的input_ids和labels，选择的agent_template为**hermes**：
 

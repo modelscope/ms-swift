@@ -123,7 +123,7 @@ Running Environment:
 | modelscope   | >=1.23       |             |                                           |
 | peft | >=0.11,<0.16 | ||
 | trl | >=0.13,<0.19 | 0.18 |RLHF|
-| deepspeed    | >=0.14       | 0.14.5 / 0.16.9 | Training                                  |
+| deepspeed    | >=0.14       | 0.16.9 | Training                                  |
 | vllm         | >=0.5.1      | 0.8.5.post1       | Inference/Deployment/Evaluation           |
 | sglang |     | 0.4.6.post5 | Inference/Deployment/Evaluation |
 | lmdeploy     | >=0.5        | 0.8       | Inference/Deployment/Evaluation           |
