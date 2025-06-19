@@ -36,7 +36,7 @@ class TemplateArguments:
     max_pixels: Optional[int] = None
     agent_template: Optional[str] = None
     norm_bbox: Literal['norm1000', 'none', None] = None
-    use_chat_template: bool = True
+    use_chat_template: Optional[bool] = None
     # train
     padding_free: bool = False
     padding_side: Literal['left', 'right'] = 'right'
@@ -49,6 +49,8 @@ class TemplateArguments:
     def __post_init__(self):
         if self.template is None and hasattr(self, 'model_meta'):
             self.template = self.model_meta.template
+        if self.use_chat_template is None:
+            self.use_chat_template = True
         if self.system is not None:
             if self.system.endswith('.txt'):
                 assert os.path.isfile(self.system), f'self.system: {self.system}'
