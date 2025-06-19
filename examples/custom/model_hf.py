@@ -25,7 +25,7 @@ def get_function(model_dir: str,
                  model_kwargs: Dict[str, Any],
                  load_model: bool = True,
                  **kwargs):
-    # ref: https://github.com/modelscope/ms-swift/blob/1ceba3534ce6c81913e8184de9f7ca49b3e03c88/swift/llm/model/register.py#L182
+    # ref: https://github.com/modelscope/ms-swift/blob/main/swift/llm/model/register.py#L182
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
     tokenizer.pad_token_id = tokenizer.eos_token_id

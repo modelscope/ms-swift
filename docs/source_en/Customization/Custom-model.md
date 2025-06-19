@@ -1,6 +1,6 @@
 # Custom Model
 
-The models built into ms-swift can be used directly by specifying either `model_id` or `model_path`: `--model <model_id_or_path>`. ms-swift determines the `model_type` based on the suffix of `model_id/model_path` and the `config.json` file. 
+The models built into ms-swift can be used directly by specifying either `model_id` or `model_path`: `--model <model_id_or_path>`. ms-swift determines the `model_type` based on the suffix of `model_id/model_path` and the `config.json` file.
 
 Each `model_type` has a unique model structure, template, and loading method. Of course, you can also manually override these by passing `--model_type` and `--template`. You can check the supported `model_type` and templates in the [Supported Models and Datasets](../Instruction/Supported-models-and-datasets.md).
 
