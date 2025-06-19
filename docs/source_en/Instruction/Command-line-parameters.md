@@ -351,6 +351,7 @@ Parameter meanings can be found in the [sglang documentation](https://docs.sglan
 - sglang_quantization: Quantization method. Default is None.
 - sglang_kv_cache_dtype: Data type for KV cache storage. 'auto' means it will use the model's data type. 'fp8_e5m2' and 'fp8_e4m3' are supported on CUDA 11.8 and above. Default is 'auto'.
 - sglang_enable_dp_attention: Enables data parallelism for attention and tensor parallelism for FFN. The data parallelism size (dp size) should be equal to the tensor parallelism size (tp size). Currently supports DeepSeek-V2/3 and Qwen2/3 MoE models. Default is False.
+- sglang_disable_custom_all_reduce: Disables the custom all-reduce kernel and falls back to NCCL. For stability, the default is True.
 
 ### LMDeploy Arguments
 

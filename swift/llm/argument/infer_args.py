@@ -120,6 +120,7 @@ class SglangArguments:
     sglang_quantization: Optional[str] = None
     sglang_kv_cache_dtype: str = 'auto'
     sglang_enable_dp_attention: bool = False
+    sglang_disable_custom_all_reduce: bool = True
 
     def get_sglang_engine_kwargs(self):
         kwargs = {
@@ -134,6 +135,7 @@ class SglangArguments:
             'quantization': self.sglang_quantization,
             'kv_cache_dtype': self.sglang_kv_cache_dtype,
             'enable_dp_attention': self.sglang_enable_dp_attention,
+            'disable_custom_all_reduce': self.sglang_disable_custom_all_reduce,
         }
         return kwargs
 

@@ -40,6 +40,7 @@ class SglangEngine(InferEngine):
         quantization: Optional[str] = None,
         kv_cache_dtype: str = 'auto',
         enable_dp_attention: bool = False,
+        disable_custom_all_reduce: bool = True,
         log_level='error',
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
@@ -74,6 +75,7 @@ class SglangEngine(InferEngine):
             quantization=quantization,
             kv_cache_dtype=kv_cache_dtype,
             enable_dp_attention=enable_dp_attention,
+            disable_custom_all_reduce=disable_custom_all_reduce,
             log_level=log_level,
             **engine_kwargs,
         )
