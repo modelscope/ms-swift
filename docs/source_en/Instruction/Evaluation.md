@@ -82,7 +82,7 @@ swift eval \
 Where:
 - model: Can specify a local model path or a model ID on modelscope
 - eval_backend: Options are Native, OpenCompass, VLMEvalKit; default is Native
-- infer_backend: Options are pt, vllm, lmdeploy; default is pt
+- infer_backend: Options are pt, vllm, sglang, lmdeploy; default is pt
 - eval_limit: Sample size for each evaluation set; default is None, which means using all data; can be used for quick validation
 - eval_dataset: Evaluation dataset(s); multiple datasets can be set, separated by spaces
 

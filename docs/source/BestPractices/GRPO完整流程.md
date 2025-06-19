@@ -86,17 +86,26 @@ orms['external_countdown'] = CountdownORM
 首先贴上GRPO的公式：
 
 $$
+{\scriptstyle
 \begin{aligned}
 \mathcal{J}_{G R P O}(\theta) & =\mathbb{E}\left[q \sim P(Q),\left\{o_i\right\}_{i=1}^G \sim \pi_{\theta_{o l d}}(O \mid q)\right] \\
 & \frac{1}{G} \sum_{i=1}^G \frac{1}{\left|o_i\right|} \sum_{t=1}^{\left|o_i\right|}\left\{\min \left[\frac{\pi_\theta\left(o_{i, t} \mid q, o_{i,<t}\right)}{\pi_{\theta_{o l d}}\left(o_{i, t} \mid q, o_{i,<t}\right)} \hat{A}_{i, t}, \operatorname{clip}\left(\frac{\pi_\theta\left(o_{i, t} \mid q, o_{i,<t}\right)}{\pi_{\theta_{o l d}}\left(o_{i, t} \mid q, o_{i,<t}\right)}, 1-\varepsilon, 1+\varepsilon\right) \hat{A}_{i, t}\right]-\beta \mathbb{D}_{K L}\left[\pi_\theta| | \pi_{r e f}\right]\right\}
 \end{aligned}
+}
 $$
+
 ### 训练参数：
 我们选取 Qwen2.5-3B-Instruct 作为基础模型进行训练，选取 Instruct 而不是基模的主要原因是可以更快地获取 format reward。我们在三卡 GPU 上进行实验，因此vllm的推理部署在最后一张卡上，而进程数设置为2，在剩下两张卡上进行梯度更新。
 
 由于任务较为简单，我们设置 max_completion_length 和 vllm_max_model_len 为1024，如果有更复杂的任务，可以适当加大模型输出长度，但请注意，**这两个参数越大，模型训练需要的显存越多，训练速度越慢，单个step的训练时间与max_completion_length呈现线性关系**。
 
-在我们的实验中，总batch_size为 $num\_processes \times per\_device\_train\_batch\_size \times gradient\_accumulation\_steps = 2 \times 8 \times 8 = 128$。 注意，这里单卡batch_size设置也与显存息息相关，请根据显存上限设置一个合适的值。 同时，还有一个公式，即总的steps数量 :$num\_steps = epochs \times len(datasets) \times num\_generations \div batch\_size $，需要根据这个来合理规划训练的学习率和warmup设置。
+在我们的实验中，总batch_size为
+
+```
+num_processes * per_device_train_batch_size * gradient_accumulation_steps = 2 * 8 * 8 = 128
+```
+
+注意，这里单卡batch_size设置也与显存息息相关，请根据显存上限设置一个合适的值。 同时，还有一个公式，即总的steps数量 :$num\_steps = epochs \times len(datasets) \times num\_generations \div batch\_size $，需要根据这个来合理规划训练的学习率和warmup设置。
 
 最后比较重要的设置是学习率和 beta，学习率比较好理解，而beta则是是以上公式的 $\beta$，即KL散度的梯度的权重。这两个参数设置的越大，模型收敛原则上更快，但训练往往会不稳定。经过实验，我们分别设置为 `5e-7` 和 `0.001`。在实际训练中，请根据是否出现不稳定的震荡情况适当调整这两个参数。
 
