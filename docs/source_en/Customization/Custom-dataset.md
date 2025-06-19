@@ -185,6 +185,7 @@ Here are example data samples for a text-only Agent and a multimodal Agent:
 - The `{"role": "tool_call", ...}` part will automatically be converted into corresponding formats of `{"role": "assistant", ...}` based on the `agent_template`. Multiple consecutive `{"role": "assistant", ...}` entries will be concatenated to form a complete assistant_content.
 - The `{"role": "tool_response", ...}` can also be written as `{"role": "tool", ...}`, these two forms are equivalent. This part will also be automatically converted according to the `agent_template`. During training, this part does not participate in loss calculations, similar to `{"role": "user", ...}`.
 - This format supports parallel tool calls; refer to the first data sample for an example. In multimodal Agent data samples, the number of `<image>` tags should match the length of "images", and their positions indicate where the image features are inserted. It also supports other modalities, such as audios and videos.
+- Note: You can also manually process the data into the messages format with roles set to system, user, or assistant. The purpose of agent_template is to automatically map the tools field and the messages with roles tool_call and tool_response into the standard messages format with roles system, user, and assistant.
 - For more details, please refer to [Agent Documentation](../Instruction/Agent-support.md).
 
 
