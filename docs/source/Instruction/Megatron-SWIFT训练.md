@@ -83,6 +83,8 @@ megatron sft \
 ```
 
 最后，将Megatron格式权重转为HF格式：
+- 注意：`--mcore_model`请指向`iter_xxx`的上级目录。默认会使用`latest_checkpointed_iteration.txt`中对应的checkpoint。
+
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
