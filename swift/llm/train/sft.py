@@ -11,8 +11,7 @@ from swift.utils import (append_to_jsonl, get_logger, get_model_parameter_info, 
                          use_torchacc)
 from ..argument import TrainArguments
 from ..base import SwiftPipeline
-from ..dataset import (EncodePreprocessor, GetLengthPreprocessor, IterablePackingDataset, LazyLLMDataset,
-                       PackingDataset, load_dataset)
+from ..dataset import EncodePreprocessor, IterablePackingDataset, LazyLLMDataset, PackingDataset, load_dataset
 from ..infer import prepare_generation_config
 from .tuner import TunerMixin
 
@@ -205,9 +204,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self.callbacks = callbacks
 
     def _stat_dataset(self, dataset: Union[HfDataset, PackingDataset]):
-        args = self.args
         if isinstance(dataset, HfDataset):
-            dataset = GetLengthPreprocessor()(dataset, num_proc=args.dataset_num_proc)
             length = dataset['length']
         else:
             length = dataset.packed_dataset.length_list

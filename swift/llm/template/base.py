@@ -370,7 +370,6 @@ class Template(ProcessorMixin):
         anchor_encoded = self._encode_truncated(anchor)
         for key in anchor_encoded:
             _encoded[f'anchor_{key}'] = anchor_encoded[key]
-
         positive = deepcopy(inputs)
         positive.messages[-2]['content'] = positive.messages[-1]['content']
         positive.messages[-1]['content'] = ''
@@ -446,9 +445,18 @@ class Template(ProcessorMixin):
             encoded = self._embedding_encode(inputs)
         if inputs.channel is not None:
             encoded['channel'] = inputs.channel
+
+        lengths = [0]
         for key in list(encoded.keys()):
             if encoded[key] is None:
                 encoded.pop(key)
+            elif key.endswith('length'):
+                value = encoded[key]
+                if isinstance(value, int):
+                    lengths.append(value)
+                elif isinstance(value, (tuple, list)):
+                    lengths += value
+        encoded['length'] = max(lengths)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         return encoded
@@ -461,6 +469,8 @@ class Template(ProcessorMixin):
         for key in keys:
             if key in {'input_ids', 'labels', 'loss_scale'}:
                 packed[key] = sum((x[0][key] for x in row), start=[])
+            elif key == 'length':
+                packed[key] = sum((x[0][key] for x in row))
         if 'position_ids' not in packed:
             packed['position_ids'] = sum((list(range(x[1])) for x in row), start=[])
 
@@ -1057,6 +1067,16 @@ class Template(ProcessorMixin):
         input_ids = encoded.get('input_ids')
         labels = encoded.get('labels')
         loss_scale = encoded.get('loss_scale')
+
+        # input_ids might be a tensor.
+        lengths = [0]
+        if input_ids is not None:
+            lengths.append(len(input_ids))
+        if labels is not None:
+            lengths.append(len(labels))
+        length = max(lengths)
+        encoded['length'] = length
+
         if self.max_length is not None:
             if self.truncation_strategy == 'right':
                 input_ids = input_ids[:self.max_length]
@@ -1078,13 +1098,6 @@ class Template(ProcessorMixin):
                 if loss_scale is not None:
                     loss_scale = loss_scale[-self.max_length:]
             elif self.truncation_strategy == 'raise':
-                # input_ids might be a tensor.
-                lengths = [0]
-                if input_ids is not None:
-                    lengths.append(len(input_ids))
-                if labels is not None:
-                    lengths.append(len(labels))
-                length = max(lengths)
                 if length > self.max_length:
                     raise MaxLengthError(f'Current length of row({length}) is larger'
                                          f' than the max_length({self.max_length}).')
