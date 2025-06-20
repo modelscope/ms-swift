@@ -46,13 +46,13 @@ class MathTipsScheduler(MultiTurnScheduler):
 
     def check_finished(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice,
                        current_turn: int) -> bool:
-        completion = result.message.content
+        last_completion = infer_request.messages[-1]['content']
         # we only give tips once
-        if self.tips_prompt in completion:
+        if self.tips_prompt in last_completion:
             return True
         solution = infer_request.data_dict['solution']
 
-        acc = self.acc_func([completion], [solution])[0]
+        acc = self.acc_func([last_completion], [solution])[0]
         if acc == 1:
             return True
 

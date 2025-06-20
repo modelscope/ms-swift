@@ -17,6 +17,7 @@ from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import datasets
+import swanlab
 import torch
 import torch.nn as nn
 import transformers
@@ -459,13 +460,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if mode in {'vllm', 'pt', 'lmdeploy'}:
             template.set_mode('train')
         template.max_length = None
-        loss_scale = template.loss_scale
-        if self.multi_turn_scheduler:
-            template.loss_scale = loss_scale_map['default']()
         try:
             yield
         finally:
-            template.loss_scale = loss_scale
             template.set_mode(mode)
             template.max_length = max_length
 
@@ -727,7 +724,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         if stop:
                             outputs[index] = (_input['messages'], _input['finish_reason'])
                         else:
-                            current_request = self.inputs_to_rolloutrequest([current_inputs])[0]
+                            current_request = self.inputs_to_rolloutrequest([_input])[0]
                             infer_request = self.multi_turn_scheduler.step(current_request, result.choices[0],
                                                                            current_turn)
                             pending_input = asdict(infer_request)
@@ -1376,6 +1373,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         with profiling_context(self, 'generate'):
             if self.vllm_mode == 'server':
                 request_keys = ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
+
                 infer_requests = [{
                     **{k: request[k]
                        for k in request_keys if k in request},
@@ -1384,6 +1382,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                       for k in request if k not in request_keys}
                     } if self.multi_turn_scheduler and self.vllm_use_async_engine else {})
                 } for request in infer_requests]
+
                 self._process_infer_requests_images(infer_requests)
                 return self.vllm_client.infer(infer_requests, asdict(request_config), use_tqdm=use_tqdm)
             else:
@@ -1568,14 +1567,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         request_keys = ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
         infer_requests = [
-            RolloutInferRequest({
-                **{k: request[k]
-                   for k in request_keys if k in request},
+            RolloutInferRequest(
                 **{
-                    'data_dict': {k: request[k]
-                                  for k in request if k not in request_keys}
-                }
-            }) for request in inputs
+                    **{k: request[k]
+                       for k in request_keys if k in request}, 'data_dict':
+                    {k: request[k]
+                     for k in request if k not in request_keys}
+                }) for request in inputs
         ]
 
         return infer_requests

@@ -3,7 +3,8 @@
 #     --model Qwen/Qwen2.5-7B-Instruct \
 #     --data_parallel_size 2 \
 #     --use_async_engine true \
-#     --multi_turn_scheduler math_tip_trick
+#     --multi_turn_scheduler math_tip_trick_multi_turn \
+#     --max_turns 3
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
 NPROC_PER_NODE=6 \
@@ -38,4 +39,5 @@ swift rlhf \
     --num_iterations 1 \
     --report_to tensorboard wandb \
     --beta 0.04 \
-    --multi_turn_scheduler math_tip_trick
+    --multi_turn_scheduler math_tip_trick_multi_turn \
+    --max_turns 3

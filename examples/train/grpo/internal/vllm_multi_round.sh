@@ -38,4 +38,5 @@ swift rlhf \
     --offload_model true \
     --gc_collect_after_offload true \
     --sleep_level 1 \
-    --multi_turn_scheduler math_tip_trick
+    --multi_turn_scheduler math_tip_trick_multi_turn \
+    --max_turns 3
