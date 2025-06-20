@@ -446,7 +446,7 @@ class Template(ProcessorMixin):
         if inputs.channel is not None:
             encoded['channel'] = inputs.channel
 
-        lengths = []
+        lengths = [0]
         for key in list(encoded.keys()):
             if encoded[key] is None:
                 encoded.pop(key)
@@ -456,8 +456,7 @@ class Template(ProcessorMixin):
                     lengths.append(value)
                 elif isinstance(value, (tuple, list)):
                     lengths += value
-        if lengths:
-            encoded['length'] = max(lengths)
+        encoded['length'] = max(lengths)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         return encoded
