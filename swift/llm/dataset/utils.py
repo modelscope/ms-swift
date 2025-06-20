@@ -183,8 +183,7 @@ class IndexedDatasetBuilder:
                 item_buffer = pickle.dumps(item)
                 bin_buffer.append(item_buffer)
                 self.idx_list.append(self.idx_list[-1] + len(item_buffer))
-                self.length_list.append(
-                    max([len(item[k]) for k in item.keys() if k.endswith('input_ids') or k.endswith('labels')]))
+                self.length_list.append(item['length'])
             self.bin_file.write(b''.join(bin_buffer))
             offset = self.idx_list[-1] - self.shard_offset[-1]
             if offset >= self.CHUNK_SIZE:
@@ -328,7 +327,7 @@ class PackingDataset(BasePackingDataset, Dataset):
                 continue
             self.prog_bar.update(1)
             if data:
-                res.append((data, len(data['input_ids'])))
+                res.append((data, data['length']))
         return res
 
     def packing_dataset(self):
