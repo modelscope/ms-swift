@@ -103,8 +103,8 @@ class MegatronTrainer:
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         with self._training_context():
-            data_iterator = self._replace_data_iterator(data_iterator)
-            return self._origin_train_step(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler,
+            new_data_iterator = self._replace_data_iterator(data_iterator)
+            return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
                                            config)
 
     # Code borrowed from NVIDIA/Megatron-LM
@@ -154,10 +154,10 @@ class MegatronTrainer:
                 # Don't care about timing during evaluation
                 config.timers = None
                 ft_integration.on_eval_step_start()
-                data_iterator = self._replace_data_iterator(data_iterator)
+                new_data_iterator = self._replace_data_iterator(data_iterator)
                 loss_dicts = forward_backward_func(
                     forward_step_func=forward_step_func,
-                    data_iterator=data_iterator,
+                    data_iterator=new_data_iterator,
                     model=model,
                     num_microbatches=eval_num_microbatches,
                     seq_length=args.seq_length,
