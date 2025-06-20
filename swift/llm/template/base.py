@@ -328,7 +328,6 @@ class Template(ProcessorMixin):
             data = locals()[f'{prefix}_encoded']
             for k, v in data.items():
                 encoded[f'{prefix}_{k}'] = v
-        encoded['length'] = max(encoded['chosen_length'], encoded['rejected_length'])
         return encoded
 
     def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -395,8 +394,6 @@ class Template(ProcessorMixin):
             labels.append(0.0)
 
         _encoded['labels'] = labels
-        _encoded['length'] = max(_encoded['anchor_length'], _encoded['positive_length'],
-                                 *[len(x) for x in _encoded.pop('negative_length', [])])
         return _encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -448,9 +445,18 @@ class Template(ProcessorMixin):
             encoded = self._embedding_encode(inputs)
         if inputs.channel is not None:
             encoded['channel'] = inputs.channel
+
+        lengths = []
         for key in list(encoded.keys()):
             if encoded[key] is None:
                 encoded.pop(key)
+            elif key.endswith('length'):
+                value = encoded[key]
+                if isinstance(value, int):
+                    lengths.append(value)
+                elif isinstance(value, (tuple, list)):
+                    lengths += value
+        encoded['length'] = max(lengths)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         return encoded
