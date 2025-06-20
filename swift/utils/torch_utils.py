@@ -368,8 +368,8 @@ class Serializer:
 
 def set_default_ddp_config():
     # It runs normally with Python as well.
-    rank = int(os.getenv('RANK', -1))
-    if rank == -1:
+    rank, local_rank, _, _ = get_dist_setting()
+    if rank == -1 or local_rank == -1:
         os.environ['NPROC_PER_NODE'] = '1'
         os.environ['RANK'] = '0'
         os.environ['LOCAL_RANK'] = '0'
