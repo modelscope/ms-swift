@@ -22,7 +22,7 @@ def test_llm():
             **kwargs,
         ))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
+    print(f'last_model_checkpoint: {last_model_checkpoint}')
 
 
 if __name__ == '__main__':

@@ -395,9 +395,8 @@ class Template(ProcessorMixin):
             labels.append(0.0)
 
         _encoded['labels'] = labels
-        _encoded['length'] = max(
-            _encoded.pop('anchor_length', 0), _encoded.pop('positive_length', 0),
-            *[len(x) for x in _encoded.pop('negative_length', [])])
+        _encoded['length'] = max(_encoded['anchor_length'], _encoded['positive_length'],
+                                 *[len(x) for x in _encoded.pop('negative_length', [])])
         return _encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
