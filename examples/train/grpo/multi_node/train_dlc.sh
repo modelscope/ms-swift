@@ -1,8 +1,8 @@
 # This script is used in DLC (Deep Learning Containers)
-# For more information, visit:https://www.aliyun.com/activity/bigdata/pai-dlc
+# For more information, visit: https://www.aliyun.com/activity/bigdata/pai-dlc
+# https://help.aliyun.com/zh/pai/user-guide/general-environment-variables
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
-PYTHONPATH=. \
 torchrun \
     --nproc_per_node=8 \
     --nnodes=${WORLD_SIZE} \

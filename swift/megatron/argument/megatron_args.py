@@ -264,7 +264,10 @@ class MegatronArguments(ExtraMegatronArguments):
         extra_megatron_kwargs = args_dict.pop('extra_megatron_kwargs')
         args_dict.update(extra_megatron_kwargs)
         use_core_011 = version.parse(megatron.core.__version__) < version.parse('0.12')
-        core_012_arguments = {'recompute_modules', 'moe_router_dtype', 'cross_entropy_fusion_impl', 'moe_enable_deepep'}
+        core_012_arguments = {
+            'recompute_modules', 'moe_router_dtype', 'cross_entropy_fusion_impl', 'moe_enable_deepep',
+            'optimizer_offload_fraction'
+        }
         for k, value in args_dict.items():
             if k not in MegatronArguments.__annotations__ and k not in extra_megatron_kwargs:
                 extra_args[k] = value
