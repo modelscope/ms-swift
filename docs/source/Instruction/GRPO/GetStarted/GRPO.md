@@ -1,5 +1,202 @@
 # GRPO
 
+**更新日志**
+- **2025-06-21** - 多轮训练重构并支持AsyncEngine，参考[文档](../DeveloperGuide/多轮训练.md)
+- **2025-05-29** — 支持了padding_free(--padding_free true)和序列并行(--sequence_parallel_size N)。
+- **2025-05-23** — 支持自定义采样批量大小，参考 generation_batch_size / steps_per_generation 参数。
+- **2025-05-22** — swift rollout 支持 data_parallel_size 参数。
+- **2025-05-16** - 增加 ref_model 同步逻辑，参考参数 sync_ref_model。
+- **2025-05-13** — 为了代码的可读性和维护性， GRPOTrainer代码重构，Internal mode 支持vLLM>=0.8。
+- **2025-05-11** — 支持生成式奖励模型，通过 reward_model_plugin 自定义奖励模型逻辑。有关更多详细信息，请参阅[文档](../DeveloperGuide/奖励模型)部分。
+- **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`。
+
+
+
 [GRPO(Group Relative Policy Optimization)](https://arxiv.org/abs/2402.03300) 算法利用组内相对优势计算来替代 PPO 算法中独立的价值模型，并直接在损失函数中加入 KL 散度惩罚来提高训练稳定性。
 
-<img src="../../../../resources/PPOverseGRPO.png" alt="PPO/GRPO算法比较" width="600" />
+
+GRPO 目标函数
+$$
+{\scriptstyle
+\begin{aligned}
+\mathcal{J}_{G R P O}(\theta) & =\mathbb{E}_{\left[q \sim P(Q),\left\{o_i\right\}_{i=1}^G \sim \pi_{\theta_{o l d}}(O \mid q)\right]} \\
+& \frac{1}{G} \sum_{i=1}^G \frac{1}{\left|o_i\right|} \sum_{t=1}^{\left|o_i\right|}\left\{\min \left[\frac{\pi_\theta\left(o_{i, t} \mid q, o_{i,<t}\right)}{\pi_{\theta_{o l d}}\left(o_{i, t} \mid q, o_{i,<t}\right)} \hat{A}_{i, t}, \operatorname{clip}\left(\frac{\pi_\theta\left(o_{i, t} \mid q, o_{i,<t}\right)}{\pi_{\theta_{o l d}}\left(o_{i, t} \mid q, o_{i,<t}\right)}, 1-\varepsilon, 1+\varepsilon\right) \hat{A}_{i, t}\right]-\beta \mathbb{D}_{K L}\left[\pi_\theta| | \pi_{r e f}\right]\right\}
+\end{aligned}
+}
+$$
+
+其中优势函数定义为
+$$
+\hat{A}_{i,t} = \frac{R_i - \text{mean}(\{R_j\}_{j=1}^G)}{\text{std}(\{R_j\}_{j=1}^G)}
+$$
+
+
+<details> <summary>GRPO算法伪代码</summary>
+
+```python
+# ========== 1. Rollout Generation Phase ==========
+prompt = "Question: Which is bigger? 9.11 or 9.9?"
+
+# Generate multiple completions through parallel sampling
+completions = rollout_function(
+    model=current_policy_model,
+    prompt=prompt,
+    num_generations=8,  # Hyperparameter: number of samples per prompt
+    temperature=1.0     # Hyperparameter: sampling diversity
+)
+"""
+completions = [
+    (completion 1) "The larger number is 9.11...",
+    (completion 2) "9.9 is bigger than...",
+    ...
+    (completion 8) "After calculation, 9.11..."
+]
+"""
+
+# ========== 2. Reward Calculation Phase ==========
+# Evaluate generated completions using reward model
+rewards = reward_function(
+    completions=completions,
+    ground_truth="9.11"  # Expected correct answer
+)
+"""
+rewards = [
+    (reward 1) 1.0,  # Correct answer
+    (reward 2) 0.0,  # Incorrect
+    ...
+    (reward 8) 1.0   # Correct
+]
+"""
+
+# Normalize rewards to advantages
+rewards_mean = mean(rewards)  # μ = 0.5
+rewards_std = std(rewards)    # σ = 0.25
+advantages = (rewards - rewards_mean) / (rewards_std + 1e-8)  # Standardization
+"""
+advantages = [
+    (advantage 1)  2.0,  # (1.0 - 0.5)/0.25
+    (advantage 2) -2.0,
+    ...
+    (advantage 8)  2.0
+]
+"""
+
+# ========== 3. Policy Optimization Phase ==========
+# Get token-level log probabilities from different models
+current_logps = get_per_token_logps(current_policy_model, prompt, completions)  # π_θ
+old_logps = get_per_token_logps(old_policy_model, prompt, completions)          # π_θ_old
+ref_logps = get_per_token_logps(reference_model, prompt, completions)           # π_ref
+
+# PPO Clipped Objective
+is_ratio = exp(current_logps - old_logps)  # Importance sampling ratio: e^(π_θ - π_θ_old)
+clipped_ratio = clip(is_ratio, 1-ε, 1+ε)   # ε=0.2 typically
+
+# Policy gradient term (dual form)
+policy_loss = -mean(
+    minimum(is_ratio * advantages,       # Unclipped objective
+           clipped_ratio * advantages)  # Clipped objective
+)
+
+# KL Divergence Penalty (K3 estimator)
+# KL(π_θ||π_ref) ≈ e^(logπ_ref - logπ_θ) - (logπ_ref - logπ_θ) - 1
+kl_penalty = beta * mean(
+    exp(ref_logps - current_logps) -
+    (ref_logps - current_logps) - 1
+)
+
+# Total Loss = Policy Loss + KL Penalty
+total_loss = policy_loss + kl_penalty
+
+# ========== 4. Update Rule ==========
+# Apply gradient descent to minimize total_loss
+optimizer.zero_grad()
+total_loss.backward()
+optimizer.step()
+```
+</details>
+
+训练脚本示例参考[examples](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo)
+
+GROP参数参考[文档](../../../Instruction/命令行参数.md#grpo参数)
+
+## 集群支持
+
+![](../../resources/grpo.png)
+
+GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样过程，提供以下两种部署模式：
+
+### 1. Colocate(Internal) Mode
+
+- 训练与推理共享GPU资源，在 Trainer 内部启动推理服务，
+
+启动参数
+```bash
+--use_vllm true \
+--vllm_mode colocate
+```
+
+#### Colocate 模式下的显存优化方案
+在 Colocate 模式下运行时，容易出现显存不足（OOM）的情况。以下是几种有效的显存优化方法和参数配置：
+
+1. 降低`vllm_gpu_memory_utilization` 参数
+
+
+2. 在训练阶段，释放 vLLM 占用的显存：
+
+```bash
+--sleep_level 1
+```
+
+3. 在vLLM 推理阶段，释放模型和优化器占用的显存：
+
+```bash
+--offload_optimizer true \
+--offload_model true \
+--gc_collect_after_offload true \
+```
+
+4. 在vLLM中使用 Tensor Parallel 技术：
+
+```bash
+--vllm_tensor_parallel_size [tp_size]
+```
+
+5. 分批 Gather 模型权重（zero3下同步 vLLM 权重时）：
+
+```bash
+--move_model_batches [批次数量]
+```
+
+### 2. Async(External) Mode
+
+- 训练与推理资源分离，启动单独的推理服务器
+
+使用`swift rollout`命令部署vLLM 服务器, 现仅支持vLLM backend
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+  --data_parallel_size 1
+
+CUDA_VISIBLE_DEVICES=0,1 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+  --data_parallel_size 1
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift rollout \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --tensor_parallel_size 2 \
+  --data_parallel_size 2
+```
+
+训练使用以下参数配置外部 vLLM 服务器
+```bash
+--use_vllm true \
+--vllm_mode server \
+--vllm_server_host <服务器IP> \
+--vllm_server_port <服务端口> \
+--vllm_server_timeout <超时时间> \
+```
