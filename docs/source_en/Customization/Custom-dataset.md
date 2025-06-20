@@ -109,7 +109,11 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 
 ### Embedding
 
-Please refer to [embedding训练文档](../BestPractices/Embedding.md#dataset-format).
+Please refer to [Embedding training document](../BestPractices/Embedding.md#dataset-format).
+
+### Reranker
+
+Please refer to [Reranker training document](../BestPractices/Reranker.md#dataset-format).
 
 ### Multimodal
 

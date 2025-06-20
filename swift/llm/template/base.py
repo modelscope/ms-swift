@@ -389,6 +389,21 @@ class Template(ProcessorMixin):
         _encoded['labels'] = labels
         return _encoded
 
+    def _reranker_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        """
+        Encode inputs for reranker training. 
+        Since data is already flattened in preprocessing stage with labels assigned,
+        we can simply treat it as a binary classification task.
+        """
+        # 直接使用标准的编码流程，数据已经在预处理阶段展开了
+        encoded = self._encode_truncated(inputs)
+        encoded.pop('labels', None)  # 移除原有的labels
+        
+        if inputs.label is not None:
+            # Reranker是固定的二分类任务，直接转为int即可
+            encoded['labels'] = int(inputs.label)
+        return encoded
+
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode_truncated(inputs)
         encoded.pop('labels', None)
@@ -434,6 +449,8 @@ class Template(ProcessorMixin):
             encoded = self._kto_encode(inputs)
         elif self.mode == 'embedding':
             encoded = self._embedding_encode(inputs)
+        elif self.mode in ['reranker', 'generative_reranker']:
+            encoded = self._reranker_encode(inputs)
         if inputs.channel is not None:
             encoded['channel'] = inputs.channel
         for key in list(encoded.keys()):
@@ -1192,7 +1209,7 @@ class Template(ProcessorMixin):
     def is_training(self):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
-    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto']) -> None:
+    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto', 'embedding', 'reranker', 'generative_reranker']) -> None:
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -1244,6 +1261,8 @@ class Template(ProcessorMixin):
             return self._seq_cls_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'embedding':
             return self._embedding_data_collator(batch, padding_to=padding_to)
+        elif self.mode in ['reranker', 'generative_reranker']:
+            return self._reranker_data_collator(batch, padding_to=padding_to)
 
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:
@@ -1335,6 +1354,20 @@ class Template(ProcessorMixin):
         res = self._data_collator(new_batch, padding_to=padding_to)
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.float32)
+        return res
+    
+    def _reranker_data_collator(self,
+                                batch: List[Dict[str, Any]],
+                                *,
+                                padding_to: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Data collator for reranker training.
+        """
+        labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
+        res = self._data_collator(batch, padding_to=padding_to)
+        if labels:
+            # Reranker固定为二分类，直接转为long tensor
+            res['labels'] = torch.tensor(labels)
         return res
 
     def _seq_cls_data_collator(self,

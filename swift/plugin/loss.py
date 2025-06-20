@@ -22,6 +22,8 @@ class LossType:
     online_contrastive = 'online_contrastive'
     infonce = 'infonce'
     channel_loss = 'channel_loss'
+    reranker = 'reranker'
+    generative_reranker = 'generative_reranker'
 
 
 LOSS_MAPPING = {}
@@ -442,6 +444,73 @@ def channel_loss_func(outputs, labels, num_items_in_batch=None, sample_channels=
     return total_loss / num_items_in_batch if num_items_in_batch is not None \
         else total_loss / (total_tokens.float() + 1e-12)
 
+
+@register_loss_func(LossType.reranker)
+def reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+    logits = outputs.logits
+    logits = logits.squeeze(1)
+    labels = labels.to(logits.dtype)
+    loss_fct = nn.BCEWithLogitsLoss()
+    loss = loss_fct(logits, labels)
+    return loss
+
+@register_loss_func(LossType.generative_reranker)
+def generative_reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, trainer=None) -> torch.Tensor:
+    """
+    Generative reranker loss function.
+    
+    This loss function is designed for generative rerankers that use token probabilities
+    (e.g., "yes"/"no") to determine relevance scores. It only computes loss on the
+    last token position for specific tokens.
+    
+    Args:
+        outputs: Model outputs containing logits
+        labels: Binary labels (0/1) for irrelevant/relevant pairs
+        loss_scale: Not used for generative reranker
+        num_items_in_batch: Not used for generative reranker
+        trainer: Trainer instance to access tokenizer
+        
+    Returns:
+        torch.Tensor: Cross entropy loss for yes/no classification
+    """
+    if trainer is None:
+        raise ValueError("trainer is required for generative_reranker_loss to access tokenizer")
+    
+    logits = outputs.logits
+    tokenizer = trainer.processing_class
+    
+    # Extract the last position logits for each sequence
+    # Shape: [batch_size, vocab_size]
+    last_logits = logits[:, -1, :]
+    
+    # Get token IDs for positive and negative tokens
+    # Default to "yes"/"no", but can be configured via environment variables
+    positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
+    negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
+    
+    try:
+        positive_token_id = tokenizer.convert_tokens_to_ids(positive_token)
+        negative_token_id = tokenizer.convert_tokens_to_ids(negative_token)
+    except Exception as e:
+        raise ValueError(f"Failed to convert tokens '{positive_token}'/'{negative_token}' to IDs. "
+                        f"Please check if these tokens exist in the tokenizer vocabulary. Error: {e}")
+    
+    # Extract logits for positive and negative tokens
+    positive_logits = last_logits[:, positive_token_id]  # [batch_size]
+    negative_logits = last_logits[:, negative_token_id]  # [batch_size]
+    
+    # Stack to create binary classification logits
+    # Shape: [batch_size, 2] where dim=1 represents [negative, positive]
+    binary_logits = torch.stack([negative_logits, positive_logits], dim=1)
+    
+    # Convert labels to the correct device and type
+    binary_labels = labels.to(binary_logits.device).long()
+    
+    # Compute cross entropy loss
+    loss_fct = CrossEntropyLoss()
+    loss = loss_fct(binary_logits, binary_labels)
+    
+    return loss
 
 def get_loss_func(loss_type: Optional[str]) -> Optional[Callable]:
     if loss_type is None:

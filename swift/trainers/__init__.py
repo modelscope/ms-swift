@@ -20,7 +20,7 @@ if TYPE_CHECKING:
                                RewardTrainer, GRPOTrainer)
     from .rlhf_arguments import DPOConfig, CPOConfig, KTOConfig, ORPOConfig, PPOConfig, RewardConfig
     from .trainer_factory import TrainerFactory
-    from .trainers import Seq2SeqTrainer, Trainer, EmbeddingTrainer
+    from .trainers import Seq2SeqTrainer, Trainer, EmbeddingTrainer, RerankerTrainer
     from .mixin import SwiftMixin
 
 else:
@@ -34,7 +34,7 @@ else:
             'GRPOTrainer'
         ],
         'trainer_factory': ['TrainerFactory'],
-        'trainers': ['Seq2SeqTrainer', 'Trainer', 'EmbeddingTrainer'],
+        'trainers': ['Seq2SeqTrainer', 'Trainer', 'EmbeddingTrainer', 'RerankerTrainer'],
         'mixin': ['SwiftMixin'],
     }
 

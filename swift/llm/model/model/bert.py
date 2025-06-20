@@ -7,6 +7,7 @@ from transformers import AutoConfig, AutoModel
 from swift.utils import get_logger
 from ..constant import BertModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
+from swift.llm import TemplateType
 
 logger = get_logger()
 
@@ -55,6 +56,17 @@ register_model(
         get_model_tokenizer_gte_bert,
         requires=['transformers>=4.48'],
         tags=['bert', 'embedding']))
+
+register_model(
+    ModelMeta(
+        BertModelType.modern_bert_gte_reranker,
+        [ModelGroup([
+            Model('iic/gte-reranker-modernbert-base', 'Alibaba-NLP/gte-reranker-modernbert-base'),
+        ])],
+        TemplateType.bert,
+        get_model_tokenizer_from_local,
+        requires=['transformers>=4.48'],
+        tags=['bert', 'reranker']))
 
 register_model(
     ModelMeta(

@@ -78,7 +78,44 @@ class EmbeddingTrainer(Trainer):
             return calculate_infonce_metrics(eval_prediction.predictions, eval_prediction.label_ids)
         else:
             return calculate_paired_metrics(eval_prediction.predictions, eval_prediction.label_ids)
+        
+        
+class RerankerTrainer(Trainer):
 
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        # Check if we have a custom loss function
+        if self.compute_loss_func is not None:
+            from swift.plugin.loss import get_loss_func, LossType
+            loss_kwargs = {}
+            
+            # For generative_reranker_loss, always pass trainer to access tokenizer
+            if self.compute_loss_func == get_loss_func(LossType.generative_reranker):
+                loss_kwargs['trainer'] = self
+            
+            # Get labels and compute outputs
+            labels = inputs.get('labels')
+            if labels is not None:
+                labels = inputs.pop('labels')
+            
+            outputs = model(**inputs)
+            
+            if labels is not None:
+                # Call custom loss function
+                loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, **loss_kwargs)
+            else:
+                # Fallback to model's loss
+                loss = outputs.loss
+                
+            if num_items_in_batch is not None and self.model_accepts_loss_kwargs:
+                loss /= self.args.gradient_accumulation_steps
+            
+            if labels is not None:
+                self._compute_acc(outputs, labels)
+            
+            return (loss, outputs) if return_outputs else loss
+        else:
+            return super().compute_loss(model, inputs, return_outputs, num_items_in_batch)
+        
 
 class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
     args: Seq2SeqTrainingArguments
