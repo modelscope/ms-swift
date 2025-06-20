@@ -93,6 +93,7 @@ class LLMModelType:
     phi4 = 'phi4'
 
     minimax = 'minimax'
+    minimax_m1 = 'minimax_m1'
 
     gemma = 'gemma'
     gemma2 = 'gemma2'

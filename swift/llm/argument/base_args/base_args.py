@@ -246,6 +246,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'truncation_strategy',
             'agent_template',
             'norm_bbox',
+            'use_chat_template',
             'response_prefix',
         ]
 

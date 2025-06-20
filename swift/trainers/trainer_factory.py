@@ -22,7 +22,8 @@ class TrainerFactory:
         'cpo': 'swift.trainers.CPOTrainer',
         'rm': 'swift.trainers.RewardTrainer',
         'ppo': 'swift.trainers.PPOTrainer',
-        'grpo': 'swift.trainers.GRPOTrainer'
+        'grpo': 'swift.trainers.GRPOTrainer',
+        'gkd': 'swift.trainers.GKDTrainer',
     }
 
     TRAINING_ARGS_MAPPING = {
@@ -38,6 +39,7 @@ class TrainerFactory:
         'rm': 'swift.trainers.RewardConfig',
         'ppo': 'swift.trainers.PPOConfig',
         'grpo': 'swift.trainers.GRPOConfig',
+        'gkd': 'swift.trainers.GKDConfig',
     }
 
     @staticmethod

@@ -56,7 +56,7 @@ def _patch_training_log():
     from megatron.core.num_microbatches_calculator import get_num_microbatches
     from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory
 
-    # Code borrowed from megatron-lm
+    # Code borrowed from NVIDIA/Megatron-LM
     def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
                      report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad):
         """Log training information such as losses, timing, ...."""
@@ -203,7 +203,7 @@ def _patch_training_log():
         if args.mtp_num_layers is not None:
             mtp_loss_scale = 1 / get_num_microbatches()
             MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, iteration, writer, wandb_writer, total_loss_dict)
-        if iteration % args.log_interval == 0:
+        if iteration % args.log_interval == 0 or iteration == 1:
             if args.record_memory_history and is_last_rank():
                 snapshot = torch.cuda.memory._snapshot()
                 from pickle import dump

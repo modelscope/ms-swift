@@ -17,7 +17,7 @@ SWIFT has already supported the training of embedding models, including both pur
 
 Developers can integrate their own models by ensuring the model forward output satisfies:
 
-```json
+```text
 {"last_hidden_state": some-embedding-tensor}
 ```
 

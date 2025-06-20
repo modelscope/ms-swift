@@ -3,11 +3,8 @@ import math
 import os
 import platform
 from dataclasses import dataclass, field
-from functools import wraps
 from typing import List, Literal, Optional, Union
 
-import torch
-import torch.utils.checkpoint
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
@@ -52,6 +49,7 @@ class TrainArgumentsMixin:
     optimizer: Optional[str] = None
     use_logits_to_keep: Optional[bool] = None
     channels: List[str] = None
+    ds3_gather_for_generation: bool = True
 
     # torchacc
     metric_warmup_step: Optional[float] = 0
@@ -64,29 +62,6 @@ class TrainArgumentsMixin:
     eval_limit: Optional[int] = None
     eval_datasets_args: Optional[Union[str, dict]] = None
     eval_generation_config: Optional[Union[str, dict]] = None
-
-    def _fix_gradient_checkpointing(self):
-        # fix use_reentrant
-        if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
-            return
-        # Consistent with the default behavior of transformers.
-        use_reentrant_ = (
-            self.gradient_checkpointing_kwargs.get('use_reentrant', True)
-            if self.gradient_checkpointing_kwargs else True)
-        _old_checkpoint = torch.utils.checkpoint.checkpoint
-
-        @wraps(_old_checkpoint)
-        def _new_checkpoint(*args, use_reentrant=None, **kwargs):
-            return _old_checkpoint(*args, use_reentrant=use_reentrant_, **kwargs)
-
-        torch.utils.checkpoint._old_checkpoint = _old_checkpoint
-        torch.utils.checkpoint.checkpoint = _new_checkpoint
-        try:
-            # Fix the old version of transformers.
-            import transformers.modeling_utils
-            transformers.modeling_utils.checkpoint = _new_checkpoint
-        except (ImportError, AttributeError):
-            pass
 
     @staticmethod
     def _patch_liger_kernel():
@@ -129,7 +104,6 @@ class TrainArgumentsMixin:
             self.vit_gradient_checkpointing = self.gradient_checkpointing
         if self.gradient_checkpointing_kwargs:
             self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
-        self._fix_gradient_checkpointing()
         self._init_liger()
         if self.dataloader_num_workers is None:
             if platform.system() == 'Windows':

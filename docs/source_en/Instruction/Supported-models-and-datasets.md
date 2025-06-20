@@ -187,7 +187,6 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/Qwen3-4B-Base](https://modelscope.cn/models/Qwen/Qwen3-4B-Base)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-4B-Base](https://huggingface.co/Qwen/Qwen3-4B-Base)|
 |[Qwen/Qwen3-8B-Base](https://modelscope.cn/models/Qwen/Qwen3-8B-Base)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-8B-Base](https://huggingface.co/Qwen/Qwen3-8B-Base)|
 |[Qwen/Qwen3-14B-Base](https://modelscope.cn/models/Qwen/Qwen3-14B-Base)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-14B-Base](https://huggingface.co/Qwen/Qwen3-14B-Base)|
-|[Qwen/Qwen3-32B-Base](https://modelscope.cn/models/Qwen/Qwen3-32B-Base)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-32B-Base](https://huggingface.co/Qwen/Qwen3-32B-Base)|
 |[Qwen/Qwen3-0.6B](https://modelscope.cn/models/Qwen/Qwen3-0.6B)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B)|
 |[Qwen/Qwen3-1.7B](https://modelscope.cn/models/Qwen/Qwen3-1.7B)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B)|
 |[Qwen/Qwen3-4B](https://modelscope.cn/models/Qwen/Qwen3-4B)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-4B](https://huggingface.co/Qwen/Qwen3-4B)|
@@ -206,7 +205,6 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/Qwen3-32B-AWQ](https://modelscope.cn/models/Qwen/Qwen3-32B-AWQ)|qwen3|qwen3|transformers>=4.51|&#x2718;|-|[Qwen/Qwen3-32B-AWQ](https://huggingface.co/Qwen/Qwen3-32B-AWQ)|
 |[swift/Qwen3-32B-AWQ](https://modelscope.cn/models/swift/Qwen3-32B-AWQ)|qwen3|qwen3|transformers>=4.51|&#x2718;|-|-|
 |[Qwen/Qwen3-30B-A3B-Base](https://modelscope.cn/models/Qwen/Qwen3-30B-A3B-Base)|qwen3_moe|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-30B-A3B-Base](https://huggingface.co/Qwen/Qwen3-30B-A3B-Base)|
-|[Qwen/Qwen3-235B-A22B-Base](https://modelscope.cn/models/Qwen/Qwen3-235B-A22B-Base)|qwen3_moe|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-235B-A22B-Base](https://huggingface.co/Qwen/Qwen3-235B-A22B-Base)|
 |[Qwen/Qwen3-30B-A3B](https://modelscope.cn/models/Qwen/Qwen3-30B-A3B)|qwen3_moe|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-30B-A3B](https://huggingface.co/Qwen/Qwen3-30B-A3B)|
 |[Qwen/Qwen3-235B-A22B](https://modelscope.cn/models/Qwen/Qwen3-235B-A22B)|qwen3_moe|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-235B-A22B](https://huggingface.co/Qwen/Qwen3-235B-A22B)|
 |[Qwen/Qwen3-30B-A3B-FP8](https://modelscope.cn/models/Qwen/Qwen3-30B-A3B-FP8)|qwen3_moe|qwen3|transformers>=4.51|&#x2718;|-|[Qwen/Qwen3-30B-A3B-FP8](https://huggingface.co/Qwen/Qwen3-30B-A3B-FP8)|
@@ -490,6 +488,8 @@ The table below introduces the models integrated with ms-swift:
 |[LLM-Research/Phi-3.5-MoE-instruct](https://modelscope.cn/models/LLM-Research/Phi-3.5-MoE-instruct)|phi3_moe|phi3|transformers>=4.36|&#x2718;|-|[microsoft/Phi-3.5-MoE-instruct](https://huggingface.co/microsoft/Phi-3.5-MoE-instruct)|
 |[LLM-Research/phi-4](https://modelscope.cn/models/LLM-Research/phi-4)|phi4|phi4|transformers>=4.36|&#x2718;|-|[microsoft/phi-4](https://huggingface.co/microsoft/phi-4)|
 |[MiniMax/MiniMax-Text-01](https://modelscope.cn/models/MiniMax/MiniMax-Text-01)|minimax|minimax|-|&#x2718;|-|[MiniMaxAI/MiniMax-Text-01](https://huggingface.co/MiniMaxAI/MiniMax-Text-01)|
+|[MiniMax/MiniMax-M1-40k](https://modelscope.cn/models/MiniMax/MiniMax-M1-40k)|minimax_m1|minimax_m1|-|&#x2718;|-|[MiniMaxAI/MiniMax-M1-40k](https://huggingface.co/MiniMaxAI/MiniMax-M1-40k)|
+|[MiniMax/MiniMax-M1-80k](https://modelscope.cn/models/MiniMax/MiniMax-M1-80k)|minimax_m1|minimax_m1|-|&#x2718;|-|[MiniMaxAI/MiniMax-M1-80k](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k)|
 |[AI-ModelScope/gemma-2b-it](https://modelscope.cn/models/AI-ModelScope/gemma-2b-it)|gemma|gemma|transformers>=4.38|&#x2718;|-|[google/gemma-2b-it](https://huggingface.co/google/gemma-2b-it)|
 |[AI-ModelScope/gemma-2b](https://modelscope.cn/models/AI-ModelScope/gemma-2b)|gemma|gemma|transformers>=4.38|&#x2718;|-|[google/gemma-2b](https://huggingface.co/google/gemma-2b)|
 |[AI-ModelScope/gemma-7b](https://modelscope.cn/models/AI-ModelScope/gemma-7b)|gemma|gemma|transformers>=4.38|&#x2718;|-|[google/gemma-7b](https://huggingface.co/google/gemma-7b)|

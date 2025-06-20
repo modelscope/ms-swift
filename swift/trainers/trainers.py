@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
-import inspect
 import os
 from contextlib import contextmanager, nullcontext
 from functools import wraps
@@ -16,7 +15,7 @@ from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.utils import JsonlWriter, Serializer, gc_collect, get_logger
+from swift.utils import JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
 
@@ -135,21 +134,12 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
 
     @contextmanager
     def _patch_predict_with_generate(self):
-        origin_mode = self.template.mode
-        self.template.set_mode('pt')
-        is_multimodal = self.model.model_meta.is_multimodal
         origin_data_collator = self.data_collator
-
-        if is_multimodal:
-            models = self.template.remove_post_encode_hook()
         self.data_collator = self._predict_data_collator
         try:
             yield
         finally:
-            if is_multimodal:
-                self.template.register_post_encode_hook(models)
             self.data_collator = origin_data_collator
-            self.template.set_mode(origin_mode)
 
     def evaluate(self, *args, **kwargs):
         context = self._patch_predict_with_generate() if self.args.predict_with_generate else nullcontext()
@@ -172,11 +162,14 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         from swift.llm import RequestConfig, InferRequest
         data_list = inputs['_data']
         labels_list = [InferRequest.remove_response(data['messages']) for data in data_list]
-        resp_list = self.infer_engine.infer(
-            data_list,
-            RequestConfig(max_tokens=self.model.generation_config.max_new_tokens),
-            use_tqdm=False,
-            template=self.template)
+        with unwrap_model_for_generation(
+                self.model_wrapped, self.accelerator,
+                gather_deepspeed3_params=self.args.ds3_gather_for_generation), self.template.generate_context():
+            resp_list = self.infer_engine.infer(
+                data_list,
+                RequestConfig(max_tokens=self.model.generation_config.max_new_tokens),
+                use_tqdm=False,
+                template=self.template)
 
         response_list = []
         jsonl_cache = []
