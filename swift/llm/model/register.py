@@ -488,7 +488,7 @@ def get_model_info_meta(
     if model_type is None and model_info.model_type is not None:
         model_type = model_info.model_type
         logger.info(f'Setting model_type: {model_type}')
-    if model_meta is None and model_type is not None:
+    if model_type is not None:
         model_meta = MODEL_MAPPING[model_type]
     if model_meta is None:
         model_meta = ModelMeta(None, [], 'dummy', get_model_tokenizer_from_local, model_arch=None)
