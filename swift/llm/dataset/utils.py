@@ -16,7 +16,7 @@ from modelscope.hub.utils.utils import get_cache_dir
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
 
-from swift.utils import get_logger, safe_ddp_context
+from swift.utils import get_logger, is_master, safe_ddp_context
 from ..template import MaxLengthError
 from .preprocessor import RowPreprocessor
 
@@ -280,10 +280,21 @@ class IndexedDataset(Dataset):
 
 class PackingDataset(BasePackingDataset, Dataset):
 
-    def __init__(self, template, dataset, num_proc: int = 1, *, packing_interval: int = 128, strict: bool = False):
+    def __init__(
+        self,
+        template,
+        dataset,
+        num_proc: int = 1,
+        *,
+        packing_interval: int = 128,
+        strict: bool = False,
+        load_from_cache_file: bool = True,
+        **kwargs,
+    ):
         from datasets.fingerprint import update_fingerprint
         num_proc = min(len(dataset), num_proc)
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
+        self.load_from_cache_file = load_from_cache_file
         template = copy(template)
         template.model = None  # Avoid hashing the model.
         fingerprint = update_fingerprint(dataset._fingerprint, 'PackingDataset', {
@@ -299,7 +310,8 @@ class PackingDataset(BasePackingDataset, Dataset):
     def create_packed_dataset(self):
         cache_dir = IndexedDataset.get_cache_dir(self.dataset_name)
         logger.info(f'packing cache_dir: {cache_dir}')
-        if not os.path.exists(os.path.join(cache_dir, IndexedDataset.IDX_FNAME)):
+        if not os.path.exists(os.path.join(cache_dir,
+                                           IndexedDataset.IDX_FNAME)) or not self.load_from_cache_file and is_master():
             self._queue = mp.Queue(maxsize=1000)
             self._terminated_workers = 0
             self.prog_bar = tqdm(
@@ -360,14 +372,17 @@ class PackingDataset(BasePackingDataset, Dataset):
 
 class IterablePackingDataset(BasePackingDataset, IterableDataset):
 
-    def __init__(self,
-                 template,
-                 dataset,
-                 num_proc: int = 1,
-                 *,
-                 packing_interval: int = 128,
-                 strict: bool = False,
-                 cyclic: bool = False):
+    def __init__(
+        self,
+        template,
+        dataset,
+        num_proc: int = 1,
+        *,
+        packing_interval: int = 128,
+        strict: bool = False,
+        cyclic: bool = False,
+        **kwargs,
+    ):
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
         self._in_queue = mp.Queue()
         self._out_queue = mp.Queue()
