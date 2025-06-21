@@ -47,6 +47,7 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     # Code borrowed from huggingface/trl
     def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):
+        assert not self.template.padding_free, 'generate not support padding_free'
         # Generate output with respect to the prompt only
         model_inputs = {k: v for k, v in inputs.items() if not k.startswith('prompt') and k != 'labels'}
         model_inputs['input_ids'] = inputs['prompts']
@@ -84,28 +85,30 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
     # Code borrowed from huggingface/trl
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
+        # If generate is used, then use_logits_to_keep must be set to False.
+        use_logits_to_keep = self.get_use_logits_to_keep(True)
+        if use_logits_to_keep:
+            inputs['labels'], logits_to_keep = self.get_logits_to_keep(inputs['labels'])
+            if logits_to_keep is not None:
+                model_inputs['logits_to_keep'] = logits_to_keep
         # compute student output
-        outputs_student = model(**model_inputs)
+        with self.template.compute_loss_context(self.model, model_inputs):
+            outputs_student = model(**model_inputs)
 
-        with torch.no_grad():
+        with torch.no_grad(), self.template.compute_loss_context(self.model, model_inputs):
             outputs_teacher = self.teacher_model(**model_inputs)
 
-        # slice the logits for the generated tokens using the inputs["prompts"] lengths
-        prompt_lengths = inputs['prompts'].shape[1]
-        shifted_student_logits = outputs_student.logits[:, prompt_lengths - 1:-1, :]
-        shifted_teacher_logits = outputs_teacher.logits[:, prompt_lengths - 1:-1, :]
-        shifted_labels = inputs['labels'][:, prompt_lengths:]
+        shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
+        mask = shifted_labels != -100
+        shifted_student_logits = outputs_student.logits[mask][None]
+        shifted_teacher_logits = outputs_teacher.logits[mask][None]
 
         # compute loss
         loss = self.generalized_jsd_loss(
             student_logits=shifted_student_logits,
             teacher_logits=shifted_teacher_logits,
-            labels=shifted_labels,
             beta=self.beta,
         )
-
-        # empty cache
-        empty_cache()
 
         # Return loss
         return (loss, outputs_student) if return_outputs else loss
@@ -141,5 +144,6 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
             inputs['input_ids'] = new_input_ids
             inputs['attention_mask'] = new_attention_mask
             inputs['labels'] = new_labels
+
         loss = HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
         return loss
