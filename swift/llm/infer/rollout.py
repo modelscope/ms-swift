@@ -39,6 +39,7 @@ Usage:
         --model xxx \
         --tensor_parallel_size xxx \
         --data_parallel_size xxx \
+        --use_async_engine true/false \
         --... \
         --other_vllm_arguments
 
@@ -92,14 +93,7 @@ def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
 
 async def async_llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
                            connection: Connection) -> None:
-    os.environ['VLLM_DP_RANK'] = str(data_parallel_rank)
-    os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
-    os.environ['VLLM_DP_SIZE'] = str(args.data_parallel_size)
-    os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
-    kwargs = {}
-    if args.tensor_parallel_size == 1 and args.data_parallel_size > 1:
-        kwargs['device'] = get_device(str(data_parallel_rank))
-    engine = SwiftRolloutDeploy.get_infer_engine(args, **kwargs)
+    engine = SwiftRolloutDeploy.get_infer_engine(args)
     # Send ready signal to parent process
     connection.send({'status': 'ready'})
 
@@ -149,6 +143,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
     def __init__(self, args: Union[List[str], DeployArguments, None] = None):
         super().__init__(args)
         self.use_async_engine = self.args.use_async_engine
+        self.num_connections = 1 if self.use_async_engine else args.data_parallel_size
         safe_set_start_method()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_rl_rollout_app()
@@ -158,7 +153,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self._start_data_parallel_workers()
 
     def _start_data_parallel_workers(self):
-        for data_parallel_rank in range(self.args.data_parallel_size):
+        for data_parallel_rank in range(self.num_connections):
             parent_conn, child_conn = Pipe()
             worker_func = llm_worker_entry if self.use_async_engine else llm_worker
             process = Process(target=worker_func, args=(self.args, data_parallel_rank, self.master_port, child_conn))
@@ -170,7 +165,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
     async def lifespan(self, app: FastAPI):
         # Wait for all workers to send "ready"
         ready_connections = set()
-        while len(ready_connections) < self.args.data_parallel_size:
+
+        while len(ready_connections) < self.num_connections:
             for connection in self.connections:
                 msg = connection.recv()
                 if isinstance(msg, dict) and msg.get('status') == 'ready':
@@ -207,7 +203,10 @@ class SwiftRolloutDeploy(SwiftPipeline):
         engine_kwargs = kwargs.get('engine_kwargs', {})
         # for RL rollout model weight sync
         engine_kwargs.update({'worker_extension_cls': 'trl.scripts.vllm_serve.WeightSyncWorkerExtension'})
+        if args.use_async_engine and args.data_parallel_size > 1:
+            engine_kwargs['data_parallel_size'] = args.data_parallel_size
         kwargs['engine_kwargs'] = engine_kwargs
+
         return GRPOVllmEngine(**kwargs)
 
     async def health(self):
@@ -312,7 +311,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         *,
         use_tqdm: Optional[bool] = None,
     ):
-        chunked_infer_requests = chunk_list(infer_requests, self.args.data_parallel_size)
+        chunked_infer_requests = chunk_list(infer_requests, self.num_connections)
 
         # Send the prompts to each worker
         for i, (connection, requests) in enumerate(zip(self.connections, chunked_infer_requests)):
