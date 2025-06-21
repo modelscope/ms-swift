@@ -82,7 +82,6 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
         inputs['position_ids'] = new_position_ids
         return generated_tokens, new_attention_mask, new_labels
 
-    # Code borrowed from huggingface/trl
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
         # If generate is used, then use_logits_to_keep must be set to False.
