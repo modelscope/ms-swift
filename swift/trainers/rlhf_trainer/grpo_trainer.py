@@ -17,7 +17,6 @@ from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import datasets
-import swanlab
 import torch
 import torch.nn as nn
 import transformers
