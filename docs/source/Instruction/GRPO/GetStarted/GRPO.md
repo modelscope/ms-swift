@@ -10,7 +10,7 @@
 - **2025-05-11** — 支持生成式奖励模型，通过 reward_model_plugin 自定义奖励模型逻辑。有关更多详细信息，请参阅[文档](../DeveloperGuide/奖励模型)部分。
 - **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`。
 
-
+GRPOTrainer在ms-swift3.5进行了代码重构，如果你使用的swift版本<3.5, 请参考[stable文档](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md)
 
 [GRPO(Group Relative Policy Optimization)](https://arxiv.org/abs/2402.03300) 算法利用组内相对优势计算来替代 PPO 算法中独立的价值模型，并直接在损失函数中加入 KL 散度惩罚来提高训练稳定性。
 
@@ -208,3 +208,82 @@ swift rollout \
 --vllm_server_port <服务端口> \
 --vllm_server_timeout <超时时间> \
 ```
+
+
+
+## FAQ
+**1. 训练过程中 loss 等于0 / 接近0 / 小于0**
+
+正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
+
+**2. num_generations / 批量大小相关**
+
+在 GRPO 中，batch_size 以 completion（模型生成结果） 为单位。例如，设置 per_device_train_batch_size=8 表示每张 GPU 在训练过程中会同时处理 8 个 completion 的 loss 计算。
+
+训练阶段，在一次完整的梯度累计 batch 中，总的批量大小等于：
+
+```
+effective_batch_size = num_processes * per_device_train_batch_size * gradient_accumulation_steps
+```
+
+采样阶段，总的批量大小 (completion-level) 数量等于:
+
+1. 设置 generation_batch_size 下，等于 generation_batch_size
+
+2. 设置 steps_per_generation 下， 等于 steps_per_generation * 训练总批量大小
+
+3. 默认等于训练总批量大小(即num_processes * per_device_train_batch_size * gradient_accumulation_steps)
+
+在评估阶段，completion 的数量等于：
+```
+num_processes * per_device_eval_batch_size
+```
+
+参数 `num_generations` 必须能够被以上采样阶段和评估的总批量大小整除，以保证生成任务可以均匀分配到各个设备上。
+
+**示例**
+
+num_processes = 8
+per_device_train_batch_size = 4
+gradient_accumulation_steps = 8
+generation_batch_size = 512
+num_generations = 64
+
+1. 采样需要的总数据(prompt)量等于 512 / 64 = 8
+2. 每次采样 512 条模型回复
+3. 每次更新模型权重批量大小为 8 *4 * 8 = 256
+
+
+**3. 为什么 KL 出现了NaN**
+
+开启 overlong_filter 后，某一卡上的所有 completion 都被截断
+
+**4. 训练的steps怎么计算?**
+
+参考[issue](https://github.com/modelscope/ms-swift/issues/3912)
+
+**5. clip_ratio为什么总是1?**
+
+Clip机制的核心目的是限制策略更新的幅度，防止因单次更新过大而导致策略性能崩溃（即策略更新后表现急剧下降）。
+Clip操作的具体公式如下：
+
+$$
+L_{\text{CLIP}}(\theta) = \mathbb{E}_{t} \left[ \min\left(r_{t}(\theta) \hat{A}_{t}, \text{clip}(r_{t}(\theta), 1 - \epsilon, 1 + \epsilon) \hat{A}_{t} \right) \right]
+$$
+
+其中：$r_{t}(\theta) = \frac{\pi_{\theta}(a_{t} \mid s_{t})}{\pi_{\text{old}}(a_{t} \mid s_{t})}$ 是重要性采样比，衡量新旧策略的差异。$\hat{A}_{t}$ 是优势函数（advantage function），表示动作的相对收益。$\epsilon$ 用于限制 $r_{t}(\theta)$ 的偏离范围。
+
+在 on-policy 训练过程中，由于每次更新都使用最新策略生成的数据，新旧策略相同，即 $\pi_{\theta} = \pi_{\text{old}}$
+
+因此重要性采样比恒为 1，此时，clip 操作不会生效。
+
+在设置以下参数情况下，算法为off-policy (near-on-policy)
+1. num_iterations > 1
+2. steps_per_generation > gradient_accumulation_steps
+
+参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
+
+**6. 为什么没有设置val_dataset，仍然有验证过程，如何取消**
+当没有显式传入`val_dataset`时，参数`split_dataset_ratio`负责切分部分`dataset`为验证数据集，默认切分1%数据
+
+通过设置`--split_dataset_ratio 0` 来取消验证过程

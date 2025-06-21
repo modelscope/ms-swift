@@ -267,7 +267,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if self.async_generate:
             assert self.vllm_mode == 'server', 'async generate require vllm_mode == server, '
             'please deploy vLLM server by `swift rollout` and assign with `vllm_server_host` '
-            'for more infomations, please check https://swift.readthedocs.io/en/latest/Instruction/GRPO.html'
+            'for more infomations, please check '
+            'https://swift.readthedocs.io/en/latest/Instruction/grpo/getstarted/grpo.html'
 
         if not self.use_vllm and self.vllm_tensor_parallel_size != 1:
             self.vllm_tensor_parallel_size = 1

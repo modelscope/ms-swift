@@ -27,7 +27,6 @@ Swift DOCUMENTATION
    Instruction/评测.md
    Instruction/导出与推送.md
    Instruction/强化微调.md
-   Instruction/GRPO.md
    Instruction/Agent支持.md
    Instruction/支持的模型和数据集.md
    Instruction/使用tuners.md
