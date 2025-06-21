@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
-from swift.trainers.arguments import GRPOArgumentsMixin
+from swift.trainers.arguments import GRPOArgumentsMixin, RLHFArgumentsMixin
 from swift.utils import get_logger, is_master, set_default_ddp_config
 from .train_args import TrainArguments
 
@@ -64,7 +64,8 @@ class GRPOArguments(GRPOArgumentsMixin):
 
 
 @dataclass
-class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardModelArguments, TrainArguments):
+class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardModelArguments, RLHFArgumentsMixin,
+                    TrainArguments):
     """
     RLHFArguments is a dataclass that holds arguments specific to the Reinforcement
         Learning with Human Feedback (RLHF) training backend.

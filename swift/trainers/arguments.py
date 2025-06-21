@@ -125,7 +125,13 @@ class TrainArgumentsMixin:
 
 
 @dataclass
-class SwiftArgumentsMixin(TrainArgumentsMixin):
+class RLHFArgumentsMixin:
+    # gkd
+    sft_alpha: float = 0
+
+
+@dataclass
+class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
     # Value copied from TrainArguments
     train_type: Optional[str] = None
     local_repo_path: Optional[str] = None

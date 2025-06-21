@@ -1353,11 +1353,12 @@ class Template(ProcessorMixin):
         return res
 
     def _gkd_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        prompts_batch = [{'input_ids': b['prompts']} for b in batch]
         res = self._data_collator(batch, padding_to=padding_to)
-        prompts_res = self._data_collator(prompts_batch, padding_to=padding_to)
-        res['prompts'] = prompts_res.pop('input_ids')
-        res.update({f'prompt_{k}': v for k, v in prompts_res.items()})
+        prompts_batch = [{'input_ids': b['prompts']} for b in batch if b.get('prompts') is not None]
+        if prompts_batch:
+            prompts_res = self._data_collator(prompts_batch, padding_to=padding_to)
+            res['prompts'] = prompts_res.pop('input_ids')
+            res.update({f'prompt_{k}': v for k, v in prompts_res.items()})
         return res
 
     def _embedding_data_collator(self,
