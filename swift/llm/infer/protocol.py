@@ -250,6 +250,11 @@ class ChatCompletionResponseChoice:
 
 
 @dataclass
+class RolloutResponseChoice(ChatCompletionResponseChoice):
+    messages: Optional[Messages] = None
+
+
+@dataclass
 class CompletionResponseChoice:
     index: int
     text: str
@@ -260,7 +265,7 @@ class CompletionResponseChoice:
 @dataclass
 class ChatCompletionResponse:
     model: str
-    choices: List[ChatCompletionResponseChoice]
+    choices: List[Union[ChatCompletionResponseChoice, RolloutResponseChoice]]
     usage: UsageInfo
     id: str = field(default_factory=lambda: f'chatcmpl-{random_uuid()}')
     object: str = 'chat.completion'

@@ -15,8 +15,8 @@ from dacite import from_dict
 from requests import ConnectionError
 from torch import nn
 
-from swift.llm import AdapterRequest, InferRequest, Template
-from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig
+from swift.llm import AdapterRequest, RolloutInferRequest, Template
+from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig, RolloutResponseChoice
 from swift.plugin import Metric
 from swift.utils import is_vllm_ascend_available, is_vllm_available
 
@@ -113,7 +113,7 @@ class VLLMClient:
 
     def infer(
         self,
-        infer_requests: List[InferRequest],
+        infer_requests: List[RolloutInferRequest],
         request_config: Optional[RequestConfig] = None,
         metrics: Optional[List[Metric]] = None,
         *,
@@ -134,7 +134,15 @@ class VLLMClient:
             },
         )
         if response.status_code == 200:
-            return [from_dict(data_class=ChatCompletionResponse, data=resp) for resp in response.json()]
+            if not getattr(self, 'use_async_engine', False):
+                return [from_dict(data_class=ChatCompletionResponse, data=resp) for resp in response.json()]
+            else:
+                return [
+                    ChatCompletionResponse(
+                        choices=[RolloutResponseChoice(**choice) for choice in resp['choices']],
+                        **{k: v
+                           for k, v in resp.items() if k != 'choices'}) for resp in response.json()
+                ]
         else:
             raise Exception(f'Request failed: {response.status_code}, {response.text}')
 
@@ -211,6 +219,16 @@ class VLLMClient:
         url = f'{self.base_url}/reset_prefix_cache/'
         response = self.session.post(url)
         if response.status_code != 200:
+            raise Exception(f'Request failed: {response.status_code}, {response.text}')
+
+    def get_engine_type(self):
+        url = f'{self.base_url}/get_engine_type/'
+        response = self.session.post(url)
+        if response.status_code == 200:
+            result = response.json()['engine_type']
+            self.use_async_engine = result == 'AsyncLLMEngine'
+            return result
+        else:
             raise Exception(f'Request failed: {response.status_code}, {response.text}')
 
     def close_communicator(self):

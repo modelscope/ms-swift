@@ -26,7 +26,7 @@ Swift DOCUMENTATION
    Instruction/Evaluation.md
    Instruction/Export-and-push.md
    Instruction/Reinforced-Fine-tuning.md
-   Instruction/GRPO.md
+   Instruction/GRPO/index.rst
    Instruction/Agent-support.md
    Instruction/Supported-models-and-datasets.md
    Instruction/Use-tuners.md
