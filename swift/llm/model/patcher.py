@@ -19,7 +19,6 @@ from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 from swift.llm import deep_getattr, to_device, to_float_dtype
 from swift.utils import get_dist_setting, get_logger, is_mp_ddp, safe_ddp_context, use_torchacc
 from swift.utils.torch_utils import _get_max_memory, _sync_max_memory, get_device_count
-from .model_arch import get_model_arch
 from .utils import HfConfigFactory, get_llm_model
 
 logger = get_logger()
@@ -354,6 +353,7 @@ def patch_tp_plan(load_model: bool):
             transformers.__version__) < version.parse('4.50') or 'WORLD_SIZE' not in os.environ:
         yield
         return
+    logger.info('Patch tp_plan.')
     WORLD_SIZE = os.environ.get('WORLD_SIZE')
     os.environ['_PATCH_WORLD_SIZE'] = WORLD_SIZE
     os.environ.pop('WORLD_SIZE')

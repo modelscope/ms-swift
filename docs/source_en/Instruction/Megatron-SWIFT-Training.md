@@ -86,6 +86,7 @@ megatron sft \
 ```
 
 Finally, convert the Megatron format weights back to HF format:
+- Note: Please point `--mcore_model` to the parent directory of `iter_xxx`. By default, the corresponding checkpoint from `latest_checkpointed_iteration.txt` will be used.
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \

@@ -1,6 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.llm import (InferRequest, Model, ModelGroup, ModelMeta, PtEngine, RequestConfig, TemplateMeta,
-                       get_model_tokenizer_with_flash_attn, register_model, register_template)
+"""
+Here is another way to register the model, by customizing the get_function.
+
+The get_function just needs to return the model + tokenizer/processor.
+"""
+
+from typing import Any, Dict
+
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+from swift.llm import (InferRequest, Model, ModelGroup, ModelInfo, ModelMeta, PtEngine, RequestConfig, TemplateMeta,
+                       register_model, register_template)
 
 register_template(
     TemplateMeta(
@@ -9,6 +19,23 @@ register_template(
         prompt=['<extra_id_1>User\n{{QUERY}}\n<extra_id_1>Assistant\n'],
         chat_sep=['\n']))
 
+
+def get_function(model_dir: str,
+                 model_info: ModelInfo,
+                 model_kwargs: Dict[str, Any],
+                 load_model: bool = True,
+                 **kwargs):
+    # ref: https://github.com/modelscope/ms-swift/blob/main/swift/llm/model/register.py#L182
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    model = None
+    if load_model:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_dir, config=model_config, torch_dtype=model_info.torch_dtype, trust_remote_code=True, **model_kwargs)
+    return model, tokenizer
+
+
 register_model(
     ModelMeta(
         model_type='custom',
@@ -16,7 +43,7 @@ register_model(
             ModelGroup([Model('AI-ModelScope/Nemotron-Mini-4B-Instruct', 'nvidia/Nemotron-Mini-4B-Instruct')])
         ],
         template='custom',
-        get_function=get_model_tokenizer_with_flash_attn,
+        get_function=get_function,
         ignore_patterns=['nemo'],
         is_multimodal=False,
     ))

@@ -82,14 +82,14 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 
 #### GKD
 
-If `seq_kd` is not enabled (i.e., the parameter is set to `False`), the dataset format should be as follows:
+If `seq_kd` is not enabled, i.e., the parameter is set to False, the dataset format is as follows (you can use a teacher model to pre-distill the data):
 
 ```jsonl
 {"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}, {"role": "assistant", "content": "Tomorrow's weather will be sunny"}]}
 {"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}]}
 ```
 
-If `seq_kd` is enabled, the final `assistant` turn is not required in the dataset. The format should be:
+If `seq_kd` is enabled, the final round of the 'assistant' part is not required (the teacher model generates data during training):
 
 ```jsonl
 {"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}]}
@@ -202,6 +202,7 @@ Here are example data samples for a text-only Agent and a multimodal Agent:
 - The `{"role": "tool_call", ...}` part will automatically be converted into corresponding formats of `{"role": "assistant", ...}` based on the `agent_template`. Multiple consecutive `{"role": "assistant", ...}` entries will be concatenated to form a complete assistant_content.
 - The `{"role": "tool_response", ...}` can also be written as `{"role": "tool", ...}`, these two forms are equivalent. This part will also be automatically converted according to the `agent_template`. During training, this part does not participate in loss calculations, similar to `{"role": "user", ...}`.
 - This format supports parallel tool calls; refer to the first data sample for an example. In multimodal Agent data samples, the number of `<image>` tags should match the length of "images", and their positions indicate where the image features are inserted. It also supports other modalities, such as audios and videos.
+- Note: You can also manually process the data into the messages format with roles set to system, user, or assistant. The purpose of agent_template is to automatically map the tools field and the messages with roles tool_call and tool_response into the standard messages format with roles system, user, and assistant.
 - For more details, please refer to [Agent Documentation](../Instruction/Agent-support.md).
 
 
