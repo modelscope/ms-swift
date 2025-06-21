@@ -39,6 +39,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin):
 
     original_max_position_embeddings: Optional[int] = None
     partial_rotary_factor: Optional[float] = None
+    use_shared_expert_gate: bool = False
 
 
 @dataclass
@@ -126,7 +127,7 @@ class MegatronArguments(ExtraMegatronArguments):
     group_query_attention: Optional[bool] = None
     num_query_groups: Optional[int] = None
     max_position_embeddings: Optional[int] = None
-    position_embedding_type: Literal['learned_absolute', 'rope', 'relative', 'none'] = 'rope'
+    position_embedding_type: Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none'] = 'rope'
     rotary_base: Optional[int] = None
     rotary_percent: float = 1.
     normalization: Literal['LayerNorm', 'RMSNorm'] = 'RMSNorm'
@@ -143,23 +144,37 @@ class MegatronArguments(ExtraMegatronArguments):
 
     # moe
     num_experts: Optional[int] = None
+    moe_layer_freq: str = '1'
     moe_ffn_hidden_size: Optional[int] = None
     moe_shared_expert_intermediate_size: Optional[int] = None
+
     moe_router_topk: Optional[int] = None
     moe_router_pre_softmax: Optional[bool] = None
-    moe_aux_loss_coeff: Optional[float] = None
     moe_router_dtype: Literal['fp32', 'fp64'] = None
-    moe_permute_fusion: bool = False
+    moe_router_score_function: Literal['sigmoid', 'softmax'] = 'softmax'
+    moe_router_bias_update_rate: float = 1e-3
+    moe_router_enable_expert_bias: bool = False
+    moe_router_topk_scaling_factor: Optional[float] = None
+    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = 'aux_loss'
 
     expert_model_parallel_size: int = 1
     moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex', 'alltoall_seq'] = 'alltoall'
     moe_enable_deepep: bool = False
     moe_grouped_gemm: bool = False
-    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = 'aux_loss'
+    moe_permute_fusion: bool = False
+    moe_aux_loss_coeff: Optional[float] = None
     moe_z_loss_coeff: Optional[float] = None
     moe_expert_capacity_factor: Optional[float] = None
     moe_shared_expert_overlap: bool = False
     moe_layer_recompute: bool = False
+    moe_token_drop_policy: Literal['probs', 'position'] = 'probs'
+
+    # mla
+    multi_latent_attention: bool = False
+    q_lora_rank: Optional[int] = None
+    kv_lora_rank: int = 32
+    qk_head_dim: int = 128
+    qk_pos_emb_head_dim: int = 64
 
     # mixed precision
     fp16: Optional[bool] = None
@@ -282,16 +297,9 @@ class MegatronArguments(ExtraMegatronArguments):
         extra_args = {}
         extra_megatron_kwargs = args_dict.pop('extra_megatron_kwargs')
         args_dict.update(extra_megatron_kwargs)
-        use_core_011 = version.parse(megatron.core.__version__) < version.parse('0.12')
-        core_012_arguments = {
-            'recompute_modules', 'moe_router_dtype', 'cross_entropy_fusion_impl', 'moe_enable_deepep',
-            'optimizer_offload_fraction'
-        }
         for k, value in args_dict.items():
             if k not in MegatronArguments.__annotations__ and k not in extra_megatron_kwargs:
                 extra_args[k] = value
-                continue
-            if use_core_011 and k in core_012_arguments:
                 continue
             if value is None or value is False:
                 continue
