@@ -1,7 +1,7 @@
 # GRPO
 
 **更新日志**
-- **2025-06-21** - 多轮训练重构并支持AsyncEngine，参考[文档](../DeveloperGuide/多轮训练.md)
+- **2025-06-22** - 多轮训练重构并支持AsyncEngine，参考[文档](../DeveloperGuide/多轮训练.md)
 - **2025-05-29** — 支持了padding_free(--padding_free true)和序列并行(--sequence_parallel_size N)。
 - **2025-05-23** — 支持自定义采样批量大小，参考 generation_batch_size / steps_per_generation 参数。
 - **2025-05-22** — swift rollout 支持 data_parallel_size 参数。
@@ -121,13 +121,13 @@ GROP参数参考[文档](../../../Instruction/命令行参数.md#grpo参数)
 
 ## 集群支持
 
-![](../../resources/grpo.png)
+![](../../../../resources/grpo.png)
 
 GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样过程，提供以下两种部署模式：
 
 ### 1. Colocate(Internal) Mode
 
-- 训练与推理共享GPU资源，在 Trainer 内部启动推理服务，
+训练与推理共享GPU资源，在 Trainer 内部启动推理服务，
 
 启动参数
 ```bash
@@ -169,7 +169,7 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 
 ### 2. Async(External) Mode
 
-- 训练与推理资源分离，启动单独的推理服务器
+训练与推理资源分离，启动单独的推理服务器
 
 使用`swift rollout`命令部署vLLM 服务器, 现仅支持vLLM backend
 ```bash
@@ -194,9 +194,6 @@ swift rollout \
 
 更多 rollout 参数参考[文档](../../../Instruction/命令行参数.md#vllm参数)
 
-注意：use_async_engine 下，仅开启DP可能会报错，相关issue :https://github.com/vllm-project/vllm/issues/18567, https://github.com/vllm-project/vllm/issues/17176
-如果报错，可以尝试同时开始TP和DP
-
 注意：在使用 use_async_engine 时，仅开启 DP 可能会导致错误，相关问题参考： [vllm issue](https://github.com/vllm-project/vllm/issues/18567)。如果出现错误，请尝试同时启用 TP 和 DP。
 
 
@@ -208,7 +205,6 @@ swift rollout \
 --vllm_server_port <服务端口> \
 --vllm_server_timeout <超时时间> \
 ```
-
 
 
 ## FAQ
@@ -229,9 +225,7 @@ effective_batch_size = num_processes * per_device_train_batch_size * gradient_ac
 采样阶段，总的批量大小 (completion-level) 数量等于:
 
 1. 设置 generation_batch_size 下，等于 generation_batch_size
-
 2. 设置 steps_per_generation 下， 等于 steps_per_generation * 训练总批量大小
-
 3. 默认等于训练总批量大小(即num_processes * per_device_train_batch_size * gradient_accumulation_steps)
 
 在评估阶段，completion 的数量等于：
@@ -243,11 +237,11 @@ num_processes * per_device_eval_batch_size
 
 **示例**
 
-num_processes = 8
-per_device_train_batch_size = 4
-gradient_accumulation_steps = 8
-generation_batch_size = 512
-num_generations = 64
+- num_processes = 8
+- per_device_train_batch_size = 4
+- gradient_accumulation_steps = 8
+- generation_batch_size = 512
+- num_generations = 64
 
 1. 采样需要的总数据(prompt)量等于 512 / 64 = 8
 2. 每次采样 512 条模型回复
