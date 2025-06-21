@@ -90,10 +90,13 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
             inputs['labels'], logits_to_keep = self.get_logits_to_keep(inputs['labels'])
             if logits_to_keep is not None:
                 model_inputs['logits_to_keep'] = logits_to_keep
+        if self.args.sft_alpha > 0:
+            model_inputs['labels'] = inputs['labels']
         # compute student output
         with self.template.compute_loss_context(self.model, model_inputs):
             outputs_student = model(**model_inputs)
 
+        model_inputs.pop('labels', None)
         with torch.no_grad(), self.template.compute_loss_context(self.model, model_inputs):
             outputs_teacher = self.teacher_model(**model_inputs)
 
@@ -108,6 +111,8 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
             teacher_logits=shifted_teacher_logits,
             beta=self.beta,
         )
+        if self.args.sft_alpha > 0:
+            loss = loss + self.args.sft_alpha * outputs_student.loss
 
         # Return loss
         return (loss, outputs_student) if return_outputs else loss
