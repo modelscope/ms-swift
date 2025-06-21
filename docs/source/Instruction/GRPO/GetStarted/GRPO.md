@@ -192,6 +192,14 @@ swift rollout \
   --data_parallel_size 2
 ```
 
+更多 rollout 参数参考[文档](../../../Instruction/命令行参数.md#vllm参数)
+
+注意：use_async_engine 下，仅开启DP可能会报错，相关issue :https://github.com/vllm-project/vllm/issues/18567, https://github.com/vllm-project/vllm/issues/17176
+如果报错，可以尝试同时开始TP和DP
+
+注意：在使用 use_async_engine 时，仅开启 DP 可能会导致错误，相关问题参考： [vllm issue](https://github.com/vllm-project/vllm/issues/18567)。如果出现错误，请尝试同时启用 TP 和 DP。
+
+
 训练使用以下参数配置外部 vLLM 服务器
 ```bash
 --use_vllm true \

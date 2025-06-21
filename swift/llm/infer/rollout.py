@@ -18,7 +18,7 @@ import uvicorn
 from aiohttp import ClientConnectorError
 from fastapi import FastAPI
 
-from swift.llm import DeployArguments, InferArguments, SwiftPipeline
+from swift.llm import InferArguments, RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.utils import get_device, get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
@@ -56,7 +56,7 @@ def safe_set_start_method():
         multiprocessing.set_start_method('spawn')
 
 
-def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
+def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
     # Set required environment variables for DP to work with vLLM
     os.environ['VLLM_DP_RANK'] = str(data_parallel_rank)
     os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
@@ -91,7 +91,7 @@ def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
             break
 
 
-async def async_llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
+async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int,
                            connection: Connection) -> None:
     engine = SwiftRolloutDeploy.get_infer_engine(args)
     # Send ready signal to parent process
@@ -127,7 +127,7 @@ def llm_worker_entry(*args, **kwargs):
 
 
 class SwiftRolloutDeploy(SwiftPipeline):
-    args_class = DeployArguments
+    args_class = RolloutArguments
     args: args_class
 
     def _register_rl_rollout_app(self):
@@ -140,7 +140,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.post('/infer/', response_model=None)(self.infer)
         self.app.post('/get_engine_type/')(self.get_engine_type)
 
-    def __init__(self, args: Union[List[str], DeployArguments, None] = None):
+    def __init__(self, args: Union[List[str], RolloutArguments, None] = None):
         super().__init__(args)
         self.use_async_engine = self.args.use_async_engine
         self.num_connections = 1 if self.use_async_engine else args.data_parallel_size
@@ -339,7 +339,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         uvicorn.run(self.app, host=args.host, port=args.port, log_level=args.log_level)
 
 
-def rollout_main(args: Union[List[str], DeployArguments, None] = None) -> None:
+def rollout_main(args: Union[List[str], RolloutArguments, None] = None) -> None:
     SwiftRolloutDeploy(args).main()
 
 
@@ -353,16 +353,16 @@ def is_accessible(port: int):
 
 
 @contextmanager
-def run_rollout(args: DeployArguments, return_url: bool = False):
-    if isinstance(args, DeployArguments) and args.__class__.__name__ == 'DeployArguments':
+def run_rollout(args: RolloutArguments, return_url: bool = False):
+    if isinstance(args, RolloutArguments) and args.__class__.__name__ == 'RolloutArguments':
         deploy_args = args
     else:
         args_dict = asdict(args)
-        parameters = inspect.signature(DeployArguments).parameters
+        parameters = inspect.signature(RolloutArguments).parameters
         for k in list(args_dict.keys()):
             if k not in parameters or args_dict[k] is None:
                 args_dict.pop(k)
-        deploy_args = DeployArguments(**args_dict)
+        deploy_args = RolloutArguments(**args_dict)
 
     mp = multiprocessing.get_context('spawn')
     process = mp.Process(target=rollout_main, args=(deploy_args, ))

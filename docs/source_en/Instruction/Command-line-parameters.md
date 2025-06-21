@@ -327,6 +327,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - 🔥gpu_memory_utilization: GPU memory ratio, ranging from 0 to 1. Default is `0.9`.
 - 🔥tensor_parallel_size: Tensor parallelism size. Default is `1`.
 - pipeline_parallel_size: Pipeline parallelism size. Default is `1`.
+- data_parallel_size: Data parallelism size, default is 1, effective in the infer and rollout commands.
 - max_num_seqs: Maximum number of sequences to be processed in a single iteration. Default is `256`.
 - 🔥max_model_len: Default is `None`, meaning it will be read from `config.json`.
 - disable_custom_all_reduce: Disables the custom all-reduce kernel and falls back to NCCL. For stability, the default is `True`.

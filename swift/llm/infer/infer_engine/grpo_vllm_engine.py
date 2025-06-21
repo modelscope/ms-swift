@@ -1,8 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import asyncio
 import os
-from copy import deepcopy
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 from tqdm.asyncio import tqdm_asyncio
@@ -10,14 +8,13 @@ from tqdm.asyncio import tqdm_asyncio
 from swift.llm import InferRequest, RolloutInferRequest, Template, VllmEngine
 from swift.plugin import Metric, multi_turns
 from swift.plugin.multi_turn import MultiTurnScheduler
-from ..protocol import ChatCompletionResponse, ChatMessage, RequestConfig, RolloutResponseChoice, random_uuid
+from ..protocol import ChatCompletionResponse, ChatMessage, RequestConfig, RolloutResponseChoice
 from .utils import AdapterRequest
 
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '3600'
-    from vllm import SamplingParams
 
 except Exception:
     raise

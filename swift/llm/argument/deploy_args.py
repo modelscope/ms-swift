@@ -75,3 +75,16 @@ class DeployArguments(InferArguments):
         if folder_name == 'infer_result':
             folder_name = 'deploy_result'
         return super()._init_result_path(folder_name)
+
+
+class RolloutArguments(DeployArguments):
+    use_async_engine: Optional[bool] = None
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        if self.use_async_engine is None:
+            if self.multi_turn_scheduler:
+                self.use_async_engine = True
+            else:
+                self.use_async_engine = False
