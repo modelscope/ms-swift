@@ -1,20 +1,20 @@
-# GRPO  
+# GRPO
 
-**Changelog**  
-- **2025-06-22** - Refactored multi-round training and added support for AsyncEngine. Refer to the [documentation](../DeveloperGuide/multi_turn.md).  
-- **2025-05-29** — Added support for padding-free (`--padding_free true`) and sequence parallelism (`--sequence_parallel_size N`).  
-- **2025-05-23** — Added support for custom sampling batch size. Refer to the `generation_batch_size` / `steps_per_generation` parameters.  
-- **2025-05-22** — Swift rollout now supports the `data_parallel_size` parameter.  
-- **2025-05-16** - Added ref_model synchronization logic. Refer to the `sync_ref_model` parameter.  
-- **2025-05-13** — Refactored GRPOTrainer code for better readability and maintainability. Internal mode now supports vLLM>=0.8.  
-- **2025-05-11** — Added support for generative reward models. Custom reward model logic can be implemented via `reward_model_plugin`. For more details, refer to the [documentation](../DeveloperGuide/Reward Model) section.  
-- **2025-04-30** — The startup command for the external vLLM server has been changed to `swift rollout`.  
+**Changelog**
+- **2025-06-22** - Refactored multi-round training and added support for AsyncEngine. Refer to the [documentation](../DeveloperGuide/multi_turn.md).
+- **2025-05-29** — Added support for padding-free (`--padding_free true`) and sequence parallelism (`--sequence_parallel_size N`).
+- **2025-05-23** — Added support for custom sampling batch size. Refer to the `generation_batch_size` / `steps_per_generation` parameters.
+- **2025-05-22** — Swift rollout now supports the `data_parallel_size` parameter.
+- **2025-05-16** - Added ref_model synchronization logic. Refer to the `sync_ref_model` parameter.
+- **2025-05-13** — Refactored GRPOTrainer code for better readability and maintainability. Internal mode now supports vLLM>=0.8.
+- **2025-05-11** — Added support for generative reward models. Custom reward model logic can be implemented via `reward_model_plugin`. For more details, refer to the [documentation](../DeveloperGuide/Reward Model) section.
+- **2025-04-30** — The startup command for the external vLLM server has been changed to `swift rollout`.
 
-GRPOTrainer underwent a code refactoring in ms-swift3.5. If you are using a swift version < 3.5, please refer to the [stable documentation](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md).  
+GRPOTrainer underwent a code refactoring in ms-swift3.5. If you are using a swift version < 3.5, please refer to the [stable documentation](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md).
 
-[GRPO (Group Relative Policy Optimization)](https://arxiv.org/abs/2402.03300) leverages intra-group relative advantage calculations to replace the independent value model in the PPO algorithm and directly incorporates KL divergence penalties into the loss function to improve training stability.  
+[GRPO (Group Relative Policy Optimization)](https://arxiv.org/abs/2402.03300) leverages intra-group relative advantage calculations to replace the independent value model in the PPO algorithm and directly incorporates KL divergence penalties into the loss function to improve training stability.
 
-### GRPO Objective Function  
+### GRPO Objective Function
 $$
 {\scriptstyle
 \begin{aligned}
@@ -22,13 +22,13 @@ $$
 & \frac{1}{G} \sum_{i=1}^G \frac{1}{\left|o_i\right|} \sum_{t=1}^{\left|o_i\right|}\left\{\min \left[\frac{\pi_\theta\left(o_{i, t} \mid q, o_{i,<t}\right)}{\pi_{\theta_{o l d}}\left(o_{i, t} \mid q, o_{i,<t}\right)} \hat{A}_{i, t}, \operatorname{clip}\left(\frac{\pi_\theta\left(o_{i, t} \mid q, o_{i,<t}\right)}{\pi_{\theta_{o l d}}\left(o_{i, t} \mid q, o_{i,<t}\right)}, 1-\varepsilon, 1+\varepsilon\right) \hat{A}_{i, t}\right]-\beta \mathbb{D}_{K L}\left[\pi_\theta| | \pi_{r e f}\right]\right\}
 \end{aligned}
 }
-$$  
+$$
 
-The advantage function is defined as  
+The advantage function is defined as
 
 $$
 \hat{A}_{i,t} = \frac{R_i - \text{mean}(\{R_j\}_{j=1}^G)}{\text{std}(\{R_j\}_{j=1}^G)}
-$$  
+$$
 
 
 <details> <summary>GRPO Algorithm Pseudocode</summary>
@@ -116,20 +116,20 @@ optimizer.step()
 </details>
 
 
-For training script examples, refer to [examples](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo).  
+For training script examples, refer to [examples](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo).
 
 For GRPO parameters, refer to the [documentation](../../../Instruction/Command-line-parameters.md#grpo-arguments)
 
-## Cluster Support  
+## Cluster Support
 
 ![](../../../../resources/grpo.png)
 
-The GRPO training framework supports integration with high-performance inference engines (e.g., vLLM) to accelerate the sampling process, offering the following two deployment modes:  
+The GRPO training framework supports integration with high-performance inference engines (e.g., vLLM) to accelerate the sampling process, offering the following two deployment modes:
 
-### 1. Colocate (Internal) Mode  
-Training and inference share GPU resources, with the inference service launched internally within the Trainer.  
+### 1. Colocate (Internal) Mode
+Training and inference share GPU resources, with the inference service launched internally within the Trainer.
 
-Startup parameters  
+Startup parameters
 ```bash
 --use_vllm true \
 --vllm_mode colocate
@@ -199,18 +199,18 @@ Note: When set `use_async_engine`, enabling only DP (Data Parallelism) may cause
 To configure the external vLLM server during training, use the following parameters:
 
 ```bash
---use_vllm true \  
---vllm_mode server \  
---vllm_server_host <server_IP> \  
---vllm_server_port <service_port> \  
---vllm_server_timeout <timeout> \  
+--use_vllm true \
+--vllm_mode server \
+--vllm_server_host <server_IP> \
+--vllm_server_port <service_port> \
+--vllm_server_timeout <timeout> \
 ```
 
 ## FAQ
 
 **1. Loss Equals Zero / Approaches Zero / Is Negative During Training**
 
-This is normal behavior. For reference, see [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851). 
+This is normal behavior. For reference, see [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851).
 
 ---
 

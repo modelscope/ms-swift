@@ -134,10 +134,11 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 # Some multimodal models do not expand the image pad token.
                 self.loss_scale = 'default'
             elif self.rlhf_type == 'grpo':
-                if self.multi_turn_scheduler:
-                    self.loss_scale = 'default'
-                else:
-                    self.loss_scale = 'last_round'
+                if self.loss_scale is None:
+                    if self.multi_turn_scheduler:
+                        self.loss_scale = 'default'
+                    else:
+                        self.loss_scale = 'last_round'
             else:
                 self.loss_scale = 'last_round'
         if self.rlhf_type == 'grpo' and self.beta == 0.0:
@@ -268,7 +269,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             assert self.vllm_mode == 'server', 'async generate require vllm_mode == server, '
             'please deploy vLLM server by `swift rollout` and assign with `vllm_server_host` '
             'for more infomations, please check '
-            'https://swift.readthedocs.io/en/latest/Instruction/GRPO/getstarted/grpo.html'
+            'https://swift.readthedocs.io/en/latest/Instruction/GRPO/getstarted/GRPO.html'
 
         if not self.use_vllm and self.vllm_tensor_parallel_size != 1:
             self.vllm_tensor_parallel_size = 1
@@ -321,7 +322,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 'If you wish to use async mode, please use `vllm_mode server` and external vLLM server instead.')
 
         if self.multi_turn_func:
-            logger.warning("The parameter 'multi_turn_func' has been deprecated and will be removed in version 3.6. "
+            logger.warning("The parameter 'multi_turn_func' has been deprecated and will be removed in version 3.7. "
                            "Please use 'multi_turn_scheduler' instead")
 
             self.multi_turn_scheduler = self.multi_turn_func

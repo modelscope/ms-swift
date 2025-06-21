@@ -13,7 +13,7 @@ Currently, we can flexibly customize the processing logic of reward models using
 
 With the `reward_model_plugin`, developers can tailor the reward evaluation process to the specific needs of their applications. This flexibility allows for more nuanced and effective reward-based training strategies.
 
-The reward model is invoked via the plugin's `__call__` method, which takes `inputs` as a parameter, containing the model's input-output messages and other columns from the dataset.  
+The reward model is invoked via the plugin's `__call__` method, which takes `inputs` as a parameter, containing the model's input-output messages and other columns from the dataset.
 
 ```python
     def __call__(self, inputs):

@@ -501,7 +501,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - ref_model_mixup_alpha: The Parameter controls the mix between the current policy and the previous reference policy during updates. The reference policy is updated according to the equation: $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$. Default is 0.6.
   - ref_model_sync_steps：The parameter determines how frequently the current policy is synchronized with the reference policy. Default is 512.
 - move_model_batches: When moving model parameters to fast inference frameworks such as vLLM/LMDeploy, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches. This parameter is only meaningful for LoRA (PEFT).
-- multi_turn_func: The multi turn GRPO plugin name. Add your multi-turn implementation in plugin/multi_turn.py.
+- multi_turn_scheduler: The multi turn GRPO plugin name. Add your multi-turn implementation in plugin/multi_turn.py.
 - dynamic_sample: Exclude data within the group where the reward standard deviation is 0, and additionally sample new data. Default is False.
 - max_resample_times: Under the dynamic_sample setting, limit the number of resampling attempts to a maximum of 3. Default is 3 times.
 - overlong_filter: Skip overlong truncated samples, which will not be included in loss calculation. Default is False.
