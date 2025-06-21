@@ -40,4 +40,5 @@ register_megatron_model(
         ModelType.internlm3,
         ModelType.mimo,
         ModelType.mimo_rl,
+        ModelType.moonlight,
     ], model_provider, convert_gpt_hf_config, convert_mcore2hf, convert_hf2mcore))

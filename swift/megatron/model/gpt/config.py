@@ -13,4 +13,10 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
             res['qk_layernorm'] = True
         if architectures in {'Qwen2MoeForCausalLM', 'Qwen3MoeForCausalLM'}:
             res.pop('ffn_hidden_size', None)
+            if architectures == 'Qwen2MoeForCausalLM':
+                res['use_shared_expert_gate'] = True
+        if architectures == 'DeepseekV3ForCausalLM':
+            res['qk_layernorm'] = True
+            res['moe_router_load_balancing_type'] = 'seq_aux_loss'
+            res['moe_router_enable_expert_bias'] = True
     return res

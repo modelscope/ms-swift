@@ -3,6 +3,14 @@ import torch
 from megatron.training import get_args
 
 
+def set_mla_attn_state(args, mg_attn, hf_attn):
+    mg_attn.linear_proj.weight.data.copy_(hf_attn.o_proj.weight)
+    mg_attn.linear_q_proj.weight.data.copy_(hf_attn.q_proj.weight)
+    mg_attn.linear_kv_down_proj.weight.data.copy_(hf_attn.kv_a_proj_with_mqa.weight)
+    mg_attn.linear_kv_up_proj.weight.data.copy_(hf_attn.kv_b_proj.weight)
+    if args.qk_layernorm:
+        mg_attn.linear_kv_up_proj.layer_norm_weight.data.copy_(hf_attn.kv_a_layernorm.weight)
+
 def set_attn_state(args, mg_attn, hf_attn):
     num_query_groups = (args.num_query_groups if args.group_query_attention else args.num_attention_heads)
 
@@ -55,8 +63,10 @@ def set_mlp_state(args, mg_mlp, hf_mlp):
 def set_layer_state(args, mg_model, hf_model, layer_idx):
     mg_layer = mg_model.decoder.layers[layer_idx]
     hf_layer = hf_model.model.layers[layer_idx]
-
-    set_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
+    if args.multi_latent_attention:
+        set_mla_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
+    else:
+        set_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
     set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
 
     post_attention_layernorm_weight = hf_layer.post_attention_layernorm.weight

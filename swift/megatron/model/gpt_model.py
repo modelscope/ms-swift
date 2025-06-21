@@ -30,7 +30,7 @@ class GPTModel(McoreGPTModel):
         fp16_lm_cross_entropy: bool = False,
         parallel_output: bool = True,
         share_embeddings_and_output_weights: bool = False,
-        position_embedding_type: Literal['learned_absolute', 'rope', 'none'] = 'learned_absolute',
+        position_embedding_type: Literal['learned_absolute', 'rope', 'mrope', 'none'] = 'learned_absolute',
         rotary_percent: float = 1.0,
         rotary_base: int = 10000,
         hf_rope_scaling: Dict[str, Any] = None,
@@ -38,6 +38,7 @@ class GPTModel(McoreGPTModel):
         rope_scaling_factor: float = 8.0,
         scatter_embedding_sequence_parallel: bool = True,
         seq_len_interpolation_factor: Optional[float] = None,
+        mtp_block_spec: Optional[ModuleSpec] = None,
     ):
         self.hf_rope_scaling = hf_rope_scaling
         super().__init__(
@@ -57,6 +58,7 @@ class GPTModel(McoreGPTModel):
             rope_scaling_factor=rope_scaling_factor,
             scatter_embedding_sequence_parallel=scatter_embedding_sequence_parallel,
             seq_len_interpolation_factor=seq_len_interpolation_factor,
+            mtp_block_spec=mtp_block_spec,
         )
         self.attention_scaling = 1.
         if self.hf_rope_scaling is not None:
