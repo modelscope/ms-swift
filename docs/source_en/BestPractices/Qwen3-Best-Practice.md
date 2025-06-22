@@ -110,6 +110,27 @@ If you want to train using data without the thinking chain while preserving the 
 ]}
 ```
 
+You can use the following command to obtain a distilled reasoning dataset. During training, you can mix it with datasets that do not contain chain-of-thought (CoT) data to further mitigate the loss of reasoning ability:
+
+- The choice of `--val_dataset` is arbitrary. The reasoning results saved to `result_path` can be specified directly in training via `--dataset distill_dataset.jsonl`.
+- This approach is also applicable to other reasoning models, such as deepseek-r1.
+
+```shell
+# 4 * 80GiB
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift infer \
+    --model Qwen/Qwen3-32B \
+    --infer_backend vllm \
+    --val_dataset 'AI-ModelScope/alpaca-gpt4-data-en#5000' 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
+    --gpu_memory_utilization 0.9 \
+    --tensor_parallel_size 2 \
+    --max_model_len 8192 \
+    --max_new_tokens 4096 \
+    --write_batch_size 1000 \
+    --result_path distill_dataset.jsonl
+```
+
 ### 30-Minute Self-Awareness Fine-Tuning
 
 This section demonstrates how to perform self-awareness fine-tuning on Qwen3-8B within 30 minutes. A GPU with at least 22GB of VRAM is required and can run on the free computing resources provided by ModelScope, such as the A10 instance.

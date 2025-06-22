@@ -72,7 +72,7 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 | RTX 20/30/40 Series  |                                                        |
 | T4/V100              | Some models may encounter NAN                          |
 | Ascend NPU           | Some models may encounter NAN or unsupported operators |
-| MPS                  |                                                        |
+| MPS                  |   Refer to [issue 4572](https://github.com/modelscope/ms-swift/issues/4572)                         |
 | CPU                  |                                                        |
 
 
