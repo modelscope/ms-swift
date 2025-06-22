@@ -227,7 +227,7 @@ swift sft \
 
 ## Reinforcement Learning (RL)
 
-ms-swift supports RLHF methods such as DPO, GRPO, DAPO, PPO, KTO, and GKD. This section will focus on using ms-swift for GRPO training on Qwen3-8B. For more information about GRPO, refer to the [GRPO documentation](../Instruction/GRPO.md). Additional RLHF training scripts can be found in [examples/train/rlhf](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf).
+ms-swift supports RLHF methods such as DPO, GRPO, DAPO, PPO, KTO, and GKD. This section will focus on using ms-swift for GRPO training on Qwen3-8B. For more information about GRPO, refer to the [GRPO documentation](../Instruction/GRPO/GetStarted/GRPO.md). Additional RLHF training scripts can be found in [examples/train/rlhf](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf).
 
 ### Environment Setup
 

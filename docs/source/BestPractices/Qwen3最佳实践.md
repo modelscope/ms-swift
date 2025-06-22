@@ -226,7 +226,7 @@ swift sft \
 
 ## 强化学习 (RL)
 
-ms-swift 支持 DPO、GRPO、DAPO、PPO、KTO、GKD 等 RLHF 方法。本章将着重介绍使用 ms-swift 对 Qwen3-8B 进行 GRPO 训练。更多关于GRPO的内容，可以参考[GRPO文档](../Instruction/GRPO.md)。更多RLHF训练脚本，参考[examples/train/rlhf](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf)。
+ms-swift 支持 DPO、GRPO、DAPO、PPO、KTO、GKD 等 RLHF 方法。本章将着重介绍使用 ms-swift 对 Qwen3-8B 进行 GRPO 训练。更多关于GRPO的内容，可以参考[GRPO文档](../Instruction/GRPO/GetStarted/GRPO.md)。更多RLHF训练脚本，参考[examples/train/rlhf](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf)。
 
 ### 环境设置
 

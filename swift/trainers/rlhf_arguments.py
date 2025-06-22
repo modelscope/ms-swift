@@ -10,10 +10,7 @@ from trl import ORPOConfig as HfORPOConfig
 from trl import PPOConfig as HfPPOConfig
 from trl import RewardConfig as HfRewardConfig
 
-from swift.utils import get_logger
 from .arguments import GRPOArgumentsMixin, SwiftArgumentsMixin
-
-logger = get_logger()
 
 
 @dataclass
