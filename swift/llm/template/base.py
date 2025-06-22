@@ -64,6 +64,7 @@ class Template(ProcessorMixin):
         agent_template: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
         use_chat_template: bool = True,
+        remove_unused_columns: bool = True,
         # only for train
         padding_free: bool = False,
         padding_side: Literal['left', 'right'] = 'right',
@@ -101,6 +102,7 @@ class Template(ProcessorMixin):
 
         self.template_meta: TemplateMeta = template_meta
         self.use_chat_template = use_chat_template
+        self.remove_unused_columns = remove_unused_columns
         self.template_backend = template_backend
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
@@ -422,11 +424,12 @@ class Template(ProcessorMixin):
         if isinstance(inputs, (InferRequest, TemplateInputs)):
             inputs = asdict(inputs)
 
+        extra_kwargs = {}
         if isinstance(inputs, dict):
             inputs = deepcopy(inputs)
             if not self.is_training:
                 InferRequest.remove_response(inputs['messages'])
-            inputs = StdTemplateInputs.from_dict(inputs)
+            inputs, extra_kwargs = StdTemplateInputs.from_dict(inputs)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
         assert isinstance(inputs, StdTemplateInputs)
@@ -460,6 +463,8 @@ class Template(ProcessorMixin):
         encoded['length'] = max(lengths)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
+        if not self.remove_unused_columns:
+            encoded['extra_kwargs'] = extra_kwargs
         return encoded
 
     def packing_row(self, row: List[Tuple[Dict[str, Any], int]]) -> Dict[str, Any]:
@@ -1276,18 +1281,24 @@ class Template(ProcessorMixin):
         return models
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        from swift.llm import RowPreprocessor
         if self.mode == 'rlhf':
-            return self._rlhf_data_collator(batch, padding_to=padding_to)
+            res = self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
-            return self._kto_data_collator(batch, padding_to=padding_to)
+            res = self._kto_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'gkd':
-            return self._gkd_data_collator(batch, padding_to=padding_to)
+            res = self._gkd_data_collator(batch, padding_to=padding_to)
         elif self.mode in {'pt', 'train', 'prm'}:
-            return self._data_collator(batch, padding_to=padding_to)
+            res = self._data_collator(batch, padding_to=padding_to)
         elif self.mode == 'seq_cls':
-            return self._seq_cls_data_collator(batch, padding_to=padding_to)
+            res = self._seq_cls_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'embedding':
-            return self._embedding_data_collator(batch, padding_to=padding_to)
+            res = self._embedding_data_collator(batch, padding_to=padding_to)
+        if not self.remove_unused_columns:
+            extra_kwargs = [b['extra_kwargs'] for b in batch if b.get('extra_kwargs') is not None]
+            extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
+            res.update(extra_kwargs)
+        return res
 
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:

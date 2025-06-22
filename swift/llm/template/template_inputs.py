@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Dict, List, Optional, Union
 
 import json
@@ -166,7 +166,10 @@ class StdTemplateInputs:
             else:
                 media_kwargs[k] = inputs_mm_data
 
-        return cls(messages=messages, system=system, tools=tools, objects=objects, **kwargs, **media_kwargs)
+        all_keys = set(f.name for f in fields(StdTemplateInputs))
+        extra_kwargs = {k: v for k, v in inputs.items() if k not in all_keys}
+        return cls(
+            messages=messages, system=system, tools=tools, objects=objects, **kwargs, **media_kwargs), extra_kwargs
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
