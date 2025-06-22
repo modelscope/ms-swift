@@ -464,7 +464,7 @@ class Template(ProcessorMixin):
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         if not self.remove_unused_columns:
-            encoded['extra_kwargs'] = extra_kwargs
+            encoded['_extra_kwargs'] = extra_kwargs
         return encoded
 
     def packing_row(self, row: List[Tuple[Dict[str, Any], int]]) -> Dict[str, Any]:
@@ -1295,7 +1295,7 @@ class Template(ProcessorMixin):
         elif self.mode == 'embedding':
             res = self._embedding_data_collator(batch, padding_to=padding_to)
         if not self.remove_unused_columns:
-            extra_kwargs = [b['extra_kwargs'] for b in batch if b.get('extra_kwargs') is not None]
+            extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]
             extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
             res.update(extra_kwargs)
         return res
