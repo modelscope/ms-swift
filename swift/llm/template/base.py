@@ -1297,7 +1297,7 @@ class Template(ProcessorMixin):
         if not self.remove_unused_columns:
             extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]
             extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
-            res.update(extra_kwargs)
+            res.update({k: v for k, v in extra_kwargs.items() if k not in res})
         return res
 
     @staticmethod
