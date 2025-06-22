@@ -71,7 +71,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | RTX20/30/40系列 |                             |
 | T4/V100         | 部分模型出现NAN             |
 | Ascend NPU      | 部分模型出现NAN或算子不支持 |
-| MPS             |                             |
+| MPS             | 参考[issue 4572](https://github.com/modelscope/ms-swift/issues/4572)                         |
 | CPU             |                             |
 
 
