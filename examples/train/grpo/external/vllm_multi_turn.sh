@@ -12,12 +12,12 @@ NPROC_PER_NODE=7 \
 nohup swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-3B-Instruct \
+    --train_type full \
     --reward_funcs accuracy \
     --use_vllm true \
     --vllm_mode server \
     --vllm_server_host 127.0.0.1 \
     --vllm_server_port 8000 \
-    --train_type full \
     --torch_dtype bfloat16 \
     --dataset AI-MO/NuminaMath-TIR#1000 \
     --split_dataset_ratio 0 \

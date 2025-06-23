@@ -77,6 +77,7 @@ class DeployArguments(InferArguments):
         return super()._init_result_path(folder_name)
 
 
+@dataclass
 class RolloutArguments(DeployArguments):
     use_async_engine: Optional[bool] = None
     # only for GRPO rollout with AsyncEngine, see details in swift/plugin/multi_turn
