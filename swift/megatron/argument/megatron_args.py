@@ -39,7 +39,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin):
 
     original_max_position_embeddings: Optional[int] = None
     partial_rotary_factor: Optional[float] = None
-    use_shared_expert_gate: bool = False
+    use_shared_expert_gate: Optional[bool] = None
 
 
 @dataclass
@@ -144,18 +144,18 @@ class MegatronArguments(ExtraMegatronArguments):
 
     # moe
     num_experts: Optional[int] = None
-    moe_layer_freq: str = '1'
+    moe_layer_freq: Optional[str] = None
     moe_ffn_hidden_size: Optional[int] = None
     moe_shared_expert_intermediate_size: Optional[int] = None
 
     moe_router_topk: Optional[int] = None
     moe_router_pre_softmax: Optional[bool] = None
     moe_router_dtype: Literal['fp32', 'fp64'] = None
-    moe_router_score_function: Literal['sigmoid', 'softmax'] = 'softmax'
+    moe_router_score_function: Literal['sigmoid', 'softmax'] = None
     moe_router_bias_update_rate: float = 1e-3
-    moe_router_enable_expert_bias: bool = False
+    moe_router_enable_expert_bias: Optional[bool] = None
     moe_router_topk_scaling_factor: Optional[float] = None
-    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = 'aux_loss'
+    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = None
 
     expert_model_parallel_size: int = 1
     moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex', 'alltoall_seq'] = 'alltoall'
@@ -170,11 +170,11 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_token_drop_policy: Literal['probs', 'position'] = 'probs'
 
     # mla
-    multi_latent_attention: bool = False
+    multi_latent_attention: Optional[bool] = None
     q_lora_rank: Optional[int] = None
-    kv_lora_rank: int = 32
-    qk_head_dim: int = 128
-    qk_pos_emb_head_dim: int = 64
+    kv_lora_rank: Optional[int] = None
+    qk_head_dim: Optional[int] = None
+    qk_pos_emb_head_dim: Optional[int] = None
 
     # mixed precision
     fp16: Optional[bool] = None
@@ -226,14 +226,33 @@ class MegatronArguments(ExtraMegatronArguments):
             self.add_qkv_bias = True
         if self.disable_bias_linear is None:
             self.disable_bias_linear = True
+        if self.qk_layernorm is None:
+            self.qk_layernorm = False
+        if self.multi_latent_attention is None:
+            self.multi_latent_attention = False
+        if self.kv_lora_rank is None:
+            self.kv_lora_rank = 32
+        if self.qk_head_dim is None:
+            self.qk_head_dim = 128
+        if self.qk_pos_emb_head_dim is None:
+            self.qk_pos_emb_head_dim = 64
+        # moe
+        if self.use_shared_expert_gate is None:
+            self.use_shared_expert_gate = False
+        if self.moe_router_score_function is None:
+            self.moe_router_score_function = 'softmax'
         if self.moe_router_topk is None:
             self.moe_router_topk = 2
         if self.moe_router_pre_softmax is None:
             self.moe_router_pre_softmax = False
         if self.moe_aux_loss_coeff is None:
             self.moe_aux_loss_coeff = 0.
-        if self.qk_layernorm is None:
-            self.qk_layernorm = False
+        if self.moe_router_load_balancing_type is None:
+            self.moe_router_load_balancing_type = 'aux_loss'
+        if self.moe_router_enable_expert_bias is None:
+            self.moe_router_enable_expert_bias = False
+        if self.moe_layer_freq is None:
+            self.moe_layer_freq = '1'
 
     def _init_mixed_precision(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
@@ -248,10 +267,9 @@ class MegatronArguments(ExtraMegatronArguments):
             return
         if self.moe_shared_expert_intermediate_size == 0:
             self.moe_shared_expert_intermediate_size = None
-        if self.moe_ffn_hidden_size is None:
-            self.moe_ffn_hidden_size = self.ffn_hidden_size
-        else:
-            self.ffn_hidden_size = self.moe_ffn_hidden_size
+        if self.num_experts is not None:
+            if self.moe_ffn_hidden_size is None:
+                self.moe_ffn_hidden_size = self.ffn_hidden_size
 
     @staticmethod
     def _patch_megatron_timeout(distributed_timeout_minutes: int):

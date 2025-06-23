@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import math
+from dataclasses import fields
 
 import torch
 from megatron.training.checkpointing import load_checkpoint
@@ -61,6 +62,12 @@ convert_kwargs = {
 }
 
 
+def _check_megatron_kwargs(kwargs):
+    default_mapping = {field.name: field.default for field in fields(MegatronArguments)}
+    for k in kwargs.keys():
+        assert default_mapping[k] is None
+
+
 def convert_hf2mcore(args: ExportArguments) -> None:
     kwargs = args.get_model_kwargs()
     hf_model, processor = get_model_tokenizer(**kwargs)
@@ -72,6 +79,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
     kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
+    _check_megatron_kwargs(kwargs)
     megatron_args = MegatronArguments(**kwargs, **convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
@@ -100,6 +108,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
     kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
+    _check_megatron_kwargs(kwargs)
     megatron_args = MegatronArguments(**kwargs, **convert_kwargs, load=args.mcore_model, torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()

@@ -40,6 +40,7 @@ class GPTModel(McoreGPTModel):
         seq_len_interpolation_factor: Optional[float] = None,
         mtp_block_spec: Optional[ModuleSpec] = None,
     ):
+        config.rope_type = 'rope'  # 'yarn' is implemented using transformers.
         self.hf_rope_scaling = hf_rope_scaling
         super().__init__(
             config,

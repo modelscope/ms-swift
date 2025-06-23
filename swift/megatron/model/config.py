@@ -38,6 +38,7 @@ config_mapping = {
     # other
     'original_max_position_embeddings': ['original_max_position_embeddings'],
     'partial_rotary_factor': ['partial_rotary_factor'],
+    'moe_layer_freq': ['first_k_dense_replace']
 }
 
 
@@ -54,6 +55,8 @@ def convert_hf_config(config) -> Dict[str, Any]:
                 elif k == 'swiglu':
                     if hf_v == 'silu':
                         megatron_config[k] = True
+                elif k == 'moe_layer_freq' and hf_k == 'first_k_dense_replace':
+                    megatron_config['first_k_dense_replace'] = hf_v
                 else:
                     if k == 'kv_lora_rank':
                         megatron_config['multi_latent_attention'] = True

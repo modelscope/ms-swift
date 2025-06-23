@@ -94,6 +94,10 @@ def test_mimo():
     _test_model('XiaomiMiMo/MiMo-7B-RL-0530')
 
 
+def test_moonlight():
+    _test_model('moonshotai/Moonlight-16B-A3B-Instruct')
+
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -101,7 +105,7 @@ if __name__ == '__main__':
     # test_marco_o1()
     # test_deepseek_r1_llama()
     # test_deepseek_r1_qwen()
-    test_deepseek_r1_qwen_0528()
+    # test_deepseek_r1_qwen_0528()
     # test_yi()
     # test_megrez()
     # test_llama3_1()
@@ -111,3 +115,4 @@ if __name__ == '__main__':
     # test_qwen3_moe()
     # test_internlm3()
     # test_mimo()
+    test_moonlight()
