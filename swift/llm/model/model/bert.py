@@ -4,10 +4,10 @@ from types import MethodType
 import torch.nn.functional as F
 from transformers import AutoConfig, AutoModel
 
+from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import BertModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
-from swift.llm import TemplateType
 
 logger = get_logger()
 

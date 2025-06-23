@@ -217,7 +217,6 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/Qwen3-Reranker-0.6B](https://modelscope.cn/models/Qwen/Qwen3-Reranker-0.6B)|qwen3_reranker|qwen3_reranker|-|&#x2718;|-|[Qwen/Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B)|
 |[Qwen/Qwen3-Reranker-4B](https://modelscope.cn/models/Qwen/Qwen3-Reranker-4B)|qwen3_reranker|qwen3_reranker|-|&#x2718;|-|[Qwen/Qwen3-Reranker-4B](https://huggingface.co/Qwen/Qwen3-Reranker-4B)|
 |[Qwen/Qwen3-Reranker-8B](https://modelscope.cn/models/Qwen/Qwen3-Reranker-8B)|qwen3_reranker|qwen3_reranker|-|&#x2718;|-|[Qwen/Qwen3-Reranker-8B](https://huggingface.co/Qwen/Qwen3-Reranker-8B)|
-|[iic/gte-reranker-modernbert-base](https://modelscope.cn/models/iic/gte-reranker-modernbert-base)|modern_bert_gte_reranker|bert|-|&#x2718;|-|[Alibaba-NLP/gte-reranker-modernbert-base](https://huggingface.co/Alibaba-NLP/gte-reranker-modernbert-base)|
 |[iic/gte_Qwen2-1.5B-instruct](https://modelscope.cn/models/iic/gte_Qwen2-1.5B-instruct)|qwen2_gte|dummy|-|&#x2718;|-|[Alibaba-NLP/gte-Qwen2-1.5B-instruct](https://huggingface.co/Alibaba-NLP/gte-Qwen2-1.5B-instruct)|
 |[iic/gte_Qwen2-7B-instruct](https://modelscope.cn/models/iic/gte_Qwen2-7B-instruct)|qwen2_gte|dummy|-|&#x2718;|-|[Alibaba-NLP/gte-Qwen2-7B-instruct](https://huggingface.co/Alibaba-NLP/gte-Qwen2-7B-instruct)|
 |[codefuse-ai/CodeFuse-QWen-14B](https://modelscope.cn/models/codefuse-ai/CodeFuse-QWen-14B)|codefuse_qwen|codefuse|-|&#x2718;|coding|[codefuse-ai/CodeFuse-QWen-14B](https://huggingface.co/codefuse-ai/CodeFuse-QWen-14B)|

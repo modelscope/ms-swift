@@ -410,7 +410,7 @@ class Template(ProcessorMixin):
             _encoded[f'positive_{key}'] = positive_encoded[key]
             _encoded[f'negative_{key}'] = []
         labels.append(1)
-        
+
         rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
         for i in range(rejected_len):
             negative = deepcopy(inputs)
@@ -420,7 +420,7 @@ class Template(ProcessorMixin):
             for key in negative_encoded:
                 _encoded[f'negative_{key}'].append(negative_encoded[key])
             labels.append(0)
-            
+
         _encoded['labels'] = labels
         return _encoded
 
@@ -1266,7 +1266,10 @@ class Template(ProcessorMixin):
     def is_training(self):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
-    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto', 'gkd', 'embedding', 'reranker', 'generative_reranker']) -> None:
+    def set_mode(
+        self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto', 'gkd', 'embedding', 'reranker',
+                            'generative_reranker']
+    ) -> None:
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -1320,9 +1323,9 @@ class Template(ProcessorMixin):
         elif self.mode == 'seq_cls':
             res = self._seq_cls_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'embedding':
-            res =  self._embedding_data_collator(batch, padding_to=padding_to)
+            res = self._embedding_data_collator(batch, padding_to=padding_to)
         elif self.mode in ['reranker', 'generative_reranker']:
-            res =  self._reranker_data_collator(batch, padding_to=padding_to)
+            res = self._reranker_data_collator(batch, padding_to=padding_to)
         if not self.remove_unused_columns:
             extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]
             extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
@@ -1448,14 +1451,14 @@ class Template(ProcessorMixin):
                 for i, value in enumerate(value_list):
                     b[f'negative{i}_{suffix}'] = value
                 b.pop(key)
-                
+
             indexes = ['positive_']
             if max_neg is not None:
                 for i in range(0, max_neg):
                     indexes.append(f'negative{i}_')
             for prefix in indexes:
                 new_batch += self._fetch_inputs_startswith([b], prefix)
-            labels.extend(b.get('labels', None)[:max_negative_samples+1])
+            labels.extend(b.get('labels', None)[:max_negative_samples + 1])
         res = self._data_collator(new_batch, padding_to=padding_to)
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.long)

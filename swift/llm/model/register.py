@@ -521,7 +521,7 @@ def get_model_info_meta(
             task_type = 'seq_cls'
         if model_meta.task_type is not None:
             task_type = model_meta.task_type
-    
+
     # Handle reranker task type
     if task_type == 'reranker':
         if num_labels is None:
@@ -533,7 +533,7 @@ def get_model_info_meta(
         logger.info('Setting generative_reranker task (no num_labels needed)')
     elif task_type == 'seq_cls':
         assert num_labels is not None, 'Please pass the parameter `num_labels`.'
-    
+
     model_info.task_type = task_type
     model_info.num_labels = num_labels
 

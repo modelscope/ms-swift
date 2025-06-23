@@ -19,4 +19,4 @@ swift sft \
     --gradient_accumulation_steps 8 \
     --learning_rate 6e-6 \
     --label_names labels \
-    --dataloader_drop_last true 
+    --dataloader_drop_last true

@@ -77,19 +77,21 @@ class EmbeddingTrainer(Trainer):
             return calculate_infonce_metrics(eval_prediction.predictions, eval_prediction.label_ids)
         else:
             return calculate_paired_metrics(eval_prediction.predictions, eval_prediction.label_ids)
-        
-        
+
+
 class RerankerTrainer(Trainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.compute_metrics = self.calculate_metric
         self.label_names = ['labels']
-        
+
         # Set up preprocess_logits_for_metrics to reduce memory usage for generative reranker
         from swift.plugin.loss import get_loss_func, LossType
-        if self.compute_loss_func in [get_loss_func(LossType.generative_reranker), 
-                                      get_loss_func(LossType.listwise_generative_reranker)]:
+        if self.compute_loss_func in [
+                get_loss_func(LossType.generative_reranker),
+                get_loss_func(LossType.listwise_generative_reranker)
+        ]:
             self.preprocess_logits_for_metrics = self._preprocess_generative_reranker_logits
         else:
             self.preprocess_logits_for_metrics = None
@@ -101,23 +103,23 @@ class RerankerTrainer(Trainer):
         """
         import torch
         import os
-        
+
         # Get token IDs for positive and negative tokens
         positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
         negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
-        
+
         tokenizer = getattr(self, 'processing_class', None)
         if tokenizer is None:
             # Fallback: return full logits if tokenizer not available
             return logits
-            
+
         try:
             positive_token_id = tokenizer.convert_tokens_to_ids(positive_token)
             negative_token_id = tokenizer.convert_tokens_to_ids(negative_token)
         except Exception:
             # Fallback: return full logits if token conversion fails
             return logits
-        
+
         # Extract only the yes/no token logits from the last position
         # This dramatically reduces memory usage
         if len(logits.shape) == 3:
@@ -132,12 +134,13 @@ class RerankerTrainer(Trainer):
             return logits
 
     def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
-        from swift.plugin.loss import (get_loss_func, LossType, 
-                                       calculate_reranker_metrics)
-        
+        from swift.plugin.loss import (get_loss_func, LossType, calculate_reranker_metrics)
+
         # Check if we're using generative reranker (point-wise or list-wise)
-        if self.compute_loss_func in [get_loss_func(LossType.generative_reranker),
-                                      get_loss_func(LossType.listwise_generative_reranker)]:
+        if self.compute_loss_func in [
+                get_loss_func(LossType.generative_reranker),
+                get_loss_func(LossType.listwise_generative_reranker)
+        ]:
             # For generative reranker, predictions are now [batch_size, 2] from preprocessing
             # We need to handle this differently
             predictions = eval_prediction.predictions
@@ -151,7 +154,7 @@ class RerankerTrainer(Trainer):
                 return calculate_reranker_metrics(relevance_scores, eval_prediction.label_ids)
             else:
                 # Fallback to original method if preprocessing didn't work
-                raise ValueError("Unexpected predictions shape")
+                raise ValueError('Unexpected predictions shape')
         else:
             # For standard reranker (point-wise or list-wise)
             return calculate_reranker_metrics(eval_prediction.predictions, eval_prediction.label_ids)
@@ -161,36 +164,37 @@ class RerankerTrainer(Trainer):
         if self.compute_loss_func is not None:
             from swift.plugin.loss import get_loss_func, LossType
             loss_kwargs = {}
-            
-            # For generative_reranker_loss and listwise_generative_reranker_loss, always pass trainer to access tokenizer
-            if self.compute_loss_func in [get_loss_func(LossType.generative_reranker),
-                                          get_loss_func(LossType.listwise_generative_reranker)]:
+
+            if self.compute_loss_func in [
+                    get_loss_func(LossType.generative_reranker),
+                    get_loss_func(LossType.listwise_generative_reranker)
+            ]:
                 loss_kwargs['trainer'] = self
-            
+
             # Get labels and compute outputs
             labels = inputs.get('labels')
             if labels is not None:
                 labels = inputs.pop('labels')
-            
+
             outputs = model(**inputs)
-            
+
             if labels is not None:
                 # Call custom loss function
                 loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, **loss_kwargs)
             else:
                 # Fallback to model's loss
                 loss = outputs.loss
-                
+
             if num_items_in_batch is not None and self.model_accepts_loss_kwargs:
                 loss /= self.args.gradient_accumulation_steps
-            
+
             if labels is not None:
                 self._compute_acc(outputs, labels)
-            
+
             return (loss, outputs) if return_outputs else loss
         else:
             return super().compute_loss(model, inputs, return_outputs, num_items_in_batch)
-        
+
 
 class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
     args: Seq2SeqTrainingArguments
