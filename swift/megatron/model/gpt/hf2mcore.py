@@ -47,14 +47,6 @@ def _set_mlp_state(mg_mlp, hf_mlp):
     mg_mlp.linear_fc2.weight.data.copy_(hf_mlp.down_proj.weight)
 
 
-def set_deepseek_v3_mlp_state(args, mg_mlp, hf_mlp):
-    # MoELayer
-    if 'moe' in mg_mlp.__class__.__name__.lower():
-        _set_moe_state(args, mg_mlp, hf_mlp)
-    else:
-        _set_mlp_state(mg_mlp, hf_mlp)
-
-
 def _set_moe_state(args, mg_mlp, hf_mlp):
     mg_mlp.router.weight.data.copy_(hf_mlp.gate.weight)
     if args.moe_router_enable_expert_bias:
@@ -66,10 +58,10 @@ def _set_moe_state(args, mg_mlp, hf_mlp):
             mg_mlp.shared_experts.gate_weight.data.copy_(hf_mlp.shared_expert_gate.weight)
     for expert_idx in range(args.num_experts):
         _set_mlp_state(mg_mlp.experts.local_experts[expert_idx], hf_mlp.experts[expert_idx])
-        
+
 
 def set_mlp_state(args, mg_mlp, hf_mlp):
-    if args.num_experts:
+    if 'moe' in mg_mlp.__class__.__name__.lower():
         _set_moe_state(args, mg_mlp, hf_mlp)
     else:
         _set_mlp_state(mg_mlp, hf_mlp)
@@ -84,10 +76,8 @@ def set_layer_state(args, mg_model, hf_model, layer_idx):
     else:
         set_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
         mg_layer.self_attention.linear_qkv.layer_norm_weight.data.copy_(hf_layer.input_layernorm.weight)
-    if args.architectures == 'DeepseekV3ForCausalLM':
-        set_deepseek_v3_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
-    else:
-        set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
+
+    set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
 
     post_attention_layernorm_weight = hf_layer.post_attention_layernorm.weight
     if 'moe' in mg_layer.mlp.__class__.__name__.lower():
