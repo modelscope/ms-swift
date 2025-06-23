@@ -12,7 +12,7 @@ NPROC_PER_NODE=7 \
 nohup swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-3B-Instruct \
-    --reward_funcs accuracy format \
+    --reward_funcs accuracy \
     --use_vllm true \
     --vllm_mode server \
     --vllm_server_host 127.0.0.1 \
