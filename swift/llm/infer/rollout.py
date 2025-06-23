@@ -143,7 +143,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
     def __init__(self, args: Union[List[str], RolloutArguments, None] = None):
         super().__init__(args)
         self.use_async_engine = self.args.use_async_engine
-        self.num_connections = 1 if self.use_async_engine else args.data_parallel_size
+        self.num_connections = 1 if self.use_async_engine else self.args.data_parallel_size
         safe_set_start_method()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_rl_rollout_app()
