@@ -409,14 +409,10 @@ def channel_loss_func(outputs,
     token_loss = loss_fct(flat_logits, flat_labels)
     mask = flat_labels != -100
 
-    if position_ids is not None and logits.size(0) == 1:
-        pos = position_ids[..., :-1].view(-1).tolist()
-        sample_idx = []
-        cur = 0
-        for i, v in enumerate(pos):
-            if i > 0 and v == 0:
-                cur += 1
-            sample_idx.append(cur)
+    if position_ids is not None and trainer.template._packing:
+        pos = position_ids[..., :-1].view(-1)
+        start_idx_mask = pos.eq(0).int()
+        sample_idx = (torch.cumsum(start_idx_mask, dim=0) - 1).tolist()
         token_channels = [sample_channels[i] for i in sample_idx]
     else:
         bs, seq = shift_labels.shape
