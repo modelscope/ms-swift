@@ -397,19 +397,29 @@ class Template(ProcessorMixin):
         return _encoded
 
     def _reranker_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        """
-        Encode inputs for reranker training. 
-        Since data is already flattened in preprocessing stage with labels assigned,
-        we can simply treat it as a binary classification task.
-        """
-        # 直接使用标准的编码流程，数据已经在预处理阶段展开了
-        encoded = self._encode_truncated(inputs)
-        encoded.pop('labels', None)  # 移除原有的labels
+        _encoded = {}
+        labels = []
+
+        positive = deepcopy(inputs)
+        positive.rejected_response = []
+        positive_encoded = self._encode_truncated(positive)
+        for key in positive_encoded:
+            _encoded[f'positive_{key}'] = positive_encoded[key]
+            _encoded[f'negative_{key}'] = []
+        labels.append(1)
         
-        if inputs.label is not None:
-            # Reranker是固定的二分类任务，直接转为int即可
-            encoded['labels'] = int(inputs.label)
-        return encoded
+        rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
+        for i in range(rejected_len):
+            negative = deepcopy(inputs)
+            negative.messages[-1]['content'] = negative.rejected_response[i]
+            negative.rejected_response = []
+            negative_encoded = self._encode_truncated(negative)
+            for key in negative_encoded:
+                _encoded[f'negative_{key}'].append(negative_encoded[key])
+            labels.append(0)
+            
+        _encoded['labels'] = labels
+        return _encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode_truncated(inputs)
@@ -1406,19 +1416,36 @@ class Template(ProcessorMixin):
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.float32)
         return res
-    
+
     def _reranker_data_collator(self,
                                 batch: List[Dict[str, Any]],
                                 *,
                                 padding_to: Optional[int] = None) -> Dict[str, Any]:
-        """
-        Data collator for reranker training.
-        """
-        labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
-        res = self._data_collator(batch, padding_to=padding_to)
+        import os
+        max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
+        labels = []
+        new_batch = []
+        for b in batch:
+            keys = [key for key in b.keys() if 'negative' in key]
+            max_neg = None
+            for key in keys:
+                value_list = b[key]
+                suffix = key[len('negative_'):]
+                max_neg = min(max_negative_samples, len(value_list))
+                for i, value in enumerate(value_list):
+                    b[f'negative{i}_{suffix}'] = value
+                b.pop(key)
+                
+            indexes = ['positive_']
+            if max_neg is not None:
+                for i in range(0, max_neg):
+                    indexes.append(f'negative{i}_')
+            for prefix in indexes:
+                new_batch += self._fetch_inputs_startswith([b], prefix)
+            labels.extend(b.get('labels', None)[:max_negative_samples+1])
+        res = self._data_collator(new_batch, padding_to=padding_to)
         if labels:
-            # Reranker固定为二分类，直接转为long tensor
-            res['labels'] = torch.tensor(labels)
+            res['labels'] = torch.tensor(labels, dtype=torch.long)
         return res
 
     def _seq_cls_data_collator(self,
@@ -1595,7 +1622,7 @@ class Template(ProcessorMixin):
             if val is not None:
                 key_upper = key.upper()
                 logger.info(f'[{key_upper}_IDS] {val}')
-                if key == 'labels' and self.mode in {'seq_cls', 'embedding'}:
+                if key == 'labels' and self.mode in {'seq_cls', 'embedding', 'reranker', 'generative_reranker'}:
                     continue
                 if isinstance(val, (list, tuple, torch.Tensor)):
                     val_str = self.safe_decode(val, **tokenizer_kwargs)

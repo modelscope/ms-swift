@@ -378,33 +378,17 @@ register_dataset(
         tags=['similarity', '🔥']))
 
 class MTEBRerankPreprocessor(ResponsePreprocessor):
-
     def preprocess(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        将一个包含多个positive和negative的样本展开为多个query-document对
-        每个正例标记为label=1，每个负例标记为label=0
-        """
         query = row['query']
         positives = row['positive'] if isinstance(row['positive'], list) else [row['positive']]
         negatives = row['negative'] if isinstance(row['negative'], list) else [row['negative']]
         
         expanded_rows = []
-        
-        # 处理正例
         for positive in positives:
             expanded_row = {
                 'query': query,
                 'response': positive,
-                'label': 1  # 正例标记为1
-            }
-            expanded_rows.append(super().preprocess(expanded_row))
-        
-        # 处理负例
-        for negative in negatives:
-            expanded_row = {
-                'query': query,
-                'response': negative,
-                'label': 0  # 负例标记为0
+                'rejected_response': negatives
             }
             expanded_rows.append(super().preprocess(expanded_row))
         

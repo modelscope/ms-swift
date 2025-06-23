@@ -5,7 +5,7 @@ NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model Qwen/Qwen3-Reranker-4B \
     --task_type generative_reranker \
-    --loss_type generative_reranker \
+    --loss_type listwise_generative_reranker \
     --train_type full \
     --dataset MTEB/scidocs-reranking \
     --split_dataset_ratio 0.05 \
@@ -19,4 +19,4 @@ swift sft \
     --gradient_accumulation_steps 8 \
     --learning_rate 6e-6 \
     --label_names labels \
-    --dataloader_drop_last true
+    --dataloader_drop_last true 

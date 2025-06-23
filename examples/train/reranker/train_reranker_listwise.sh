@@ -3,7 +3,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model iic/gte-reranker-modernbert-base \
     --task_type reranker \
-    --loss_type reranker \
+    --loss_type listwise_reranker \
     --train_type full \
     --dataset MTEB/scidocs-reranking \
     --split_dataset_ratio 0.05 \
