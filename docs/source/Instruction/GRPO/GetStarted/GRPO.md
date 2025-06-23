@@ -284,3 +284,18 @@ $
 当没有显式传入`val_dataset`时，参数`split_dataset_ratio`负责切分部分`dataset`为验证数据集，默认切分1%数据
 
 通过设置`--split_dataset_ratio 0` 来取消验证过程
+
+**7. 如何设置训练的 `mini-batch size`**
+
+在 GRPO 训练中，我们可以通过以下两种方式配置 mini-batch 更新：
+
+1. 配置选项：
+- 设置`generation_batch_size`为训练global-batch的整数倍
+- 或设置`steps_per_generation`为`gradient_accumulation_steps`的整数倍
+
+2. 典型配置示例：
+当配置：
+steps_per_generation = 16
+gradient_accumulation_steps = 8
+
+则一次 rollout 结果将拆分成两批 mini-batch 进行更新

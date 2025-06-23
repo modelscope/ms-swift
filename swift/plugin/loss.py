@@ -389,7 +389,12 @@ def online_contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch
 
 
 @register_loss_func(LossType.channel_loss)
-def channel_loss_func(outputs, labels, num_items_in_batch=None, sample_channels=None, trainer=None) -> torch.Tensor:
+def channel_loss_func(outputs,
+                      labels,
+                      num_items_in_batch=None,
+                      sample_channels=None,
+                      trainer=None,
+                      position_ids=None) -> torch.Tensor:
     channels = trainer.args.channels
     assert channels is not None, 'Please pass --channels as a hyperparameter.'
     assert sample_channels is not None, 'Data does not have channel field.'
@@ -401,17 +406,30 @@ def channel_loss_func(outputs, labels, num_items_in_batch=None, sample_channels=
     loss_fct = nn.CrossEntropyLoss(reduction='none')
     flat_logits = shift_logits.view(-1, shift_logits.size(-1))
     flat_labels = shift_labels.view(-1)
-    token_loss = loss_fct(flat_logits, flat_labels).view_as(shift_labels)  # [batch_size, seq_len-1]
+    token_loss = loss_fct(flat_logits, flat_labels)
+    mask = flat_labels != -100
 
-    mask = shift_labels != -100
+    if position_ids is not None and trainer.template._packing:
+        pos = position_ids[..., :-1].view(-1)
+        start_idx_mask = pos.eq(0).int()
+        sample_idx = (torch.cumsum(start_idx_mask, dim=0) - 1).tolist()
+        token_channels = [sample_channels[i] for i in sample_idx]
+    else:
+        bs, seq = shift_labels.shape
+        token_channels = []
+        for i in range(bs):
+            token_channels.extend([sample_channels[i]] * seq)
 
     state = trainer.state
     state.local_step += 1
-
     for ch in set(sample_channels):
-        idx = torch.tensor([s == ch for s in sample_channels], device=logits.device)
-        ch_loss_step = token_loss[idx].masked_select(mask[idx])
-        state.ch_loss_steps.setdefault(ch, []).append(ch_loss_step)
+        indices = [i for i, c in enumerate(token_channels) if c == ch]
+        if not indices:
+            continue
+        ch_mask = mask[indices]
+        ch_losses = token_loss[indices]
+        valid_losses = ch_losses[ch_mask]
+        state.ch_loss_steps.setdefault(ch, []).append(valid_losses)
 
     # At the end of a global step, compute the mean loss for each channel
     if state.local_step % trainer.args.gradient_accumulation_steps == 0:
