@@ -17,9 +17,9 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Instruction
 
-   Instruction/GRPO/index.rst
    Instruction/Command-line-parameters.md
    Instruction/Pre-training-and-Fine-tuning.md
+   Instruction/GRPO/index.rst
    Instruction/RLHF.md
    Instruction/Inference-and-deployment.md
    Instruction/Megatron-SWIFT-Training.md

@@ -17,9 +17,9 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Instruction
 
-   Instruction/GRPO/index.rst
    Instruction/命令行参数.md
    Instruction/预训练与微调.md
+   Instruction/GRPO/index.rst
    Instruction/人类对齐.md
    Instruction/推理和部署.md
    Instruction/Megatron-SWIFT训练.md
