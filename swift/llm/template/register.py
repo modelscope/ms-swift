@@ -27,6 +27,7 @@ def get_template(
     agent_template: Optional[str] = None,
     norm_bbox: Literal['norm1000', 'none', None] = None,
     use_chat_template: bool = True,
+    remove_unused_columns: bool = True,
     # train
     padding_free: bool = False,
     padding_side: Literal['left', 'right'] = 'right',
@@ -48,6 +49,7 @@ def get_template(
         agent_template=agent_template,
         norm_bbox=norm_bbox,
         use_chat_template=use_chat_template,
+        remove_unused_columns=remove_unused_columns,
         # train
         padding_free=padding_free,
         padding_side=padding_side,

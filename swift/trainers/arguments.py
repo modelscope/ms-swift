@@ -125,7 +125,13 @@ class TrainArgumentsMixin:
 
 
 @dataclass
-class SwiftArgumentsMixin(TrainArgumentsMixin):
+class RLHFArgumentsMixin:
+    # gkd
+    sft_alpha: float = 0
+
+
+@dataclass
+class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
     # Value copied from TrainArguments
     train_type: Optional[str] = None
     local_repo_path: Optional[str] = None
@@ -161,6 +167,7 @@ class GRPOArgumentsMixin:
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_enable_prefix_caching: bool = True
     vllm_tensor_parallel_size: int = 1
+
     # external vllm (server)
     vllm_server_base_url: Optional[str] = None
     vllm_server_host: Optional[str] = None
@@ -195,7 +202,11 @@ class GRPOArgumentsMixin:
     offload_optimizer: bool = False
     offload_model: bool = False
     gc_collect_after_offload: bool = False
-    multi_turn_func: Optional[str] = None
+
+    # multi turn
+    multi_turn_func: Optional[str] = None  # deprecated
+    multi_turn_scheduler: Optional[str] = None
+    max_turns: Optional[int] = None
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
 
     # DAPO, https://arxiv.org/abs/2503.14476

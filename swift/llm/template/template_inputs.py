@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from dataclasses import asdict, dataclass, field, fields
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import json
 from PIL import Image
@@ -80,6 +80,7 @@ class RolloutInferRequest(InferRequest):
     The strings can represent image URLs or Base64 encoded images.
     """
     images: List[str] = field(default_factory=list)
+    data_dict: Dict = field(default_factory=dict)
 
 
 @dataclass
@@ -132,7 +133,7 @@ class StdTemplateInputs:
         return bool(self.images or self.audios or self.videos or self.objects)
 
     @classmethod
-    def from_dict(cls, inputs: Dict[str, Any]) -> 'StdTemplateInputs':
+    def from_dict(cls, inputs: Dict[str, Any]) -> Tuple['StdTemplateInputs', Dict[str, Any]]:
         kwargs = {}
         for key in ['rejected_response', 'label', 'channel']:
             if key in inputs:
@@ -166,7 +167,10 @@ class StdTemplateInputs:
             else:
                 media_kwargs[k] = inputs_mm_data
 
-        return cls(messages=messages, system=system, tools=tools, objects=objects, **kwargs, **media_kwargs)
+        all_keys = set(f.name for f in fields(StdTemplateInputs))
+        extra_kwargs = {k: v for k, v in inputs.items() if k not in all_keys}
+        return cls(
+            messages=messages, system=system, tools=tools, objects=objects, **kwargs, **media_kwargs), extra_kwargs
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
