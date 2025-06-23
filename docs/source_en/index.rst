@@ -17,6 +17,7 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Instruction
 
+   Instruction/GRPO/index.rst
    Instruction/Command-line-parameters.md
    Instruction/Pre-training-and-Fine-tuning.md
    Instruction/RLHF.md
@@ -26,7 +27,6 @@ Swift DOCUMENTATION
    Instruction/Evaluation.md
    Instruction/Export-and-push.md
    Instruction/Reinforced-Fine-tuning.md
-   Instruction/GRPO.md
    Instruction/Agent-support.md
    Instruction/Supported-models-and-datasets.md
    Instruction/Use-tuners.md

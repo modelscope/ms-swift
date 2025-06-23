@@ -134,6 +134,12 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 # Avoid padding labels during the model's forward pass in multimodal models.
                 # Some multimodal models do not expand the image pad token.
                 self.loss_scale = 'default'
+            elif self.rlhf_type == 'grpo':
+                if self.loss_scale is None:
+                    if self.multi_turn_scheduler:
+                        self.loss_scale = 'default'
+                    else:
+                        self.loss_scale = 'last_round'
             else:
                 self.loss_scale = 'last_round'
         if self.rlhf_type == 'grpo' and self.beta == 0.0:
@@ -263,13 +269,14 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if self.async_generate:
             assert self.vllm_mode == 'server', 'async generate require vllm_mode == server, '
             'please deploy vLLM server by `swift rollout` and assign with `vllm_server_host` '
-            'for more infomations, please check https://swift.readthedocs.io/en/latest/Instruction/GRPO.html'
+            'for more infomations, please check '
+            'https://swift.readthedocs.io/en/latest/Instruction/GRPO/getstarted/GRPO.html'
 
         if not self.use_vllm and self.vllm_tensor_parallel_size != 1:
             self.vllm_tensor_parallel_size = 1
             logger.warning('set vllm_tensor_parallel_size to 1 since use_vllm false')
 
-        if self.async_generate and self.multi_turn_func is not None:
+        if self.async_generate and self.multi_turn_scheduler is not None:
             raise NotImplementedError('Currently, async_generate is not supported with multi-turn functionality.')
 
         if self.generation_batch_size or self.steps_per_generation:
@@ -314,3 +321,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 "The parameter 'num_infer_workers' has been deprecated and will be removed in version 3.6. "
                 'If you wish to use colocate mode, please use `vllm_mode colocate` instead. '
                 'If you wish to use async mode, please use `vllm_mode server` and external vLLM server instead.')
+
+        if self.multi_turn_func:
+            logger.warning("The parameter 'multi_turn_func' has been deprecated and will be removed in version 3.7. "
+                           "Please use 'multi_turn_scheduler' instead")
+
+            self.multi_turn_scheduler = self.multi_turn_func
