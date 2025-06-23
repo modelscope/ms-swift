@@ -1114,7 +1114,7 @@ class Template(ProcessorMixin):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         template_backend = self.template_backend
-        if (self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training
+        if (self.template_meta.template_type != 'dummy' and self.use_chat_template and not self.is_training
                 and self.mode != 'seq_cls'):
             template_backend = 'jinja'
             logger.info_once(f'Setting template_backend: {template_backend}')
