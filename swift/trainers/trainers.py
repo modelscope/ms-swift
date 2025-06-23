@@ -166,6 +166,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
 
             loss_kwargs['sample_channels'] = sample_channels
             loss_kwargs['trainer'] = self
+            if inputs.get('position_ids') is not None:
+                loss_kwargs['position_ids'] = inputs['position_ids']
 
         if (self.label_smoother is not None or compute_loss_func is not None) and 'labels' in inputs:
             labels = inputs.pop('labels')

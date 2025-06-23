@@ -477,6 +477,8 @@ class Template(ProcessorMixin):
                 packed[key] = sum((x[0][key] for x in row), start=[])
             elif key == 'length':
                 packed[key] = sum((x[0][key] for x in row))
+            elif key == 'channel':
+                packed[key] = [x[0][key] for x in row]
         if 'position_ids' not in packed:
             packed['position_ids'] = sum((list(range(x[1])) for x in row), start=[])
 
@@ -1443,10 +1445,13 @@ class Template(ProcessorMixin):
         res = {}
         if packing_mode:
             # only support llm
-            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale']:
+            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel']:
                 v = self.gather_list(batch, k)
                 if v:
-                    res[k] = [v]
+                    if k == 'channel':
+                        res[k] = v
+                    else:
+                        res[k] = [v]
         else:
             inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
             input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
