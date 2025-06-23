@@ -283,3 +283,18 @@ Refer to [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-
 When `val_dataset` is not explicitly passed, the `split_dataset_ratio` parameter is responsible for splitting part of the `dataset` into a validation dataset, which defaults to splitting 1% of the data.
 
 To disable the validation process, set `--split_dataset_ratio 0`.
+
+**7. How to set the training `mini-batch size`**
+
+In GRPO training, we can configure mini-batch updates in the following two ways:
+
+1. Configuration options:
+   - Set `generation_batch_size` to be an integer multiple of the training global batch size.
+   - Or set `steps_per_generation` to be an integer multiple of `gradient_accumulation_steps`.
+
+2. Typical configuration example:
+   When configured with:
+   steps_per_generation = 16
+   gradient_accumulation_steps = 8
+
+   The results from one rollout will be split into two mini-batch updates.
