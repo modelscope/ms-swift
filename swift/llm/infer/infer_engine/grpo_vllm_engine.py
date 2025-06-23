@@ -161,6 +161,9 @@ class GRPOVllmEngine(VllmEngine):
                 else:
                     should_stop = True
 
+                if self.max_turns:
+                    should_stop = should_stop or (current_turn >= self.max_turns)
+
                 if should_stop:
                     result_choice.messages = messages
                     return result
