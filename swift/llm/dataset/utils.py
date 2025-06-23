@@ -301,7 +301,6 @@ class PackingDataset(BasePackingDataset, Dataset):
             'template': template,
             'packing_interval': packing_interval,
             'strict': strict,
-            'version': 'v1',
         })
         self.dataset_name = f'packing-cache-{fingerprint}'
         with safe_ddp_context(None, True):

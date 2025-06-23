@@ -15,7 +15,7 @@ except ImportError:
     ShardedDDPOption = None
 
 if TYPE_CHECKING:
-    from .arguments import Seq2SeqTrainingArguments, TrainingArguments
+    from .arguments import Seq2SeqTrainingArguments, TrainingArguments, RLHFArgumentsMixin
     from .rlhf_trainer import (CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer, RLHFTrainerMixin, PPOTrainer,
                                RewardTrainer, GRPOTrainer, GKDTrainer)
     from .rlhf_arguments import DPOConfig, CPOConfig, KTOConfig, ORPOConfig, PPOConfig, RewardConfig, GKDConfig
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
-        'arguments': ['Seq2SeqTrainingArguments', 'TrainingArguments'],
+        'arguments': ['Seq2SeqTrainingArguments', 'TrainingArguments', 'RLHFArgumentsMixin'],
         'rlhf_arguments':
         ['DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig', 'PPOConfig', 'RewardConfig', 'GRPOConfig', 'GKDConfig'],
         'rlhf_trainer': [

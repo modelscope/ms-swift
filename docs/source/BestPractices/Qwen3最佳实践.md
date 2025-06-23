@@ -108,6 +108,25 @@ pip install flash-attn --no-build-isolation  # packing需要
 ]}
 ```
 
+你可以使用以下命令获取蒸馏的推理数据集，在训练时，与不含思维链数据集进行混合，进一步缓解推理能力的丧失：
+- 其中`--val_dataset`的选择任意。推理产生的`result_path`，可以直接在训练时指定`--dataset distill_dataset.jsonl`使用。
+- 该思路同样适用于其他推理模型，例如deepseek-r1。
+```shell
+# 4 * 80GiB
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift infer \
+    --model Qwen/Qwen3-32B \
+    --infer_backend vllm \
+    --val_dataset 'AI-ModelScope/alpaca-gpt4-data-en#5000' 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
+    --gpu_memory_utilization 0.9 \
+    --tensor_parallel_size 2 \
+    --max_model_len 8192 \
+    --max_new_tokens 4096 \
+    --write_batch_size 1000 \
+    --result_path distill_dataset.jsonl
+```
+
 ### 30分钟自我认知微调
 
 本节将介绍30分钟对 Qwen3-8B 进行自我认知微调。所需GPU显存为 22GB，可以在 ModelScope 提供的[免费算力](https://modelscope.cn/my/mynotebook) A10 中运行。
@@ -226,7 +245,7 @@ swift sft \
 
 ## 强化学习 (RL)
 
-ms-swift 支持 DPO、GRPO、DAPO、PPO、KTO、GKD 等 RLHF 方法。本章将着重介绍使用 ms-swift 对 Qwen3-8B 进行 GRPO 训练。更多关于GRPO的内容，可以参考[GRPO文档](../Instruction/GRPO.md)。更多RLHF训练脚本，参考[examples/train/rlhf](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf)。
+ms-swift 支持 DPO、GRPO、DAPO、PPO、KTO、GKD 等 RLHF 方法。本章将着重介绍使用 ms-swift 对 Qwen3-8B 进行 GRPO 训练。更多关于GRPO的内容，可以参考[GRPO文档](../Instruction/GRPO/GetStarted/GRPO.md)。更多RLHF训练脚本，参考[examples/train/rlhf](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf)。
 
 ### 环境设置
 

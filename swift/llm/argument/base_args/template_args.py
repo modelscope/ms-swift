@@ -75,6 +75,7 @@ class TemplateArguments:
             'agent_template': self.agent_template,
             'norm_bbox': self.norm_bbox,
             'use_chat_template': self.use_chat_template,
+            'remove_unused_columns': self.remove_unused_columns,
             # train
             'padding_free': self.padding_free,
             'padding_side': self.padding_side,

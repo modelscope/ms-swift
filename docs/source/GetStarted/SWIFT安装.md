@@ -71,7 +71,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | RTX20/30/40系列 |                             |
 | T4/V100         | 部分模型出现NAN             |
 | Ascend NPU      | 部分模型出现NAN或算子不支持 |
-| MPS             |                             |
+| MPS             | 参考[issue 4572](https://github.com/modelscope/ms-swift/issues/4572)                         |
 | CPU             |                             |
 
 
@@ -89,7 +89,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | deepspeed | >=0.14       | 0.16.9 |训练|
 | vllm | >=0.5.1      | 0.8.5.post1 |推理/部署/评测|
 | sglang |     | 0.4.6.post5 |推理/部署/评测|
-| lmdeploy | >=0.5        | 0.8 |推理/部署/评测|
+| lmdeploy | >=0.5,<0.9        | 0.8 |推理/部署/评测|
 | evalscope | >=0.11       | |评测|
 
 更多可选依赖可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh)。
