@@ -5,9 +5,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-import megatron.core
 import torch
-from packaging import version
 from transformers.utils.versions import require_version
 
 from swift.llm.argument.base_args import to_abspath
@@ -314,7 +312,7 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.multi_latent_attention and not self.no_rope_fusion:
             # Upgrading transformer_engine requires checking here.
             self.no_rope_fusion = True
-            logger.info('Due to enabling multi_latent_attention, ' f'set args.no_rope_fusion to {self.no_rope_fusion}.')
+            logger.info(f'Due to enabling multi_latent_attention, set args.no_rope_fusion to {self.no_rope_fusion}.')
 
     def _args_to_argv(self) -> Tuple[List[Any], Dict[str, Any]]:
         new_args = []

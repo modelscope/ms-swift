@@ -36,10 +36,10 @@ def test_convert_precision(hf_model, mg_model, processor):
     mg_model.to(torch.float32)
     packed_seq_params = None
     # thd
-    from ..train.utils import get_packed_seq_params
-    packed_seq_params = get_packed_seq_params(position_ids)
-    attention_mask = None
-    mg_model.to(torch_dtype)
+    # from ..train.utils import get_packed_seq_params
+    # packed_seq_params = get_packed_seq_params(position_ids)
+    # attention_mask = None
+    # mg_model.to(torch_dtype)
 
     with torch.inference_mode():
         mg_logits = mg_model(
@@ -74,6 +74,7 @@ convert_kwargs = {
 
 
 def _check_megatron_kwargs(kwargs):
+    # Make sure that the keys in kwargs have default values of None in MegatronArguments.
     default_mapping = {field.name: field.default for field in fields(MegatronArguments)}
     for k in kwargs.keys():
         assert default_mapping[k] is None

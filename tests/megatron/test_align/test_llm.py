@@ -2,7 +2,7 @@ import os
 
 import torch
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def _test_model(model_id, **kwargs):
@@ -14,7 +14,7 @@ def _test_model(model_id, **kwargs):
                 to_hf=True,
                 exist_ok=True,
                 test_convert_precision=True,
-                torch_dtype=torch.bfloat16,
+                torch_dtype='bfloat16',
                 **kwargs,
             ))
     else:
@@ -24,7 +24,7 @@ def _test_model(model_id, **kwargs):
                 to_mcore=True,
                 exist_ok=True,
                 test_convert_precision=True,
-                torch_dtype=torch.bfloat16,
+                torch_dtype='bfloat16',
                 **kwargs,
             ))
 
@@ -110,7 +110,6 @@ def test_deepseek_moe():
 
 def test_deepseek_v3():
     pass
-
 
 
 if __name__ == '__main__':

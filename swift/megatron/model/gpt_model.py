@@ -11,7 +11,6 @@ from megatron.core.models.gpt import GPTModel as McoreGPTModel
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.training import get_args
 
 from swift.utils import get_logger
 from .rope import dynamic_rope_update, get_rope_inv_freq
@@ -45,6 +44,7 @@ class GPTModel(McoreGPTModel):
         if config.multi_latent_attention and config.rope_type == 'yarn':
             config.rope_type = 'rope'  # use transformers implementation
             if hf_rope_scaling and hf_rope_scaling['rope_type'] == 'yarn':
+                # softmax_scale
                 config.mscale = hf_rope_scaling['mscale']
                 config.rotary_scaling_factor = hf_rope_scaling['factor']
         self.hf_rope_scaling = hf_rope_scaling
@@ -67,23 +67,22 @@ class GPTModel(McoreGPTModel):
             seq_len_interpolation_factor=seq_len_interpolation_factor,
             mtp_block_spec=mtp_block_spec,
         )
-        if self.position_embedding_type == 'rope' and self.config.multi_latent_attention:
+        if config.multi_latent_attention:
             self.rotary_pos_emb = RotaryEmbedding(
-                kv_channels=self.config.qk_pos_emb_head_dim,
+                kv_channels=config.qk_pos_emb_head_dim,
                 rotary_percent=rotary_percent,
-                rotary_interleaved=self.config.rotary_interleaved,
+                rotary_interleaved=config.rotary_interleaved,
                 seq_len_interpolation_factor=seq_len_interpolation_factor,
                 rotary_base=rotary_base,
                 rope_scaling=rope_scaling,
                 rope_scaling_factor=rope_scaling_factor,
-                use_cpu_initialization=self.config.use_cpu_initialization,
+                use_cpu_initialization=configuse_cpu_initialization,
             )
-        self.attention_scaling = 1.
-        if config.multi_latent_attention:
             # save memory
             for i in range(config.num_layers):
                 if hasattr(self.decoder.layers[i].self_attention, 'rotary_pos_emb'):
                     del self.decoder.layers[i].self_attention.rotary_pos_emb
+        self.attention_scaling = 1.
         if self.hf_rope_scaling is not None:
             new_inv_freq, self.attention_scaling = get_rope_inv_freq()
             self.rotary_pos_emb.inv_freq.data.copy_(new_inv_freq)
