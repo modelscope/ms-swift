@@ -2,7 +2,7 @@ import os
 
 import torch
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
 
 def _test_model(model_id, **kwargs):
@@ -74,7 +74,8 @@ def test_llama3_2():
 
 
 def test_qwen3():
-    _test_model('Qwen/Qwen3-0.6B-Base')
+    # _test_model('Qwen/Qwen3-0.6B-Base')
+    _test_model('deepseek-ai/DeepSeek-Prover-V2-7B')
 
 
 def test_internlm3():
@@ -99,7 +100,17 @@ def test_moonlight():
 
 
 def test_deepseek_v2():
-    _test_model('deepseek-ai/DeepSeek-V2-Lite')
+    # _test_model('deepseek-ai/DeepSeek-V2-Lite')
+    _test_model('deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct')
+
+
+def test_deepseek_moe():
+    _test_model('deepseek-ai/deepseek-moe-16b-chat')
+
+
+def test_deepseek_v3():
+    pass
+
 
 if __name__ == '__main__':
     # test_qwen2()
@@ -118,5 +129,6 @@ if __name__ == '__main__':
     # test_qwen3_moe()
     # test_internlm3()
     # test_mimo()
-    # test_moonlight()
-    test_deepseek_v2()
+    test_moonlight()
+    # test_deepseek_v2()
+    # test_deepseek_moe()
