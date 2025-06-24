@@ -108,10 +108,6 @@ def test_deepseek_moe():
     _test_model('deepseek-ai/deepseek-moe-16b-chat')
 
 
-def test_deepseek_v3():
-    pass
-
-
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()

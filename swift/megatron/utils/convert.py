@@ -18,7 +18,29 @@ from .patcher import patch_megatron_tokenizer, patch_torch_dist_shard
 logger = get_logger()
 
 
+def _test_params_sum(model):
+    total_sum = 0
+    zero_count = 0
+    n_parameter = 0
+    for n, p in model.named_parameters():
+        n_parameter += 1
+        sum_ = p.cuda().float().abs().sum().cpu().item()
+        if sum_ == 0:
+            zero_count += 1
+            logger.warning(f'n: {n}, sum: {sum_}')
+        elif math.isnan(sum_) or math.isinf(sum_) or sum_ > 1e10:
+            logger.warning(f'n: {n}, sum: {sum_}')
+        else:
+            total_sum += sum_
+    logger.info(f'n_parameter: {n_parameter}')
+    logger.info(f'total_sum: {total_sum}')
+    logger.info(f'zero_count: {zero_count}')
+
+
 def test_convert_precision(hf_model, mg_model, processor):
+    _test_params_sum(hf_model)
+    _test_params_sum(mg_model)
+
     torch_dtype = hf_model.dtype
     template = get_template(hf_model.model_meta.template, processor)
     input_ids = template.encode({'messages': [{'role': 'user', 'content': 'who are you?'}]})['input_ids']

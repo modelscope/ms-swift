@@ -4,7 +4,11 @@ from megatron.training import get_args
 
 def set_mla_attn_state(args, mg_attn, hf_attn):
     hf_attn.o_proj.weight.data.copy_(mg_attn.linear_proj.weight)
-    hf_attn.q_proj.weight.data.copy_(mg_attn.linear_q_proj.weight)
+    if args.q_lora_rank is None:
+        hf_attn.q_proj.weight.data.copy_(mg_attn.linear_q_proj.weight)
+    else:
+        hf_attn.q_a_proj.weight.data.copy_(mg_attn.linear_q_down_proj.weight)
+        hf_attn.q_b_proj.weight.data.copy_(mg_attn.linear_q_up_proj.weight)
     hf_attn.kv_a_proj_with_mqa.weight.data.copy_(mg_attn.linear_kv_down_proj.weight)
     hf_attn.kv_b_proj.weight.data.copy_(mg_attn.linear_kv_up_proj.weight)
     if args.qk_layernorm:
