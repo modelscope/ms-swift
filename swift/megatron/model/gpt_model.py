@@ -4,13 +4,14 @@ from contextlib import contextmanager
 from typing import Any, Dict, Literal, Optional
 
 import torch
-from megatron.training import get_args
 from megatron.core import InferenceParams
 from megatron.core.config_logger import has_config_logger_enabled, log_config_to_disk
+from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 from megatron.core.models.gpt import GPTModel as McoreGPTModel
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
+from megatron.training import get_args
 
 from swift.utils import get_logger
 from .rope import dynamic_rope_update, get_rope_inv_freq
@@ -41,8 +42,7 @@ class GPTModel(McoreGPTModel):
         seq_len_interpolation_factor: Optional[float] = None,
         mtp_block_spec: Optional[ModuleSpec] = None,
     ):
-        args = get_args()
-        if args.architectures in {'DeepseekV2ForCausalLM', 'DeepseekV3ForCausalLM'} and config.rope_type == 'yarn':
+        if self.config.multi_latent_attention and config.rope_type == 'yarn':
             config.rope_type = 'rope'  # use transformers implementation
             if hf_rope_scaling and hf_rope_scaling['rope_type'] == 'yarn':
                 config.mscale = hf_rope_scaling['mscale']
@@ -67,6 +67,17 @@ class GPTModel(McoreGPTModel):
             seq_len_interpolation_factor=seq_len_interpolation_factor,
             mtp_block_spec=mtp_block_spec,
         )
+        if self.position_embedding_type == 'rope' and not self.config.multi_latent_attention:
+            self.rotary_pos_emb = RotaryEmbedding(
+                kv_channels=self.config.kv_channels,
+                rotary_percent=rotary_percent,
+                rotary_interleaved=self.config.rotary_interleaved,
+                seq_len_interpolation_factor=seq_len_interpolation_factor,
+                rotary_base=rotary_base,
+                rope_scaling=rope_scaling,
+                rope_scaling_factor=rope_scaling_factor,
+                use_cpu_initialization=self.config.use_cpu_initialization,
+            )
         self.attention_scaling = 1.
         if self.hf_rope_scaling is not None:
             new_inv_freq, self.attention_scaling = get_rope_inv_freq()
@@ -139,7 +150,7 @@ class GPTModel(McoreGPTModel):
         rotary_pos_emb = None
         rotary_pos_cos = None
         rotary_pos_sin = None
-        if self.position_embedding_type == 'rope' and not self.config.multi_latent_attention:
+        if self.position_embedding_type == 'rope':
             if not self.training and self.config.flash_decode and inference_params:
                 # Flash decoding uses precomputed cos and sin for RoPE
                 rotary_pos_cos, rotary_pos_sin = self.rotary_pos_emb_cache.setdefault(
