@@ -68,5 +68,4 @@ def convert_hf_config(config) -> Dict[str, Any]:
             megatron_config['rope_scaling'] = {'factor': config.rope_scaling, 'type': 'linear'},
         elif isinstance(config.rope_scaling, dict):
             megatron_config['rope_scaling'] = config.rope_scaling
-    logger.info(f'megatron_config: {megatron_config}')
     return megatron_config

@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, Literal, Optional
 
 import torch
+from megatron.training import get_args
 from megatron.core import InferenceParams
 from megatron.core.config_logger import has_config_logger_enabled, log_config_to_disk
 from megatron.core.models.gpt import GPTModel as McoreGPTModel
@@ -40,7 +41,13 @@ class GPTModel(McoreGPTModel):
         seq_len_interpolation_factor: Optional[float] = None,
         mtp_block_spec: Optional[ModuleSpec] = None,
     ):
-        config.rope_type = 'rope'  # 'yarn' is implemented using transformers.
+        args = get_args()
+        if args.architectures in {'DeepseekV2ForCausalLM', 'DeepseekV3ForCausalLM'}:
+            if config.rope_type == 'yarn':
+                config.rope_type = 'rope'  # use transformers implementation
+                if hf_rope_scaling and hf_rope_scaling['rope_type'] == 'yarn':
+                    config.mscale = hf_rope_scaling['mscale']
+                    config.rotary_scaling_factor = hf_rope_scaling['factor']
         self.hf_rope_scaling = hf_rope_scaling
         super().__init__(
             config,
@@ -63,9 +70,12 @@ class GPTModel(McoreGPTModel):
         )
         self.attention_scaling = 1.
         if self.hf_rope_scaling is not None:
-            inv_freq = self.rotary_pos_emb.inv_freq
-            new_inv_freq, self.attention_scaling = get_rope_inv_freq(inv_freq.device)
-            inv_freq.data.copy_(new_inv_freq)
+            new_inv_freq, self.attention_scaling = get_rope_inv_freq()
+            if config.multi_latent_attention:
+                for i in range(config.num_layers):
+                    self.decoder.layers[i].self_attention.rotary_pos_emb.inv_freq.data.copy_(new_inv_freq)
+            else:
+                self.rotary_pos_emb.inv_freq.data.copy_(new_inv_freq)
         if self.attention_scaling != 1 and config.apply_rope_fusion:
             config.apply_rope_fusion = False
             logger.warning('`apply_rope_fusion` does not support `attention_scaling`. '
