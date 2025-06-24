@@ -76,7 +76,7 @@ class GPTModel(McoreGPTModel):
                 rotary_base=rotary_base,
                 rope_scaling=rope_scaling,
                 rope_scaling_factor=rope_scaling_factor,
-                use_cpu_initialization=configuse_cpu_initialization,
+                use_cpu_initialization=config.use_cpu_initialization,
             )
             # save memory
             for i in range(config.num_layers):
