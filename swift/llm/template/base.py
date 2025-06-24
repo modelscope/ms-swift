@@ -463,7 +463,7 @@ class Template(ProcessorMixin):
         encoded['length'] = max(lengths)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
-        if not self.remove_unused_columns and self.is_training:
+        if not self.remove_unused_columns:
             encoded['_extra_kwargs'] = extra_kwargs
         return encoded
 
