@@ -456,6 +456,8 @@ class ToolUseFormatReward(ORM):
         self.format_min_possible = 0.0
             
     def __call__(self, completions, solution, global_step,**kwargs) -> List[float]:
+        max_possible_reward = self.format_max_possible
+        min_possible_reward = self.format_min_possible
         if str(os.getenv("MAX1STEP30MAX3", 0)) == "1":
             print("MAX1STEP30MAX3 is set to 1, so max 1 -> 30 steps -> max 3")
             if global_step >= 30:
