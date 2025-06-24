@@ -42,12 +42,11 @@ class GPTModel(McoreGPTModel):
         mtp_block_spec: Optional[ModuleSpec] = None,
     ):
         args = get_args()
-        if args.architectures in {'DeepseekV2ForCausalLM', 'DeepseekV3ForCausalLM'}:
-            if config.rope_type == 'yarn':
-                config.rope_type = 'rope'  # use transformers implementation
-                if hf_rope_scaling and hf_rope_scaling['rope_type'] == 'yarn':
-                    config.mscale = hf_rope_scaling['mscale']
-                    config.rotary_scaling_factor = hf_rope_scaling['factor']
+        if args.architectures in {'DeepseekV2ForCausalLM', 'DeepseekV3ForCausalLM'} and config.rope_type == 'yarn':
+            config.rope_type = 'rope'  # use transformers implementation
+            if hf_rope_scaling and hf_rope_scaling['rope_type'] == 'yarn':
+                config.mscale = hf_rope_scaling['mscale']
+                config.rotary_scaling_factor = hf_rope_scaling['factor']
         self.hf_rope_scaling = hf_rope_scaling
         super().__init__(
             config,
