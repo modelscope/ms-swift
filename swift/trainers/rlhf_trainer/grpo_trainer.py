@@ -188,7 +188,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         vllm_client = kwargs.pop('vllm_client')  # for external vllm
 
         super().__init__(model, ref_model, *_args, **kwargs)
-        self.template.remove_unused_columns = True
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
 
