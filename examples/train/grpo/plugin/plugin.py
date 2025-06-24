@@ -474,7 +474,7 @@ class ToolUseFormatReward(ORM):
                 min_possible_reward = -1.0
         
         rewards = []
-        responses = [completion[0]['content'] for completion in completions]
+        responses = completions
         
         print("\n======= Answer ======= ")
         print(solution[0])
@@ -526,7 +526,7 @@ class ToolUseLengthReward(ORM):
             max_reward_len = 512
         
         """Reward function that gives higher scores to longer completions."""
-        responses = [completion[0]['content'] for completion in completions]
+        responses = completions
         rewards = []
         
         for response, ans in zip(responses, solution):
@@ -648,7 +648,7 @@ class ToolUseCorrectnessReward(ORM):
 
 
     # custoimzed reward functions: tool call correctness
-    def __call__(self, completions, solution, global_step, max_possible_reward, min_possible_reward, **kwargs):
+    def __call__(self, completions, solution, global_step, **kwargs):
         max_possible_reward = self.tool_max_possible
         min_possible_reward = self.tool_min_possible
         if str(os.getenv("MAX1STEP30MAX3", 0)) == "1":
@@ -669,7 +669,7 @@ class ToolUseCorrectnessReward(ORM):
             if min_possible_reward < -3.0:
                 min_possible_reward = -3.0
         
-        responses = [completion[0]['content'] for completion in completions]
+        responses = completions
         rewards = []
         
         for response, ans in zip(responses, solution):
