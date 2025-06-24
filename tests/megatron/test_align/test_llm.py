@@ -98,6 +98,9 @@ def test_moonlight():
     _test_model('moonshotai/Moonlight-16B-A3B-Instruct')
 
 
+def test_deepseek_v2():
+    _test_model('deepseek-ai/DeepSeek-V2-Lite')
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -115,4 +118,5 @@ if __name__ == '__main__':
     # test_qwen3_moe()
     # test_internlm3()
     # test_mimo()
-    test_moonlight()
+    # test_moonlight()
+    test_deepseek_v2()
