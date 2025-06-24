@@ -11,6 +11,9 @@ from packaging import version
 from transformers.utils.versions import require_version
 
 from swift.llm.argument.base_args import to_abspath
+from swift.utils import get_logger
+
+logger = get_logger()
 
 
 @dataclass
@@ -308,6 +311,10 @@ class MegatronArguments(ExtraMegatronArguments):
 
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
         self.extra_megatron_kwargs = ModelArguments.parse_to_dict(self.extra_megatron_kwargs)
+        if self.multi_latent_attention and not self.no_rope_fusion:
+            # Upgrading transformer_engine requires checking here.
+            self.no_rope_fusion = True
+            logger.info('Due to enabling multi_latent_attention, ' f'set args.no_rope_fusion to {self.no_rope_fusion}.')
 
     def _args_to_argv(self) -> Tuple[List[Any], Dict[str, Any]]:
         new_args = []
