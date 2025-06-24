@@ -15,6 +15,7 @@ class LLMModelType:
     qwen3 = 'qwen3'
     qwen3_moe = 'qwen3_moe'
     qwen3_emb = 'qwen3_emb'
+    qwen3_reranker = 'qwen3_reranker'
 
     qwen2_gte = 'qwen2_gte'
 
@@ -123,6 +124,7 @@ class LLMModelType:
 class BertModelType:
     modern_bert = 'modern_bert'
     modern_bert_gte = 'modern_bert_gte'
+    modern_bert_gte_reranker = 'modern_bert_gte_reranker'
     bert = 'bert'
 
 

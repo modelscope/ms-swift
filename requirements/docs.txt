@@ -6,3 +6,4 @@ sphinx-book-theme
 sphinx-copybutton
 sphinx-rtd-theme
 sphinx_markdown_tables
+sphinxcontrib-mermaid

@@ -22,6 +22,10 @@ class LossType:
     online_contrastive = 'online_contrastive'
     infonce = 'infonce'
     channel_loss = 'channel_loss'
+    reranker = 'reranker'
+    generative_reranker = 'generative_reranker'
+    listwise_reranker = 'listwise_reranker'
+    listwise_generative_reranker = 'listwise_generative_reranker'
 
 
 LOSS_MAPPING = {}
@@ -243,6 +247,124 @@ def calculate_infonce_metrics(embeddings, labels):
     return {'margin': pos_neg_margin, 'mean_neg': mean_neg, 'mean_pos': mean_pos}
 
 
+def calculate_reranker_metrics(logits, labels):
+    """
+    Calculate MRR and NDCG metrics for reranker.
+
+    This function first groups the data based on query boundaries (identified by
+    positive samples), then calculates MRR and NDCG for each group independently,
+    and finally returns the mean across all queries.
+
+    Data format:
+    - Each query group starts with a positive sample (label=1) followed by negatives (label=0)
+    - Example: [1,0,0,1,0,0,0] represents 2 queries: query1=[1,0,0], query2=[1,0,0,0]
+
+    Args:
+        logits: Model output scores [batch_size] (numpy array or can be converted to numpy)
+        labels: Binary labels (1 for positive, 0 for negative) [batch_size]
+
+    Returns:
+        dict: Dictionary containing MRR and NDCG metrics averaged across all queries
+    """
+    import numpy as np
+
+    # Convert to numpy if needed
+    if hasattr(logits, 'numpy'):
+        logits = logits.numpy()
+    if hasattr(labels, 'numpy'):
+        labels = labels.numpy()
+
+    logits = np.array(logits).flatten()
+    labels = np.array(labels).flatten()
+
+    # Step 1: Find all positive sample indices (query boundaries)
+    positive_indices = np.where(labels == 1)[0]
+
+    if len(positive_indices) == 0:
+        return {'mrr': 0.0, 'ndcg': 0.0}
+
+    # Step 2: Split into groups (queries)
+    query_groups = []
+    for i, pos_idx in enumerate(positive_indices):
+        # Each group starts at a positive index
+        group_start = pos_idx
+
+        # Group ends at the next positive index or end of data
+        if i + 1 < len(positive_indices):
+            group_end = positive_indices[i + 1]
+        else:
+            group_end = len(labels)
+
+        # Extract this query's data
+        query_logits = logits[group_start:group_end]
+        query_labels = labels[group_start:group_end]
+
+        query_groups.append((query_logits, query_labels))
+
+    # Step 3: Calculate metrics for each query independently
+    mrr_scores = []
+    ndcg_scores = []
+
+    for query_idx, (query_logits, query_labels) in enumerate(query_groups):
+        # Skip groups that are too small (need at least 1 positive + 1 negative)
+        if len(query_logits) < 2:
+            print(f'Query {query_idx}: Skipped (too small: {len(query_logits)} items)')
+            continue
+
+        # Verify that the first sample is positive (data format validation)
+        if query_labels[0] != 1:
+            print(f'Query {query_idx}: Skipped (first sample not positive)')
+            continue
+
+        # Step 3a: Calculate ranking within this query
+        ranking = np.argsort(-query_logits)  # Sort by logits descending
+
+        # Step 3b: Find position of positive document (should be at index 0 in query)
+        pos_rank = np.where(ranking == 0)[0][0] + 1  # +1 for 1-based ranking
+
+        # Step 3c: Calculate MRR for this query
+        mrr = 1.0 / pos_rank
+        mrr_scores.append(mrr)
+
+        # Step 3d: Calculate NDCG for this query
+        def calculate_ndcg_single_query(relevance_scores, ranking):
+            """Calculate NDCG for a single query"""
+            # Calculate DCG (Discounted Cumulative Gain)
+            dcg = 0.0
+            for rank_pos, doc_idx in enumerate(ranking):
+                relevance = relevance_scores[doc_idx]
+                dcg += (2**relevance - 1) / np.log2(rank_pos + 2)  # rank_pos+2 because log2(1) undefined
+
+            # Calculate IDCG (Ideal DCG)
+            ideal_relevance = np.sort(relevance_scores)[::-1]  # Sort relevance descending
+            idcg = 0.0
+            for rank_pos, relevance in enumerate(ideal_relevance):
+                idcg += (2**relevance - 1) / np.log2(rank_pos + 2)
+
+            # NDCG = DCG / IDCG
+            if idcg == 0:
+                return 0.0
+            return dcg / idcg
+
+        # Create relevance scores (1 for positive, 0 for negative)
+        relevance_scores = query_labels.astype(float)
+        ndcg = calculate_ndcg_single_query(relevance_scores, ranking)
+        ndcg_scores.append(ndcg)
+
+    # Step 4: Calculate mean metrics across all valid queries
+    if len(mrr_scores) == 0:
+        print('No valid queries found for metric calculation')
+        return {'mrr': 0.0, 'ndcg': 0.0}
+
+    mean_mrr = np.mean(mrr_scores)
+    mean_ndcg = np.mean(ndcg_scores)
+
+    return {
+        'mrr': mean_mrr,
+        'ndcg': mean_ndcg,
+    }
+
+
 def _parse_multi_negative_sentences(sentences, labels, hard_negatives=None):
     split_indices = torch.nonzero(labels, as_tuple=False).squeeze().tolist()
     if isinstance(split_indices, int):
@@ -389,7 +511,12 @@ def online_contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch
 
 
 @register_loss_func(LossType.channel_loss)
-def channel_loss_func(outputs, labels, num_items_in_batch=None, sample_channels=None, trainer=None) -> torch.Tensor:
+def channel_loss_func(outputs,
+                      labels,
+                      num_items_in_batch=None,
+                      sample_channels=None,
+                      trainer=None,
+                      position_ids=None) -> torch.Tensor:
     channels = trainer.args.channels
     assert channels is not None, 'Please pass --channels as a hyperparameter.'
     assert sample_channels is not None, 'Data does not have channel field.'
@@ -401,17 +528,30 @@ def channel_loss_func(outputs, labels, num_items_in_batch=None, sample_channels=
     loss_fct = nn.CrossEntropyLoss(reduction='none')
     flat_logits = shift_logits.view(-1, shift_logits.size(-1))
     flat_labels = shift_labels.view(-1)
-    token_loss = loss_fct(flat_logits, flat_labels).view_as(shift_labels)  # [batch_size, seq_len-1]
+    token_loss = loss_fct(flat_logits, flat_labels)
+    mask = flat_labels != -100
 
-    mask = shift_labels != -100
+    if position_ids is not None and trainer.template._packing:
+        pos = position_ids[..., :-1].view(-1)
+        start_idx_mask = pos.eq(0).int()
+        sample_idx = (torch.cumsum(start_idx_mask, dim=0) - 1).tolist()
+        token_channels = [sample_channels[i] for i in sample_idx]
+    else:
+        bs, seq = shift_labels.shape
+        token_channels = []
+        for i in range(bs):
+            token_channels.extend([sample_channels[i]] * seq)
 
     state = trainer.state
     state.local_step += 1
-
     for ch in set(sample_channels):
-        idx = torch.tensor([s == ch for s in sample_channels], device=logits.device)
-        ch_loss_step = token_loss[idx].masked_select(mask[idx])
-        state.ch_loss_steps.setdefault(ch, []).append(ch_loss_step)
+        indices = [i for i, c in enumerate(token_channels) if c == ch]
+        if not indices:
+            continue
+        ch_mask = mask[indices]
+        ch_losses = token_loss[indices]
+        valid_losses = ch_losses[ch_mask]
+        state.ch_loss_steps.setdefault(ch, []).append(valid_losses)
 
     # At the end of a global step, compute the mean loss for each channel
     if state.local_step % trainer.args.gradient_accumulation_steps == 0:
@@ -441,6 +581,286 @@ def channel_loss_func(outputs, labels, num_items_in_batch=None, sample_channels=
     total_tokens = mask.sum()
     return total_loss / num_items_in_batch if num_items_in_batch is not None \
         else total_loss / (total_tokens.float() + 1e-12)
+
+
+@register_loss_func(LossType.reranker)
+def reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+    logits = outputs.logits
+    logits = logits.squeeze(1)
+    labels = labels.to(logits.dtype)
+    loss_fct = nn.BCEWithLogitsLoss()
+    loss = loss_fct(logits, labels)
+    return loss
+
+
+@register_loss_func(LossType.generative_reranker)
+def generative_reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, trainer=None) -> torch.Tensor:
+    """
+    Generative reranker loss function.
+
+    This loss function is designed for generative rerankers that use token probabilities
+    (e.g., "yes"/"no") to determine relevance scores. It only computes loss on the
+    last token position for specific tokens.
+
+    Args:
+        outputs: Model outputs containing logits
+        labels: Binary labels (0/1) for irrelevant/relevant pairs
+        loss_scale: Not used for generative reranker
+        num_items_in_batch: Not used for generative reranker
+        trainer: Trainer instance to access tokenizer
+
+    Returns:
+        torch.Tensor: Cross entropy loss for yes/no classification
+    """
+    if trainer is None:
+        raise ValueError('trainer is required for generative_reranker_loss to access tokenizer')
+
+    logits = outputs.logits
+    tokenizer = trainer.processing_class
+
+    # Get token IDs for positive and negative tokens
+    # Default to "yes"/"no", but can be configured via environment variables
+    positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
+    negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
+
+    try:
+        positive_token_id = tokenizer.convert_tokens_to_ids(positive_token)
+        negative_token_id = tokenizer.convert_tokens_to_ids(negative_token)
+    except Exception as e:
+        raise ValueError(f"Failed to convert tokens '{positive_token}'/'{negative_token}' to IDs. "
+                         f'Please check if these tokens exist in the tokenizer vocabulary. Error: {e}')
+
+    # Extract logits for positive and negative tokens directly from last position
+    # This avoids creating the large intermediate tensor last_logits
+    positive_logits = logits[:, -1, positive_token_id]  # [batch_size]
+    negative_logits = logits[:, -1, negative_token_id]  # [batch_size]
+
+    # Stack to create binary classification logits
+    # Shape: [batch_size, 2] where dim=1 represents [negative, positive]
+    binary_logits = torch.stack([negative_logits, positive_logits], dim=1)
+
+    # Convert labels to the correct device and type
+    binary_labels = labels.to(binary_logits.device).long()
+
+    # Compute cross entropy loss
+    loss_fct = CrossEntropyLoss()
+    loss = loss_fct(binary_logits, binary_labels)
+
+    return loss
+
+
+@register_loss_func(LossType.listwise_reranker)
+def listwise_reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+    """
+    List-wise reranker loss function.
+
+    This loss function groups samples by query based on the pattern where each group
+    consists of 1 positive document followed by n negative documents. It treats the
+    ranking task as a classification problem within each group, using cross-entropy
+    loss to identify the positive document among all candidates.
+
+    Data format expected:
+    - labels: [1, 0, 0, 0, 1, 0, 0, ...] where 1 indicates positive, 0 indicates negative
+    - Each 1 is followed by its corresponding negative documents until the next 1
+
+    Environment variables for configuration:
+    - LISTWISE_RERANKER_TEMPERATURE: Temperature for softmax (default: 1.0)
+    - LISTWISE_RERANKER_MIN_GROUP_SIZE: Minimum group size to include (default: 2)
+
+    Args:
+        outputs: Model outputs containing logits [batch_size, 1]
+        labels: Binary labels (1 for positive, 0 for negative) [batch_size]
+        loss_scale: Not used for listwise reranker
+        num_items_in_batch: Not used for listwise reranker
+
+    Returns:
+        torch.Tensor: Cross entropy loss for ranking classification
+    """
+    logits = outputs.logits.squeeze(-1)  # [batch_size]
+    labels = labels.float()
+
+    # Configuration from environment variables
+    temperature = float(os.environ.get('LISTWISE_RERANKER_TEMPERATURE', '1.0'))
+    min_group_size = int(os.environ.get('LISTWISE_RERANKER_MIN_GROUP_SIZE', '2'))
+
+    # Find positive sample indices to determine group boundaries
+    positive_indices = torch.nonzero(labels == 1, as_tuple=False).squeeze(-1)
+
+    if len(positive_indices) == 0:
+        # No positive samples in this batch, return zero loss
+        return torch.tensor(0.0, device=logits.device, requires_grad=True)
+
+    # Ensure positive_indices is 1D
+    if positive_indices.dim() == 0:
+        positive_indices = positive_indices.unsqueeze(0)
+
+    total_loss = 0.0
+    num_groups = 0
+
+    for i, pos_idx in enumerate(positive_indices):
+        # Determine group boundaries
+        group_start = pos_idx.item()
+
+        # Find the end of current group (start of next group or end of batch)
+        if i + 1 < len(positive_indices):
+            group_end = positive_indices[i + 1].item()
+        else:
+            group_end = len(labels)
+
+        # Extract group logits and labels
+        group_logits = logits[group_start:group_end]  # [group_size]
+        group_labels = labels[group_start:group_end]  # [group_size]
+
+        # Skip groups that are too small
+        if len(group_logits) < min_group_size:
+            continue
+
+        # Verify that the first sample in the group is positive
+        if group_labels[0] != 1:
+            continue  # Skip malformed groups
+
+        # Apply temperature scaling for better training dynamics
+        scaled_logits = group_logits / temperature
+
+        # The positive document is always at index 0 within the group
+        target = torch.tensor(0, dtype=torch.long, device=logits.device)
+
+        # Apply cross-entropy loss: positive document should have highest score
+        loss_fct = CrossEntropyLoss()
+        group_loss = loss_fct(scaled_logits.unsqueeze(0), target.unsqueeze(0))
+
+        total_loss += group_loss
+        num_groups += 1
+
+    if num_groups == 0:
+        return torch.tensor(0.0, device=logits.device, requires_grad=True)
+
+    # Return average loss across all groups
+    return total_loss / num_groups
+
+
+@register_loss_func(LossType.listwise_generative_reranker)
+def listwise_generative_reranker_loss(outputs,
+                                      labels,
+                                      loss_scale=None,
+                                      num_items_in_batch=None,
+                                      trainer=None) -> torch.Tensor:
+    """
+    List-wise generative reranker loss function.
+
+    This loss function combines the generative reranker approach (using token probabilities)
+    with list-wise ranking. It groups samples by query based on the pattern where each group
+    consists of 1 positive document followed by n negative documents, then uses the
+    probabilities of specific tokens (e.g., "yes"/"no") to perform ranking within each group.
+
+    Data format expected:
+    - labels: [1, 0, 0, 0, 1, 0, 0, ...] where 1 indicates positive, 0 indicates negative
+    - Each 1 is followed by its corresponding negative documents until the next 1
+
+    Environment variables for configuration:
+    - GENERATIVE_RERANKER_POSITIVE_TOKEN: Token for positive relevance (default: "yes")
+    - GENERATIVE_RERANKER_NEGATIVE_TOKEN: Token for negative relevance (default: "no")
+    - LISTWISE_GENERATIVE_RERANKER_TEMPERATURE: Temperature for softmax (default: 1.0)
+    - LISTWISE_GENERATIVE_RERANKER_MIN_GROUP_SIZE: Minimum group size to include (default: 2)
+
+    Args:
+        outputs: Model outputs containing logits [batch_size, seq_len, vocab_size]
+        labels: Binary labels (1 for positive, 0 for negative) [batch_size]
+        loss_scale: Not used for listwise generative reranker
+        num_items_in_batch: Not used for listwise generative reranker
+        trainer: Trainer instance to access tokenizer
+
+    Returns:
+        torch.Tensor: Cross entropy loss for ranking classification based on token probabilities
+    """
+    if trainer is None:
+        raise ValueError('trainer is required for listwise_generative_reranker_loss to access tokenizer')
+
+    logits = outputs.logits
+    tokenizer = trainer.processing_class
+    labels = labels.float()
+
+    # Configuration from environment variables
+    positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
+    negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
+    temperature = float(os.environ.get('LISTWISE_GENERATIVE_RERANKER_TEMPERATURE', '1.0'))
+    min_group_size = int(os.environ.get('LISTWISE_GENERATIVE_RERANKER_MIN_GROUP_SIZE', '2'))
+
+    # Get token IDs for positive and negative tokens
+    try:
+        positive_token_id = tokenizer.convert_tokens_to_ids(positive_token)
+        negative_token_id = tokenizer.convert_tokens_to_ids(negative_token)
+    except Exception as e:
+        raise ValueError(f"Failed to convert tokens '{positive_token}'/'{negative_token}' to IDs. "
+                         f'Please check if these tokens exist in the tokenizer vocabulary. Error: {e}')
+
+    # Extract logits for positive and negative tokens from last position
+    positive_logits = logits[:, -1, positive_token_id]  # [batch_size]
+    negative_logits = logits[:, -1, negative_token_id]  # [batch_size]
+
+    # Create binary classification logits for each sample
+    # Shape: [batch_size, 2] where dim=1 represents [negative, positive]
+    binary_logits = torch.stack([negative_logits, positive_logits], dim=1)
+
+    # Convert to relevance scores using softmax (probability of positive class)
+    binary_probs = torch.softmax(binary_logits, dim=1)
+    relevance_scores = binary_probs[:, 1]  # Probability of positive class [batch_size]
+
+    # Find positive sample indices to determine group boundaries
+    positive_indices = torch.nonzero(labels == 1, as_tuple=False).squeeze(-1)
+
+    if len(positive_indices) == 0:
+        # No positive samples in this batch, return zero loss
+        return torch.tensor(0.0, device=logits.device, requires_grad=True)
+
+    # Ensure positive_indices is 1D
+    if positive_indices.dim() == 0:
+        positive_indices = positive_indices.unsqueeze(0)
+
+    total_loss = 0.0
+    num_groups = 0
+
+    for i, pos_idx in enumerate(positive_indices):
+        # Determine group boundaries
+        group_start = pos_idx.item()
+
+        # Find the end of current group (start of next group or end of batch)
+        if i + 1 < len(positive_indices):
+            group_end = positive_indices[i + 1].item()
+        else:
+            group_end = len(labels)
+
+        # Extract group relevance scores and labels
+        group_scores = relevance_scores[group_start:group_end]  # [group_size]
+        group_labels = labels[group_start:group_end]  # [group_size]
+
+        # Skip groups that are too small
+        if len(group_scores) < min_group_size:
+            continue
+
+        # Verify that the first sample in the group is positive
+        if group_labels[0] != 1:
+            continue  # Skip malformed groups
+
+        # Convert relevance scores to logits for cross-entropy loss
+        # We use log to convert probabilities back to logits, then apply temperature
+        group_logits = torch.log(group_scores + 1e-8) / temperature  # Add small epsilon for numerical stability
+
+        # The positive document is always at index 0 within the group
+        target = torch.tensor(0, dtype=torch.long, device=logits.device)
+
+        # Apply cross-entropy loss: positive document should have highest relevance score
+        loss_fct = CrossEntropyLoss()
+        group_loss = loss_fct(group_logits.unsqueeze(0), target.unsqueeze(0))
+
+        total_loss += group_loss
+        num_groups += 1
+
+    if num_groups == 0:
+        return torch.tensor(0.0, device=logits.device, requires_grad=True)
+
+    # Return average loss across all groups
+    return total_loss / num_groups
 
 
 def get_loss_func(loss_type: Optional[str]) -> Optional[Callable]:

@@ -2,8 +2,9 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B \
+    --model Qwen/Qwen2.5-3B-Instruct \
     --train_type full \
+    --reward_funcs accuracy \
     --dataset AI-MO/NuminaMath-TIR#10000 \
     --torch_dtype bfloat16 \
     --use_vllm true \
@@ -24,10 +25,8 @@ swift rlhf \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
-    --max_completion_length 1024 \
-    --reward_funcs accuracy format \
+    --max_completion_length 2048 \
     --num_generations 32 \
-    --system examples/train/grpo/prompt.txt \
     --deepspeed zero3 \
     --temperature 1.0 \
     --top_p 1.0 \
@@ -38,4 +37,5 @@ swift rlhf \
     --offload_model true \
     --gc_collect_after_offload true \
     --sleep_level 1 \
-    --multi_turn_func math_tip_trick
+    --multi_turn_scheduler math_tip_trick_multi_turn \
+    --max_turns 3
