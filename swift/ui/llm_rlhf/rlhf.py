@@ -11,7 +11,7 @@ from swift.ui.base import BaseUI
 
 class RLHF(BaseUI):
 
-    group = 'llm_train'
+    group = 'llm_rlhf'
 
     locale_dict = {
         'rlhf_tab': {

@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.ui.llm_train.model import Model
+from swift.ui.llm_train.save import Save
 
 
-class GRPOModel(Model):
+class GRPOSave(Save):
+
     group = 'llm_grpo'

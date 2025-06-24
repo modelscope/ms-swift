@@ -93,7 +93,7 @@ class Runtime(BaseUI):
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='runtime_tab', open=False, visible=True):
             with gr.Blocks():
-                with gr.Row():
+                with gr.Row(equal_height=True):
                     gr.Dropdown(elem_id='running_tasks', scale=10, allow_custom_value=True)
                     gr.Button(elem_id='refresh_tasks', scale=1, variant='primary')
                     gr.Button(elem_id='show_log', scale=1, variant='primary')

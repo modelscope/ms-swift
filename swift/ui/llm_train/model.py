@@ -92,7 +92,7 @@ class Model(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='model_param', open=True):
-            with gr.Row():
+            with gr.Row(equal_height=True):
                 model = gr.Dropdown(
                     elem_id='model',
                     scale=20,

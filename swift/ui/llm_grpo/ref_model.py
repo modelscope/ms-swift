@@ -81,7 +81,7 @@ class RefModel(BaseUI):
                     gr.Dropdown(elem_id='ref_model_type', choices=ModelType.get_model_name_list(), value=None, scale=20)
                 with gr.Row():
                     gr.Checkbox(elem_id='sync_ref_model', scale=4)
-                    gr.Textbox(elem_id='ref_model_sync_steps', lines=1, value=500, scale=4)
+                    gr.Textbox(elem_id='ref_model_sync_steps', lines=1, value=512, scale=4)
                     gr.Slider(elem_id='ref_model_mixup_alpha', minimum=0.0, maximum=1.0, step=0.05, value=0.6, scale=4)
 
     @classmethod

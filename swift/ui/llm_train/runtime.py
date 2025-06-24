@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import collections
-import os.path
+import os
 import sys
 import time
 import webbrowser
@@ -170,6 +170,46 @@ class Runtime(BaseUI):
                 'en': 'The actual command'
             }
         },
+        'show_running_cmd': {
+            'value': {
+                'zh': '展示运行命令',
+                'en': 'Show running Command line'
+            },
+        },
+        'show_sh': {
+            'label': {
+                'zh': '展示sh命令行',
+                'en': 'Show sh Command line'
+            },
+        },
+        'cmd_sh': {
+            'label': {
+                'zh': '训练命令行',
+                'en': 'Training Command line'
+            },
+            'info': {
+                'zh': '点击下方的`保存训练命令`可以保存sh脚本',
+                'en': 'Click the `Save training command` below to save the sh script'
+            }
+        },
+        'save_cmd_as_sh': {
+            'value': {
+                'zh': '保存训练命令',
+                'en': 'Save training Command'
+            }
+        },
+        'save_cmd_alert': {
+            'value': {
+                'zh': '训练命令行将被保存在：{}',
+                'en': 'The training command line will be saved in: {}'
+            }
+        },
+        'close_cmd_show': {
+            'value': {
+                'zh': '关闭训练命令展示',
+                'en': 'Close training command show'
+            }
+        },
         'show_log': {
             'value': {
                 'zh': '展示运行状态',
@@ -208,8 +248,8 @@ class Runtime(BaseUI):
                 'en': 'Running Tasks'
             },
             'info': {
-                'zh': '运行中的任务（所有的swift sft命令）',
-                'en': 'All running tasks(started by swift sft)'
+                'zh': '运行中的任务（所有的swift sft/pt命令）',
+                'en': 'All running tasks(started by swift sft/pt)'
             }
         },
         'refresh_tasks': {
@@ -252,17 +292,25 @@ class Runtime(BaseUI):
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='runtime_tab', open=False, visible=True):
             with gr.Blocks():
-                with gr.Row():
+                with gr.Row(equal_height=True):
                     gr.Textbox(elem_id='running_cmd', lines=1, scale=20, interactive=False, max_lines=1)
+                    gr.Button(elem_id='show_running_cmd', scale=2, variant='primary')
                     gr.Textbox(elem_id='logging_dir', lines=1, scale=20, max_lines=1)
                     gr.Button(elem_id='show_log', scale=2, variant='primary')
                     gr.Button(elem_id='stop_show_log', scale=2)
-                    gr.Textbox(elem_id='tb_url', lines=1, scale=10, interactive=False, max_lines=1)
+                with gr.Accordion(elem_id='show_sh', open=True, visible=False):
+                    with gr.Blocks():
+                        gr.Textbox(elem_id='cmd_sh', lines=8)
+                        with gr.Row(equal_height=True):
+                            gr.Button(elem_id='save_cmd_as_sh', variant='primary', scale=2)
+                            gr.Button(elem_id='close_cmd_show', scale=2)
+                with gr.Row(equal_height=True):
+                    gr.Textbox(elem_id='tb_url', lines=1, scale=42, interactive=False, max_lines=1)
                     gr.Button(elem_id='start_tb', scale=2, variant='primary')
                     gr.Button(elem_id='close_tb', scale=2)
                 with gr.Row():
                     gr.Textbox(elem_id='log', lines=6, visible=False)
-                with gr.Row():
+                with gr.Row(equal_height=True):
                     gr.Dropdown(elem_id='running_tasks', scale=10)
                     gr.Button(elem_id='refresh_tasks', scale=1)
                     gr.Button(elem_id='kill_task', scale=1)
@@ -301,6 +349,13 @@ class Runtime(BaseUI):
                     [base_tab.element('running_tasks')],
                     [base_tab.element('running_tasks')],
                 )
+
+    @classmethod
+    def after_build_ui(cls, base_tab: Type['BaseUI']):
+        cls.element('show_running_cmd').click(cls.show_train_sh, cls.element('running_cmd'),
+                                              [cls.element('show_sh')] + [cls.element('cmd_sh')])
+        cls.element('save_cmd_as_sh').click(cls.save_cmd, cls.element('running_cmd'), [])
+        cls.element('close_cmd_show').click(cls.close_cmd_show, [], [cls.element('show_sh')])
 
     @classmethod
     def get_plot(cls, task):
@@ -596,3 +651,38 @@ class Runtime(BaseUI):
                 ax.plot(steps, values, color=TB_COLOR_SMOOTH)
             plots.append(fig)
         return plots
+
+    @classmethod
+    def save_cmd(cls, cmd):
+        if len(cmd) > 0:
+            cmd_sh, output_dir = cls.cmd_to_sh_format(cmd)
+            os.makedirs(output_dir, exist_ok=True)
+            sh_file_path = os.path.join(output_dir, 'train.sh')
+            gr.Info(cls.locale('save_cmd_alert', cls.lang)['value'].format(sh_file_path))
+            with open(sh_file_path, 'w', encoding='utf-8') as f:
+                f.write(cmd_sh)
+
+    @classmethod
+    def show_train_sh(cls, cmd):
+        if len(cmd) == 0:
+            return gr.update(visible=False), None
+        cmd_sh, _ = cls.cmd_to_sh_format(cmd)
+        return gr.update(visible=True), cmd_sh
+
+    @classmethod
+    def cmd_to_sh_format(cls, cmd):
+        cmd_sh = ''
+        params = cmd.split('--')
+        env_params = params[0].split('nohup')[0].strip()
+        cmd_sh += (env_params + ' \\\n')
+        swift_cmd = params[0].split('nohup')[1].strip()
+        cmd_sh += ('nohup ' + swift_cmd + ' \\\n')
+        for param in params[1:]:
+            if param.startswith('output_dir'):
+                output_dir = param.split(' ')[1].strip()
+            cmd_sh += ('--' + param.strip() + ' \\\n')
+        return cmd_sh, output_dir
+
+    @classmethod
+    def close_cmd_show(cls):
+        return gr.update(visible=False)

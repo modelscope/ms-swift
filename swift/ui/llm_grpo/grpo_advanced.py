@@ -6,7 +6,7 @@ import gradio as gr
 from swift.ui.base import BaseUI
 
 
-class GRPOAdvanced(BaseUI):
+class GrpoAdvanced(BaseUI):
     group = 'llm_grpo'
 
     locale_dict = {

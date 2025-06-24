@@ -257,11 +257,19 @@ class Rollout(BaseUI):
         }
     }
 
+    tabs_to_filter = {
+        'colocate': [
+            'vllm_enable_prefix_caching', 'vllm_gpu_memory_utilization', 'vllm_tensor_parallel_size',
+            'vllm_max_model_len', 'sleep_level', 'offload_model', 'offload_optimizer', 'gc_collect_after_offload'
+        ],
+        'server': ['async_generate', 'vllm_server_host', 'vllm_server_port', 'vllm_server_timeout']
+    }
+
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='rollout_param', open=True):
             with gr.Row():
-                gr.Slider(elem_id='num_generations', minimum=1, maximum=64, step=1, value=8, scale=4)
+                gr.Slider(elem_id='num_generations', minimum=1, maximum=64, step=1, value=32, scale=4)
                 gr.Textbox(elem_id='max_completion_length', lines=1, value='512', scale=4)
                 gr.Checkbox(elem_id='dynamic_sample', scale=4)
                 gr.Slider(elem_id='max_resample_times', minimum=1, maximum=16, step=1, value=3, scale=4)
@@ -270,24 +278,25 @@ class Rollout(BaseUI):
 
             with gr.Row():
                 gr.Slider(elem_id='temperature', minimum=0.0, maximum=10, step=0.1, value=1.0)
-                gr.Slider(elem_id='top_k', minimum=1, maximum=100, step=5, value=20)
+                gr.Slider(elem_id='top_k', minimum=1, maximum=100, step=5, value=80)
                 gr.Slider(elem_id='top_p', minimum=0.0, maximum=1.0, step=0.05, value=1.0)
                 gr.Slider(elem_id='repetition_penalty', minimum=0.0, maximum=10, step=0.05, value=1.05)
 
             with gr.Row():
-                gr.Checkbox(elem_id='use_vllm', scale=4)
+                gr.Checkbox(elem_id='use_vllm', value=True, scale=4)
                 gr.Dropdown(elem_id='vllm_mode', choices=['colocate', 'server'], scale=4)
-                gr.Checkbox(elem_id='offload_model', scale=4)
-                gr.Checkbox(elem_id='offload_optimizer', scale=4)
-                gr.Checkbox(elem_id='gc_collect_after_offload', scale=4)
 
             with gr.Accordion(elem_id='colocate_param', open=True):
                 with gr.Row():
                     gr.Checkbox(elem_id='vllm_enable_prefix_caching', scale=4)
-                    gr.Dropdown(elem_id='sleep_level', choices=[0, 1], value=0, scale=4)
                     gr.Textbox(elem_id='vllm_gpu_memory_utilization', lines=1, value='0.5', scale=4)
                     gr.Textbox(elem_id='vllm_tensor_parallel_size', lines=1, value='1', scale=4)
                     gr.Textbox(elem_id='vllm_max_model_len', lines=1, value='', scale=4)
+                with gr.Row():
+                    gr.Dropdown(elem_id='sleep_level', choices=[0, 1], value=0, scale=4)
+                    gr.Checkbox(elem_id='offload_model', value=True, scale=4)
+                    gr.Checkbox(elem_id='offload_optimizer', value=True, scale=4)
+                    gr.Checkbox(elem_id='gc_collect_after_offload', value=True, scale=4)
             with gr.Accordion(elem_id='server_param', open=True):
                 with gr.Row():
                     gr.Checkbox(elem_id='async_generate', scale=1)

@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.ui.llm_train.model import Model
+from swift.ui.llm_train.target import Target
 
 
-class GRPOModel(Model):
+class GRPOTarget(Target):
+
     group = 'llm_grpo'

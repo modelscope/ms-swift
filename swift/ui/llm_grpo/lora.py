@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.ui.llm_train.model import Model
+from swift.ui.llm_train.lora import LoRA
 
 
-class GRPOModel(Model):
+class GRPOLoRA(LoRA):
+
     group = 'llm_grpo'
