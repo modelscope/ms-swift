@@ -42,7 +42,7 @@ class GPTModel(McoreGPTModel):
         seq_len_interpolation_factor: Optional[float] = None,
         mtp_block_spec: Optional[ModuleSpec] = None,
     ):
-        if self.config.multi_latent_attention and config.rope_type == 'yarn':
+        if config.multi_latent_attention and config.rope_type == 'yarn':
             config.rope_type = 'rope'  # use transformers implementation
             if hf_rope_scaling and hf_rope_scaling['rope_type'] == 'yarn':
                 config.mscale = hf_rope_scaling['mscale']
@@ -67,9 +67,9 @@ class GPTModel(McoreGPTModel):
             seq_len_interpolation_factor=seq_len_interpolation_factor,
             mtp_block_spec=mtp_block_spec,
         )
-        if self.position_embedding_type == 'rope' and not self.config.multi_latent_attention:
+        if self.position_embedding_type == 'rope' and self.config.multi_latent_attention:
             self.rotary_pos_emb = RotaryEmbedding(
-                kv_channels=self.config.kv_channels,
+                kv_channels=self.config.qk_pos_emb_head_dim,
                 rotary_percent=rotary_percent,
                 rotary_interleaved=self.config.rotary_interleaved,
                 seq_len_interpolation_factor=seq_len_interpolation_factor,
@@ -79,13 +79,14 @@ class GPTModel(McoreGPTModel):
                 use_cpu_initialization=self.config.use_cpu_initialization,
             )
         self.attention_scaling = 1.
+        if config.multi_latent_attention:
+            # save memory
+            for i in range(config.num_layers):
+                if hasattr(self.decoder.layers[i].self_attention, 'rotary_pos_emb'):
+                    del self.decoder.layers[i].self_attention.rotary_pos_emb
         if self.hf_rope_scaling is not None:
             new_inv_freq, self.attention_scaling = get_rope_inv_freq()
-            if config.multi_latent_attention:
-                for i in range(config.num_layers):
-                    self.decoder.layers[i].self_attention.rotary_pos_emb.inv_freq.data.copy_(new_inv_freq)
-            else:
-                self.rotary_pos_emb.inv_freq.data.copy_(new_inv_freq)
+            self.rotary_pos_emb.inv_freq.data.copy_(new_inv_freq)
         if self.attention_scaling != 1 and config.apply_rope_fusion:
             config.apply_rope_fusion = False
             logger.warning('`apply_rope_fusion` does not support `attention_scaling`. '

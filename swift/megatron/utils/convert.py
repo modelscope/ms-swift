@@ -34,8 +34,19 @@ def test_convert_precision(hf_model, mg_model, processor):
     attention_mask, _, position_ids = get_ltor_masks_and_position_ids(input_ids, -100, True, True, True)
     mg_model.to('cuda')
     mg_model.to(torch.float32)
+    packed_seq_params = None
+    # thd
+    from ..train.utils import get_packed_seq_params
+    packed_seq_params = get_packed_seq_params(position_ids)
+    attention_mask = None
+    mg_model.to(torch_dtype)
+
     with torch.inference_mode():
-        mg_logits = mg_model(input_ids=input_ids, attention_mask=attention_mask, position_ids=position_ids)
+        mg_logits = mg_model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            packed_seq_params=packed_seq_params)
     mg_model.to(torch_dtype)
     mg_model.to('cpu')
 

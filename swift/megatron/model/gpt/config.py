@@ -19,6 +19,7 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
             if architectures != 'DeepseekForCausalLM':
                 res['qk_layernorm'] = True
             res['moe_router_load_balancing_type'] = 'seq_aux_loss'
+            res.pop('num_query_groups', None)  # https://github.com/NVIDIA/Megatron-LM/issues/1475
             res['moe_shared_expert_intermediate_size'] = 2 * res['moe_ffn_hidden_size']
             if res.get('moe_router_score_function', 'softmax') == 'sigmoid':
                 res['moe_router_enable_expert_bias'] = True

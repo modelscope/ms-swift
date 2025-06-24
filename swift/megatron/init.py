@@ -345,9 +345,11 @@ def _patch_mla_attention():
         # core attention computation
         # ==================================
         # Need corresponding TE change
+        thd_qkv_format = packed_seq_params and packed_seq_params.qkv_format == 'thd'
         v_dim = value.shape[-1]
-        if query.shape[-1] != v_dim:
+        if thd_qkv_format and query.shape[-1] != v_dim:
             value = F.pad(value, [0, query.shape[-1] - v_dim])
+            self.core_attention.hidden_size_per_attention_head_v = value.shape[-1]
         if self.checkpoint_core_attention and self.training:
             core_attn_out = self._checkpointed_attention_forward(
                 query, key, value, attention_mask, packed_seq_params=packed_seq_params)
@@ -360,9 +362,11 @@ def _patch_mla_attention():
                 packed_seq_params=packed_seq_params,
                 attn_mask_type=attn_mask_type,
             )
-        if query.shape[-1] != v_dim:
-            core_attn_out = core_attn_out[..., :v_dim]
-        if packed_seq_params is not None and packed_seq_params.qkv_format == 'thd':
+        if thd_qkv_format:
+            if core_attn_out.ndim == 2:
+                core_attn_out = core_attn_out.reshape(*core_attn_out.shape[:-1], -1, value.shape[-1])
+            if query.shape[-1] != v_dim:
+                core_attn_out = core_attn_out[..., :v_dim]
             # reshape to same output shape as unpacked case
             # (t, np, hn) -> (t, b=1, h=np*hn)
             # t is the pack size = sum (sq_i)
@@ -476,8 +480,6 @@ def _patch_mla_attention():
                 # q_compressed: [num_tokens, hidden_size]
                 # q: [num_tokens, n * (qk_head_dim + qk_pos_emb_head_dim)]
                 q, _ = self.linear_q_proj(q_compressed)
-
-            q_len, bsz, _ = q.size()
 
             # q: [num_tokens, n, q_head_dim]
             q = q.view(*q.size()[:-1], self.num_attention_heads_per_partition, self.q_head_dim)
