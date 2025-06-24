@@ -125,7 +125,11 @@ If `seq_kd` is enabled, the final round of the 'assistant' part is not required 
 
 ### Embedding
 
-Please refer to [embedding训练文档](../BestPractices/Embedding.md#dataset-format).
+Please refer to [Embedding training document](../BestPractices/Embedding.md#dataset-format).
+
+### Reranker
+
+Please refer to [Reranker training document](../BestPractices/Reranker.md#dataset-format).
 
 ### Multimodal
 

@@ -62,6 +62,30 @@ register_template(
 # '<think>\n\n</think>\n\n'
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3, default_system=None, template_cls=ThinkingTemplate))
 
+
+class Qwen3RerankerTemplate(Template):
+    instruction = 'Given a web search query, retrieve relevant passages that answer the query'
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        query = inputs.messages[-2]['content']
+        doc = inputs.messages[-1]['content']
+        user_message = '<Instruct>: ' + self.instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: ' + doc
+        inputs.messages[-2]['content'] = user_message
+        inputs.messages.pop(-1)
+
+
+qwen3_reranker_system = (
+    'Judge whether the Document meets the requirements based on the Query and the Instruct provided. '
+    'Note that the answer can only be \"yes\" or \"no\".')
+
+register_template(
+    QwenTemplateMeta(
+        LLMTemplateType.qwen3_reranker,
+        default_system=qwen3_reranker_system,
+        response_prefix='<think>\n\n</think>\n\n',
+        template_cls=Qwen3RerankerTemplate))
+
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 
 
