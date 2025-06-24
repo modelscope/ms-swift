@@ -15,20 +15,20 @@ GRPOTrainer underwent a code refactoring in ms-swift3.5. If you are using a swif
 [GRPO (Group Relative Policy Optimization)](https://arxiv.org/abs/2402.03300) leverages intra-group relative advantage calculations to replace the independent value model in the PPO algorithm and directly incorporates KL divergence penalties into the loss function to improve training stability.
 
 ### GRPO Objective Function
-$$
+$
 {\scriptstyle
 \begin{aligned}
 \mathcal{J}_{G R P O}(\theta) & =\mathbb{E}_{\left[q \sim P(Q),\left\{o_i\right\}_{i=1}^G \sim \pi_{\theta_{o l d}}(O \mid q)\right]} \\
 & \frac{1}{G} \sum_{i=1}^G \frac{1}{\left|o_i\right|} \sum_{t=1}^{\left|o_i\right|}\left\{\min \left[\frac{\pi_\theta\left(o_{i, t} \mid q, o_{i,<t}\right)}{\pi_{\theta_{o l d}}\left(o_{i, t} \mid q, o_{i,<t}\right)} \hat{A}_{i, t}, \operatorname{clip}\left(\frac{\pi_\theta\left(o_{i, t} \mid q, o_{i,<t}\right)}{\pi_{\theta_{o l d}}\left(o_{i, t} \mid q, o_{i,<t}\right)}, 1-\varepsilon, 1+\varepsilon\right) \hat{A}_{i, t}\right]-\beta \mathbb{D}_{K L}\left[\pi_\theta| | \pi_{r e f}\right]\right\}
 \end{aligned}
 }
-$$
+$
 
 The advantage function is defined as
 
-$$
+$
 \hat{A}_{i,t} = \frac{R_i - \text{mean}(\{R_j\}_{j=1}^G)}{\text{std}(\{R_j\}_{j=1}^G)}
-$$
+$
 
 
 <details> <summary>GRPO Algorithm Pseudocode</summary>
@@ -283,3 +283,18 @@ Refer to [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-
 When `val_dataset` is not explicitly passed, the `split_dataset_ratio` parameter is responsible for splitting part of the `dataset` into a validation dataset, which defaults to splitting 1% of the data.
 
 To disable the validation process, set `--split_dataset_ratio 0`.
+
+**7. How to set the training `mini-batch size`**
+
+In GRPO training, we can configure mini-batch updates in the following two ways:
+
+1. Configuration options:
+   - Set `generation_batch_size` to be an integer multiple of the training global batch size.
+   - Or set `steps_per_generation` to be an integer multiple of `gradient_accumulation_steps`.
+
+2. Typical configuration example:
+   When configured with:
+   steps_per_generation = 16
+   gradient_accumulation_steps = 8
+
+   The results from one rollout will be split into two mini-batch updates.

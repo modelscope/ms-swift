@@ -24,7 +24,7 @@ We can customize and set a multi-round sampling planner through the parameter `m
 ## MultiTurnScheduler
 The multi-turn scheduler is the core component of multi-round training, and its workflow is shown in the following diagram:
 
-<img src="https://github.com/modelscope/ms-swift/tree/main/docs/resources/multiturn_pipeline.png" width="300" />
+<img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/multiturn_pipeline.png" width="300" />
 
 The multi-turn scheduler primarily performs two functions:
 - Termination condition judgment: Determines whether the current round of reasoning should end via the `check_finished` method.
@@ -101,7 +101,7 @@ The default check_finished logic stops reasoning under two conditions:
 
 It is recommended to use AsyncEngine for efficient batch data asynchronous multi-round sampling (only supported in external server mode). AsyncEngine can reduce computational bubbles during multi-round reasoning (as shown in the diagram).
 
-<img src="https://github.com/modelscope/ms-swift/tree/main/docs/resources/asyncengine.png" width="400" />
+<img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/asyncengine.png" width="400" />
 
 Use the `use_async_engine` parameter in the `rollout` command to specify the engine type:
 ```
