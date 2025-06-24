@@ -67,6 +67,9 @@ class TemplateArguments:
         truncation_strategy = self.truncation_strategy
         if truncation_strategy == 'delete':
             truncation_strategy = 'raise'
+        remove_unused_columns = self.remove_unused_columns
+        if hasattr(self, 'rlhf_type') and self.rlhf_type == 'grpo':
+            remove_unused_columns = True
         return {
             'default_system': self.system,
             'max_length': self.max_length,
@@ -75,7 +78,7 @@ class TemplateArguments:
             'agent_template': self.agent_template,
             'norm_bbox': self.norm_bbox,
             'use_chat_template': self.use_chat_template,
-            'remove_unused_columns': self.remove_unused_columns,
+            'remove_unused_columns': remove_unused_columns,
             # train
             'padding_free': self.padding_free,
             'padding_side': self.padding_side,
