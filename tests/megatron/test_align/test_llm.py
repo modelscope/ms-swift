@@ -111,6 +111,7 @@ def test_deepseek_moe():
 def test_dots():
     _test_model('rednote-hilab/dots.llm1.inst')
 
+
 def test_kimi_dev():
     _test_model('moonshotai/Kimi-Dev-72B')
 
