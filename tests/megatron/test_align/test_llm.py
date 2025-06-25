@@ -2,7 +2,7 @@ import os
 
 import torch
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3,4,5,6,7'
 
 
 def _test_model(model_id, **kwargs):
@@ -110,6 +110,7 @@ def test_deepseek_moe():
 
 def test_dots():
     _test_model('rednote-hilab/dots.llm1.inst')
+
 
 if __name__ == '__main__':
     # test_qwen2()
