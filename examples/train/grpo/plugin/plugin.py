@@ -449,6 +449,10 @@ class CodeRewardByJudge0(ORM):
             rewards = [0.0] * len(completions)
         return rewards
 
+# ref implementation: https://github.com/qiancheng0/ToolRL/blob/main/verl/utils/reward_score/rlla.py, arxiv paper: https://arxiv.org/abs/2504.13958
+# MAX1STEP30MAX3: enable Two stage reward Setting include Format and Correctness
+# SCHEDULEREWARD: enable Dynamic (Finegrained) reward Setting include Format and Correctness
+# Correctness Reward Granularity: COARSEREWARD -> Coarse, INTERMEDIATEREWARD -> Intermediate, REFINEDREWARD -> Finegrained
 class ToolUseFormatReward(ORM):
     
     def __init__(self):
@@ -458,6 +462,7 @@ class ToolUseFormatReward(ORM):
     def __call__(self, completions, solution, global_step,**kwargs) -> List[float]:
         max_possible_reward = self.format_max_possible
         min_possible_reward = self.format_min_possible
+        # MAX1STEP30MAX3:  Two stage (Coarse) Setting, divide training into two phases. Format Reward in [0,0.5] if step < 30 else [0,1]
         if str(os.getenv("MAX1STEP30MAX3", 0)) == "1":
             print("MAX1STEP30MAX3 is set to 1, so max 1 -> 30 steps -> max 3")
             if global_step >= 30:
@@ -467,7 +472,7 @@ class ToolUseFormatReward(ORM):
                 max_possible_reward = self.format_max_possible
                 min_possible_reward = self.format_min_possible
         
-        # schedule reward
+        # SCHEDULEREWARD: Dynamic (Finegrained) Setting, apply continuous interpolation between the two reward scales throughout training. 
         if str(os.getenv("SCHEDULEREWARD", 0)) == "1":
             print("SCHEDULEREWARD is set to 1, so schedule reward is used")
             max_possible_reward = 2 - (2 - max_possible_reward) * global_step / 150
@@ -513,7 +518,7 @@ class ToolUseFormatReward(ORM):
         return rewards
  
 class ToolUseLengthReward(ORM): 
-     
+    
     def __init__(self):
         self.length_max_possible = 1.0
         self.length_min_possible = 0.0
@@ -522,7 +527,7 @@ class ToolUseLengthReward(ORM):
     def __call__(self, completions, solution, global_step, **kwargs):
         max_possible_reward = self.length_max_possible
         min_possible_reward = self.length_min_possible
-        # schedule length
+        # SCHEDULELENGTH: enable Dynamic Length Reward
         if os.getenv("SCHEDULELENGTH", 0) == "1":
             print("SCHEDULELENGTH is set to 1, so schedule max reward for length is used")
             max_reward_len = (640 - 384) * global_step / 105 + 384
@@ -655,6 +660,7 @@ class ToolUseCorrectnessReward(ORM):
     def __call__(self, completions, solution, global_step, **kwargs):
         max_possible_reward = self.tool_max_possible
         min_possible_reward = self.tool_min_possible
+        # MAX1STEP30MAX3:  Two stage (Coarse) Setting, divide training into two phases. 
         if str(os.getenv("MAX1STEP30MAX3", 0)) == "1":
             print("MAX1STEP30MAX3 is set to 1, so max 1 -> 30 steps -> max 3")
             if global_step < 30:
@@ -663,7 +669,7 @@ class ToolUseCorrectnessReward(ORM):
             else:
                 max_possible_reward = max_possible_reward
                 min_possible_reward = min_possible_reward
-        
+        # SCHEDULEREWARD: Dynamic (Finegrained) Setting, apply continuous interpolation between the two reward scales throughout training.
         if str(os.getenv("SCHEDULEREWARD", 0)) == "1":
             print("SCHEDULEREWARD is set to 1, so schedule reward is used")
             max_possible_reward = (max_possible_reward - 2) * global_step / 150 + 2
