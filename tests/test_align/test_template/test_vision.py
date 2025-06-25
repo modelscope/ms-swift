@@ -550,6 +550,19 @@ def test_kimi_vl():
                         'while the second image is a cartoon of four sheep standing in a field.')
 
 
+def test_kimi_vl_thinking():
+    pt_engine = PtEngine('moonshotai/Kimi-VL-A3B-Thinking-2506')
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    assert response[:200] == ("◁think▷So, let's analyze the two images. The first image is a close - "
+                              'up of a real kitten with detailed fur, whiskers, and a realistic style. '
+                              'The second image is an illustration of four sheep in a car')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -597,9 +610,10 @@ if __name__ == '__main__':
     # test_minicpmo()
     # test_valley()
     # test_ui_tars()
-    test_gemma3_vision()
+    # test_gemma3_vision()
     # test_mistral_2503()
     # test_llama4()
     # test_internvl3_8b()
     # test_internvl3_9b()
     # test_kimi_vl()
+    test_kimi_vl_thinking()

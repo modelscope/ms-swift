@@ -78,6 +78,10 @@ def test_qwen3_moe():
     _test_model('Qwen/Qwen3-15B-A2B-Base')
 
 
+def test_kimi_dev():
+    _test_model('moonshotai/Kimi-Dev-72B')
+
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -91,4 +95,5 @@ if __name__ == '__main__':
     # test_llama3_2()
     # test_qwen3()
     # test_qwen2_moe()
-    test_qwen3_moe()
+    # test_qwen3_moe()
+    test_kimi_dev()
