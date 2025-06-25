@@ -271,7 +271,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - group_query_attention: Default is None. If `num_query_groups > 1`, group_query_attention is set to True, otherwise False.
 - num_query_groups: Default is 1.
 - max_position_embeddings: Maximum length of positional embeddings, default is None.
-- position_embedding_type: Type of positional embedding, options are 'learned_absolute', 'rope', 'relative', and 'none'. Default is 'rope'.
+- position_embedding_type: Type of positional embedding, options are 'learned_absolute', 'rope', 'mrope', 'relative', and 'none'. Default is 'rope'.
 - rotary_base: Default is 10000.
 - rotary_percent: Default is 1.
 - normalization: Options are 'LayerNorm', 'RMSNorm'. Default is RMSNorm.

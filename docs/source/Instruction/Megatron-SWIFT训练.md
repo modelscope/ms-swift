@@ -261,7 +261,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - group_query_attention: 默认为None。若`num_query_groups>1`，group_query_attention设置为True，否则为False。
 - num_query_groups: 默认为1。
 - max_position_embeddings: 位置编码的最大长度，默认为None。
-- position_embedding_type: 位置编码的类型，可选为'learned_absolute'、'rope'、'relative'和'none'，默认为'rope'。
+- position_embedding_type: 位置编码的类型，可选为'learned_absolute'、'rope'、'mrope'、'relative'和'none'，默认为'rope'。
 - rotary_base: 默认为10000。
 - rotary_percent: 默认为1.。
 - normalization: 可选为'LayerNorm', 'RMSNorm'，默认为RMSNorm。

@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import math
+from dataclasses import fields
 
 import torch
 from megatron.training.checkpointing import load_checkpoint
@@ -17,7 +18,29 @@ from .patcher import patch_megatron_tokenizer, patch_torch_dist_shard
 logger = get_logger()
 
 
+def _test_params_sum(model):
+    total_sum = 0
+    zero_count = 0
+    n_parameter = 0
+    for n, p in model.named_parameters():
+        n_parameter += 1
+        sum_ = p.cuda().float().abs().sum().cpu().item()
+        if sum_ == 0:
+            zero_count += 1
+            logger.warning(f'n: {n}, sum: {sum_}')
+        elif math.isnan(sum_) or math.isinf(sum_) or sum_ > 1e10:
+            logger.warning(f'n: {n}, sum: {sum_}')
+        else:
+            total_sum += sum_
+    logger.info(f'n_parameter: {n_parameter}')
+    logger.info(f'total_sum: {total_sum}')
+    logger.info(f'zero_count: {zero_count}')
+
+
 def test_convert_precision(hf_model, mg_model, processor):
+    _test_params_sum(hf_model)
+    _test_params_sum(mg_model)
+
     torch_dtype = hf_model.dtype
     template = get_template(hf_model.model_meta.template, processor)
     input_ids = template.encode({'messages': [{'role': 'user', 'content': 'who are you?'}]})['input_ids']
@@ -33,8 +56,19 @@ def test_convert_precision(hf_model, mg_model, processor):
     attention_mask, _, position_ids = get_ltor_masks_and_position_ids(input_ids, -100, True, True, True)
     mg_model.to('cuda')
     mg_model.to(torch.float32)
+    packed_seq_params = None
+    # thd
+    # from ..train.utils import get_packed_seq_params
+    # packed_seq_params = get_packed_seq_params(position_ids)
+    # attention_mask = None
+    # mg_model.to(torch_dtype)
+
     with torch.inference_mode():
-        mg_logits = mg_model(input_ids=input_ids, attention_mask=attention_mask, position_ids=position_ids)
+        mg_logits = mg_model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            packed_seq_params=packed_seq_params)
     mg_model.to(torch_dtype)
     mg_model.to('cpu')
 
@@ -61,6 +95,13 @@ convert_kwargs = {
 }
 
 
+def _check_megatron_kwargs(kwargs):
+    # Make sure that the keys in kwargs have default values of None in MegatronArguments.
+    default_mapping = {field.name: field.default for field in fields(MegatronArguments)}
+    for k in kwargs.keys():
+        assert default_mapping[k] is None
+
+
 def convert_hf2mcore(args: ExportArguments) -> None:
     kwargs = args.get_model_kwargs()
     hf_model, processor = get_model_tokenizer(**kwargs)
@@ -72,6 +113,8 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
     kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
+    logger.info(f'megatron_config: {kwargs}')
+    _check_megatron_kwargs(kwargs)
     megatron_args = MegatronArguments(**kwargs, **convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
@@ -100,6 +143,8 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
     kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
+    logger.info(f'megatron_config: {kwargs}')
+    _check_megatron_kwargs(kwargs)
     megatron_args = MegatronArguments(**kwargs, **convert_kwargs, load=args.mcore_model, torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
