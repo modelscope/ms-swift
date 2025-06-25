@@ -760,8 +760,8 @@ def listwise_generative_reranker_loss(outputs,
     Environment variables for configuration:
     - GENERATIVE_RERANKER_POSITIVE_TOKEN: Token for positive relevance (default: "yes")
     - GENERATIVE_RERANKER_NEGATIVE_TOKEN: Token for negative relevance (default: "no")
-    - LISTWISE_GENERATIVE_RERANKER_TEMPERATURE: Temperature for softmax (default: 1.0)
-    - LISTWISE_GENERATIVE_RERANKER_MIN_GROUP_SIZE: Minimum group size to include (default: 2)
+    - LISTWISE_RERANKER_TEMPERATURE: Temperature for softmax (default: 1.0)
+    - LISTWISE_RERANKER_MIN_GROUP_SIZE: Minimum group size to include (default: 2)
 
     Args:
         outputs: Model outputs containing logits [batch_size, seq_len, vocab_size]
@@ -783,8 +783,8 @@ def listwise_generative_reranker_loss(outputs,
     # Configuration from environment variables
     positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
     negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
-    temperature = float(os.environ.get('LISTWISE_GENERATIVE_RERANKER_TEMPERATURE', '1.0'))
-    min_group_size = int(os.environ.get('LISTWISE_GENERATIVE_RERANKER_MIN_GROUP_SIZE', '2'))
+    temperature = float(os.environ.get('LISTWISE_RERANKER_TEMPERATURE', '1.0'))
+    min_group_size = int(os.environ.get('LISTWISE_RERANKER_MIN_GROUP_SIZE', '2'))
 
     # Get token IDs for positive and negative tokens
     try:
