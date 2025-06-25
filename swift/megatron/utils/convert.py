@@ -1,15 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import math
+from contextlib import contextmanager
 from dataclasses import fields
 
 import torch
+import torch.nn as nn
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 from megatron.training.initialize import initialize_megatron
 from megatron.training.utils import get_ltor_masks_and_position_ids
 
-from contextlib import contextmanager
 from swift.llm import ExportArguments, HfConfigFactory, get_model_tokenizer, get_template, save_checkpoint
 from swift.utils import get_logger, get_n_params_grads
 from ..argument import MegatronArguments
@@ -38,22 +39,28 @@ def _test_params_sum(model):
     logger.info(f'zero_count: {zero_count}')
 
 
-def _find_modules(mg_model):
+def _find_modules(model, recurse: bool = True):
     modules = []
-    for module in mg_model.children():
-        if module.__class__.__name__ in {'TransformerBlock', 'ModuleList'}:
+    children = list(model.children())
+    for module in children:
+        if module.__class__ is nn.ModuleList:
+            modules += _find_modules(module, False)
+        elif recurse:
             modules += _find_modules(module)
         else:
             modules.append(module)
+    if not children:
+        modules.append(model)
     return modules
 
 
 @contextmanager
-def _mg_model_cpu_forward_context(mg_model, torch_dtype=None):
-    origin_torch_dtype = next(mg_model.parameters()).dtype
+def _model_cpu_forward_context(modules, torch_dtype=None, device=None):
+    origin_torch_dtype = next(modules[0].parameters()).dtype
 
     def _to_cuda_hook(module, args):
-        module = module.to('cuda')
+        if device is not None:
+            module = module.to(device)
         if torch_dtype is not None:
             module.to(torch_dtype)
 
@@ -63,28 +70,28 @@ def _mg_model_cpu_forward_context(mg_model, torch_dtype=None):
             module.to(origin_torch_dtype)
 
     hooks = []
-    modules = _find_modules(mg_model)
     for module in modules:
         hooks.append(module.register_forward_pre_hook(_to_cuda_hook))
         hooks.append(module.register_forward_hook(_to_cpu_hook))
-    yield
-    for hook in hooks:
-        hook.remove()
+    try:
+        yield
+    finally:
+        for hook in hooks:
+            hook.remove()
+
 
 def test_convert_precision(hf_model, mg_model, processor, torch_dtype=torch.float32):
     _test_params_sum(hf_model)
     _test_params_sum(mg_model)
 
-    origin_torch_dtype = hf_model.dtype
     template = get_template(hf_model.model_meta.template, processor)
     input_ids = template.encode({'messages': [{'role': 'user', 'content': 'who are you?'}]})['input_ids']
     input_ids = torch.tensor(input_ids)[None].to('cuda')
-    hf_model.to(torch_dtype)
+
     HfConfigFactory.set_model_config_attr(hf_model, 'use_cache', False)
-    with torch.inference_mode():
+    hf_modules = _find_modules(hf_model)
+    with torch.inference_mode(), _model_cpu_forward_context(hf_modules, torch_dtype):
         hf_logits = hf_model(input_ids).logits
-    hf_model.to(origin_torch_dtype)
-    hf_model.to('cpu')
 
     attention_mask, _, position_ids = get_ltor_masks_and_position_ids(input_ids, -100, True, True, True)
     packed_seq_params = None
@@ -94,8 +101,8 @@ def test_convert_precision(hf_model, mg_model, processor, torch_dtype=torch.floa
     # mg_torch_dtype = None
     # packed_seq_params = get_packed_seq_params(position_ids)
     # attention_mask = None
-
-    with torch.inference_mode(), _mg_model_cpu_forward_context(mg_model, mg_torch_dtype):
+    mg_modules = _find_modules(mg_model)
+    with torch.inference_mode(), _model_cpu_forward_context(mg_modules, mg_torch_dtype, 'cuda'):
         mg_logits = mg_model(
             input_ids=input_ids,
             attention_mask=attention_mask,

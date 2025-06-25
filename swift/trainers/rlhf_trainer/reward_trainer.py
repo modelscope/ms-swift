@@ -36,7 +36,7 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
             loss += self.args.center_rewards_coefficient * torch.mean((rewards_chosen + rewards_rejected)**2)
         # compat transformers>=4.46.*
         if num_items_in_batch is not None and self.model_accepts_loss_kwargs:
-            loss /= self.args.gradient_accumulation_steps
+            loss = loss / self.args.gradient_accumulation_steps
         if return_outputs:
             return loss, {
                 'rewards_chosen': rewards_chosen,

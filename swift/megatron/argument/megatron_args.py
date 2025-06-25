@@ -265,7 +265,7 @@ class MegatronArguments(ExtraMegatronArguments):
 
     def _init_moe(self):
         if self.moe_router_dtype.lower() == 'none':
-            self.moe_router_dtype = None    
+            self.moe_router_dtype = None
         if self.moe_shared_expert_intermediate_size == 0:
             self.moe_shared_expert_intermediate_size = None
         if self.num_experts is not None:

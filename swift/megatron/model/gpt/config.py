@@ -17,7 +17,9 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
             res.pop('ffn_hidden_size', None)
             if architectures == 'Qwen2MoeForCausalLM':
                 res['use_shared_expert_gate'] = True
-        if architectures in {'DeepseekForCausalLM', 'DeepseekV2ForCausalLM', 'DeepseekV3ForCausalLM', 'Dots1ForCausalLM'}:
+        if architectures in {
+                'DeepseekForCausalLM', 'DeepseekV2ForCausalLM', 'DeepseekV3ForCausalLM', 'Dots1ForCausalLM'
+        }:
             if architectures != 'DeepseekForCausalLM':
                 res['qk_layernorm'] = True
             res['moe_router_load_balancing_type'] = 'seq_aux_loss'
