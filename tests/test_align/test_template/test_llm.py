@@ -423,7 +423,7 @@ def test_minimax():
 
 
 def test_kimi_dev():
-    pt_engine = PtEngine('moonshotai/Kimi-Dev-72B', model_type='qwen2_5')
+    pt_engine = PtEngine('moonshotai/Kimi-Dev-72B')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
