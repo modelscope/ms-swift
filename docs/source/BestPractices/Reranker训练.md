@@ -77,8 +77,8 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 ### 转换后的数据格式
 
 ```json lines
-{"query": "query", "response": "relevant_doc1", "rejected_responses": ["irrelevant_doc1", "irrelevant_doc2", ...]}
-{"query": "query", "response": "relevant_doc2", "rejected_responses": ["irrelevant_doc1", "irrelevant_doc2", ...]}
+{"query": "query", "response": "relevant_doc1", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
+{"query": "query", "response": "relevant_doc2", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
 ...
 ```
 

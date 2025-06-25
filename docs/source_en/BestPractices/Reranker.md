@@ -75,8 +75,8 @@ The loss function source code can be found [here](https://github.com/modelscope/
 ### Converted Data Format
 
 ```json lines
-{"query": "query", "response": "relevant_doc1", "rejected_responses": ["irrelevant_doc1", "irrelevant_doc2", ...]}
-{"query": "query", "response": "relevant_doc2", "rejected_responses": ["irrelevant_doc1", "irrelevant_doc2", ...]}
+{"query": "query", "response": "relevant_doc1", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
+{"query": "query", "response": "relevant_doc2", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
 ...
 ```
 
