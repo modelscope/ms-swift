@@ -151,7 +151,7 @@ class MegatronArguments(ExtraMegatronArguments):
 
     moe_router_topk: Optional[int] = None
     moe_router_pre_softmax: Optional[bool] = None
-    moe_router_dtype: Literal['fp32', 'fp64'] = None
+    moe_router_dtype: Literal['none', 'fp32', 'fp64'] = 'fp32'
     moe_router_score_function: Literal['sigmoid', 'softmax'] = None
     moe_router_bias_update_rate: float = 1e-3
     moe_router_enable_expert_bias: Optional[bool] = None
@@ -264,8 +264,8 @@ class MegatronArguments(ExtraMegatronArguments):
             os.environ['NVTE_APPLY_QK_LAYER_SCALING'] = '1'
 
     def _init_moe(self):
-        if self.num_experts is None:
-            return
+        if self.moe_router_dtype.lower() == 'none':
+            self.moe_router_dtype = None
         if self.moe_shared_expert_intermediate_size == 0:
             self.moe_shared_expert_intermediate_size = None
         if self.num_experts is not None:
