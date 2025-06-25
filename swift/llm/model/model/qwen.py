@@ -436,7 +436,10 @@ register_model(
                     Model('Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int4'),
                     Model('Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int8'),
                 ],
-                tags=['coding'])
+                tags=['coding']),
+            ModelGroup([
+                Model('moonshotai/Kimi-Dev-72B', 'moonshotai/Kimi-Dev-72B'),
+            ]),
         ],
         TemplateType.qwen2_5,
         get_model_tokenizer_with_flash_attn,

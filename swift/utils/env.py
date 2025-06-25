@@ -76,8 +76,8 @@ def is_mp() -> bool:
 
 
 def is_mp_ddp() -> bool:
-    # patch_mp_ddp will occur when `import swift`.
-    if is_dist() and is_mp():
+    _, _, world_size, _ = get_dist_setting()
+    if is_dist() and is_mp() and world_size > 1:
         logger.info_once('Using MP(device_map) + DDP')
         return True
     return False
