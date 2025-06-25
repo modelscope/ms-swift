@@ -108,6 +108,9 @@ def test_deepseek_moe():
     _test_model('deepseek-ai/deepseek-moe-16b-chat')
 
 
+def test_dots():
+    _test_model('rednote-hilab/dots.llm1.inst')
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -125,6 +128,7 @@ if __name__ == '__main__':
     # test_qwen3_moe()
     # test_internlm3()
     # test_mimo()
-    test_moonlight()
+    # test_moonlight()
     # test_deepseek_v2()
     # test_deepseek_moe()
+    test_dots()

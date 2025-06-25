@@ -9,6 +9,7 @@ from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoin
 from megatron.training.initialize import initialize_megatron
 from megatron.training.utils import get_ltor_masks_and_position_ids
 
+from contextlib import contextmanager
 from swift.llm import ExportArguments, HfConfigFactory, get_model_tokenizer, get_template, save_checkpoint
 from swift.utils import get_logger, get_n_params_grads
 from ..argument import MegatronArguments
@@ -37,40 +38,69 @@ def _test_params_sum(model):
     logger.info(f'zero_count: {zero_count}')
 
 
-def test_convert_precision(hf_model, mg_model, processor):
+def _find_modules(mg_model):
+    modules = []
+    for module in mg_model.children():
+        if module.__class__.__name__ in {'TransformerBlock', 'ModuleList'}:
+            modules += _find_modules(module)
+        else:
+            modules.append(module)
+    return modules
+
+
+@contextmanager
+def _mg_model_cpu_forward_context(mg_model, torch_dtype=None):
+    origin_torch_dtype = next(mg_model.parameters()).dtype
+
+    def _to_cuda_hook(module, args):
+        module = module.to('cuda')
+        if torch_dtype is not None:
+            module.to(torch_dtype)
+
+    def _to_cpu_hook(module, args, output):
+        module = module.to('cpu')
+        if torch_dtype is not None:
+            module.to(origin_torch_dtype)
+
+    hooks = []
+    modules = _find_modules(mg_model)
+    for module in modules:
+        hooks.append(module.register_forward_pre_hook(_to_cuda_hook))
+        hooks.append(module.register_forward_hook(_to_cpu_hook))
+    yield
+    for hook in hooks:
+        hook.remove()
+
+def test_convert_precision(hf_model, mg_model, processor, torch_dtype=torch.float32):
     _test_params_sum(hf_model)
     _test_params_sum(mg_model)
 
-    torch_dtype = hf_model.dtype
+    origin_torch_dtype = hf_model.dtype
     template = get_template(hf_model.model_meta.template, processor)
     input_ids = template.encode({'messages': [{'role': 'user', 'content': 'who are you?'}]})['input_ids']
     input_ids = torch.tensor(input_ids)[None].to('cuda')
-    hf_model.to('cuda')
-    hf_model.to(torch.float32)
+    hf_model.to(torch_dtype)
     HfConfigFactory.set_model_config_attr(hf_model, 'use_cache', False)
     with torch.inference_mode():
         hf_logits = hf_model(input_ids).logits
-    hf_model.to(torch_dtype)
+    hf_model.to(origin_torch_dtype)
     hf_model.to('cpu')
 
     attention_mask, _, position_ids = get_ltor_masks_and_position_ids(input_ids, -100, True, True, True)
-    mg_model.to('cuda')
-    mg_model.to(torch.float32)
     packed_seq_params = None
+    mg_torch_dtype = torch_dtype
     # thd
     # from ..train.utils import get_packed_seq_params
+    # mg_torch_dtype = None
     # packed_seq_params = get_packed_seq_params(position_ids)
     # attention_mask = None
-    # mg_model.to(torch_dtype)
 
-    with torch.inference_mode():
+    with torch.inference_mode(), _mg_model_cpu_forward_context(mg_model, mg_torch_dtype):
         mg_logits = mg_model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
             packed_seq_params=packed_seq_params)
-    mg_model.to(torch_dtype)
-    mg_model.to('cpu')
 
     mean_diff = (mg_logits - hf_logits).abs().mean().item()
     max_diff = (mg_logits - hf_logits).abs().max().item()
