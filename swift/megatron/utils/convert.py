@@ -63,7 +63,7 @@ def _model_cpu_forward_context(modules, torch_dtype=None, device=None, share_emb
     origin_torch_dtype = next(modules[0].parameters()).dtype
 
     def _to_cuda_hook(module, args):
-        if module is modules[-1]:
+        if embedding_module is not None and module is modules[-1]:
             module = embedding_module
         if device is not None:
             module.to(device)
@@ -109,6 +109,7 @@ def test_convert_precision(hf_model, mg_model, processor, torch_dtype=torch.floa
     # mg_torch_dtype = None
     # packed_seq_params = get_packed_seq_params(position_ids)
     # attention_mask = None
+    mg_model.config.fp8 = None  # compat fp8
     mg_modules = _find_modules(mg_model)
     with torch.inference_mode(), _model_cpu_forward_context(
             mg_modules, mg_torch_dtype, 'cuda', share_embedding=mg_model.share_embeddings_and_output_weights):

@@ -3,14 +3,12 @@
 import os
 from typing import Dict, List, Optional, Tuple
 
-import matplotlib.pyplot as plt
-from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-
 Item = Dict[str, float]
 TB_COLOR, TB_COLOR_SMOOTH = '#FFE2D9', '#FF7043'
 
 
 def read_tensorboard_file(fpath: str) -> Dict[str, List[Item]]:
+    from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
     if not os.path.isfile(fpath):
         raise FileNotFoundError(f'fpath: {fpath}')
     ea = EventAccumulator(fpath)
@@ -45,6 +43,7 @@ def plot_images(images_dir: str,
                 figsize: Tuple[int, int] = (8, 5),
                 dpi: int = 100) -> None:
     """Using tensorboard's data content to plot images"""
+    import matplotlib.pyplot as plt
     if not os.path.exists(tb_dir):
         return
     smooth_key = smooth_key or []
