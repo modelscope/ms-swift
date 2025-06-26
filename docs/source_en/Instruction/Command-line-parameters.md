@@ -122,7 +122,7 @@ Refer to the [generation_config](https://huggingface.co/docs/transformers/main_c
 
 The following are the parameters for quantization when loading a model. For detailed meanings, you can refer to the [quantization](https://huggingface.co/docs/transformers/main/en/main_classes/quantization) documentation. Note that this does not include `gptq` and `awq` quantization parameters involved in `swift export`.
 
-- 🔥quant_method: The quantization method used when loading the model. Options are `bnb`, `hqq`, `eetq`.
+- 🔥quant_method: The quantization method used when loading the model. Optional values are 'bnb', 'hqq', 'eetq', 'quanto', and 'fp8'. The default is None.
 - 🔥quant_bits: Number of bits for quantization, default is None.
 - hqq_axis: HQQ quantization axis, default is None.
 - bnb_4bit_compute_dtype: The computation type for bnb quantization. Options are `float16`, `bfloat16`, `float32`. The default is None, which sets it to `torch_dtype`.
@@ -604,7 +604,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 
 - 🔥output_dir: The path for storing exported results. The default value is None, and an appropriate suffix path will be automatically set.
 - exist_ok: If output_dir exists, do not raise an exception and overwrite the contents. The default value is False.
-- 🔥quant_method: Options are 'gptq', 'awq', or 'bnb', with the default being None. Examples can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize).
+- 🔥quant_method: Options are 'gptq', 'awq', 'bnb' or 'fp8', with the default being None. Examples can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize).
 - quant_n_samples: The number of samples for the validation set used by gptq/awq, with a default of 256.
 - max_length: Max length for the calibration set, default value is 2048.
 - quant_batch_size: Quantization batch size, default is 1.
