@@ -55,12 +55,20 @@ def _find_modules(model, recurse: bool = True):
 
 
 @contextmanager
-def _model_cpu_forward_context(modules, torch_dtype=None, device=None):
+def _model_cpu_forward_context(modules, torch_dtype=None, device=None, share_embedding: bool = False):
+    embedding_module = None
+    if share_embedding:
+        embedding_module = modules[0]
+
     origin_torch_dtype = next(modules[0].parameters()).dtype
 
     def _to_cuda_hook(module, args):
+        if module is modules[-1]:
+            module = embedding_module
         if device is not None:
             module.to(device)
+        elif args and isinstance(args[0], torch.Tensor):
+            module.to(args[0].device)
         if torch_dtype is not None:
             module.to(torch_dtype)
 
@@ -102,7 +110,8 @@ def test_convert_precision(hf_model, mg_model, processor, torch_dtype=torch.floa
     # packed_seq_params = get_packed_seq_params(position_ids)
     # attention_mask = None
     mg_modules = _find_modules(mg_model)
-    with torch.inference_mode(), _model_cpu_forward_context(mg_modules, mg_torch_dtype, 'cuda'):
+    with torch.inference_mode(), _model_cpu_forward_context(
+            mg_modules, mg_torch_dtype, 'cuda', share_embedding=mg_model.share_embeddings_and_output_weights):
         mg_logits = mg_model(
             input_ids=input_ids,
             attention_mask=attention_mask,

@@ -177,6 +177,11 @@ class MegatronArguments(ExtraMegatronArguments):
     qk_head_dim: Optional[int] = None
     qk_pos_emb_head_dim: Optional[int] = None
 
+    # fp8
+    fp8_format: Literal['e4m3', 'hybrid'] = None
+    fp8_amax_history_len: int = 1024
+    fp8_amax_compute_algo: Literal['most_recent', 'max'] = 'max'
+
     # mixed precision
     fp16: Optional[bool] = None
     bf16: Optional[bool] = None
