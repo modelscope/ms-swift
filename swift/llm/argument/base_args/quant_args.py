@@ -14,7 +14,7 @@ class QuantizeArguments:
     QuantizeArguments is a dataclass that holds the configuration for model quantization.
 
     Args:
-        quant_method (Literal['bnb', 'hqq', 'eetq']): The quantization method to be used.
+        quant_method (Literal['bnb', 'hqq', 'eetq', 'quanto', 'fp8']): The quantization method to be used.
         quant_bits (Literal[1, 2, 3, 4, 8]): The number of bits to use for quantization.
         hqq_axis (Optional[int]): The axis for hqq quantization.
         bnb_4bit_compute_dtype (Literal['float16', 'bfloat16', 'float32', None]):
@@ -26,7 +26,7 @@ class QuantizeArguments:
     # awq, gptq, and aqlm need to be pre-quantized models.
     #   It can be detected automatically, without the need to pass in.
     # while bnb, hqq, and eetq can be quantized during SFT using the original models.
-    quant_method: Literal['bnb', 'hqq', 'eetq', 'quanto'] = None
+    quant_method: Literal['bnb', 'hqq', 'eetq', 'quanto', 'fp8'] = None
     # bnb: 4,8; hqq: 1,2,3,4,8'; eetq: 8
     # awq: 4; gptq: 2,3,4,8
     quant_bits: Literal[1, 2, 3, 4, 8, 'float8'] = None
@@ -41,8 +41,8 @@ class QuantizeArguments:
     def get_quantization_config(self):
         if self.quant_method is None or self.quant_method in {'awq', 'gptq'}:
             return None
-        assert self.quant_method in {'bnb', 'hqq', 'eetq', 'quanto'}
-        if self.quant_bits is None:
+        assert self.quant_method in {'bnb', 'hqq', 'eetq', 'quanto', 'fp8'}
+        if self.quant_method != 'fp8' and self.quant_bits is None:
             raise ValueError(f'Please set the quant_bits. args.quant_bits: {self.quant_bits}')
         if self.quant_method == 'bnb':
             if self.quant_bits == 4:
@@ -60,6 +60,9 @@ class QuantizeArguments:
                 bnb_4bit_quant_type=self.bnb_4bit_quant_type,
                 bnb_4bit_use_double_quant=self.bnb_4bit_use_double_quant,
                 bnb_4bit_quant_storage=self.bnb_4bit_quant_storage)
+        elif self.quant_method == 'fp8':
+            from transformers import FineGrainedFP8Config
+            quantization_config = FineGrainedFP8Config()
         elif self.quant_method == 'hqq':
             from transformers import HqqConfig
             quantization_config = HqqConfig(nbits=self.quant_bits, axis=self.hqq_axis)

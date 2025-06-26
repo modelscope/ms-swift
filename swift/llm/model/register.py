@@ -212,6 +212,8 @@ def get_model_tokenizer_from_local(model_dir: str,
         model_info.num_labels = num_labels
         model_config.num_labels = num_labels
 
+    if model_info.quant_method == 'fp8':
+        torch_dtype = 'auto'
     model = None
     if load_model:
         _patch_awq_compat(model_info)
