@@ -15,6 +15,7 @@ from torch.distributed.device_mesh import init_device_mesh
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
 from trl.extras.profiling import profiling_decorator
+from trl.trainer.grpo_trainer import RepeatSampler
 
 from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_llm_model, to_device
 from swift.utils import get_current_device, get_device, get_dist_setting, seed_worker
@@ -158,6 +159,20 @@ def _prepare_inputs_grpo(self, generation_batch):
     else:
         inputs = self._generate_and_score_completions(generation_batch)
     return inputs
+
+
+def _get_train_sampler(self, dataset=None) -> Sampler:
+    ulysses = self.ulysses
+    if dataset is None:
+        dataset = self.train_dataset
+    return RepeatSampler(
+        data_source=dataset,
+        mini_repeat_count=self.num_generations,
+        batch_size=self.args.generation_batch_size // self.num_generations,
+        repeat_count=self.num_iterations * self.args.steps_per_generation * ulysses.sp_world_size,
+        shuffle=self.shuffle_dataset,
+        seed=self.args.seed,
+    )
 
 
 def _prepare_inputs(self, inputs, ulysses):
@@ -847,30 +862,10 @@ class Ulysses(SequenceParallel):
             trainer.ulysses = self
             trainer.args.gradient_accumulation_steps = trainer.args.gradient_accumulation_steps * self.sp_world_size
             trainer.old_policy = MethodType(old_policy, trainer)
+            trainer._get_train_sampler = MethodType(_get_train_sampler, trainer)
             trainer._prepare_inputs = MethodType(_prepare_inputs_grpo, trainer)
             trainer._get_per_token_logps = MethodType(_get_per_token_logps, trainer)
             trainer.split_by_mini_batches = MethodType(split_by_mini_batches, trainer)
-
-            class DataloaderWrap:
-
-                def __init__(self, dataloader):
-                    self.dataloader = dataloader
-
-                def __getattr__(self, item):
-                    return getattr(self.dataloader, item)
-
-                def __len__(wrapped):
-                    return len(wrapped.dataloader) * self.sp_world_size
-
-                def __iter__(self):
-                    yield from self.dataloader
-
-            def get_train_dataloader(trainer):
-                dataloader = trainer.get_origin_train_dataloader()
-                return DataloaderWrap(dataloader)
-
-            trainer.get_origin_train_dataloader = trainer.get_train_dataloader
-            trainer.get_train_dataloader = MethodType(get_train_dataloader, trainer)
 
         from swift.plugin import metric
         from swift.trainers import mixin
