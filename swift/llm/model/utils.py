@@ -217,7 +217,8 @@ class HfConfigFactory:
         elif quant_method == 'hqq':
             res['quant_method'] = quant_method
             res['quant_bits'] = quantization_config['quant_config']['weight_quant_params']['nbits']
-
+        elif quant_method is not None:
+            res['quant_method'] = quant_method
         return res or None
 
 
