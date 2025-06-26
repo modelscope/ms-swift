@@ -54,44 +54,33 @@ Listwise methods transform the ranking problem into a multi-classification probl
 
 Environment variable configuration:
 - `LISTWISE_RERANKER_TEMPERATURE`: Softmax temperature parameter (default: 1.0)
-- `LISTWISE_RERANKER_MIN_GROUP_SIZE`: Minimum group size (default: 2)
-- `LISTWISE_GENERATIVE_RERANKER_TEMPERATURE`: Listwise temperature parameter (default: 1.0)
-- `LISTWISE_GENERATIVE_RERANKER_MIN_GROUP_SIZE`: Minimum group size (default: 2)
+- `LISTWISE_RERANKER_MIN_GROUP_SIZE`: Minimum group size, if the number of documents in the group is less than this value, the loss will not be calculated (default: 2)
 
 **Listwise vs Pointwise:**
 - **Pointwise:** Independent relevance judgment, simple training, but ignores relative relationships between documents
 - **Listwise:** Learning relative ranking, better performance, more suitable for the essential needs of ranking tasks
 
-## Evaluation Metrics
-
-SWIFT provides professional information retrieval evaluation metrics for Reranker training:
-
-### MRR (Mean Reciprocal Rank)
-- **Definition:** Average of reciprocal ranks across all queries
-- **Calculation:** MRR = (1/|Q|) × Σ(1/rank_i), where rank_i is the rank of the positive document for the i-th query
-- **Range:** [0, 1], higher is better
-- **Use Cases:** Focus on the position of positive documents in ranking results
-
-### NDCG (Normalized Discounted Cumulative Gain)
-- **Definition:** Normalized discounted cumulative gain
-- **Calculation:** NDCG = DCG / IDCG, considering the impact of ranking position on relevance
-- **Range:** [0, 1], higher is better
-- **Use Cases:** Comprehensive evaluation of ranking quality, more sensitive to relevance at top positions
-
-**Metric Calculation Notes:**
-- Metrics are calculated based on query grouping, with each query group starting with a positive document followed by negative documents
-- Data format: `[1,0,0,1,0,0,0]` represents 2 queries: query1=[1,0,0], query2=[1,0,0,0]
-- Automatically identifies query boundaries and calculates metrics for each query separately, then takes the average
-
 The loss function source code can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss.py).
 
 ## Dataset Format
+
+### Common Original Data Format
 
 ```json lines
 {"query": "query", "positive": ["relevant_doc1", "relevant_doc2", ...], "negative": ["irrelevant_doc1", "irrelevant_doc2", ...]}
 ```
 
 > Reference: [MTEB/scidocs-reranking](https://www.modelscope.cn/datasets/MTEB/scidocs-reranking)
+
+### Converted Data Format
+
+```json lines
+{"query": "query", "response": "relevant_doc1", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
+{"query": "query", "response": "relevant_doc2", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
+...
+```
+
+> The final converted data format is required, developers can build their own dataset or reuse [MTEBRerankPreprocessor](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/dataset/llm.py#L381) to convert data format.
 
 ## Training Scripts
 

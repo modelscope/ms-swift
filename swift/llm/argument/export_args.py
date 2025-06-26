@@ -34,7 +34,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     output_dir: Optional[str] = None
 
     # awq/gptq
-    quant_method: Literal['awq', 'gptq', 'bnb'] = None
+    quant_method: Literal['awq', 'gptq', 'bnb', 'fp8'] = None
     quant_n_samples: int = 256
     max_length: int = 2048
     quant_batch_size: int = 1
@@ -67,7 +67,9 @@ class ExportArguments(MergeArguments, BaseArguments):
             if self.to_peft_format:
                 suffix = 'peft'
             elif self.quant_method:
-                suffix = f'{self.quant_method}-int{self.quant_bits}'
+                suffix = f'{self.quant_method}'
+                if self.quant_bits is not None:
+                    suffix += f'-int{self.quant_bits}'
             elif self.to_ollama:
                 suffix = 'ollama'
             elif self.merge_lora:
@@ -91,7 +93,7 @@ class ExportArguments(MergeArguments, BaseArguments):
             self.quant_batch_size = None
         if self.quant_bits and self.quant_method is None:
             raise ValueError('Please specify the quantization method using `--quant_method awq/gptq/bnb`.')
-        if self.quant_method and self.quant_bits is None:
+        if self.quant_method and self.quant_bits is None and self.quant_method != 'fp8':
             raise ValueError('Please specify `--quant_bits`.')
         if self.quant_method in {'gptq', 'awq'} and self.torch_dtype is None:
             self.torch_dtype = torch.float16

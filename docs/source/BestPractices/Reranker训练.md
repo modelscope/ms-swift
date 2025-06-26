@@ -13,7 +13,7 @@ SWIFT已经支持Reranker模型的训练，目前已经支持的模型有：
 
 目前SWIFT支持两种Reranker模型的实现方式，二者在架构和损失函数计算上有显著差异：
 
-### 1. 分类式Reranker（Classification Reranker）
+### 1. 分类式Reranker
 
 **适用模型：** modernbert reranker模型（如gte-reranker-modernbert-base）
 
@@ -22,7 +22,7 @@ SWIFT已经支持Reranker模型的训练，目前已经支持的模型有：
 - 输入：query-document对，输出：单个相关性分数
 
 
-### 2. 生成式Reranker（Generative Reranker）
+### 2. 生成式Reranker
 
 **适用模型：** qwen3-reranker模型（0.6B/4B/8B）
 
@@ -55,44 +55,34 @@ Listwise方法将排序问题转化为多分类问题，从多个候选文档中
 
 环境变量配置：
 - `LISTWISE_RERANKER_TEMPERATURE`：softmax温度参数（默认：1.0）
-- `LISTWISE_RERANKER_MIN_GROUP_SIZE`：最小组大小（默认：2）
-- `LISTWISE_GENERATIVE_RERANKER_TEMPERATURE`：listwise温度参数（默认：1.0）
-- `LISTWISE_GENERATIVE_RERANKER_MIN_GROUP_SIZE`：最小组大小（默认：2）
+- `LISTWISE_RERANKER_MIN_GROUP_SIZE`：最小组大小，如果组内文档数量小于该值，则不计算损失（默认：2）
 
 **Listwise vs Pointwise：**
 - **Pointwise：** 独立判断相关性，训练简单，但忽略了文档间的相对关系
 - **Listwise：** 学习相对排序，性能更优，更适合排序任务的本质需求
 
-## 评估指标
-
-SWIFT为Reranker训练提供了专业的信息检索评估指标：
-
-### MRR (Mean Reciprocal Rank)
-- **定义：** 所有查询的倒数排名的平均值
-- **计算方式：** MRR = (1/|Q|) × Σ(1/rank_i)，其中rank_i是第i个查询的正例文档排名
-- **取值范围：** [0, 1]，越大越好
-- **适用场景：** 关注正例文档在排序结果中的位置
-
-### NDCG (Normalized Discounted Cumulative Gain)
-- **定义：** 标准化折扣累积增益
-- **计算方式：** NDCG = DCG / IDCG，考虑了排序位置对相关性的影响
-- **取值范围：** [0, 1]，越大越好
-- **适用场景：** 综合评估排序质量，对top位置的相关性更敏感
-
-**指标计算说明：**
-- 指标基于query分组计算，每个query组以正例文档开始，后跟负例文档
-- 数据格式：`[1,0,0,1,0,0,0]` 表示2个query：query1=[1,0,0]，query2=[1,0,0,0]
-- 自动识别query边界并分别计算每个query的指标，最后取平均值
-
 loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss.py)找到。
 
 ## 数据集格式
+
+### 常见原始数据格式
+
 
 ```json lines
 {"query": "query", "positive": ["relevant_doc1", "relevant_doc2", ...], "negative": ["irrelevant_doc1", "irrelevant_doc2", ...]}
 ```
 
-> 参考[MTEB/scidocs-reranking](https://www.modelscope.cn/datasets/MTEB/scidocs-reranking)
+> 原始数据格式可以参考[MTEB/scidocs-reranking](https://www.modelscope.cn/datasets/MTEB/scidocs-reranking)
+
+### 转换后的数据格式
+
+```json lines
+{"query": "query", "response": "relevant_doc1", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
+{"query": "query", "response": "relevant_doc2", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
+...
+```
+
+> 最终需要转换后的数据格式，开发者可以自行构建数据集，也可以复用[MTEBRerankPreprocessor](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/dataset/llm.py#L381)来转换数据格式。
 
 ## 脚手架
 
