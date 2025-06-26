@@ -160,6 +160,6 @@ register_model(
         TemplateType.gemma3_vision,
         get_model_tokenizer_gemma3_vision,
         architectures=['Gemma3ForConditionalGeneration'],
-        model_arch=ModelArch.gemma3_vision,
+        model_arch=ModelArch.llava_hf,
         requires=['transformers>=4.49'],
     ))

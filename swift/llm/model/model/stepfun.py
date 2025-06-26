@@ -35,7 +35,7 @@ register_model(
 
 def get_model_tokenizer_got_ocr2_hf(model_dir, *args, **kwargs):
     from transformers.models.got_ocr2 import GotOcr2ForConditionalGeneration
-    GotOcr2ForConditionalGeneration._no_split_modules.append('GotOcr2VisionLayer')
+    GotOcr2ForConditionalGeneration._no_split_modules = ['GotOcr2VisionLayer']
     model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
     return model, processor
 
@@ -49,7 +49,7 @@ register_model(
         ],
         TemplateType.got_ocr2_hf,
         get_model_tokenizer_got_ocr2_hf,
-        model_arch=ModelArch.got_ocr2_hf,
+        model_arch=ModelArch.llava_hf,
         architectures=['GOTQwenForCausalLM'],
         tags=['vision']))
 
