@@ -259,6 +259,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             assert trl_version >= version.parse('0.18')
             if self.delta is not None:
                 raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
+            if self.sequence_parallel_size > 1:
+                raise ValueError('Liger loss does not support sequence parallel yet.')
             from trl.import_utils import is_liger_kernel_available
             assert is_liger_kernel_available(), (
                 'Please install/update liger-kernel by running: pip install -U liger-kernel')
