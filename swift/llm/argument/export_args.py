@@ -67,7 +67,9 @@ class ExportArguments(MergeArguments, BaseArguments):
             if self.to_peft_format:
                 suffix = 'peft'
             elif self.quant_method:
-                suffix = f'{self.quant_method}-int{self.quant_bits}'
+                suffix = f'{self.quant_method}'
+                if self.quant_bits is not None:
+                    suffix += f'-int{self.quant_bits}'
             elif self.to_ollama:
                 suffix = 'ollama'
             elif self.merge_lora:
