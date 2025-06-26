@@ -464,7 +464,6 @@ class ToolUseFormatReward(ORM):
         min_possible_reward = self.format_min_possible
         # MAX1STEP30MAX3:  Two stage (Coarse) Setting, divide training into two phases. Format Reward in [0,0.5] if step < 30 else [0,1]
         if str(os.getenv("MAX1STEP30MAX3", 0)) == "1":
-            print("MAX1STEP30MAX3 is set to 1, so max 1 -> 30 steps -> max 3")
             if global_step >= 30:
                 max_possible_reward = self.format_max_possible / 2
                 min_possible_reward = self.format_min_possible / 2
@@ -474,7 +473,6 @@ class ToolUseFormatReward(ORM):
         
         # SCHEDULEREWARD: Dynamic (Finegrained) Setting, apply continuous interpolation between the two reward scales throughout training. 
         if str(os.getenv("SCHEDULEREWARD", 0)) == "1":
-            print("SCHEDULEREWARD is set to 1, so schedule reward is used")
             max_possible_reward = 2 - (2 - max_possible_reward) * global_step / 150
             min_possible_reward = -2 + (2 + min_possible_reward) * global_step / 150
             if max_possible_reward < 1.0:
@@ -484,12 +482,6 @@ class ToolUseFormatReward(ORM):
         
         rewards = []
         responses = completions
-        
-        print("\n======= Answer ======= ")
-        print(solution[0])
-        print("\n======= Responses ======= ")
-        for idx, response in enumerate(responses):
-            print(f"*** Response {idx+1}***\n{response}")
 
         for response, ans in zip(responses, solution):
             reward = min_possible_reward
@@ -512,9 +504,6 @@ class ToolUseFormatReward(ORM):
             
             rewards.append(reward)
             
-        print("\n======= Reward for <format> =======")
-        print("Reward function for <format> is called ...")
-        print(rewards)
         return rewards
  
 class ToolUseLengthReward(ORM): 
@@ -529,7 +518,6 @@ class ToolUseLengthReward(ORM):
         min_possible_reward = self.length_min_possible
         # SCHEDULELENGTH: enable Dynamic Length Reward
         if os.getenv("SCHEDULELENGTH", 0) == "1":
-            print("SCHEDULELENGTH is set to 1, so schedule max reward for length is used")
             max_reward_len = (640 - 384) * global_step / 105 + 384
         else:
             max_reward_len = 512
@@ -550,16 +538,12 @@ class ToolUseLengthReward(ORM):
             final_reward = reward * (max_possible_reward - min_possible_reward) + min_possible_reward
             rewards.append(final_reward)
         
-        print("\n======= Reward for <length> =======")
-        print("Reward function for <length> is called ...")
-        print(rewards)
         return rewards
                     
 class ToolUseCorrectnessReward(ORM): 
      
     def __init__(self):
         if str(os.getenv("CORRECTMAX1", 0)) == "1":
-            print("CORRECTMAX1 is set to 1, so max score is set to 1")
             self.tool_max_possible = 1.0
             self.tool_min_possible = -1.0
         else:
@@ -571,7 +555,6 @@ class ToolUseCorrectnessReward(ORM):
             return 1.0
         
         if os.getenv("REFINEDREWARD", 0) == "1":
-            print("REFINEDREWARD is set to 1, so strict match is used")
             if list1 != list2:
                 return 0.0
         
@@ -588,12 +571,9 @@ class ToolUseCorrectnessReward(ORM):
                     
     def compute_tool_call_reward(self, gt_tools, pd_tools, max_possible_reward, min_possible_reward):
         if gt_tools == pd_tools:
-            print("Max possible score:", "Exact Match!")
-            print("Score:", max_possible_reward)
             return max_possible_reward
         
         if os.getenv("COARSEREWARD", 0) == "1":
-            print("COARSEREWARD is set to 1, so coarse reward is used")
             if gt_tools != pd_tools:
                 return min_possible_reward
 
@@ -609,7 +589,6 @@ class ToolUseCorrectnessReward(ORM):
             gt_params = gt_tool["parameters"]
             
             if str(os.getenv("INTERMEDIATEREWARD", 0)) == "1":
-                print("INTERMEDIATEREWARD is set to 1, so local max possible is changed")
                 local_max_possible += 1.0
             else:
                 local_max_possible += 1.0 + len(gt_params)
@@ -648,10 +627,6 @@ class ToolUseCorrectnessReward(ORM):
             if best_match:
                 used_pd_indices.add(best_match_index)
                 score += best_match_score
-
-        print()
-        print("Max possible score:", local_max_possible)
-        print("Score:", score)
         
         return (max_possible_reward - min_possible_reward) * score / local_max_possible + min_possible_reward
 
@@ -662,7 +637,6 @@ class ToolUseCorrectnessReward(ORM):
         min_possible_reward = self.tool_min_possible
         # MAX1STEP30MAX3:  Two stage (Coarse) Setting, divide training into two phases. 
         if str(os.getenv("MAX1STEP30MAX3", 0)) == "1":
-            print("MAX1STEP30MAX3 is set to 1, so max 1 -> 30 steps -> max 3")
             if global_step < 30:
                 max_possible_reward = max_possible_reward / 3
                 min_possible_reward = min_possible_reward / 3
@@ -671,7 +645,6 @@ class ToolUseCorrectnessReward(ORM):
                 min_possible_reward = min_possible_reward
         # SCHEDULEREWARD: Dynamic (Finegrained) Setting, apply continuous interpolation between the two reward scales throughout training.
         if str(os.getenv("SCHEDULEREWARD", 0)) == "1":
-            print("SCHEDULEREWARD is set to 1, so schedule reward is used")
             max_possible_reward = (max_possible_reward - 2) * global_step / 150 + 2
             min_possible_reward = (min_possible_reward + 2) * global_step / 150 - 2
             if max_possible_reward > 3.0:
@@ -709,9 +682,6 @@ class ToolUseCorrectnessReward(ORM):
             
             rewards.append(reward)
         
-        print("\n======= Reward for <tool call> =======")
-        print("Reward function for <tool call> correctness is called ...")
-        print(rewards)
         return rewards
 
 orms['external_math_acc'] = MathAccuracy
