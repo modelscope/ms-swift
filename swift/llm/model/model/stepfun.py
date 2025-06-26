@@ -49,7 +49,7 @@ register_model(
         ],
         TemplateType.got_ocr2_hf,
         get_model_tokenizer_got_ocr2_hf,
-        model_arch=ModelArch.got_ocr2_hf,
+        model_arch=ModelArch.llava_hf,
         architectures=['GOTQwenForCausalLM'],
         tags=['vision']))
 
