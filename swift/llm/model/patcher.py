@@ -17,7 +17,7 @@ from transformers import PreTrainedModel, dynamic_module_utils, trainer
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
 from swift.llm import deep_getattr, to_device, to_float_dtype
-from swift.utils import get_dist_setting, get_logger, is_mp_ddp, safe_ddp_context, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_mp, is_mp_ddp, safe_ddp_context, use_torchacc
 from swift.utils.torch_utils import _get_max_memory, _sync_max_memory, get_device_count
 from .utils import HfConfigFactory, get_llm_model
 
@@ -349,7 +349,7 @@ def patch_get_dynamic_module():
 
 @contextmanager
 def patch_tp_plan(load_model: bool):
-    if not load_model or not is_mp_ddp() or version.parse(
+    if not load_model or not is_mp() or version.parse(
             transformers.__version__) < version.parse('4.50') or 'WORLD_SIZE' not in os.environ:
         yield
         return
