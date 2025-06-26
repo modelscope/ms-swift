@@ -5,7 +5,7 @@ from typing import List, Optional, Union
 import transformers
 from packaging import version
 
-transformers_ge_452 = version.parse(transformers.__version__) >= version.parse('4.52')
+transformers_ge_4_52 = version.parse(transformers.__version__) >= version.parse('4.52')
 
 
 class LLMModelArch:
@@ -310,7 +310,7 @@ register_model_arch(
         lm_head='lm_head',
     ))
 
-if transformers_ge_452:
+if transformers_ge_4_52:
     register_model_arch(
         MultiModelKeys(
             MLLMModelArch.llava_hf,
@@ -335,7 +335,7 @@ register_model_arch(
         vision_tower='model.vision_tower',
     ))
 
-if transformers_ge_452:
+if transformers_ge_4_52:
     register_model_arch(
         MultiModelKeys(
             MLLMModelArch.llava_next_video_hf,
@@ -478,7 +478,7 @@ register_model_arch(
         vision_tower='audio_tower',
     ))
 
-if transformers_ge_452:
+if transformers_ge_4_52:
     register_model_arch(
         MultiModelKeys(
             MLLMModelArch.qwen2_vl,
@@ -536,7 +536,7 @@ register_model_arch(
         vision_tower='model.vision_tower_high',
     ))
 
-if transformers_ge_452:
+if transformers_ge_4_52:
     register_model_arch(
         MultiModelKeys(
             MLLMModelArch.llama3_2_vision,
