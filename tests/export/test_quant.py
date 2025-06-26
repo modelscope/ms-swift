@@ -62,8 +62,8 @@ def test_reward_model():
 
 def test_fp8():
     from swift.llm import export_main, ExportArguments, infer_main, InferArguments
-    export_main(ExportArguments(model='Qwen/Qwen2.5-7B-Instruct', quant_method='fp8'))
-    infer_main(InferArguments(ckpt_dir='Qwen/Qwen2.5-7B-Instruct-fp8'))
+    export_main(ExportArguments(model='Qwen/Qwen2.5-3B-Instruct', quant_method='fp8'))
+    infer_main(InferArguments(model='Qwen2.5-3B-Instruct-fp8'))
 
 if __name__ == '__main__':
     # test_llm_quant('gptq')
