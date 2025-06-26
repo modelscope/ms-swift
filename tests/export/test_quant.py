@@ -65,6 +65,7 @@ def test_fp8():
     export_main(ExportArguments(model='Qwen/Qwen2.5-3B-Instruct', quant_method='fp8'))
     infer_main(InferArguments(model='Qwen2.5-3B-Instruct-fp8'))
 
+
 if __name__ == '__main__':
     # test_llm_quant('gptq')
     # test_vlm_quant('gptq')
