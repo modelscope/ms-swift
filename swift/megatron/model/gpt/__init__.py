@@ -40,4 +40,10 @@ register_megatron_model(
         ModelType.internlm3,
         ModelType.mimo,
         ModelType.mimo_rl,
+        ModelType.moonlight,
+        ModelType.deepseek_moe,
+        ModelType.deepseek_v2,
+        ModelType.deepseek_v2_5,
+        ModelType.deepseek_r1,
+        ModelType.dots1,
     ], model_provider, convert_gpt_hf_config, convert_mcore2hf, convert_hf2mcore))

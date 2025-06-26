@@ -15,7 +15,7 @@ For RLHF training of text models or multimodal large models using a custom datas
 ## GRPO
 [Paper on arXiv](https://arxiv.org/abs/2402.03300)
 
-Reference the training script [here](./GRPO.md).
+Reference the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo).
 
 ## DPO
 [Paper on arXiv](https://arxiv.org/abs/2305.18290)

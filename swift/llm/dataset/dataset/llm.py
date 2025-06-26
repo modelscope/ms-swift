@@ -378,6 +378,38 @@ register_dataset(
         tags=['similarity', '🔥']))
 
 
+class MTEBRerankPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+        query = row['query']
+        positives = row['positive'] if isinstance(row['positive'], list) else [row['positive']]
+        negatives = row['negative'] if isinstance(row['negative'], list) else [row['negative']]
+
+        expanded_rows = []
+        for positive in positives:
+            expanded_row = {'query': query, 'response': positive, 'rejected_response': negatives}
+            expanded_rows.append(super().preprocess(expanded_row))
+
+        return expanded_rows
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='MTEB/scidocs-reranking',
+        hf_dataset_id='mteb/scidocs-reranking',
+        split=['validation', 'test'],
+        preprocess_func=MTEBRerankPreprocessor(),
+        tags=['rerank', '🔥']))
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='MTEB/stackoverflowdupquestions-reranking',
+        hf_dataset_id='mteb/stackoverflowdupquestions-reranking',
+        split=['train', 'test'],
+        preprocess_func=MTEBRerankPreprocessor(),
+        tags=['rerank', '🔥']))
+
+
 def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:
     s = s.replace('}\n {', '},\n {')
     if isinstance(s, str):

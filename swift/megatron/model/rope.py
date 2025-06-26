@@ -17,7 +17,7 @@ def _get_dummy_config(args):
         rope_scaling=args.rope_scaling,
         rope_theta=args.rotary_base,
         max_position_embeddings=args.max_position_embeddings,
-        head_dim=args.kv_channels,
+        head_dim=args.qk_pos_emb_head_dim if args.multi_latent_attention else args.kv_channels,
         hidden_size=args.hidden_size,
         num_attention_heads=args.num_attention_heads,
     )
@@ -30,12 +30,12 @@ def _get_dummy_config(args):
     return dummy_config
 
 
-def get_rope_inv_freq(device, seq_len=None):
+def get_rope_inv_freq(seq_len=None):
     from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
     args = get_args()
     dummy_config = _get_dummy_config(args)
     rope_init_fn = ROPE_INIT_FUNCTIONS[args.rope_scaling['rope_type']]
-    inv_freq, attention_scaling = rope_init_fn(dummy_config, device, seq_len=seq_len)
+    inv_freq, attention_scaling = rope_init_fn(dummy_config, 'cpu', seq_len=seq_len)
     if attention_scaling is None:
         attention_scaling = 1.
     return inv_freq, attention_scaling

@@ -183,8 +183,7 @@ class IndexedDatasetBuilder:
                 item_buffer = pickle.dumps(item)
                 bin_buffer.append(item_buffer)
                 self.idx_list.append(self.idx_list[-1] + len(item_buffer))
-                self.length_list.append(
-                    max([len(item[k]) for k in item.keys() if k.endswith('input_ids') or k.endswith('labels')]))
+                self.length_list.append(item['length'])
             self.bin_file.write(b''.join(bin_buffer))
             offset = self.idx_list[-1] - self.shard_offset[-1]
             if offset >= self.CHUNK_SIZE:
@@ -222,7 +221,11 @@ class BinReader:
     def __init__(self, bin_path: str):
         self.bin_path = bin_path
         self.file = open(bin_path, 'rb')
-        self.mm = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
+        try:
+            self.mm = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
+        except ValueError:
+            # For example, self.file is an empty file.
+            self.mm = None
 
     def read_buffer(self, offset: int, size: int) -> bytes:
         if offset < 0 or size < 0 or offset + size > len(self.mm):
@@ -230,7 +233,8 @@ class BinReader:
         return self.mm[offset:offset + size]
 
     def __del__(self):
-        self.mm.close()
+        if self.mm is not None:
+            self.mm.close()
         self.file.close()
 
 
@@ -276,17 +280,27 @@ class IndexedDataset(Dataset):
 
 class PackingDataset(BasePackingDataset, Dataset):
 
-    def __init__(self, template, dataset, num_proc: int = 1, *, packing_interval: int = 128, strict: bool = False):
+    def __init__(
+        self,
+        template,
+        dataset,
+        num_proc: int = 1,
+        *,
+        packing_interval: int = 128,
+        strict: bool = False,
+        load_from_cache_file: bool = True,
+        **kwargs,
+    ):
         from datasets.fingerprint import update_fingerprint
         num_proc = min(len(dataset), num_proc)
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
+        self.load_from_cache_file = load_from_cache_file
         template = copy(template)
         template.model = None  # Avoid hashing the model.
         fingerprint = update_fingerprint(dataset._fingerprint, 'PackingDataset', {
             'template': template,
             'packing_interval': packing_interval,
             'strict': strict,
-            'version': 'v1',
         })
         self.dataset_name = f'packing-cache-{fingerprint}'
         with safe_ddp_context(None, True):
@@ -295,7 +309,8 @@ class PackingDataset(BasePackingDataset, Dataset):
     def create_packed_dataset(self):
         cache_dir = IndexedDataset.get_cache_dir(self.dataset_name)
         logger.info(f'packing cache_dir: {cache_dir}')
-        if not os.path.exists(os.path.join(cache_dir, IndexedDataset.IDX_FNAME)):
+        if not os.path.exists(os.path.join(cache_dir,
+                                           IndexedDataset.IDX_FNAME)) or not self.load_from_cache_file and is_master():
             self._queue = mp.Queue(maxsize=1000)
             self._terminated_workers = 0
             self.prog_bar = tqdm(
@@ -323,7 +338,7 @@ class PackingDataset(BasePackingDataset, Dataset):
                 continue
             self.prog_bar.update(1)
             if data:
-                res.append((data, len(data['input_ids'])))
+                res.append((data, data['length']))
         return res
 
     def packing_dataset(self):
@@ -356,14 +371,17 @@ class PackingDataset(BasePackingDataset, Dataset):
 
 class IterablePackingDataset(BasePackingDataset, IterableDataset):
 
-    def __init__(self,
-                 template,
-                 dataset,
-                 num_proc: int = 1,
-                 *,
-                 packing_interval: int = 128,
-                 strict: bool = False,
-                 cyclic: bool = False):
+    def __init__(
+        self,
+        template,
+        dataset,
+        num_proc: int = 1,
+        *,
+        packing_interval: int = 128,
+        strict: bool = False,
+        cyclic: bool = False,
+        **kwargs,
+    ):
         super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
         self._in_queue = mp.Queue()
         self._out_queue = mp.Queue()
@@ -440,10 +458,3 @@ class EncodePreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return self.template.encode(row)
-
-
-class GetLengthPreprocessor(RowPreprocessor):
-
-    def preprocess(self, row):
-        length = max([len(row[k]) for k in row.keys() if k.endswith('input_ids')])
-        return {'length': length}

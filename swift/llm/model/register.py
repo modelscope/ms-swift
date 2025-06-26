@@ -208,7 +208,7 @@ def get_model_tokenizer_from_local(model_dir: str,
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
     num_labels = model_info.num_labels or getattr(model_config, 'num_labels', None)
-    if num_labels and model_info.task_type == 'seq_cls':
+    if num_labels and model_info.task_type in ['seq_cls', 'reranker']:
         model_info.num_labels = num_labels
         model_config.num_labels = num_labels
 
@@ -218,6 +218,12 @@ def get_model_tokenizer_from_local(model_dir: str,
         logger.info(f'model_kwargs: {model_kwargs}')
         # fix seq_cls
         if model_info.task_type == 'seq_cls' and automodel_class is None:
+            try:
+                model = AutoModelForSequenceClassification.from_pretrained(
+                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+            except ValueError:
+                model = None
+        elif model_info.task_type == 'reranker' and automodel_class is None:
             try:
                 model = AutoModelForSequenceClassification.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
@@ -234,6 +240,14 @@ def get_model_tokenizer_from_local(model_dir: str,
                                'ignore_mismatched_sizes will be set to True')
                 model_kwargs['ignore_mismatched_sizes'] = True
                 context = partial(patch_automodel_for_sequence_classification, model_meta=model_meta)
+            elif model_info.task_type == 'reranker':
+                # For reranker task, patch CausalLM to SequenceClassification with num_labels=1
+                logger.info('Converting CausalLM to SequenceClassification for reranker task with num_labels=1')
+                context = partial(patch_automodel_for_sequence_classification, model_meta=model_meta)
+            elif model_info.task_type == 'generative_reranker':
+                # For generative reranker, keep CausalLM structure unchanged
+                logger.info('Loading model as CausalLM for generative_reranker task')
+                context = partial(patch_automodel, automodel_class=automodel_class, model_info=model_info)
             else:
                 context = partial(patch_automodel, automodel_class=automodel_class, model_info=model_info)
             with context():
@@ -488,7 +502,7 @@ def get_model_info_meta(
     if model_type is None and model_info.model_type is not None:
         model_type = model_info.model_type
         logger.info(f'Setting model_type: {model_type}')
-    if model_meta is None and model_type is not None:
+    if model_type is not None:
         model_meta = MODEL_MAPPING[model_type]
     if model_meta is None:
         model_meta = ModelMeta(None, [], 'dummy', get_model_tokenizer_from_local, model_arch=None)
@@ -505,10 +519,21 @@ def get_model_info_meta(
             task_type = 'causal_lm'
         else:
             task_type = 'seq_cls'
-        if task_type == 'seq_cls':
-            assert num_labels is not None, 'Please pass the parameter `num_labels`.'
         if model_meta.task_type is not None:
             task_type = model_meta.task_type
+
+    # Handle reranker task type
+    if task_type == 'reranker':
+        if num_labels is None:
+            num_labels = 1  # Default to 1 for reranker tasks
+        logger.info(f'Setting reranker task with num_labels={num_labels}')
+    elif task_type == 'generative_reranker':
+        # Generative reranker doesn't need num_labels as it uses CausalLM structure
+        num_labels = None
+        logger.info('Setting generative_reranker task (no num_labels needed)')
+    elif task_type == 'seq_cls':
+        assert num_labels is not None, 'Please pass the parameter `num_labels`.'
+
     model_info.task_type = task_type
     model_info.num_labels = num_labels
 
@@ -534,7 +559,7 @@ def get_model_tokenizer(
         attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
         automodel_class=None,
-        task_type: Literal['causal_lm', 'seq_cls'] = None,
+        task_type: Literal['causal_lm', 'seq_cls', 'reranker', 'generative_reranker'] = None,
         num_labels: Optional[int] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:

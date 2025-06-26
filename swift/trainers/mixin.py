@@ -7,7 +7,7 @@ import shutil
 import time
 from contextlib import contextmanager
 from copy import copy
-from functools import partial
+from functools import partial, wraps
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -15,6 +15,7 @@ import safetensors
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+import torch.utils.checkpoint
 import transformers
 from datasets import Dataset as HfDataset
 from modelscope import check_local_model_is_latest
@@ -34,7 +35,7 @@ from swift.hub import get_hub
 from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
 from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
-from swift.utils import get_logger, is_mp, is_mp_ddp, ms_logger_context, seed_worker, use_torchacc
+from swift.utils import get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
 from ..utils.torch_utils import get_device_count
 from .arguments import TrainingArguments
@@ -109,8 +110,9 @@ class SwiftMixin:
         if self.template.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
             sequence_parallel.prepare_trainer(self)
+        self._fix_gradient_checkpointing()
 
-    def get_use_logits_to_keep(self, default_value: bool):
+    def get_use_logits_to_keep(self, default_value: bool = True):
         use_logits_to_keep = self.args.use_logits_to_keep
         if use_logits_to_keep is None:
             base_model = self.template.get_base_model(self.model)
@@ -323,6 +325,36 @@ class SwiftMixin:
         finally:
             Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
 
+    def _fix_gradient_checkpointing(self):
+        # fix use_reentrant
+        if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
+            return
+        args = self.args
+        if args.gradient_checkpointing_kwargs:
+            use_reentrant_ = args.gradient_checkpointing_kwargs.get('use_reentrant')
+        else:
+            use_reentrant_ = None
+        if use_reentrant_ is None:
+            if is_dist() and not self.is_deepspeed_enabled and not self.is_fsdp_enabled:
+                use_reentrant_ = False
+            else:
+                use_reentrant_ = True
+        logger.info(f'use_reentrant: {use_reentrant_}')
+        _old_checkpoint = torch.utils.checkpoint.checkpoint
+
+        @wraps(_old_checkpoint)
+        def _new_checkpoint(*args, use_reentrant=None, **kwargs):
+            return _old_checkpoint(*args, use_reentrant=use_reentrant_, **kwargs)
+
+        torch.utils.checkpoint._old_checkpoint = _old_checkpoint
+        torch.utils.checkpoint.checkpoint = _new_checkpoint
+        try:
+            # Fix the old version of transformers.
+            import transformers.modeling_utils
+            transformers.modeling_utils.checkpoint = _new_checkpoint
+        except (ImportError, AttributeError):
+            pass
+
     def _prepare_gradient_checkpointing(self, model) -> None:
         from swift.llm import HfConfigFactory, get_model_arch, deep_getattr, dynamic_gradient_checkpointing
         args = self.args
@@ -355,7 +387,7 @@ class SwiftMixin:
     def train(self, *args, **kwargs):
         if self.model_meta.is_multimodal:
             models = []
-            for model_name in ['model', 'ref_model', 'value_model']:
+            for model_name in ['model', 'ref_model', 'value_model', 'teacher_model']:
                 model = getattr(self, model_name, None)
                 if isinstance(model, nn.Module):
                     models.append(model)

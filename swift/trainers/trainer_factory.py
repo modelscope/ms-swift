@@ -14,19 +14,24 @@ class TrainerFactory:
         'causal_lm': 'swift.trainers.Seq2SeqTrainer',
         'seq_cls': 'swift.trainers.Trainer',
         'embedding': 'swift.trainers.EmbeddingTrainer',
+        'reranker': 'swift.trainers.RerankerTrainer',
+        'generative_reranker': 'swift.trainers.RerankerTrainer',
         'dpo': 'swift.trainers.DPOTrainer',
         'orpo': 'swift.trainers.ORPOTrainer',
         'kto': 'swift.trainers.KTOTrainer',
         'cpo': 'swift.trainers.CPOTrainer',
         'rm': 'swift.trainers.RewardTrainer',
         'ppo': 'swift.trainers.PPOTrainer',
-        'grpo': 'swift.trainers.GRPOTrainer'
+        'grpo': 'swift.trainers.GRPOTrainer',
+        'gkd': 'swift.trainers.GKDTrainer',
     }
 
     TRAINING_ARGS_MAPPING = {
         'causal_lm': 'swift.trainers.Seq2SeqTrainingArguments',
         'seq_cls': 'swift.trainers.TrainingArguments',
         'embedding': 'swift.trainers.TrainingArguments',
+        'reranker': 'swift.trainers.TrainingArguments',
+        'generative_reranker': 'swift.trainers.TrainingArguments',
         'dpo': 'swift.trainers.DPOConfig',
         'orpo': 'swift.trainers.ORPOConfig',
         'kto': 'swift.trainers.KTOConfig',
@@ -34,6 +39,7 @@ class TrainerFactory:
         'rm': 'swift.trainers.RewardConfig',
         'ppo': 'swift.trainers.PPOConfig',
         'grpo': 'swift.trainers.GRPOConfig',
+        'gkd': 'swift.trainers.GKDConfig',
     }
 
     @staticmethod

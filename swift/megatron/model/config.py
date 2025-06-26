@@ -19,18 +19,27 @@ config_mapping = {
     'swiglu': ['hidden_act'],
     'add_qkv_bias': ['attention_bias', 'qkv_bias'],
     'disable_bias_linear': ['mlp_bias'],
-    'kv_channels': ['head_dim'],
+    'kv_channels': ['head_dim', 'v_head_dim'],
     'architectures': ['architectures'],
     # moe
     'moe_ffn_hidden_size': ['moe_intermediate_size'],
     'moe_shared_expert_intermediate_size': ['shared_expert_intermediate_size'],
-    'moe_router_topk': ['num_experts_per_tok'],
-    'num_experts': ['num_experts'],
+    'moe_router_topk': ['num_experts_per_tok', 'n_group'],
+    'num_experts': ['num_experts', 'n_routed_experts'],
     'moe_router_pre_softmax': ['norm_topk_prob'],
     'moe_aux_loss_coeff': ['router_aux_loss_coef'],
+    # deepseek
+    'q_lora_rank': ['q_lora_rank'],
+    'kv_lora_rank': ['kv_lora_rank'],
+    'moe_router_score_function': ['scoring_func'],
+    'qk_head_dim': ['qk_nope_head_dim'],
+    'qk_pos_emb_head_dim': ['qk_rope_head_dim'],
+    'moe_router_topk_scaling_factor': ['routed_scaling_factor'],
     # other
     'original_max_position_embeddings': ['original_max_position_embeddings'],
     'partial_rotary_factor': ['partial_rotary_factor'],
+    'first_k_dense_replace': ['first_k_dense_replace'],
+    'n_shared_experts': ['n_shared_experts']
 }
 
 
@@ -48,6 +57,8 @@ def convert_hf_config(config) -> Dict[str, Any]:
                     if hf_v == 'silu':
                         megatron_config[k] = True
                 else:
+                    if k == 'kv_lora_rank':
+                        megatron_config['multi_latent_attention'] = True
                     megatron_config[k] = hf_v
                 break
     # compat llama3
@@ -56,5 +67,4 @@ def convert_hf_config(config) -> Dict[str, Any]:
             megatron_config['rope_scaling'] = {'factor': config.rope_scaling, 'type': 'linear'},
         elif isinstance(config.rope_scaling, dict):
             megatron_config['rope_scaling'] = config.rope_scaling
-    logger.info(f'megatron_config: {megatron_config}')
     return megatron_config

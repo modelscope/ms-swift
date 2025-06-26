@@ -19,6 +19,7 @@ Swift DOCUMENTATION
 
    Instruction/命令行参数.md
    Instruction/预训练与微调.md
+   Instruction/GRPO/index.rst
    Instruction/人类对齐.md
    Instruction/推理和部署.md
    Instruction/Megatron-SWIFT训练.md
@@ -26,7 +27,6 @@ Swift DOCUMENTATION
    Instruction/评测.md
    Instruction/导出与推送.md
    Instruction/强化微调.md
-   Instruction/GRPO.md
    Instruction/Agent支持.md
    Instruction/支持的模型和数据集.md
    Instruction/使用tuners.md
@@ -47,6 +47,7 @@ Swift DOCUMENTATION
    BestPractices/GRPO完整流程.md
    BestPractices/GRPO多模态训练.md
    BestPractices/GRPO代码训练.md
+   BestPractices/Qwen3最佳实践.md
    BestPractices/Embedding训练.md
    BestPractices/快速训练VL模型.md
    BestPractices/NPU支持.md

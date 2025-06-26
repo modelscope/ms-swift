@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Code partially sourced from Hugging Face TRL
 
+import asyncio
 import inspect
 import multiprocessing
 import os
@@ -10,14 +11,14 @@ from dataclasses import asdict
 from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import torch
 import uvicorn
 from aiohttp import ClientConnectorError
 from fastapi import FastAPI
 
-from swift.llm import DeployArguments, InferArguments, SwiftPipeline
+from swift.llm import InferArguments, RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.utils import get_device, get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
@@ -29,6 +30,23 @@ try:
 
 except ImportError:
     pass
+"""
+This module defines the execution logic for `swift rollout`.
+It adds weight synchronization logic based on `vLLMEngine`.
+
+Usage:
+    swift rollout \
+        --model xxx \
+        --tensor_parallel_size xxx \
+        --data_parallel_size xxx \
+        --use_async_engine true/false \
+        --... \
+        --other_vllm_arguments
+
+Note:
+- Rollout is intended solely for GRPO training sampling.
+- For inference or deployment, please use the `swift infer` or `swift deploy` commands.
+"""
 
 logger = get_logger()
 
@@ -38,7 +56,7 @@ def safe_set_start_method():
         multiprocessing.set_start_method('spawn')
 
 
-def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
+def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
     # Set required environment variables for DP to work with vLLM
     os.environ['VLLM_DP_RANK'] = str(data_parallel_rank)
     os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
@@ -47,6 +65,7 @@ def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
     kwargs = {}
     if args.tensor_parallel_size == 1 and args.data_parallel_size > 1:
         kwargs['device'] = get_device(str(data_parallel_rank))
+    kwargs['template'] = args.get_template(None)
     engine = SwiftRolloutDeploy.get_infer_engine(args, **kwargs)
 
     # Send ready signal to parent process
@@ -57,7 +76,7 @@ def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
         try:
             command = connection.recv()
         except KeyboardInterrupt:
-            engine.inner_model_executor.collective_rpc(method='close_communicator')
+            engine.engine.collective_rpc(method='close_communicator')
             break
 
         # Handle commands
@@ -72,8 +91,43 @@ def llm_worker(args: DeployArguments, data_parallel_rank: int, master_port: int,
             break
 
 
+async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int,
+                           connection: Connection) -> None:
+    engine = SwiftRolloutDeploy.get_infer_engine(args)
+    # Send ready signal to parent process
+    connection.send({'status': 'ready'})
+
+    loop = asyncio.get_running_loop()
+    while True:
+        try:
+            command = await loop.run_in_executor(None, connection.recv)
+        except KeyboardInterrupt:
+            await engine.engine.collective_rpc(method='close_communicator')
+            break
+
+        # Handle commands
+        if command['type'] in ['call', 'fire_and_forget']:
+            method_name = command['method']
+            args, kwargs = command.get('args', ()), command.get('kwargs', {})
+            method = getattr(engine, method_name, None) or getattr(engine.engine, method_name, None)
+            try:
+                result = await method(*args, **kwargs)
+            except Exception as e:
+                logger.error(f'Method execution failed: {e}')
+                result = None
+
+            if command['type'] == 'call':
+                connection.send(result)
+        elif command['type'] == 'shutdown':
+            break
+
+
+def llm_worker_entry(*args, **kwargs):
+    asyncio.run(async_llm_worker(*args, **kwargs))
+
+
 class SwiftRolloutDeploy(SwiftPipeline):
-    args_class = DeployArguments
+    args_class = RolloutArguments
     args: args_class
 
     def _register_rl_rollout_app(self):
@@ -84,9 +138,12 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.post('/reset_prefix_cache/')(self.reset_prefix_cache)
         self.app.post('/close_communicator/')(self.close_communicator)
         self.app.post('/infer/', response_model=None)(self.infer)
+        self.app.post('/get_engine_type/')(self.get_engine_type)
 
-    def __init__(self, args: Union[List[str], DeployArguments, None] = None):
+    def __init__(self, args: Union[List[str], RolloutArguments, None] = None):
         super().__init__(args)
+        self.use_async_engine = self.args.use_async_engine
+        self.num_connections = 1 if self.use_async_engine else self.args.data_parallel_size
         safe_set_start_method()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_rl_rollout_app()
@@ -96,9 +153,10 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self._start_data_parallel_workers()
 
     def _start_data_parallel_workers(self):
-        for data_parallel_rank in range(self.args.data_parallel_size):
+        for data_parallel_rank in range(self.num_connections):
             parent_conn, child_conn = Pipe()
-            process = Process(target=llm_worker, args=(self.args, data_parallel_rank, self.master_port, child_conn))
+            worker_func = llm_worker_entry if self.use_async_engine else llm_worker
+            process = Process(target=worker_func, args=(self.args, data_parallel_rank, self.master_port, child_conn))
             process.start()
             self.connections.append(parent_conn)
             self.processes.append(process)
@@ -107,7 +165,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
     async def lifespan(self, app: FastAPI):
         # Wait for all workers to send "ready"
         ready_connections = set()
-        while len(ready_connections) < self.args.data_parallel_size:
+
+        while len(ready_connections) < self.num_connections:
             for connection in self.connections:
                 msg = connection.recv()
                 if isinstance(msg, dict) and msg.get('status') == 'ready':
@@ -124,28 +183,30 @@ class SwiftRolloutDeploy(SwiftPipeline):
                 process.join()  # ensure process termination after calling terminate()
 
     @staticmethod
-    def get_infer_engine(args: InferArguments, **kwargs):
+    def get_infer_engine(args: InferArguments, template=None, **kwargs):
         kwargs.update({
             'model_id_or_path': args.model,
             'model_type': args.model_type,
             'revision': args.model_revision,
             'torch_dtype': args.torch_dtype,
+            'template': template,
+            'use_async_engine': args.use_async_engine,
+            'multi_turn_scheduler': args.multi_turn_scheduler,
+            'max_turn': args.max_turns
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
         if infer_backend != 'vllm':
             infer_backend = 'vllm'
             logger.info('Currently, rollout only supports the vLLM backend. Set vLLM backend')
-        use_async_engine = args.use_async_engine
-        if use_async_engine:
-            use_async_engine = False
-            logger.info("currently, rollout don't support async engine, set use_async_engine False")
         kwargs.update(args.get_vllm_engine_kwargs())
-        kwargs.update({'use_async_engine': use_async_engine})
         # used for RL external rollout backend
         engine_kwargs = kwargs.get('engine_kwargs', {})
         # for RL rollout model weight sync
         engine_kwargs.update({'worker_extension_cls': 'trl.scripts.vllm_serve.WeightSyncWorkerExtension'})
+        if args.use_async_engine and args.data_parallel_size > 1:
+            engine_kwargs['data_parallel_size'] = args.data_parallel_size
         kwargs['engine_kwargs'] = engine_kwargs
+
         return GRPOVllmEngine(**kwargs)
 
     async def health(self):
@@ -225,6 +286,15 @@ class SwiftRolloutDeploy(SwiftPipeline):
         success = all(output for output in all_outputs)
         return {'message': 'Request received, resetting prefix cache status: ' + str(success)}
 
+    async def get_engine_type(self):
+        """
+        Health check endpoint to verify that the server is running.
+        """
+        if self.use_async_engine:
+            return {'engine_type': 'AsyncLLMEngine'}
+        else:
+            return {'engine_type': 'LLMEngine'}
+
     async def close_communicator(self):
         """
         Closes the weight update group and cleans up associated resources.
@@ -236,12 +306,12 @@ class SwiftRolloutDeploy(SwiftPipeline):
 
     async def infer(
         self,
-        infer_requests: List[RolloutInferRequest],
+        infer_requests: List[Union[Dict, RolloutInferRequest]],
         request_config: Optional[RequestConfig] = None,
         *,
         use_tqdm: Optional[bool] = None,
     ):
-        chunked_infer_requests = chunk_list(infer_requests, self.args.data_parallel_size)
+        chunked_infer_requests = chunk_list(infer_requests, self.num_connections)
 
         # Send the prompts to each worker
         for i, (connection, requests) in enumerate(zip(self.connections, chunked_infer_requests)):
@@ -254,7 +324,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
             if request_config.seed:
                 request_config.seed += i * len(requests)
             kwargs = {'infer_requests': requests, 'request_config': request_config, 'use_tqdm': use_tqdm}
-            connection.send({'type': 'call', 'method': 'infer', 'kwargs': kwargs})
+            method = 'async_infer' if self.use_async_engine else 'infer'
+            connection.send({'type': 'call', 'method': method, 'kwargs': kwargs})
 
         all_outputs = [connection.recv() for connection in self.connections]
         # Handle empty prompts (see above)
@@ -268,7 +339,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         uvicorn.run(self.app, host=args.host, port=args.port, log_level=args.log_level)
 
 
-def rollout_main(args: Union[List[str], DeployArguments, None] = None) -> None:
+def rollout_main(args: Union[List[str], RolloutArguments, None] = None) -> None:
     SwiftRolloutDeploy(args).main()
 
 
@@ -282,16 +353,16 @@ def is_accessible(port: int):
 
 
 @contextmanager
-def run_rollout(args: DeployArguments, return_url: bool = False):
-    if isinstance(args, DeployArguments) and args.__class__.__name__ == 'DeployArguments':
+def run_rollout(args: RolloutArguments, return_url: bool = False):
+    if isinstance(args, RolloutArguments) and args.__class__.__name__ == 'RolloutArguments':
         deploy_args = args
     else:
         args_dict = asdict(args)
-        parameters = inspect.signature(DeployArguments).parameters
+        parameters = inspect.signature(RolloutArguments).parameters
         for k in list(args_dict.keys()):
             if k not in parameters or args_dict[k] is None:
                 args_dict.pop(k)
-        deploy_args = DeployArguments(**args_dict)
+        deploy_args = RolloutArguments(**args_dict)
 
     mp = multiprocessing.get_context('spawn')
     process = mp.Process(target=rollout_main, args=(deploy_args, ))

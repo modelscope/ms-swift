@@ -3,11 +3,8 @@ import math
 import os
 import platform
 from dataclasses import dataclass, field
-from functools import wraps
 from typing import List, Literal, Optional, Union
 
-import torch
-import torch.utils.checkpoint
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
@@ -52,6 +49,7 @@ class TrainArgumentsMixin:
     optimizer: Optional[str] = None
     use_logits_to_keep: Optional[bool] = None
     channels: List[str] = None
+    ds3_gather_for_generation: bool = True
 
     # torchacc
     metric_warmup_step: Optional[float] = 0
@@ -64,29 +62,6 @@ class TrainArgumentsMixin:
     eval_limit: Optional[int] = None
     eval_datasets_args: Optional[Union[str, dict]] = None
     eval_generation_config: Optional[Union[str, dict]] = None
-
-    def _fix_gradient_checkpointing(self):
-        # fix use_reentrant
-        if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
-            return
-        # Consistent with the default behavior of transformers.
-        use_reentrant_ = (
-            self.gradient_checkpointing_kwargs.get('use_reentrant', True)
-            if self.gradient_checkpointing_kwargs else True)
-        _old_checkpoint = torch.utils.checkpoint.checkpoint
-
-        @wraps(_old_checkpoint)
-        def _new_checkpoint(*args, use_reentrant=None, **kwargs):
-            return _old_checkpoint(*args, use_reentrant=use_reentrant_, **kwargs)
-
-        torch.utils.checkpoint._old_checkpoint = _old_checkpoint
-        torch.utils.checkpoint.checkpoint = _new_checkpoint
-        try:
-            # Fix the old version of transformers.
-            import transformers.modeling_utils
-            transformers.modeling_utils.checkpoint = _new_checkpoint
-        except (ImportError, AttributeError):
-            pass
 
     @staticmethod
     def _patch_liger_kernel():
@@ -129,7 +104,6 @@ class TrainArgumentsMixin:
             self.vit_gradient_checkpointing = self.gradient_checkpointing
         if self.gradient_checkpointing_kwargs:
             self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
-        self._fix_gradient_checkpointing()
         self._init_liger()
         if self.dataloader_num_workers is None:
             if platform.system() == 'Windows':
@@ -151,7 +125,13 @@ class TrainArgumentsMixin:
 
 
 @dataclass
-class SwiftArgumentsMixin(TrainArgumentsMixin):
+class RLHFArgumentsMixin:
+    # gkd
+    sft_alpha: float = 0
+
+
+@dataclass
+class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
     # Value copied from TrainArguments
     train_type: Optional[str] = None
     local_repo_path: Optional[str] = None
@@ -187,6 +167,7 @@ class GRPOArgumentsMixin:
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_enable_prefix_caching: bool = True
     vllm_tensor_parallel_size: int = 1
+
     # external vllm (server)
     vllm_server_base_url: Optional[str] = None
     vllm_server_host: Optional[str] = None
@@ -221,7 +202,11 @@ class GRPOArgumentsMixin:
     offload_optimizer: bool = False
     offload_model: bool = False
     gc_collect_after_offload: bool = False
-    multi_turn_func: Optional[str] = None
+
+    # multi turn
+    multi_turn_func: Optional[str] = None  # deprecated
+    multi_turn_scheduler: Optional[str] = None
+    max_turns: Optional[int] = None
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
 
     # DAPO, https://arxiv.org/abs/2503.14476

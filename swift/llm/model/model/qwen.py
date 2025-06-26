@@ -500,7 +500,6 @@ register_model(
                 Model('Qwen/Qwen3-4B-Base', 'Qwen/Qwen3-4B-Base'),
                 Model('Qwen/Qwen3-8B-Base', 'Qwen/Qwen3-8B-Base'),
                 Model('Qwen/Qwen3-14B-Base', 'Qwen/Qwen3-14B-Base'),
-                Model('Qwen/Qwen3-32B-Base', 'Qwen/Qwen3-32B-Base'),
                 # instruct
                 Model('Qwen/Qwen3-0.6B', 'Qwen/Qwen3-0.6B'),
                 Model('Qwen/Qwen3-1.7B', 'Qwen/Qwen3-1.7B'),
@@ -536,7 +535,6 @@ register_model(
         [
             ModelGroup([
                 Model('Qwen/Qwen3-30B-A3B-Base', 'Qwen/Qwen3-30B-A3B-Base'),
-                Model('Qwen/Qwen3-235B-A22B-Base', 'Qwen/Qwen3-235B-A22B-Base'),
                 # instruct
                 Model('Qwen/Qwen3-30B-A3B', 'Qwen/Qwen3-30B-A3B'),
                 Model('Qwen/Qwen3-235B-A22B', 'Qwen/Qwen3-235B-A22B'),
@@ -944,3 +942,17 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         additional_saved_files=['config_sentence_transformers.json', '1_Pooling', 'modules.json'],
         architectures=['Qwen3ForCausalLM']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_reranker, [
+            ModelGroup([
+                Model('Qwen/Qwen3-Reranker-0.6B', 'Qwen/Qwen3-Reranker-0.6B'),
+                Model('Qwen/Qwen3-Reranker-4B', 'Qwen/Qwen3-Reranker-4B'),
+                Model('Qwen/Qwen3-Reranker-8B', 'Qwen/Qwen3-Reranker-8B'),
+            ]),
+        ],
+        TemplateType.qwen3_reranker,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3ForCausalLM'],
+        task_type='reranker'))

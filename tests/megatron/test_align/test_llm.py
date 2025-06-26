@@ -2,7 +2,7 @@ import os
 
 import torch
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3,4,5,6,7'
 
 
 def _test_model(model_id, **kwargs):
@@ -14,7 +14,7 @@ def _test_model(model_id, **kwargs):
                 to_hf=True,
                 exist_ok=True,
                 test_convert_precision=True,
-                torch_dtype=torch.bfloat16,
+                torch_dtype='bfloat16',
                 **kwargs,
             ))
     else:
@@ -24,7 +24,7 @@ def _test_model(model_id, **kwargs):
                 to_mcore=True,
                 exist_ok=True,
                 test_convert_precision=True,
-                torch_dtype=torch.bfloat16,
+                torch_dtype='bfloat16',
                 **kwargs,
             ))
 
@@ -74,7 +74,8 @@ def test_llama3_2():
 
 
 def test_qwen3():
-    _test_model('Qwen/Qwen3-0.6B-Base')
+    # _test_model('Qwen/Qwen3-0.6B-Base')
+    _test_model('deepseek-ai/DeepSeek-Prover-V2-7B')
 
 
 def test_internlm3():
@@ -94,6 +95,23 @@ def test_mimo():
     _test_model('XiaomiMiMo/MiMo-7B-RL-0530')
 
 
+def test_moonlight():
+    _test_model('moonshotai/Moonlight-16B-A3B-Instruct')
+
+
+def test_deepseek_v2():
+    # _test_model('deepseek-ai/DeepSeek-V2-Lite')
+    _test_model('deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct')
+
+
+def test_deepseek_moe():
+    _test_model('deepseek-ai/deepseek-moe-16b-chat')
+
+
+def test_dots():
+    _test_model('rednote-hilab/dots.llm1.inst')
+
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -101,7 +119,7 @@ if __name__ == '__main__':
     # test_marco_o1()
     # test_deepseek_r1_llama()
     # test_deepseek_r1_qwen()
-    test_deepseek_r1_qwen_0528()
+    # test_deepseek_r1_qwen_0528()
     # test_yi()
     # test_megrez()
     # test_llama3_1()
@@ -111,3 +129,7 @@ if __name__ == '__main__':
     # test_qwen3_moe()
     # test_internlm3()
     # test_mimo()
+    # test_moonlight()
+    # test_deepseek_v2()
+    # test_deepseek_moe()
+    test_dots()

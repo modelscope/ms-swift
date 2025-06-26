@@ -36,7 +36,7 @@ class TemplateArguments:
     max_pixels: Optional[int] = None
     agent_template: Optional[str] = None
     norm_bbox: Literal['norm1000', 'none', None] = None
-    use_chat_template: bool = True
+    use_chat_template: Optional[bool] = None
     # train
     padding_free: bool = False
     padding_side: Literal['left', 'right'] = 'right'
@@ -49,6 +49,8 @@ class TemplateArguments:
     def __post_init__(self):
         if self.template is None and hasattr(self, 'model_meta'):
             self.template = self.model_meta.template
+        if self.use_chat_template is None:
+            self.use_chat_template = True
         if self.system is not None:
             if self.system.endswith('.txt'):
                 assert os.path.isfile(self.system), f'self.system: {self.system}'
@@ -65,6 +67,9 @@ class TemplateArguments:
         truncation_strategy = self.truncation_strategy
         if truncation_strategy == 'delete':
             truncation_strategy = 'raise'
+        remove_unused_columns = self.remove_unused_columns
+        if hasattr(self, 'rlhf_type') and self.rlhf_type == 'grpo':
+            remove_unused_columns = True
         return {
             'default_system': self.system,
             'max_length': self.max_length,
@@ -73,6 +78,7 @@ class TemplateArguments:
             'agent_template': self.agent_template,
             'norm_bbox': self.norm_bbox,
             'use_chat_template': self.use_chat_template,
+            'remove_unused_columns': remove_unused_columns,
             # train
             'padding_free': self.padding_free,
             'padding_side': self.padding_side,

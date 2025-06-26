@@ -64,6 +64,7 @@ class Template(ProcessorMixin):
         agent_template: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
         use_chat_template: bool = True,
+        remove_unused_columns: bool = True,
         # only for train
         padding_free: bool = False,
         padding_side: Literal['left', 'right'] = 'right',
@@ -85,6 +86,7 @@ class Template(ProcessorMixin):
         from .template_meta import TemplateMeta
         from swift.plugin import agent_templates, loss_scale_map
         self._processor_inited = False
+        self._version = 'v1'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
 
         if not use_chat_template:
@@ -100,6 +102,7 @@ class Template(ProcessorMixin):
 
         self.template_meta: TemplateMeta = template_meta
         self.use_chat_template = use_chat_template
+        self.remove_unused_columns = remove_unused_columns
         self.template_backend = template_backend
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
@@ -115,7 +118,7 @@ class Template(ProcessorMixin):
         if self.is_encoder_decoder:
             self.skip_prompt = False
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
-                           'train', 'rlhf', 'kto',  # train
+                           'train', 'rlhf', 'kto', 'gkd',  # train
                            'seq_cls', 'embedding', 'prm'] = 'pt'
         self._packing = self.padding_free
         self.use_megatron = False
@@ -336,6 +339,14 @@ class Template(ProcessorMixin):
         encoded['label'] = bool(label)
         return encoded
 
+    def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = self._encode_truncated(inputs)
+        encoded['prompts'] = encoded['input_ids'][:-len(encoded.pop('answer_input_ids'))]
+        for k in list(encoded.keys()):
+            if k.startswith('prompt_') or k.endswith('answer_'):
+                encoded.pop(k, None)
+        return encoded
+
     def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         _encoded = {}
         labels = []
@@ -362,7 +373,6 @@ class Template(ProcessorMixin):
         anchor_encoded = self._encode_truncated(anchor)
         for key in anchor_encoded:
             _encoded[f'anchor_{key}'] = anchor_encoded[key]
-
         positive = deepcopy(inputs)
         positive.messages[-2]['content'] = positive.messages[-1]['content']
         positive.messages[-1]['content'] = ''
@@ -385,6 +395,31 @@ class Template(ProcessorMixin):
             for key in negative_encoded:
                 _encoded[f'negative_{key}'].append(negative_encoded[key])
             labels.append(0.0)
+
+        _encoded['labels'] = labels
+        return _encoded
+
+    def _reranker_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        _encoded = {}
+        labels = []
+
+        positive = deepcopy(inputs)
+        positive.rejected_response = []
+        positive_encoded = self._encode_truncated(positive)
+        for key in positive_encoded:
+            _encoded[f'positive_{key}'] = positive_encoded[key]
+            _encoded[f'negative_{key}'] = []
+        labels.append(1)
+
+        rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
+        for i in range(rejected_len):
+            negative = deepcopy(inputs)
+            negative.messages[-1]['content'] = negative.rejected_response[i]
+            negative.rejected_response = []
+            negative_encoded = self._encode_truncated(negative)
+            for key in negative_encoded:
+                _encoded[f'negative_{key}'].append(negative_encoded[key])
+            labels.append(0)
 
         _encoded['labels'] = labels
         return _encoded
@@ -414,11 +449,12 @@ class Template(ProcessorMixin):
         if isinstance(inputs, (InferRequest, TemplateInputs)):
             inputs = asdict(inputs)
 
+        extra_kwargs = {}
         if isinstance(inputs, dict):
             inputs = deepcopy(inputs)
             if not self.is_training:
                 InferRequest.remove_response(inputs['messages'])
-            inputs = StdTemplateInputs.from_dict(inputs)
+            inputs, extra_kwargs = StdTemplateInputs.from_dict(inputs)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
         assert isinstance(inputs, StdTemplateInputs)
@@ -432,15 +468,30 @@ class Template(ProcessorMixin):
             encoded = self._rlhf_encode(inputs)
         elif self.mode == 'kto':
             encoded = self._kto_encode(inputs)
+        elif self.mode == 'gkd':
+            encoded = self._gkd_encode(inputs)
         elif self.mode == 'embedding':
             encoded = self._embedding_encode(inputs)
+        elif self.mode in ['reranker', 'generative_reranker']:
+            encoded = self._reranker_encode(inputs)
         if inputs.channel is not None:
             encoded['channel'] = inputs.channel
+
+        lengths = [0]
         for key in list(encoded.keys()):
             if encoded[key] is None:
                 encoded.pop(key)
+            elif key.endswith('length'):
+                value = encoded[key]
+                if isinstance(value, int):
+                    lengths.append(value)
+                elif isinstance(value, (tuple, list)):
+                    lengths += value
+        encoded['length'] = max(lengths)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
+        if not self.remove_unused_columns:
+            encoded['_extra_kwargs'] = extra_kwargs
         return encoded
 
     def packing_row(self, row: List[Tuple[Dict[str, Any], int]]) -> Dict[str, Any]:
@@ -451,6 +502,10 @@ class Template(ProcessorMixin):
         for key in keys:
             if key in {'input_ids', 'labels', 'loss_scale'}:
                 packed[key] = sum((x[0][key] for x in row), start=[])
+            elif key == 'length':
+                packed[key] = sum((x[0][key] for x in row))
+            elif key == 'channel':
+                packed[key] = [x[0][key] for x in row]
         if 'position_ids' not in packed:
             packed['position_ids'] = sum((list(range(x[1])) for x in row), start=[])
 
@@ -540,6 +595,21 @@ class Template(ProcessorMixin):
 
     def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:
         raise NotImplementedError
+
+    @contextmanager
+    def generate_context(self):
+        origin_mode = self.mode
+        if self.mode in {'train', 'rlhf', 'kto', 'gkd'}:
+            self.set_mode('pt')
+        is_multimodal = self.model_meta.is_multimodal
+        if is_multimodal:
+            models = self.remove_post_encode_hook()
+        try:
+            yield
+        finally:
+            if is_multimodal:
+                self.register_post_encode_hook(models)
+            self.set_mode(origin_mode)
 
     def generate(self, model, *args, **kwargs):
         base_model = self.get_base_model(model)
@@ -1032,6 +1102,16 @@ class Template(ProcessorMixin):
         input_ids = encoded.get('input_ids')
         labels = encoded.get('labels')
         loss_scale = encoded.get('loss_scale')
+
+        # input_ids might be a tensor.
+        lengths = [0]
+        if input_ids is not None:
+            lengths.append(len(input_ids))
+        if labels is not None:
+            lengths.append(len(labels))
+        length = max(lengths)
+        encoded['length'] = length
+
         if self.max_length is not None:
             if self.truncation_strategy == 'right':
                 input_ids = input_ids[:self.max_length]
@@ -1053,13 +1133,6 @@ class Template(ProcessorMixin):
                 if loss_scale is not None:
                     loss_scale = loss_scale[-self.max_length:]
             elif self.truncation_strategy == 'raise':
-                # input_ids might be a tensor.
-                lengths = [0]
-                if input_ids is not None:
-                    lengths.append(len(input_ids))
-                if labels is not None:
-                    lengths.append(len(labels))
-                length = max(lengths)
                 if length > self.max_length:
                     raise MaxLengthError(f'Current length of row({length}) is larger'
                                          f' than the max_length({self.max_length}).')
@@ -1077,7 +1150,7 @@ class Template(ProcessorMixin):
         res_context_list, loss_scale_list, answer_len = (
             self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
         encoded = {}
-        if self.is_encoder_decoder:
+        if self.is_encoder_decoder or self.mode == 'gkd':
             # tokenizer_kwargs: use prompt (qwen-audio)
             total_len = len(res_context_list)
             for key, _slice in zip(['prompt', 'answer'],
@@ -1087,10 +1160,13 @@ class Template(ProcessorMixin):
                                                                        loss_scale_list[_slice], inputs)
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(context_list, loss_scale)
                 encoded[f'{key}_input_ids'] = input_ids
-                if key == 'answer':
-                    encoded['labels'] = labels
-                    encoded['loss_scale'] = loss_scale
+                encoded[f'{key}_labels'] = labels
+                encoded[f'{key}_loss_scale'] = loss_scale
             input_ids = encoded['prompt_input_ids'] + encoded['answer_input_ids']
+            labels = encoded['prompt_labels'] + encoded['answer_labels']
+            loss_scale = None
+            if isinstance(encoded['prompt_loss_scale'], list):
+                loss_scale = encoded['prompt_loss_scale'] + encoded['answer_loss_scale']
         else:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
@@ -1192,7 +1268,10 @@ class Template(ProcessorMixin):
     def is_training(self):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
-    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto']) -> None:
+    def set_mode(
+        self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto', 'gkd', 'embedding', 'reranker',
+                            'generative_reranker']
+    ) -> None:
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -1234,16 +1313,26 @@ class Template(ProcessorMixin):
         return models
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        from swift.llm import RowPreprocessor
         if self.mode == 'rlhf':
-            return self._rlhf_data_collator(batch, padding_to=padding_to)
+            res = self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
-            return self._kto_data_collator(batch, padding_to=padding_to)
+            res = self._kto_data_collator(batch, padding_to=padding_to)
+        elif self.mode == 'gkd':
+            res = self._gkd_data_collator(batch, padding_to=padding_to)
         elif self.mode in {'pt', 'train', 'prm'}:
-            return self._data_collator(batch, padding_to=padding_to)
+            res = self._data_collator(batch, padding_to=padding_to)
         elif self.mode == 'seq_cls':
-            return self._seq_cls_data_collator(batch, padding_to=padding_to)
+            res = self._seq_cls_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'embedding':
-            return self._embedding_data_collator(batch, padding_to=padding_to)
+            res = self._embedding_data_collator(batch, padding_to=padding_to)
+        elif self.mode in ['reranker', 'generative_reranker']:
+            res = self._reranker_data_collator(batch, padding_to=padding_to)
+        if not self.remove_unused_columns:
+            extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]
+            extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
+            res.update({k: v for k, v in extra_kwargs.items() if k not in res})
+        return res
 
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:
@@ -1308,6 +1397,15 @@ class Template(ProcessorMixin):
             res['label'] = label
         return res
 
+    def _gkd_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = self._data_collator(batch, padding_to=padding_to)
+        prompts_batch = [{'input_ids': b['prompts']} for b in batch if b.get('prompts') is not None]
+        if prompts_batch:
+            prompts_res = self._data_collator(prompts_batch, padding_to=padding_to)
+            res['prompts'] = prompts_res.pop('input_ids')
+            res.update({f'prompt_{k}': v for k, v in prompts_res.items()})
+        return res
+
     def _embedding_data_collator(self,
                                  batch: List[Dict[str, Any]],
                                  *,
@@ -1335,6 +1433,37 @@ class Template(ProcessorMixin):
         res = self._data_collator(new_batch, padding_to=padding_to)
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.float32)
+        return res
+
+    def _reranker_data_collator(self,
+                                batch: List[Dict[str, Any]],
+                                *,
+                                padding_to: Optional[int] = None) -> Dict[str, Any]:
+        import os
+        max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
+        labels = []
+        new_batch = []
+        for b in batch:
+            keys = [key for key in b.keys() if 'negative' in key]
+            max_neg = None
+            for key in keys:
+                value_list = b[key]
+                suffix = key[len('negative_'):]
+                max_neg = min(max_negative_samples, len(value_list))
+                for i, value in enumerate(value_list):
+                    b[f'negative{i}_{suffix}'] = value
+                b.pop(key)
+
+            indexes = ['positive_']
+            if max_neg is not None:
+                for i in range(0, max_neg):
+                    indexes.append(f'negative{i}_')
+            for prefix in indexes:
+                new_batch += self._fetch_inputs_startswith([b], prefix)
+            labels.extend(b.get('labels', None)[:max_negative_samples + 1])
+        res = self._data_collator(new_batch, padding_to=padding_to)
+        if labels:
+            res['labels'] = torch.tensor(labels, dtype=torch.long)
         return res
 
     def _seq_cls_data_collator(self,
@@ -1379,10 +1508,13 @@ class Template(ProcessorMixin):
         res = {}
         if packing_mode:
             # only support llm
-            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale']:
+            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel']:
                 v = self.gather_list(batch, k)
                 if v:
-                    res[k] = [v]
+                    if k == 'channel':
+                        res[k] = v
+                    else:
+                        res[k] = [v]
         else:
             inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
             input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
@@ -1511,7 +1643,7 @@ class Template(ProcessorMixin):
             if val is not None:
                 key_upper = key.upper()
                 logger.info(f'[{key_upper}_IDS] {val}')
-                if key == 'labels' and self.mode in {'seq_cls', 'embedding'}:
+                if key == 'labels' and self.mode in {'seq_cls', 'embedding', 'reranker', 'generative_reranker'}:
                     continue
                 if isinstance(val, (list, tuple, torch.Tensor)):
                     val_str = self.safe_decode(val, **tokenizer_kwargs)

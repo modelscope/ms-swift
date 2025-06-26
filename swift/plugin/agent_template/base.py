@@ -85,7 +85,9 @@ class ReactCompatMixin:
     def _parse_tool_call(content) -> Dict[str, Any]:
         obj = BaseAgentTemplate._parse_json(content)
         name = obj['name']
-        arguments = obj.get('arguments') or obj.get('parameters')
+        arguments = obj.get('arguments')
+        if arguments is None:
+            arguments = obj.get('parameters')
         arguments = BaseAgentTemplate._parse_json(arguments)
         assert arguments is not None, f'content: {content}'
         return {'name': name, 'arguments': arguments}
@@ -127,7 +129,9 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
         name_for_model = BaseAgentTemplate._get_tool_name(tool)
         name_for_human = tool.get('name_for_human') or name_for_model
 
-        description = tool.get('description') or tool.get('description_for_model')
+        description = tool.get('description')
+        if description is None:
+            description = tool.get('description_for_model')
         parameters = tool.get('parameters') or {}
         parameters = parameters if isinstance(parameters, str) else json.dumps(parameters, ensure_ascii=False)
         args_format = '此工具的输入应为JSON对象。' if lang == 'zh' else 'Format the arguments as a JSON object.'

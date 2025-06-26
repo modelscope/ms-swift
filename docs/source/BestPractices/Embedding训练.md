@@ -17,7 +17,7 @@ SWIFT已经支持Embedding模型的训练，包括纯文本和多模态两个类
 
 开发者可以自行集成自己的模型，模型forward输出值需要满足：
 
-```json
+```text
 {"last_hidden_state": some-embedding-tensor}
 ```
 
@@ -46,10 +46,10 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 ## 数据集格式
 
 > 注：
-> 1. 下面的多模态部分<image>标签可以出现在query/response/rejected_response的任意位置，只需要标签数量和images的值数量相等即可
-> 2. 标签和images的对应顺序为先对应query中的<image>标签，然后是response中的，之后按顺序解析rejected_response中的
+> 1. 下面的多模态部分`<image>`标签可以出现在query/response/rejected_response的任意位置，只需要标签数量和images的值数量相等即可
+> 2. 标签和images的对应顺序为先对应query中的`<image>`标签，然后是response中的，之后按顺序解析rejected_response中的
 > 3. query代表anchor sample，response代表positive sample或对比sample，rejected_response是hard negative samples
-> 4. 也支持<video>, <audio>标签，即天然支持video和audio的embedding
+> 4. 也支持`<video>`, `<audio>`标签，即天然支持video和audio的embedding
 
 ### cosine_similarity loss对应的格式
 

@@ -11,8 +11,7 @@ from swift.utils import (append_to_jsonl, get_logger, get_model_parameter_info, 
                          use_torchacc)
 from ..argument import TrainArguments
 from ..base import SwiftPipeline
-from ..dataset import (EncodePreprocessor, GetLengthPreprocessor, IterablePackingDataset, LazyLLMDataset,
-                       PackingDataset, load_dataset)
+from ..dataset import EncodePreprocessor, IterablePackingDataset, LazyLLMDataset, PackingDataset, load_dataset
 from ..infer import prepare_generation_config
 from .tuner import TunerMixin
 
@@ -205,9 +204,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self.callbacks = callbacks
 
     def _stat_dataset(self, dataset: Union[HfDataset, PackingDataset]):
-        args = self.args
         if isinstance(dataset, HfDataset):
-            dataset = GetLengthPreprocessor()(dataset, num_proc=args.dataset_num_proc)
             length = dataset['length']
         else:
             length = dataset.packed_dataset.length_list
@@ -225,10 +222,18 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             if args.packing:
                 packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
                 train_dataset = packing_dataset_cls(
-                    self.template, train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
+                    self.template,
+                    train_dataset,
+                    num_proc=args.dataset_num_proc,
+                    strict=args.strict,
+                    load_from_cache_file=args.load_from_cache_file)
                 if val_dataset is not None:
                     val_dataset = packing_dataset_cls(
-                        self.template, val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
+                        self.template,
+                        val_dataset,
+                        num_proc=args.dataset_num_proc,
+                        strict=args.strict,
+                        load_from_cache_file=args.load_from_cache_file)
             elif args.lazy_tokenize:
                 train_dataset = LazyLLMDataset(
                     train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
@@ -255,6 +260,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             elif hasattr(train_dataset, '__len__'):
                 # Avoid the random mismatch issue in LazyLLMDataset.
                 inputs = train_dataset[0]
+            if val_dataset is not None and hasattr(val_dataset, '__len__') and len(val_dataset) == 0:
+                val_dataset = None
             if isinstance(train_dataset, (HfDataset, PackingDataset)):
                 self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
                 if val_dataset is not None and not predict_with_generate:

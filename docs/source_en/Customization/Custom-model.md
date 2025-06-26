@@ -1,6 +1,10 @@
 # Custom Model
 
-The models built into ms-swift can be used directly by specifying either `model_id` or `model_path`: `--model <model_id_or_path>`. ms-swift determines the `model_type` based on the suffix of `model_id/model_path` and the `config.json` file. Each `model_type` has a unique model structure, template, and loading method. Of course, you can also manually override these by passing `--model_type` and `--template`. You can check the supported `model_type` and templates in the [Supported Models and Datasets](../Instruction/Supported-models-and-datasets.md).
+The models built into ms-swift can be used directly by specifying either `model_id` or `model_path`: `--model <model_id_or_path>`. ms-swift determines the `model_type` based on the suffix of `model_id/model_path` and the `config.json` file.
+
+Each `model_type` has a unique model structure, template, and loading method. Of course, you can also manually override these by passing `--model_type` and `--template`. You can check the supported `model_type` and templates in the [Supported Models and Datasets](../Instruction/Supported-models-and-datasets.md).
+
+The following introduces how to register a new model and its corresponding template.
 
 ## Model Registration
 
@@ -10,7 +14,7 @@ The `register_model` function registers a model in the `MODEL_MAPPING`. You can 
 
 - model_type: Required. The model type, which is also the unique ID.
 - model_groups: Required. Lists the ModelScope/HuggingFace model IDs and local paths. Running the [run_model_info.py](https://github.com/modelscope/ms-swift/blob/main/scripts/utils/run_model_info.py) file will automatically generate the [supported models documentation](https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html) and automatically match the model_type based on the `--model` suffix.
-- template: Required. The default template type when `--template` is not specified.
+- template: Required. The default template type when `--template` is not specified in the command line.
 - get_function: Required. The loading function for the model and tokenizer/processor (for multi-modal models). LLM is typically set to `get_model_tokenizer_with_flash_attn`.
 - model_arch: The model architecture. Defaults to None. Multi-modal model training requires setting this parameter to determine the prefix for llm/vit/aligner.
 - architectures: The architectures item in config.json, used to automatically match the model with its model_type. Defaults to `[]`.

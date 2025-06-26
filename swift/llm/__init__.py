@@ -6,17 +6,19 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .infer import (VllmEngine, RequestConfig, LmdeployEngine, PtEngine, InferEngine, infer_main, deploy_main,
-                        InferClient, run_deploy, AdapterRequest, prepare_model_template, BaseInferEngine, rollout_main)
+                        InferClient, run_deploy, AdapterRequest, prepare_model_template, BaseInferEngine, SglangEngine,
+                        rollout_main)
     from .export import (export_main, merge_lora, quantize_model, export_to_ollama)
     from .eval import eval_main
     from .app import app_main
     from .train import sft_main, pt_main, rlhf_main, get_multimodal_target_regex
     from .sampling import sampling_main
     from .argument import (EvalArguments, InferArguments, TrainArguments, ExportArguments, DeployArguments,
-                           RLHFArguments, WebUIArguments, BaseArguments, AppArguments, SamplingArguments)
+                           RolloutArguments, RLHFArguments, WebUIArguments, BaseArguments, AppArguments,
+                           SamplingArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
                            TemplateInputs, TemplateMeta, get_template_meta, InferRequest, load_image, MaxLengthError,
-                           load_file, draw_bbox)
+                           load_file, draw_bbox, RolloutInferRequest)
     from .model import (register_model, MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download,
                         HfConfigFactory, ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys,
                         ModelArch, get_model_arch, MODEL_ARCH_MAPPING, get_model_info_meta, get_model_name, ModelGroup,
@@ -37,7 +39,8 @@ else:
         'rlhf': ['rlhf_main'],
         'infer': [
             'deploy_main', 'VllmEngine', 'RequestConfig', 'LmdeployEngine', 'PtEngine', 'infer_main', 'InferClient',
-            'run_deploy', 'InferEngine', 'AdapterRequest', 'prepare_model_template', 'BaseInferEngine', 'rollout_main'
+            'run_deploy', 'InferEngine', 'AdapterRequest', 'prepare_model_template', 'BaseInferEngine', 'rollout_main',
+            'SglangEngine'
         ],
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
         'app': ['app_main'],
@@ -46,12 +49,12 @@ else:
         'sampling': ['sampling_main'],
         'argument': [
             'EvalArguments', 'InferArguments', 'TrainArguments', 'ExportArguments', 'WebUIArguments', 'DeployArguments',
-            'RLHFArguments', 'BaseArguments', 'AppArguments', 'SamplingArguments'
+            'RolloutArguments', 'RLHFArguments', 'BaseArguments', 'AppArguments', 'SamplingArguments'
         ],
         'template': [
             'TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template',
             'TemplateInputs', 'TemplateMeta', 'get_template_meta', 'InferRequest', 'load_image', 'MaxLengthError',
-            'load_file', 'draw_bbox'
+            'load_file', 'draw_bbox', 'RolloutInferRequest'
         ],
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',

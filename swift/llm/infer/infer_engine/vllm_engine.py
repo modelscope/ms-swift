@@ -14,7 +14,7 @@ from transformers.utils import is_torch_npu_available
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
-from swift.utils import get_dist_setting, get_logger, get_seed, is_dist
+from swift.utils import get_dist_setting, is_dist
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
@@ -30,7 +30,6 @@ try:
 except Exception:
     raise
 
-logger = get_logger()
 dtype_mapping = {torch.float16: 'float16', torch.bfloat16: 'bfloat16', torch.float32: 'float32'}
 
 
@@ -440,11 +439,13 @@ class VllmEngine(InferEngine):
                 infer_requests, template=template, strict=getattr(self, 'strict', True))
             self.set_default_max_tokens(request_config, batched_inputs)
             request_id_list = []
-            for inputs in batched_inputs:
+            for i, inputs in enumerate(batched_inputs):
                 request_id = str(self._request_count)
                 request_id_list.append(request_id)
                 self._request_count += 1
                 generation_config = self._prepare_generation_config(request_config)
+                if generation_config.seed is not None:
+                    generation_config.seed += i
                 self._add_stop_words(generation_config, request_config, template.template_meta)
                 self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
             prog_bar = tqdm(total=len(batched_inputs), dynamic_ncols=True, disable=not use_tqdm)
