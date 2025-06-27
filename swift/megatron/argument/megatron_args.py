@@ -71,6 +71,10 @@ class MegatronArguments(ExtraMegatronArguments):
     optimizer_cpu_offload: bool = False
     optimizer_offload_fraction: float = 1.
     use_precision_aware_optimizer: bool = False
+    main_grads_dtype: Literal['fp32', 'bf16'] = 'fp32'
+    main_params_dtype: Literal['fp32', 'fp16'] = 'fp32'
+    exp_avg_dtype: Literal['fp32', 'fp16', 'bf16', 'fp8'] = 'fp32'
+    exp_avg_sq_dtype: Literal['fp32', 'fp16', 'bf16', 'fp8'] = 'fp32'
     dataloader_type: Literal['single', 'cyclic', 'external'] = 'cyclic'
     manual_gc: bool = False
     manual_gc_interval: int = 0
