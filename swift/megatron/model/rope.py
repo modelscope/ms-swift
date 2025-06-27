@@ -1,4 +1,8 @@
+from typing import Any, Dict, Optional
+
+import torch
 from megatron.training import get_args
+from transformers import PretrainedConfig
 
 from swift.utils import get_logger
 
@@ -30,11 +34,22 @@ def _get_dummy_config(args):
     return dummy_config
 
 
+EXTENDED_ROPE_INIT_FUNCTIONS = {}
+
+
+def _get_rope_type(rope_scaling: Dict[str, Any]):
+    rope_type = rope_scaling['rope_type']
+    if rope_type == 'dynamic' and rope_scaling.get('alpha') is not None:
+        rope_type = 'dynamic_alpha'
+    return rope_type
+
+
 def get_rope_inv_freq(seq_len=None):
     from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
     args = get_args()
+    ROPE_INIT_FUNCTIONS.update(EXTENDED_ROPE_INIT_FUNCTIONS)
     dummy_config = _get_dummy_config(args)
-    rope_init_fn = ROPE_INIT_FUNCTIONS[args.rope_scaling['rope_type']]
+    rope_init_fn = ROPE_INIT_FUNCTIONS[_get_rope_type(args.rope_scaling)]
     inv_freq, attention_scaling = rope_init_fn(dummy_config, 'cpu', seq_len=seq_len)
     if attention_scaling is None:
         attention_scaling = 1.
@@ -49,7 +64,7 @@ def longrope_frequency_update(args, model, inv_freq, seq_len: int):
         original_max_position_embeddings = args.max_position_embeddings
 
     if not hasattr(model, 'long_inv_freq'):
-        model.long_inv_freq, _ = get_rope_inv_freq(inv_freq.device, seq_len=original_max_position_embeddings + 1)
+        model.long_inv_freq, _ = get_rope_inv_freq(seq_len=original_max_position_embeddings + 1)
         model.original_inv_freq = inv_freq.clone()
 
     if seq_len > original_max_position_embeddings:
@@ -66,7 +81,7 @@ def dynamic_frequency_update(args, model, inv_freq, seq_len: int):
         model.original_inv_freq = inv_freq.clone()
     attention_scaling = None
     if seq_len > model.max_seq_len_cached:  # growth
-        new_inv_freq, attention_scaling = get_rope_inv_freq(inv_freq.device, seq_len=seq_len)
+        new_inv_freq, attention_scaling = get_rope_inv_freq(seq_len=seq_len)
         inv_freq.data.copy_(new_inv_freq)
         model.max_seq_len_cached = seq_len
 
@@ -78,10 +93,34 @@ def dynamic_frequency_update(args, model, inv_freq, seq_len: int):
 
 def dynamic_rope_update(model, inv_freq, seq_len: int):
     args = get_args()
-    rope_type = args.rope_scaling['rope_type']
+    rope_type = _get_rope_type(args.rope_scaling)
     attention_scaling = None
     if rope_type == 'dynamic':
         attention_scaling = dynamic_frequency_update(args, model, inv_freq, seq_len)
     elif rope_type == 'longrope':
         attention_scaling = longrope_frequency_update(args, model, inv_freq, seq_len)
     return attention_scaling
+
+
+def _compute_dynamic_alpha_ntk_parameters(
+    config: Optional[PretrainedConfig] = None,
+    device: Optional['torch.device'] = None,
+    seq_len: Optional[int] = None,
+    **rope_kwargs,
+) -> tuple['torch.Tensor', float]:
+    # Code borrowed from Tencent-Hunyuan/Hunyuan-A13B-Instruct
+    base = config.rope_theta
+    partial_rotary_factor = config.partial_rotary_factor if hasattr(config, 'partial_rotary_factor') else 1.0
+    head_dim = getattr(config, 'head_dim', config.hidden_size // config.num_attention_heads)
+    dim = int(head_dim * partial_rotary_factor)
+    alpha = config.rope_scaling['alpha']
+
+    attention_factor = 1.0  # Unused in this type of RoPE
+
+    # Compute the inverse frequencies
+    base = base * alpha**(dim / (dim - 2))
+    inv_freq = 1.0 / (base**(torch.arange(0, dim, 2, dtype=torch.int64).to(device=device, dtype=torch.float) / dim))
+    return inv_freq, attention_factor
+
+
+EXTENDED_ROPE_INIT_FUNCTIONS['dynamic_alpha'] = _compute_dynamic_alpha_ntk_parameters

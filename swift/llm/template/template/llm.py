@@ -289,3 +289,13 @@ register_template(
         suffix=['<|endofresponse|>'],
         default_system='You are a helpful assistant.',
     ))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.hunyuan,
+        prefix=['<|startoftext|>'],
+        system_prefix=['<|startoftext|>{{SYSTEM}}<|extra_4|>'],
+        prompt=['{{QUERY}}<|extra_0|>'],
+        chat_sep=['<|eos|><|startoftext|>'],
+        suffix=['<|eos|>'],
+    ))

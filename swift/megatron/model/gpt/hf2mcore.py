@@ -39,8 +39,10 @@ def set_attn_state(args, mg_attn, hf_attn):
             ],
                       dim=1).reshape(-1))
     if args.qk_layernorm:
-        mg_attn.q_layernorm.weight.data.copy_(hf_attn.q_norm.weight)
-        mg_attn.k_layernorm.weight.data.copy_(hf_attn.k_norm.weight)
+        q_norm = hf_attn.query_layernorm if hasattr(hf_attn, 'query_layernorm') else hf_attn.q_norm
+        k_norm = hf_attn.key_layernorm if hasattr(hf_attn, 'key_layernorm') else hf_attn.k_norm
+        mg_attn.q_layernorm.weight.data.copy_(q_norm.weight)
+        mg_attn.k_layernorm.weight.data.copy_(k_norm.weight)
 
 
 def _set_mlp_state(mg_mlp, hf_mlp):
@@ -52,11 +54,19 @@ def _set_mlp_state(mg_mlp, hf_mlp):
 
 
 def _set_moe_state(args, mg_mlp, hf_mlp):
-    mg_mlp.router.weight.data.copy_(hf_mlp.gate.weight)
+    hf_gate = hf_mlp.gate
+    if hasattr(hf_gate, 'wg'):
+        hf_gate = hf_gate.wg
+    mg_mlp.router.weight.data.copy_(hf_gate.weight)
     if args.moe_router_enable_expert_bias:
-        mg_mlp.router.expert_bias.data.copy_(hf_mlp.gate.e_score_correction_bias)
+        mg_mlp.router.expert_bias.data.copy_(hf_gate.e_score_correction_bias)
     if mg_mlp.shared_experts is not None:
-        hf_shared_expert = hf_mlp.shared_expert if hasattr(hf_mlp, 'shared_expert') else hf_mlp.shared_experts
+        if hasattr(hf_mlp, 'shared_experts'):
+            hf_shared_expert = hf_mlp.shared_experts
+        elif hasattr(hf_mlp, 'shared_mlp'):
+            hf_shared_expert = hf_mlp.shared_mlp
+        else:
+            hf_shared_expert = hf_mlp.shared_expert
         _set_mlp_state(mg_mlp.shared_experts, hf_shared_expert)
         if mg_mlp.shared_experts.gate_weight is not None:
             mg_mlp.shared_experts.gate_weight.data.copy_(hf_mlp.shared_expert_gate.weight)

@@ -430,6 +430,14 @@ def test_kimi_dev():
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
+def test_hunyuan():
+    pt_engine = PtEngine('Tencent-Hunyuan/Hunyuan-A13B-Instruct')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -471,4 +479,5 @@ if __name__ == '__main__':
     # test_mimo()
     # test_minicpm()
     # test_minimax()
-    test_kimi_dev()
+    # test_kimi_dev()
+    test_hunyuan()
