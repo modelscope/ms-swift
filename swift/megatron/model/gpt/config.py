@@ -30,4 +30,14 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
             if res.get('moe_router_score_function', 'softmax') == 'sigmoid':
                 res['moe_router_enable_expert_bias'] = True
             res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res["num_layers"] - first_k_dense_replace}'
+    if architectures == 'HunYuanMoEV1ForCausalLM':
+        # Since HunYuan’s attention applies RoPE before using q/k_layernorm,
+        # which is incompatible with megatron-core, support is not provided here.
+        res['n_shared_experts'] = n_shared_experts
+        for key in ['moe_ffn_hidden_size', 'n_shared_experts', 'moe_router_topk']:
+            val = res.get(key)
+            if isinstance(val, list) and val and min(val) == max(val):
+                res[key] = val[0]
+        n_shared_experts = res.pop('n_shared_experts')
+        res['moe_shared_expert_intermediate_size'] = n_shared_experts * res['moe_ffn_hidden_size']
     return res

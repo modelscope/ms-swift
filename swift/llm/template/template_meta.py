@@ -82,8 +82,8 @@ class TemplateMeta:
 
         self.is_post_system = self._has_system(self.prompt)  # mistral_nemo
         if self.is_post_system:
-            self.prompt = [context for context in self.prompt if '{{SYSTEM}}' not in context]
             self.system_prompt = self.prompt
+            self.prompt = [context for context in self.prompt if '{{SYSTEM}}' not in context]
 
         if self.system_prefix is None and not self.is_post_system:
             self.support_system = False
