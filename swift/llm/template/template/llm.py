@@ -293,8 +293,9 @@ register_template(
 register_template(
     TemplateMeta(
         LLMTemplateType.hunyuan,
-        prefix=[],
-        prompt=['<|startoftext|>', '{{SYSTEM}}<|extra_4|>', '{{QUERY}}<|extra_0|>'],
-        chat_sep=['<|eos|>'],
+        prefix=['<|startoftext|>'],
+        system_prefix=['<|startoftext|>{{SYSTEM}}<|extra_4|>'],
+        prompt=['{{QUERY}}<|extra_0|>'],
+        chat_sep=['<|eos|><|startoftext|>'],
         suffix=['<|eos|>'],
     ))

@@ -352,6 +352,5 @@ register_model(
         ])],
         TemplateType.hunyuan,
         get_model_tokenizer_with_flash_attn,
-        architectures=['Dots1ForCausalLM'],
-        requires=['transformers>=4.53.0.dev0'],
+        architectures=['HunYuanMoEV1ForCausalLM'],
     ))
