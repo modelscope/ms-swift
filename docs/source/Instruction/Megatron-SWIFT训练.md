@@ -293,7 +293,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 **MoE参数**:
 - num_experts: MoE的专家数，默认为None。自动从config.json读取。
 - moe_layer_freq: MoE 层与 Dense 层之间的分布频率。默认为None。从config.json中读取。
-- moe_ffn_hidden_siz: 每个专家的前馈网络（ffn）的隐藏层大小。默认为None，设置为ffn_hidden_size。自动从config.json读取。
+- moe_ffn_hidden_siz: 每个专家的前馈网络（ffn）的隐藏层大小。默认为None，自动从config.json读取。若未读取到且`num_experts`不为None，则设置为ffn_hidden_size。
 - moe_shared_expert_intermediate_size: 共享专家的总FFN隐藏层大小。如果有多个共享专家，它应等于 `num_shared_experts * ffn_size_of_each_shared_expert`。 默认为None。自动从config.json读取。
 - moe_router_topk: 每个token路由到的专家数量。默认为None。自动从config.json读取。
 - moe_router_pre_softmax: 为MoE启用预softmax路由，这意味着softmax会在top-k选择之前进行。默认为None。自动从config.json读取。
@@ -310,16 +310,16 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥moe_permute_fusion: 在令牌分发过程中融合令牌重排操作。默认为False。
 - 🔥moe_aux_loss_coeff: 辅助损失的缩放系数：建议的初始值为 1e-2。默认为None。自动从config.json读取。
 - moe_z_loss_coeff: z-loss 的缩放系数。默认为None。
-- moe_expert_capacity_factor: 每个专家的容量因子，None表示不会丢弃任何token。默认为None。
+- moe_expert_capacity_factor: 每个专家的容量因子，None表示不会丢弃任何token。默认为None。自动从config.json读取。
 - 🔥moe_shared_expert_overlap: 启用共享专家计算与调度器通信之间的重叠。如果不启用此选项，共享专家将在路由专家之后执行。仅在设置了`moe_shared_expert_intermediate_size`时有效。默认为False。
 - moe_token_drop_policy: 可选为'probs', 'position'。默认为'probs'。
 
 **mla参数**
-- multi_latent_attention:
-- q_lora_rank: Optional[int] = None
-    kv_lora_rank: Optional[int] = None
-    qk_head_dim: Optional[int] = None
-    qk_pos_emb_head_dim: Optional[int] = None
+- multi_latent_attention: 是否使用MLA。默认为False。
+- q_lora_rank: Query 张量低秩表示的rank值。默认为None，自动从config.json读取。
+- kv_lora_rank: Key 和 Value 张量低秩表示的秩（rank）值。默认为None，自动从config.json读取。
+- qk_head_dim: QK 投影中 head 的维度。 `q_head_dim = qk_head_dim + qk_pos_emb_head_dim`。默认为None，自动从config.json读取。
+- qk_pos_emb_head_dim: QK 投影中位置嵌入的维度。默认为None，自动从config.json读取。
 
 **DPO参数**:
 - ref_load: ref_model的加载路径。默认为None，即设置为`load`。
