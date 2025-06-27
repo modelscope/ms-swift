@@ -59,12 +59,8 @@ def _model_cpu_forward_context(modules, torch_dtype=None, device=None, share_emb
     origin_torch_dtype = next(modules[0].parameters()).dtype
 
     def _to_cuda_hook(module, args):
-        if embedding_module is not None and module is modules[-1]:
-            module = embedding_module
         if device is not None:
             module.to(device)
-        elif args and isinstance(args[0], torch.Tensor):
-            module.to(args[0].device)
         if torch_dtype is not None:
             module.to(torch_dtype)
 
