@@ -169,9 +169,13 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padded tokens in the global batch. Default is True.
 - 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Defaults to auto.
 - optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
-- optimizer_cpu_offload: Offloads the optimizer state to CPU. Default is `False`.
+- 🔥optimizer_cpu_offload: Offloads the optimizer state to CPU. Default is `False`.
 - optimizer_offload_fraction: The fraction of the optimizer state to offload to CPU. Default is `1.0`.
 - use_precision_aware_optimizer: Use the precision-aware optimizer in TransformerEngine, which allows setting the main parameters and optimizer states to lower precision, such as fp16 and fp8.
+- main_grads_dtype: The dtype of main gradients when use_precision_aware_optimizer is enabled. Options are 'fp32' and 'bf16'. Default is 'fp32'.
+- main_params_dtype: The dtype of main parameters when use_precision_aware_optimizer is enabled. Options are 'fp32' and 'fp16'. Default is 'fp32'.
+- exp_avg_dtype: The dtype of exp_avg (i.e., the first moment in the Adam optimizer) when use_precision_aware_optimizer is enabled. This dtype is used for storing the optimizer state in memory during training, but does not affect the precision in kernel computation. Options are 'fp32', 'fp16', 'bf16', and 'fp8'. Default is 'fp32'.
+- exp_avg_sq_dtype: The dtype of exp_avg_sq (i.e., the second moment in the Adam optimizer) when use_precision_aware_optimizer is enabled. This dtype is used for storing the optimizer state in memory during training, but does not affect the precision in kernel computation. Options are 'fp32', 'fp16', 'bf16', and 'fp8'. Default is 'fp32'.
 - dataloader_type: Default is 'cyclic', options are 'single', 'cyclic', 'external'. If `--streaming` is enabled, set it to external.
 - manual_gc: Disables the default garbage collector and manually triggers garbage collection. Default is False.
 - manual_gc_interval: Interval at which garbage collection is triggered. Default is 0.
@@ -254,6 +258,15 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - 🔥eval_iters: The number of iterations for evaluation. Defaults to -1, and a suitable value will be set based on the size of the validation dataset.
   - Note: If using a streaming dataset, this value needs to be set manually.
 - 🔥eval_interval: Evaluation interval (steps), default is None, meaning it will be set to save_interval.
+
+
+**FP8 Parameters**:
+- fp8_format: The FP8 format scheme used for FP8 tensors in the forward and backward pass. Options are 'e4m3' and 'hybrid'. Default is None.
+- fp8_recipe: The FP8 recipe (algorithm scheme) used for FP8 tensors in the forward and backward pass. Options are 'tensorwise', 'delayed', 'mxfp8', and 'blockwise'. Default is 'delayed'.
+- fp8_amax_history_len: Number of steps for which amax history is recorded per tensor. Default is 1024.
+- fp8_amax_compute_algo: Algorithm for computing amax from history. Options are 'most_recent' and 'max'. Default is 'max'.
+- fp8_param_gather: Keep the compute parameter in FP8 (do not use any other intermediate dtype) and perform the parameter all-gather in FP8 format. Default is False.
+
 
 **Mixed Precision Parameters**:
 

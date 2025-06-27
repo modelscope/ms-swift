@@ -170,10 +170,10 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥optimizer_cpu_offload: 将优化器状态卸载到 CPU。默认为False。
 - optimizer_offload_fraction: 卸载到 CPU 的优化器状态所占比例。默认为1.。
 - use_precision_aware_optimizer: 使用 TransformerEngine 中的精度感知优化器，该优化器允许将主参数和优化器状态设置为较低精度，例如 fp16 和 fp8。
-- main_grads_dtype:
-- main_params_dtype:
-- exp_avg_dtype:
-- exp_avg_sq_dtype: 
+- main_grads_dtype: 启用 use_precision_aware_optimizer 时主梯度的 dtype。可选为'fp32', 'bf16'。默认为'fp32'。
+- main_params_dtype: 启用 use_precision_aware_optimizer 时主参数的 dtype。可选为'fp32', 'fp16'。默认为'fp32'。
+- exp_avg_dtype: 启用 use_precision_aware_optimizer 时，adam 优化器中 exp_avg（即一阶矩）的 dtype。该 dtype 用于在训练过程中将优化器状态存储在内存中，但不会影响内核计算时的精度。可选为'fp32', 'fp16', 'bf16', 'fp8'。默认为'fp32'。
+- exp_avg_sq_dtype: 启用 use_precision_aware_optimizer 时，adam 优化器中 exp_avg_sq（即二阶矩）的 dtype。该 dtype 用于在训练过程中将优化器状态存储在内存中，但不会影响内核计算的精度。可选为'fp32', 'fp16', 'bf16', 'fp8'。默认为'fp32'。
 - dataloader_type: 默认为'cyclic'，可选为'single', 'cyclic', 'external'。若开启`--streaming`，则设置为`external`。
 - manual_gc: 禁用默认垃圾回收器，手动触发垃圾回收。默认为False。
 - manual_gc_interval: 触发垃圾回收的间隔。默认为0。
@@ -254,9 +254,9 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 **fp8参数**:
 - fp8_format: 用于前向和反向传播中FP8张量的FP8格式方案。可选为'e4m3'，'hybrid'。默认为None。
 - fp8_recipe: 用于前向和反向传播中 FP8 张量的 FP8 算法方案。可选为'tensorwise', 'delayed', 'mxfp8', 'blockwise'。默认为'delayed'。
-- fp8_amax_history_len: 默认为1024。
-- fp8_amax_compute_algo: 可选为'most_recent','max'。默认为'max'。
-- fp8_param_gather: 默认为None。
+- fp8_amax_history_len: 每个张量记录 amax 历史的步数。默认为1024。
+- fp8_amax_compute_algo: 用于根据历史记录计算 amax 的算法。可选为'most_recent','max'。默认为'max'。
+- fp8_param_gather: 保持计算参数为 fp8（不使用任何其他中间数据类型），并在 fp8 格式下执行参数的 all-gather 操作。默认为False。
 
 **混合精度参数**:
 - fp16: fp16模式。默认为None，会根据模型的torch_dtype进行设置。torch_dtype默认读取config.json。
@@ -292,7 +292,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 **MoE参数**:
 - num_experts: MoE的专家数，默认为None。自动从config.json读取。
-- moe_layer_freq: 默认为None。从config.json中读取。
+- moe_layer_freq: MoE 层与 Dense 层之间的分布频率。默认为None。从config.json中读取。
 - moe_ffn_hidden_siz: 每个专家的前馈网络（ffn）的隐藏层大小。默认为None，设置为ffn_hidden_size。自动从config.json读取。
 - moe_shared_expert_intermediate_size: 共享专家的总FFN隐藏层大小。如果有多个共享专家，它应等于 `num_shared_experts * ffn_size_of_each_shared_expert`。 默认为None。自动从config.json读取。
 - moe_router_topk: 每个token路由到的专家数量。默认为None。自动从config.json读取。
@@ -300,6 +300,8 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥moe_router_dtype: 用于路由计算和专家输出加权平均的数据类型。可选为'none', 'fp32'、'fp64'，这增强了数值稳定性，尤其是在专家数量较多时。与`moe_permute_fusion`一起使用时，性能影响可以忽略不计。默认为'fp32'。'none'代表不改变数据类型。
 - moe_router_score_function: MoE TopK 路由的评分函数。可以为 "softmax" 或 "sigmoid"。默认为None，从config.json中读取。
 - moe_router_bias_update_rate: 在无辅助损失负载均衡策略中，专家偏置的更新速率。专家偏置根据每个专家在全局批次中被分配的 token 数量进行更新，对于分配到的 token 较少的专家，偏置会增加；对于分配到的 token 较多的专家，偏置会减少。默认值 1e-3，与 DeepSeekV3 中使用的值相同。
+- moe_router_enable_expert_bias: 在无辅助损失负载均衡策略中，带有动态专家偏置的 TopK 路由。路由决策基于路由分数与专家偏置之和。详情请参见：https://arxiv.org/abs/2408.15664。默认为None，自动从config.json读取。
+- moe_router_topk_scaling_factor: 默认为None。从config.json中读取。
 - moe_router_load_balancing_type: 确定路由器的负载均衡策略。可选项为"aux_loss"、"seq_aux_loss"、"sinkhorn"、"none"。默认值为 None。从config.json中读取。
 - 🔥expert_model_parallel_size: 专家并行数，默认为1。
 - moe_token_dispatcher_type: 要使用的token分发器类型。可选选项包括 'allgather'、'alltoall'、'flex'和'alltoall_seq'。默认值为'alltoall'。
@@ -307,10 +309,17 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥moe_grouped_gemm: 当每个rank包含多个专家时，通过在多个流中启动多个本地 GEMM 内核，利用 TransformerEngine中的GroupedLinear提高利用率和性能。默认为False。
 - 🔥moe_permute_fusion: 在令牌分发过程中融合令牌重排操作。默认为False。
 - 🔥moe_aux_loss_coeff: 辅助损失的缩放系数：建议的初始值为 1e-2。默认为None。自动从config.json读取。
-- moe_router_enable_expert_bias: 在无辅助损失负载均衡策略中，带有动态专家偏置的 TopK 路由。路由决策基于路由分数与专家偏置之和。详情请参见：https://arxiv.org/abs/2408.15664。默认为None，自动从config.json读取。
 - moe_z_loss_coeff: z-loss 的缩放系数。默认为None。
 - moe_expert_capacity_factor: 每个专家的容量因子，None表示不会丢弃任何token。默认为None。
-- moe_shared_expert_overlap: 启用共享专家计算与调度器通信之间的重叠。如果不启用此选项，共享专家将在路由专家之后执行。仅在设置了`moe_shared_expert_intermediate_size`时有效。默认为False。
+- 🔥moe_shared_expert_overlap: 启用共享专家计算与调度器通信之间的重叠。如果不启用此选项，共享专家将在路由专家之后执行。仅在设置了`moe_shared_expert_intermediate_size`时有效。默认为False。
+- moe_token_drop_policy: 可选为'probs', 'position'。默认为'probs'。
+
+**mla参数**
+- multi_latent_attention:
+- q_lora_rank: Optional[int] = None
+    kv_lora_rank: Optional[int] = None
+    qk_head_dim: Optional[int] = None
+    qk_pos_emb_head_dim: Optional[int] = None
 
 **DPO参数**:
 - ref_load: ref_model的加载路径。默认为None，即设置为`load`。
