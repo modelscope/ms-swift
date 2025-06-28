@@ -10,27 +10,24 @@ from typing import Dict, Type
 
 import gradio as gr
 import json
-import torch
 from json import JSONDecodeError
 from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
-from swift.llm import RLHFArguments
+from swift.llm import ExportArguments, RLHFArguments
 from swift.llm.argument.base_args.base_args import get_supported_tuners
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.advanced import Advanced
 from swift.ui.llm_train.dataset import Dataset
-from swift.ui.llm_train.galore import Galore
 from swift.ui.llm_train.hyper import Hyper
-from swift.ui.llm_train.lisa import Lisa
-from swift.ui.llm_train.llamapro import LlamaPro
-from swift.ui.llm_train.lora import LoRA
 from swift.ui.llm_train.model import Model
+from swift.ui.llm_train.optimizer import Optimizer
 from swift.ui.llm_train.quantization import Quantization
 from swift.ui.llm_train.report_to import ReportTo
-from swift.ui.llm_train.rlhf import RLHF
 from swift.ui.llm_train.runtime import Runtime
 from swift.ui.llm_train.save import Save
 from swift.ui.llm_train.self_cog import SelfCog
+from swift.ui.llm_train.task import Task
+from swift.ui.llm_train.tuner import Tuner
 from swift.utils import get_device_count, get_logger
 
 logger = get_logger()
@@ -44,23 +41,21 @@ class LLMTrain(BaseUI):
         Dataset,
         Runtime,
         Save,
-        LoRA,
+        Optimizer,
+        Task,
+        Tuner,
         Hyper,
         Quantization,
         SelfCog,
         Advanced,
-        RLHF,
-        Lisa,
-        Galore,
-        LlamaPro,
         ReportTo,
     ]
 
     locale_dict: Dict[str, Dict] = {
         'llm_train': {
             'label': {
-                'zh': 'LLM训练',
-                'en': 'LLM Training',
+                'zh': 'LLM预训练/微调',
+                'en': 'LLM PT/SFT',
             }
         },
         'train_stage': {
@@ -214,7 +209,7 @@ class LLMTrain(BaseUI):
                 Dataset.build_ui(base_tab)
                 with gr.Accordion(elem_id='train_param', open=True):
                     with gr.Row():
-                        gr.Dropdown(elem_id='train_stage', choices=['pt', 'sft', 'rlhf'], value='sft', scale=3)
+                        gr.Dropdown(elem_id='train_stage', choices=['pt', 'sft'], value='sft', scale=3)
                         gr.Dropdown(elem_id='train_type', scale=2, choices=list(get_supported_tuners()))
                         gr.Dropdown(elem_id='tuner_backend', scale=2)
                     with gr.Row():
@@ -222,10 +217,10 @@ class LLMTrain(BaseUI):
                         gr.Dropdown(elem_id='torch_dtype', scale=4)
                         gr.Checkbox(elem_id='use_liger_kernel', scale=4)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
-                        gr.Textbox(elem_id='ddp_num', value='2', scale=4)
+                        gr.Textbox(elem_id='ddp_num', value='1', scale=4)
                 Hyper.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
-                with gr.Row():
+                with gr.Row(equal_height=True):
                     gr.Dropdown(
                         elem_id='gpu_id',
                         multiselect=True,
@@ -236,13 +231,11 @@ class LLMTrain(BaseUI):
                     gr.Checkbox(elem_id='dry_run', value=False, scale=4)
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
-                LoRA.build_ui(base_tab)
-                RLHF.build_ui(base_tab)
+                Tuner.build_ui(base_tab)
+                Optimizer.build_ui(base_tab)
                 Quantization.build_ui(base_tab)
-                Galore.build_ui(base_tab)
-                Lisa.build_ui(base_tab)
-                LlamaPro.build_ui(base_tab)
                 SelfCog.build_ui(base_tab)
+                Task.build_ui(base_tab)
                 Save.build_ui(base_tab)
                 ReportTo.build_ui(base_tab)
                 Advanced.build_ui(base_tab)
@@ -261,6 +254,12 @@ class LLMTrain(BaseUI):
                     ],
                     queue=True)
 
+                base_tab.element('gpu_id').change(
+                    cls.update_ddp_num,
+                    [base_tab.element('gpu_id'), base_tab.element('use_ddp')], base_tab.element('ddp_num'))
+                base_tab.element('use_ddp').change(
+                    cls.update_ddp_num,
+                    [base_tab.element('gpu_id'), base_tab.element('use_ddp')], base_tab.element('ddp_num'))
                 base_tab.element('running_tasks').change(
                     partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
                     list(base_tab.valid_elements().values()) + [cls.element('log')] + Runtime.all_plots)
@@ -278,25 +277,29 @@ class LLMTrain(BaseUI):
     def train(cls, *args):
         ignore_elements = ('logging_dir', 'more_params', 'train_stage', 'envs')
         default_args = cls.get_default_value_from_dataclass(RLHFArguments)
+        extra_default_args = cls.get_default_value_from_dataclass(ExportArguments)
         kwargs = {}
         kwargs_is_list = {}
         other_kwargs = {}
         more_params = {}
         more_params_cmd = ''
         keys = cls.valid_element_keys()
-        if cls.group == 'llm_grpo':
+        if cls.group in ('llm_grpo', 'llm_rlhf'):
             train_stage = 'rlhf'
         else:
             train_stage = 'sft'
         for key, value in zip(keys, args):
-            compare_value = default_args.get(key)
+            compare_value = default_args.get(key) if key != 'hub_private_repo' else extra_default_args.get(key)
             if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
                 value = int(value)
             elif isinstance(value, str) and re.fullmatch(cls.float_regex, value):
                 value = float(value)
             elif isinstance(value, str) and re.fullmatch(cls.bool_regex, value):
                 value = True if value.lower() == 'true' else False
-            if key not in ignore_elements and key in default_args and compare_value != value and value:
+                if compare_value in ('true', 'false'):
+                    value = str(value).lower()
+            if key not in ignore_elements and key in default_args and compare_value != value and (value or value
+                                                                                                  in (0, False)):
                 kwargs[key] = value if not isinstance(value, list) else ' '.join(value)
                 kwargs_is_list[key] = isinstance(value, list) or getattr(cls.element(key), 'is_list', False)
             else:
@@ -321,6 +324,13 @@ class LLMTrain(BaseUI):
         cmd = train_stage
         if kwargs.get('deepspeed'):
             more_params_cmd += f' --deepspeed {kwargs.pop("deepspeed")} '
+        use_liger_kernel = kwargs.get('use_liger_kernel', None)
+        if use_liger_kernel:
+            kwargs.pop('use_liger_kernel')
+
+        # filter kwargs
+        tabs_relation_dict = cls.prepare_sub_to_filter()
+        cls.remove_useless_args(kwargs, tabs_relation_dict)
         try:
             sft_args = RLHFArguments(
                 **{
@@ -351,6 +361,8 @@ class LLMTrain(BaseUI):
                 params += f'--{e} {cls.quote}{sep.join(all_args)}{cls.quote} '
             else:
                 params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
+        if use_liger_kernel:
+            params += f'--use_liger_kernel {cls.quote}{use_liger_kernel}{cls.quote}'
         params += more_params_cmd + ' '
         params += f'--add_version False --output_dir {sft_args.output_dir} ' \
                   f'--logging_dir {sft_args.logging_dir} --ignore_args_error True'
@@ -424,3 +436,39 @@ class LLMTrain(BaseUI):
             gr.Info(cls.locale('submit_alert', cls.lang)['value'])
         return run_command, sft_args.logging_dir, gr.update(open=True), Runtime.refresh_tasks(
             sft_args.output_dir), gr.update(choices=cls.list_cache(sft_args.model))
+
+    @classmethod
+    def prepare_sub_to_filter(cls):
+        tabs_relation_dict = {
+            key: val
+            for key, val in zip(['train_type', 'optimizer', 'task_type'],
+                                [Tuner.tabs_to_filter, Optimizer.tabs_to_filter, Task.tabs_to_filter])
+        }
+        return tabs_relation_dict
+
+    @classmethod
+    def remove_useless_args(cls, uncleaned_kwargs, tabs_relation_dict):
+        for target, tabs_to_filter in tabs_relation_dict.items():
+            target_value = uncleaned_kwargs.get(target)
+            if target == 'train_type' and target_value is None:
+                target_value = 'lora'
+            elif target == 'optimizer' and target_value is None:
+                if uncleaned_kwargs.get('use_galore'):
+                    target_value = 'galore'
+                if uncleaned_kwargs.get('lorap_lr_ratio'):
+                    target_value = 'lorap'
+                if uncleaned_kwargs.get('vit_lr') or uncleaned_kwargs.get('aligner_lr'):
+                    target_value = 'multimodal'
+
+            for tab_key in tabs_to_filter.keys():
+                if tab_key == 'lora' and target_value in ('longlora', 'adalora'):
+                    continue
+                if tab_key == 'lisa' and target_value == 'full' and uncleaned_kwargs.get('lisa_activated_layers'):
+                    continue
+                if tab_key == 'lora_ga' and target_value == 'lora' and uncleaned_kwargs.get(
+                        'init_weights') == 'lora-ga':
+                    continue
+                if tab_key != target_value:
+                    for arg in tabs_to_filter[tab_key]:
+                        if uncleaned_kwargs.get(arg) is not None:
+                            uncleaned_kwargs.pop(arg)

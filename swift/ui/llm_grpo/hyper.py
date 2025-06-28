@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.ui.llm_train.model import Model
+from swift.ui.llm_train.hyper import Hyper
 
 
-class GRPOModel(Model):
+class GRPOHyper(Hyper):
+
     group = 'llm_grpo'

@@ -142,7 +142,7 @@ class LLMInfer(BaseUI):
                     infer_model_type = gr.Textbox(elem_id='infer_model_type', scale=4)
                     gr.Textbox(elem_id='port', lines=1, value='8000', scale=4)
                 chatbot = gr.Chatbot(elem_id='chatbot', elem_classes='control-height')
-                with gr.Row():
+                with gr.Row(equal_height=True):
                     prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
                     with gr.Tabs(visible=cls.is_multimodal):
                         with gr.TabItem(label='Image'):

@@ -17,16 +17,6 @@ class SelfCog(BaseUI):
                 'en': 'Self cognition settings'
             },
         },
-        'self_cognition_sample': {
-            'label': {
-                'zh': '数据及采样条数',
-                'en': 'Dataset sample size'
-            },
-            'info': {
-                'zh': '设置数据集采样的条数',
-                'en': 'Set the dataset sample size'
-            }
-        },
         'model_name': {
             'label': {
                 'zh': '模型认知名称',

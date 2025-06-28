@@ -6,51 +6,55 @@ import gradio as gr
 
 from swift.llm.argument.base_args.base_args import get_supported_tuners
 from swift.ui.base import BaseUI
-from swift.ui.llm_grpo.advanced import GRPOAdvanced
-from swift.ui.llm_grpo.dataset import GRPODataset
-from swift.ui.llm_grpo.grpo_advanced import GrpoAdvanced
-from swift.ui.llm_grpo.hyper import GRPOHyper
-from swift.ui.llm_grpo.model import GRPOModel
-from swift.ui.llm_grpo.optimizer import GRPOOptimizer
-from swift.ui.llm_grpo.quantization import GRPOQuantization
-from swift.ui.llm_grpo.ref_model import RefModel
-from swift.ui.llm_grpo.report_to import GRPOReportTo
-from swift.ui.llm_grpo.reward import Reward
-from swift.ui.llm_grpo.rollout import Rollout
-from swift.ui.llm_grpo.runtime import GRPORuntime
-from swift.ui.llm_grpo.save import GRPOSave
-from swift.ui.llm_grpo.tuner import GRPOTuner
+from swift.ui.llm_rlhf.advanced import RLHFAdvanced
+from swift.ui.llm_rlhf.dataset import RLHFDataset
+from swift.ui.llm_rlhf.hyper import RLHFHyper
+from swift.ui.llm_rlhf.model import RLHFModel
+from swift.ui.llm_rlhf.optimizer import RLHFOptimizer
+from swift.ui.llm_rlhf.quantization import RLHFQuantization
+from swift.ui.llm_rlhf.report_to import RLHFReportTo
+from swift.ui.llm_rlhf.rlhf import RLHF
+from swift.ui.llm_rlhf.runtime import RLHFRuntime
+from swift.ui.llm_rlhf.save import RLHFSave
+from swift.ui.llm_rlhf.tuner import RLHFTuner
 from swift.ui.llm_train.llm_train import LLMTrain
 from swift.utils import get_device_count, get_logger
 
 logger = get_logger()
 
 
-class LLMGRPO(LLMTrain):
-    group = 'llm_grpo'
+class LLMRLHF(LLMTrain):
+    group = 'llm_rlhf'
 
     sub_ui = [
-        GRPOModel,
-        GRPODataset,
-        Reward,
-        GRPORuntime,
-        Rollout,
-        GRPOSave,
-        GRPOTuner,
-        GRPOOptimizer,
-        GRPOHyper,
-        GRPOQuantization,
-        GRPOAdvanced,
-        RefModel,
-        GrpoAdvanced,
-        GRPOReportTo,
+        RLHFModel,
+        RLHFDataset,
+        RLHFHyper,
+        RLHFRuntime,
+        RLHFTuner,
+        RLHFOptimizer,
+        RLHF,
+        RLHFQuantization,
+        RLHFSave,
+        RLHFReportTo,
+        RLHFAdvanced,
     ]
 
     locale_dict: Dict[str, Dict] = {
-        'llm_grpo': {
+        'llm_rlhf': {
             'label': {
-                'zh': 'LLM GRPO',
-                'en': 'LLM GRPO',
+                'zh': 'LLM RLHF',
+                'en': 'LLM RLHF',
+            }
+        },
+        'train_stage': {
+            'label': {
+                'zh': '训练Stage',
+                'en': 'Train Stage'
+            },
+            'info': {
+                'zh': '请注意选择与此匹配的数据集，人类对齐配置在页面下方',
+                'en': 'Please choose matched dataset, RLHF settings is at the bottom of the page'
             }
         },
         'submit_alert': {
@@ -180,27 +184,26 @@ class LLMGRPO(LLMTrain):
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.TabItem(elem_id='llm_grpo', label=''):
+        with gr.TabItem(elem_id='llm_rlhf', label=''):
             default_device = 'cpu'
             device_count = get_device_count()
             if device_count > 0:
                 default_device = '0'
             with gr.Blocks():
-                GRPOModel.build_ui(base_tab)
-                GRPODataset.build_ui(base_tab)
-                Reward.build_ui(base_tab)
+                RLHFModel.build_ui(base_tab)
+                RLHFDataset.build_ui(base_tab)
                 with gr.Accordion(elem_id='train_param', open=True):
                     with gr.Row():
-                        gr.Dropdown(elem_id='train_type', scale=4, choices=list(get_supported_tuners()))
-                        gr.Dropdown(elem_id='tuner_backend', scale=4)
-                        gr.Textbox(elem_id='seed', scale=4)
-                        gr.Dropdown(elem_id='torch_dtype', scale=4)
+                        gr.Dropdown(elem_id='train_type', scale=2, choices=list(get_supported_tuners()))
+                        gr.Dropdown(elem_id='tuner_backend', scale=2)
+                        gr.Textbox(elem_id='seed', scale=2)
+                        gr.Dropdown(elem_id='torch_dtype', scale=2)
                     with gr.Row():
                         gr.Checkbox(elem_id='use_liger_kernel', scale=4)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                         gr.Textbox(elem_id='ddp_num', value='1', scale=4)
-                GRPOHyper.build_ui(base_tab)
-                GRPORuntime.build_ui(base_tab)
+                RLHFHyper.build_ui(base_tab)
+                RLHFRuntime.build_ui(base_tab)
                 with gr.Row(equal_height=True):
                     gr.Dropdown(
                         elem_id='gpu_id',
@@ -212,19 +215,13 @@ class LLMGRPO(LLMTrain):
                     gr.Checkbox(elem_id='dry_run', value=False, scale=4)
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
-                Rollout.build_ui(base_tab)
-                GRPOTuner.build_ui(base_tab)
-                RefModel.build_ui(base_tab)
-                GRPOQuantization.build_ui(base_tab)
-                GRPOSave.build_ui(base_tab)
-                GRPOReportTo.build_ui(base_tab)
-                GrpoAdvanced.build_ui(base_tab)
-                GRPOAdvanced.build_ui(base_tab)
-
-                cls.element('train_type').change(
-                    GRPOHyper.update_lr,
-                    inputs=[base_tab.element('train_type')],
-                    outputs=[cls.element('learning_rate')])
+                RLHFTuner.build_ui(base_tab)
+                RLHFOptimizer.build_ui(base_tab)
+                RLHF.build_ui(base_tab)
+                RLHFQuantization.build_ui(base_tab)
+                RLHFSave.build_ui(base_tab)
+                RLHFReportTo.build_ui(base_tab)
+                RLHFAdvanced.build_ui(base_tab)
 
                 base_tab.element('gpu_id').change(
                     cls.update_ddp_num,
@@ -232,6 +229,10 @@ class LLMGRPO(LLMTrain):
                 base_tab.element('use_ddp').change(
                     cls.update_ddp_num,
                     [base_tab.element('gpu_id'), base_tab.element('use_ddp')], base_tab.element('ddp_num'))
+                cls.element('train_type').change(
+                    RLHFHyper.update_lr,
+                    inputs=[base_tab.element('train_type')],
+                    outputs=[cls.element('learning_rate')])
 
                 submit.click(
                     cls.train_local,
@@ -245,19 +246,18 @@ class LLMGRPO(LLMTrain):
                     queue=True)
 
                 base_tab.element('running_tasks').change(
-                    partial(GRPORuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                    list(base_tab.valid_elements().values()) + [cls.element('log')] + GRPORuntime.all_plots)
-                GRPORuntime.element('kill_task').click(
-                    GRPORuntime.kill_task,
-                    [GRPORuntime.element('running_tasks')],
-                    [GRPORuntime.element('running_tasks')] + [GRPORuntime.element('log')] + GRPORuntime.all_plots,
-                ).then(GRPORuntime.reset, [], [GRPORuntime.element('logging_dir')] + [GRPOHyper.element('output_dir')])
+                    partial(RLHFRuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
+                    list(base_tab.valid_elements().values()) + [cls.element('log')] + RLHFRuntime.all_plots)
+                RLHFRuntime.element('kill_task').click(
+                    RLHFRuntime.kill_task,
+                    [RLHFRuntime.element('running_tasks')],
+                    [RLHFRuntime.element('running_tasks')] + [RLHFRuntime.element('log')] + RLHFRuntime.all_plots,
+                ).then(RLHFRuntime.reset, [], [RLHFRuntime.element('logging_dir')] + [RLHFHyper.element('output_dir')])
 
     @classmethod
     def prepare_sub_to_filter(cls):
         tabs_relation_dict = {
             key: val
-            for key, val in zip(['train_type', 'optimizer', 'vllm_mode'],
-                                [GRPOTuner.tabs_to_filter, GRPOOptimizer.tabs_to_filter, Rollout.tabs_to_filter])
+            for key, val in zip(['train_type', 'optimizer'], [RLHFTuner.tabs_to_filter, RLHFOptimizer.tabs_to_filter])
         }
         return tabs_relation_dict

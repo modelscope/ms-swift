@@ -117,14 +117,14 @@ class Advanced(BaseUI):
                 'en': 'Set the max grad norm',
             }
         },
-        'predict_with_generate': {
+        'sequence_parallel_size': {
             'label': {
-                'zh': '使用生成指标代替loss',
-                'en': 'Use generate metric instead of loss',
+                'zh': '序列并行大小',
+                'en': 'sequence parallel size',
             },
             'info': {
-                'zh': '验证时使用generate/Rouge代替loss',
-                'en': 'Use model.generate/Rouge instead of loss',
+                'zh': '当前支持CPT/SFT/DPO/GRPO',
+                'en': 'Currently supports CPT/SFT/DPO/GRPO',
             }
         },
         'deepspeed': {
@@ -160,5 +160,7 @@ class Advanced(BaseUI):
                         allow_custom_value=True,
                         value=None,
                         choices=['zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload'])
+                    gr.Textbox(elem_id='sequence_parallel_size', lines=1, scale=20)
+
                 with gr.Row():
                     gr.Textbox(elem_id='more_params', lines=4, scale=20)
