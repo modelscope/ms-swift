@@ -71,6 +71,10 @@ class MegatronArguments(ExtraMegatronArguments):
     optimizer_cpu_offload: bool = False
     optimizer_offload_fraction: float = 1.
     use_precision_aware_optimizer: bool = False
+    main_grads_dtype: Literal['fp32', 'bf16'] = 'fp32'
+    main_params_dtype: Literal['fp32', 'fp16'] = 'fp32'
+    exp_avg_dtype: Literal['fp32', 'fp16', 'bf16', 'fp8'] = 'fp32'
+    exp_avg_sq_dtype: Literal['fp32', 'fp16', 'bf16', 'fp8'] = 'fp32'
     dataloader_type: Literal['single', 'cyclic', 'external'] = 'cyclic'
     manual_gc: bool = False
     manual_gc_interval: int = 0
@@ -176,6 +180,13 @@ class MegatronArguments(ExtraMegatronArguments):
     kv_lora_rank: Optional[int] = None
     qk_head_dim: Optional[int] = None
     qk_pos_emb_head_dim: Optional[int] = None
+
+    # fp8
+    fp8_format: Literal['e4m3', 'hybrid'] = None
+    fp8_recipe: Literal['tensorwise', 'delayed', 'mxfp8', 'blockwise'] = 'delayed'
+    fp8_amax_history_len: int = 1024
+    fp8_amax_compute_algo: Literal['most_recent', 'max'] = 'max'
+    fp8_param_gather: bool = False
 
     # mixed precision
     fp16: Optional[bool] = None

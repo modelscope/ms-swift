@@ -105,6 +105,7 @@ def test_convert_precision(hf_model, mg_model, processor, torch_dtype=torch.floa
     # mg_torch_dtype = None
     # packed_seq_params = get_packed_seq_params(position_ids)
     # attention_mask = None
+    mg_model.config.fp8 = None  # compat fp8
     mg_modules = _find_modules(mg_model)
     with torch.inference_mode(), _model_cpu_forward_context(
             mg_modules, mg_torch_dtype, 'cuda', share_embedding=share_embedding):
