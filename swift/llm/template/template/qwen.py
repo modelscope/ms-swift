@@ -220,8 +220,15 @@ class Qwen2VLTemplate(Template):
                 return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
             video = inputs.videos[index]
-            if os.path.isdir(video):
-                video = [os.path.join(video, fname) for fname in os.listdir(video)]
+            # TODO hxs modify
+            if isinstance(video, list):  # 已经是列表
+                pass
+                # print("Image list repalces the video!")  # 无需处理
+            else:
+                if os.path.isdir(video):
+                    video = [os.path.join(video, f) for f in os.listdir(video)]
+            # if os.path.isdir(video):
+            #     video = [os.path.join(video, fname) for fname in os.listdir(video)]
             video = fetch_video({'video': video})
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)

@@ -191,6 +191,28 @@ class DatasetLoader:
         if len(datasets) == 1:
             return datasets[0]
         return interleave_datasets(datasets, *args, **kwargs)
+    # TODO hxs modify
+    @staticmethod
+    def _remove_metadata_and_save(jsonl_files: List[str]) -> List[str]:
+        """将多个 JSONL 文件中的 metadata 字段去除，并写入新的临时文件"""
+        temp_files = []
+        for path in jsonl_files:
+            import json
+            import tempfile
+            temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.jsonl')
+            with open(path, 'r', encoding='utf-8') as infile, temp_file as outfile:
+                for line in infile:
+                    if not line.strip():
+                        continue
+                    try:
+                        item = json.loads(line)
+                        item.pop('metadata', None)  # 去除 metadata 字段
+                        json.dump(item, outfile, ensure_ascii=False)
+                        outfile.write('\n')
+                    except json.JSONDecodeError:
+                        continue
+            temp_files.append(temp_file.name)
+        return temp_files
 
     @staticmethod
     def _load_dataset_path(
@@ -205,11 +227,46 @@ class DatasetLoader:
         remove_unused_columns: bool = True,
     ) -> HfDataset:
         ext = os.path.splitext(dataset_path)[1].lstrip('.')
-        file_type = {'jsonl': 'json', 'txt': 'text'}.get(ext) or ext
         kwargs = {'split': 'train', 'streaming': streaming, 'num_proc': num_proc}
-        if file_type == 'csv':
-            kwargs['na_filter'] = False
-        dataset = hf_load_dataset(file_type, data_files=dataset_path, **kwargs)
+        temp_files = []  # 用于记录临时文件，便于清理
+        try:
+            if ext in ['yaml', 'yml']:
+                import yaml
+                import glob
+                with open(dataset_path, 'r') as f:
+                    config = yaml.safe_load(f)
+
+                jsonl_files = []
+                for dataset_info in config.get('Datasets', {}).values():
+                    meta_dir = dataset_info.get('MetaFiles')
+                    if meta_dir:
+                        jsonl_files.extend(glob.glob(os.path.join(meta_dir, '*.jsonl')))
+                if not jsonl_files:
+                    raise ValueError(f"No JSONL files found in MetaFiles directories specified in {dataset_path}")
+
+                temp_files = DatasetLoader._remove_metadata_and_save(jsonl_files)
+                dataset = hf_load_dataset('json', data_files=temp_files, **kwargs)
+
+            else:
+                file_type = {'jsonl': 'json', 'txt': 'text'}.get(ext) or ext
+                if file_type == 'csv':
+                    kwargs['na_filter'] = False
+
+                if file_type == 'json' and ext == 'jsonl':
+                    temp_files = DatasetLoader._remove_metadata_and_save([dataset_path])
+                    dataset = hf_load_dataset('json', data_files=temp_files, **kwargs)
+                else:
+                    dataset = hf_load_dataset(file_type, data_files=dataset_path, **kwargs)
+
+        finally:
+            # 清理临时文件
+            for f in temp_files:
+                try:
+                    os.remove(f)
+                except Exception as e:
+                    print(f"Warning: Failed to remove temp file {f}: {e}")
+
+        # 后处理
         if columns:
             dataset = RowPreprocessor.safe_rename_columns(dataset, columns)
         dataset = dataset_meta.preprocess_func(
@@ -217,6 +274,32 @@ class DatasetLoader:
         if remove_unused_columns:
             dataset = RowPreprocessor.remove_useless_columns(dataset)
         return dataset
+    
+    # @staticmethod
+    # def _load_dataset_path(
+    #     dataset_path: str,
+    #     dataset_meta: DatasetMeta,
+    #     *,
+    #     num_proc: int = 1,
+    #     load_from_cache_file: bool = True,
+    #     strict: bool = False,
+    #     streaming: bool = False,
+    #     columns: Optional[Dict[str, str]] = None,
+    #     remove_unused_columns: bool = True,
+    # ) -> HfDataset:
+    #     ext = os.path.splitext(dataset_path)[1].lstrip('.')
+    #     file_type = {'jsonl': 'json', 'txt': 'text'}.get(ext) or ext
+    #     kwargs = {'split': 'train', 'streaming': streaming, 'num_proc': num_proc}
+    #     if file_type == 'csv':
+    #         kwargs['na_filter'] = False
+    #     dataset = hf_load_dataset(file_type, data_files=dataset_path, **kwargs)
+    #     if columns:
+    #         dataset = RowPreprocessor.safe_rename_columns(dataset, columns)
+    #     dataset = dataset_meta.preprocess_func(
+    #         dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)
+    #     if remove_unused_columns:
+    #         dataset = RowPreprocessor.remove_useless_columns(dataset)
+    #     return dataset
 
     @staticmethod
     def _load_repo_dataset(
