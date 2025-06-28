@@ -64,8 +64,8 @@ class LLMTrain(BaseUI):
                 'en': 'Train Stage'
             },
             'info': {
-                'zh': '请注意选择与此匹配的数据集，人类对齐配置在页面下方',
-                'en': 'Please choose matched dataset, RLHF settings is at the bottom of the page'
+                'zh': '请注意选择与此匹配的数据集',
+                'en': 'Please choose matched dataset'
             }
         },
         'submit_alert': {
@@ -171,7 +171,7 @@ class LLMTrain(BaseUI):
                 'en': 'Tuner backend'
             },
             'info': {
-                'zh': 'tuner实现框架',
+                'zh': 'Tuner实现框架',
                 'en': 'The tuner backend'
             }
         },
@@ -184,6 +184,42 @@ class LLMTrain(BaseUI):
                 'zh': 'Liger kernel可以有效降低显存使用',
                 'en': 'Liger kernel can reduce memory usage'
             }
+        },
+        'sequence_parallel_size': {
+            'label': {
+                'zh': '序列并行大小',
+                'en': 'Sequence parallel size',
+            },
+            'info': {
+                'zh': '当前支持CPT/SFT/DPO/GRPO',
+                'en': 'Currently supports CPT/SFT/DPO/GRPO',
+            }
+        },
+        'deepspeed': {
+            'label': {
+                'zh': 'DeepSpeed',
+                'en': 'DeepSpeed',
+            },
+            'info': {
+                'zh': '可以选择下拉列表，也支持传入路径',
+                'en': 'Choose from the dropbox or fill in a valid path',
+            }
+        },
+        'more_params': {
+            'label': {
+                'zh': '其他高级参数',
+                'en': 'Other params'
+            },
+            'info': {
+                'zh': '以json格式或--xxx xxx命令行格式填入',
+                'en': 'Fill in with json format or --xxx xxx cmd format'
+            }
+        },
+        'extra_params': {
+            'label': {
+                'zh': '其他参数设置',
+                'en': 'Extra settings'
+            },
         },
         'train_param': {
             'label': {
@@ -209,15 +245,22 @@ class LLMTrain(BaseUI):
                 Dataset.build_ui(base_tab)
                 with gr.Accordion(elem_id='train_param', open=True):
                     with gr.Row():
-                        gr.Dropdown(elem_id='train_stage', choices=['pt', 'sft'], value='sft', scale=3)
-                        gr.Dropdown(elem_id='train_type', scale=2, choices=list(get_supported_tuners()))
-                        gr.Dropdown(elem_id='tuner_backend', scale=2)
-                    with gr.Row():
+                        gr.Dropdown(elem_id='train_stage', choices=['pt', 'sft'], value='sft', scale=4)
+                        gr.Dropdown(elem_id='train_type', scale=4, choices=list(get_supported_tuners()))
+                        gr.Dropdown(elem_id='tuner_backend', scale=4)
                         gr.Textbox(elem_id='seed', scale=4)
                         gr.Dropdown(elem_id='torch_dtype', scale=4)
+                    with gr.Row():
                         gr.Checkbox(elem_id='use_liger_kernel', scale=4)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                         gr.Textbox(elem_id='ddp_num', value='1', scale=4)
+                        gr.Dropdown(
+                            elem_id='deepspeed',
+                            scale=4,
+                            allow_custom_value=True,
+                            value=None,
+                            choices=['zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload'])
+                        gr.Textbox(elem_id='sequence_parallel_size', lines=1, scale=4)
                 Hyper.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
                 with gr.Row(equal_height=True):
@@ -233,12 +276,16 @@ class LLMTrain(BaseUI):
 
                 Tuner.build_ui(base_tab)
                 Optimizer.build_ui(base_tab)
-                Quantization.build_ui(base_tab)
-                SelfCog.build_ui(base_tab)
                 Task.build_ui(base_tab)
-                Save.build_ui(base_tab)
-                ReportTo.build_ui(base_tab)
-                Advanced.build_ui(base_tab)
+                with gr.Accordion(elem_id='extra_params', open=True):
+                    with gr.Tabs():
+                        Advanced.build_ui(base_tab)
+                        Quantization.build_ui(base_tab)
+                        SelfCog.build_ui(base_tab)
+                        Save.build_ui(base_tab)
+                        ReportTo.build_ui(base_tab)
+                    with gr.Row():
+                        gr.Textbox(elem_id='more_params', lines=4, scale=20)
 
                 cls.element('train_type').change(
                     Hyper.update_lr, inputs=[base_tab.element('train_type')], outputs=[cls.element('learning_rate')])
@@ -331,6 +378,8 @@ class LLMTrain(BaseUI):
         # filter kwargs
         tabs_relation_dict = cls.prepare_sub_to_filter()
         cls.remove_useless_args(kwargs, tabs_relation_dict)
+        if cls.group == 'rlhf':
+            cls.filter_rlhf_args(kwargs)
         try:
             sft_args = RLHFArguments(
                 **{

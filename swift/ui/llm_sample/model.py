@@ -48,32 +48,32 @@ class Model(BaseUI):
         },
         'system': {
             'label': {
-                'zh': 'system字段',
-                'en': 'system'
+                'zh': 'System字段',
+                'en': 'System'
             },
             'info': {
-                'zh': 'system字段支持在加载模型后修改',
-                'en': 'system can be modified after the model weights loaded'
+                'zh': 'System字段支持在加载模型后修改',
+                'en': 'System can be modified after the model weights loaded'
             }
         },
         'prm_model': {
             'label': {
-                'zh': '过程奖励模型的类型',
-                'en': 'prm_model'
+                'zh': '过程奖励模型',
+                'en': 'Process Reward Model'
             },
             'info': {
                 'zh': '可以是模型id，或者plugin中定义的prm key',
-                'en': 'it can be a model id, or a prm key defined in the plugin'
+                'en': 'It can be a model id, or a prm key defined in the plugin'
             }
         },
         'orm_model': {
             'label': {
-                'zh': '结果奖励模型的类型',
-                'en': 'orm_model'
+                'zh': '结果奖励模型',
+                'en': 'Outcome Reward Model'
             },
             'info': {
                 'zh': '通常是通配符或测试用例等，定义在plugin中',
-                'en': 'usually a wildcard or test case, etc., defined in the plugin'
+                'en': 'Usually a wildcard or test case, etc., defined in the plugin'
             }
         },
     }

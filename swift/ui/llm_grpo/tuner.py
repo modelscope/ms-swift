@@ -19,8 +19,7 @@ class GRPOTuner(Tuner):
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='tuner_params', open=False):
             with gr.Tabs():
-                with gr.TabItem(elem_id='lora_tab'):
-                    GRPOLoRA.build_ui(base_tab)
+                GRPOLoRA.build_ui(base_tab)
                 with gr.TabItem(elem_id='llamapro_tab'):
                     with gr.Blocks():
                         with gr.Row():
@@ -60,10 +59,6 @@ class GRPOTuner(Tuner):
                                 value='stable',
                                 choices=['gd', 'unit', 'stable', 'weights'])
                             gr.Textbox(elem_id='lora_ga_stable_gamma', value='16', scale=20)
-                with gr.TabItem(elem_id='longlora'):
-                    with gr.Blocks():
-                        with gr.Row():
-                            pass
                 with gr.TabItem(elem_id='reft_tab'):
                     with gr.Blocks():
                         with gr.Row():

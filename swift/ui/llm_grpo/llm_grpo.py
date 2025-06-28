@@ -156,7 +156,7 @@ class LLMGRPO(LLMTrain):
                 'en': 'Tuner backend'
             },
             'info': {
-                'zh': 'tuner实现框架',
+                'zh': 'Tuner实现框架',
                 'en': 'The tuner backend'
             }
         },
@@ -169,6 +169,42 @@ class LLMGRPO(LLMTrain):
                 'zh': 'Liger kernel可以有效降低显存使用',
                 'en': 'Liger kernel can reduce memory usage'
             }
+        },
+        'sequence_parallel_size': {
+            'label': {
+                'zh': '序列并行大小',
+                'en': 'Sequence parallel size',
+            },
+            'info': {
+                'zh': '当前支持CPT/SFT/DPO/GRPO',
+                'en': 'Currently supports CPT/SFT/DPO/GRPO',
+            }
+        },
+        'deepspeed': {
+            'label': {
+                'zh': 'DeepSpeed',
+                'en': 'DeepSpeed',
+            },
+            'info': {
+                'zh': '可以选择下拉列表，也支持传入路径',
+                'en': 'Choose from the dropbox or fill in a valid path',
+            }
+        },
+        'more_params': {
+            'label': {
+                'zh': '其他高级参数',
+                'en': 'Other params'
+            },
+            'info': {
+                'zh': '以json格式或--xxx xxx命令行格式填入',
+                'en': 'Fill in with json format or --xxx xxx cmd format'
+            }
+        },
+        'extra_params': {
+            'label': {
+                'zh': '其他参数设置',
+                'en': 'Extra settings'
+            },
         },
         'train_param': {
             'label': {
@@ -199,6 +235,13 @@ class LLMGRPO(LLMTrain):
                         gr.Checkbox(elem_id='use_liger_kernel', scale=4)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                         gr.Textbox(elem_id='ddp_num', value='1', scale=4)
+                        gr.Dropdown(
+                            elem_id='deepspeed',
+                            scale=4,
+                            allow_custom_value=True,
+                            value=None,
+                            choices=['zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload'])
+                        gr.Textbox(elem_id='sequence_parallel_size', lines=1, scale=4)
                 GRPOHyper.build_ui(base_tab)
                 GRPORuntime.build_ui(base_tab)
                 with gr.Row(equal_height=True):
@@ -215,11 +258,15 @@ class LLMGRPO(LLMTrain):
                 Rollout.build_ui(base_tab)
                 GRPOTuner.build_ui(base_tab)
                 RefModel.build_ui(base_tab)
-                GRPOQuantization.build_ui(base_tab)
-                GRPOSave.build_ui(base_tab)
-                GRPOReportTo.build_ui(base_tab)
-                GrpoAdvanced.build_ui(base_tab)
-                GRPOAdvanced.build_ui(base_tab)
+                with gr.Accordion(elem_id='extra_params', open=True):
+                    with gr.Tabs():
+                        GrpoAdvanced.build_ui(base_tab)
+                        GRPOAdvanced.build_ui(base_tab)
+                        GRPOQuantization.build_ui(base_tab)
+                        GRPOSave.build_ui(base_tab)
+                        GRPOReportTo.build_ui(base_tab)
+                    with gr.Row():
+                        gr.Textbox(elem_id='more_params', lines=4, scale=20)
 
                 cls.element('train_type').change(
                     GRPOHyper.update_lr,

@@ -44,8 +44,8 @@ class Dataset(BaseUI):
         },
         'padding_free': {
             'label': {
-                'zh': 'padding free',
-                'en': 'padding free'
+                'zh': '无填充批处理',
+                'en': 'Padding-free batching'
             },
             'info': {
                 'zh': '将一个batch中的数据进行展平而避免数据padding',

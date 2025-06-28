@@ -35,7 +35,7 @@ class LLMRollout(BaseUI):
         'port': {
             'label': {
                 'zh': '端口',
-                'en': 'port'
+                'en': 'Port'
             },
         },
         'llm_rollout': {
@@ -52,7 +52,7 @@ class LLMRollout(BaseUI):
         },
         'load_alert': {
             'value': {
-                'zh': 'rollout中，请点击"展示rollout状态"查看',
+                'zh': 'Rollout中，请点击"展示rollout状态"查看',
                 'en': 'Start to rollout, '
                 'please Click "Show running '
                 'status" to view details',

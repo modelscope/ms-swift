@@ -13,56 +13,56 @@ class Rollout(BaseUI):
     locale_dict = {
         'temperature': {
             'label': {
-                'zh': 'temperature',
-                'en': 'temperature'
+                'zh': '采样温度',
+                'en': 'Temperature'
             },
         },
         'top_k': {
             'label': {
-                'zh': 'top_k',
-                'en': 'top_k'
+                'zh': 'Top-k',
+                'en': 'Top-k'
             },
         },
         'top_p': {
             'label': {
-                'zh': 'top_p',
-                'en': 'top_p'
+                'zh': 'Top-p',
+                'en': 'Top-p'
             },
         },
         'repetition_penalty': {
             'label': {
-                'zh': '重复惩罚项',
-                'en': 'repetition penalty'
+                'zh': '重复惩罚',
+                'en': 'Repetition Penalty'
             },
         },
         'enable_prefix_caching': {
             'label': {
                 'zh': '开启前缀缓存',
-                'en': 'enable prefix cache'
+                'en': 'Enable prefix cache'
             },
         },
         'tensor_parallel_size': {
             'label': {
                 'zh': '张量并行大小',
-                'en': 'tensor parallel size'
+                'en': 'Tensor parallel size'
             },
         },
         'data_parallel_size': {
             'label': {
                 'zh': '数据并行大小',
-                'en': 'data parallel size'
+                'en': 'Data parallel size'
             },
         },
         'pipeline_parallel_size': {
             'label': {
-                'zh': 'pipeline并行大小',
-                'en': 'pipeline parallel size'
+                'zh': '流水线并行大小',
+                'en': 'Pipeline parallel size'
             },
         },
         'max_model_len': {
             'label': {
                 'zh': '模型支持的最大长度',
-                'en': 'max model len'
+                'en': 'Max model len'
             },
         },
         'gpu_memory_utilization': {

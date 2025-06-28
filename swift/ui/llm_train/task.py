@@ -13,20 +13,20 @@ class Task(BaseUI):
     locale_dict = {
         'embed_tab': {
             'label': {
-                'zh': 'embedding',
-                'en': 'embedding'
+                'zh': '文本嵌入',
+                'en': 'Embedding'
             },
         },
         'loss_type': {
             'label': {
-                'zh': 'loss类型',
-                'en': 'loss type'
+                'zh': 'Loss类型',
+                'en': 'Loss type'
             }
         },
         'seq_cls_tab': {
             'label': {
                 'zh': '序列分类',
-                'en': 'sequence classification'
+                'en': 'Sequence Classification'
             },
         },
         'num_labels': {
@@ -37,11 +37,11 @@ class Task(BaseUI):
         },
         'use_chat_template': {
             'label': {
-                'zh': '使用chat模板',
+                'zh': '使用对话模板',
                 'en': 'use chat template'
             },
             'info': {
-                'zh': '使用chat模板或generation模板',
+                'zh': '使用对话模板或生成模板',
                 'en': 'Use the chat template or generation template'
             }
         },

@@ -22,8 +22,8 @@ class RLHFRuntime(Runtime):
         },
         'tb_not_found': {
             'value': {
-                'zh': 'tensorboard未安装,使用pip install tensorboard进行安装',
-                'en': 'tensorboard not found, install it by pip install tensorboard',
+                'zh': 'Tensorboard未安装,使用pip install tensorboard进行安装',
+                'en': 'Tensorboard not found, install it by pip install tensorboard',
             }
         },
         'running_cmd': {

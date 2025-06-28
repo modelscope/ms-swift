@@ -156,8 +156,8 @@ class Runtime(BaseUI):
         },
         'tb_not_found': {
             'value': {
-                'zh': 'tensorboard未安装,使用pip install tensorboard进行安装',
-                'en': 'tensorboard not found, install it by pip install tensorboard',
+                'zh': 'TensorBoard未安装,使用`pip install tensorboard`进行安装',
+                'en': 'TensorBoard not found, install it by `pip install tensorboard`',
             }
         },
         'running_cmd': {
@@ -173,29 +173,31 @@ class Runtime(BaseUI):
         'show_running_cmd': {
             'value': {
                 'zh': '展示运行命令',
-                'en': 'Show running Command line'
+                'en': 'Show running command line'
             },
         },
         'show_sh': {
             'label': {
                 'zh': '展示sh命令行',
-                'en': 'Show sh Command line'
+                'en': 'Show sh command line'
             },
         },
         'cmd_sh': {
             'label': {
                 'zh': '训练命令行',
-                'en': 'Training Command line'
+                'en': 'Training command line'
             },
             'info': {
-                'zh': '点击下方的`保存训练命令`可以保存sh脚本',
-                'en': 'Click the `Save training command` below to save the sh script'
+                'zh':
+                '如果训练命令行没有展示请再次点击`展示运行命令`，点击下方的`保存训练命令`可以保存sh脚本',
+                'en': ('Please press "Show running command line" if the content is none, '
+                       'click the `Save training command` below to save the sh script')
             }
         },
         'save_cmd_as_sh': {
             'value': {
                 'zh': '保存训练命令',
-                'en': 'Save training Command'
+                'en': 'Save training command'
             }
         },
         'save_cmd_alert': {
@@ -239,7 +241,7 @@ class Runtime(BaseUI):
             },
             'info': {
                 'zh': '如果日志无更新请再次点击"展示日志内容"',
-                'en': 'Please press "Show log" if the log content is not updating'
+                'en': 'Please press "Show running status" if the log content is not updating'
             }
         },
         'running_tasks': {

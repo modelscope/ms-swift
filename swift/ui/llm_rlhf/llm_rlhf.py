@@ -43,7 +43,7 @@ class LLMRLHF(LLMTrain):
     locale_dict: Dict[str, Dict] = {
         'llm_rlhf': {
             'label': {
-                'zh': 'LLM RLHF',
+                'zh': 'LLM人类对齐',
                 'en': 'LLM RLHF',
             }
         },
@@ -53,8 +53,8 @@ class LLMRLHF(LLMTrain):
                 'en': 'Train Stage'
             },
             'info': {
-                'zh': '请注意选择与此匹配的数据集，人类对齐配置在页面下方',
-                'en': 'Please choose matched dataset, RLHF settings is at the bottom of the page'
+                'zh': '请注意选择与此匹配的数据集',
+                'en': 'Please choose matched dataset'
             }
         },
         'submit_alert': {
@@ -97,6 +97,12 @@ class LLMRLHF(LLMTrain):
                 'zh': '选择训练使用的GPU号，如CUDA不可用只能选择CPU',
                 'en': 'Select GPU to train'
             }
+        },
+        'rlhf_type': {
+            'label': {
+                'zh': '人类对齐算法类型',
+                'en': 'RLHF type'
+            },
         },
         'train_type': {
             'label': {
@@ -160,7 +166,7 @@ class LLMRLHF(LLMTrain):
                 'en': 'Tuner backend'
             },
             'info': {
-                'zh': 'tuner实现框架',
+                'zh': 'Tuner实现框架',
                 'en': 'The tuner backend'
             }
         },
@@ -173,6 +179,42 @@ class LLMRLHF(LLMTrain):
                 'zh': 'Liger kernel可以有效降低显存使用',
                 'en': 'Liger kernel can reduce memory usage'
             }
+        },
+        'sequence_parallel_size': {
+            'label': {
+                'zh': '序列并行大小',
+                'en': 'Sequence parallel size',
+            },
+            'info': {
+                'zh': '当前支持CPT/SFT/DPO/GRPO',
+                'en': 'Currently supports CPT/SFT/DPO/GRPO',
+            }
+        },
+        'deepspeed': {
+            'label': {
+                'zh': 'DeepSpeed',
+                'en': 'DeepSpeed',
+            },
+            'info': {
+                'zh': '可以选择下拉列表，也支持传入路径',
+                'en': 'Choose from the dropbox or fill in a valid path',
+            }
+        },
+        'more_params': {
+            'label': {
+                'zh': '其他高级参数',
+                'en': 'Other params'
+            },
+            'info': {
+                'zh': '以json格式或--xxx xxx命令行格式填入',
+                'en': 'Fill in with json format or --xxx xxx cmd format'
+            }
+        },
+        'extra_params': {
+            'label': {
+                'zh': '其他参数设置',
+                'en': 'Extra settings'
+            },
         },
         'train_param': {
             'label': {
@@ -194,6 +236,7 @@ class LLMRLHF(LLMTrain):
                 RLHFDataset.build_ui(base_tab)
                 with gr.Accordion(elem_id='train_param', open=True):
                     with gr.Row():
+                        gr.Dropdown(elem_id='rlhf_type', scale=2)
                         gr.Dropdown(elem_id='train_type', scale=2, choices=list(get_supported_tuners()))
                         gr.Dropdown(elem_id='tuner_backend', scale=2)
                         gr.Textbox(elem_id='seed', scale=2)
@@ -202,6 +245,13 @@ class LLMRLHF(LLMTrain):
                         gr.Checkbox(elem_id='use_liger_kernel', scale=4)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                         gr.Textbox(elem_id='ddp_num', value='1', scale=4)
+                        gr.Dropdown(
+                            elem_id='deepspeed',
+                            scale=4,
+                            allow_custom_value=True,
+                            value=None,
+                            choices=['zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload'])
+                        gr.Textbox(elem_id='sequence_parallel_size', lines=1, scale=4)
                 RLHFHyper.build_ui(base_tab)
                 RLHFRuntime.build_ui(base_tab)
                 with gr.Row(equal_height=True):
@@ -218,10 +268,14 @@ class LLMRLHF(LLMTrain):
                 RLHFTuner.build_ui(base_tab)
                 RLHFOptimizer.build_ui(base_tab)
                 RLHF.build_ui(base_tab)
-                RLHFQuantization.build_ui(base_tab)
-                RLHFSave.build_ui(base_tab)
-                RLHFReportTo.build_ui(base_tab)
-                RLHFAdvanced.build_ui(base_tab)
+                with gr.Accordion(elem_id='extra_params', open=True):
+                    with gr.Tabs():
+                        RLHFAdvanced.build_ui(base_tab)
+                        RLHFQuantization.build_ui(base_tab)
+                        RLHFSave.build_ui(base_tab)
+                        RLHFReportTo.build_ui(base_tab)
+                    with gr.Row():
+                        gr.Textbox(elem_id='more_params', lines=4, scale=20)
 
                 base_tab.element('gpu_id').change(
                     cls.update_ddp_num,
@@ -233,6 +287,8 @@ class LLMRLHF(LLMTrain):
                     RLHFHyper.update_lr,
                     inputs=[base_tab.element('train_type')],
                     outputs=[cls.element('learning_rate')])
+                cls.element('rlhf_type').change(
+                    RLHF.update_beta, inputs=[base_tab.element('rlhf_type')], outputs=[base_tab.element('beta')])
 
                 submit.click(
                     cls.train_local,
@@ -261,3 +317,12 @@ class LLMRLHF(LLMTrain):
             for key, val in zip(['train_type', 'optimizer'], [RLHFTuner.tabs_to_filter, RLHFOptimizer.tabs_to_filter])
         }
         return tabs_relation_dict
+
+    @classmethod
+    def filter_rlhf_args(cls, uncleaned_kwargs):
+        cur_rlhf_type = uncleaned_kwargs.get('rlhf_type', 'dpo')
+        cur_selected = RLHF.rlhf_args_dict.pop(cur_rlhf_type, None)
+        for _, vals in RLHF.rlhf_args_dict:
+            for rlhf_arg in vals:
+                if uncleaned_kwargs.get(rlhf_arg) and (cur_selected is None or rlhf_arg not in cur_selected):
+                    uncleaned_kwargs.pop(rlhf_arg)
