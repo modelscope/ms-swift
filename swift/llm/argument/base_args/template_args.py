@@ -68,7 +68,7 @@ class TemplateArguments:
         truncation_strategy = self.truncation_strategy
         if truncation_strategy == 'delete':
             truncation_strategy = 'raise'
-        remove_unused_columns = self.remove_unused_columns
+        remove_unused_columns = self.remove_unused_columns  # from DataArguments
         if not isinstance(self, TrainArguments) or hasattr(self, 'rlhf_type') and self.rlhf_type == 'grpo':
             remove_unused_columns = True
         return {
