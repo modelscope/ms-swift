@@ -305,21 +305,36 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 **MoE Parameters**:
 
 - num_experts: The number of experts in MoE, default is None. Automatically read from config.json.
-- moe_ffn_hidden_size: The hidden layer size of the feed-forward network (ffn) for each expert. Default is None, set to ffn_hidden_size. Automatically read from config.json.
+- moe_layer_freq: Frequency distribution between MoE layers and Dense layers. Default is None. This parameter is read from config.json.
+- moe_ffn_hidden_size: Hidden layer size of the feedforward network (ffn) for each expert. Default is None and will be automatically read from config.json. If not found and `num_experts` is not None, it will be set to ffn_hidden_size.
 - moe_shared_expert_intermediate_size: The total FFN hidden layer size for shared experts. If there are multiple shared experts, it should equal `num_shared_experts * ffn_size_of_each_shared_expert`. Default is None. Automatically read from config.json.
 - moe_router_topk: The number of experts each token is routed to. Default is None. Automatically read from config.json.
 - moe_router_pre_softmax: Enable pre-softmax routing for MoE, meaning that softmax will be applied before top-k selection. Default is None. Automatically read from config.json.
-- 🔥moe_aux_loss_coeff: Scaling coefficient for the auxiliary loss: the recommended initial value is 1e-2. Default is None. Automatically read from config.json.
-- moe_router_dtype: Data type for routing computation and expert output weighted averaging. Options include 'none', 'fp32' and 'fp64', which enhance numerical stability, particularly with a large number of experts. When used with `moe_permute_fusion`, the performance impact is negligible. The default is 'fp32'. 'none' means no change to the data type.
-- moe_permute_fusion: Fuses token rearrangement operations during token dispatching. Defaults to False.
+- 🔥moe_router_dtype: Data type used for routing computation and expert output weighted averaging. Options are 'none', 'fp32', and 'fp64', which enhances numerical stability, especially when the number of experts is large. When used together with `moe_permute_fusion`, the performance impact is negligible. Default is 'fp32'. 'none' means no change to data type.
+- moe_router_score_function: Scoring function for MoE TopK routing. Can be "softmax" or "sigmoid". Default is None and is read from config.json.
+- moe_router_bias_update_rate: Update rate of expert bias in the auxiliary-loss-free load balancing strategy. Expert bias is updated based on the number of tokens each expert is assigned in the global batch: bias increases for experts assigned fewer tokens, and decreases for those assigned more tokens. Default is 1e-3, same as used in DeepSeekV3.
+- moe_router_enable_expert_bias: TopK routing with dynamic expert bias in the auxiliary-loss-free load balancing strategy. Routing decisions are based on the sum of routing scores and expert bias. See details at: https://arxiv.org/abs/2408.15664. Default is None and is automatically read from config.json.
+- moe_router_topk_scaling_factor: Default is None. This parameter is read from config.json.
+- moe_router_load_balancing_type: Determines the router’s load balancing strategy. Options are "aux_loss", "seq_aux_loss", "sinkhorn", and "none". Default is None and is read from config.json.
 - 🔥expert_model_parallel_size: The degree of expert parallelism, default is 1.
 - moe_token_dispatcher_type: The type of token dispatcher to use. Options include 'allgather', 'alltoall', 'flex', and 'alltoall_seq'. Default is 'alltoall'.
 - moe_enable_deepep: Experimental feature, Enables DeepSeek/DeepEP for efficient token dispatching and combination in MoE models. Only works when using the flexible token dispatcher by setting `--moe_token_dispatcher_type flex`.
-- moe_grouped_gemm: When each rank contains multiple experts, improve utilization and performance by launching multiple local GEMM kernels across multiple streams using GroupedLinear in TransformerEngine. Default is False.
-- moe_router_load_balancing_type: Determines the load balancing strategy for the router. Options are "aux_loss", "seq_aux_loss", "sinkhorn", "none". Default is "aux_loss".
+- 🔥moe_grouped_gemm: When each rank contains multiple experts, multiple local GEMM kernels can be launched in parallel streams to improve utilization and performance by using GroupedLinear from TransformerEngine. Default is False.
+- 🔥moe_permute_fusion: Fuses token permutation operations during token dispatch. Default is False.
+- 🔥moe_aux_loss_coeff: Scaling coefficient for the auxiliary loss; a recommended initial value is 1e-2. Default is None and is automatically read from config.json.
 - moe_z_loss_coeff: Scaling coefficient for z-loss. Default is None.
-- moe_expert_capacity_factor: Capacity factor for each expert, None means no tokens will be dropped. Default is None.
-- moe_shared_expert_overlap: Enable overlapping of shared expert computation with scheduler communication. If this option is not enabled, shared experts will execute after the routing experts. Only effective when `moe_shared_expert_intermediate_size` is set. Default is False.
+- moe_expert_capacity_factor: Capacity factor for each expert. None means no token will be dropped. Default is None and will be automatically read from config.json.
+- 🔥moe_shared_expert_overlap: Enables overlap between shared expert computation and the dispatcher. If not enabled, shared expert computation will be performed after routing experts. Only effective when `moe_shared_expert_intermediate_size` is set. Default is False.
+- moe_token_drop_policy: Options are 'probs' and 'position'. Default is 'probs'.
+
+**MLA Parameters**
+
+- multi_latent_attention: Whether to use MLA. Default is False.
+- q_lora_rank: Low-rank representation rank value of the Query tensor. Default is None and will be automatically read from config.json.
+- kv_lora_rank: Low-rank representation rank value of the Key and Value tensors. Default is None and will be automatically read from config.json.
+- qk_head_dim: Dimension of the head in the QK projection. `q_head_dim = qk_head_dim + qk_pos_emb_head_dim`. Default is None and will be automatically read from config.json.
+- qk_pos_emb_head_dim: Dimension of the position embedding in the QK projection. Default is None and will be automatically read from config.json.
+
 
 **DPO Parameters**
 - ref_load: The path to load the reference model. Defaults to `None`, which means it will be set to `load`.
