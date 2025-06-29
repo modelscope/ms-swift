@@ -32,7 +32,7 @@ from transformers.trainer_utils import EvalPrediction, IntervalStrategy
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
-from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
+from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, SkipIterableDataset, Template
 from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker, use_torchacc
@@ -407,7 +407,7 @@ class SwiftMixin:
         # gradient_checkpointing
         gradient_checkpointing = self.args.gradient_checkpointing
         self._prepare_gradient_checkpointing(self.accelerator.unwrap_model(self.model))
-        with self.hub.patch_hub(), self._fix_grad_norm_nan():
+        with self.hub.patch_hub(), self._fix_grad_norm_nan(), self._patch_skip_first_batches():
             res = super().train(*args, **kwargs)
         self.template.remove_post_encode_hook()
         self.args.gradient_checkpointing = gradient_checkpointing  # recover
@@ -570,14 +570,33 @@ class SwiftMixin:
         dist.all_reduce(num_items_in_batch, dist.ReduceOp.SUM, sequence_parallel.sp_group)
         return batch_samples, num_items_in_batch
 
+    @contextmanager
+    def _patch_skip_first_batches(self):
+        from transformers import trainer
+        origin_skip_first_batches = trainer.skip_first_batches
+
+        def skip_first_batches(dataloader, num_batches=0):
+            if isinstance(dataloader, (DataLoaderShard, DataLoaderDispatcher)):
+                # DataLoaderMixin
+                return self.get_train_dataloader(num_batches=num_batches)
+            else:
+                return origin_skip_first_batches(dataloader, num_batches)
+
+        trainer.skip_first_batches = skip_first_batches
+        try:
+            yield
+        finally:
+            trainer.skip_first_batches = origin_skip_first_batches
+
 
 class DataLoaderMixin:
 
-    def get_train_dataloader(self):
+    def get_train_dataloader(self, skip_batches=0):
         dataloader = None
         if self.template.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
-            dataloader = sequence_parallel.get_dataloader(self, self.train_dataset, self._train_batch_size)
+            dataloader = sequence_parallel.get_dataloader(
+                self, self.train_dataset, self._train_batch_size, skip_batches=skip_batches)
         if dataloader is None:
             # Higher efficiency
             if self.train_dataset is None:
@@ -603,12 +622,17 @@ class DataLoaderMixin:
                     len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
                 dataloader_params['worker_init_fn'] = partial(
                     seed_worker, num_workers=self.args.dataloader_num_workers, rank=self.args.process_index)
+                if skip_batches > 0:
+                    from accelerate.data_loader import SkipBatchSampler
+                    batch_sampler = SkipBatchSampler(batch_sampler, skip_batches=skip_batches)
                 dataloader_params['batch_sampler'] = batch_sampler
                 dataloader = DataLoaderShard(train_dataset, device=self.accelerator.device, **dataloader_params)
             else:
                 # IterableDataset
                 if dist.is_initialized() and dataloader_params['prefetch_factor']:
                     dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
+                if skip_batches > 0:
+                    train_dataset = SkipIterableDataset(train_dataset, skip_batches * self._train_batch_size)
                 dataloader = DataLoader(train_dataset, batch_size=self._train_batch_size, **dataloader_params)
                 dataloader = DataLoaderDispatcher(dataloader, self.accelerator.device)
 

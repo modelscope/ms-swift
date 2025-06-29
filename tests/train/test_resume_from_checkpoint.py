@@ -33,5 +33,6 @@ def test_resume_from_checkpoint():
     print(f'diff: {diff}')
     assert diff < 0.01
 
+
 if __name__ == '__main__':
     test_resume_from_checkpoint()

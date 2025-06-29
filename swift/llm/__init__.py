@@ -33,7 +33,7 @@ if TYPE_CHECKING:
                         get_temporary_cache_files_directory, get_cache_dir, is_moe_model,
                         dynamic_gradient_checkpointing)
     from .base import SwiftPipeline
-    from .data_loader import DataLoaderDispatcher, DataLoaderShard, BatchSamplerShard
+    from .data_loader import DataLoaderDispatcher, DataLoaderShard, BatchSamplerShard, SkipIterableDataset
 else:
     _import_structure = {
         'rlhf': ['rlhf_main'],
@@ -75,7 +75,7 @@ else:
             'get_temporary_cache_files_directory', 'get_cache_dir', 'is_moe_model', 'dynamic_gradient_checkpointing'
         ],
         'base': ['SwiftPipeline'],
-        'data_loader': ['DataLoaderDispatcher', 'DataLoaderShard', 'BatchSamplerShard'],
+        'data_loader': ['DataLoaderDispatcher', 'DataLoaderShard', 'BatchSamplerShard', 'SkipIterableDataset'],
     }
 
     import sys

@@ -2,7 +2,7 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, IterableDataset
 
 from swift.llm import to_device
 
@@ -117,3 +117,15 @@ class DataLoaderDispatcher:
             if self.device:
                 data = to_device(data, self.device)
             yield data
+
+
+class SkipIterableDataset(IterableDataset):
+
+    def __init__(self, iterable_dataset, skip_dataset=0):
+        self.iterable_dataset = iterable_dataset
+        self.skip_dataset = skip_dataset
+
+    def __iter__(self):
+        for index, data in enumerate(self.iterable_dataset):
+            if index >= self.skip_dataset:
+                yield data
