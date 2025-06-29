@@ -578,7 +578,7 @@ class SwiftMixin:
         def skip_first_batches(dataloader, num_batches=0):
             if isinstance(dataloader, (DataLoaderShard, DataLoaderDispatcher)):
                 # DataLoaderMixin
-                return self.get_train_dataloader(num_batches=num_batches)
+                return self.get_train_dataloader(skip_batches=num_batches)
             else:
                 return origin_skip_first_batches(dataloader, num_batches)
 
