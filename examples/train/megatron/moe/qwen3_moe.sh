@@ -18,8 +18,7 @@ megatron sft \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
-    --train_iters 2000 \
-    --eval_iters 50 \
+    --max_epochs 3 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
