@@ -1593,7 +1593,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.offload_model(self.accelerator.unwrap_model(self.model))
             if self.ref_model:
                 self.offload_model(self.ref_model)
-        if self.args.offload_optimizer:
+        if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
             self.offload_optimizer()
         empty_cache()
 
@@ -1605,6 +1605,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.load_model(self.accelerator.unwrap_model(self.model))
                 if self.ref_model:
                     self.load_model(self.ref_model)
-            if self.offload_optimizer:
+            if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 self.load_optimizer()
             empty_cache()
