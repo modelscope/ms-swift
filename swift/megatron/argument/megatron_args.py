@@ -135,6 +135,7 @@ class MegatronArguments(ExtraMegatronArguments):
     position_embedding_type: Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none'] = 'rope'
     rotary_base: Optional[int] = None
     rotary_percent: float = 1.
+    rotary_interleaved: Optional[bool] = None
     normalization: Literal['LayerNorm', 'RMSNorm'] = 'RMSNorm'
     norm_epsilon: Optional[float] = None
     swiglu: Optional[bool] = None
@@ -228,6 +229,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.norm_epsilon = 1e-5
         if self.rotary_base is None:
             self.rotary_base = 10000
+        if self.rotary_interleaved is None:
+            self.rotary_interleaved = False
         if self.attention_dropout is None:
             self.attention_dropout = 0.
         if self.untie_embeddings_and_output_weights is None:
