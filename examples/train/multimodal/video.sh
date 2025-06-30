@@ -1,13 +1,13 @@
-# 4*80GB
+# 2*24GB
 # You can refer to `https://github.com/QwenLM/Qwen2.5-VL` for the meaning of the `VIDEO_MAX_PIXELS` parameter.
-nproc_per_node=4
+nproc_per_node=2
 
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
+CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=$nproc_per_node \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
 swift sft \
-    --model Qwen/QVQ-72B-Preview \
+    --model Qwen/Qwen2.5-VL-7B-Instruct \
     --dataset swift/VideoChatGPT:all \
     --train_type lora \
     --torch_dtype bfloat16 \
@@ -28,4 +28,4 @@ swift sft \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
-    --deepspeed zero3
+    --deepspeed zero2

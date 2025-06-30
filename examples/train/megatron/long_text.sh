@@ -19,7 +19,7 @@ megatron sft \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
-    --lr_warmup_iters 100 \
+    --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
     --save megatron_output/Qwen2.5-7B \
     --eval_interval 200 \
