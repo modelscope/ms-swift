@@ -120,6 +120,7 @@ class LLMModelType:
     mimo_rl = 'mimo_rl'
     dots1 = 'dots1'
     hunyuan = 'hunyuan'
+    ernie = 'ernie'
 
 
 class BertModelType:

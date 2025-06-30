@@ -86,6 +86,7 @@ class LLMTemplateType:
     mimo_rl = 'mimo_rl'
     dots1 = 'dots1'
     hunyuan = 'hunyuan'
+    ernie = 'ernie'
 
     aya = 'aya'
     c4ai = 'c4ai'
