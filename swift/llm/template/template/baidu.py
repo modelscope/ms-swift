@@ -10,7 +10,7 @@ from ..utils import Prompt
 @dataclass
 class ERNIETemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ['<|begin_of_sentence|>'])
-    prompt: Prompt = field(default_factory=lambda: ['User: {{QUERY}}\nAssistant:'])
+    prompt: Prompt = field(default_factory=lambda: ['User: {{QUERY}}\nAssistant: '])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|end_of_sentence|>'])
     suffix: Prompt = field(default_factory=lambda: ['</s>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|begin_of_sentence|>{{SYSTEM}}\n'])

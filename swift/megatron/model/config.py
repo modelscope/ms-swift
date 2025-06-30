@@ -24,8 +24,8 @@ config_mapping = {
     # moe
     'moe_ffn_hidden_size': ['moe_intermediate_size'],
     'moe_shared_expert_intermediate_size': ['shared_expert_intermediate_size'],
-    'moe_router_topk': ['num_experts_per_tok', 'n_group', 'moe_topk'],
-    'num_experts': ['num_experts', 'n_routed_experts'],
+    'moe_router_topk': ['num_experts_per_tok', 'n_group', 'moe_topk', 'moe_k'],
+    'num_experts': ['num_experts', 'n_routed_experts', 'moe_num_experts'],
     'moe_router_pre_softmax': ['norm_topk_prob'],
     'moe_aux_loss_coeff': ['router_aux_loss_coef'],
     # deepseek
@@ -39,8 +39,8 @@ config_mapping = {
     # other
     'original_max_position_embeddings': ['original_max_position_embeddings'],
     'partial_rotary_factor': ['partial_rotary_factor'],
-    'first_k_dense_replace': ['first_k_dense_replace'],
-    'n_shared_experts': ['n_shared_experts', 'num_shared_expert'],
+    'first_k_dense_replace': ['first_k_dense_replace', 'moe_layer_start_index'],
+    'n_shared_experts': ['n_shared_experts', 'num_shared_expert', 'moe_num_shared_experts'],
 }
 
 
