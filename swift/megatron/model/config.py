@@ -17,7 +17,7 @@ config_mapping = {
     'attention_dropout': ['attention_dropout'],
     'untie_embeddings_and_output_weights': ['tie_word_embeddings'],
     'swiglu': ['hidden_act'],
-    'add_qkv_bias': ['attention_bias', 'qkv_bias'],
+    'add_qkv_bias': ['attention_bias', 'qkv_bias', 'use_bias'],
     'disable_bias_linear': ['mlp_bias'],
     'kv_channels': ['head_dim', 'v_head_dim'],
     'architectures': ['architectures'],

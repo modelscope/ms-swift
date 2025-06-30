@@ -40,4 +40,6 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
                 res[key] = val[0]
         n_shared_experts = res.pop('n_shared_experts')
         res['moe_shared_expert_intermediate_size'] = n_shared_experts * res['moe_ffn_hidden_size']
+    if architectures == 'Ernie4_5_ForCausalLM':
+        res['rotary_interleaved'] = True
     return res
