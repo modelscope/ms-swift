@@ -230,6 +230,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.use_fast_infer = self.use_vllm  # whether to use the PT backend
         self.vllm_use_async_engine = False
+        self.enable_offload = False
         if self.use_vllm:
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
@@ -255,8 +256,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         list(range(i * self.vllm_tensor_parallel_size, (i + 1) * self.vllm_tensor_parallel_size))
                         for i in range(self.accelerator.num_processes // self.vllm_tensor_parallel_size)
                     ])
+                self.enable_offload = self.args.offload_model or self.args.offload_optimizer
+                context = self.offload_context if self.enable_offload else nullcontext
 
-                self.engine = self.prepare_vllm(model)
+                with context():
+                    self.engine = self.prepare_vllm(model)
+                    if self.args.sleep_level > 0:
+                        self.engine.engine.sleep(self.args.sleep_level)
+
         else:
             from swift.llm import PtEngine
             self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
@@ -776,6 +783,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _fast_infer(self, inputs: InputsType) -> Tuple[InputsType, OutputsType]:
         # Skip the first wake_up to avoid the warning "Executor is not sleeping"
+
         if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
             if self.engine.inner_model_executor.is_sleeping:
                 # First, load weights only, https://github.com/vllm-project/vllm/pull/15500
@@ -791,48 +799,37 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self._move_model_to_vllm()
             self._last_loaded_step = self.state.global_step
 
-        if self.vllm_mode == 'colocate':
-            if self.args.offload_model:
-                self.offload_model(self.accelerator.unwrap_model(self.model))
-                if self.ref_model:
-                    self.offload_model(self.ref_model)
-            if self.args.offload_optimizer:
-                self.offload_optimizer()
-            empty_cache()
-
-            if 'tags' in inspect.signature(self.engine.engine.wake_up).parameters:
+        context = self.offload_context if self.enable_offload else nullcontext
+        with context():
+            if self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping and \
+                    'tags' in inspect.signature(self.engine.engine.wake_up).parameters:
                 # Load the kv_cache only after updating and offload the weights.
                 self.engine.engine.wake_up(tags=['kv_cache'])
 
-        if self.async_generate:
-            # send this step data to server
-            # we gather inputs outside the thread for prevent potential gather deadlock
-            all_inputs = gather_object(inputs)
-            self.async_infer(all_inputs)
-            # cached data from last step
-            data_cache = self._queue.get()
-            all_inputs = data_cache.inputs
-            all_outputs = gather_object(data_cache.outputs)
-            process_slice = slice(
-                self.accelerator.process_index * len(inputs),
-                (self.accelerator.process_index + 1) * len(inputs),
-            )
-            inputs = all_inputs[process_slice]
-            outputs = all_outputs[process_slice]
+            if self.async_generate:
+                # send this step data to server
+                # we gather inputs outside the thread for prevent potential gather deadlock
+                all_inputs = gather_object(inputs)
+                self.async_infer(all_inputs)
+                # cached data from last step
+                data_cache = self._queue.get()
+                all_inputs = data_cache.inputs
+                all_outputs = gather_object(data_cache.outputs)
+                process_slice = slice(
+                    self.accelerator.process_index * len(inputs),
+                    (self.accelerator.process_index + 1) * len(inputs),
+                )
+                inputs = all_inputs[process_slice]
+                outputs = all_outputs[process_slice]
 
-        else:
-            with self.multi_turn_completion_length_context():
-                outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
+            else:
+                with self.multi_turn_completion_length_context():
+                    outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
 
-        if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
-            self.engine.engine.sleep(level=self.args.sleep_level)
-            empty_cache()
-            if self.args.offload_model:
-                self.load_model(self.accelerator.unwrap_model(self.model))
-                if self.ref_model:
-                    self.load_model(self.ref_model)
-            if self.args.offload_optimizer:
-                self.load_optimizer()
+            if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
+                self.engine.engine.sleep(level=self.args.sleep_level)
+                empty_cache()
+
         return inputs, outputs
 
     def _generate_completions(self, inputs: InputsType) -> InputsType:
@@ -1589,3 +1586,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         ]
 
         return infer_requests
+
+    @contextmanager
+    def offload_context(self):
+        if self.args.offload_model:
+            self.offload_model(self.accelerator.unwrap_model(self.model))
+            if self.ref_model:
+                self.offload_model(self.ref_model)
+        if self.args.offload_optimizer:
+            self.offload_optimizer()
+        empty_cache()
+
+        try:
+            yield
+        finally:
+            # reload (load back) model when exiting context
+            if self.args.offload_model:
+                self.load_model(self.accelerator.unwrap_model(self.model))
+                if self.ref_model:
+                    self.load_model(self.ref_model)
+            if self.offload_optimizer:
+                self.load_optimizer()
+            empty_cache()

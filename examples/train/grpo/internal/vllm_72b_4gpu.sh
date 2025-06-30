@@ -8,7 +8,7 @@ swift rlhf \
     --train_type lora \
     --use_vllm true \
     --vllm_mode colocate \
-    --vllm_gpu_memory_utilization 0.5 \
+    --vllm_gpu_memory_utilization 0.55 \
     --vllm_max_model_len 2048 \
     --vllm_tensor_parallel_size 4 \
     --dataset AI-MO/NuminaMath-TIR#10000 \
