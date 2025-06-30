@@ -323,8 +323,9 @@ class MegatronArguments(ExtraMegatronArguments):
 
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
         self.extra_megatron_kwargs = ModelArguments.parse_to_dict(self.extra_megatron_kwargs)
+        self._init_no_rope_fusion()
 
-    def _init_no_rope_fusion():
+    def _init_no_rope_fusion(self):
         if self.no_rope_fusion is not None:
             return
         if self.multi_latent_attention or self.rotary_interleaved:
