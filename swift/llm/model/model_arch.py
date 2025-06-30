@@ -63,6 +63,7 @@ class MLLMModelArch:
     idefics3 = 'idefics3'
 
     got_ocr2 = 'got_ocr2'
+    ernie_vl = 'ernie_vl'
 
     ovis1_6 = 'ovis1_6'
     molmo = 'molmo'
@@ -534,6 +535,13 @@ register_model_arch(
         language_model='model.layers',
         aligner='model.mm_projector_vary',
         vision_tower='model.vision_tower_high',
+    ))
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.ernie_vl,
+        language_model='model',
+        aligner='model.resampler_model',
+        vision_tower='vision_model',
     ))
 
 if transformers_ge_4_52:

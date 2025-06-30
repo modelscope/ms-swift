@@ -1,10 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from ..constant import LLMTemplateType
+from ..base import Template
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
-from ..utils import Prompt
+from ..template_inputs import StdTemplateInputs
+from ..utils import Context, Prompt
 
 
 @dataclass
@@ -17,3 +19,17 @@ class ERNIETemplateMeta(TemplateMeta):
 
 
 register_template(ERNIETemplateMeta(LLMTemplateType.ernie))
+
+
+class ERNIETemplate(Template):
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        return []
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        return encoded
+
+
+register_template(ERNIETemplateMeta(MLLMTemplateType.ernie_vl, template_cls=ERNIETemplate))

@@ -176,6 +176,7 @@ class MLLMTemplateType:
     got_ocr2_hf = 'got_ocr2_hf'
     step_audio = 'step_audio'
     kimi_vl = 'kimi_vl'
+    ernie_vl = 'ernie_vl'
 
     idefics3 = 'idefics3'
     pixtral = 'pixtral'
