@@ -39,7 +39,7 @@ from swift.llm.model.utils import get_llm_model
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
 from swift.plugin.multi_turn import MultiTurnScheduler
-from swift.utils import (JsonlWriter, gc_collect, get_current_device, get_device, get_logger, is_vllm_available,
+from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_device, get_logger, is_vllm_available,
                          is_wandb_available, seed_worker, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
@@ -513,6 +513,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         llm_model.load_weights(state_dict.items())
                     with patch_lora_unmerge(self.model):
                         self.model.unmerge_adapter()
+                    del state_dict
         else:
             for name, param in self.model.named_parameters():
                 with gather_if_zero3([param]):
@@ -774,22 +775,34 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._queue.put(DataCache(all_inputs, outputs))
 
     def _fast_infer(self, inputs: InputsType) -> Tuple[InputsType, OutputsType]:
+        # Skip the first wake_up to avoid the warning "Executor is not sleeping"
         if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
+            if self.engine.inner_model_executor.is_sleeping:
+                # First, load weights only, https://github.com/vllm-project/vllm/pull/15500
+                if 'tags' in inspect.signature(self.engine.engine.wake_up).parameters:
+                    self.engine.engine.wake_up(tags=['weights'])
+                else:
+                    logger.info('We recommend installing vLLM >= 0.8.3, (ideally 0.8.5.post1)'
+                                'to help reduce memory peaks during engine wake-up.')
+                    self.engine.engine.wake_up()
+
+        # First, have main process load weights if needed
+        if self.state.global_step != self._last_loaded_step:
+            self._move_model_to_vllm()
+            self._last_loaded_step = self.state.global_step
+
+        if self.vllm_mode == 'colocate':
             if self.args.offload_model:
                 self.offload_model(self.accelerator.unwrap_model(self.model))
                 if self.ref_model:
                     self.offload_model(self.ref_model)
             if self.args.offload_optimizer:
                 self.offload_optimizer()
-            if self.args.gc_collect_after_offload:
-                gc_collect()
-            # Skip the first wake_up to avoid the warning "Executor is not sleeping"
-            if self.engine.inner_model_executor.is_sleeping:
-                self.engine.engine.wake_up()
-        # First, have main process load weights if needed
-        if self.state.global_step != self._last_loaded_step:
-            self._move_model_to_vllm()
-            self._last_loaded_step = self.state.global_step
+            empty_cache()
+
+            if 'tags' in inspect.signature(self.engine.engine.wake_up).parameters:
+                # Load the kv_cache only after updating and offload the weights.
+                self.engine.engine.wake_up(tags=['kv_cache'])
 
         if self.async_generate:
             # send this step data to server
@@ -813,8 +826,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
-            if self.args.gc_collect_after_offload:
-                gc_collect()
+            empty_cache()
             if self.args.offload_model:
                 self.load_model(self.accelerator.unwrap_model(self.model))
                 if self.ref_model:
