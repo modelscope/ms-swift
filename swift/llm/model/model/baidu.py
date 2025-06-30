@@ -23,5 +23,5 @@ register_model(
         ],
         TemplateType.ernie,
         get_model_tokenizer_with_flash_attn,
-        architectures=['Ernie4_5_ForCausalLM'],
+        architectures=['Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM'],
     ))
