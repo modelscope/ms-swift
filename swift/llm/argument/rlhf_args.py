@@ -329,3 +329,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                            "Please use 'multi_turn_scheduler' instead")
 
             self.multi_turn_scheduler = self.multi_turn_func
+
+        if self.gc_collect_after_offload:
+            logger.warning(
+                "The parameter 'gc_collect_after_offload' has been deprecated and will be removed in version 3.7. ")
