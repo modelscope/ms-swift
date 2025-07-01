@@ -153,7 +153,6 @@ When running in Colocate mode, out-of-memory (OOM) issues may frequently occur. 
 ```bash
 --offload_optimizer true \
 --offload_model true \
---gc_collect_after_offload true \
 ```
 
 4. Use Tensor Parallelism in vLLM:
