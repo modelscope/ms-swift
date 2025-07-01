@@ -288,6 +288,8 @@ class LLMGRPO(LLMTrain):
                         cls.element('train_record'),
                     ],
                     queue=True)
+                Rollout.element('vllm_mode').change(LLMRollout.external_rollout_display, Rollout.element('vllm_mode'),
+                                                    LLMRollout.element('llm_rollout'))
                 LLMRollout.element('rollout').click(
                     LLMRollout.rollout_model,
                     list(LLMRollout.valid_elements().values())

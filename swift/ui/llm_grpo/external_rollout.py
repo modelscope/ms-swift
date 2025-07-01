@@ -110,7 +110,7 @@ class LLMRollout(BaseUI):
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Accordion(elem_id='llm_rollout', open=True):
+        with gr.Accordion(elem_id='llm_rollout', visible=False):
             default_device = 'cpu'
             device_count = get_device_count()
             if device_count > 0:
@@ -238,3 +238,9 @@ class LLMRollout(BaseUI):
         time.sleep(2)
         running_task = RolloutRuntime.refresh_tasks(log_file)
         return gr.update(open=True), running_task
+
+    @classmethod
+    def external_rollout_display(cls, mode):
+        if mode == 'server':
+            return gr.update(visible=True, open=True)
+        return gr.update(visible=False)
