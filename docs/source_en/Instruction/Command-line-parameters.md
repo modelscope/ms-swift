@@ -512,8 +512,8 @@ The meanings of the following parameters can be referenced [here](https://huggin
 The hyperparameters for the reward function can be found in the [Built-in Reward Functions section](#built-in-reward-functions).
 
 cosine reward function arguments
-- cosine_min_len_value_wrong (default: 0.0): Reward value corresponding to the minimum length when the answer is incorrect. Default is 0.0
-- cosine_max_len_value_wrong (default: -0.5): Reward value corresponding to the maximum length when the answer is incorrect. Default is -0.5
+- cosine_min_len_value_wrong (default: -0.5): Reward value corresponding to the minimum length when the answer is incorrect. Default is 0.0
+- cosine_max_len_value_wrong (default: 0.0): Reward value corresponding to the maximum length when the answer is incorrect. Default is -0.5
 - cosine_min_len_value_correct (default: 1.0): Reward value corresponding to the minimum length when the answer is correct. Default is 1.0
 - cosine_max_len_value_correct (default: 0.5): Reward value corresponding to the maximum length when the answer is correct. Default is 0.5
 - cosine_max_len (default value equal to the model's maximum generation capacity): Maximum length limit for generated text. Default value equal to max_completion_length
