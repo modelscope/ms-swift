@@ -5,12 +5,13 @@ from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-import megatron.core
 import torch
-from packaging import version
 from transformers.utils.versions import require_version
 
 from swift.llm.argument.base_args import to_abspath
+from swift.utils import get_logger
+
+logger = get_logger()
 
 
 @dataclass
@@ -39,6 +40,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin):
 
     original_max_position_embeddings: Optional[int] = None
     partial_rotary_factor: Optional[float] = None
+    use_shared_expert_gate: Optional[bool] = None
 
 
 @dataclass
@@ -58,7 +60,7 @@ class MegatronArguments(ExtraMegatronArguments):
     no_masked_softmax_fusion: bool = False
     no_bias_dropout_fusion: bool = False
     no_bias_swiglu_fusion: bool = False
-    no_rope_fusion: bool = False
+    no_rope_fusion: Optional[bool] = None
     no_gradient_accumulation_fusion: bool = False
     cross_entropy_loss_fusion: bool = False
     cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
@@ -69,6 +71,10 @@ class MegatronArguments(ExtraMegatronArguments):
     optimizer_cpu_offload: bool = False
     optimizer_offload_fraction: float = 1.
     use_precision_aware_optimizer: bool = False
+    main_grads_dtype: Literal['fp32', 'bf16'] = 'fp32'
+    main_params_dtype: Literal['fp32', 'fp16'] = 'fp32'
+    exp_avg_dtype: Literal['fp32', 'fp16', 'bf16', 'fp8'] = 'fp32'
+    exp_avg_sq_dtype: Literal['fp32', 'fp16', 'bf16', 'fp8'] = 'fp32'
     dataloader_type: Literal['single', 'cyclic', 'external'] = 'cyclic'
     manual_gc: bool = False
     manual_gc_interval: int = 0
@@ -126,9 +132,10 @@ class MegatronArguments(ExtraMegatronArguments):
     group_query_attention: Optional[bool] = None
     num_query_groups: Optional[int] = None
     max_position_embeddings: Optional[int] = None
-    position_embedding_type: Literal['learned_absolute', 'rope', 'relative', 'none'] = 'rope'
+    position_embedding_type: Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none'] = 'rope'
     rotary_base: Optional[int] = None
     rotary_percent: float = 1.
+    rotary_interleaved: Optional[bool] = None
     normalization: Literal['LayerNorm', 'RMSNorm'] = 'RMSNorm'
     norm_epsilon: Optional[float] = None
     swiglu: Optional[bool] = None
@@ -143,23 +150,44 @@ class MegatronArguments(ExtraMegatronArguments):
 
     # moe
     num_experts: Optional[int] = None
+    moe_layer_freq: Optional[str] = None
     moe_ffn_hidden_size: Optional[int] = None
     moe_shared_expert_intermediate_size: Optional[int] = None
+
     moe_router_topk: Optional[int] = None
     moe_router_pre_softmax: Optional[bool] = None
-    moe_aux_loss_coeff: Optional[float] = None
-    moe_router_dtype: Literal['fp32', 'fp64'] = None
-    moe_permute_fusion: bool = False
+    moe_router_dtype: Literal['none', 'fp32', 'fp64'] = 'fp32'
+    moe_router_score_function: Literal['sigmoid', 'softmax'] = None
+    moe_router_bias_update_rate: float = 1e-3
+    moe_router_enable_expert_bias: Optional[bool] = None
+    moe_router_topk_scaling_factor: Optional[float] = None
+    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = None
 
     expert_model_parallel_size: int = 1
     moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex', 'alltoall_seq'] = 'alltoall'
     moe_enable_deepep: bool = False
     moe_grouped_gemm: bool = False
-    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = 'aux_loss'
+    moe_permute_fusion: bool = False
+    moe_aux_loss_coeff: Optional[float] = None
     moe_z_loss_coeff: Optional[float] = None
     moe_expert_capacity_factor: Optional[float] = None
     moe_shared_expert_overlap: bool = False
     moe_layer_recompute: bool = False
+    moe_token_drop_policy: Literal['probs', 'position'] = 'probs'
+
+    # mla
+    multi_latent_attention: Optional[bool] = None
+    q_lora_rank: Optional[int] = None
+    kv_lora_rank: Optional[int] = None
+    qk_head_dim: Optional[int] = None
+    qk_pos_emb_head_dim: Optional[int] = None
+
+    # fp8
+    fp8_format: Literal['e4m3', 'hybrid'] = None
+    fp8_recipe: Literal['tensorwise', 'delayed', 'mxfp8', 'blockwise'] = 'delayed'
+    fp8_amax_history_len: int = 1024
+    fp8_amax_compute_algo: Literal['most_recent', 'max'] = 'max'
+    fp8_param_gather: bool = False
 
     # mixed precision
     fp16: Optional[bool] = None
@@ -201,6 +229,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.norm_epsilon = 1e-5
         if self.rotary_base is None:
             self.rotary_base = 10000
+        if self.rotary_interleaved is None:
+            self.rotary_interleaved = False
         if self.attention_dropout is None:
             self.attention_dropout = 0.
         if self.untie_embeddings_and_output_weights is None:
@@ -211,14 +241,33 @@ class MegatronArguments(ExtraMegatronArguments):
             self.add_qkv_bias = True
         if self.disable_bias_linear is None:
             self.disable_bias_linear = True
+        if self.qk_layernorm is None:
+            self.qk_layernorm = False
+        if self.multi_latent_attention is None:
+            self.multi_latent_attention = False
+        if self.kv_lora_rank is None:
+            self.kv_lora_rank = 32
+        if self.qk_head_dim is None:
+            self.qk_head_dim = 128
+        if self.qk_pos_emb_head_dim is None:
+            self.qk_pos_emb_head_dim = 64
+        # moe
+        if self.use_shared_expert_gate is None:
+            self.use_shared_expert_gate = False
+        if self.moe_router_score_function is None:
+            self.moe_router_score_function = 'softmax'
         if self.moe_router_topk is None:
             self.moe_router_topk = 2
         if self.moe_router_pre_softmax is None:
             self.moe_router_pre_softmax = False
         if self.moe_aux_loss_coeff is None:
             self.moe_aux_loss_coeff = 0.
-        if self.qk_layernorm is None:
-            self.qk_layernorm = False
+        if self.moe_router_load_balancing_type is None:
+            self.moe_router_load_balancing_type = 'aux_loss'
+        if self.moe_router_enable_expert_bias is None:
+            self.moe_router_enable_expert_bias = False
+        if self.moe_layer_freq is None:
+            self.moe_layer_freq = '1'
 
     def _init_mixed_precision(self):
         from swift.llm.argument.base_args.model_args import ModelArguments
@@ -229,14 +278,13 @@ class MegatronArguments(ExtraMegatronArguments):
             os.environ['NVTE_APPLY_QK_LAYER_SCALING'] = '1'
 
     def _init_moe(self):
-        if self.num_experts is None:
-            return
+        if self.moe_router_dtype.lower() == 'none':
+            self.moe_router_dtype = None
         if self.moe_shared_expert_intermediate_size == 0:
             self.moe_shared_expert_intermediate_size = None
-        if self.moe_ffn_hidden_size is None:
-            self.moe_ffn_hidden_size = self.ffn_hidden_size
-        else:
-            self.ffn_hidden_size = self.moe_ffn_hidden_size
+        if self.num_experts is not None:
+            if self.moe_ffn_hidden_size is None:
+                self.moe_ffn_hidden_size = self.ffn_hidden_size
 
     @staticmethod
     def _patch_megatron_timeout(distributed_timeout_minutes: int):
@@ -275,6 +323,17 @@ class MegatronArguments(ExtraMegatronArguments):
 
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
         self.extra_megatron_kwargs = ModelArguments.parse_to_dict(self.extra_megatron_kwargs)
+        self._init_no_rope_fusion()
+
+    def _init_no_rope_fusion(self):
+        if self.no_rope_fusion is not None:
+            return
+        if self.multi_latent_attention or self.rotary_interleaved:
+            # Upgrading transformer_engine requires checking here.
+            self.no_rope_fusion = True
+        else:
+            self.no_rope_fusion = False
+        logger.info(f'Setting args.no_rope_fusion: {self.no_rope_fusion}.')
 
     def _args_to_argv(self) -> Tuple[List[Any], Dict[str, Any]]:
         new_args = []
@@ -282,16 +341,9 @@ class MegatronArguments(ExtraMegatronArguments):
         extra_args = {}
         extra_megatron_kwargs = args_dict.pop('extra_megatron_kwargs')
         args_dict.update(extra_megatron_kwargs)
-        use_core_011 = version.parse(megatron.core.__version__) < version.parse('0.12')
-        core_012_arguments = {
-            'recompute_modules', 'moe_router_dtype', 'cross_entropy_fusion_impl', 'moe_enable_deepep',
-            'optimizer_offload_fraction'
-        }
         for k, value in args_dict.items():
             if k not in MegatronArguments.__annotations__ and k not in extra_megatron_kwargs:
                 extra_args[k] = value
-                continue
-            if use_core_011 and k in core_012_arguments:
                 continue
             if value is None or value is False:
                 continue

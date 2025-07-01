@@ -15,6 +15,7 @@ class LLMModelType:
     qwen3 = 'qwen3'
     qwen3_moe = 'qwen3_moe'
     qwen3_emb = 'qwen3_emb'
+    qwen3_reranker = 'qwen3_reranker'
 
     qwen2_gte = 'qwen2_gte'
 
@@ -118,11 +119,14 @@ class LLMModelType:
     mimo = 'mimo'
     mimo_rl = 'mimo_rl'
     dots1 = 'dots1'
+    hunyuan = 'hunyuan'
+    ernie = 'ernie'
 
 
 class BertModelType:
     modern_bert = 'modern_bert'
     modern_bert_gte = 'modern_bert_gte'
+    modern_bert_gte_reranker = 'modern_bert_gte_reranker'
     bert = 'bert'
 
 

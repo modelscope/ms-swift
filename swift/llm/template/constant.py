@@ -14,6 +14,7 @@ class LLMTemplateType:
     qwen2_5_math_prm = 'qwen2_5_math_prm'
     qwen3 = 'qwen3'
     qwen3_emb = 'qwen3_emb'
+    qwen3_reranker = 'qwen3_reranker'
     qwq_preview = 'qwq_preview'
     qwq = 'qwq'
     marco_o1 = 'marco_o1'
@@ -84,10 +85,14 @@ class LLMTemplateType:
     moonlight = 'moonlight'
     mimo_rl = 'mimo_rl'
     dots1 = 'dots1'
+    hunyuan = 'hunyuan'
+    ernie = 'ernie'
 
     aya = 'aya'
     c4ai = 'c4ai'
     dbrx = 'dbrx'
+
+    bert = 'bert'
 
 
 class RMTemplateType:

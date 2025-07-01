@@ -12,7 +12,7 @@ from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
 from trl.models.utils import prepare_deepspeed
 
-from swift.utils import empty_cache, unwrap_model_for_generation
+from swift.utils import unwrap_model_for_generation
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -47,7 +47,7 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     # Code borrowed from huggingface/trl
     def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):
-        assert not self.template.padding_free, 'generate not support padding_free.'
+        assert not self.template._packing, 'generate not support padding_free/packing.'
         # Generate output with respect to the prompt only
         model_inputs = {k: v for k, v in inputs.items() if not k.startswith('prompt') and k != 'labels'}
         model_inputs['input_ids'] = inputs['prompts']

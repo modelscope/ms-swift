@@ -170,6 +170,10 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
         elif args.tuner_backend == 'peft':
             if task_type == 'EMBEDDING':
                 task_type = None
+            elif task_type == 'RERANKER':
+                task_type = 'SEQ_CLS'
+            elif task_type == 'GENERATIVE_RERANKER':
+                task_type = 'CAUSAL_LM'
             lora_config = LoraConfig(task_type=task_type, lora_dtype=args.lora_dtype, **lora_kwargs)
             if args.init_weights == 'lora-ga':
                 try:

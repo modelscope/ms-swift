@@ -439,11 +439,13 @@ class VllmEngine(InferEngine):
                 infer_requests, template=template, strict=getattr(self, 'strict', True))
             self.set_default_max_tokens(request_config, batched_inputs)
             request_id_list = []
-            for inputs in batched_inputs:
+            for i, inputs in enumerate(batched_inputs):
                 request_id = str(self._request_count)
                 request_id_list.append(request_id)
                 self._request_count += 1
                 generation_config = self._prepare_generation_config(request_config)
+                if generation_config.seed is not None:
+                    generation_config.seed += i
                 self._add_stop_words(generation_config, request_config, template.template_meta)
                 self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
             prog_bar = tqdm(total=len(batched_inputs), dynamic_ncols=True, disable=not use_tqdm)
