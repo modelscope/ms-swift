@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 
 kwargs = {
     'per_device_train_batch_size': 2,
@@ -10,7 +10,7 @@ kwargs = {
     'gradient_accumulation_steps': 4,
     'num_train_epochs': 1,
     'model': 'Qwen/Qwen2-0.5B',
-    'dataset': ['AI-ModelScope/alpaca-gpt4-data-zh#1000'],
+    'dataset': ['AI-ModelScope/alpaca-gpt4-data-zh#2000'],
     'val_dataset': ['AI-ModelScope/alpaca-gpt4-data-zh#10'],
     'max_steps': 10,
     'dataset_num_proc': 4,
