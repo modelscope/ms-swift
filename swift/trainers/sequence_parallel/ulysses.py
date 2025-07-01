@@ -438,35 +438,23 @@ class UlyssesSampler(Sampler):
 
 class UlyssesDispatcher(DataLoaderDispatcher):
 
-    def __init__(self, base_dataloader, ulysses, device=None):
+    def __init__(self, base_dataloader, ulysses, device=None, skip_batches: int = 0):
         super().__init__(base_dataloader)
         self.ulysses = ulysses
         self.device = device
+        self.skip_batches = skip_batches
 
-    def _scatter_object_list(self, inputs):
-        if not dist.is_initialized():
-            return inputs[0]
-        outputs = [None]
-        global_src_rank = dist.get_global_rank(self.ulysses.dp_group, 0)
-        dist.scatter_object_list(outputs, inputs, global_src_rank, group=self.ulysses.dp_group)
-        return outputs[0]
+    @property
+    def rank(self):
+        return self.ulysses.dp_rank if dist.is_initialized() else 0
 
-    def __iter__(self):
-        base_iter = iter(self.base_dataloader)
-        while True:
-            if self.ulysses.dp_rank == 0:
-                try:
-                    data = [next(base_iter) for _ in range(self.ulysses.dp_world_size)]
-                except StopIteration:
-                    data = [None] * self.ulysses.dp_world_size
-                data = self._scatter_object_list(data)
-            else:
-                data = self._scatter_object_list(None)
-            if data is None:
-                break
-            if self.device:
-                data = to_device(data, self.device)
-            yield data
+    @property
+    def world_size(self):
+        return self.ulysses.dp_world_size if dist.is_initialized() else 1
+
+    @property
+    def group(self):
+        return self.ulysses.dp_group if dist.is_initialized() else 1
 
 
 # Code borrowed from deepspeed, here is why:
@@ -804,7 +792,7 @@ class Ulysses(SequenceParallel):
     def dp_group(self):
         return self.device_mesh['data'].get_group()
 
-    def get_dataloader(self, trainer, dataset, batch_size):
+    def get_dataloader(self, trainer, dataset, batch_size, skip_batches: int = 0):
         data_collator = trainer.data_collator
         if isinstance(dataset, datasets.Dataset):
             dataset = trainer._remove_unused_columns(dataset, description='training')
@@ -821,11 +809,13 @@ class Ulysses(SequenceParallel):
             }
 
             if not isinstance(dataset, torch.utils.data.IterableDataset):
+                if skip_batches > 0:
+                    from accelerate.data_loader import SkipBatchSampler
+                    sampler = SkipBatchSampler(sampler, skip_batches=skip_batches * batch_size)
                 dataloader_params['sampler'] = sampler
                 dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
                 dataloader_params['worker_init_fn'] = partial(
                     seed_worker, num_workers=trainer.args.dataloader_num_workers, rank=trainer.args.process_index)
-
             return DataLoaderShard(dataset, device=trainer.accelerator.device, **dataloader_params)
         else:
             dataloader_params = {
@@ -838,7 +828,7 @@ class Ulysses(SequenceParallel):
             if dist.is_initialized() and dataloader_params['prefetch_factor']:
                 dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
             dataloader = DataLoader(dataset, batch_size=batch_size, **dataloader_params)
-            dataloader = UlyssesDispatcher(dataloader, self, trainer.accelerator.device)
+            dataloader = UlyssesDispatcher(dataloader, self, trainer.accelerator.device, skip_batches=skip_batches)
             return dataloader
 
     def prepare_trainer(self, trainer):

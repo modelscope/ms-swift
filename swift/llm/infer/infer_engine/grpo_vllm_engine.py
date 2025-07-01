@@ -14,7 +14,7 @@ from .utils import AdapterRequest
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
-    os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '3600'
+    os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '86400'
 
 except Exception:
     raise
