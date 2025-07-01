@@ -32,7 +32,7 @@ from transformers.trainer_utils import EvalPrediction, IntervalStrategy
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
-from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, SkipIterableDataset, Template
+from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
 from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker, use_torchacc
@@ -631,11 +631,8 @@ class DataLoaderMixin:
                 # IterableDataset
                 if dist.is_initialized() and dataloader_params['prefetch_factor']:
                     dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
-                if skip_batches > 0:
-                    train_dataset = SkipIterableDataset(train_dataset, skip_batches * self._train_batch_size)
                 dataloader = DataLoader(train_dataset, batch_size=self._train_batch_size, **dataloader_params)
-                dataloader = DataLoaderDispatcher(dataloader, self.accelerator.device)
-
+                dataloader = DataLoaderDispatcher(dataloader, self.accelerator.device, skip_batches=skip_batches)
         return dataloader
 
     def get_eval_dataloader(self, eval_dataset=None):
