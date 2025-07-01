@@ -24,11 +24,14 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
                      return_outputs=False,
                      num_items_in_batch=None) -> Union[torch.Tensor, Tuple[torch.Tensor, Dict[str, torch.Tensor]]]:
         inputs.pop('labels', None)  # not use
+        margin = None
+        if 'margin' in inputs:
+            margin = torch.tensor(inputs['margin'], dtype=torch.float)
         attention_mask = inputs['attention_mask']
         batch_size = attention_mask.shape[0] // 2
         rewards = model(**inputs).logits
         rewards_chosen, rewards_rejected = torch.split(rewards, batch_size, dim=0)
-        if 'margin' in inputs:
+        if margin:
             loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected - inputs['margin']).mean()
         else:
             loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected).mean()
