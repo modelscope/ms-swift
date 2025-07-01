@@ -312,7 +312,6 @@ swift rlhf \
     --sleep_level 1 \
     --offload_model true \
     --offload_optimizer true \
-    --gc_collect_after_offload true \
     --deepspeed zero3 \
     --num_infer_workers 8 \
     --tensor_parallel_size 1 \
