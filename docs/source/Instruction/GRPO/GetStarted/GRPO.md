@@ -154,7 +154,6 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 ```bash
 --offload_optimizer true \
 --offload_model true \
---gc_collect_after_offload true \
 ```
 
 4. 在vLLM中使用 Tensor Parallel 技术：

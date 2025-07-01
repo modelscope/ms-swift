@@ -1,6 +1,10 @@
 # Reward Function
 ## Custom Reward Function
-The reward function takes the model-generated text `completions` and other columns from the dataset as parameters (`kwargs`) and scores the model-generated text. Below is an example demonstrating how to implement a simple length-based reward function. This function assigns a reward signal of 1.0 if the length of the model-generated text exceeds 1024; otherwise, the reward signal is 0.0.
+The reward function takes as arguments (via kwargs) the model-generated completions, other columns from the dataset, and the training state, and calculates a reward score. The [trainer state]() includes information such as the current training step.
+
+Note: The columns related to model input (such as query and response) are converted to the messages key. The original assistant response in the dataset will be discarded, so please use extra columns if you wish to retain it.
+
+Below is an example illustrating how to implement a simple length-based reward function. This function assigns a reward of 1.0 if the length of the generated completion exceeds 1024, and 0.0 otherwise.
 
 ```python
 from swift.plugin import ORM, orms
@@ -12,13 +16,15 @@ orms['dummy']= DummyLengthRewardFunction
 ```
 
 **Accessing Other Columns in the Dataset**
+For example, if the reward function needs to access the solution column from the dataset, as well as the current training step and the total number of steps for calculation, there are two ways to retrieve these values:
 
-For example, if the reward function needs to access the solution column from the dataset for auxiliary calculations, here are two ways to achieve this:
 
-Explicitly define the solution column name in the __call__ parameters:
+Explicitly define the column name in the __call__ parameters:
 ```python
-    def __call__(completions, solution, **kwargs):
+    def __call__(completions, solution, trainer_state, **kwargs):
         print(solution)
+        global_step = trainer_state.global_step
+        max_steps = trainer_state.max_steps
         ...
 ```
 
@@ -26,10 +32,11 @@ Retrieve it from kwargs:
 ```python
     def __call__(completions, **kwargs):
         solution = kwargs.get('solution')
+        trainer_state = kwargs.get('trainer_state')
+        global_step = trainer_state.global_step
+        max_steps = trainer_state.max_steps
         ...
 ```
-
-Note: Columns related to messages (e.g., query, response) will be processed, and the original assistant responses in the dataset will be discarded. Use additional columns to retain such information.
 
 **Using Custom Reward Functions**
 
