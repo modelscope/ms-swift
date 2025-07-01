@@ -462,7 +462,9 @@ class ToolUseFormatReward(ORM):
         self.format_max_possible = 1.0
         self.format_min_possible = 0.0
 
-    def __call__(self, completions, solution, global_step, **kwargs) -> List[float]:
+    def __call__(self, completions, solution, **kwargs) -> List[float]:
+        trainer_state = kwargs.get('trainer_state')
+        global_step = trainer_state.global_step
         max_possible_reward = self.format_max_possible
         min_possible_reward = self.format_min_possible
         # Two stage (Coarse) Setting, divide training into two phases. Format Reward in [0,0.5] if step < 30 else [0,1]
@@ -521,9 +523,11 @@ class ToolUseLengthReward(ORM):
         self.length_min_possible = 0.0
 
     # customized reward functions: length
-    def __call__(self, completions, solution, global_step, **kwargs):
+    def __call__(self, completions, solution, **kwargs):
         max_possible_reward = self.length_max_possible
         min_possible_reward = self.length_min_possible
+        trainer_state = kwargs.get('trainer_state')
+        global_step = trainer_state.global_step
         # SCHEDULELENGTH: enable Dynamic Length Reward
         if os.getenv('SCHEDULELENGTH', 0) == '1':
             max_reward_len = (640 - 384) * global_step / 105 + 384
@@ -639,7 +643,9 @@ class ToolUseCorrectnessReward(ORM):
         return (max_possible_reward - min_possible_reward) * score / local_max_possible + min_possible_reward
 
     # custoimzed reward functions: tool call correctness
-    def __call__(self, completions, solution, global_step, **kwargs):
+    def __call__(self, completions, solution, **kwargs):
+        trainer_state = kwargs.get('trainer_state')
+        global_step = trainer_state.global_step
         max_possible_reward = self.tool_max_possible
         min_possible_reward = self.tool_min_possible
         # two stage (Coarse) Setting, divide training into two phases.
