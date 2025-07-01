@@ -32,7 +32,7 @@ class LLMEval(BaseUI):
         'llm_eval': {
             'label': {
                 'zh': 'LLM评测',
-                'en': 'LLM evaluation',
+                'en': 'LLM Evaluation',
             }
         },
         'more_params': {

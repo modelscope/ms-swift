@@ -42,7 +42,7 @@ class LLMInfer(BaseUI):
         'port': {
             'label': {
                 'zh': '端口',
-                'en': 'port'
+                'en': 'Port'
             },
         },
         'llm_infer': {
@@ -79,8 +79,8 @@ class LLMInfer(BaseUI):
         },
         'infer_model_type': {
             'label': {
-                'zh': 'Lora模块',
-                'en': 'Lora module'
+                'zh': 'LoRA模块',
+                'en': 'LoRA module'
             },
             'info': {
                 'zh': '发送给server端哪个LoRA，默认为`default`',

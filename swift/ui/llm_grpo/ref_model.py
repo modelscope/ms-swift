@@ -15,23 +15,23 @@ class RefModel(BaseUI):
     locale_dict = {
         'ref_tab': {
             'label': {
-                'zh': 'ref_model参数设置',
-                'en': 'ref_model parameters settings'
+                'zh': 'Ref模型参数设置',
+                'en': 'Ref model parameters settings'
             },
         },
         'ref_model_type': {
             'label': {
-                'zh': '选择ref模型',
-                'en': 'Select ref model'
+                'zh': 'Ref模型类型',
+                'en': 'Ref model type'
             },
             'info': {
-                'zh': 'SWIFT已支持的模型名称',
-                'en': 'Base model supported by SWIFT'
+                'zh': 'SWIFT已支持的模型类型',
+                'en': 'Model type supported by SWIFT'
             }
         },
         'ref_model': {
             'label': {
-                'zh': 'ref模型id或路径',
+                'zh': 'Ref模型id或路径',
                 'en': 'Ref model id or path'
             },
             'info': {
@@ -41,31 +41,31 @@ class RefModel(BaseUI):
         },
         'sync_ref_model': {
             'label': {
-                'zh': '同步ref model',
-                'en': 'ref model synchronization'
+                'zh': '同步ref模型',
+                'en': 'Ref model synchronization'
             },
             'info': {
-                'zh': '是否定期同步ref model',
+                'zh': '是否定期同步ref模型',
                 'en': 'Whether to synchronize ref model'
             }
         },
         'ref_model_sync_steps': {
             'label': {
                 'zh': '同步频率',
-                'en': 'sync steps'
+                'en': 'Sync steps'
             },
             'info': {
-                'zh': 'ref model同步频率',
-                'en': 'ref model synchronization frequency'
+                'zh': 'Ref模型同步频率',
+                'en': 'Ref model synchronization frequency'
             }
         },
         'ref_model_mixup_alpha': {
             'label': {
                 'zh': '混合系数',
-                'en': 'mixup alpha'
+                'en': 'Mixup alpha'
             },
             'info': {
-                'zh': '控制在更新过程中model和先前ref_model之间的混合',
+                'zh': '控制在更新过程中model和先前ref model之间的混合',
                 'en': 'Controls the blending between model and the previous ref_model during the update process'
             }
         }

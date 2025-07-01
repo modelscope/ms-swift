@@ -30,7 +30,7 @@ class LLMExport(BaseUI):
         'llm_export': {
             'label': {
                 'zh': 'LLM导出',
-                'en': 'LLM export',
+                'en': 'LLM Export',
             }
         },
         'more_params': {

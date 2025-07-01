@@ -8,6 +8,7 @@ from swift.llm.argument.base_args.base_args import get_supported_tuners
 from swift.ui.base import BaseUI
 from swift.ui.llm_grpo.advanced import GRPOAdvanced
 from swift.ui.llm_grpo.dataset import GRPODataset
+from swift.ui.llm_grpo.external_rollout import LLMRollout
 from swift.ui.llm_grpo.grpo_advanced import GrpoAdvanced
 from swift.ui.llm_grpo.hyper import GRPOHyper
 from swift.ui.llm_grpo.model import GRPOModel
@@ -30,20 +31,8 @@ class LLMGRPO(LLMTrain):
     group = 'llm_grpo'
 
     sub_ui = [
-        GRPOModel,
-        GRPODataset,
-        Reward,
-        GRPORuntime,
-        Rollout,
-        GRPOSave,
-        GRPOTuner,
-        GRPOOptimizer,
-        GRPOHyper,
-        GRPOQuantization,
-        GRPOAdvanced,
-        RefModel,
-        GrpoAdvanced,
-        GRPOReportTo,
+        GRPOModel, GRPODataset, Reward, GRPORuntime, Rollout, GRPOSave, GRPOTuner, GRPOOptimizer, GRPOHyper,
+        GRPOQuantization, GRPOAdvanced, RefModel, GrpoAdvanced, GRPOReportTo, LLMRollout
     ]
 
     locale_dict: Dict[str, Dict] = {
@@ -51,6 +40,13 @@ class LLMGRPO(LLMTrain):
             'label': {
                 'zh': 'LLM GRPO',
                 'en': 'LLM GRPO',
+            }
+        },
+        'external_alert': {
+            'value': {
+                'zh': 'Err: {} \nRollout模型部署未完成，请检查日志，稍后开始训练！',
+                'en': 'Err: {} \nRollout model deployment is incomplete, '
+                'please check the logs and start training later!'
             }
         },
         'submit_alert': {
@@ -156,7 +152,7 @@ class LLMGRPO(LLMTrain):
                 'en': 'Tuner backend'
             },
             'info': {
-                'zh': 'tuner实现框架',
+                'zh': 'Tuner实现框架',
                 'en': 'The tuner backend'
             }
         },
@@ -169,6 +165,42 @@ class LLMGRPO(LLMTrain):
                 'zh': 'Liger kernel可以有效降低显存使用',
                 'en': 'Liger kernel can reduce memory usage'
             }
+        },
+        'sequence_parallel_size': {
+            'label': {
+                'zh': '序列并行大小',
+                'en': 'Sequence parallel size',
+            },
+            'info': {
+                'zh': '当前支持CPT/SFT/DPO/GRPO',
+                'en': 'Currently supports CPT/SFT/DPO/GRPO',
+            }
+        },
+        'deepspeed': {
+            'label': {
+                'zh': 'DeepSpeed',
+                'en': 'DeepSpeed',
+            },
+            'info': {
+                'zh': '可以选择下拉列表，也支持传入路径',
+                'en': 'Choose from the dropbox or fill in a valid path',
+            }
+        },
+        'more_params': {
+            'label': {
+                'zh': '其他高级参数',
+                'en': 'Other params'
+            },
+            'info': {
+                'zh': '以json格式或--xxx xxx命令行格式填入',
+                'en': 'Fill in with json format or --xxx xxx cmd format'
+            }
+        },
+        'extra_params': {
+            'label': {
+                'zh': '其他参数设置',
+                'en': 'Extra settings'
+            },
         },
         'train_param': {
             'label': {
@@ -199,6 +231,13 @@ class LLMGRPO(LLMTrain):
                         gr.Checkbox(elem_id='use_liger_kernel', scale=4)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                         gr.Textbox(elem_id='ddp_num', value='1', scale=4)
+                        gr.Dropdown(
+                            elem_id='deepspeed',
+                            scale=4,
+                            allow_custom_value=True,
+                            value=None,
+                            choices=['zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload'])
+                        gr.Textbox(elem_id='sequence_parallel_size', lines=1, scale=4)
                 GRPOHyper.build_ui(base_tab)
                 GRPORuntime.build_ui(base_tab)
                 with gr.Row(equal_height=True):
@@ -213,13 +252,19 @@ class LLMGRPO(LLMTrain):
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
                 Rollout.build_ui(base_tab)
+                LLMRollout.set_lang(cls.lang)
+                LLMRollout.build_ui(LLMRollout)
                 GRPOTuner.build_ui(base_tab)
                 RefModel.build_ui(base_tab)
-                GRPOQuantization.build_ui(base_tab)
-                GRPOSave.build_ui(base_tab)
-                GRPOReportTo.build_ui(base_tab)
-                GrpoAdvanced.build_ui(base_tab)
-                GRPOAdvanced.build_ui(base_tab)
+                with gr.Accordion(elem_id='extra_params', open=True):
+                    with gr.Tabs():
+                        GrpoAdvanced.build_ui(base_tab)
+                        GRPOAdvanced.build_ui(base_tab)
+                        GRPOQuantization.build_ui(base_tab)
+                        GRPOSave.build_ui(base_tab)
+                        GRPOReportTo.build_ui(base_tab)
+                    with gr.Row():
+                        gr.Textbox(elem_id='more_params', lines=4, scale=20)
 
                 cls.element('train_type').change(
                     GRPOHyper.update_lr,
@@ -243,7 +288,15 @@ class LLMGRPO(LLMTrain):
                         cls.element('train_record'),
                     ],
                     queue=True)
-
+                Rollout.element('vllm_mode').change(LLMRollout.external_rollout_display, Rollout.element('vllm_mode'),
+                                                    LLMRollout.element('llm_rollout'))
+                LLMRollout.element('rollout').click(
+                    LLMRollout.rollout_model,
+                    list(LLMRollout.valid_elements().values())
+                    + [cls.element('model'), cls.element('model_type'),
+                       cls.element('template')],
+                    [LLMRollout.element('rollout_runtime_tab'),
+                     LLMRollout.element('rollout_running_tasks')])
                 base_tab.element('running_tasks').change(
                     partial(GRPORuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
                     list(base_tab.valid_elements().values()) + [cls.element('log')] + GRPORuntime.all_plots)

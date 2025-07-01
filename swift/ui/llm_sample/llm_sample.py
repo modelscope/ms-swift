@@ -35,7 +35,7 @@ class LLMSample(BaseUI):
         'llm_sample': {
             'label': {
                 'zh': 'LLM采样',
-                'en': 'LLM sample',
+                'en': 'LLM Sampling',
             }
         },
         'sample': {
@@ -74,14 +74,14 @@ class LLMSample(BaseUI):
         },
         'num_sampling_per_gpu_batch_size': {
             'label': {
-                'zh': '每次采样的batch_size',
-                'en': 'The batch_size of each sampling'
+                'zh': '每次采样的批次大小',
+                'en': 'The batch size of sampling'
             }
         },
         'num_sampling_per_gpu_batches': {
             'label': {
-                'zh': '采样batch数量',
-                'en': 'Sampling batch number'
+                'zh': '采样批次数量',
+                'en': 'Num of Sampling batches'
             }
         },
         'output_dir': {

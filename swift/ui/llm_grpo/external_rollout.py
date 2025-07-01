@@ -13,11 +13,9 @@ import torch
 from json import JSONDecodeError
 from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
-from swift.llm import DeployArguments
+from swift.llm import DeployArguments, RLHFArguments, RolloutArguments
 from swift.ui.base import BaseUI
-from swift.ui.llm_rollout.model import Model
-from swift.ui.llm_rollout.rollout import Rollout
-from swift.ui.llm_rollout.runtime import RolloutRuntime
+from swift.ui.llm_grpo.external_runtime import RolloutRuntime
 from swift.utils import get_device_count, get_logger
 
 logger = get_logger()
@@ -25,34 +23,58 @@ logger = get_logger()
 
 class LLMRollout(BaseUI):
 
-    group = 'llm_rollout'
+    group = 'llm_grpo'
 
     is_multimodal = True
 
-    sub_ui = [Model, Rollout, RolloutRuntime]
+    sub_ui = [RolloutRuntime]
 
     locale_dict = {
+        'tensor_parallel_size': {
+            'label': {
+                'zh': '张量并行大小',
+                'en': 'Tensor parallel size'
+            },
+        },
+        'data_parallel_size': {
+            'label': {
+                'zh': '数据并行大小',
+                'en': 'Data parallel size'
+            },
+        },
+        'max_model_len': {
+            'label': {
+                'zh': '模型支持的最大长度',
+                'en': 'Max model len'
+            },
+        },
+        'gpu_memory_utilization': {
+            'label': {
+                'zh': 'GPU显存利用率',
+                'en': 'GPU memory utilization'
+            },
+        },
         'port': {
             'label': {
-                'zh': '端口',
-                'en': 'port'
+                'zh': 'Rollout端口',
+                'en': 'Rollout Port'
             },
         },
         'llm_rollout': {
             'label': {
-                'zh': 'LLM Rollout',
-                'en': 'LLM Rollout',
+                'zh': '外部rollout模型部署',
+                'en': 'External rollout model deployment',
             }
         },
         'rollout': {
             'value': {
-                'zh': '开始 Rollout',
+                'zh': '开始Rollout',
                 'en': 'Start Rollout',
             }
         },
         'load_alert': {
             'value': {
-                'zh': 'rollout中，请点击"展示rollout状态"查看',
+                'zh': 'Rollout中，请点击"展示rollout状态"查看',
                 'en': 'Start to rollout, '
                 'please Click "Show running '
                 'status" to view details',
@@ -64,20 +86,16 @@ class LLMRollout(BaseUI):
                 'en': 'The port has been occupied'
             }
         },
-        'gpu_id': {
+        'rollout_gpu_id': {
             'label': {
-                'zh': '选择可用GPU',
-                'en': 'Choose GPU'
-            },
-            'info': {
-                'zh': '选择训练使用的GPU号，如CUDA不可用只能选择CPU',
-                'en': 'Select GPU to train'
+                'zh': '选择用于rollout的GPU',
+                'en': 'Choose GPU for rollout'
             }
         },
-        'more_params': {
+        'more_roll_params': {
             'label': {
-                'zh': '更多参数',
-                'en': 'More params'
+                'zh': '更多rollout参数',
+                'en': 'More rollout params'
             },
             'info': {
                 'zh': '以json格式或--xxx xxx命令行格式填入',
@@ -86,54 +104,58 @@ class LLMRollout(BaseUI):
         }
     }
 
-    choice_dict = BaseUI.get_choices_from_dataclass(DeployArguments)
-    default_dict = BaseUI.get_default_value_from_dataclass(DeployArguments)
-    arguments = BaseUI.get_argument_names(DeployArguments)
+    choice_dict = BaseUI.get_choices_from_dataclass(RolloutArguments)
+    default_dict = BaseUI.get_default_value_from_dataclass(RolloutArguments)
+    arguments = BaseUI.get_argument_names(RolloutArguments)
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.TabItem(elem_id='llm_rollout', label=''):
+        with gr.Accordion(elem_id='llm_rollout', visible=False):
             default_device = 'cpu'
             device_count = get_device_count()
             if device_count > 0:
                 default_device = '0'
             with gr.Blocks():
-                Model.build_ui(base_tab)
-                Rollout.build_ui(base_tab)
-                RolloutRuntime.build_ui(base_tab)
+                with gr.Row():
+                    gr.Textbox(elem_id='tensor_parallel_size', lines=1, value='1', scale=4)
+                    gr.Textbox(elem_id='data_parallel_size', lines=1, value='1', scale=4)
+                    gr.Textbox(elem_id='max_model_len', lines=1, value='', scale=4)
+                    gr.Slider(elem_id='gpu_memory_utilization', minimum=0.0, maximum=1.0, step=0.05, value=0.9, scale=4)
                 with gr.Row(equal_height=True):
                     gr.Dropdown(
-                        elem_id='gpu_id',
+                        elem_id='rollout_gpu_id',
                         multiselect=True,
                         choices=[str(i) for i in range(device_count)] + ['cpu'],
                         value=default_device,
-                        scale=40)
-                    gr.Textbox(elem_id='port', lines=1, value='8000', scale=20)
+                        scale=4)
+                    gr.Textbox(elem_id='port', lines=1, value='8000', scale=2)
+                    gr.Textbox(elem_id='more_roll_params', lines=1, scale=8)
                     gr.Button(elem_id='rollout', scale=2, variant='primary')
-                with gr.Row():
-                    gr.Textbox(elem_id='more_params', lines=4)
+                RolloutRuntime.build_ui(base_tab)
 
-                cls.element('rollout').click(
-                    cls.rollout_model, list(base_tab.valid_elements().values()),
-                    [cls.element('runtime_tab'), cls.element('running_tasks')])
-
-                base_tab.element('running_tasks').change(
-                    partial(RolloutRuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                    list(cls.valid_elements().values()) + [cls.element('log')])
-                RolloutRuntime.element('kill_task').click(
+                base_tab.element('rollout_running_tasks').change(
+                    partial(RolloutRuntime.task_changed, base_tab=base_tab),
+                    [base_tab.element('rollout_running_tasks')],
+                    list(cls.valid_elements().values()) + [cls.element('rollout_log')])
+                RolloutRuntime.element('rollout_kill_task').click(
                     RolloutRuntime.kill_task,
-                    [RolloutRuntime.element('running_tasks')],
-                    [RolloutRuntime.element('running_tasks')] + [RolloutRuntime.element('log')],
+                    [RolloutRuntime.element('rollout_running_tasks')],
+                    [RolloutRuntime.element('rollout_running_tasks')] + [RolloutRuntime.element('rollout_log')],
                 )
 
     @classmethod
     def rollout(cls, *args):
-        rollout_args = cls.get_default_value_from_dataclass(DeployArguments)
+        rollout_args = cls.get_default_value_from_dataclass(RolloutArguments)
         kwargs = {}
         kwargs_is_list = {}
         other_kwargs = {}
         more_params = {}
         more_params_cmd = ''
+        model_args = args[-3:]
+        kwargs['model'] = model_args[0]
+        kwargs['model_type'] = model_args[1]
+        kwargs['template'] = model_args[2]
+        args = args[:-3]
         keys = cls.valid_element_keys()
         for key, value in zip(keys, args):
             compare_value = rollout_args.get(key)
@@ -150,21 +172,14 @@ class LLMRollout(BaseUI):
                 kwargs_is_list[key] = isinstance(value, list) or getattr(cls.element(key), 'is_list', False)
             else:
                 other_kwargs[key] = value
-            if key == 'more_params' and value:
+            if key == 'more_roll_params' and value:
                 try:
                     more_params = json.loads(value)
                 except (JSONDecodeError or TypeError):
                     more_params_cmd = value
 
         kwargs.update(more_params)
-        model = kwargs.get('model')
-        if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
-            kwargs['ckpt_dir'] = kwargs.pop('model')
-            with open(os.path.join(kwargs['ckpt_dir'], 'args.json'), 'r', encoding='utf-8') as f:
-                _json = json.load(f)
-                kwargs['model_type'] = _json['model_type']
-                kwargs['train_type'] = _json['train_type']
-        rollout_args = DeployArguments(
+        rollout_args = RolloutArguments(
             **{
                 key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value
                 for key, value in kwargs.items()
@@ -184,7 +199,7 @@ class LLMRollout(BaseUI):
         if 'port' not in kwargs:
             params += f'--port "{rollout_args.port}" '
         params += more_params_cmd + ' '
-        devices = other_kwargs['gpu_id']
+        devices = other_kwargs['rollout_gpu_id']
         devices = [d for d in devices if d]
         assert (len(devices) == 1 or 'cpu' not in devices)
         gpus = ','.join(devices)
@@ -196,9 +211,10 @@ class LLMRollout(BaseUI):
                 cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
             else:
                 cuda_param = ''
+        output_dir = 'rollout_output'
         now = datetime.now()
         time_str = f'{now.year}{now.month}{now.day}{now.hour}{now.minute}{now.second}'
-        file_path = f'output/{rollout_args.model_type}-{time_str}'
+        file_path = f'{output_dir}/{rollout_args.model_type}-{time_str}'
         if not os.path.exists(file_path):
             os.makedirs(file_path, exist_ok=True)
         log_file = os.path.join(os.getcwd(), f'{file_path}/run_rollout.log')
@@ -222,3 +238,9 @@ class LLMRollout(BaseUI):
         time.sleep(2)
         running_task = RolloutRuntime.refresh_tasks(log_file)
         return gr.update(open=True), running_task
+
+    @classmethod
+    def external_rollout_display(cls, mode):
+        if mode == 'server':
+            return gr.update(visible=True, open=True)
+        return gr.update(visible=False)

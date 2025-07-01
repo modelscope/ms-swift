@@ -55,18 +55,18 @@ class Model(BaseUI):
         },
         'merge_lora': {
             'label': {
-                'zh': '合并lora',
-                'en': 'merge lora'
+                'zh': '合并LoRA',
+                'en': 'Merge LoRA'
             },
             'info': {
-                'zh': '仅在sft_type=lora时可用',
-                'en': 'Only available when sft_type=lora'
+                'zh': '仅在`sft_type=lora`时可用',
+                'en': 'Only available when `sft_type=lora`'
             }
         },
         'lora_modules': {
             'label': {
-                'zh': '外部lora模块',
-                'en': 'More lora modules'
+                'zh': '外部LoRA模块',
+                'en': 'More LoRA modules'
             },
             'info': {
                 'zh': '空格分割的name=/path1/path2键值对',
@@ -112,6 +112,7 @@ class Model(BaseUI):
             gr.Button(elem_id='reset', scale=2)
         with gr.Row():
             gr.Dropdown(elem_id='infer_backend', value='pt', scale=5)
+        Generate.set_lang(cls.lang)
         Generate.build_ui(base_tab)
         with gr.Row(equal_height=True):
             gr.Textbox(elem_id='lora_modules', lines=1, is_list=True, scale=40)

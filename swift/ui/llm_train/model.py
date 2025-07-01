@@ -45,8 +45,8 @@ class Model(BaseUI):
         },
         'system': {
             'label': {
-                'zh': 'system字段',
-                'en': 'system'
+                'zh': 'System字段',
+                'en': 'System'
             },
             'info': {
                 'zh': '选择system字段的内容',

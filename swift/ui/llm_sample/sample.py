@@ -25,14 +25,14 @@ class Sample(BaseUI):
         },
         'num_return_sequences': {
             'label': {
-                'zh': '采样返回的原始sequence数量',
-                'en': 'The number of original sequences returned by sampling'
+                'zh': '采样返回的原始序列数量',
+                'en': 'Num of original sequences returned by sampling'
             },
         },
         'n_best_to_keep': {
             'label': {
-                'zh': '最佳sequence数量',
-                'en': 'Optimal number of sequences'
+                'zh': '最佳序列数量',
+                'en': 'Num of best sequences'
             },
         },
         'max_new_tokens': {
@@ -43,26 +43,26 @@ class Sample(BaseUI):
         },
         'temperature': {
             'label': {
-                'zh': 'temperature',
-                'en': 'temperature'
+                'zh': '采样温度',
+                'en': 'Temperature'
             },
         },
         'top_k': {
             'label': {
-                'zh': 'top_k',
-                'en': 'top_k'
+                'zh': 'Top-k',
+                'en': 'Top-k'
             },
         },
         'top_p': {
             'label': {
-                'zh': 'top_p',
-                'en': 'top_p'
+                'zh': 'Top-p',
+                'en': 'Top-p'
             },
         },
         'repetition_penalty': {
             'label': {
-                'zh': 'repetition_penalty',
-                'en': 'repetition_penalty'
+                'zh': '重复惩罚',
+                'en': 'Repetition Penalty'
             },
         },
     }

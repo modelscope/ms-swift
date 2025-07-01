@@ -13,8 +13,8 @@ class Optimizer(BaseUI):
     locale_dict = {
         'galore_tab': {
             'label': {
-                'zh': 'Galore参数设置',
-                'en': 'Galore Settings'
+                'zh': 'GaLore参数设置',
+                'en': 'GaLore Settings'
             },
         },
         'use_galore': {
@@ -23,50 +23,50 @@ class Optimizer(BaseUI):
                 'en': 'Use GaLore'
             },
             'info': {
-                'zh': '使用Galore来减少全参数训练的显存消耗',
-                'en': 'Use Galore to reduce GPU memory usage in full parameter training'
+                'zh': '使用GaLore来减少全参数训练的显存消耗',
+                'en': 'Use GaLore to reduce GPU memory usage in full parameter training'
             }
         },
         'galore_rank': {
             'label': {
-                'zh': 'Galore的秩',
-                'en': 'The rank of Galore'
+                'zh': 'GaLore的秩',
+                'en': 'The rank of GaLore'
             },
         },
         'galore_update_proj_gap': {
             'label': {
-                'zh': 'galore_update_proj_gap',
-                'en': 'galore_update_proj_gap'
+                'zh': '投影矩阵更新间隔',
+                'en': 'Projection matrix update interval'
             },
             'info': {
-                'zh': 'Galore project matrix更新频率',
-                'en': 'The updating gap of the project matrix'
+                'zh': 'GaLore分解矩阵的更新间隔',
+                'en': 'Update interval of GaLore decomposition matrix'
             },
         },
-        'galore_optim_per_parameter': {
+        'galore_with_embedding': {
             'label': {
-                'zh': 'galore_optim_per_parameter',
-                'en': 'galore_optim_per_parameter'
+                'zh': '对嵌入层应用GaLore',
+                'en': 'Use GaLore with embedding'
             },
             'info': {
-                'zh': '为每个Galore Parameter创建单独的optimizer',
-                'en': 'Create unique optimizer for per Galore parameter'
+                'zh': '是否对嵌入层应用GaLore',
+                'en': 'Whether to apply GaLore to embedding'
             },
         },
         'lorap_tab': {
             'label': {
-                'zh': 'lora+参数设置',
-                'en': 'lora+ parameters settings'
+                'zh': 'LoRA+参数设置',
+                'en': 'LoRA+ settings'
             },
         },
         'lorap_lr_ratio': {
             'label': {
-                'zh': 'LoRA+参数',
-                'en': 'LoRA+ Parameters'
+                'zh': 'LoRA+学习率比率',
+                'en': 'LoRA+ lr ratio'
             },
             'info': {
-                'zh': '使用lora时指定该参数可使用lora+，建议值10～16',
-                'en': 'When using lora, specify this parameter to use lora+, and the recommended value is 10 to 16'
+                'zh': '使用LoRA时指定该参数可使用LoRA+，建议值10～16',
+                'en': 'When using LoRA, specify this parameter to use LoRA+, and the recommended value is 10 to 16'
             }
         },
         'muon_tab': {
@@ -77,30 +77,30 @@ class Optimizer(BaseUI):
         },
         'multimodal_tab': {
             'label': {
-                'zh': 'Multimodal参数设置',
+                'zh': '多模态参数设置',
                 'en': 'Multimodal Settings'
             },
         },
         'vit_lr': {
             'label': {
-                'zh': 'vit的学习率',
-                'en': 'Learning rate of vit'
+                'zh': 'ViT的学习率',
+                'en': 'Learning rate of ViT'
             },
         },
         'aligner_lr': {
             'label': {
-                'zh': 'aligner的学习率',
+                'zh': 'Aligner的学习率',
                 'en': 'Learning rate of aligner'
             },
         },
         'optimizer': {
             'label': {
                 'zh': '优化器',
-                'en': 'optimizer'
+                'en': 'Optimizer'
             },
             'info': {
-                'zh': 'plugin的自定义optimizer名称',
-                'en': 'Custom optimizer name in plugin'
+                'zh': 'Plugin中自定义优化器名称',
+                'en': 'Custom Optimizer name in plugin'
             }
         },
         'optimizer_params': {
@@ -112,7 +112,7 @@ class Optimizer(BaseUI):
     }
 
     tabs_to_filter = {
-        'galore': ['use_galore', 'galore_optim_per_parameter', 'galore_rank', 'galore_update_proj_gap'],
+        'galore': ['use_galore', 'galore_with_embedding', 'galore_rank', 'galore_update_proj_gap'],
         'lorap': ['lorap_lr_ratio'],
         'multimodal': ['vit_lr', 'aligner_lr']
     }
@@ -129,7 +129,7 @@ class Optimizer(BaseUI):
                 with gr.TabItem(elem_id='galore_tab'):
                     with gr.Row():
                         gr.Checkbox(elem_id='use_galore', scale=4)
-                        gr.Checkbox(elem_id='galore_optim_per_parameter', scale=4)
+                        gr.Checkbox(elem_id='galore_with_embedding', scale=4)
                         gr.Slider(elem_id='galore_rank', minimum=8, maximum=256, step=8, scale=4)
                         gr.Slider(elem_id='galore_update_proj_gap', minimum=10, maximum=1000, step=50, scale=4)
                 with gr.TabItem(elem_id='lorap_tab'):

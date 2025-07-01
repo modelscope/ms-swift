@@ -11,7 +11,7 @@ class Advanced(BaseUI):
     group = 'llm_train'
 
     locale_dict = {
-        'advanced_param': {
+        'advanced_tab': {
             'label': {
                 'zh': '高级参数设置',
                 'en': 'Advanced settings'
@@ -67,16 +67,6 @@ class Advanced(BaseUI):
                 'en': 'Set the warmup ratio in total steps'
             }
         },
-        'more_params': {
-            'label': {
-                'zh': '其他高级参数',
-                'en': 'Other params'
-            },
-            'info': {
-                'zh': '以json格式或--xxx xxx命令行格式填入',
-                'en': 'Fill in with json format or --xxx xxx cmd format'
-            }
-        },
         'truncation_strategy': {
             'label': {
                 'zh': '数据集超长策略',
@@ -97,16 +87,6 @@ class Advanced(BaseUI):
                 'en': 'Set the max steps, if the value > 0 then num_train_epochs has no effects',
             }
         },
-        'per_device_eval_batch_size': {
-            'label': {
-                'zh': '验证batch size',
-                'en': 'Val batch size',
-            },
-            'info': {
-                'zh': '验证的batch size',
-                'en': 'Set the val batch size',
-            }
-        },
         'max_grad_norm': {
             'label': {
                 'zh': '梯度裁剪',
@@ -116,51 +96,20 @@ class Advanced(BaseUI):
                 'zh': '设置梯度裁剪',
                 'en': 'Set the max grad norm',
             }
-        },
-        'sequence_parallel_size': {
-            'label': {
-                'zh': '序列并行大小',
-                'en': 'sequence parallel size',
-            },
-            'info': {
-                'zh': '当前支持CPT/SFT/DPO/GRPO',
-                'en': 'Currently supports CPT/SFT/DPO/GRPO',
-            }
-        },
-        'deepspeed': {
-            'label': {
-                'zh': 'deepspeed',
-                'en': 'deepspeed',
-            },
-            'info': {
-                'zh': '可以选择下拉列表，也支持传入路径',
-                'en': 'Choose from the dropbox or fill in a valid path',
-            }
-        },
+        }
     }
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Accordion(elem_id='advanced_param', open=False):
+        with gr.TabItem(elem_id='advanced_tab'):
             with gr.Blocks():
                 with gr.Row():
                     gr.Textbox(elem_id='optim', lines=1, scale=20)
                     gr.Textbox(elem_id='weight_decay', lines=1, scale=20)
                     gr.Textbox(elem_id='logging_steps', lines=1, scale=20)
                     gr.Textbox(elem_id='lr_scheduler_type', lines=1, scale=20)
-                    gr.Textbox(elem_id='max_steps', lines=1, scale=20)
-                    gr.Slider(elem_id='warmup_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=20)
                 with gr.Row():
                     gr.Dropdown(elem_id='truncation_strategy', scale=20)
-                    gr.Slider(elem_id='per_device_eval_batch_size', minimum=1, maximum=256, step=2, scale=20)
+                    gr.Textbox(elem_id='max_steps', lines=1, scale=20)
                     gr.Textbox(elem_id='max_grad_norm', lines=1, scale=20)
-                    gr.Dropdown(
-                        elem_id='deepspeed',
-                        scale=20,
-                        allow_custom_value=True,
-                        value=None,
-                        choices=['zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload'])
-                    gr.Textbox(elem_id='sequence_parallel_size', lines=1, scale=20)
-
-                with gr.Row():
-                    gr.Textbox(elem_id='more_params', lines=4, scale=20)
+                    gr.Slider(elem_id='warmup_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=20)

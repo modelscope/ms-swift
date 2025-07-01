@@ -156,8 +156,8 @@ class Runtime(BaseUI):
         },
         'tb_not_found': {
             'value': {
-                'zh': 'tensorboard未安装,使用pip install tensorboard进行安装',
-                'en': 'tensorboard not found, install it by pip install tensorboard',
+                'zh': 'TensorBoard未安装,使用`pip install tensorboard`进行安装',
+                'en': 'TensorBoard not found, install it by `pip install tensorboard`',
             }
         },
         'running_cmd': {
@@ -173,29 +173,31 @@ class Runtime(BaseUI):
         'show_running_cmd': {
             'value': {
                 'zh': '展示运行命令',
-                'en': 'Show running Command line'
+                'en': 'Show running command line'
             },
         },
         'show_sh': {
             'label': {
                 'zh': '展示sh命令行',
-                'en': 'Show sh Command line'
+                'en': 'Show sh command line'
             },
         },
         'cmd_sh': {
             'label': {
                 'zh': '训练命令行',
-                'en': 'Training Command line'
+                'en': 'Training command line'
             },
             'info': {
-                'zh': '点击下方的`保存训练命令`可以保存sh脚本',
-                'en': 'Click the `Save training command` below to save the sh script'
+                'zh':
+                '如果训练命令行没有展示请再次点击"展示运行命令"，点击下方的"保存训练命令"可以保存sh脚本',
+                'en': ('Please press "Show running command line" if the content is none, '
+                       'click the "Save training command" below to save the sh script')
             }
         },
         'save_cmd_as_sh': {
             'value': {
                 'zh': '保存训练命令',
-                'en': 'Save training Command'
+                'en': 'Save training command'
             }
         },
         'save_cmd_alert': {
@@ -239,7 +241,7 @@ class Runtime(BaseUI):
             },
             'info': {
                 'zh': '如果日志无更新请再次点击"展示日志内容"',
-                'en': 'Please press "Show log" if the log content is not updating'
+                'en': 'Please press "Show running status" if the log content is not updating'
             }
         },
         'running_tasks': {
@@ -292,22 +294,27 @@ class Runtime(BaseUI):
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='runtime_tab', open=False, visible=True):
             with gr.Blocks():
-                with gr.Row(equal_height=True):
-                    gr.Textbox(elem_id='running_cmd', lines=1, scale=20, interactive=False, max_lines=1)
-                    gr.Button(elem_id='show_running_cmd', scale=2, variant='primary')
-                    gr.Textbox(elem_id='logging_dir', lines=1, scale=20, max_lines=1)
-                    gr.Button(elem_id='show_log', scale=2, variant='primary')
-                    gr.Button(elem_id='stop_show_log', scale=2)
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        with gr.Row():
+                            gr.Textbox(elem_id='running_cmd', lines=1, scale=3, interactive=False, max_lines=1)
+                            gr.Textbox(elem_id='logging_dir', lines=1, scale=3, max_lines=1)
+                        with gr.Row():
+                            gr.Button(elem_id='show_running_cmd', scale=2, variant='primary')
+                            gr.Button(elem_id='show_log', scale=2, variant='primary')
+                            gr.Button(elem_id='stop_show_log', scale=2)
+                    with gr.Column(scale=2):
+                        with gr.Row():
+                            gr.Textbox(elem_id='tb_url', lines=1, scale=4, interactive=False, max_lines=1)
+                        with gr.Row():
+                            gr.Button(elem_id='start_tb', scale=2, variant='primary')
+                            gr.Button(elem_id='close_tb', scale=2)
                 with gr.Accordion(elem_id='show_sh', open=True, visible=False):
                     with gr.Blocks():
                         gr.Textbox(elem_id='cmd_sh', lines=8)
                         with gr.Row(equal_height=True):
                             gr.Button(elem_id='save_cmd_as_sh', variant='primary', scale=2)
                             gr.Button(elem_id='close_cmd_show', scale=2)
-                with gr.Row(equal_height=True):
-                    gr.Textbox(elem_id='tb_url', lines=1, scale=42, interactive=False, max_lines=1)
-                    gr.Button(elem_id='start_tb', scale=2, variant='primary')
-                    gr.Button(elem_id='close_tb', scale=2)
                 with gr.Row():
                     gr.Textbox(elem_id='log', lines=6, visible=False)
                 with gr.Row(equal_height=True):
@@ -317,7 +324,12 @@ class Runtime(BaseUI):
 
                 with gr.Row():
                     cls.all_plots = []
-                    for idx, k in enumerate(Runtime.sft_plot):
+                    plot = Runtime.sft_plot
+                    if base_tab.group == 'llm_rlhf':
+                        plot = Runtime.dpo_plot
+                    elif base_tab.group == 'llm_grpo':
+                        plot = Runtime.grpo_plot
+                    for idx, k in enumerate(plot):
                         name = k['name']
                         cls.all_plots.append(gr.Plot(elem_id=str(idx), label=name))
 
@@ -436,7 +448,8 @@ class Runtime(BaseUI):
                                 i -= 1
                             else:
                                 break
-                    yield ['\n'.join(lines)] + Runtime.plot(task)
+                    yield [gr.update(value='\n'.join(lines))] + Runtime.plot(task)
+                    time.sleep(0.5)
         except IOError:
             pass
 
