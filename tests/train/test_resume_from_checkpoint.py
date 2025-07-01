@@ -14,6 +14,7 @@ kwargs = {
     'val_dataset': ['AI-ModelScope/alpaca-gpt4-data-zh#10'],
     'max_steps': 10,
     'dataset_num_proc': 4,
+    'dataloader_num_workers': 4,
     'max_length': 2048,
     # optional
     # 'padding_free': True,
