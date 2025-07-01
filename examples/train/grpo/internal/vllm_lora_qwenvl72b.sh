@@ -42,7 +42,6 @@ swift rlhf \
   --async_generate false \
   --offload_optimizer true \
   --offload_model true \
-  --gc_collect_after_offload true \
   --move_model_batches 40 \
   --sleep_level 1 \
   --report_to wandb \
