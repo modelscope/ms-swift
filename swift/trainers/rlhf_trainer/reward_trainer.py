@@ -26,7 +26,7 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
         inputs.pop('labels', None)  # not use
         margin = None
         if 'margin' in inputs:
-            margin = torch.tensor(inputs['margin'], dtype=torch.float)
+            margin = torch.tensor(inputs.pop('margin'), dtype=torch.float)
         attention_mask = inputs['attention_mask']
         batch_size = attention_mask.shape[0] // 2
         rewards = model(**inputs).logits
