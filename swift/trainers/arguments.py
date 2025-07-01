@@ -225,6 +225,7 @@ class GRPOArgumentsMixin:
 
     # dataset
     dataset_shuffle: Optional[bool] = True
+    split_dataset_ratio: float = 0.0
 
 
 @dataclass
