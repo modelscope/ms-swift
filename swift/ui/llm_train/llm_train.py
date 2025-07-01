@@ -490,7 +490,7 @@ class LLMTrain(BaseUI):
                 assert res['status'] == 'ok', 'statue must be ok'
             except Exception as err:
                 gr.Info(cls.locale('external_alert', cls.lang)['value'].format(err))
-                return [None] * 5
+                return [None] * 2 + [gr.update(open=False)] + [None] * 2
         if not other_kwargs['dry_run']:
             os.makedirs(sft_args.logging_dir, exist_ok=True)
             os.system(run_command)
