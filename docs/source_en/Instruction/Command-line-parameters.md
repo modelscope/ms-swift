@@ -488,7 +488,6 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - sleep_level: make vllm sleep when model is training. Options are 0 or 1, default is 0, no sleep
   - offload_optimizer: Whether to offload optimizer parameters during inference with vLLM. The default is `False`.
   - offload_model: Whether to offload the model during inference with vLLM. The default is `False`.
-  - gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
   - completion_length_limit_scope: Specifies the scope of the `max_completion_length` limit in multi-turn conversations.
   When set to `total`, the total output length across all turns must not exceed `max_completion_length`.
   When set to `per_round`, each individual turn's output length is limited separately.
@@ -512,10 +511,10 @@ The meanings of the following parameters can be referenced [here](https://huggin
 The hyperparameters for the reward function can be found in the [Built-in Reward Functions section](#built-in-reward-functions).
 
 cosine reward function arguments
-- cosine_min_len_value_wrong (default: 0.0): Reward value corresponding to the minimum length when the answer is incorrect. Default is 0.0
-- cosine_max_len_value_wrong (default: -0.5): Reward value corresponding to the maximum length when the answer is incorrect. Default is -0.5
-- cosine_min_len_value_correct (default: 1.0): Reward value corresponding to the minimum length when the answer is correct. Default is 1.0
-- cosine_max_len_value_correct (default: 0.5): Reward value corresponding to the maximum length when the answer is correct. Default is 0.5
+- cosine_min_len_value_wrong (default: -0.5): Reward value corresponding to the minimum length when the answer is incorrect.
+- cosine_max_len_value_wrong (default: 0.0): Reward value corresponding to the maximum length when the answer is incorrect.
+- cosine_min_len_value_correct (default: 1.0): Reward value corresponding to the minimum length when the answer is correct.
+- cosine_max_len_value_correct (default: 0.5): Reward value corresponding to the maximum length when the answer is correct.
 - cosine_max_len (default value equal to the model's maximum generation capacity): Maximum length limit for generated text. Default value equal to max_completion_length
 
 repetition penalty function arguments

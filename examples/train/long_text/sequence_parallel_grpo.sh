@@ -39,6 +39,5 @@ swift rlhf \
     --offload_model true \
     --padding_free true \
     --sequence_parallel_size 4 \
-    --gc_collect_after_offload true \
     --dataloader_drop_last true \
     --sleep_level 1

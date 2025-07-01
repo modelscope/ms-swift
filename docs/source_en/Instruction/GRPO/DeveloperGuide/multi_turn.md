@@ -109,7 +109,7 @@ swift rollout \
     --model xxx \
     --use_async_engine true \
     --multi_turn_scheduler xxx \
-    --multi_turns xxx
+    --max_turns xxx
 ```
 
 Through the `external_plugins` parameter, we can register local multi-round planners into ms-swift. For specific implementation, refer to the [code](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py).
