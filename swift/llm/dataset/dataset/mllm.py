@@ -8,7 +8,7 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from tqdm import tqdm
 
-from swift.utils import use_hf_hub
+from swift.utils import get_hf_endpoint, use_hf_hub
 from ..media import MediaResource
 from ..preprocessor import GroundingMixin, MessagesPreprocessor, ResponsePreprocessor, RowPreprocessor
 from ..register import DatasetMeta, SubsetDataset, register_dataset
@@ -32,7 +32,7 @@ class ShareGPT4oPreprocessor(MessagesPreprocessor):
             url = ('https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?'
                    'Revision=master&FilePath=images.zip')
         else:
-            url = 'https://huggingface.co/datasets/OpenGVLab/ShareGPT-4o/blob/main/images.zip'
+            url = f'{get_hf_endpoint()}/datasets/OpenGVLab/ShareGPT-4o/blob/main/images.zip'
         local_dir = MediaResource.download(url, 'sharegpt_4o_images')
         self.prefix_path = os.path.join(local_dir, 'mnt', 'petrelfs', 'wangwenhai', 'workspace_cef', '4o', 'image')
         return super().prepare_dataset(dataset)
@@ -194,7 +194,7 @@ class MantisPreprocessor(MessagesPreprocessor):
             url = (f'https://www.modelscope.cn/api/v1/datasets/swift/Mantis-Instruct/repo?Revision='
                    f'master&FilePath={self.subset}/train_images.zip')  # noqa
         else:
-            url = (f'https://huggingface.co/datasets/TIGER-Lab/Mantis-Instruct/'
+            url = (f'{get_hf_endpoint()}/datasets/TIGER-Lab/Mantis-Instruct/'
                    f'resolve/main/{self.subset}/train_images.zip')
         self.local_dir = MediaResource.download(url, f'mantis_{self.subset}')
         return super().prepare_dataset(dataset)
@@ -335,7 +335,7 @@ class EmoSchemaPreprocessor(ResponsePreprocessor):
             if not use_hf_hub():
                 url = f'https://modelscope.cn/datasets/AI-ModelScope/egoschema/resolve/master/videos_chunked_0{i}.zip'
             else:
-                url = f'https://huggingface.co/datasets/lmms-lab/egoschema/resolve/main/videos_chunked_0{i}.zip'
+                url = f'{get_hf_endpoint()}/datasets/lmms-lab/egoschema/resolve/main/videos_chunked_0{i}.zip'
             local_dir = MediaResource.download(url, 'egoschema')
 
         self.local_dir = os.path.join(local_dir, 'videos')
@@ -401,7 +401,7 @@ class LLaVAVideo178KPreprocessor(MessagesPreprocessor):
 
     url_prefix = 'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
     if use_hf_hub():
-        url_prefix = 'https://huggingface.co/datasets/lmms-lab/LLaVA-Video-178K/resolve/main/'
+        url_prefix = f'{get_hf_endpoint()}/datasets/lmms-lab/LLaVA-Video-178K/resolve/main/'
 
     video_resources = {
         '0_30_s_academic_v0_1':
@@ -505,7 +505,7 @@ class MovieChat1KPreprocessor(ResponsePreprocessor):
             if not use_hf_hub():
                 url = f'https://modelscope.cn/datasets/AI-ModelScope/MovieChat-1K-test/resolve/master/videos/{file}'
             else:
-                url = f'https://huggingface.co/datasets/Enxin/MovieChat-1K-test/resolve/main/videos/{file}'
+                url = f'{get_hf_endpoint()}/datasets/Enxin/MovieChat-1K-test/resolve/main/videos/{file}'
             self.local_dir = MediaResource.download(url, 'moviechat_1k_test', file_type='file')
         return super().prepare_dataset(dataset)
 
@@ -535,7 +535,7 @@ class VideoChatGPTPreprocessor(ResponsePreprocessor):
         if not use_hf_hub():
             url = 'https://modelscope.cn/datasets/swift/VideoChatGPT/resolve/master/videos.zip'
         else:
-            url = 'https://huggingface.co/datasets/lmms-lab/VideoChatGPT/resolve/main/videos.zip'
+            url = f'{get_hf_endpoint()}/datasets/lmms-lab/VideoChatGPT/resolve/main/videos.zip'
         local_dir = MediaResource.download(url, 'video_chatgpt')
         self.local_dir = os.path.join(local_dir, 'Test_Videos')
         return super().prepare_dataset(dataset)
@@ -911,7 +911,7 @@ class LLaVAPretrainPreprocessor(MessagesPreprocessor):
             url = ('https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/LLaVA-Pretrain/repo?'
                    'Revision=master&FilePath=images.zip')
         else:
-            url = 'https://huggingface.co/datasets/liuhaotian/LLaVA-Pretrain/resolve/main/images.zip'
+            url = f'{get_hf_endpoint()}/datasets/liuhaotian/LLaVA-Pretrain/resolve/main/images.zip'
         self.media_dir = MediaResource.download(
             url,
             # noqa
