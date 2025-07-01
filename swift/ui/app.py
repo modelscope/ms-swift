@@ -15,7 +15,6 @@ from swift.ui.llm_export.llm_export import LLMExport
 from swift.ui.llm_grpo.llm_grpo import LLMGRPO
 from swift.ui.llm_infer.llm_infer import LLMInfer
 from swift.ui.llm_rlhf.llm_rlhf import LLMRLHF
-from swift.ui.llm_rollout.llm_rollout import LLMRollout
 from swift.ui.llm_sample.llm_sample import LLMSample
 from swift.ui.llm_train.llm_train import LLMTrain
 
@@ -61,7 +60,6 @@ class SwiftWebUI(SwiftPipeline):
         LLMExport.set_lang(lang)
         LLMEval.set_lang(lang)
         LLMSample.set_lang(lang)
-        LLMRollout.set_lang(lang)
         with gr.Blocks(title='SWIFT WebUI', theme=gr.themes.Base()) as app:
             try:
                 _version = swift.__version__
@@ -77,7 +75,6 @@ class SwiftWebUI(SwiftPipeline):
                 LLMExport.build_ui(LLMExport)
                 LLMEval.build_ui(LLMEval)
                 LLMSample.build_ui(LLMSample)
-                LLMRollout.build_ui(LLMRollout)
 
             concurrent = {}
             if version.parse(gr.__version__) < version.parse('4.0.0'):
@@ -110,10 +107,6 @@ class SwiftWebUI(SwiftPipeline):
                 partial(LLMSample.update_input_model, arg_cls=SamplingArguments, has_record=False),
                 inputs=[LLMSample.element('model')],
                 outputs=list(LLMSample.valid_elements().values()))
-            app.load(
-                partial(LLMRollout.update_input_model, arg_cls=DeployArguments, has_record=False),
-                inputs=[LLMRollout.element('model')],
-                outputs=list(LLMRollout.valid_elements().values()))
         app.queue(**concurrent).launch(server_name=server, inbrowser=True, server_port=port, height=800, share=share)
 
 

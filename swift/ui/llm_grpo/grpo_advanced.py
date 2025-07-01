@@ -13,7 +13,7 @@ class GrpoAdvanced(BaseUI):
         'grpo_advanced_tab': {
             'label': {
                 'zh': 'GRPO高级参数设置',
-                'en': 'GRPO Advanced settings'
+                'en': 'GRPO advanced settings'
             },
         },
         'loss_type': {
@@ -59,13 +59,13 @@ class GrpoAdvanced(BaseUI):
         'max_turns': {
             'label': {
                 'zh': '多轮轮数上限',
-                'en': 'Max turn num of Multi-turn'
+                'en': 'Max num of multi turn'
             }
         },
         'dynamic_sample': {
             'label': {
                 'zh': '动态采样',
-                'en': 'Dynamic Sampling'
+                'en': 'Dynamic sampling'
             },
             'info': {
                 'zh': '筛除group内奖励标准差为0的数据，额外采样新数据',
@@ -75,7 +75,7 @@ class GrpoAdvanced(BaseUI):
         'max_resample_times': {
             'label': {
                 'zh': '最大重采样次数',
-                'en': 'Maximum number of resampling times'
+                'en': 'Max num of resampling times'
             },
             'info': {
                 'zh': '动态采样设置下限制重采样次数',

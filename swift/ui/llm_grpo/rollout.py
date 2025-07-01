@@ -142,7 +142,7 @@ class Rollout(BaseUI):
         'vllm_max_model_len': {
             'label': {
                 'zh': '模型支持的最大长度',
-                'en': 'max model len'
+                'en': 'Max model len'
             },
             'info': {
                 'zh': 'vLLM透传参数',

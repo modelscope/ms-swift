@@ -8,6 +8,7 @@ from swift.llm.argument.base_args.base_args import get_supported_tuners
 from swift.ui.base import BaseUI
 from swift.ui.llm_grpo.advanced import GRPOAdvanced
 from swift.ui.llm_grpo.dataset import GRPODataset
+from swift.ui.llm_grpo.external_rollout import LLMRollout
 from swift.ui.llm_grpo.grpo_advanced import GrpoAdvanced
 from swift.ui.llm_grpo.hyper import GRPOHyper
 from swift.ui.llm_grpo.model import GRPOModel
@@ -30,20 +31,8 @@ class LLMGRPO(LLMTrain):
     group = 'llm_grpo'
 
     sub_ui = [
-        GRPOModel,
-        GRPODataset,
-        Reward,
-        GRPORuntime,
-        Rollout,
-        GRPOSave,
-        GRPOTuner,
-        GRPOOptimizer,
-        GRPOHyper,
-        GRPOQuantization,
-        GRPOAdvanced,
-        RefModel,
-        GrpoAdvanced,
-        GRPOReportTo,
+        GRPOModel, GRPODataset, Reward, GRPORuntime, Rollout, GRPOSave, GRPOTuner, GRPOOptimizer, GRPOHyper,
+        GRPOQuantization, GRPOAdvanced, RefModel, GrpoAdvanced, GRPOReportTo, LLMRollout
     ]
 
     locale_dict: Dict[str, Dict] = {
@@ -51,6 +40,13 @@ class LLMGRPO(LLMTrain):
             'label': {
                 'zh': 'LLM GRPO',
                 'en': 'LLM GRPO',
+            }
+        },
+        'external_alert': {
+            'value': {
+                'zh': 'Err: {} \nRollout模型部署未完成，请检查日志，稍后开始训练！',
+                'en': 'Err: {} \nRollout model deployment is incomplete, '
+                'please check the logs and start training later!'
             }
         },
         'submit_alert': {
@@ -256,6 +252,8 @@ class LLMGRPO(LLMTrain):
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
                 Rollout.build_ui(base_tab)
+                LLMRollout.set_lang(cls.lang)
+                LLMRollout.build_ui(LLMRollout)
                 GRPOTuner.build_ui(base_tab)
                 RefModel.build_ui(base_tab)
                 with gr.Accordion(elem_id='extra_params', open=True):
@@ -290,7 +288,13 @@ class LLMGRPO(LLMTrain):
                         cls.element('train_record'),
                     ],
                     queue=True)
-
+                LLMRollout.element('rollout').click(
+                    LLMRollout.rollout_model,
+                    list(LLMRollout.valid_elements().values())
+                    + [cls.element('model'), cls.element('model_type'),
+                       cls.element('template')],
+                    [LLMRollout.element('rollout_runtime_tab'),
+                     LLMRollout.element('rollout_running_tasks')])
                 base_tab.element('running_tasks').change(
                     partial(GRPORuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
                     list(base_tab.valid_elements().values()) + [cls.element('log')] + GRPORuntime.all_plots)

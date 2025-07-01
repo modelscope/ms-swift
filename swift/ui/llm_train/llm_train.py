@@ -478,6 +478,19 @@ class LLMTrain(BaseUI):
     @classmethod
     def train_local(cls, *args):
         run_command, sft_args, other_kwargs = cls.train(*args)
+        if cls.group == 'llm_grpo':
+            host = sft_args.vllm_server_host if sft_args.vllm_server_host not in ('', None) else '127.0.0.1'
+            port = sft_args.vllm_server_port if sft_args.vllm_server_port not in ('', None) else '8000'
+            try:
+                import requests
+                headers = {'Accept': 'application/json'}
+                url = f'http://{host}:{port}/health/'
+                response = requests.get(url, headers=headers)
+                res = response.json()
+                assert res['status'] == 'ok', 'statue must be ok'
+            except Exception as err:
+                gr.Info(cls.locale('external_alert', cls.lang)['value'].format(err))
+                return [None] * 5
         if not other_kwargs['dry_run']:
             os.makedirs(sft_args.logging_dir, exist_ok=True)
             os.system(run_command)

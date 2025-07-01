@@ -55,7 +55,7 @@ class Reward(BaseUI):
         },
         'reward_model_type': {
             'label': {
-                'zh': 'reward模型类型',
+                'zh': '奖励模型类型',
                 'en': 'Select Reward Model Type'
             },
             'info': {
@@ -65,7 +65,7 @@ class Reward(BaseUI):
         },
         'reward_param': {
             'label': {
-                'zh': 'reward设置',
+                'zh': '奖励模型设置',
                 'en': 'Reward settings'
             },
         }
