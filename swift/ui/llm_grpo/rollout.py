@@ -149,16 +149,6 @@ class Rollout(BaseUI):
                 'en': 'vLLM transparent transmission parameters'
             }
         },
-        'sleep_level': {
-            'label': {
-                'zh': 'Sleep level',
-                'en': 'Sleep level'
-            },
-            'info': {
-                'zh': '训练时释放vLLM显存',
-                'en': 'Release vLLM memory during training'
-            }
-        },
         'vllm_server_host': {
             'label': {
                 'zh': 'vLLM服务主机',
@@ -179,36 +169,6 @@ class Rollout(BaseUI):
             'info': {
                 'zh': '连接vLLM服务的超时时间',
                 'en': 'Timeout for connecting to vLLM server'
-            }
-        },
-        'offload_model': {
-            'label': {
-                'zh': '卸载模型',
-                'en': 'Offload model'
-            },
-            'info': {
-                'zh': '是否在vLLM/LMDeploy推理时卸载模型',
-                'en': 'Whether to offload the model during vLLM/LMDeploy inference'
-            }
-        },
-        'offload_optimizer': {
-            'label': {
-                'zh': '卸载优化器',
-                'en': 'Offload optimizer'
-            },
-            'info': {
-                'zh': '是否在vLLM/LMDeploy推理时offload optimizer参数',
-                'en': 'Whether to offload optimizer parameters during vLLM/LMDeploy inference'
-            }
-        },
-        'gc_collect_after_offload': {
-            'label': {
-                'zh': '卸载结束时垃圾回收',
-                'en': 'GC after offload'
-            },
-            'info': {
-                'zh': '是否在卸载结束时进行垃圾回收',
-                'en': 'Whether to perform GC at the end of offload'
             }
         },
         'colocate_param': {
@@ -234,7 +194,7 @@ class Rollout(BaseUI):
     tabs_to_filter = {
         'colocate': [
             'vllm_enable_prefix_caching', 'vllm_gpu_memory_utilization', 'vllm_tensor_parallel_size',
-            'vllm_max_model_len', 'sleep_level', 'offload_model', 'offload_optimizer', 'gc_collect_after_offload'
+            'vllm_max_model_len'
         ],
         'server': ['async_generate', 'vllm_server_host', 'vllm_server_port', 'vllm_server_timeout']
     }
@@ -265,11 +225,6 @@ class Rollout(BaseUI):
                     gr.Textbox(elem_id='vllm_gpu_memory_utilization', lines=1, value='0.5', scale=4)
                     gr.Textbox(elem_id='vllm_tensor_parallel_size', lines=1, value='1', scale=4)
                     gr.Textbox(elem_id='vllm_max_model_len', lines=1, value='', scale=4)
-                with gr.Row():
-                    gr.Dropdown(elem_id='sleep_level', choices=[0, 1], value=0, scale=4)
-                    gr.Checkbox(elem_id='offload_model', value=True, scale=4)
-                    gr.Checkbox(elem_id='offload_optimizer', value=True, scale=4)
-                    gr.Checkbox(elem_id='gc_collect_after_offload', value=True, scale=4)
             with gr.Accordion(elem_id='server_param', open=True):
                 with gr.Row():
                     gr.Checkbox(elem_id='async_generate', scale=1)
