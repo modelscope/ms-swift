@@ -19,7 +19,8 @@ kwargs = {
     # 'padding_free': True,
     'packing': True,
     'attn_impl': 'flash_attn',
-    'streaming': True,
+    # 'streaming': True,
+    'sequence_parallel_size': 2,
 }
 
 
