@@ -2,7 +2,7 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
-from torch.utils.data import DataLoader, IterableDataset
+from torch.utils.data import DataLoader
 
 from swift.llm import to_device
 
