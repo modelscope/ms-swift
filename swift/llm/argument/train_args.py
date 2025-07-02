@@ -170,7 +170,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
 
         if getattr(self, 'accelerator_config', None) is None:
             self.accelerator_config = {'dispatch_batches': False}
-        if self.split_dataset_ratio == 0 and not self.val_dataset:
+        if self.split_dataset_ratio == 0 and not self.val_dataset and not self.eval_dataset:
             self.eval_strategy = 'no'
         self.training_args = TrainerFactory.get_training_args(self)
         self.training_args.remove_unused_columns = False

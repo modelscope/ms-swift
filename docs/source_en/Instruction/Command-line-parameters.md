@@ -171,6 +171,7 @@ Other important parameters:
 - 🔥save_strategy: Strategy for saving the model, options include 'no', 'steps', 'epoch'. Default is 'steps'.
 - 🔥save_steps: Default is 500.
 - 🔥eval_strategy: Evaluation strategy. Default is None and follows the strategy of `save_strategy`.
+  - If `val_dataset` is not used and `split_dataset_ratio` is 0, the default is 'no'.
 - 🔥eval_steps: Default is None. If there is an evaluation dataset, it follows the strategy of `save_steps`.
 - 🔥save_total_limit: Maximum number of checkpoints to save. Older checkpoints will be deleted. Default is None, saving all checkpoints.
 - max_steps: Maximum number of training steps. Should be set when the dataset is streamed. Default is -1.
@@ -398,8 +399,8 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - optimizer: Custom optimizer name for the plugin, defaults to None. Optional optimizer reference: [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/optimizer.py).
 - metric: Custom metric name for the plugin. Defaults to None, with the default set to 'acc' when `predict_with_generate=False` and 'nlg' when `predict_with_generate=True`.
 - eval_use_evalscope: Whether to use evalscope for evaluation, this parameter needs to be set to enable evaluation, refer to [example](../Instruction/Evaluation.md#evaluation-during-training). Default is False.
-- eval_datasets: Evaluation datasets, multiple datasets can be set, separated by spaces
-- eval_datasets_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
+- eval_dataset: Evaluation datasets, multiple datasets can be set, separated by spaces
+- eval_dataset_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
 - eval_limit: Number of samples from the evaluation dataset
 - eval_generation_config: Model inference configuration during evaluation, in JSON format, default is `{'max_tokens': 512}`
 
