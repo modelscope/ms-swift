@@ -78,6 +78,7 @@ class SwiftMixin:
                     })
         if eval_dataset is None and args:
             if getattr(args, 'eval_dataset', None):
+                # Avoid trainer throwing errors.
                 eval_dataset = []
             else:
                 args.evaluation_strategy = IntervalStrategy.NO
