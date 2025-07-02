@@ -35,8 +35,7 @@ from swift.hub import get_hub
 from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
 from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
-from swift.utils import get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker, use_torchacc
-from swift.utils.torchacc_utils import ta_trim_graph
+from swift.utils import get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker
 from ..utils.torch_utils import get_device_count
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
@@ -486,10 +485,6 @@ class SwiftMixin:
         acc_steps = args.acc_steps
         preds = outputs.logits.argmax(dim=-1)
         if self.state.global_step % acc_steps == 0:
-            if use_torchacc():
-                ta_trim_graph()
-                preds = preds.to('cpu')
-                labels = labels.to('cpu')
             metrics = compute_acc(
                 preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
             for k, v in metrics.items():

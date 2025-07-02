@@ -12,8 +12,7 @@ from transformers import TrainingArguments
 from swift.llm import TrainArguments, deep_getattr, get_model_arch
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
-from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
-                         get_logger, use_torchacc)
+from swift.utils import activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters, get_logger
 
 logger = get_logger()
 
@@ -316,32 +315,6 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
     return model
 
 
-def torchacc_resume_from_checkpoint(args, model):
-    import safetensors
-    weights_file = os.path.join(args.resume_from_checkpoint, 'pytorch_model.bin')
-    safe_weights_file = os.path.join(args.resume_from_checkpoint, 'model.safetensors')
-    if os.path.isfile(weights_file) or os.path.isfile(safe_weights_file):
-        if args.save_safetensors and os.path.isfile(safe_weights_file):
-            state_dict = safetensors.torch.load_file(safe_weights_file, device='cpu')
-        else:
-            state_dict = torch.load(weights_file, map_location='cpu')
-        model.load_state_dict(state_dict, False)
-        del state_dict
-    else:
-        from transformers.modeling_utils import load_sharded_checkpoint
-        # We load the sharded checkpoint
-        load_result = load_sharded_checkpoint(
-            model, args.resume_from_checkpoint, strict=False, prefer_safe=args.save_safetensors)
-        if len(load_result.missing_keys) != 0:
-            if model._keys_to_ignore_on_save is not None and set(load_result.missing_keys) == set(
-                    model._keys_to_ignore_on_save):
-                model.tie_weights()
-            else:
-                logger.warning(f'There were missing keys in the checkpoint model loaded: {load_result.missing_keys}.')
-        if len(load_result.unexpected_keys) != 0:
-            logger.warning(f'There were unexpected keys in the checkpoint model loaded: {load_result.unexpected_keys}.')
-
-
 class TunerMixin:
 
     @classmethod
@@ -362,8 +335,6 @@ class TunerMixin:
                 else:
                     tuner = Swift
                 kwargs = {}
-                if use_torchacc():
-                    kwargs = {'adapter_name': 'default'}
                 model = tuner.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
             else:
                 if args.train_type in extra_tuners:
@@ -385,8 +356,6 @@ class TunerMixin:
             freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
             if len(args.trainable_parameters) > 0 or args.trainable_parameters_regex is not None:
                 activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
-            if use_torchacc() and args.resume_from_checkpoint:
-                torchacc_resume_from_checkpoint(args, model)
         else:
             raise ValueError(f'args.train_type: {args.train_type}')
 

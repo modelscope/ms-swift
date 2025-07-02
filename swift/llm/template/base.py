@@ -21,7 +21,7 @@ from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
-from swift.utils import get_dist_setting, get_env_args, get_logger, use_torchacc
+from swift.utils import get_dist_setting, get_env_args, get_logger
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
@@ -1578,8 +1578,8 @@ class Template(ProcessorMixin):
 
         # multimodal
         res.update(self._data_collator_mm_data(batch))
-        if not self.use_megatron and (use_torchacc() or self.sequence_parallel_size > 1):
-            res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
+        if not self.use_megatron and self.sequence_parallel_size > 1:
+            res = self._sp_data_collator(res, padding_to, self.tokenizer, padding_side)
 
         return res
 
@@ -1599,26 +1599,11 @@ class Template(ProcessorMixin):
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         return res
 
-    def _torchacc_xtuner_data_collator(self, res, padding_to, tokenizer, padding_side):
-        # torchacc & xtuner
+    def _sp_data_collator(self, res, padding_to, tokenizer, padding_side):
         input_ids = res.get('input_ids')
         attention_mask = res.get('attention_mask')
         labels = res.get('labels')
         loss_scale = res.get('loss_scale')
-        if use_torchacc():
-            from swift.utils.torchacc_utils import pad_and_split_batch
-            rank, _, world_size, _ = get_dist_setting()
-            input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(
-                padding_to,
-                input_ids,
-                attention_mask,
-                labels,
-                loss_scale,
-                self.max_length,
-                tokenizer,
-                rank,
-                world_size,
-                padding_right=padding_side == 'right')
         if self.sequence_parallel_size > 1 and input_ids is not None:
             bs, seq_len = input_ids.shape
             if 'position_ids' not in res:
