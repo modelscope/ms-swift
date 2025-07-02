@@ -152,6 +152,16 @@ def test_qwen2_5_omni():
     assert response == response2 == ground_truth
 
 
+def test_glm4_1v():
+    messages = [{'role': 'user', 'content': '<video>What happened in the video?'}]
+    videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
+    pt_engine = PtEngine('ZhipuAI/GLM-4.1V-9B-Thinking')
+    response = _infer_model(pt_engine, messages=messages, videos=videos)
+    pt_engine.default_template.template_backend = 'jinja'
+    response = _infer_model(pt_engine, messages=messages, videos=videos)
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -165,4 +175,5 @@ if __name__ == '__main__':
     # test_minicpmo()
     # test_valley()
     # test_qwen2_5_vl()
-    test_qwen2_5_omni()
+    # test_qwen2_5_omni()
+    test_glm4_1v()
