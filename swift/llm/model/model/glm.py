@@ -214,6 +214,9 @@ register_model(
             ModelGroup(
                 [
                     Model('ZhipuAI/glm-4v-9b', 'THUDM/glm-4v-9b'),
+                    Model('ZhipuAI/glm-4.1v-9b-0624', 'THUDM/glm-4.1v-9b-0624'),
+                    Model('ZhipuAI/GLM-4.1V-9B-Base', 'THUDM/GLM-4.1V-9B-Base'),
+                    Model('ZhipuAI/GLM-4.1V-9B-Thinking', 'THUDM/GLM-4.1V-9B-Thinking'),
                 ],
                 requires=['transformers>=4.42,<4.45'],
             ),
