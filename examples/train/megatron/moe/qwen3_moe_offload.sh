@@ -4,6 +4,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
     --load Qwen3-30B-A3B-Base-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --split_dataset_ratio 0.01 \
     --expert_model_parallel_size 4 \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \

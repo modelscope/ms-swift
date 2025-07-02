@@ -7,6 +7,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
     --load Qwen2.5-7B-mcore \
     --dataset 'ZhipuAI/LongWriter-6k' \
+    --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 4 \
     --micro_batch_size 1 \
     --global_batch_size 8 \

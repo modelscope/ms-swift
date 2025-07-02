@@ -5,6 +5,7 @@ MAX_PIXELS=1003520 \
 swift sft \
     --model Qwen/Qwen2-VL-7B-Instruct \
     --dataset 'AI-ModelScope/coco#20000' \
+    --split_dataset_ratio 0.01 \
     --train_type lora \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

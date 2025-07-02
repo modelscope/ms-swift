@@ -10,6 +10,7 @@ NPROC_PER_NODE=4 \
 megatron sft \
     --load Qwen2.5-14B-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 4 \
     --micro_batch_size 1 \
     --global_batch_size 16 \

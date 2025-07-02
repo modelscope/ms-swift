@@ -222,6 +222,7 @@ swift sft \
     --model Qwen/Qwen3-8B \
     --train_type full \
     --dataset '<your-dataset>' \
+    --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
@@ -337,6 +338,7 @@ NODE_RANK=$RANK \
 megatron sft \
     --load Qwen3-30B-A3B-Base-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 8 \
     --moe_grouped_gemm true \

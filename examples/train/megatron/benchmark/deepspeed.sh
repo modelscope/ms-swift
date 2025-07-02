@@ -7,6 +7,7 @@ swift sft \
     --model Qwen/Qwen2.5-14B \
     --train_type full \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --max_steps 2000 \
     --per_device_train_batch_size 1 \

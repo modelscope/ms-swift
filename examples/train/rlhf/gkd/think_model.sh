@@ -25,6 +25,7 @@ swift rlhf \
     --teacher_model $teacher_model \
     --train_type full \
     --dataset 'new_dataset.jsonl' \
+    --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --learning_rate 1e-5 \

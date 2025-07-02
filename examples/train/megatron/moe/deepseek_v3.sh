@@ -6,6 +6,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \
     --load Moonlight-16B-A3B-Instruct-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 4 \
     --moe_grouped_gemm true \
