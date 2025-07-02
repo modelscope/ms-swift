@@ -395,29 +395,23 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
     def _processor(self):
         while True:
             i, data = self._in_queue.get()
-            if data is None:
-                encoded_data = None
-            else:
-                encoded_data = self._encode_data(data)
+            encoded_data = self._encode_data(data)
             self._out_queue.put((i, encoded_data))
 
-    def _put_data_in_queue(self, iterator):
+    def _put_data_in_queue(self, iterator) -> int:
         for i in range(self.packing_interval):
             try:
                 data = next(iterator)
             except StopIteration:
-                self._in_queue.put((i, None))
-                return True
+                return i
             self._in_queue.put((i, data))
-        return False
+        return i + 1
 
-    def _fetch_data_out_queue(self, last_res):
-        res = [None] * self.packing_interval
-        for _ in range(self.packing_interval):
+    def _fetch_data_out_queue(self, last_res, num_samples):
+        res = [None] * num_samples
+        for _ in range(num_samples):
             i, data = self._out_queue.get()
-            if data is None:
-                break
-            elif not data:
+            if not data:
                 continue
             res[i] = (data, len(data['input_ids']))
         res = [data for data in res if data]
@@ -442,8 +436,9 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
             iterator = iter(self.dataset)
         data = []
         while True:
-            finished = self._put_data_in_queue(iterator)
-            data = self._fetch_data_out_queue(data)
+            num_samples = self._put_data_in_queue(iterator)
+            finished = num_samples != self.packing_interval
+            data = self._fetch_data_out_queue(data, num_samples)
             res, data = self.calculate_matched_group(self.template, data, is_finished=finished)
             yield from res
             if finished:

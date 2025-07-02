@@ -15,6 +15,13 @@ def use_hf_hub():
     return strtobool(os.environ.get('USE_HF', '0'))
 
 
+def get_hf_endpoint():
+    hf_endpoint = os.environ.get('HF_ENDPOINT', 'https://huggingface.co/')
+    if hf_endpoint.endswith('/'):
+        hf_endpoint = hf_endpoint[:-1]
+    return hf_endpoint
+
+
 def is_deepspeed_enabled():
     return strtobool(os.environ.get('ACCELERATE_USE_DEEPSPEED', '0'))
 

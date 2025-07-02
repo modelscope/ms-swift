@@ -188,6 +188,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         vllm_client = kwargs.pop('vllm_client')  # for external vllm
 
         super().__init__(model, ref_model, *_args, **kwargs)
+        if self.args.eval_strategy != 'no':
+            total_eval_batch_size = self.args.per_device_eval_batch_size * \
+                self.accelerator.num_processes // self.args.num_generations
+            assert len(self.eval_dataset) >= total_eval_batch_size, (
+                f'eval_dataset size {len(self.eval_dataset)} is smaller than '
+                f'total_eval_batch_size {total_eval_batch_size}. '
+                f'Please increase the size of eval_dataset or set a larger value for split_dataset_ratio.')
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
 
