@@ -139,7 +139,9 @@ class GLM4_1VTemplate(Template):
             added_tokens_len = 0
             for i, idx in enumerate(image_idx_list):
                 num_image_tokens = image_grid_thw[i].prod() // merge_length
-                image_tokens = self.begin_of_image_token + self.image_token * num_image_tokens + self.end_of_image_token
+                image_tokens = [self.begin_of_image_token
+                                ] + [self.image_token] * num_image_tokens + [self.end_of_image_token]
+
                 input_ids = input_ids[:added_tokens_len + idx] + image_tokens + input_ids[added_tokens_len + idx + 1:]
                 if labels is not None:
                     labels = labels[:added_tokens_len + idx] + [-100] * len(image_tokens) + labels[added_tokens_len
@@ -189,18 +191,18 @@ class GLM4_1VTemplate(Template):
                 timestamp_sec = selected_timestamps[frame_idx]
                 num_image_tokens = video_grid_thw[frame_idx].prod() // merge_length
                 timestamp_sec_token = processor.tokenizer(str(timestamp_sec))['input_ids']
-                frame_structure = self.begin_of_image_token + self.image_token * num_image_tokens + \
-                    self.end_of_image_token + timestamp_sec_token
+                frame_structure = [self.begin_of_image_token] + [self.image_token] * num_image_tokens + \
+                    [self.end_of_image_token] + [timestamp_sec_token]
                 video_structure += frame_structure
 
             for i, idx in enumerate(video_idx_list):
                 # BUG in GLM4.1V?: All video placeholder take same tokens
                 # https://github.com/huggingface/transformers/blob/v4.53.0/src/transformers/models/glm4v/processing_glm4v.py#L165-L194
-                input_ids = input_ids[:added_tokens_len + idx] + video_structure + input_ids[added_tokens_len + idx
-                                                                                             + 1:]
+                input_ids = input_ids[:added_tokens_len + idx] + video_structure + \
+                    input_ids[added_tokens_len + idx + 1:]
                 if labels is not None:
-                    labels = labels[:added_tokens_len + idx] + [-100] * len(video_structure) + labels[added_tokens_len
-                                                                                                      + idx + 1:]
+                    labels = labels[:added_tokens_len + idx] + [-100] * len(video_structure) + \
+                        labels[added_tokens_len + idx + 1:]
                 added_tokens_len += len(video_structure) - 1
 
         encoded['input_ids'] = input_ids
