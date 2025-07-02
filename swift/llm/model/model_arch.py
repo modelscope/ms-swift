@@ -34,6 +34,7 @@ class MLLMModelArch:
 
     cogvlm = 'cogvlm'
     glm4v = 'glm4v'
+    glm4_1v = 'glm4_1v'
     glm_edge_v = 'glm_edge_v'
 
     llama3_1_omni = 'llama3_1_omni'
@@ -509,6 +510,14 @@ register_model_arch(
         MLLMModelArch.glm4v,
         language_model='transformer.encoder',
         vision_tower='transformer.vision',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.glm4_1v,
+        language_model='model.language_model',
+        aligner='model.visual.merger',
+        vision_tower='model.visual',
     ))
 
 register_model_arch(

@@ -13,7 +13,8 @@ from swift.utils import get_device_count, get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_to_input_device
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
+                        get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import AttnImpl, ModelInfo, safe_snapshot_download
 
 logger = get_logger()
@@ -228,6 +229,35 @@ register_model(
         get_model_tokenizer_glm4v,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.glm4v,
+    ))
+
+
+def get_model_tokenizer_glm4_1v(*args, **kwargs):
+    from transformers import Glm4vForConditionalGeneration
+    logger.info(
+        "If you encounter the error 'TypeError: group_images_by_shape() missing 1 required positional argument: "
+        "\"disable_grouping\"', please install the source version of the transformers library.")
+
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Glm4vForConditionalGeneration
+    return get_model_tokenizer_multimodal(*args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.glm4_1v,
+        [
+            ModelGroup(
+                [
+                    Model('ZhipuAI/GLM-4.1V-9B-Base', 'THUDM/GLM-4.1V-9B-Base'),
+                    Model('ZhipuAI/GLM-4.1V-9B-Thinking', 'THUDM/GLM-4.1V-9B-Thinking'),
+                ],
+                requires=['transformers>=4.53'],
+            ),
+        ],
+        TemplateType.glm4_1v,
+        get_model_tokenizer_glm4_1v,
+        architectures=['Glm4vForConditionalGeneration'],
+        model_arch=ModelArch.glm4_1v,
     ))
 
 
