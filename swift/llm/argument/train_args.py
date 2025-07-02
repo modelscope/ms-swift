@@ -36,8 +36,9 @@ class Seq2SeqTrainingOverrideArguments(TrainArgumentsMixin, Seq2SeqTrainingArgum
             self.eval_strategy = self.save_strategy
         if self.eval_strategy == 'no':
             self.eval_steps = None
-            self.split_dataset_ratio = 0.
-            logger.info(f'Setting args.split_dataset_ratio: {self.split_dataset_ratio}')
+            if self.split_dataset_ratio > 0:
+                self.split_dataset_ratio = 0.
+                logger.info(f'Setting args.split_dataset_ratio: {self.split_dataset_ratio}')
         elif self.eval_strategy == 'steps' and self.eval_steps is None:
             self.eval_steps = self.save_steps
         self.evaluation_strategy = self.eval_strategy

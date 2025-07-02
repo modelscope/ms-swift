@@ -216,8 +216,8 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - 🔥load: Directory of the checkpoint to load, default is None.
 - 🔥no_load_optim: Do not load optimizer, default is False.
 - 🔥no_load_rng: Do not load RNG, default is False.
-- 🔥finetune: Load the model and fine-tune. Does not load the optimizer and random seed states from the checkpoint and resets the iteration count to 0. Default is False.
-  - Note: For resuming training from a checkpoint, do not set `--finetune true`. By default, when resuming with `--load`, the previously trained number of datasets will be skipped. If `--finetune true` is set, the dataset will not be skipped.
+- 🔥finetune: Load and fine-tune the model. Optimizer and random seed states from the checkpoint will not be loaded, and the number of iterations will be set to 0. The default is False.
+  - Note: For checkpoint resumption (`--load`), if `--finetune true` is set, the dataset will not be skipped; if not set, previously trained datasets will be skipped.
   - Streaming datasets (`--streaming`) are currently not supported for skipping datasets.
 - ckpt_format: Format of the checkpoint. Options are 'torch', 'torch_dist', 'zarr'. Default is 'torch_dist'.
 - no_initialization: Do not initialize weights, default is True.
