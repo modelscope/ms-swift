@@ -19,7 +19,7 @@ import torch.distributed as dist
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
 from transformers.utils import strtobool
 
-from .env import is_dist, is_dist_ta
+from .env import is_dist
 from .logger import get_logger
 from .np_utils import stat_array
 
@@ -127,7 +127,7 @@ def add_version_to_work_dir(work_dir: str) -> str:
     version = _get_version(work_dir)
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
     sub_folder = f'v{version}-{time}'
-    if (dist.is_initialized() and is_dist()) or is_dist_ta():
+    if dist.is_initialized() and is_dist():
         obj_list = [sub_folder]
         dist.broadcast_object_list(obj_list)
         sub_folder = obj_list[0]

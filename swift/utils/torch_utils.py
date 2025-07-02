@@ -21,7 +21,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.trainer_utils import set_seed
 from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 
-from .env import get_dist_setting, get_node_setting, is_dist, is_dist_ta, is_local_master, is_master
+from .env import get_dist_setting, get_node_setting, is_dist, is_local_master, is_master
 from .logger import get_logger
 from .utils import deep_getattr
 
@@ -266,7 +266,7 @@ def find_all_linears(model, model_arch=None, extra_layers=None, sub_module=None)
 @contextmanager
 def safe_ddp_context(hash_id: Optional[str], use_barrier: bool = False):
     if use_barrier and dist.is_initialized():
-        if is_dist() or is_dist_ta():
+        if is_dist():
             if not is_master():
                 dist.barrier()
             if not is_local_master():
@@ -274,7 +274,7 @@ def safe_ddp_context(hash_id: Optional[str], use_barrier: bool = False):
                 # where each machine uses different storage hardware.
                 dist.barrier()
         yield
-        if is_dist() or is_dist_ta():
+        if is_dist():
             if is_master():
                 dist.barrier()
             if is_local_master():
