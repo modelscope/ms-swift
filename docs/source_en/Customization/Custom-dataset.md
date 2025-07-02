@@ -31,9 +31,9 @@ Query-Response format:
 {"system": "<system>", "query": "<query2>", "response": "<response2>", "history": [["<query1>", "<response1>"]]}
 ```
 Note: The following fields will be automatically converted to the corresponding system, query, and response fields.
-- system: 'system', 'system_prompt'
-- query: 'query', 'prompt', 'input', 'instruction', 'question', 'problem'
-- response: 'response', 'answer', 'output', 'targets', 'target', 'answer_key', 'answers', 'solution', 'text', 'completion', 'content'
+- system: 'system', 'system_prompt'.
+- query: 'query', 'prompt', 'input', 'instruction', 'question', 'problem'.
+- response: 'response', 'answer', 'output', 'targets', 'target', 'answer_key', 'answers', 'solution', 'text', 'completion', 'content'.
 
 Alpaca format:
 ```jsonl
