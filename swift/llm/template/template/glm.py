@@ -116,6 +116,7 @@ class GLM4_1VTemplate(Template):
     image_token = 151343
     begin_of_video_token = 151341
     end_of_video_token = 151342
+    video_token = 151344
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
