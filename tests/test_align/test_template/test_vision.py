@@ -564,7 +564,7 @@ def test_kimi_vl_thinking():
 
 
 def test_glm4_1v():
-    models = ['ZhipuAI/glm-4.1v-9b-0624', 'ZhipuAI/GLM-4.1V-9B-Thinking']
+    models = ['ZhipuAI/GLM-4.1V-9B-Thinking']
     messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
     images = [
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',

@@ -244,7 +244,6 @@ register_model(
         [
             ModelGroup(
                 [
-                    Model('ZhipuAI/glm-4.1v-9b-0624', 'THUDM/glm-4.1v-9b-0624'),
                     Model('ZhipuAI/GLM-4.1V-9B-Base', 'THUDM/GLM-4.1V-9B-Base'),
                     Model('ZhipuAI/GLM-4.1V-9B-Thinking', 'THUDM/GLM-4.1V-9B-Thinking'),
                 ],
