@@ -1,3 +1,4 @@
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NNODES=2 \
 NODE_RANK=1 \

@@ -332,6 +332,7 @@ ms-swift 引入了 Megatron 并行技术以加速大模型的CPT/SFT/DPO。支�
 ```bash
 # https://help.aliyun.com/zh/pai/user-guide/general-environment-variables
 # 请确保两个节点上的权重保存路径`--save`和packing缓存路径`--packing_cache`相同且共享。
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
 megatron sft \

@@ -1,6 +1,7 @@
 # 8 * 56GiB
 # For ease of use, we use moonshotai/Moonlight-16B-A3B-Instruct, which is also based on the DeepseekV3ForCausalLM architecture.
 # https://modelscope.cn/models/moonshotai/Moonlight-16B-A3B-Instruct/file/view/master/config.json?status=1
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \

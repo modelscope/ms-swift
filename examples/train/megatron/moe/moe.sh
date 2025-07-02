@@ -1,5 +1,6 @@
 # pp2ep4: 7 * 73GiB, 2.5s/it
 # tp2ep4: 8 * 65GiB, 3s/it
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \

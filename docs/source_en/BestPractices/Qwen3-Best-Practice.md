@@ -336,6 +336,7 @@ We will use Alibaba Cloud DLC to launch training. The training environment consi
 ```bash
 # https://help.aliyun.com/zh/pai/user-guide/general-environment-variables
 # Ensure that the weight save path `--save` and packing cache path `--packing_cache` are the same and shared across both nodes.
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
 megatron sft \

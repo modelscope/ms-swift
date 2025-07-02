@@ -52,6 +52,7 @@ swift export \
 然后，使用以下脚本进行训练，训练所需显存资源为2*80GiB：
 - 若使用多机训练，建议共享磁盘，并将`--save`指定为相同的路径。
 ```shell
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \

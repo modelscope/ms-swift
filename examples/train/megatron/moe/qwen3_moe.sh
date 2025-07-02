@@ -2,6 +2,7 @@
 # Megatron-LM: 9.6s/it; 16 * 60GiB
 # Launch using Alibaba Cloud DLC
 # ref: https://github.com/modelscope/ms-swift/blob/main/examples/train/multi-node/dlc/train.sh
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
 megatron sft \

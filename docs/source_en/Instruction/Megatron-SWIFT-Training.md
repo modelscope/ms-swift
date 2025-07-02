@@ -53,6 +53,7 @@ swift export \
 Next, use the following script to start training. The required GPU memory resources are 2*80GiB:
 - If using multi-machine training, it is recommended to share a disk and specify the same path for `--save`.
 ```shell
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
