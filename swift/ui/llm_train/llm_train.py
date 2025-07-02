@@ -386,7 +386,7 @@ class LLMTrain(BaseUI):
         # filter kwargs
         tabs_relation_dict = cls.prepare_sub_to_filter()
         cls.remove_useless_args(kwargs, tabs_relation_dict)
-        if cls.group == 'rlhf':
+        if cls.group == 'llm_rlhf':
             cls.filter_rlhf_args(kwargs)
         try:
             sft_args = RLHFArguments(
@@ -479,9 +479,9 @@ class LLMTrain(BaseUI):
     @classmethod
     def train_local(cls, *args):
         run_command, sft_args, other_kwargs = cls.train(*args)
-        if cls.group == 'llm_grpo':
-            host = sft_args.vllm_server_host if sft_args.vllm_server_host not in ('', None) else '127.0.0.1'
-            port = sft_args.vllm_server_port if sft_args.vllm_server_port not in ('', None) else '8000'
+        if cls.group == 'llm_grpo' and sft_args.vllm_mode == 'server':
+            host = sft_args.vllm_server_host if sft_args.vllm_server_host else '127.0.0.1'
+            port = sft_args.vllm_server_port if sft_args.vllm_server_port else '8000'
             try:
                 import requests
                 headers = {'Accept': 'application/json'}
@@ -515,6 +515,8 @@ class LLMTrain(BaseUI):
             target_value = uncleaned_kwargs.get(target)
             if target == 'train_type' and target_value is None:
                 target_value = 'lora'
+            elif target == 'vllm_mode' and target_value is None:
+                target_value = 'colocate'
             elif target == 'optimizer' and target_value is None:
                 if uncleaned_kwargs.get('use_galore'):
                     target_value = 'galore'

@@ -197,7 +197,7 @@ class Rollout(BaseUI):
                 'en': 'Offload optimizer'
             },
             'info': {
-                'zh': '是否在vLLM推理时offload optimizer参数',
+                'zh': '是否在vLLM推理时卸载优化器参数',
                 'en': 'Whether to offload optimizer parameters during vLLM inference'
             }
         },
@@ -226,7 +226,9 @@ class Rollout(BaseUI):
             'vllm_enable_prefix_caching', 'vllm_gpu_memory_utilization', 'vllm_tensor_parallel_size',
             'vllm_max_model_len', 'sleep_level', 'offload_model', 'offload_optimizer'
         ],
-        'server': ['async_generate', 'vllm_server_host', 'vllm_server_port', 'vllm_server_timeout']
+        'server': ['async_generate', 'vllm_server_host', 'vllm_server_port', 'vllm_server_timeout'],
+        'llm_rollout':
+        ['tensor_parallel_size', 'data_parallel_size', 'max_model_len', 'gpu_memory_utilization', 'port']
     }
 
     @classmethod
