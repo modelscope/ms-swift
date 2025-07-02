@@ -31,7 +31,7 @@ class DataArguments:
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     val_dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    split_dataset_ratio: float = 0.01
+    split_dataset_ratio: float = 0.
 
     data_seed: int = 42
     dataset_num_proc: int = 1

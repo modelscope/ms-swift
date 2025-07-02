@@ -217,6 +217,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - 🔥no_load_optim: Do not load optimizer, default is False.
 - 🔥no_load_rng: Do not load RNG, default is False.
 - 🔥finetune: Load the model and fine-tune. Does not load the optimizer and random seed states from the checkpoint and resets the iteration count to 0. Default is False.
+  - Note: For resuming training from a checkpoint, do not set `--finetune true`. By default, when resuming with `--load`, the previously trained number of datasets will be skipped. If `--finetune true` is set, the dataset will not be skipped.
 - ckpt_format: Format of the checkpoint. Options are 'torch', 'torch_dist', 'zarr'. Default is 'torch_dist'.
 - no_initialization: Do not initialize weights, default is True.
 - auto_detect_ckpt_format: Automatically detect whether the checkpoint format is legacy or distributed. Default is True.
@@ -257,7 +258,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 
 - 🔥eval_iters: The number of iterations for evaluation. Defaults to -1, and a suitable value will be set based on the size of the validation dataset.
   - Note: If using a streaming dataset, this value needs to be set manually.
-- 🔥eval_interval: Evaluation interval (steps), default is None, meaning it will be set to save_interval.
+- 🔥eval_interval: The evaluation interval (steps), i.e., how many steps between each evaluation. The default is None, which means it will be set to save_interval.
 
 
 **FP8 Parameters**:
