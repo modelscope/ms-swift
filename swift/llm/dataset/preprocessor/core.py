@@ -314,13 +314,16 @@ class RowPreprocessor:
         ignore_max_length_error = True if isinstance(dataset, HfDataset) and num_proc > 1 else False
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             try:
+                # compat RM: reserve margin column
+                remove_columns = [col for col in dataset.features.keys() if col != 'margin']
+
                 dataset_mapped = dataset.map(
                     self.batched_preprocess,
                     fn_kwargs={
                         'strict': strict,
                         'ignore_max_length_error': ignore_max_length_error
                     },
-                    remove_columns=list(dataset.features.keys()),
+                    remove_columns=remove_columns,
                     **map_kwargs)
             except NotImplementedError:
                 pass

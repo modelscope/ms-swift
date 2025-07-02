@@ -118,7 +118,7 @@ class Template(ProcessorMixin):
         if self.is_encoder_decoder:
             self.skip_prompt = False
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
-                           'train', 'rlhf', 'kto', 'gkd',  # train
+                           'train', 'rlhf', 'kto', 'gkd', 'rm',  # train
                            'seq_cls', 'embedding', 'prm'] = 'pt'
         self._packing = self.padding_free
         self.use_megatron = False
@@ -339,6 +339,12 @@ class Template(ProcessorMixin):
         encoded['label'] = bool(label)
         return encoded
 
+    def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        margin = inputs.margin
+        encoded = self._rlhf_encode(inputs)
+        encoded['label'] = bool(label)
+        return encoded
+    
     def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode_truncated(inputs)
         encoded['prompts'] = encoded['input_ids'][:-len(encoded.pop('answer_input_ids'))]
@@ -468,6 +474,8 @@ class Template(ProcessorMixin):
             encoded = self._rlhf_encode(inputs)
         elif self.mode == 'kto':
             encoded = self._kto_encode(inputs)
+        elif self.mode == 'rm':
+            encoded = self._rm_encode(inputs)
         elif self.mode == 'gkd':
             encoded = self._gkd_encode(inputs)
         elif self.mode == 'embedding':
@@ -599,7 +607,7 @@ class Template(ProcessorMixin):
     @contextmanager
     def generate_context(self):
         origin_mode = self.mode
-        if self.mode in {'train', 'rlhf', 'kto', 'gkd'}:
+        if self.mode in {'train', 'rlhf', 'kto', 'gkd', 'rm'}:
             self.set_mode('pt')
         is_multimodal = self.model_meta.is_multimodal
         if is_multimodal:
@@ -1273,7 +1281,7 @@ class Template(ProcessorMixin):
 
     def set_mode(
         self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto', 'gkd', 'embedding', 'reranker',
-                            'generative_reranker']
+                            'generative_reranker', 'rm']
     ) -> None:
         self.mode = mode
 
@@ -1321,6 +1329,8 @@ class Template(ProcessorMixin):
             res = self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
             res = self._kto_data_collator(batch, padding_to=padding_to)
+        elif self.mode == 'rm':
+            res = self._rm_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'gkd':
             res = self._gkd_data_collator(batch, padding_to=padding_to)
         elif self.mode in {'pt', 'train', 'prm'}:
