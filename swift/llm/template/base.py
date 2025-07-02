@@ -1039,8 +1039,16 @@ class Template(ProcessorMixin):
             idx = all_tokens.index(single_token[0])
             bos_token = all_tokens[:idx]
             sep_token = all_tokens[idx + 1:]
+            """
+            1. qwen model tokenizer.encode function parameter add_special_tokens=True/False，both of then not output special token, forexample <|im_start|>, this special token will be added when process system/user/assistant message ,so should judge if bos_token is none/empty or not  
+            2. if bos_token is not none, means that current model should add specal token, old code has two errors:
+            	2.1 besides using bos_token = all_tokens[:idx],will get list as a element for res_context_list, but when execute code `prompts_text.append(''.join(res_context_list))`, will raise expcept
+            	2.2 element of res_context_list should be text（not token id）, bos_token = all_tokens[:idx] will get token_id list, this will error when execute tokenizer.encode()(encode token_id) 
+            	so we use self.tokenizer.bos_token is the most reasonable and correct
+            """
             if bos_token:
-                res_context_list.append(bos_token)
+                # res_context_list.append(bos_token)
+                res_context_list.append(self.tokenizer.bos_token)
                 res_context_types.append(ContextType.OTHER)
 
         if self.template_meta.is_post_system or not system:
