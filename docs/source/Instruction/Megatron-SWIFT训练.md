@@ -213,6 +213,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥no_load_rng: 不载入rng，默认为False。
 - 🔥finetune: 将模型加载并微调。不加载检查点的优化器和随机种子状态，并将迭代数设置为0。默认为False。
   - 注意：断点续训请勿设置`--finetune true`。默认情况下，断点续训设置`--load`，将跳过之前训练的数据集数量，若设置`--finetune true`，将不会跳过数据集。
+  - 流式数据集`--streaming`，暂不支持跳过数据集。
 - ckpt_format: checkpoint的格式。可选为'torch', 'torch_dist', 'zarr'。默认为'torch_dist'。
 - no_initialization: 不对权重进行初始化，默认为True。
 - auto_detect_ckpt_format: 自动检测ckpt format为legacy还是distributed格式。默认为True。
