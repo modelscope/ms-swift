@@ -333,7 +333,7 @@ class LLMRLHF(LLMTrain):
     def filter_rlhf_args(cls, uncleaned_kwargs):
         cur_rlhf_type = uncleaned_kwargs.get('rlhf_type', 'dpo')
         cur_selected = RLHF.rlhf_args_dict.pop(cur_rlhf_type, None)
-        for _, vals in RLHF.rlhf_args_dict:
+        for _, vals in RLHF.rlhf_args_dict.items():
             for rlhf_arg in vals:
                 if uncleaned_kwargs.get(rlhf_arg) and (cur_selected is None or rlhf_arg not in cur_selected):
                     uncleaned_kwargs.pop(rlhf_arg)
