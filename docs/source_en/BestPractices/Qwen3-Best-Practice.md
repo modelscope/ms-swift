@@ -285,7 +285,7 @@ Notes on dataset requirements:
 
 We use AI-MO/NuminaMath-TIR as the dataset and compute the accuracy-based reward for model responses.
 
-During training, we utilize vLLM to accelerate the sampling process. By setting `num_infer_workers=8`, we deploy one vLLM engine per device to speed up sampling.
+During training, we utilize vLLM to accelerate the sampling process.
 
 ```bash
 # 70G*8
@@ -318,7 +318,6 @@ swift rlhf \
     --offload_model true \
     --offload_optimizer true \
     --deepspeed zero3 \
-    --num_infer_workers 8 \
     --tensor_parallel_size 1 \
     --temperature 1.0 \
     --top_p 0.85 \

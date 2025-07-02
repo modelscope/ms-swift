@@ -281,7 +281,7 @@ pip install vllm==0.8.5.post1
 
 我们使用使 AI-MO/NuminaMath-TIR 作为数据集，并使用accuracy函数计算模型回答的准确率奖励。
 
-在训练过程中，使用 vLLM 加速采样过程。通过设置 `num_infer_workers=8` ，我们为每个设备部署一个 vLLM 引擎以加快采样速度。
+在训练过程中，使用 vLLM 加速采样过程。
 
 ```bash
 # 70G*8
@@ -314,7 +314,6 @@ swift rlhf \
     --offload_model true \
     --offload_optimizer true \
     --deepspeed zero3 \
-    --num_infer_workers 8 \
     --tensor_parallel_size 1 \
     --temperature 1.0 \
     --top_p 0.85 \
