@@ -114,6 +114,8 @@ class GLM4_1VTemplate(Template):
     begin_of_image_token = 151339
     end_of_image_token = 151340
     image_token = 151343
+    begin_of_video_token = 151341
+    end_of_video_token = 151342
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -173,7 +175,7 @@ class GLM4_1VTemplate(Template):
             encoded['video_grid_thw'] = video_grid_thw = videos_inputs['video_grid_thw']
             timestamps = videos_inputs.pop('timestamps')
             num_frames = len(video_grid_thw)
-            video_structure = ''
+            video_structure = [self.begin_of_video_token]
             if hasattr(timestamps, 'tolist'):
                 timestamps_list = timestamps.tolist()[0]
             else:
@@ -184,7 +186,6 @@ class GLM4_1VTemplate(Template):
             selected_timestamps = unique_timestamps[:num_frames]
             while len(selected_timestamps) < num_frames:
                 selected_timestamps.append(selected_timestamps[-1] if selected_timestamps else 0)
-            encoded['pixel_values'] = image_inputs['pixel_values']
             merge_length = processor.video_processor.merge_size**2
             added_tokens_len = 0
             for frame_idx in range(num_frames):
@@ -192,8 +193,9 @@ class GLM4_1VTemplate(Template):
                 num_image_tokens = video_grid_thw[frame_idx].prod() // merge_length
                 timestamp_sec_token = processor.tokenizer(str(timestamp_sec))['input_ids']
                 frame_structure = [self.begin_of_image_token] + [self.image_token] * num_image_tokens + \
-                    [self.end_of_image_token] + [timestamp_sec_token]
+                    [self.end_of_image_token] + timestamp_sec_token
                 video_structure += frame_structure
+            video_structure += [self.end_of_video_token]
 
             for i, idx in enumerate(video_idx_list):
                 # BUG in GLM4.1V?: All video placeholder take same tokens
