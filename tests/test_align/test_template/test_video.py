@@ -158,7 +158,7 @@ def test_glm4_1v():
     pt_engine = PtEngine('ZhipuAI/GLM-4.1V-9B-Thinking')
     response = _infer_model(pt_engine, messages=messages, videos=videos)
     pt_engine.default_template.template_backend = 'jinja'
-    response = _infer_model(pt_engine, messages=messages, videos=videos)
+    response2 = _infer_model(pt_engine, messages=messages, videos=videos)
     assert response == response2
 
 
@@ -176,4 +176,4 @@ if __name__ == '__main__':
     # test_valley()
     # test_qwen2_5_vl()
     # test_qwen2_5_omni()
-    test_glm4_1v()
+    test_glm4_1v()  # bug now, wait model fix

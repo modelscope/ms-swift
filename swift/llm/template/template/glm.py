@@ -120,7 +120,8 @@ class GLM4_1VTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
-        assert media_type in ['image', 'video']
+        # TODO: model video infer bug
+        assert media_type in ['image']
         if media_type == 'image':
             return [[-100]]
         elif media_type == 'video':
@@ -152,6 +153,11 @@ class GLM4_1VTemplate(Template):
                 added_tokens_len += len(image_tokens) - 1
 
         if video_idx_list:
+            # TODO: model video infer bug
+            assert len(
+                video_idx_list) <= 1, f'GLM4.1V model only support 1 video, but detected {len(video_idx_list)} <video> '
+            assert not image_idx_list, "GLM4.1V model doesn't support inputs containing both video and images"
+
             video_fnames = inputs.videos
             from transformers.video_utils import load_video
             from transformers.image_utils import load_image
