@@ -488,6 +488,8 @@ class Template(ProcessorMixin):
                 elif isinstance(value, (tuple, list)):
                     lengths += value
         encoded['length'] = max(lengths)
+        if not self.is_training:
+            encoded.pop('length', None)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         if not self.remove_unused_columns:

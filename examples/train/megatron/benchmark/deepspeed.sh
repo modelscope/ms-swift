@@ -1,6 +1,7 @@
 # 8 * 80GiB
 # Corresponding Megatron-SWIFT script reference:
 # https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/base_to_chat.sh
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 swift sft \
