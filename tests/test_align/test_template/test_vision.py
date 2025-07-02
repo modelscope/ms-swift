@@ -562,6 +562,19 @@ def test_kimi_vl_thinking():
                               'up of a real kitten with detailed fur, whiskers, and a realistic style. '
                               'The second image is an illustration of four sheep in a car')
 
+def test_glm4_1v():
+    models = ['ZhipuAI/glm-4.1v-9b-0624', 'ZhipuAI/GLM-4.1V-9B-Thinking', 'ZhipuAI/GLM-4.1V-9B-Base']
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    for model in models:
+        pt_engine = PtEngine(model)
+        response = _infer_model(pt_engine, messages=messages, images=images)
+        pt_engine.default_template.template_backend = 'jinja'
+        response2 = _infer_model(pt_engine, messages=messages, images=images)
+        assert response == response2
 
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
@@ -616,4 +629,5 @@ if __name__ == '__main__':
     # test_internvl3_8b()
     # test_internvl3_9b()
     # test_kimi_vl()
-    test_kimi_vl_thinking()
+    # test_kimi_vl_thinking()
+    test_glm4_1v()
