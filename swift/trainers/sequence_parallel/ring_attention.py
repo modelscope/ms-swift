@@ -16,6 +16,7 @@ from datasets import Dataset
 from torch.utils.data import DataLoader, Sampler
 import numpy as np
 from typing import Dict, List
+from packaging import version
 
 from swift.utils import seed_worker, get_dist_setting, get_device, get_current_device
 from swift.llm import get_llm_model, DataLoaderDispatcher, DataLoaderShard, to_device
@@ -24,7 +25,8 @@ from .base import CommonSequenceParallel
 from .utils import (
     GatherLoss, ChunkedCrossEntropyLoss, loss_scale_sp_func, _prepare_inputs,
     SequenceParallelSampler, SequenceParallelDispatcher, setup_compute_acc, get_common_dataloader,
-    get_per_token_logps
+    get_per_token_logps, _prepare_inputs_grpo, _get_train_sampler_grpo, old_policy_grpo,
+    split_by_mini_batches_grpo, _get_per_token_logps_grpo
 )
 
 
@@ -207,6 +209,9 @@ class RingAttention(CommonSequenceParallel):
         self.model_dtype = next(model.parameters()).dtype
         self.tokenizer = tokenizer
 
+    def get_dataloader(self, trainer, dataset, batch_size):
+        return get_common_dataloader(self, trainer, dataset, batch_size, SequenceParallelSampler, SequenceParallelDispatcher)
+
     def prepare_trainer(self, trainer):
         """Prepare trainer for ring attention sequence parallel.
         
@@ -228,7 +233,22 @@ class RingAttention(CommonSequenceParallel):
             trainer._prepare_inputs = MethodType(partial(_prepare_inputs, sp_instance=self), trainer)
             trainer.get_per_token_logps = partial(get_per_token_logps, sp_instance=self)
 
-        setup_compute_acc(self)
+        elif trainer.__class__.__name__ == 'GRPOTrainer':
+            try:
+                import trl
+                assert version.parse(trl.__version__) >= version.parse('0.18.0')
+            except (ImportError, AssertionError):
+                raise ImportError(
+                    "trl>=0.18.0 is required for GRPOTrainer with ring attention. "
+                    "Please install it with: pip install trl>=0.18.0"
+                )
+            
+            trainer.ring_attention = self
+            trainer.args.gradient_accumulation_steps = trainer.args.gradient_accumulation_steps * self.sp_world_size
+            trainer.old_policy = MethodType(partial(old_policy_grpo, sp_instance=self), trainer)
+            trainer._get_train_sampler = MethodType(partial(_get_train_sampler_grpo, sp_instance=self), trainer)
+            trainer._prepare_inputs = MethodType(partial(_prepare_inputs_grpo, sp_instance=self), trainer)
+            trainer._get_per_token_logps = MethodType(partial(_get_per_token_logps_grpo, sp_instance=self), trainer)
+            trainer.split_by_mini_batches = MethodType(partial(split_by_mini_batches_grpo, sp_instance=self), trainer)
 
-    def get_dataloader(self, trainer, dataset, batch_size):
-        return get_common_dataloader(self, trainer, dataset, batch_size, SequenceParallelSampler, SequenceParallelDispatcher)
+        setup_compute_acc(self)

@@ -23,7 +23,8 @@ from .base import CommonSequenceParallel
 from .utils import (
     GatherLoss, ChunkedCrossEntropyLoss, loss_scale_sp_func, _prepare_inputs,
     SequenceParallelSampler, SequenceParallelDispatcher, setup_compute_acc, get_common_dataloader,
-    get_per_token_logps
+    get_per_token_logps, _prepare_inputs_grpo, _get_train_sampler_grpo, old_policy_grpo,
+    split_by_mini_batches_grpo, padding_free_context_grpo, _get_per_token_logps_grpo
 )
 
 assert version.parse(torch.__version__) >= version.parse('2.0.0')
@@ -37,224 +38,6 @@ torch_compile_options = {
     'trace.enabled': False,
     'triton.cudagraphs': False,
 }
-
-
-@profiling_decorator
-def _prepare_inputs_grpo(self, generation_batch):
-    ulysses = self.ulysses
-    mode = 'train' if self.model.training else 'eval'
-    if mode == 'train':
-        # changes : `* ulysses.sp_world_size`
-        generate_every = self.args.steps_per_generation * self.num_iterations * ulysses.sp_world_size
-        if self._step % generate_every == 0 or self._buffered_inputs is None:
-            generation_batch = self._generate_and_score_completions(generation_batch)
-            self._buffered_inputs = generation_batch  # < this is the change
-        # changes : `* ulysses.sp_world_size`
-        inputs = self._buffered_inputs[self._step % (self.args.steps_per_generation * ulysses.sp_world_size)]
-        self._step += 1
-    else:
-        inputs = self._generate_and_score_completions(generation_batch)
-    return inputs
-
-
-def _get_train_sampler(self, dataset=None) -> Sampler:
-    ulysses = self.ulysses
-    if dataset is None:
-        dataset = self.train_dataset
-    return RepeatSampler(
-        data_source=dataset,
-        mini_repeat_count=self.num_generations,
-        batch_size=self.args.generation_batch_size // self.num_generations,
-        repeat_count=self.num_iterations * self.args.steps_per_generation * ulysses.sp_world_size,
-        shuffle=self.shuffle_dataset,
-        seed=self.args.seed,
-    )
-
-
-def old_policy(self):
-    ulysses = self.ulysses
-    # changes: `* ulysses.sp_world_size`
-    return (self.num_iterations > 1
-            or self.args.steps_per_generation * ulysses.sp_world_size > self.args.gradient_accumulation_steps)
-
-
-
-@contextmanager
-def padding_free_context(self, model: torch.nn.Module):
-    ctx = {}
-
-    def _padding_free_input_hook(module, args, kwargs):
-        attention_mask = kwargs['attention_mask']
-        ctx['padding_left'] = (attention_mask[:, -1].sum() == attention_mask.shape[0])
-        if 'input_ids' in kwargs and kwargs.get('input_ids') is not None:
-            kwargs['position_ids'] = torch.arange(kwargs['input_ids'].shape[1]).unsqueeze(0).repeat(
-                kwargs['input_ids'].shape[0], 1).to(kwargs['input_ids'].dtype).to(kwargs['input_ids'].device)
-            kwargs['input_ids'] = kwargs['input_ids'][attention_mask.bool()].unsqueeze(0)
-        else:
-            kwargs['position_ids'] = torch.arange(kwargs['inputs_embeds'].shape[1]).unsqueeze(0).repeat(
-                kwargs['inputs_embeds'].shape[0], 1).to(torch.int64).to(kwargs['inputs_embeds'].device)
-            kwargs['inputs_embeds'] = kwargs['inputs_embeds'][attention_mask.bool()].unsqueeze(0)
-        kwargs['position_ids'] = kwargs['position_ids'][attention_mask.bool()].unsqueeze(0)
-        kwargs.pop('attention_mask', None)
-        return args, kwargs
-
-    def _padding_free_output_hook(module, args, kwargs, result):
-        position_ids = kwargs['position_ids']
-        seq_lengths = []
-        pos = position_ids[0]
-        resets = torch.where(pos[1:] < pos[:-1])[0] + 1
-
-        max_length = 0
-        if len(resets) == 0:
-            # Only one sequence in this batch item
-            seq_lengths = [pos.max().item() + 1]
-        else:
-            # Multiple sequences
-            start = 0
-            for end in resets:
-                seq_lengths.append(end - start)
-                start = end
-            seq_lengths.append(pos.shape[0] - start)
-
-        max_length = max(seq_lengths)
-        logits = result.logits.squeeze(0)
-        unpacked_logits = []
-
-        start = 0
-        for length in seq_lengths:
-            seq_state = logits[start:start + length]
-            padding = torch.zeros((max_length - length)).to(logits.dtype).to(logits.device)
-            if ctx['padding_left']:
-                seq_state = torch.cat((padding, seq_state), dim=0)
-            else:
-                seq_state = torch.cat((seq_state, padding), dim=0)
-            unpacked_logits.append(seq_state)
-            start += length
-        result.logits = torch.stack(unpacked_logits, dim=0)
-        return result
-
-    llm_model = get_llm_model(model)
-
-    if self.padding_free:
-        remove_handle1 = llm_model.model.register_forward_pre_hook(
-            _padding_free_input_hook, with_kwargs=True, prepend=True)
-        # cannot unpack here
-        llm_model._unpack_output = _padding_free_output_hook
-        llm_model._pack_input = _padding_free_input_hook
-    yield
-    if self.padding_free:
-        remove_handle1.remove()
-
-
-@profiling_decorator
-def _get_per_token_logps(self, model, inputs):
-    from trl.trainer.utils import selective_log_softmax
-    ulysses = self.ulysses
-    # original logits to keep
-    logits_to_keep = inputs['logits_to_keep']
-    input_ids = inputs['input_ids']
-    inputs = {
-        k: v
-        for k, v in inputs.items() if k not in [
-            'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-            'truncated_mask'
-        ]
-    }
-
-    with self._template_context(self.template), padding_free_context(self, model):
-        output = model(**inputs)
-        logits = output.logits
-    # original sequence length sharded
-    origin_length = input_ids.shape[-1]
-    if self.padding_free:
-        _origin_logits_to_keep = logits_to_keep
-        # if padding_free, calculate all logits tokens
-        logits_to_keep = inputs['attention_mask'].sum()
-        # packing again
-        input_ids = input_ids[inputs['attention_mask'].bool()].unsqueeze(0)
-        # set origin length to all logits length
-        origin_length = inputs['attention_mask'].sum()
-    # split input_ids to labels
-    _, _, labels, _, _, _ = ulysses.pad_and_split_inputs(None, None, input_ids.clone(), None, None, None)
-
-    shape1 = logits.shape[1]
-    labels = torch.where(labels == -100, self.tokenizer.pad_token_id, labels)
-    # calculate padding size of ulysses for example, 9 to 10 if sp=2
-    padding_size = shape1 * ulysses.sp_world_size - origin_length
-    # left shift one token to leave the last token
-    logits_to_keep_padded = logits_to_keep + padding_size + 1
-
-    # ckip logits_to_keep
-    logits_to_keep_sharded = max(
-        min(logits_to_keep_padded - (ulysses.sp_world_size - ulysses.sp_rank - 1) * shape1, shape1), 0)
-    if logits_to_keep_sharded != 0:
-        logits_kept = logits[:, -logits_to_keep_sharded:, :]
-        logits_kept = logits_kept / self.temperature
-        labels_kept = labels[:, -logits_to_keep_sharded:]
-    else:
-        logits_kept = logits[:, logits.shape[1]:, :]
-        logits_kept = logits_kept / self.temperature
-        labels_kept = labels[:, labels.shape[1]:]
-    # how many padding tokens
-    # for example:
-    # aaaa bbbb cccc dddd
-    # if logits_to_keep+padding_size+1 = 10
-    # then bb cccc dddd will calculate selective_log_softmax
-    # other tokens will be padded with 0.
-    left_padding_len = shape1 - logits_to_keep_sharded
-    per_token_logps = selective_log_softmax(logits_kept, labels_kept)
-    _padding_logps = (
-        torch.zeros((per_token_logps.shape[0], left_padding_len)).to(per_token_logps.device).to(per_token_logps.dtype))
-    per_token_logps_padded = torch.cat((_padding_logps, per_token_logps), dim=1)
-    _padding_labels = (torch.zeros((labels.shape[0], left_padding_len)).to(labels.device).to(labels.dtype))
-    labels_padded = torch.cat((_padding_labels, labels_kept), dim=1)
-    per_token_logps, _ = GatherLoss.apply(per_token_logps_padded, labels_padded, ulysses.sp_group, 1)
-    if padding_size > 0:
-        per_token_logps = per_token_logps[:, :-padding_size]
-    if self.padding_free:
-        llm_model = get_llm_model(model)
-        output.logits = per_token_logps
-        # unpack output after sp logps have been calculated
-        _, inputs = llm_model._pack_input(None, None, inputs)
-        per_token_logps = llm_model._unpack_output(None, None, inputs, output).logits
-        delattr(llm_model, '_unpack_output')
-        delattr(llm_model, '_pack_input')
-        logits_to_keep = _origin_logits_to_keep
-    # ignore the last token
-    return per_token_logps[:, -logits_to_keep - 1:-1]
-
-
-def split_by_mini_batches(self, inputs, advantages):
-    ulysses = self.ulysses
-    inputs_len = len(inputs)
-    output = [None] * ulysses.sp_world_size
-    # gather inputs within a sp group
-    dist.all_gather_object(output, inputs, group=ulysses.sp_group)
-    output = [p for sublist in output for p in sublist]
-    inputs = output
-
-    rank, local_rank, world_size, local_world_size = get_dist_setting()
-    start_rank = (rank // ulysses.sp_world_size) * ulysses.sp_world_size
-    process_slice = slice(
-        start_rank * inputs_len,
-        (start_rank + ulysses.sp_world_size) * inputs_len,
-    )
-
-    advantages = advantages[process_slice]
-
-    mode = 'train' if self.model.training else 'eval'
-    bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-    spg = self.args.steps_per_generation * ulysses.sp_world_size if mode == 'train' else 1
-    if mode == 'eval':
-        # TODO only take the first bs rows, because eval does not support loop
-        inputs = inputs[:bs]
-        advantages = advantages[:bs]
-    assert len(inputs) == bs * spg, f'Expected {bs * spg} inputs, got {len(inputs)}'
-    spg_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(spg)]
-    # Split advantages by spg chunks
-    advantage_chunks = torch.chunk(advantages, spg)
-
-    return spg_chunks, advantage_chunks
 
 
 # Code borrowed from deepspeed, here is why:
@@ -506,10 +289,10 @@ class Ulysses(CommonSequenceParallel):
             assert version.parse(trl.__version__) >= version.parse('0.18.0')
             trainer.ulysses = self
             trainer.args.gradient_accumulation_steps = trainer.args.gradient_accumulation_steps * self.sp_world_size
-            trainer.old_policy = MethodType(old_policy, trainer)
-            trainer._get_train_sampler = MethodType(_get_train_sampler, trainer)
-            trainer._prepare_inputs = MethodType(_prepare_inputs_grpo, trainer)
-            trainer._get_per_token_logps = MethodType(_get_per_token_logps, trainer)
-            trainer.split_by_mini_batches = MethodType(split_by_mini_batches, trainer)
+            trainer.old_policy = MethodType(partial(old_policy_grpo, sp_instance=self), trainer)
+            trainer._get_train_sampler = MethodType(partial(_get_train_sampler_grpo, sp_instance=self), trainer)
+            trainer._prepare_inputs = MethodType(partial(_prepare_inputs_grpo, sp_instance=self), trainer)
+            trainer._get_per_token_logps = MethodType(partial(_get_per_token_logps_grpo, sp_instance=self), trainer)
+            trainer.split_by_mini_batches = MethodType(partial(split_by_mini_batches_grpo, sp_instance=self), trainer)
 
         setup_compute_acc(self)
