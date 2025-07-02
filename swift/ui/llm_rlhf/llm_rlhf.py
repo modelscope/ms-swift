@@ -200,6 +200,16 @@ class LLMRLHF(LLMTrain):
                 'en': 'Choose from the dropbox or fill in a valid path',
             }
         },
+        'resume_from_checkpoint': {
+            'label': {
+                'zh': '断点续训',
+                'en': 'Resume from checkpoint'
+            },
+            'info': {
+                'zh': '传入以前的检查点路径',
+                'en': 'Pass in the previous checkpoint path'
+            }
+        },
         'more_params': {
             'label': {
                 'zh': '其他高级参数',
@@ -261,7 +271,8 @@ class LLMRLHF(LLMTrain):
                         choices=[str(i) for i in range(device_count)] + ['cpu'],
                         value=default_device,
                         scale=8)
-                    gr.Textbox(elem_id='envs', scale=8)
+                    gr.Textbox(elem_id='resume_from_checkpoint', scale=8)
+                    gr.Textbox(elem_id='envs', scale=6)
                     gr.Checkbox(elem_id='dry_run', value=False, scale=4)
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 

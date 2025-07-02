@@ -205,6 +205,16 @@ class LLMTrain(BaseUI):
                 'en': 'Choose from the dropbox or fill in a valid path',
             }
         },
+        'resume_from_checkpoint': {
+            'label': {
+                'zh': '断点续训',
+                'en': 'Resume from checkpoint'
+            },
+            'info': {
+                'zh': '传入以前的检查点路径',
+                'en': 'Pass in the previous checkpoint path'
+            }
+        },
         'more_params': {
             'label': {
                 'zh': '其他高级参数',
@@ -270,7 +280,8 @@ class LLMTrain(BaseUI):
                         choices=[str(i) for i in range(device_count)] + ['cpu'],
                         value=default_device,
                         scale=8)
-                    gr.Textbox(elem_id='envs', scale=8)
+                    gr.Textbox(elem_id='resume_from_checkpoint', scale=8)
+                    gr.Textbox(elem_id='envs', scale=6)
                     gr.Checkbox(elem_id='dry_run', value=False, scale=4)
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
@@ -365,9 +376,6 @@ class LLMTrain(BaseUI):
             raise gr.Error(cls.locale('dataset_alert', cls.lang)['value'])
 
         model = kwargs.get('model')
-        if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
-            kwargs['resume_from_checkpoint'] = kwargs.pop('model')
-
         cmd = train_stage
         if kwargs.get('deepspeed'):
             more_params_cmd += f' --deepspeed {kwargs.pop("deepspeed")} '
@@ -387,15 +395,7 @@ class LLMTrain(BaseUI):
                     for key, value in kwargs.items()
                 })
         except Exception as e:
-            if 'Please set --model' in str(e):  # TODO a dirty fix
-                kwargs['model'] = kwargs.pop('resume_from_checkpoint')
-                sft_args = RLHFArguments(
-                    **{
-                        key: value.split(' ') if kwargs_is_list.get(key, False) and isinstance(value, str) else value
-                        for key, value in kwargs.items()
-                    })
-            else:
-                raise e
+            raise e
         params = ''
 
         if cls.group == 'llm_grpo' and sys.platform != 'win32':
@@ -411,8 +411,9 @@ class LLMTrain(BaseUI):
             else:
                 params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
         if use_liger_kernel:
-            params += f'--use_liger_kernel {cls.quote}{use_liger_kernel}{cls.quote}'
-        params += more_params_cmd + ' '
+            params += f'--use_liger_kernel {cls.quote}{use_liger_kernel}{cls.quote} '
+        if more_params_cmd != '':
+            params += f'{more_params_cmd.strip()} '
         params += f'--add_version False --output_dir {sft_args.output_dir} ' \
                   f'--logging_dir {sft_args.logging_dir} --ignore_args_error True'
         ddp_param = ''
