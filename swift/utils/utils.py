@@ -241,6 +241,7 @@ def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> int:
         start_port = 0
     for port in range(start_port, start_port + retry):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 sock.bind(('', port))
                 port = sock.getsockname()[1]
