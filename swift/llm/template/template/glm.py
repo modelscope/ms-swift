@@ -134,7 +134,7 @@ class GLM4_1VTemplate(Template):
             images = inputs.images
             image_inputs = processor.image_processor(images=images, return_tensors='pt')
             encoded['pixel_values'] = image_inputs['pixel_values']
-            image_grid_thw = image_inputs['image_grid_thw']
+            encoded['image_grid_thw'] = image_grid_thw = image_inputs['image_grid_thw']
             merge_length = processor.image_processor.merge_size**2
             added_tokens_len = 0
             for i, idx in enumerate(image_idx_list):
@@ -170,8 +170,8 @@ class GLM4_1VTemplate(Template):
 
             videos_inputs = processor.video_processor(videos=videos, video_metadata=video_metadata, return_tensors='pt')
             encoded['pixel_values_videos'] = videos_inputs['pixel_values_videos']
+            encoded['video_grid_thw'] = video_grid_thw = videos_inputs['video_grid_thw']
             timestamps = videos_inputs.pop('timestamps')
-            video_grid_thw = videos_inputs['video_grid_thw']
             num_frames = len(video_grid_thw)
             video_structure = ''
             if hasattr(timestamps, 'tolist'):
@@ -184,7 +184,7 @@ class GLM4_1VTemplate(Template):
             selected_timestamps = unique_timestamps[:num_frames]
             while len(selected_timestamps) < num_frames:
                 selected_timestamps.append(selected_timestamps[-1] if selected_timestamps else 0)
-            encoded['pixel_values'] = image_inputs['pixel_values']  # todo
+            encoded['pixel_values'] = image_inputs['pixel_values']
             merge_length = processor.video_processor.merge_size**2
             added_tokens_len = 0
             for frame_idx in range(num_frames):
@@ -209,20 +209,6 @@ class GLM4_1VTemplate(Template):
         encoded['labels'] = labels
         encoded['position_ids'] = list(range(len(input_ids)))
         return encoded
-
-    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        pixel_values = self.gather_list(batch, 'pixel_values')
-        pixel_values_videos = self.gather_list(batch, 'pixel_values_videos')
-        res = super()._data_collator(batch, padding_to=padding_to)
-        if pixel_values:
-            res['pixel_values'] = pixel_values
-        if pixel_values_videos:
-            res['pixel_values_videos'] = pixel_values_videos
-        for media_type in ['image', 'video']:
-            grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
-            if grid_thw:
-                res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
-        return res
 
 
 register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate, suffix=['<|endoftext|>']))
