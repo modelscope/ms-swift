@@ -17,7 +17,8 @@ from megatron.training import ft_integration, get_args, get_timers, is_last_rank
 from packaging import version
 from torch.distributed.nn import all_reduce
 
-from swift.utils import freeze_parameters, get_logger, get_model_parameter_info
+from swift.megatron import MegatronLoRA
+from swift.utils import activate_parameters, freeze_parameters, get_logger, get_model_parameter_info
 from ..patcher import patch_megatron_data_collator
 from ..utils import get_batch, get_swift_datasets_provider
 
@@ -116,6 +117,10 @@ class MegatronTrainer:
         if args.train_type == 'full':
             freeze_parameters(unwrapped_model, args.freeze_parameters_ratio, args.freeze_parameters,
                               args.freeze_parameters_regex)
+            if args.trainable_parameters or args.trainable_parameters_regex:
+                activate_parameters(unwrapped_model, args.trainable_parameters, args.trainable_parameters_regex)
+        elif args.train_type == 'lora':
+            unwrapped_model = MegatronLoRA.prepare_model(args, unwrapped_model)
         logger.info_if(
             f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(unwrapped_model)}',
             cond=mpu.get_data_parallel_rank() == 0)
