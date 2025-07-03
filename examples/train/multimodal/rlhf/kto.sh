@@ -9,6 +9,7 @@ swift rlhf \
     --rlhf_type kto \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
     --dataset 'AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#10000' \
+    --split_dataset_ratio 0.01 \
     --train_type lora \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

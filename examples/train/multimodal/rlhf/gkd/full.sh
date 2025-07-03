@@ -8,6 +8,7 @@ swift rlhf \
     --model OpenGVLab/InternVL3-2B-Pretrained \
     --teacher_model OpenGVLab/InternVL3-8B \
     --dataset 'modelscope/coco_2014_caption:validation#2000' \
+    --split_dataset_ratio 0.01 \
     --train_type full \
     --seq_kd true \
     --torch_dtype bfloat16 \

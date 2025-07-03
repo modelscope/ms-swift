@@ -17,6 +17,7 @@ def test_llm():
             rlhf_type='dpo',
             model='Qwen/Qwen2-7B-Instruct',
             dataset=['hjh0119/shareAI-Llama3-DPO-zh-en-emoji#100'],
+            split_dataset_ratio=0.01,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
@@ -30,6 +31,7 @@ def test_mllm():
             rlhf_type='dpo',
             model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['swift/RLAIF-V-Dataset#100'],
+            split_dataset_ratio=0.01,
             dataset_num_proc=8,
             max_pixels=512 * 512,
             **kwargs))
@@ -46,6 +48,7 @@ def test_mllm_zero3():
             rlhf_type='dpo',
             model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['swift/RLAIF-V-Dataset#100'],
+            split_dataset_ratio=0.01,
             dataset_num_proc=8,
             max_pixels=512 * 512,
             deepspeed='zero3',

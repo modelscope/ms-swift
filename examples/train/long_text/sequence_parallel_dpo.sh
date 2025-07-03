@@ -7,6 +7,7 @@ swift rlhf \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
     --train_type full \
     --dataset swift/RLAIF-V-Dataset \
+    --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
