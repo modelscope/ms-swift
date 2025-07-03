@@ -101,6 +101,9 @@ class MegatronTrainer:
     def _replace_data_iterator(self, data_iterator):
         return data_iterator
 
+    def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
+        return self._origin_setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
+
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         with self._training_context():
             new_data_iterator = self._replace_data_iterator(data_iterator)
@@ -255,6 +258,9 @@ class MegatronTrainer:
         # patch evaluate
         self._origin_evaluate = training.evaluate
         training.evaluate = self.evaluate
+        # patch model and optimizer
+        self._origin_setup_model_and_optimizer = training.setup_model_and_optimizer
+        training.setup_model_and_optimizer = self.setup_model_and_optimizer
 
     # Code borrowed from NVIDIA/Megatron-LM
     def loss_func(self, output_tensor: torch.Tensor, *, loss_mask: torch.Tensor):
