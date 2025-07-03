@@ -342,7 +342,7 @@ class Template(ProcessorMixin):
     def _rm_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         margin = inputs.margin
         encoded = self._rlhf_encode(inputs)
-        encoded['margin'] = margin
+        encoded['margin'] = float(margin)
         return encoded
 
     def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
