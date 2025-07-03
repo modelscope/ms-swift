@@ -4,6 +4,7 @@
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 SEQUENCE_PARALLEL_IMPL=ring_attention \
+RING_HEAD_STRIDE=2 \
 swift sft \
     --model Qwen/Qwen2.5-3B-Instruct \
     --train_type full \

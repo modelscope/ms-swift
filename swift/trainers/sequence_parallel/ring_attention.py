@@ -140,8 +140,7 @@ class RingAttention(CommonSequenceParallel):
         set_ring_attn_group(ring_attn_group)
 
         # Import and setup ring flash attention
-        # TODO: make ring_head_stride configurable later
-        ring_head_stride = 2  # Can be made configurable later
+        ring_head_stride = int(os.environ.get('RING_HEAD_STRIDE', 2))
         try:
             from ring_flash_attn import substitute_hf_flash_attn
             # Substitute HuggingFace flash attention with ring attention
