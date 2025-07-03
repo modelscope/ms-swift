@@ -287,7 +287,7 @@ def get_common_dataloader(sp_instance, trainer, dataset, batch_size, sampler_cla
         dataset = trainer._remove_unused_columns(dataset, description='training')
     else:
         data_collator = trainer._get_collator_with_removed_columns(data_collator, description='training')
-    
+
     if hasattr(dataset, '__len__'):
         sampler = sampler_class(sp_instance, dataset, seed=42)
         dataloader_params = {
@@ -344,8 +344,8 @@ def _get_train_sampler_grpo(self, dataset=None, sp_instance=None):
     try:
         from trl.trainer.grpo_trainer import RepeatSampler
     except ImportError:
-        raise ImportError("trl is required for GRPO training. Please install it with: pip install trl")
-    
+        raise ImportError('trl is required for GRPO training. Please install it with: pip install trl')
+
     if dataset is None:
         dataset = self.train_dataset
     return RepeatSampler(
@@ -472,8 +472,8 @@ def _get_per_token_logps_grpo(self, model, inputs, sp_instance):
     try:
         from trl.trainer.utils import selective_log_softmax
     except ImportError:
-        raise ImportError("trl is required for GRPO training. Please install it with: pip install trl")
-    
+        raise ImportError('trl is required for GRPO training. Please install it with: pip install trl')
+
     # original logits to keep
     logits_to_keep = inputs['logits_to_keep']
     input_ids = inputs['input_ids']
@@ -545,4 +545,4 @@ def _get_per_token_logps_grpo(self, model, inputs, sp_instance):
         delattr(llm_model, '_pack_input')
         logits_to_keep = _origin_logits_to_keep
     # ignore the last token
-    return per_token_logps[:, -logits_to_keep - 1:-1] 
+    return per_token_logps[:, -logits_to_keep - 1:-1]

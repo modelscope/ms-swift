@@ -1,9 +1,12 @@
 import abc
 from abc import abstractmethod
+
 import torch
 import torch.distributed as dist
-from swift.utils import get_dist_setting, get_device
 from torch.distributed.device_mesh import init_device_mesh
+
+from swift.utils import get_device, get_dist_setting
+
 
 class SequenceParallel(abc.ABC):
     """Base abstract class for sequence parallel implementations"""
@@ -55,6 +58,7 @@ class SequenceParallel(abc.ABC):
     def get_dataloader(self, trainer, dataset, batch_size):
         """Get dataloader for sequence parallel training"""
         pass
+
 
 class CommonSequenceParallel(SequenceParallel):
     """Common base class for Ulysses and RingAttention implementations"""
@@ -129,8 +133,8 @@ class CommonSequenceParallel(SequenceParallel):
             cache_position = torch.arange(0, attn_shape, device=inputs.device)
             # pad attention mask to 4d to avoid calculation errors
             if hasattr(self, 'causal_mask_func') and self.causal_mask_func is not None:
-                attention_mask = self.causal_mask_func(attention_mask, inputs.to(self.model_dtype), cache_position, None,
-                                                       None)
+                attention_mask = self.causal_mask_func(attention_mask, inputs.to(self.model_dtype), cache_position,
+                                                       None, None)
         if input_ids is not None:
             input_ids = self._split_sp(input_ids, dim=1)
         if input_embeds is not None:
@@ -161,13 +165,12 @@ class CommonSequenceParallel(SequenceParallel):
         """Initialize device mesh for sequence parallel"""
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         self.dp_world_size = world_size // self.sp_world_size
-        
+
         # Create device mesh: (dp_world_size, sp_world_size)
         self.device_mesh = init_device_mesh(
-            get_device().split(':')[0], 
-            mesh_shape=(self.dp_world_size, self.sp_world_size), 
-            mesh_dim_names=['data', 'sequence']
-        )
+            get_device().split(':')[0],
+            mesh_shape=(self.dp_world_size, self.sp_world_size),
+            mesh_dim_names=['data', 'sequence'])
 
     @property
     def sp_group(self):
@@ -187,4 +190,4 @@ class CommonSequenceParallel(SequenceParallel):
     @property
     def dp_rank(self):
         """Return the data parallel rank"""
-        return dist.get_rank(self.device_mesh['data'].get_group()) if self.device_mesh else 0 
+        return dist.get_rank(self.device_mesh['data'].get_group()) if self.device_mesh else 0

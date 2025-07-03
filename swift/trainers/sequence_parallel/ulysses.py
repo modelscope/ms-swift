@@ -20,16 +20,13 @@ from trl.trainer.grpo_trainer import RepeatSampler
 from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_llm_model, to_device
 from swift.utils import get_current_device, get_device, get_dist_setting, seed_worker
 from .base import CommonSequenceParallel
-from .utils import (
-    GatherLoss, ChunkedCrossEntropyLoss, loss_scale_sp_func, _prepare_inputs,
-    SequenceParallelSampler, SequenceParallelDispatcher, setup_compute_acc, get_common_dataloader,
-    get_per_token_logps, _prepare_inputs_grpo, _get_train_sampler_grpo, old_policy_grpo,
-    split_by_mini_batches_grpo, padding_free_context_grpo, _get_per_token_logps_grpo
-)
+from .utils import (ChunkedCrossEntropyLoss, GatherLoss, SequenceParallelDispatcher, SequenceParallelSampler,
+                    _get_per_token_logps_grpo, _get_train_sampler_grpo, _prepare_inputs, _prepare_inputs_grpo,
+                    get_common_dataloader, get_per_token_logps, loss_scale_sp_func, old_policy_grpo,
+                    padding_free_context_grpo, setup_compute_acc, split_by_mini_batches_grpo)
 
 assert version.parse(torch.__version__) >= version.parse('2.0.0')
 torch._dynamo.config.capture_dynamic_output_shape_ops = True
-
 
 torch_compile_options = {
     'epilogue_fusion': True,
@@ -267,7 +264,8 @@ class Ulysses(CommonSequenceParallel):
         self.tokenizer = tokenizer
 
     def get_dataloader(self, trainer, dataset, batch_size):
-        return get_common_dataloader(self, trainer, dataset, batch_size, SequenceParallelSampler, SequenceParallelDispatcher)
+        return get_common_dataloader(self, trainer, dataset, batch_size, SequenceParallelSampler,
+                                     SequenceParallelDispatcher)
 
     def prepare_trainer(self, trainer):
         # TODO hack methods, not cool
