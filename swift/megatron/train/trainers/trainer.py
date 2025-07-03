@@ -6,6 +6,7 @@ from functools import partial
 
 import megatron.core
 import torch
+import torch.distributed as dist
 from megatron.core import mpu
 from megatron.core.enums import ModelType
 from megatron.core.num_microbatches_calculator import get_num_microbatches
@@ -16,7 +17,7 @@ from megatron.training import ft_integration, get_args, get_timers, is_last_rank
 from packaging import version
 from torch.distributed.nn import all_reduce
 
-from swift.utils import get_logger
+from swift.utils import freeze_parameters, get_logger, get_model_parameter_info
 from ..patcher import patch_megatron_data_collator
 from ..utils import get_batch, get_swift_datasets_provider
 
@@ -102,7 +103,22 @@ class MegatronTrainer:
         return data_iterator
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
-        return self._origin_setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
+
+        def new_model_provider_func(*args, **kwargs):
+            model = model_provider_func(*args, **kwargs)
+            self.prepare_model(model)
+            return model
+
+        return self._origin_setup_model_and_optimizer(new_model_provider_func, model_type, *_args, **kwargs)
+
+    def prepare_model(self, unwrapped_model) -> None:
+        args = get_args()
+        if args.train_type == 'full':
+            freeze_parameters(unwrapped_model, args.freeze_parameters_ratio, args.freeze_parameters,
+                              args.freeze_parameters_regex)
+        logger.info_if(
+            f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(unwrapped_model)}',
+            cond=mpu.get_data_parallel_rank() == 0)
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         with self._training_context():

@@ -27,7 +27,25 @@ class RLHFMegatronArgumentsMixin:
 
 
 @dataclass
-class ExtraMegatronArguments(RLHFMegatronArgumentsMixin):
+class MegatronTunerMixin:
+    train_type: Literal['lora', 'full'] = 'full'
+    # full
+    freeze_parameters: List[str] = field(default_factory=list)
+    freeze_parameters_regex: Optional[str] = None
+    freeze_parameters_ratio: float = 0.  # 0 ~ 1
+    trainable_parameters: List[str] = field(default_factory=list)
+    trainable_parameters_regex: Optional[str] = None
+    # lora
+    target_modules: List[str] = field(default_factory=lambda: ['all-linear'])
+    target_regex: Optional[str] = None
+
+    def __post_init__(self):
+        if self.freeze_parameters_ratio > 0 and self.pipeline_model_parallel_size > 1:
+            raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
+
+
+@dataclass
+class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     padded_vocab_size: Optional[int] = None
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
@@ -37,7 +55,6 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin):
 
     architectures: Optional[str] = None
     max_epochs: Optional[int] = None
-    train_type: Literal['lora', 'full'] = 'full'
 
     original_max_position_embeddings: Optional[int] = None
     partial_rotary_factor: Optional[float] = None
@@ -300,6 +317,7 @@ class MegatronArguments(ExtraMegatronArguments):
         parallel_state.create_group = create_group
 
     def __post_init__(self):
+        MegatronTunerMixin.__post_init__(self)
         from swift.llm.argument.base_args.model_args import ModelArguments
         if self.use_flash_attn or self.attention_backend == 'flash':
             require_version('flash-attn')
