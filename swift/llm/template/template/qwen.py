@@ -69,10 +69,8 @@ class Qwen3RerankerTemplate(Template):
     def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
         super()._preprocess_inputs(inputs)
         query = inputs.messages[-2]['content']
-        doc = inputs.messages[-1]['content']
-        user_message = '<Instruct>: ' + self.instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: ' + doc
+        user_message = '<Instruct>: ' + self.instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: {doc}'
         inputs.messages[-2]['content'] = user_message
-        inputs.messages.pop(-1)
 
 
 qwen3_reranker_system = (

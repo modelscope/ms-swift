@@ -12,7 +12,7 @@ from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
 from trl.models.utils import prepare_deepspeed
 
-from swift.utils import empty_cache, unwrap_model_for_generation
+from swift.utils import unwrap_model_for_generation
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 

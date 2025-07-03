@@ -15,6 +15,7 @@ swift sft \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR#2000' \
               'speech_asr/speech_asr_aishell1_trainsets:validation#2000' \
+    --split_dataset_ratio 0.01 \
     --train_type lora \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \

@@ -25,6 +25,7 @@ def test_llm():
             model='Qwen/Qwen2.5-1.5B-Instruct',
             train_type='full',
             dataset=['AI-MO/NuminaMath-TIR#100'],
+            split_dataset_ratio=0.1,
             system=SYSTEM_PROMPT,
             reward_funcs=['accuracy', 'format'],
             max_completion_length=4096,

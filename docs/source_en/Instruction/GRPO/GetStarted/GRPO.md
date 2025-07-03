@@ -153,7 +153,6 @@ When running in Colocate mode, out-of-memory (OOM) issues may frequently occur. 
 ```bash
 --offload_optimizer true \
 --offload_model true \
---gc_collect_after_offload true \
 ```
 
 4. Use Tensor Parallelism in vLLM:
@@ -280,7 +279,7 @@ Refer to [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-
 
 **6. Why is there a validation process even when `val_dataset` is not set, and how can I disable it?**
 
-When `val_dataset` is not explicitly passed, the `split_dataset_ratio` parameter is responsible for splitting part of the `dataset` into a validation dataset, which defaults to splitting 1% of the data.
+When `val_dataset` is not explicitly passed, the `split_dataset_ratio` parameter is responsible for splitting part of the `dataset` into a validation dataset, which defaults to splitting 1% of the data. (In "ms-swift>=3.6", the default value of split_dataset_ratio will be changed from 0.01 to 0.)
 
 To disable the validation process, set `--split_dataset_ratio 0`.
 

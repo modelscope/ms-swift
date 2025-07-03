@@ -16,7 +16,7 @@ class DataArguments:
     Args:
         dataset (List[str]): List of dataset_id, dataset_path or dataset_dir
         val_dataset (List[str]): List of validation dataset_id, dataset_path or dataset_dir
-        split_dataset_ratio (float): Ratio to split the dataset for validation if val_dataset is empty. Default is 0.01.
+        split_dataset_ratio (float): Ratio to split the dataset for validation if val_dataset is empty. Default is 0..
         data_seed (Optional[int]): Seed for dataset shuffling. Default is None.
         dataset_num_proc (int): Number of processes to use for data loading and preprocessing. Default is 1.
         streaming (bool): Flag to enable streaming of datasets. Default is False.
@@ -31,7 +31,7 @@ class DataArguments:
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     val_dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    split_dataset_ratio: float = 0.01
+    split_dataset_ratio: float = 0.
 
     data_seed: int = 42
     dataset_num_proc: int = 1
@@ -62,7 +62,7 @@ class DataArguments:
 
     def __post_init__(self):
         self.columns = self.parse_to_dict(self.columns)
-        if len(self.val_dataset) > 0 or self.streaming:
+        if len(self.val_dataset) > 0 or self.streaming and self.split_dataset_ratio > 0:
             self.split_dataset_ratio = 0.
             if len(self.val_dataset) > 0:
                 msg = 'len(args.val_dataset) > 0'

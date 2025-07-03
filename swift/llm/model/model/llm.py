@@ -343,3 +343,14 @@ register_model(
         architectures=['Dots1ForCausalLM'],
         requires=['transformers>=4.53.0.dev0'],
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.hunyuan,
+        [ModelGroup([
+            Model('Tencent-Hunyuan/Hunyuan-A13B-Instruct', 'tencent/Hunyuan-A13B-Instruct'),
+        ])],
+        TemplateType.hunyuan,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['HunYuanMoEV1ForCausalLM'],
+    ))

@@ -23,7 +23,7 @@ class InferClient(InferEngine):
                  api_key: str = 'EMPTY',
                  *,
                  base_url: Optional[str] = None,
-                 timeout: Optional[int] = 3600) -> None:
+                 timeout: Optional[int] = 86400) -> None:
         """
         Initialize the InferClient.
 

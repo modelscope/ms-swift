@@ -405,6 +405,10 @@ class Template(ProcessorMixin):
 
         positive = deepcopy(inputs)
         positive.rejected_response = []
+        if '{doc}' in positive.messages[-2]['content']:
+            positive.messages[-2]['content'] = positive.messages[-2]['content'].replace(
+                '{doc}', inputs.messages[-1]['content'])
+            positive.messages.pop(-1)
         positive_encoded = self._encode_truncated(positive)
         for key in positive_encoded:
             _encoded[f'positive_{key}'] = positive_encoded[key]
@@ -414,7 +418,12 @@ class Template(ProcessorMixin):
         rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
         for i in range(rejected_len):
             negative = deepcopy(inputs)
-            negative.messages[-1]['content'] = negative.rejected_response[i]
+            if '{doc}' in negative.messages[-2]['content']:
+                negative.messages[-2]['content'] = negative.messages[-2]['content'].replace(
+                    '{doc}', negative.rejected_response[i])
+                negative.messages.pop(-1)
+            else:
+                negative.messages[-1]['content'] = negative.rejected_response[i]
             negative.rejected_response = []
             negative_encoded = self._encode_truncated(negative)
             for key in negative_encoded:
@@ -487,7 +496,8 @@ class Template(ProcessorMixin):
                     lengths.append(value)
                 elif isinstance(value, (tuple, list)):
                     lengths += value
-        encoded['length'] = max(lengths)
+        if self.is_training:
+            encoded['length'] = max(lengths)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         if not self.remove_unused_columns:
@@ -1034,7 +1044,10 @@ class Template(ProcessorMixin):
                 res_context_list.append(bos_token)
                 res_context_types.append(ContextType.OTHER)
 
-        prefix = template_meta.system_prefix if system else template_meta.prefix
+        if self.template_meta.is_post_system or not system:
+            prefix = template_meta.prefix
+        else:
+            prefix = template_meta.system_prefix
         self._concat_context_list(prefix, res_context_list, res_context_types, system=system)
 
         n_round = len(inputs.messages) // 2
@@ -1634,19 +1647,62 @@ class Template(ProcessorMixin):
     def print_inputs(self, inputs: Dict[str, Any], tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
-        for key in [
-                'input', 'labels', 'generate', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels'
-        ]:
+
+        # Base keys to check
+        base_keys = [
+            'input', 'labels', 'generate', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels'
+        ]
+
+        # For reranker/embedding modes, also check prefixed keys
+        if self.mode in {'reranker', 'generative_reranker', 'embedding'}:
+            prefixes = []
+            if self.mode in {'reranker', 'generative_reranker'}:
+                prefixes = ['positive_', 'negative_']
+            elif self.mode == 'embedding':
+                prefixes = ['anchor_', 'positive_', 'negative_']
+
+            # Add prefixed keys for reranker/embedding modes
+            extended_keys = base_keys.copy()
+            for prefix in prefixes:
+                for base_key in ['input', 'labels']:
+                    extended_keys.append(f'{prefix}{base_key}')
+
+            # Also check for numbered negative keys (negative0_, negative1_, etc.)
+            input_keys = list(inputs.keys())
+            for key in input_keys:
+                if any(key.startswith(f'{prefix}') for prefix in prefixes):
+                    # Extract the base key after removing prefix
+                    for prefix in prefixes:
+                        if key.startswith(prefix):
+                            base_key = key[len(prefix):]
+                            if base_key in ['input_ids', 'labels'
+                                            ] or base_key.rstrip('0123456789_') in ['input', 'labels']:
+                                extended_keys.append(key.replace('_ids', ''))
+                            break
+
+            keys_to_check = list(set(extended_keys))
+        else:
+            keys_to_check = base_keys
+
+        for key in keys_to_check:
+            # Skip labels completely for certain modes
+            if key.endswith('labels') and self.mode in {'reranker', 'generative_reranker'}:
+                continue
+
             val = inputs.get(key)  # fix val is a tensor
             if val is None:
                 val = inputs.get(f'{key}_ids')
             if val is not None:
                 key_upper = key.upper()
                 logger.info(f'[{key_upper}_IDS] {val}')
-                if key == 'labels' and self.mode in {'seq_cls', 'embedding', 'reranker', 'generative_reranker'}:
+                if key.endswith('labels') and self.mode in {'seq_cls', 'embedding'}:
                     continue
                 if isinstance(val, (list, tuple, torch.Tensor)):
-                    val_str = self.safe_decode(val, **tokenizer_kwargs)
+                    # Handle nested lists (e.g., for reranker negative samples)
+                    if isinstance(val, (list, tuple)) and len(val) > 0 and isinstance(val[0], (list, tuple)):
+                        val_str = [self.safe_decode(sub_val, **tokenizer_kwargs) for sub_val in val]
+                    else:
+                        val_str = self.safe_decode(val, **tokenizer_kwargs)
                     logger.info(f'[{key_upper}] {val_str}')
         if inputs.get('loss_scale') is not None:
             val = inputs['loss_scale']

@@ -18,6 +18,5 @@ swift rlhf \
     --sleep_level 1 \
     --offload_model true \
     --offload_optimizer true \
-    --gc_collect_after_offload true \
     --log_completions true \
     --deepspeed zero2

@@ -17,6 +17,7 @@ def test_llm():
             model='Qwen/Qwen3-Embedding-0.6B',
             task_type='embedding',
             dataset=['sentence-transformers/stsb:positive'],
+            split_dataset_ratio=0.01,
             load_from_cache_file=False,
             loss_type='infonce',
             **kwargs,

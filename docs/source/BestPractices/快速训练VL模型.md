@@ -114,6 +114,7 @@ swift sft \
     --model_type qwen2_5_vl \
     --train_type full \
     --dataset xxx  \
+    --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \
     --freeze_vit true \
@@ -149,6 +150,7 @@ swift sft \
     --model_type qwen2_5_vl \
     --train_type full \
     --dataset xxx \
+    --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \
     --freeze_vit false \

@@ -119,6 +119,8 @@ class LLMModelType:
     mimo = 'mimo'
     mimo_rl = 'mimo_rl'
     dots1 = 'dots1'
+    hunyuan = 'hunyuan'
+    ernie = 'ernie'
 
 
 class BertModelType:
@@ -152,6 +154,7 @@ class MLLMModelType:
     mimo_vl = 'mimo_vl'
 
     glm4v = 'glm4v'
+    glm4_1v = 'glm4_1v'
     glm_edge_v = 'glm_edge_v'
     cogvlm = 'cogvlm'
     cogagent_vqa = 'cogagent_vqa'

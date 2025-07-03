@@ -60,7 +60,7 @@ class MegatronArguments(ExtraMegatronArguments):
     no_masked_softmax_fusion: bool = False
     no_bias_dropout_fusion: bool = False
     no_bias_swiglu_fusion: bool = False
-    no_rope_fusion: bool = False
+    no_rope_fusion: Optional[bool] = None
     no_gradient_accumulation_fusion: bool = False
     cross_entropy_loss_fusion: bool = False
     cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
@@ -71,6 +71,10 @@ class MegatronArguments(ExtraMegatronArguments):
     optimizer_cpu_offload: bool = False
     optimizer_offload_fraction: float = 1.
     use_precision_aware_optimizer: bool = False
+    main_grads_dtype: Literal['fp32', 'bf16'] = 'fp32'
+    main_params_dtype: Literal['fp32', 'fp16'] = 'fp32'
+    exp_avg_dtype: Literal['fp32', 'fp16', 'bf16', 'fp8'] = 'fp32'
+    exp_avg_sq_dtype: Literal['fp32', 'fp16', 'bf16', 'fp8'] = 'fp32'
     dataloader_type: Literal['single', 'cyclic', 'external'] = 'cyclic'
     manual_gc: bool = False
     manual_gc_interval: int = 0
@@ -131,6 +135,7 @@ class MegatronArguments(ExtraMegatronArguments):
     position_embedding_type: Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none'] = 'rope'
     rotary_base: Optional[int] = None
     rotary_percent: float = 1.
+    rotary_interleaved: Optional[bool] = None
     normalization: Literal['LayerNorm', 'RMSNorm'] = 'RMSNorm'
     norm_epsilon: Optional[float] = None
     swiglu: Optional[bool] = None
@@ -177,6 +182,13 @@ class MegatronArguments(ExtraMegatronArguments):
     qk_head_dim: Optional[int] = None
     qk_pos_emb_head_dim: Optional[int] = None
 
+    # fp8
+    fp8_format: Literal['e4m3', 'hybrid'] = None
+    fp8_recipe: Literal['tensorwise', 'delayed', 'mxfp8', 'blockwise'] = 'delayed'
+    fp8_amax_history_len: int = 1024
+    fp8_amax_compute_algo: Literal['most_recent', 'max'] = 'max'
+    fp8_param_gather: bool = False
+
     # mixed precision
     fp16: Optional[bool] = None
     bf16: Optional[bool] = None
@@ -217,6 +229,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.norm_epsilon = 1e-5
         if self.rotary_base is None:
             self.rotary_base = 10000
+        if self.rotary_interleaved is None:
+            self.rotary_interleaved = False
         if self.attention_dropout is None:
             self.attention_dropout = 0.
         if self.untie_embeddings_and_output_weights is None:
@@ -309,10 +323,17 @@ class MegatronArguments(ExtraMegatronArguments):
 
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
         self.extra_megatron_kwargs = ModelArguments.parse_to_dict(self.extra_megatron_kwargs)
-        if self.multi_latent_attention and not self.no_rope_fusion:
+        self._init_no_rope_fusion()
+
+    def _init_no_rope_fusion(self):
+        if self.no_rope_fusion is not None:
+            return
+        if self.multi_latent_attention or self.rotary_interleaved:
             # Upgrading transformer_engine requires checking here.
             self.no_rope_fusion = True
-            logger.info(f'Due to enabling multi_latent_attention, set args.no_rope_fusion to {self.no_rope_fusion}.')
+        else:
+            self.no_rope_fusion = False
+        logger.info(f'Setting args.no_rope_fusion: {self.no_rope_fusion}.')
 
     def _args_to_argv(self) -> Tuple[List[Any], Dict[str, Any]]:
         new_args = []

@@ -58,9 +58,9 @@ class TrainArgumentsMixin:
 
     # train-eval loop args
     eval_use_evalscope: bool = False
-    eval_datasets: List[str] = field(default_factory=list)
+    eval_dataset: List[str] = field(default_factory=list)
+    eval_dataset_args: Optional[Union[str, dict]] = None
     eval_limit: Optional[int] = None
-    eval_datasets_args: Optional[Union[str, dict]] = None
     eval_generation_config: Optional[Union[str, dict]] = None
 
     @staticmethod
@@ -118,7 +118,7 @@ class TrainArgumentsMixin:
                 import evalscope
             except ImportError:
                 raise ImportError('evalscope is not installed, please install it by `pip install evalscope`')
-            self.eval_datasets_args = ModelArguments.parse_to_dict(self.eval_datasets_args)
+            self.eval_dataset_args = ModelArguments.parse_to_dict(self.eval_dataset_args)
             self.eval_generation_config = ModelArguments.parse_to_dict(self.eval_generation_config)
 
         super().__post_init__()
@@ -201,7 +201,7 @@ class GRPOArgumentsMixin:
     move_model_batches: Optional[int] = None
     offload_optimizer: bool = False
     offload_model: bool = False
-    gc_collect_after_offload: bool = False
+    gc_collect_after_offload: bool = False  # deprecated
 
     # multi turn
     multi_turn_func: Optional[str] = None  # deprecated

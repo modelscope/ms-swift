@@ -2,6 +2,11 @@
 from dataclasses import dataclass, field
 from typing import List, Optional, Union
 
+import transformers
+from packaging import version
+
+transformers_ge_4_52 = version.parse(transformers.__version__) >= version.parse('4.52')
+
 
 class LLMModelArch:
     qwen = 'qwen'
@@ -29,11 +34,11 @@ class MLLMModelArch:
 
     cogvlm = 'cogvlm'
     glm4v = 'glm4v'
+    glm4_1v = 'glm4_1v'
     glm_edge_v = 'glm_edge_v'
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'
-    llama4 = 'llama4'
 
     llava_hf = 'llava_hf'
     llava_next_video_hf = 'llava_next_video_hf'
@@ -59,14 +64,12 @@ class MLLMModelArch:
     idefics3 = 'idefics3'
 
     got_ocr2 = 'got_ocr2'
-    got_ocr2_hf = 'got_ocr2_hf'
 
     ovis1_6 = 'ovis1_6'
     molmo = 'molmo'
     emu3_chat = 'emu3_chat'
     megrez_omni = 'megrez_omni'
     valley = 'valley'
-    gemma3_vision = 'gemma3_vision'
     mistral_2503 = 'mistral_2503'
 
 
@@ -308,13 +311,22 @@ register_model_arch(
         lm_head='lm_head',
     ))
 
-register_model_arch(
-    MultiModelKeys(
-        MLLMModelArch.llava_hf,
-        language_model='language_model',
-        aligner='multi_modal_projector',
-        vision_tower='vision_tower',
-    ))
+if transformers_ge_4_52:
+    register_model_arch(
+        MultiModelKeys(
+            MLLMModelArch.llava_hf,
+            language_model='model.language_model',
+            aligner='model.multi_modal_projector',
+            vision_tower='model.vision_tower',
+        ))
+else:
+    register_model_arch(
+        MultiModelKeys(
+            MLLMModelArch.llava_hf,
+            language_model='language_model',
+            aligner='multi_modal_projector',
+            vision_tower='vision_tower',
+        ))
 
 register_model_arch(
     MultiModelKeys(
@@ -324,12 +336,20 @@ register_model_arch(
         vision_tower='model.vision_tower',
     ))
 
-register_model_arch(
-    MultiModelKeys(
-        MLLMModelArch.llava_next_video_hf,
-        language_model='language_model',
-        aligner=['multi_modal_projector'],
-        vision_tower='vision_tower'))
+if transformers_ge_4_52:
+    register_model_arch(
+        MultiModelKeys(
+            MLLMModelArch.llava_next_video_hf,
+            language_model='model.language_model',
+            aligner=['model.multi_modal_projector'],
+            vision_tower='model.vision_tower'))
+else:
+    register_model_arch(
+        MultiModelKeys(
+            MLLMModelArch.llava_next_video_hf,
+            language_model='language_model',
+            aligner=['multi_modal_projector'],
+            vision_tower='vision_tower'))
 
 register_model_arch(
     MultiModelKeys(
@@ -459,13 +479,23 @@ register_model_arch(
         vision_tower='audio_tower',
     ))
 
-register_model_arch(
-    MultiModelKeys(
-        MLLMModelArch.qwen2_vl,
-        language_model='model',
-        aligner='visual.merger',
-        vision_tower='visual',
-    ))
+if transformers_ge_4_52:
+    register_model_arch(
+        MultiModelKeys(
+            MLLMModelArch.qwen2_vl,
+            language_model='model.language_model',
+            aligner='model.visual.merger',
+            vision_tower='model.visual',
+        ))
+else:
+    register_model_arch(
+        MultiModelKeys(
+            MLLMModelArch.qwen2_vl,
+            language_model='model',
+            aligner='visual.merger',
+            vision_tower='visual',
+        ))
+
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.qwen2_5_omni,
@@ -480,6 +510,14 @@ register_model_arch(
         MLLMModelArch.glm4v,
         language_model='transformer.encoder',
         vision_tower='transformer.vision',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.glm4_1v,
+        language_model='model.language_model',
+        aligner='model.visual.merger',
+        vision_tower='model.visual',
     ))
 
 register_model_arch(
@@ -507,13 +545,22 @@ register_model_arch(
         vision_tower='model.vision_tower_high',
     ))
 
-register_model_arch(
-    MultiModelKeys(
-        MLLMModelArch.llama3_2_vision,
-        language_model='language_model',
-        aligner='multi_modal_projector',
-        vision_tower='vision_model',
-    ))
+if transformers_ge_4_52:
+    register_model_arch(
+        MultiModelKeys(
+            MLLMModelArch.llama3_2_vision,
+            language_model='model.language_model',
+            aligner='model.multi_modal_projector',
+            vision_tower='model.vision_model',
+        ))
+else:
+    register_model_arch(
+        MultiModelKeys(
+            MLLMModelArch.llama3_2_vision,
+            language_model='language_model',
+            aligner='multi_modal_projector',
+            vision_tower='vision_model',
+        ))
 
 register_model_arch(MultiModelKeys(
     MLLMModelArch.ovis1_6,
@@ -545,14 +592,6 @@ register_model_arch(
         MLLMModelArch.valley,
         language_model='model',
         vision_tower=['model.vision_tower', 'model.qwen2vl_vision_tower'],
-    ))
-
-register_model_arch(
-    MultiModelKeys(
-        MLLMModelArch.gemma3_vision,
-        language_model='language_model',
-        aligner='multi_modal_projector',
-        vision_tower='vision_tower',
     ))
 
 

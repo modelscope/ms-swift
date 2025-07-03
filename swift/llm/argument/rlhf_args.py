@@ -259,6 +259,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             assert trl_version >= version.parse('0.18')
             if self.delta is not None:
                 raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
+            if self.sequence_parallel_size > 1:
+                raise ValueError('Liger loss does not support sequence parallel yet.')
             from trl.import_utils import is_liger_kernel_available
             assert is_liger_kernel_available(), (
                 'Please install/update liger-kernel by running: pip install -U liger-kernel')
@@ -327,3 +329,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                            "Please use 'multi_turn_scheduler' instead")
 
             self.multi_turn_scheduler = self.multi_turn_func
+
+        if self.gc_collect_after_offload:
+            logger.warning(
+                "The parameter 'gc_collect_after_offload' has been deprecated and will be removed in version 3.7. ")

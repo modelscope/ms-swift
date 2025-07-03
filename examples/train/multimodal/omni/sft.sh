@@ -17,6 +17,7 @@ swift sft \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#2000' \
               'speech_asr/speech_asr_aishell1_trainsets:validation#2000' \
               'swift/VideoChatGPT:all#2000' \
+    --split_dataset_ratio 0.01 \
     --train_type lora \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
