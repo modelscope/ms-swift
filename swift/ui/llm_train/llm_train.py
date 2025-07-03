@@ -205,14 +205,19 @@ class LLMTrain(BaseUI):
                 'en': 'Choose from the dropbox or fill in a valid path',
             }
         },
-        'resume_from_checkpoint': {
-            'label': {
-                'zh': '断点续训',
-                'en': 'Resume from checkpoint'
-            },
-            'info': {
-                'zh': '传入以前的检查点路径',
-                'en': 'Pass in the previous checkpoint path'
+        'resume_checkpoint_alert': {
+            'value': {
+                'zh': '检测到"args.json"在{}中，将从此检查点开始断点续训',
+                'en': 'Detected that "args.json" is in {}, will start breakpoint resume training from this checkpoint'
+            }
+        },
+        'resume_only_model_alert': {
+            'value': {
+                'zh':
+                '检测到"args.json"在{}中，但未检测到优化器参数，将仅加载模型参数开始断点续训',
+                'en':
+                '"args.json" is detected in {}, but optimizer parameters are not detected. '
+                'Only model parameters will be loaded to start breakpoint continuation training'
             }
         },
         'more_params': {
@@ -280,8 +285,7 @@ class LLMTrain(BaseUI):
                         choices=[str(i) for i in range(device_count)] + ['cpu'],
                         value=default_device,
                         scale=8)
-                    gr.Textbox(elem_id='resume_from_checkpoint', scale=8)
-                    gr.Textbox(elem_id='envs', scale=6)
+                    gr.Textbox(elem_id='envs', scale=8)
                     gr.Checkbox(elem_id='dry_run', value=False, scale=4)
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
@@ -371,11 +375,27 @@ class LLMTrain(BaseUI):
             if key == 'train_stage':
                 train_stage = value
 
+        model = kwargs.get('model')
+        if '-merged' not in model and os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
+            ckpt_dir = kwargs.pop('model')
+            with open(os.path.join(ckpt_dir, 'args.json'), 'r', encoding='utf-8') as f:
+                _json = json.load(f)
+                kwargs['model'] = _json['model_dir']
+                kwargs['model_type'] = _json['model_type']
+                kwargs['template'] = _json['template']
+                if os.path.exists(os.path.join(ckpt_dir, 'scheduler.pt')):
+                    kwargs['resume_from_checkpoint'] = ckpt_dir
+                    gr.Info(cls.locale('resume_checkpoint_alert', cls.lang)['value'].format(ckpt_dir))
+                else:
+                    kwargs['resume_from_checkpoint'] = ckpt_dir
+                    kwargs['resume_only_model'] = True
+                    gr.Info(cls.locale('resume_only_model_alert', cls.lang)['value'].format(ckpt_dir))
+
+        model = kwargs.get('model')
         kwargs.update(more_params)
         if 'dataset' not in kwargs and 'custom_train_dataset_path' not in kwargs:
             raise gr.Error(cls.locale('dataset_alert', cls.lang)['value'])
 
-        model = kwargs.get('model')
         cmd = train_stage
         if kwargs.get('deepspeed'):
             more_params_cmd += f' --deepspeed {kwargs.pop("deepspeed")} '
