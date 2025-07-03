@@ -118,7 +118,7 @@ class Template(ProcessorMixin):
         if self.is_encoder_decoder:
             self.skip_prompt = False
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
-                           'train', 'rlhf', 'kto', 'gkd', 'rm',  # train
+                           'train', 'rlhf', 'kto', 'gkd',  # train
                            'seq_cls', 'embedding', 'prm'] = 'pt'
         self._packing = self.padding_free
         self.use_megatron = False
@@ -320,6 +320,7 @@ class Template(ProcessorMixin):
             return model
 
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        margin = inputs.margin
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
         assert chosen_inputs.rejected_response is not None, f'inputs: {inputs}'
         rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
@@ -331,18 +332,14 @@ class Template(ProcessorMixin):
             data = locals()[f'{prefix}_encoded']
             for k, v in data.items():
                 encoded[f'{prefix}_{k}'] = v
+        if margin:
+            encoded['margin'] = float(margin)
         return encoded
 
     def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         label, inputs.label = inputs.label, None
         encoded = self._rlhf_encode(inputs)
         encoded['label'] = bool(label)
-        return encoded
-
-    def _rm_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        margin = inputs.margin
-        encoded = self._rlhf_encode(inputs)
-        encoded['margin'] = float(margin)
         return encoded
 
     def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -474,8 +471,6 @@ class Template(ProcessorMixin):
             encoded = self._rlhf_encode(inputs)
         elif self.mode == 'kto':
             encoded = self._kto_encode(inputs)
-        elif self.mode == 'rm':
-            encoded = self._rm_encode(inputs)
         elif self.mode == 'gkd':
             encoded = self._gkd_encode(inputs)
         elif self.mode == 'embedding':
@@ -607,7 +602,7 @@ class Template(ProcessorMixin):
     @contextmanager
     def generate_context(self):
         origin_mode = self.mode
-        if self.mode in {'train', 'rlhf', 'kto', 'gkd', 'rm'}:
+        if self.mode in {'train', 'rlhf', 'kto', 'gkd'}:
             self.set_mode('pt')
         is_multimodal = self.model_meta.is_multimodal
         if is_multimodal:
@@ -1281,7 +1276,7 @@ class Template(ProcessorMixin):
 
     def set_mode(
         self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto', 'gkd', 'embedding', 'reranker',
-                            'generative_reranker', 'rm']
+                            'generative_reranker']
     ) -> None:
         self.mode = mode
 
@@ -1325,7 +1320,7 @@ class Template(ProcessorMixin):
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         from swift.llm import RowPreprocessor
-        if self.mode in ['rlhf', 'rm']:
+        if self.mode == 'rlhf':
             res = self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
             res = self._kto_data_collator(batch, padding_to=padding_to)
@@ -1544,8 +1539,6 @@ class Template(ProcessorMixin):
                 res['input_ids'] = input_ids
             if channel:
                 res['channel'] = channel
-            if margin:
-                res['margin'] = channel
 
             for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
                 val = [b[key] for b in batch if b.get(key) is not None]
