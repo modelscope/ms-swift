@@ -18,6 +18,7 @@ def test_llm_ddp():
         TrainArguments(
             model='Qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            split_dataset_ratio=0.01,
             # ddp_find_unused_parameters=False,
             gradient_checkpointing_kwargs={'use_reentrant': False},
             target_modules=['all-linear', 'all-embedding'],
@@ -33,6 +34,7 @@ def test_unsloth():
         TrainArguments(
             model='Qwen/Qwen2-0.5B',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            split_dataset_ratio=0.01,
             max_steps=5,
             tuner_backend='unsloth',
             **kwargs))
@@ -51,6 +53,7 @@ def test_mllm_mp():
             model='bytedance-research/Valley-Eagle-7B',
             dataset=['modelscope/coco_2014_caption:validation#20'],
             # dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
+            split_dataset_ratio=0.01,
             train_type='lora',
             target_modules=['all-linear'],
             freeze_aligner=False,
@@ -88,6 +91,7 @@ def test_mllm_zero3():
         TrainArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],  #
+            split_dataset_ratio=0.01,
             deepspeed='zero3',
             **kwargs))
 
@@ -99,6 +103,7 @@ def test_qwen_vl():
         TrainArguments(
             model='Qwen/Qwen-VL-Chat',
             dataset=['AI-ModelScope/LaTeX_OCR#40', 'modelscope/coco_2014_caption:validation#40'],
+            split_dataset_ratio=0.01,
             **kwargs))
 
 
@@ -109,6 +114,7 @@ def test_qwen2_audio():
         TrainArguments(
             model='Qwen/Qwen2-Audio-7B-Instruct',
             dataset=['speech_asr/speech_asr_aishell1_trainsets:validation#200'],
+            split_dataset_ratio=0.01,
             freeze_parameters_ratio=1,
             trainable_parameters=['audio_tower'],
             train_type='full',
@@ -121,6 +127,7 @@ def test_llm_gptq():
         TrainArguments(
             model='Qwen/Qwen2-7B-Instruct-GPTQ-Int4',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            split_dataset_ratio=0.01,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
@@ -132,6 +139,7 @@ def test_llm_awq():
         TrainArguments(
             model='Qwen/Qwen2-7B-Instruct-AWQ',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            split_dataset_ratio=0.01,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
@@ -169,6 +177,7 @@ def test_llm_hqq():
         TrainArguments(
             model='Qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            split_dataset_ratio=0.01,
             quant_method='hqq',
             quant_bits=4,
             **kwargs))
@@ -182,6 +191,7 @@ def test_llm_bnb():
         TrainArguments(
             model='Qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            split_dataset_ratio=0.01,
             quant_method='bnb',
             quant_bits=4,
             **kwargs))
@@ -195,6 +205,7 @@ def test_moe():
         TrainArguments(
             model='Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            split_dataset_ratio=0.01,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
@@ -229,6 +240,7 @@ def test_resume_only_model():
         TrainArguments(
             model='Qwen/Qwen2-0.5B',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#10', 'AI-ModelScope/alpaca-gpt4-data-en#10'],
+            split_dataset_ratio=0.01,
             max_steps=20,
             save_only_model=True,
             deepspeed='zero3',
@@ -246,6 +258,7 @@ def test_llm_transformers_4_33():
         TrainArguments(
             model='Qwen/Qwen-7B-Chat',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            split_dataset_ratio=0.01,
             **kwargs))
 
 
@@ -258,6 +271,7 @@ def test_predict_with_generate():
         TrainArguments(
             model='Qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-en#40'],
+            split_dataset_ratio=0.01,
             predict_with_generate=True,
             split_dataset_ratio=0.5,
             **kwargs))
@@ -272,6 +286,7 @@ def test_predict_with_generate_zero3():
         TrainArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['AI-ModelScope/LaTeX_OCR#40'],
+            split_dataset_ratio=0.01,
             predict_with_generate=True,
             freeze_vit=False,
             split_dataset_ratio=0.5,
@@ -288,6 +303,7 @@ def test_template():
         TrainArguments(
             model='Qwen/Qwen2-0.5B',
             dataset=['swift/self-cognition#200'],
+            split_dataset_ratio=0.01,
             model_name=['小黄'],
             model_author=['swift'],
             **kwargs))
@@ -301,7 +317,8 @@ def test_emu3_gen():
     os.environ['image_area'] = '518400'
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     kwargs['num_train_epochs'] = 100
-    result = sft_main(TrainArguments(model='BAAI/Emu3-Gen', dataset=['swift/TextCaps#2'], **kwargs))
+    result = sft_main(
+        TrainArguments(model='BAAI/Emu3-Gen', dataset=['swift/TextCaps#2'], split_dataset_ratio=0.01, **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     args = InferArguments(
         ckpt_dir=last_model_checkpoint,
@@ -321,6 +338,7 @@ def test_eval_strategy():
             model='Qwen/Qwen2-7B-Instruct',
             eval_strategy='no',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            split_dataset_ratio=0.01,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
@@ -337,6 +355,7 @@ def test_epoch():
         TrainArguments(
             model='Qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#50', 'AI-ModelScope/alpaca-gpt4-data-en#50'],
+            split_dataset_ratio=0.01,
             save_strategy='epoch',
             **train_kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
@@ -351,6 +370,7 @@ def test_agent():
         TrainArguments(
             model='Qwen/Qwen2-7B-Instruct',
             dataset=['swift/ToolBench#500'],
+            split_dataset_ratio=0.01,
             loss_scale='react',
             agent_template='toolbench',
             **kwargs))
@@ -364,7 +384,11 @@ def test_grounding():
 
     result = sft_main(
         TrainArguments(
-            model='Qwen/Qwen2.5-VL-7B-Instruct', dataset=['AI-ModelScope/coco#200'], dataset_num_proc=4, **kwargs))
+            model='Qwen/Qwen2.5-VL-7B-Instruct',
+            dataset=['AI-ModelScope/coco#200'],
+            split_dataset_ratio=0.01,
+            dataset_num_proc=4,
+            **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, stream=True, max_new_tokens=2048))
 

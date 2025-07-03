@@ -27,9 +27,9 @@ pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.12.0
 
 Alternatively, you can also use the image:
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.27.0-swift3.5.1
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.27.0-swift3.5.1
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.27.0-swift3.5.1
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.27.1-swift3.5.3
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.27.1-swift3.5.3
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.27.1-swift3.5.3
 ```
 
 The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.12.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.12.0)).
@@ -53,6 +53,7 @@ swift export \
 Next, use the following script to start training. The required GPU memory resources are 2*80GiB:
 - If using multi-machine training, it is recommended to share a disk and specify the same path for `--save`.
 ```shell
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
@@ -216,7 +217,9 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - 🔥load: Directory of the checkpoint to load, default is None.
 - 🔥no_load_optim: Do not load optimizer, default is False.
 - 🔥no_load_rng: Do not load RNG, default is False.
-- 🔥finetune: Load the model and fine-tune. Does not load the optimizer and random seed states from the checkpoint and resets the iteration count to 0. Default is False.
+- 🔥finetune: Load and fine-tune the model. Optimizer and random seed states from the checkpoint will not be loaded, and the number of iterations will be set to 0. The default is False.
+  - Note: For checkpoint resumption (`--load`), if `--finetune true` is set, the dataset will not be skipped; if not set, previously trained datasets will be skipped.
+  - Streaming datasets (`--streaming`) are currently not supported for skipping datasets.
 - ckpt_format: Format of the checkpoint. Options are 'torch', 'torch_dist', 'zarr'. Default is 'torch_dist'.
 - no_initialization: Do not initialize weights, default is True.
 - auto_detect_ckpt_format: Automatically detect whether the checkpoint format is legacy or distributed. Default is True.
@@ -257,7 +260,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 
 - 🔥eval_iters: The number of iterations for evaluation. Defaults to -1, and a suitable value will be set based on the size of the validation dataset.
   - Note: If using a streaming dataset, this value needs to be set manually.
-- 🔥eval_interval: Evaluation interval (steps), default is None, meaning it will be set to save_interval.
+- 🔥eval_interval: The evaluation interval (steps), i.e., how many steps between each evaluation. The default is None, which means it will be set to save_interval.
 
 
 **FP8 Parameters**:
