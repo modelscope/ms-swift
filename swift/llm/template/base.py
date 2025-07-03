@@ -1389,7 +1389,13 @@ class Template(ProcessorMixin):
         new_batch = []
         for prefix in [chosen_prefix, rejected_prefix]:
             new_batch += self._fetch_inputs_startswith(batch, prefix)
-        return self._data_collator(new_batch, padding_to=padding_to)
+        res = self._data_collator(new_batch, padding_to=padding_to)
+
+        # reward modeling
+        margin = [b['margin'] for b in batch if b.get('margin') is not None]
+        if margin:
+            res['margin'] = margin
+        return res
 
     def _kto_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         new_batch = self._fetch_inputs_startswith(batch, 'chosen_')
