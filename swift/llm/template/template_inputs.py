@@ -137,7 +137,7 @@ class StdTemplateInputs:
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any]) -> Tuple['StdTemplateInputs', Dict[str, Any]]:
         kwargs = {}
-        for key in ['rejected_response', 'label', 'channel']:
+        for key in ['rejected_response', 'label', 'channel', 'margin']:
             if key in inputs:
                 kwargs[key] = inputs[key]
         messages = inputs['messages']
