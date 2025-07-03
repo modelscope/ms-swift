@@ -191,36 +191,23 @@ class SequenceParallelSampler(Sampler):
 class SequenceParallelDispatcher(DataLoaderDispatcher):
     """Dispatcher for sequence parallel training"""
 
-    def __init__(self, dataloader, sp_instance, device=None):
+    def __init__(self, dataloader, sp_instance, device=None, skip_batches: int = 0):
         super().__init__(dataloader)
         self.sp_instance = sp_instance
         self.device = device
+        self.skip_batches = skip_batches
 
-    def _scatter_object_list(self, inputs):
-        if not dist.is_initialized():
-            return inputs[0]
-        outputs = [None]
-        global_src_rank = dist.get_global_rank(self.sp_instance.dp_group, 0)
-        dist.scatter_object_list(outputs, inputs, global_src_rank, group=self.sp_instance.dp_group)
-        return outputs[0]
+    @property
+    def rank(self):
+        return self.sp_instance.dp_rank if dist.is_initialized() else 0
 
-    def __iter__(self):
-        base_iter = iter(self.base_dataloader)
-        while True:
-            if self.sp_instance.dp_rank == 0:
-                try:
-                    data = [next(base_iter) for _ in range(self.sp_instance.dp_world_size)]
-                except StopIteration:
-                    data = [None] * self.sp_instance.dp_world_size
-                data = self._scatter_object_list(data)
-            else:
-                data = self._scatter_object_list(None)
-            if data is None:
-                break
-            if self.device:
-                data = to_device(data, self.device)
-            yield data
+    @property
+    def world_size(self):
+        return self.sp_instance.dp_world_size if dist.is_initialized() else 1
 
+    @property
+    def group(self):
+        return self.sp_instance.dp_group if dist.is_initialized() else 1
 
 def setup_compute_acc(sp_instance):
     """Setup compute_acc function for sequence parallel training"""
@@ -280,7 +267,7 @@ def get_per_token_logps(logits: torch.FloatTensor,
     return total_per_token_logps, total_mean_logits, total_loss_mask
 
 
-def get_common_dataloader(sp_instance, trainer, dataset, batch_size, sampler_class, dispatcher_class):
+def get_common_dataloader(sp_instance, trainer, dataset, batch_size, sampler_class, dispatcher_class, skip_batches: int = 0):
     """Common dataloader creation function"""
     data_collator = trainer.data_collator
     if isinstance(dataset, datasets.Dataset):
@@ -299,6 +286,9 @@ def get_common_dataloader(sp_instance, trainer, dataset, batch_size, sampler_cla
         }
 
         if not isinstance(dataset, torch.utils.data.IterableDataset):
+            if skip_batches > 0:
+                from accelerate.data_loader import SkipBatchesSampler
+                sampler = SkipBatchesSampler(sampler, skip_batches=skip_batches * batch_size)
             dataloader_params['sampler'] = sampler
             dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
             dataloader_params['worker_init_fn'] = partial(
@@ -316,7 +306,7 @@ def get_common_dataloader(sp_instance, trainer, dataset, batch_size, sampler_cla
         if dist.is_initialized() and dataloader_params['prefetch_factor']:
             dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
         dataloader = DataLoader(dataset, batch_size=batch_size, **dataloader_params)
-        dataloader = dispatcher_class(dataloader, sp_instance, trainer.accelerator.device)
+        dataloader = dispatcher_class(dataloader, sp_instance, trainer.accelerator.device, skip_batches=skip_batches)
         return dataloader
 
 

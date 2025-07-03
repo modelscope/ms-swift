@@ -263,9 +263,9 @@ class Ulysses(CommonSequenceParallel):
         self.model_dtype = next(model.parameters()).dtype
         self.tokenizer = tokenizer
 
-    def get_dataloader(self, trainer, dataset, batch_size):
+    def get_dataloader(self, trainer, dataset, batch_size, skip_batches: int = 0):
         return get_common_dataloader(self, trainer, dataset, batch_size, SequenceParallelSampler,
-                                     SequenceParallelDispatcher)
+                                     SequenceParallelDispatcher, skip_batches=skip_batches)
 
     def prepare_trainer(self, trainer):
         # TODO hack methods, not cool
