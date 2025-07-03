@@ -209,6 +209,7 @@ class SequenceParallelDispatcher(DataLoaderDispatcher):
     def group(self):
         return self.sp_instance.dp_group if dist.is_initialized() else 1
 
+
 def setup_compute_acc(sp_instance):
     """Setup compute_acc function for sequence parallel training"""
     from swift.plugin import metric
@@ -267,7 +268,13 @@ def get_per_token_logps(logits: torch.FloatTensor,
     return total_per_token_logps, total_mean_logits, total_loss_mask
 
 
-def get_common_dataloader(sp_instance, trainer, dataset, batch_size, sampler_class, dispatcher_class, skip_batches: int = 0):
+def get_common_dataloader(sp_instance,
+                          trainer,
+                          dataset,
+                          batch_size,
+                          sampler_class,
+                          dispatcher_class,
+                          skip_batches: int = 0):
     """Common dataloader creation function"""
     data_collator = trainer.data_collator
     if isinstance(dataset, datasets.Dataset):

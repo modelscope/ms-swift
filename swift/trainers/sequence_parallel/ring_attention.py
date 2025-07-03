@@ -206,8 +206,14 @@ class RingAttention(CommonSequenceParallel):
         self.tokenizer = tokenizer
 
     def get_dataloader(self, trainer, dataset, batch_size, skip_batches: int = 0):
-        return get_common_dataloader(self, trainer, dataset, batch_size, SequenceParallelSampler,
-                                     SequenceParallelDispatcher, skip_batches=skip_batches)
+        return get_common_dataloader(
+            self,
+            trainer,
+            dataset,
+            batch_size,
+            SequenceParallelSampler,
+            SequenceParallelDispatcher,
+            skip_batches=skip_batches)
 
     def prepare_trainer(self, trainer):
         """Prepare trainer for ring attention sequence parallel.
