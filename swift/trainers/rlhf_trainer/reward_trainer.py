@@ -29,7 +29,7 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
         batch_size = attention_mask.shape[0] // 2
         rewards = model(**inputs).logits
         rewards_chosen, rewards_rejected = torch.split(rewards, batch_size, dim=0)
-        if margin:
+        if margin is not None:
             loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected - margin).mean()
         else:
             loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected).mean()
