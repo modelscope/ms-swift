@@ -110,6 +110,8 @@ class StdTemplateInputs:
     videos: List[str] = field(default_factory=list)
     objects: Dict[str, List[Any]] = field(default_factory=dict)
 
+    margin: Optional[float] = None  # for reward modeling
+
     def __post_init__(self):
         self.image_idx = 0
         self.audio_idx = 0

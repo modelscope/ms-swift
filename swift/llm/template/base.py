@@ -339,12 +339,12 @@ class Template(ProcessorMixin):
         encoded['label'] = bool(label)
         return encoded
 
-    def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+    def _rm_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         margin = inputs.margin
         encoded = self._rlhf_encode(inputs)
-        encoded['label'] = bool(label)
+        encoded['margin'] = margin
         return encoded
-    
+
     def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode_truncated(inputs)
         encoded['prompts'] = encoded['input_ids'][:-len(encoded.pop('answer_input_ids'))]
@@ -1325,12 +1325,10 @@ class Template(ProcessorMixin):
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         from swift.llm import RowPreprocessor
-        if self.mode == 'rlhf':
+        if self.mode in ['rlhf', 'rm']:
             res = self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
             res = self._kto_data_collator(batch, padding_to=padding_to)
-        elif self.mode == 'rm':
-            res = self._rm_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'gkd':
             res = self._gkd_data_collator(batch, padding_to=padding_to)
         elif self.mode in {'pt', 'train', 'prm'}:
@@ -1532,12 +1530,17 @@ class Template(ProcessorMixin):
             inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
             input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
             channel = [b['channel'] for b in batch if b.get('channel') is not None]
+            margin = [b['margin'] for b in batch if b.get('margin') is not None]
+
             if inputs_embeds:
                 res['inputs_embeds'] = inputs_embeds
             if input_ids:
                 res['input_ids'] = input_ids
             if channel:
                 res['channel'] = channel
+            if margin:
+                res['margin'] = channel
+
             for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
                 val = [b[key] for b in batch if b.get(key) is not None]
                 if val:
