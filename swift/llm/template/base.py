@@ -1394,7 +1394,8 @@ class Template(ProcessorMixin):
         # reward modeling
         margin = [b['margin'] for b in batch if b.get('margin') is not None]
         if margin:
-            res['margin'] = margin
+            res['margin'] = torch.tensor(margin, dtype=torch.float)
+
         return res
 
     def _kto_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -1536,7 +1537,6 @@ class Template(ProcessorMixin):
             inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
             input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
             channel = [b['channel'] for b in batch if b.get('channel') is not None]
-            margin = [b['margin'] for b in batch if b.get('margin') is not None]
 
             if inputs_embeds:
                 res['inputs_embeds'] = inputs_embeds
