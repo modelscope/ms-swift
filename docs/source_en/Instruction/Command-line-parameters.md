@@ -171,7 +171,7 @@ Other important parameters:
 - 🔥save_strategy: Strategy for saving the model, options include 'no', 'steps', 'epoch'. Default is 'steps'.
 - 🔥save_steps: Default is 500.
 - 🔥eval_strategy: Evaluation strategy. Default is None and follows the strategy of `save_strategy`.
-  - If `val_dataset` is not used and `split_dataset_ratio` is 0, the default is 'no'.
+  - If neither `val_dataset` nor `eval_dataset` is used and `split_dataset_ratio` is 0, the default is 'no'.
 - 🔥eval_steps: Default is None. If there is an evaluation dataset, it follows the strategy of `save_steps`.
 - 🔥save_total_limit: Maximum number of checkpoints to save. Older checkpoints will be deleted. Default is None, saving all checkpoints.
 - max_steps: Maximum number of training steps. Should be set when the dataset is streamed. Default is -1.
