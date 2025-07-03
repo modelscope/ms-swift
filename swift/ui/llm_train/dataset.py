@@ -42,34 +42,14 @@ class Dataset(BaseUI):
                 'en': 'Split the datasets by this ratio for eval'
             }
         },
-        'train_dataset_sample': {
+        'padding_free': {
             'label': {
-                'zh': '训练集采样数量',
-                'en': 'The sample size from the train dataset'
+                'zh': '无填充批处理',
+                'en': 'Padding-free batching'
             },
             'info': {
-                'zh': '从训练集中采样一定行数进行训练',
-                'en': 'Train with the sample size from the dataset',
-            }
-        },
-        'val_dataset_sample': {
-            'label': {
-                'zh': '验证集采样数量',
-                'en': 'The sample size from the val dataset'
-            },
-            'info': {
-                'zh': '从验证集中采样一定行数进行训练',
-                'en': 'Validate with the sample size from the dataset',
-            }
-        },
-        'custom_dataset_info': {
-            'label': {
-                'zh': '外部数据集配置',
-                'en': 'Custom dataset config'
-            },
-            'info': {
-                'zh': '注册外部数据集的配置文件',
-                'en': 'An extra dataset config to register your own datasets'
+                'zh': '将一个batch中的数据进行展平而避免数据padding',
+                'en': 'Flatten the data in a batch to avoid data padding'
             }
         },
         'dataset_param': {
@@ -86,6 +66,6 @@ class Dataset(BaseUI):
             with gr.Row():
                 gr.Dropdown(
                     elem_id='dataset', multiselect=True, choices=get_dataset_list(), scale=20, allow_custom_value=True)
-                gr.Textbox(elem_id='custom_dataset_info', is_list=False, scale=20)
                 gr.Slider(elem_id='split_dataset_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=10)
                 gr.Slider(elem_id='max_length', minimum=32, maximum=32768, value=1024, step=1, scale=10)
+                gr.Checkbox(elem_id='padding_free', scale=10)

@@ -61,8 +61,8 @@ class Runtime(BaseUI):
                 'en': 'Logging content'
             },
             'info': {
-                'zh': '如果日志无更新请再次点击"展示日志内容"',
-                'en': 'Please press "Show log" if the log content is not updating'
+                'zh': '如果日志无更新请再次点击"展示部署状态"',
+                'en': 'Please press "Show running status" if the log content is not updating'
             }
         },
         'running_tasks': {
@@ -93,7 +93,7 @@ class Runtime(BaseUI):
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='runtime_tab', open=False, visible=True):
             with gr.Blocks():
-                with gr.Row():
+                with gr.Row(equal_height=True):
                     gr.Dropdown(elem_id='running_tasks', scale=10, allow_custom_value=True)
                     gr.Button(elem_id='refresh_tasks', scale=1, variant='primary')
                     gr.Button(elem_id='show_log', scale=1, variant='primary')
