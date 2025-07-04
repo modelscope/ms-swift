@@ -7,6 +7,7 @@ from functools import partial
 import megatron.core
 import torch
 import torch.distributed as dist
+import torch.nn
 from megatron.core import mpu
 from megatron.core.enums import ModelType
 from megatron.core.num_microbatches_calculator import get_num_microbatches
@@ -17,7 +18,6 @@ from megatron.training import ft_integration, get_args, get_timers, is_last_rank
 from packaging import version
 from torch.distributed.nn import all_reduce
 
-from swift.megatron import MegatronLoRA
 from swift.utils import activate_parameters, freeze_parameters, get_logger, get_model_parameter_info
 from ..patcher import patch_megatron_data_collator
 from ..utils import get_batch, get_swift_datasets_provider
@@ -103,26 +103,80 @@ class MegatronTrainer:
     def _replace_data_iterator(self, data_iterator):
         return data_iterator
 
+    @contextmanager
+    def _patch_load_state_dict(self):
+        from megatron.training import checkpointing
+        origin__load_base_checkpoint = checkpointing._load_base_checkpoint
+
+        def _load_base_checkpoint(*_args, **kwargs):
+            sharded_state_dict = kwargs.get('sharded_state_dict')
+            if sharded_state_dict is None:
+                return origin__load_base_checkpoint(*_args, **kwargs)
+            args = get_args()
+            state_dict_model = {}
+            mapping = {}
+            for k, v in sharded_state_dict['model'].items():
+                if 'lora_A' in k or 'lora_B' in k:
+                    continue
+                origin_k = k
+                k = k.replace('.base_layer', '')
+                mapping[k] = origin_k
+                v.key = v.key.replace('.base_layer', '')
+                state_dict_model[k] = v
+            sharded_state_dict['model'] = state_dict_model
+            res = origin__load_base_checkpoint(*_args, **kwargs)
+            state_dict = res[0]['model']
+            for k, origin_k in mapping.items():
+                v = state_dict.pop(k)
+                state_dict[origin_k] = v
+            return res
+
+        origin_load_state_dict = torch.nn.Module.load_state_dict
+
+        def load_state_dict(self, state_dict, strict: bool = True, *args, **kwargs):
+            strict = False
+            return origin_load_state_dict(self, state_dict, strict, *args, **kwargs)
+
+        checkpointing._load_base_checkpoint = _load_base_checkpoint
+        torch.nn.Module.load_state_dict = load_state_dict
+
+        try:
+            yield
+        finally:
+            checkpointing._load_base_checkpoint = origin__load_base_checkpoint
+            torch.nn.Module.load_state_dict = origin_load_state_dict
+
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
         def new_model_provider_func(*args, **kwargs):
             model = model_provider_func(*args, **kwargs)
             self.prepare_model(model)
+            logger.info(f'model: {model}')
             return model
 
-        return self._origin_setup_model_and_optimizer(new_model_provider_func, model_type, *_args, **kwargs)
+        with self._patch_load_state_dict():
+            return self._origin_setup_model_and_optimizer(new_model_provider_func, model_type, *_args, **kwargs)
 
-    def prepare_model(self, unwrapped_model) -> None:
+    def prepare_model(self, model) -> None:
         args = get_args()
         if args.train_type == 'full':
-            freeze_parameters(unwrapped_model, args.freeze_parameters_ratio, args.freeze_parameters,
-                              args.freeze_parameters_regex)
+            freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
             if args.trainable_parameters or args.trainable_parameters_regex:
-                activate_parameters(unwrapped_model, args.trainable_parameters, args.trainable_parameters_regex)
+                activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
         elif args.train_type == 'lora':
-            unwrapped_model = MegatronLoRA.prepare_model(args, unwrapped_model)
+            from swift.megatron import tuners
+            from swift.tuners import LoraConfig, Swift
+            lora_kwargs = {
+                'r': 8,
+                'target_modules': ['linear_proj', 'linear_qkv', 'linear_fc1', 'linear_fc2'],
+                'lora_alpha': 16,
+                'lora_dropout': 0.05,
+            }
+            lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=None, **lora_kwargs)
+            model.prepare_inputs_for_generation = None
+            model = Swift.prepare_model(model, lora_config)
         logger.info_if(
-            f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(unwrapped_model)}',
+            f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(model)}',
             cond=mpu.get_data_parallel_rank() == 0)
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
