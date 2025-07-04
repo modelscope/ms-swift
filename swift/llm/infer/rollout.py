@@ -18,7 +18,6 @@ import torch
 import uvicorn
 from aiohttp import ClientConnectorError
 from fastapi import FastAPI
-# https://github.com/huggingface/trl/pull/3690
 from trl.scripts.vllm_serve import WeightSyncWorkerExtension
 
 from swift.llm import InferArguments, RolloutArguments, SwiftPipeline
