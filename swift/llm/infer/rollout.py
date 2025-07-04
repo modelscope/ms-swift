@@ -61,6 +61,7 @@ def safe_set_start_method():
 
 def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
     # Set required environment variables for DP to work with vLLM
+    args._import_external_plugins()
     os.environ['VLLM_DP_RANK'] = str(data_parallel_rank)
     os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
     os.environ['VLLM_DP_SIZE'] = str(args.data_parallel_size)
@@ -126,6 +127,8 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
 
 
 def llm_worker_entry(*args, **kwargs):
+    rollout_args: RolloutArguments = args[0]
+    rollout_args._import_external_plugins()
     asyncio.run(async_llm_worker(*args, **kwargs))
 
 
