@@ -1,8 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from functools import partial
 from typing import Type
 
 import gradio as gr
 
+from swift.llm import BaseArguments, ModelType
+from swift.llm.model.register import get_all_models
 from swift.ui.base import BaseUI
 
 
@@ -92,6 +95,46 @@ class GrpoAdvanced(BaseUI):
                 'en': 'Skip overlong truncated samples and exclude them from loss calculation'
             }
         },
+        'reward_model': {
+            'label': {
+                'zh': '奖励模型id或路径',
+                'en': 'Reward Model id or path'
+            },
+            'info': {
+                'zh': '实际的模型id',
+                'en': 'The actual model id or model path'
+            }
+        },
+        'reward_model_type': {
+            'label': {
+                'zh': '奖励模型类型',
+                'en': 'Select Reward Model Type'
+            },
+            'info': {
+                'zh': 'SWIFT已支持的模型类型',
+                'en': 'Base model type supported by SWIFT'
+            }
+        },
+        'ref_model_type': {
+            'label': {
+                'zh': 'Ref模型类型',
+                'en': 'Ref model type'
+            },
+            'info': {
+                'zh': 'SWIFT已支持的模型类型',
+                'en': 'Model type supported by SWIFT'
+            }
+        },
+        'ref_model': {
+            'label': {
+                'zh': 'Ref模型id或路径',
+                'en': 'Ref model id or path'
+            },
+            'info': {
+                'zh': '实际的模型id或路径',
+                'en': 'The actual model id or path'
+            }
+        },
     }
 
     @classmethod
@@ -109,3 +152,51 @@ class GrpoAdvanced(BaseUI):
                     gr.Checkbox(elem_id='dynamic_sample', scale=20)
                     gr.Slider(elem_id='max_resample_times', minimum=1, maximum=16, step=1, value=3, scale=20)
                     gr.Checkbox(elem_id='overlong_filter', scale=20)
+
+            with gr.Row():
+                gr.Dropdown(elem_id='reward_model', multiselect=True, choices=get_all_models(), scale=20)
+                gr.Dropdown(
+                    elem_id='reward_model_type',
+                    multiselect=True,
+                    choices=ModelType.get_model_name_list(),
+                    allow_custom_value=True,
+                    scale=20)
+            with gr.Blocks():
+                with gr.Row():
+                    gr.Dropdown(
+                        elem_id='ref_model', scale=20, value=None, choices=get_all_models(), allow_custom_value=True)
+                    gr.Dropdown(elem_id='ref_model_type', choices=ModelType.get_model_name_list(), value=None, scale=20)
+
+    @classmethod
+    def after_build_ui(cls, base_tab: Type['BaseUI']):
+        cls.element('ref_model').change(
+            partial(cls.update_input_model, allow_keys=['ref_model_type'], has_record=False, is_ref_model=True),
+            inputs=[cls.element('ref_model')],
+            outputs=[cls.element('ref_model_type')])
+        cls.element('reward_model').change(
+            partial(cls.update_input_models, allow_keys=['reward_model_type'], is_reward_model=True, has_record=False),
+            inputs=[cls.element('reward_model')],
+            outputs=[cls.element('reward_model_type')])
+
+    @classmethod
+    def update_input_models(cls,
+                            models,
+                            allow_keys=None,
+                            has_record=False,
+                            arg_cls=BaseArguments,
+                            is_reward_model=False):
+        if models is None:
+            return gr.update()
+        rm_type_str = ''
+        for model in models:
+            rm_type_str = ' '.join([
+                rm_type_str,
+                cls.update_input_model(
+                    model,
+                    allow_keys=allow_keys,
+                    has_record=has_record,
+                    arg_cls=arg_cls,
+                    is_reward_model=is_reward_model)['value']
+            ])
+
+        return gr.update(value=rm_type_str.strip())

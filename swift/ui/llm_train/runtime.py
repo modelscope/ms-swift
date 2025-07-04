@@ -292,7 +292,7 @@ class Runtime(BaseUI):
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Accordion(elem_id='runtime_tab', open=False, visible=True):
+        with gr.Accordion(elem_id='runtime_tab', open=False):
             with gr.Blocks():
                 with gr.Row():
                     with gr.Column(scale=3):
@@ -309,7 +309,7 @@ class Runtime(BaseUI):
                         with gr.Row():
                             gr.Button(elem_id='start_tb', scale=2, variant='primary')
                             gr.Button(elem_id='close_tb', scale=2)
-                with gr.Accordion(elem_id='show_sh', open=True, visible=False):
+                with gr.Accordion(elem_id='show_sh', open=False, visible=False):
                     with gr.Blocks():
                         gr.Textbox(elem_id='cmd_sh', lines=8)
                         with gr.Row(equal_height=True):
@@ -410,7 +410,7 @@ class Runtime(BaseUI):
         cls.log_event[logging_dir] = False
         offset = 0
         latest_data = ''
-        lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
+        lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 100)))
         try:
             with open(log_file, 'r', encoding='utf-8') as input:
                 input.seek(offset)
@@ -678,9 +678,9 @@ class Runtime(BaseUI):
     @classmethod
     def show_train_sh(cls, cmd):
         if len(cmd) == 0:
-            return gr.update(visible=False), None
+            return gr.update(visible=False, open=False), None
         cmd_sh, _ = cls.cmd_to_sh_format(cmd)
-        return gr.update(visible=True), cmd_sh
+        return gr.update(visible=True, open=True), cmd_sh
 
     @classmethod
     def cmd_to_sh_format(cls, cmd):

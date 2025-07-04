@@ -122,7 +122,7 @@ class Optimizer(BaseUI):
         with gr.Accordion(elem_id='optimizer_params', open=False):
             gr.Dropdown(
                 elem_id='optimizer',
-                choices=['galore', 'lorap', 'muon', 'multimodal'],
+                choices=['galore', 'lorap', 'muon', 'multimodal', None],
                 value='',
                 allow_custom_value=True)
             with gr.Tabs():

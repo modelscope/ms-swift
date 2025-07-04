@@ -14,7 +14,6 @@ from swift.ui.llm_grpo.hyper import GRPOHyper
 from swift.ui.llm_grpo.model import GRPOModel
 from swift.ui.llm_grpo.optimizer import GRPOOptimizer
 from swift.ui.llm_grpo.quantization import GRPOQuantization
-from swift.ui.llm_grpo.ref_model import RefModel
 from swift.ui.llm_grpo.report_to import GRPOReportTo
 from swift.ui.llm_grpo.reward import Reward
 from swift.ui.llm_grpo.rollout import Rollout
@@ -32,7 +31,7 @@ class LLMGRPO(LLMTrain):
 
     sub_ui = [
         GRPOModel, GRPODataset, Reward, GRPORuntime, Rollout, GRPOSave, GRPOTuner, GRPOOptimizer, GRPOHyper,
-        GRPOQuantization, GRPOAdvanced, RefModel, GrpoAdvanced, GRPOReportTo, LLMRollout
+        GRPOQuantization, GRPOAdvanced, GrpoAdvanced, GRPOReportTo, LLMRollout
     ]
 
     locale_dict: Dict[str, Dict] = {
@@ -270,7 +269,6 @@ class LLMGRPO(LLMTrain):
                 LLMRollout.set_lang(cls.lang)
                 LLMRollout.build_ui(LLMRollout)
                 GRPOTuner.build_ui(base_tab)
-                RefModel.build_ui(base_tab)
                 with gr.Accordion(elem_id='extra_params', open=True):
                     with gr.Tabs():
                         GrpoAdvanced.build_ui(base_tab)

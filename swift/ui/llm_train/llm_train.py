@@ -165,16 +165,6 @@ class LLMTrain(BaseUI):
                 'en': 'The data parallel size of DDP'
             }
         },
-        'tuner_backend': {
-            'label': {
-                'zh': 'Tuner backend',
-                'en': 'Tuner backend'
-            },
-            'info': {
-                'zh': 'Tuner实现框架',
-                'en': 'The tuner backend'
-            }
-        },
         'use_liger_kernel': {
             'label': {
                 'zh': '使用Liger kernel',
@@ -262,11 +252,16 @@ class LLMTrain(BaseUI):
                     with gr.Row():
                         gr.Dropdown(elem_id='train_stage', choices=['pt', 'sft'], value='sft', scale=4)
                         gr.Dropdown(elem_id='train_type', scale=4, choices=list(get_supported_tuners()))
-                        gr.Dropdown(elem_id='tuner_backend', scale=4)
                         gr.Textbox(elem_id='seed', scale=4)
                         gr.Dropdown(elem_id='torch_dtype', scale=4)
-                    with gr.Row():
                         gr.Checkbox(elem_id='use_liger_kernel', scale=4)
+                    with gr.Row():
+                        gr.Dropdown(
+                            elem_id='gpu_id',
+                            multiselect=True,
+                            choices=[str(i) for i in range(device_count)] + ['cpu'],
+                            value=default_device,
+                            scale=8)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                         gr.Textbox(elem_id='ddp_num', value='1', scale=4)
                         gr.Dropdown(
@@ -279,13 +274,7 @@ class LLMTrain(BaseUI):
                 Hyper.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
                 with gr.Row(equal_height=True):
-                    gr.Dropdown(
-                        elem_id='gpu_id',
-                        multiselect=True,
-                        choices=[str(i) for i in range(device_count)] + ['cpu'],
-                        value=default_device,
-                        scale=8)
-                    gr.Textbox(elem_id='envs', scale=8)
+                    gr.Textbox(elem_id='envs', scale=12)
                     gr.Checkbox(elem_id='dry_run', value=False, scale=4)
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
@@ -314,7 +303,9 @@ class LLMTrain(BaseUI):
                         cls.element('running_tasks'),
                         cls.element('train_record'),
                     ],
-                    queue=True)
+                    queue=True).then((Runtime.show_train_sh, cls.element('running_cmd'),
+                                      [Runtime.element('show_sh')] + [Runtime.element('cmd_sh')]),
+                                     queue=True)
 
                 base_tab.element('gpu_id').change(
                     cls.update_ddp_num,
