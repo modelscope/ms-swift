@@ -7,7 +7,7 @@ from ..model_arch import ModelArch
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo
-from ..patcher import patch_fixed_device, patch_output_to_input_device
+from ..patcher import patch_output_to_input_device
 
 
 def get_model_tokenizer_paligemma_vision(model_dir: str,
@@ -173,6 +173,10 @@ def get_model_tokenizer_gemma3n(model_dir: str,
     from transformers import Gemma3nForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or Gemma3nForConditionalGeneration
     model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
+
+    if load_model and model is not None:
+        patch_output_to_input_device(model.model.embed_vision)
+        patch_output_to_input_device(model.model.embed_audio)
     
     return model, processor
 
@@ -191,5 +195,5 @@ register_model(
         get_model_tokenizer_gemma3n,
         architectures=['Gemma3nForConditionalGeneration'],
         model_arch=ModelArch.gemma3n,
-        requires=['transformers>=4.53'],
+        requires=['transformers>=4.53.1'],
     ))
