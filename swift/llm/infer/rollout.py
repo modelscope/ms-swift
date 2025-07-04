@@ -8,6 +8,7 @@ import os
 import time
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import asdict
+from functools import wraps
 from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
@@ -17,6 +18,8 @@ import torch
 import uvicorn
 from aiohttp import ClientConnectorError
 from fastapi import FastAPI
+# https://github.com/huggingface/trl/pull/3690
+from trl.scripts.vllm_serve import WeightSyncWorkerExtension
 
 from swift.llm import InferArguments, RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
@@ -268,8 +271,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         # The function update_named_param is called this way: update_named_param("name", torch.float32, (10, 10))
         # So with collective_rpc we need to call it this way:
         # llm.collective_rpc("update_named_param", args=("name", torch.float32, (10, 10)))
-        dtype = torch.__getattribute__(request.dtype.split('.')[-1])
-        kwargs = {'method': 'update_named_param', 'args': (request.name, dtype, tuple(request.shape))}
+        kwargs = {'method': 'update_named_param', 'args': (request.name, request.dtype, tuple(request.shape))}
         for connection in self.connections:
             connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 
@@ -374,3 +376,16 @@ def run_rollout(args: RolloutArguments, return_url: bool = False):
     finally:
         process.terminate()
         logger.info('The deployment process has been terminated.')
+
+
+if not hasattr(WeightSyncWorkerExtension, 'old_update_named_param'):
+    old_update_named_param = WeightSyncWorkerExtension.update_named_param
+
+    @wraps(old_update_named_param)
+    def patched_update_named_param(self, name, dtype, shape) -> None:
+        if isinstance(dtype, str):
+            dtype = getattr(torch, dtype.split('.')[-1])
+        return old_update_named_param(self, name, dtype, shape)
+
+    WeightSyncWorkerExtension.update_named_param = patched_update_named_param
+    WeightSyncWorkerExtension.old_update_named_param = old_update_named_param
