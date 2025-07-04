@@ -577,6 +577,7 @@ def test_glm4_1v():
         response2 = _infer_model(pt_engine, messages=messages, images=images)
         assert response == response2
 
+
 def test_gemma3n():
     pt_engine = PtEngine('google/gemma-3n-E2B-it')
     messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]

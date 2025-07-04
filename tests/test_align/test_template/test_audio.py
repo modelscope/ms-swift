@@ -74,6 +74,7 @@ def test_gemma3n():
     response2 = _infer_model(pt_engine, messages=messages, audios=audios)
     assert response == response2
 
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything

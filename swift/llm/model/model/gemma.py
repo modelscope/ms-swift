@@ -4,10 +4,10 @@ from typing import Any, Dict
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
+from ..patcher import patch_output_to_input_device
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo
-from ..patcher import patch_output_to_input_device
 
 
 def get_model_tokenizer_paligemma_vision(model_dir: str,
@@ -165,6 +165,7 @@ register_model(
         requires=['transformers>=4.49'],
     ))
 
+
 def get_model_tokenizer_gemma3n(model_dir: str,
                                 model_info: ModelInfo,
                                 model_kwargs: Dict[str, Any],
@@ -177,8 +178,9 @@ def get_model_tokenizer_gemma3n(model_dir: str,
     if load_model and model is not None:
         patch_output_to_input_device(model.model.embed_vision)
         patch_output_to_input_device(model.model.embed_audio)
-    
+
     return model, processor
+
 
 register_model(
     ModelMeta(
