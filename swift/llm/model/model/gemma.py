@@ -7,6 +7,7 @@ from ..model_arch import ModelArch
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo
+from ..patcher import patch_fixed_device, patch_output_to_input_device
 
 
 def get_model_tokenizer_paligemma_vision(model_dir: str,
@@ -162,4 +163,33 @@ register_model(
         architectures=['Gemma3ForConditionalGeneration'],
         model_arch=ModelArch.llava_hf,
         requires=['transformers>=4.49'],
+    ))
+
+def get_model_tokenizer_gemma3n(model_dir: str,
+                                model_info: ModelInfo,
+                                model_kwargs: Dict[str, Any],
+                                load_model: bool = True,
+                                **kwargs):
+    from transformers import Gemma3nForConditionalGeneration
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Gemma3nForConditionalGeneration
+    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    
+    return model, processor
+
+register_model(
+    ModelMeta(
+        MLLMModelType.gemma3n,
+        [
+            ModelGroup([
+                Model('google/gemma-3n-E2B', 'google/gemma-3n-E2B'),
+                Model('google/gemma-3n-E4B', 'google/gemma-3n-E4B'),
+                Model('google/gemma-3n-E2B-it', 'google/gemma-3n-E2B-it'),
+                Model('google/gemma-3n-E4B-it', 'google/gemma-3n-E4B-it'),
+            ], ),
+        ],
+        TemplateType.gemma3n,
+        get_model_tokenizer_gemma3n,
+        architectures=['Gemma3nForConditionalGeneration'],
+        model_arch=ModelArch.gemma3n,
+        requires=['transformers>=4.53'],
     ))

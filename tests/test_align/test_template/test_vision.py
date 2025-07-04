@@ -577,6 +577,18 @@ def test_glm4_1v():
         response2 = _infer_model(pt_engine, messages=messages, images=images)
         assert response == response2
 
+def test_gemma3n():
+    pt_engine = PtEngine('google/gemma-3n-E2B-it')
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
 
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
@@ -632,4 +644,5 @@ if __name__ == '__main__':
     # test_internvl3_9b()
     # test_kimi_vl()
     # test_kimi_vl_thinking()
-    test_glm4_1v()
+    # test_glm4_1v()
+    test_gemma3n()
