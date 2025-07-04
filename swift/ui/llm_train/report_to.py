@@ -81,6 +81,7 @@ class ReportTo(BaseUI):
                         scale=20)
                     gr.Textbox(elem_id='swanlab_token', lines=1, scale=20)
                     gr.Textbox(elem_id='swanlab_project', lines=1, scale=20)
+                with gr.Row():
                     gr.Textbox(elem_id='swanlab_lark_webhook_url', lines=1, scale=20)
                     gr.Textbox(elem_id='swanlab_lark_secret', lines=1, scale=20)
                 with gr.Row():
