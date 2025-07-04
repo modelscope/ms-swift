@@ -68,6 +68,8 @@ class SwanlabArguments:
     swanlab_project: Optional[str] = None
     swanlab_workspace: Optional[str] = None
     swanlab_exp_name: Optional[str] = None
+    swanlab_lark_webhook_url: Optional[str] = None
+    swanlab_lark_secret: Optional[str] = None
     swanlab_mode: Literal['cloud', 'local'] = 'cloud'
 
     def _init_swanlab(self):
@@ -80,6 +82,15 @@ class SwanlabArguments:
         from swanlab.integration.transformers import SwanLabCallback
         if self.swanlab_token:
             swanlab.login(self.swanlab_token)
+
+        if self.swanlab_lark_webhook_url is not None:
+            from swanlab.plugin.notification import LarkCallback
+            lark_callback = LarkCallback(
+                webhook_url=self.swanlab_lark_webhook_url,
+                secret=self.swanlab_lark_secret,
+            )
+            swanlab.register_callbacks([lark_callback])
+        
         INTEGRATION_TO_CALLBACK['swanlab'] = SwanLabCallback(
             project=self.swanlab_project,
             workspace=self.swanlab_workspace,
