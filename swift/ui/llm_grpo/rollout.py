@@ -264,6 +264,10 @@ class Rollout(BaseUI):
             with gr.Accordion(elem_id='server_param', open=True):
                 with gr.Row():
                     gr.Checkbox(elem_id='async_generate', scale=4)
-                    gr.Textbox(elem_id='vllm_server_host', scale=4)
+                    gr.Textbox(elem_id='vllm_server_host', value='127.0.0.1', scale=4)
                     gr.Textbox(elem_id='vllm_server_port', lines=1, scale=4)
                     gr.Textbox(elem_id='vllm_server_timeout', lines=1, scale=4, value=120)
+
+    @classmethod
+    def update_num_gen(cls, per_device_batch_size, steps_per_generation, num_processes):
+        return per_device_batch_size * steps_per_generation * num_processes

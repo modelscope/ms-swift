@@ -56,8 +56,8 @@ class RolloutRuntime(Runtime):
                 'en': 'Logging content'
             },
             'info': {
-                'zh': '如果日志无更新请再次点击"展示日志内容"',
-                'en': 'Please press "Show log" if the log content is not updating'
+                'zh': '如果日志无更新请再次点击"展示rollout状态"',
+                'en': 'Please press "Show running status" if the log content is not updating'
             }
         },
         'rollout_running_tasks': {
@@ -90,6 +90,7 @@ class RolloutRuntime(Runtime):
             with gr.Blocks():
                 with gr.Row(equal_height=True):
                     gr.Dropdown(elem_id='rollout_running_tasks', scale=10, allow_custom_value=True)
+                with gr.Row(equal_height=True):
                     gr.Button(elem_id='rollout_refresh_tasks', scale=1, variant='primary')
                     gr.Button(elem_id='rollout_show_log', scale=1, variant='primary')
                     gr.Button(elem_id='rollout_stop_show_log', scale=1)

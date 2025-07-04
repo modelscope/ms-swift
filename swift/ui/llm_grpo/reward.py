@@ -33,6 +33,16 @@ class Reward(BaseUI):
                 'en': 'Use reward_model_plugin to customize the processing logic of the reward model'
             }
         },
+        'external_plugins': {
+            'label': {
+                'zh': '外部插件文件',
+                'en': 'External plugin file'
+            },
+            'info': {
+                'zh': '外部插件文件列表，将被注册进插件模块中',
+                'en': 'List of external plugin files that will be registered into the plugin module'
+            }
+        },
         'reward_weights': {
             'label': {
                 'zh': '奖励函数权重',
@@ -41,26 +51,6 @@ class Reward(BaseUI):
             'info': {
                 'zh': '各奖励函数的权重之间用空格隔开',
                 'en': 'The weights of each reward function are separated by spaces'
-            }
-        },
-        'reward_model': {
-            'label': {
-                'zh': '奖励模型id或路径',
-                'en': 'Reward Model id or path'
-            },
-            'info': {
-                'zh': '实际的模型id',
-                'en': 'The actual model id or model path'
-            }
-        },
-        'reward_model_type': {
-            'label': {
-                'zh': '奖励模型类型',
-                'en': 'Select Reward Model Type'
-            },
-            'info': {
-                'zh': 'SWIFT已支持的模型类型',
-                'en': 'Base model type supported by SWIFT'
             }
         },
         'reward_param': {
@@ -83,14 +73,7 @@ class Reward(BaseUI):
                     allow_custom_value=True)
                 gr.Textbox(elem_id='reward_weights', lines=1, scale=2)
                 gr.Textbox(elem_id='reward_model_plugin', lines=1, scale=3)
-            with gr.Row():
-                gr.Dropdown(elem_id='reward_model', multiselect=True, choices=get_all_models(), scale=20)
-                gr.Dropdown(
-                    elem_id='reward_model_type',
-                    multiselect=True,
-                    choices=ModelType.get_model_name_list(),
-                    allow_custom_value=True,
-                    scale=20)
+                gr.Textbox(elem_id='external_plugins', lines=1, scale=3)
 
     @classmethod
     def after_build_ui(cls, base_tab: Type['BaseUI']):
