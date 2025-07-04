@@ -20,7 +20,6 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
-from transformers import PreTrainedTokenizerBase
 
 from swift.utils import get_dist_setting, get_env_args, get_logger, use_torchacc
 from ..utils import Processor, ProcessorMixin
@@ -671,9 +670,7 @@ class Template(ProcessorMixin):
             system: Optional[str] = None,
             query: Optional[str] = None,
             response: Optional[str] = None,
-            round0: Optional[int] = None,
-            tokenizer: Optional[PreTrainedTokenizerBase] = None
-    ) -> None:
+            round0: Optional[int] = None) -> None:
         """Concat context list and replace placeholder"""
         round1 = None
         if round0 is not None:
@@ -692,14 +689,10 @@ class Template(ProcessorMixin):
                     if new_str is not None and old_str in context:
                         assert isinstance(new_str, str), f'new_str: {new_str}'
                         context = context.replace(old_str, new_str)
-                res_context_list.append(context)
-                res_context_type.append(ContextType.OTHER)
             if len(context) == 0:
                 continue
-            if isinstance(context, list) and isinstance(context[0], int):
-                context = tokenizer.decode(context)
-                res_context_list.append(context)
-                res_context_type.append(ContextType.OTHER)
+            res_context_list.append(context)
+            res_context_type.append(ContextType.OTHER)
 
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
@@ -1047,16 +1040,15 @@ class Template(ProcessorMixin):
             bos_token = all_tokens[:idx]
             sep_token = all_tokens[idx + 1:]
             if bos_token:
-                res_context_list.append(self.tokenizer.bos_token)
-                # res_context_list.append(bos_token)
+                res_context_list.append(bos_token)
                 res_context_types.append(ContextType.OTHER)
 
         if self.template_meta.is_post_system or not system:
             prefix = template_meta.prefix
         else:
             prefix = template_meta.system_prefix
-        self._concat_context_list(prefix, res_context_list, res_context_types, system=system, tokenizer=self.tokenizer)        
-        
+        self._concat_context_list(prefix, res_context_list, res_context_types, system=system)
+
         n_round = len(inputs.messages) // 2
         for i, (query_message, response_message) in enumerate(zip(inputs.messages[::2], inputs.messages[1::2])):
             query_role, query = query_message['role'], query_message['content']
