@@ -565,8 +565,9 @@ class SwiftMixin:
     def get_batch_samples(self, *args, **kwargs):
         res = super().get_batch_samples(*args, **kwargs)
         from swift.trainers.sequence_parallel import sequence_parallel
-        if self.template.sequence_parallel_size == 1 or 'Ulysses' == sequence_parallel.__class__.__name__:
-            # ulysses split inputs in the model hook, so no need to gather num_items_in_batch
+        if (self.template.sequence_parallel_size == 1 or 'Ulysses' == sequence_parallel.__class__.__name__
+                or 'RingAttention' == sequence_parallel.__class__.__name__):
+            # ulysses and ring attention split inputs in the model hook, so no need to gather num_items_in_batch
             return res
 
         batch_samples, num_items_in_batch = res
