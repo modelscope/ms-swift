@@ -1579,18 +1579,50 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def is_async_generate_train_rollout_done(self):
         return not self.train_queue.empty()
 
-    def inputs_to_rolloutrequest(self, inputs: InputsType) -> RolloutInferRequest:
+    def inputs_to_rolloutrequest(self, inputs: InputsType) -> List[RolloutInferRequest]:
+        """Convert a list of inputs to a list of RolloutInferRequest objects
 
+        If the input contains a 'data_dict' key, it will be used as the base for the new data_dict.
+        For other keys, if they overlap with keys in data_dict, the values from data_dict will be used.
+        Non-overlapping keys will be added to data_dict.
+
+        Args:
+            inputs: List of input dictionaries
+
+        Returns:
+            List of RolloutInferRequest objects
+        """
         request_keys = ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
-        infer_requests = [
-            RolloutInferRequest(
-                **{
-                    **{k: request[k]
-                       for k in request_keys if k in request}, 'data_dict':
-                    {k: request[k]
-                     for k in request if k not in request_keys}
-                }) for request in inputs
-        ]
+        infer_requests = []
+
+        for request in inputs:
+            # Get the base data_dict if it exists in the input
+            base_data_dict = {}
+            if 'data_dict' in request:
+                if isinstance(request['data_dict'], dict):
+                    base_data_dict = request['data_dict']
+                else:
+                    raise ValueError('data_dict exists but is not a dictionary')
+
+            # Collect all non-request_keys items as extra fields
+            extra_data = {
+                k: request[k]
+                for k in request
+                if k not in request_keys and k != 'data_dict'
+            }
+
+            # Merge the data_dict, keeping keys from base_data_dict as priority
+            final_data_dict = {**extra_data, **base_data_dict}
+
+            # Create RolloutInferRequest instance
+            req_args = {
+                k: request[k]
+                for k in request_keys
+                if k in request
+            }
+            infer_requests.append(
+                RolloutInferRequest(**req_args, data_dict=final_data_dict)
+            )
 
         return infer_requests
 
