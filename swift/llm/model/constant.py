@@ -232,6 +232,7 @@ class MLLMModelType:
     megrez_omni = 'megrez_omni'
     valley = 'valley'
     gemma3_vision = 'gemma3_vision'
+    gemma3n = 'gemma3n'
     mistral_2503 = 'mistral_2503'
 
 
