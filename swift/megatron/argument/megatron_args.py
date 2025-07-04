@@ -108,7 +108,7 @@ class MegatronArguments(ExtraMegatronArguments):
     manual_gc_interval: int = 0
 
     # learning rate
-    lr: float = 1e-5
+    lr: Optional[float] = None
     lr_decay_style: Literal['cosine', 'linear', 'constant'] = 'cosine'
     # The default is None, which will be set to `train_iters`.
     lr_decay_iters: Optional[int] = None
@@ -251,6 +251,11 @@ class MegatronArguments(ExtraMegatronArguments):
     extra_megatron_kwargs: Optional[Union[dict, str]] = None
 
     def _set_default(self):
+        if self.lr is None:
+            if self.train_type == 'full':
+                self.lr = 1e-5
+            else:
+                self.lr = 1e-4
         if self.num_query_groups is None:
             self.num_query_groups = 1
         if self.norm_epsilon is None:

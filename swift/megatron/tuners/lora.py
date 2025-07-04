@@ -1,16 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-# Code borrowed from huggingface/trl
-
-import importlib
-import warnings
-from typing import Any, Optional
+# Code borrowed from huggingface/peft
+from typing import Any, Optional, Tuple
 
 import torch
 import torch.nn as nn
-import torch.nn.init as init
-from megatron.core import parallel_state
+from megatron.core.dist_checkpointing.mapping import ShardedStateDict
 from megatron.core.extensions.transformer_engine import (TEColumnParallelLinear, TELayerNormColumnParallelLinear,
                                                          TELinear, TERowParallelLinear)
+from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 from megatron.core.transformer.module import MegatronModule
 from peft.tuners.lora import model
 from peft.tuners.lora.layer import LoraLayer
@@ -170,6 +167,18 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
 
         result = result.to(previous_dtype)
         return result, bias
+
+    def sharded_state_dict(
+            self,
+            prefix: str = '',
+            sharded_offsets: Tuple[Tuple[int, int, int]] = (),
+            metadata: Optional[dict] = None,
+    ) -> ShardedStateDict:
+        res = super().sharded_state_dict(prefix=prefix, sharded_offsets=sharded_offsets, metadata=metadata)
+        if prefix.endswith('.linear_fc1.'):
+            res[f'{prefix}base_layer.weight'] = apply_swiglu_sharded_factory(res[f'{prefix}base_layer.weight'],
+                                                                             sharded_offsets)
+        return res
 
 
 def dispatch_megatron(
