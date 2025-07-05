@@ -71,7 +71,7 @@ You can contact us and communicate with us by adding our group:
 - 🍉 **Toolbox Capabilities**: Offers not only training support for large models and multi-modal large models but also covers the entire process of inference, evaluation, quantization, and deployment.
 - **Inference Acceleration**: Supports inference acceleration engines like PyTorch, vLLM, SGLang, LmDeploy, and provides OpenAI API for accelerating inference, deployment, and evaluation modules.
 - **Model Evaluation**: Uses EvalScope as the evaluation backend and supports evaluation on 100+ datasets for both pure text and multi-modal models.
-- **Model Quantization**: Supports AWQ, GPTQ, and BNB quantized exports, with models that can use vLLM/SGLang/LmDeploy for inference acceleration and continue training.
+- **Model Quantization**: Supports AWQ, GPTQ, FP8, and BNB quantized exports, with models that can use vLLM/SGLang/LmDeploy for inference acceleration and continue training.
 
 
 ## 🎉 News

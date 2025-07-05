@@ -3,8 +3,8 @@ from typing import List, Union
 
 from swift.utils import get_logger
 from ..argument import MegatronRLHFArguments
+from ..trainers import MegatronDPOTrainer
 from .sft import MegatronSft
-from .trainers import MegatronDPOTrainer
 
 logger = get_logger()
 

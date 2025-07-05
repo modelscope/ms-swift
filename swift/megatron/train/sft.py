@@ -5,8 +5,8 @@ from typing import List, Union
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
+from ..trainers import MegatronTrainer
 from ..utils import patch_megatron_tokenizer
-from .trainers import MegatronTrainer
 from .utils import build_streaming_dataloader
 
 logger = get_logger()

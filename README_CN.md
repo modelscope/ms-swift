@@ -68,7 +68,7 @@
 - 🍉 **工具箱能力**：不仅提供大模型和多模态大模型的训练支持，还涵盖其推理、评测、量化和部署全流程。
 - **推理加速**：支持PyTorch、vLLM、SGLang和LmDeploy推理加速引擎，并提供OpenAI接口，为推理、部署和评测模块提供加速。
 - **模型评测**：以EvalScope作为评测后端，支持100+评测数据集对纯文本和多模态模型进行评测。
-- **模型量化**：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速，并支持继续训练。
+- **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
 - 🎁 2025.06.23: 支持Reranker模型训练，训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh)。

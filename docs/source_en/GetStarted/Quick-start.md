@@ -16,7 +16,7 @@ ms-swift is a comprehensive training and deployment framework for large language
 - 🍉 Toolbox Capabilities: Offers not only training support for large models and multi-modal large models but also covers the entire process of inference, evaluation, quantization, and deployment.
 - Inference Acceleration: Supports inference acceleration engines like PyTorch, vLLM, SGLang, LmDeploy, and provides OpenAI interface, accelerating inference, deployment, and evaluation modules.
 - Model Evaluation: Uses EvalScope as the evaluation backend and supports evaluation of text-based and multimodal models with over 100 evaluation datasets.
-- Model Quantization: Supports the export of quantized models in AWQ, GPTQ, and BNB formats, which can be accelerated using vLLM/SGLang/LmDeploy for inference and support continued training.
+- Model Quantization: Supports the export of quantized models in AWQ, GPTQ, FP8, and BNB formats, which can be accelerated using vLLM/SGLang/LmDeploy for inference and support continued training.
 
 ## Installation
 

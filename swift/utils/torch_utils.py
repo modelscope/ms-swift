@@ -99,7 +99,7 @@ def freeze_parameters(model: nn.Module,
         for _, p in zip(range(idx), model.parameters()):
             p.requires_grad = False
 
-    if len(freeze_parameters) > 0:
+    if freeze_parameters:
         for n, p in model.named_parameters():
             for freeze_p in freeze_parameters:
                 if n.startswith(freeze_p):

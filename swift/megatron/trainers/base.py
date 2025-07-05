@@ -1,11 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import time
+from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from functools import partial
 
 import megatron.core
 import torch
+import torch.distributed as dist
+import torch.nn
 from megatron.core import mpu
 from megatron.core.enums import ModelType
 from megatron.core.num_microbatches_calculator import get_num_microbatches
@@ -14,16 +16,14 @@ from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.utils import StragglerDetector
 from megatron.training import ft_integration, get_args, get_timers, is_last_rank, pretrain, print_rank_0, training
 from packaging import version
-from torch.distributed.nn import all_reduce
 
-from swift.utils import get_logger
-from ..patcher import patch_megatron_data_collator
-from ..utils import get_batch, get_swift_datasets_provider
+from swift.utils import activate_parameters, freeze_parameters, get_logger, get_model_parameter_info
+from .utils import get_modules_to_save, get_swift_datasets_provider, get_target_modules
 
 logger = get_logger()
 
 
-class MegatronTrainer:
+class BaseMegatronTrainer(ABC):
 
     def __init__(self, args):
         self.args = args
@@ -100,6 +100,87 @@ class MegatronTrainer:
 
     def _replace_data_iterator(self, data_iterator):
         return data_iterator
+
+    @contextmanager
+    def _patch_load_state_dict(self):
+        from megatron.training import checkpointing
+        origin__load_base_checkpoint = checkpointing._load_base_checkpoint
+
+        def _load_base_checkpoint(*_args, **kwargs):
+            sharded_state_dict = kwargs.get('sharded_state_dict')
+            if sharded_state_dict is None:
+                return origin__load_base_checkpoint(*_args, **kwargs)
+            state_dict_model = {}
+            mapping = {}
+            for k, v in sharded_state_dict['model'].items():
+                if 'lora_A' in k or 'lora_B' in k:
+                    continue
+                origin_k = k
+                k = k.replace('.base_layer', '')
+                mapping[k] = origin_k
+                v.key = v.key.replace('.base_layer', '')
+                state_dict_model[k] = v
+            sharded_state_dict['model'] = state_dict_model
+            res = origin__load_base_checkpoint(*_args, **kwargs)
+            state_dict = res[0]['model']
+            for k, origin_k in mapping.items():
+                v = state_dict.pop(k)
+                state_dict[origin_k] = v
+            return res
+
+        origin_load_state_dict = torch.nn.Module.load_state_dict
+
+        def load_state_dict(self, state_dict, strict: bool = True, *args, **kwargs):
+            strict = False
+            return origin_load_state_dict(self, state_dict, strict, *args, **kwargs)
+
+        checkpointing._load_base_checkpoint = _load_base_checkpoint
+        torch.nn.Module.load_state_dict = load_state_dict
+
+        try:
+            yield
+        finally:
+            checkpointing._load_base_checkpoint = origin__load_base_checkpoint
+            torch.nn.Module.load_state_dict = origin_load_state_dict
+
+    def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
+
+        def new_model_provider_func(*args, **kwargs):
+            model = model_provider_func(*args, **kwargs)
+            self.prepare_model(model)
+            return model
+
+        with self._patch_load_state_dict():
+            return self._origin_setup_model_and_optimizer(new_model_provider_func, model_type, *_args, **kwargs)
+
+    def prepare_model(self, model) -> None:
+        args = get_args()
+        if args.train_type == 'full':
+            freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
+            if args.trainable_parameters or args.trainable_parameters_regex:
+                activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
+        elif args.train_type == 'lora':
+            from swift.megatron import tuners
+            from swift.tuners import LoraConfig, Swift
+            target_modules = get_target_modules(args, model)
+            modules_to_save = get_modules_to_save(args, model)
+            lora_kwargs = {
+                'r': args.lora_rank,
+                'target_modules': target_modules,
+                'lora_alpha': args.lora_alpha,
+                'lora_dropout': args.lora_dropout,
+                'bias': args.lora_bias,
+                'modules_to_save': modules_to_save,
+                'use_rslora': args.use_rslora,
+            }
+            lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
+            model.prepare_inputs_for_generation = None  # fix error
+            model = Swift.prepare_model(model, lora_config)
+            logger.info(f'lora_config: {lora_config}')
+        logger.info(f'model: {model}')
+        logger.info_if(
+            f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(model)}',
+            cond=mpu.get_data_parallel_rank() == 0)
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         with self._training_context():
@@ -245,6 +326,38 @@ class MegatronTrainer:
 
         return total_loss_dict, collected_non_loss_data, False
 
+    @contextmanager
+    def _patch_generate_state_dict(self):
+
+        from megatron.training import checkpointing
+        _origin_generate_state_dict = checkpointing.generate_state_dict
+
+        def generate_state_dict(args, model, *_args, **kwargs):
+            state_dict = _origin_generate_state_dict(args, model, *_args, **kwargs)
+            new_state_dict = {}
+            state_dict_model = state_dict['model']
+            for n, p in model[0].named_parameters():
+                if not p.requires_grad:
+                    continue
+                if n in state_dict_model:
+                    new_state_dict[n] = state_dict_model[n]
+                key = n.rsplit('.', 1)[0]
+                key = f'{key}._extra_state'
+                if key in state_dict_model:
+                    new_state_dict[key] = state_dict_model[key]
+            state_dict['model'] = new_state_dict
+            return state_dict
+
+        checkpointing.generate_state_dict = generate_state_dict
+        try:
+            yield
+        finally:
+            checkpointing.generate_state_dict = _origin_generate_state_dict
+
+    def save_checkpoint(self, *args, **kwargs):
+        with self._patch_generate_state_dict():
+            return self._origin_save_checkpoint(*args, **kwargs)
+
     def _patch_megatron(self):
         # support max_epochs
         self._origin_train_step = training.train_step
@@ -255,104 +368,18 @@ class MegatronTrainer:
         # patch evaluate
         self._origin_evaluate = training.evaluate
         training.evaluate = self.evaluate
-
-    # Code borrowed from NVIDIA/Megatron-LM
-    def loss_func(self, output_tensor: torch.Tensor, *, loss_mask: torch.Tensor):
-        """Loss function.
-
-        Args:
-            output_tensor (torch.Tensor): The tensor with the losses
-            loss_mask (torch.Tensor): Used to mask out some portions of the loss
-
-        Returns:
-            the loss scalar for this micro-batch
-            the number of non-padded tokens in this microbatch
-            a dict containing reporting metrics on the loss and number of tokens across
-                the data parallel ranks
-        """
-        args = get_args()
-
-        losses = output_tensor.float()
-        loss_mask = loss_mask.view(-1).float()
-        total_tokens = loss_mask.sum()
-        loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), total_tokens.view(1)])
-
-        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
-        if args.context_parallel_size > 1 and not megatron_core_013:
-            loss = all_reduce(loss, group=mpu.get_context_parallel_group())
-
-        # Check individual rank losses are not NaN prior to DP all-reduce.
-        rerun_state_machine = get_rerun_state_machine()
-        if args.check_for_nan_in_loss_and_grad:
-            rerun_state_machine.validate_result(
-                result=loss[0],
-                rejection_func=torch.isnan,
-                message='found NaN in local forward loss calculation',
-                tolerance=0.0,  # forward pass calculations are determinisic
-                fatal=True,
-            )
-            rerun_state_machine.validate_result(
-                result=loss[0],
-                rejection_func=torch.isinf,
-                message='found Inf in local forward loss calculation',
-                tolerance=0.0,  # forward pass calculations are determinisic
-                fatal=True,
-            )
-        # Check for spiky loss
-        if args.check_for_spiky_loss:
-            # define spiky loss as a loss that's 10x the max loss observed
-            SPIKY_LOSS_FACTOR = 10
-            rerun_state_machine.validate_result(
-                result=loss[0],
-                rejection_func=partial(
-                    rerun_state_machine.is_unexpectedly_large,
-                    threshold=SPIKY_LOSS_FACTOR,
-                    context='loss',
-                ),
-                message='Spiky loss',
-                tolerance=0.0,  # forward pass calculations are determinisic
-                fatal=False,
-            )
-        # Reduce loss for logging.
-        reporting_loss = loss.clone().detach()
-        lm_loss = loss[0]
-        if not megatron_core_013:
-            # fix megatron-lm bug
-            # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
-            torch.distributed.all_reduce(reporting_loss, group=mpu.get_data_parallel_group())
-            lm_loss = lm_loss / mpu.get_context_parallel_world_size()
-            reporting_loss = (reporting_loss[0], reporting_loss[1])
-        else:
-            lm_loss = lm_loss.clone()
-        local_num_tokens = loss[1].clone().detach().to(torch.int)
-        return (
-            lm_loss,
-            local_num_tokens,
-            {
-                'lm loss': reporting_loss
-            },
-        )
-
-    def forward_step(self, data_iterator, model):
-        timers = get_timers()
-
-        # Get the batch.
-        timers('batch-generator', log_level=2).start()
-        with self.stimer(bdata=True):
-            data = get_batch(data_iterator)
-        timers('batch-generator').stop()
-
-        with self.stimer:
-            output_tensor = model(**data)
-        labels = data.get('labels')
-        loss_mask = None if labels is None else (labels != -100).float()
-        return output_tensor, partial(self.loss_func, loss_mask=loss_mask)
+        # patch model and optimizer
+        self._origin_setup_model_and_optimizer = training.setup_model_and_optimizer
+        training.setup_model_and_optimizer = self.setup_model_and_optimizer
+        # patch save_checkpoint
+        self._origin_save_checkpoint = training.save_checkpoint
+        training.save_checkpoint = self.save_checkpoint
 
     def train(self, train_dataset, val_dataset, data_collator):
         args = self.args
         datasets_provider = get_swift_datasets_provider(train_dataset, val_dataset)
         datasets_provider.is_distributed = True
-        with patch_megatron_data_collator(data_collator), self._get_iters(train_dataset, val_dataset):
+        with self.patch_megatron_data_collator(data_collator), self._get_iters(train_dataset, val_dataset):
             extra_args_provider = args.megatron_model_meta.extra_args_provider
             pretrain(
                 datasets_provider,
@@ -361,3 +388,24 @@ class MegatronTrainer:
                 self.forward_step,
                 extra_args_provider=extra_args_provider,
                 args_defaults=args.extra_args)
+
+    @contextmanager
+    def patch_megatron_data_collator(self, data_collator):
+        origin_build_pretraining_data_loader = training.build_pretraining_data_loader
+
+        def build_pretraining_data_loader(*_args, **kwargs):
+            args = get_args()
+            res = origin_build_pretraining_data_loader(*_args, **kwargs)
+            if res is not None and args.dataloader_type != 'external':
+                res.collate_fn = data_collator
+            return res
+
+        training.build_pretraining_data_loader = build_pretraining_data_loader
+        try:
+            yield
+        finally:
+            training.build_pretraining_data_loader = origin_build_pretraining_data_loader
+
+    @abstractmethod
+    def forward_step(self, data_iterator, model):
+        pass
