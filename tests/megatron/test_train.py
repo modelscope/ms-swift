@@ -18,6 +18,7 @@ def test_sft():
             model_author='swift',
             model_name='swift-robot',
             eval_iters=5,
+            sequence_parallel=True,
             finetune=True))
 
 

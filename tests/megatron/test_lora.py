@@ -16,6 +16,7 @@ def test_sft():
             # freeze_parameters_ratio=0.5,
             train_iters=100,
             eval_iters=5,
+            save_interval=5,
             no_save_optim=True,
             no_save_rng=True,
             sequence_parallel=True,
