@@ -112,7 +112,6 @@ class MegatronTrainer:
             sharded_state_dict = kwargs.get('sharded_state_dict')
             if sharded_state_dict is None:
                 return origin__load_base_checkpoint(*_args, **kwargs)
-            args = get_args()
             state_dict_model = {}
             mapping = {}
             for k, v in sharded_state_dict['model'].items():
@@ -323,6 +322,38 @@ class MegatronTrainer:
 
         return total_loss_dict, collected_non_loss_data, False
 
+    @contextmanager
+    def _patch_generate_state_dict(self):
+
+        from megatron.training import checkpointing
+        _origin_generate_state_dict = checkpointing.generate_state_dict
+
+        def generate_state_dict(args, model, *_args, **kwargs):
+            state_dict = _origin_generate_state_dict(args, model, *_args, **kwargs)
+            new_state_dict = {}
+            state_dict_model = state_dict['model']
+            for n, p in model[0].named_parameters():
+                if not p.requires_grad:
+                    continue
+                if n in state_dict_model:
+                    new_state_dict[n] = state_dict_model[n]
+                key = n.rsplit('.', 1)[0]
+                key = f'{key}._extra_state'
+                if key in state_dict_model:
+                    new_state_dict[key] = state_dict_model[key]
+            state_dict['model'] = new_state_dict
+            return state_dict
+
+        checkpointing.generate_state_dict = generate_state_dict
+        try:
+            yield
+        finally:
+            checkpointing.generate_state_dict = _origin_generate_state_dict
+
+    def save_checkpoint(self, *args, **kwargs):
+        with self._patch_generate_state_dict():
+            return self._origin_save_checkpoint(*args, **kwargs)
+
     def _patch_megatron(self):
         # support max_epochs
         self._origin_train_step = training.train_step
@@ -336,6 +367,9 @@ class MegatronTrainer:
         # patch model and optimizer
         self._origin_setup_model_and_optimizer = training.setup_model_and_optimizer
         training.setup_model_and_optimizer = self.setup_model_and_optimizer
+        # patch save_checkpoint
+        self._origin_save_checkpoint = training.save_checkpoint
+        training.save_checkpoint = self.save_checkpoint
 
     # Code borrowed from NVIDIA/Megatron-LM
     def loss_func(self, output_tensor: torch.Tensor, *, loss_mask: torch.Tensor):

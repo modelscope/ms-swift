@@ -583,9 +583,6 @@ def _patch_peft_BaseTuner():
             tied_target_modules = []
             if model.share_embeddings_and_output_weights:
                 for target_module in self.targeted_module_names:
-                    # This potentially yields false positives since we're just looking at the layer names. So if we use a
-                    # model that uses weight-tying of lm_head and embed_tokens, a third, unrelated, layer which is
-                    # unfortunately named so that it is in EMBEDDING_LAYER_NAMES will be falsely reported here as well.
                     if target_module.split('.')[-1] in ['output_layer', 'embedding']:
                         tied_target_modules.append(target_module)
             return tied_target_modules
