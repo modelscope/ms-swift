@@ -18,7 +18,7 @@ from megatron.training import ft_integration, get_args, get_timers, is_last_rank
 from packaging import version
 
 from swift.utils import activate_parameters, freeze_parameters, get_logger, get_model_parameter_info
-from .utils import get_swift_datasets_provider
+from .utils import get_modules_to_save, get_swift_datasets_provider, get_target_modules
 
 logger = get_logger()
 
@@ -148,7 +148,6 @@ class BaseMegatronTrainer(ABC):
         def new_model_provider_func(*args, **kwargs):
             model = model_provider_func(*args, **kwargs)
             self.prepare_model(model)
-            logger.info(f'model: {model}')
             return model
 
         with self._patch_load_state_dict():
@@ -163,15 +162,22 @@ class BaseMegatronTrainer(ABC):
         elif args.train_type == 'lora':
             from swift.megatron import tuners
             from swift.tuners import LoraConfig, Swift
+            target_modules = get_target_modules(args, model)
+            modules_to_save = get_modules_to_save(args, model)
             lora_kwargs = {
-                'r': 8,
-                'target_modules': ['linear_proj', 'linear_qkv', 'linear_fc1', 'linear_fc2'],
-                'lora_alpha': 16,
-                'lora_dropout': 0.05,
+                'r': args.lora_rank,
+                'target_modules': target_modules,
+                'lora_alpha': args.lora_alpha,
+                'lora_dropout': args.lora_dropout,
+                'bias': args.lora_bias,
+                'modules_to_save': modules_to_save,
+                'use_rslora': args.use_rslora,
             }
-            lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=None, **lora_kwargs)
-            model.prepare_inputs_for_generation = None
+            lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
+            model.prepare_inputs_for_generation = None  # fix error
             model = Swift.prepare_model(model, lora_config)
+            logger.info(f'lora_config: {lora_config}')
+        logger.info(f'model: {model}')
         logger.info_if(
             f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(model)}',
             cond=mpu.get_data_parallel_rank() == 0)

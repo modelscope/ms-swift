@@ -36,8 +36,10 @@ class MegatronTunerMixin:
     trainable_parameters: List[str] = field(default_factory=list)
     trainable_parameters_regex: Optional[str] = None
     # lora
+    adapter_load: Optional[str] = None
     target_modules: List[str] = field(default_factory=lambda: ['all-linear'])
     target_regex: Optional[str] = None
+    modules_to_save: List[str] = field(default_factory=list)
 
     # lora
     lora_rank: int = 8
@@ -45,9 +47,7 @@ class MegatronTunerMixin:
     lora_dropout: float = 0.05
     lora_bias: Literal['none', 'all'] = 'none'
     lora_dtype: Literal['float16', 'bfloat16', 'float32', None] = None
-    lorap_lr_ratio: Optional[float] = None
     use_rslora: bool = False
-    use_dora: bool = False
 
     def __post_init__(self):
         if self.freeze_parameters_ratio > 0 and self.pipeline_model_parallel_size > 1:
