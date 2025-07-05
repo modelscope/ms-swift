@@ -1,8 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import time
+from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from functools import partial
 
 import megatron.core
 import torch
@@ -16,16 +16,14 @@ from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.utils import StragglerDetector
 from megatron.training import ft_integration, get_args, get_timers, is_last_rank, pretrain, print_rank_0, training
 from packaging import version
-from torch.distributed.nn import all_reduce
 
 from swift.utils import activate_parameters, freeze_parameters, get_logger, get_model_parameter_info
-from ..patcher import patch_megatron_data_collator
-from ..utils import get_batch, get_swift_datasets_provider
+from .utils import get_swift_datasets_provider
 
 logger = get_logger()
 
 
-class MegatronTrainer:
+class BaseMegatronTrainer(ABC):
 
     def __init__(self, args):
         self.args = args
@@ -371,103 +369,11 @@ class MegatronTrainer:
         self._origin_save_checkpoint = training.save_checkpoint
         training.save_checkpoint = self.save_checkpoint
 
-    # Code borrowed from NVIDIA/Megatron-LM
-    def loss_func(self, output_tensor: torch.Tensor, *, loss_mask: torch.Tensor):
-        """Loss function.
-
-        Args:
-            output_tensor (torch.Tensor): The tensor with the losses
-            loss_mask (torch.Tensor): Used to mask out some portions of the loss
-
-        Returns:
-            the loss scalar for this micro-batch
-            the number of non-padded tokens in this microbatch
-            a dict containing reporting metrics on the loss and number of tokens across
-                the data parallel ranks
-        """
-        args = get_args()
-
-        losses = output_tensor.float()
-        loss_mask = loss_mask.view(-1).float()
-        total_tokens = loss_mask.sum()
-        loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), total_tokens.view(1)])
-
-        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
-        if args.context_parallel_size > 1 and not megatron_core_013:
-            loss = all_reduce(loss, group=mpu.get_context_parallel_group())
-
-        # Check individual rank losses are not NaN prior to DP all-reduce.
-        rerun_state_machine = get_rerun_state_machine()
-        if args.check_for_nan_in_loss_and_grad:
-            rerun_state_machine.validate_result(
-                result=loss[0],
-                rejection_func=torch.isnan,
-                message='found NaN in local forward loss calculation',
-                tolerance=0.0,  # forward pass calculations are determinisic
-                fatal=True,
-            )
-            rerun_state_machine.validate_result(
-                result=loss[0],
-                rejection_func=torch.isinf,
-                message='found Inf in local forward loss calculation',
-                tolerance=0.0,  # forward pass calculations are determinisic
-                fatal=True,
-            )
-        # Check for spiky loss
-        if args.check_for_spiky_loss:
-            # define spiky loss as a loss that's 10x the max loss observed
-            SPIKY_LOSS_FACTOR = 10
-            rerun_state_machine.validate_result(
-                result=loss[0],
-                rejection_func=partial(
-                    rerun_state_machine.is_unexpectedly_large,
-                    threshold=SPIKY_LOSS_FACTOR,
-                    context='loss',
-                ),
-                message='Spiky loss',
-                tolerance=0.0,  # forward pass calculations are determinisic
-                fatal=False,
-            )
-        # Reduce loss for logging.
-        reporting_loss = loss.clone().detach()
-        lm_loss = loss[0]
-        if not megatron_core_013:
-            # fix megatron-lm bug
-            # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
-            torch.distributed.all_reduce(reporting_loss, group=mpu.get_data_parallel_group())
-            lm_loss = lm_loss / mpu.get_context_parallel_world_size()
-            reporting_loss = (reporting_loss[0], reporting_loss[1])
-        else:
-            lm_loss = lm_loss.clone()
-        local_num_tokens = loss[1].clone().detach().to(torch.int)
-        return (
-            lm_loss,
-            local_num_tokens,
-            {
-                'lm loss': reporting_loss
-            },
-        )
-
-    def forward_step(self, data_iterator, model):
-        timers = get_timers()
-
-        # Get the batch.
-        timers('batch-generator', log_level=2).start()
-        with self.stimer(bdata=True):
-            data = get_batch(data_iterator)
-        timers('batch-generator').stop()
-
-        with self.stimer:
-            output_tensor = model(**data)
-        labels = data.get('labels')
-        loss_mask = None if labels is None else (labels != -100).float()
-        return output_tensor, partial(self.loss_func, loss_mask=loss_mask)
-
     def train(self, train_dataset, val_dataset, data_collator):
         args = self.args
         datasets_provider = get_swift_datasets_provider(train_dataset, val_dataset)
         datasets_provider.is_distributed = True
-        with patch_megatron_data_collator(data_collator), self._get_iters(train_dataset, val_dataset):
+        with self.patch_megatron_data_collator(data_collator), self._get_iters(train_dataset, val_dataset):
             extra_args_provider = args.megatron_model_meta.extra_args_provider
             pretrain(
                 datasets_provider,
@@ -476,3 +382,24 @@ class MegatronTrainer:
                 self.forward_step,
                 extra_args_provider=extra_args_provider,
                 args_defaults=args.extra_args)
+
+    @contextmanager
+    def patch_megatron_data_collator(self, data_collator):
+        origin_build_pretraining_data_loader = training.build_pretraining_data_loader
+
+        def build_pretraining_data_loader(*_args, **kwargs):
+            args = get_args()
+            res = origin_build_pretraining_data_loader(*_args, **kwargs)
+            if res is not None and args.dataloader_type != 'external':
+                res.collate_fn = data_collator
+            return res
+
+        training.build_pretraining_data_loader = build_pretraining_data_loader
+        try:
+            yield
+        finally:
+            training.build_pretraining_data_loader = origin_build_pretraining_data_loader
+
+    @abstractmethod
+    def forward_step(self, data_iterator, model):
+        pass

@@ -12,8 +12,8 @@ from torch.distributed.nn import all_reduce
 
 from swift.trainers import DPOTrainer
 from swift.utils import get_current_device, get_logger
-from ..utils import get_batch
 from .trainer import MegatronTrainer
+from .utils import get_batch
 
 logger = get_logger()
 

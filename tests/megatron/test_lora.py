@@ -8,9 +8,7 @@ def test_sft():
     megatron_sft_main(
         MegatronTrainArguments(
             load='Qwen2.5-3B-Instruct-mcore',
-            dataset=[
-                'AI-ModelScope/alpaca-gpt4-data-zh#5000'
-            ],
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#5000'],
             split_dataset_ratio=0.01,
             tensor_model_parallel_size=2,
             train_type='lora',
@@ -30,9 +28,7 @@ def test_sft2():
     megatron_sft_main(
         MegatronTrainArguments(
             load='Qwen2.5-3B-Instruct-mcore',
-            dataset=[
-                'AI-ModelScope/alpaca-gpt4-data-zh#5000'
-            ],
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#5000'],
             split_dataset_ratio=0.01,
             train_iters=100,
             eval_iters=5,
