@@ -134,13 +134,9 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
 
     def _checkpoint_multimodal_packinng(self):
         if self.model_meta.is_multimodal and (self.packing or self.padding_free) and self.gradient_checkpointing:
-            self.gradient_checkpointing = False
-            if self.vit_gradient_checkpointing is None:
-                self.vit_gradient_checkpointing = True
-            logger.warning(
+            raise ValueError(
                 'Packing or padding_free for multimodal models is not supported with gradient checkpointing.\n'
-                f'Setting gradient_checkpointing: {self.gradient_checkpointing}, '
-                f'Setting vit_gradient_checkpointing: {self.vit_gradient_checkpointing}')
+                'Please set --gradient_checkpointing false --vit_gradient_checkpointing true.')
 
     def __post_init__(self) -> None:
         if self.padding_free or self.packing:
