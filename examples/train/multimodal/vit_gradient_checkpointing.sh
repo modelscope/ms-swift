@@ -1,3 +1,5 @@
+# gc true, vgc true: 48GiB, 2.45s/it
+# gc true, vgc false: 62GiB 2.32s/it
 # gc false, vgc true: 56GiB 2.16s/it
 # gc false, vgc false: 77GiB 1.95s/it
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -17,7 +19,7 @@ swift sft \
     --freeze_vit false \
     --freeze_aligner false \
     --gradient_accumulation_steps 1 \
-    --gradient_checkpointing false \
+    --gradient_checkpointing true \
     --vit_gradient_checkpointing true \
     --eval_steps 100 \
     --save_steps 100 \
