@@ -56,7 +56,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             batch['output_router_logits'] = True
         if self.is_encoder_decoder:
             batch['labels'] = labels
-        position_ids = batch.get('position_ids')
+        position_ids = batch.pop('_position_ids', None)
+        if position_ids is None:
+            position_ids = batch.get('position_ids')
         outputs = model(**batch, use_cache=False)
         all_logits = outputs.logits
 
@@ -122,5 +124,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         return per_token_logps, logits.mean(-1), loss_mask
 
     def training_step(self, model, inputs, *args, **kwargs):
+        inputs['_position_ids'] = inputs.get('position_ids')
         with self.template.training_step_context(self.model, inputs):
             return super().training_step(model, inputs, *args, **kwargs)
