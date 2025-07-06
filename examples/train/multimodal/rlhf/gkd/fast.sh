@@ -14,7 +14,7 @@ swift infer \
     --result_path new_coco_dataset.jsonl
 
 
-# 4 * 80GiB, 2.65s/it
+# 4 * 42GiB, 3.05s/it
 NPROC_PER_NODE=4 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -32,8 +32,6 @@ swift rlhf \
     --learning_rate 1e-5 \
     --freeze_vit true \
     --gradient_accumulation_steps 1 \
-    --gradient_checkpointing false \
-    --vit_gradient_checkpointing true \
     --eval_steps 100 \
     --save_steps 100 \
     --save_total_limit 2 \
