@@ -86,7 +86,7 @@ Hints:
   - Note: `swift pt` is set to False by default, using the generation template.
 - 🔥padding_free: Flattens the data in a batch to avoid padding, thereby reducing memory usage and accelerating training. Default is False. Currently supported in CPT/SFT/DPO/GRPO/GKD.
   - Note: When using `padding_free`, it should be combined with `--attn_impl flash_attn` and "transformers>=4.44". For details, see [this PR](https://github.com/huggingface/transformers/pull/31629). (Same as packing)
-  - The supported multimodal models are the same as those supported for multimodal packing. Compared to packing, padding_free does not consume additional time or space.
+  - The supported multimodal models are the same as those supported for multimodal packing. Compared to packing, padding_free does not consume additional time or space. Note: Please use "ms-swift>=3.6" and follow [this PR](https://github.com/modelscope/ms-swift/pull/4838).
   - Megatron-SWIFT uses `padding_free` by default, i.e., `qkv_format='thd'`, and no additional configuration is required.
 - padding_side: Padding side when `batch_size>=2` during training. Options are 'left' and 'right', with 'right' as the default. (For inference with batch_size>=2, only left padding is applied.)
   - Note: PPO and GKD are set to 'left' by default.
