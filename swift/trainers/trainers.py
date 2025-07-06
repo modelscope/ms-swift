@@ -294,8 +294,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             inputs['labels'], logits_to_keep = self.get_logits_to_keep(inputs['labels'])
             if logits_to_keep is not None:
                 inputs['logits_to_keep'] = logits_to_keep
-        with self.template.compute_loss_context(self.model, inputs):
-            outputs = model(**inputs)
+        outputs = model(**inputs)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
         if self.args.past_index >= 0:
@@ -339,3 +338,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             # Liger does not have logits
             self._compute_acc(outputs, labels)
         return (loss, outputs) if return_outputs else loss
+
+    def training_step(self, model, inputs, *args, **kwargs):
+        with self.template.training_step_context(self.model, inputs):
+            return super().training_step(model, inputs, *args, **kwargs)
