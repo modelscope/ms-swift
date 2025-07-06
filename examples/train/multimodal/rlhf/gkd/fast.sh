@@ -14,7 +14,7 @@ swift infer \
     --result_path new_coco_dataset.jsonl
 
 
-# 4 * 42GiB, 3.05s/it
+# 4 * 80GiB, 2.65s/it
 NPROC_PER_NODE=4 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
