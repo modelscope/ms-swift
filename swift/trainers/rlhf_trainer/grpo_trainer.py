@@ -1094,17 +1094,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             InferRequest.remove_response(messages)
             template_inputs, _ = StdTemplateInputs.from_dict({'messages': messages})
             res_context_list, _, _ = self.template._swift_encode(template_inputs)
-            # 类型检查和转换
+            # check the type and convert
             processed_context = []
             for context in res_context_list:
                 if isinstance(context, str):
                     processed_context.append(context)
                 elif isinstance(context, list) and all(isinstance(x, int) for x in context):
-                    # 将token ID列表解码为字符串
+                    # decode the token ID to text
                     decoded_text = self.template.tokenizer.decode(context)
                     processed_context.append(decoded_text)
                 else:
-                    # 其他类型，转换为字符串
+                    # other type value ,just add to process_context
                     processed_context.append(str(context))
             prompts_text.append(''.join(processed_context))
         return prompts_text
