@@ -61,7 +61,7 @@ I am Qwen, a large-scale language model developed by Alibaba Cloud. I am designe
 
 ```bash
 pip install ms-swift -U
-pip install transformers -U
+pip install transformers
 
 pip install deepspeed # 多GPU训练
 pip install liger-kernel # 节约显存资源

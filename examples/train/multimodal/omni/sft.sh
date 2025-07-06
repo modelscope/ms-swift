@@ -1,7 +1,5 @@
 # 4*35GB
 # A demo for four modalities that can be run directly
-pip install transformers -U
-
 nproc_per_node=4
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
