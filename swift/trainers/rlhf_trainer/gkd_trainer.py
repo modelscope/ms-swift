@@ -148,6 +148,10 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
             inputs['attention_mask'] = new_attention_mask
             inputs['labels'] = new_labels
 
-        with self.template.training_step_context(self.model, inputs):
+        with self.template.forward_context(self.model, inputs):
             loss = HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
         return loss
+
+    def prediction_step(self, model, inputs, *args, **kwargs):
+        with self.template.forward_context(self.model, inputs):
+            return super().prediction_step(model, inputs, *args, **kwargs)
