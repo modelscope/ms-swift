@@ -126,6 +126,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         self._set_default()
         self._init_external_vllm()
         super().__post_init__()
+        self._check_padding_free()
         self._check_grpo()
         self._external_vllm_warning()
 
@@ -261,10 +262,12 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
             if self.sequence_parallel_size > 1:
                 raise ValueError('Liger loss does not support sequence parallel yet.')
+            if self.padding_free:
+                raise ValueError('Liger loss does not support padding free yet.')
+
             from trl.import_utils import is_liger_kernel_available
             assert is_liger_kernel_available(), (
                 'Please install/update liger-kernel by running: pip install -U liger-kernel')
-
         if self.vllm_mode == 'server':
             assert not self.use_vllm or self.vllm_server_host is not None
 
@@ -333,3 +336,10 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if self.gc_collect_after_offload:
             logger.warning(
                 "The parameter 'gc_collect_after_offload' has been deprecated and will be removed in version 3.7. ")
+
+    def _check_padding_free(self):
+        if self.padding_free:
+            supported_types = ['grpo', 'dpo', 'gkd']
+            if self.rlhf_type not in supported_types:
+                raise NotImplementedError(f"The current rlhf_type '{self.rlhf_type}' does not support padding_free. "
+                                          'Please set --padding_free to false.')

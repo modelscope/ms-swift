@@ -11,6 +11,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
+from ..vision_utils import load_audio
 
 
 @dataclass
@@ -129,3 +130,102 @@ class Gemma3VisionTemplate(Gemma3Template):
 
 
 register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3_vision, template_cls=Gemma3VisionTemplate))
+
+
+class Gemma3nTemplate(Gemma3Template):
+    boi_token_id = 255999
+    boa_token_id = 256000
+    placeholder_tokens = ['<start_of_image>', '<start_of_audio>']
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return ['<start_of_image>']
+        elif media_type == 'audio':
+            inputs.audios[index] = load_audio(inputs.audios[index], self.processor.feature_extractor.sampling_rate)
+            return ['<start_of_audio>']
+        else:
+            raise ValueError(f'Unsupported media type: {media_type}. Supported types are: image, audio')
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        from transformers.models.gemma3n.processing_gemma3n import Gemma3nProcessorKwargs
+
+        # Input validation
+        if not inputs.images and not inputs.audios and not inputs.messages:
+            raise ValueError('Provide at least one of `images`, `audios`, or `messages`.')
+
+        encoded = super()._encode(inputs)
+        processor = self.processor
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+
+        # Initialize token_type_ids and other outputs
+        array_ids = np.array(input_ids)
+        mm_token_type_ids = np.zeros_like(input_ids)
+
+        # Handle images
+        if inputs.images:
+            idx_list = findall(input_ids, self.boi_token_id)
+            img_tokens = self._tokenize(processor.full_image_sequence)
+            input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, lambda _: img_tokens)
+
+            # Process images
+            processor_kwargs = Gemma3nProcessorKwargs._defaults.get('images_kwargs', {})
+            image_inputs = processor.image_processor(inputs.images, **processor_kwargs)
+            image_inputs['pixel_values'] = torch.as_tensor(np.array(image_inputs['pixel_values']))
+            if 'num_crops' in image_inputs:
+                image_inputs.pop('num_crops')
+            encoded.update(image_inputs)
+
+        # Handle audios
+        if inputs.audios:
+            audio_idx_list = findall(input_ids, self.boa_token_id)
+            if audio_idx_list:
+                # Get audio token sequence from processor
+                audio_tokens = self._tokenize(processor.full_audio_sequence)
+                input_ids, labels = self._extend_tokens(input_ids, labels, audio_idx_list, lambda _: audio_tokens)
+
+                # Process audios
+                processor_kwargs = Gemma3nProcessorKwargs._defaults.get('audio_kwargs', {})
+                audio_inputs = processor.feature_extractor(inputs.audios, **processor_kwargs)
+
+                if 'input_features' in audio_inputs:
+                    audio_inputs['input_features'] = torch.tensor(audio_inputs['input_features']).to(
+                        self.model_info.torch_dtype)
+                if 'input_features_mask' in audio_inputs:
+                    audio_inputs['input_features_mask'] = torch.tensor(audio_inputs['input_features_mask'])
+                encoded.update(audio_inputs)
+
+        # Update array_ids after token extension
+        array_ids = np.array(input_ids)
+        mm_token_type_ids = np.zeros_like(input_ids)
+
+        if hasattr(processor, 'image_token_id') and processor.image_token_id is not None:
+            mm_token_type_ids[array_ids == processor.image_token_id] = 1
+
+        if hasattr(processor, 'audio_token_id') and processor.audio_token_id is not None:
+            mm_token_type_ids[array_ids == processor.audio_token_id] = 3
+
+        encoded['token_type_ids'] = mm_token_type_ids.tolist()
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+
+        return encoded
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Handle multimodal data collation for Gemma3n, including audio features"""
+        res = super()._data_collator_mm_data(batch)
+
+        # Handle audio features like other templates do
+        input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
+        input_features_mask = [b['input_features_mask'] for b in batch if b.get('input_features_mask') is not None]
+
+        if input_features:
+            res['input_features'] = torch.concat(input_features)
+        if input_features_mask:
+            res['input_features_mask'] = torch.concat(input_features_mask)
+
+        return res
+
+
+register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3n, template_cls=Gemma3nTemplate))

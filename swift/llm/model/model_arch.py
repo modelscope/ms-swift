@@ -70,6 +70,7 @@ class MLLMModelArch:
     emu3_chat = 'emu3_chat'
     megrez_omni = 'megrez_omni'
     valley = 'valley'
+    gemma3n = 'gemma3n'
     mistral_2503 = 'mistral_2503'
 
 
@@ -592,6 +593,14 @@ register_model_arch(
         MLLMModelArch.valley,
         language_model='model',
         vision_tower=['model.vision_tower', 'model.qwen2vl_vision_tower'],
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.gemma3n,
+        language_model='model.language_model',
+        aligner=['model.embed_vision', 'model.embed_audio'],
+        vision_tower=['model.vision_tower', 'model.audio_tower'],
     ))
 
 
