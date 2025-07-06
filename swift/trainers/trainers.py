@@ -237,8 +237,9 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         **gen_kwargs,
     ) -> Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
         if not self.args.predict_with_generate or prediction_loss_only:
-            return super().prediction_step(
-                model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys)
+            with self.template.forward_context(self.model, inputs):
+                return super().prediction_step(
+                    model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys)
         from swift.llm import RequestConfig, InferRequest
         data_list = inputs['_data']
         labels_list = [InferRequest.remove_response(data['messages']) for data in data_list]
@@ -340,5 +341,5 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         return (loss, outputs) if return_outputs else loss
 
     def training_step(self, model, inputs, *args, **kwargs):
-        with self.template.training_step_context(self.model, inputs):
+        with self.template.forward_context(self.model, inputs):
             return super().training_step(model, inputs, *args, **kwargs)

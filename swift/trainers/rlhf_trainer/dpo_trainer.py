@@ -125,5 +125,10 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
     def training_step(self, model, inputs, *args, **kwargs):
         inputs['_position_ids'] = inputs.get('position_ids')
-        with self.template.training_step_context(self.model, inputs):
+        with self.template.forward_context(self.model, inputs):
             return super().training_step(model, inputs, *args, **kwargs)
+
+    def prediction_step(self, model, inputs, *args, **kwargs):
+        inputs['_position_ids'] = inputs.get('position_ids')
+        with self.template.forward_context(self.model, inputs):
+            return super().prediction_step(model, inputs, *args, **kwargs)
