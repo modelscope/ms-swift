@@ -63,7 +63,7 @@ Before starting training, please ensure that your environment is properly config
 
 ```bash
 pip install ms-swift -U
-pip install transformers -U
+pip install transformers
 
 pip install deepspeed # for multi-GPU training
 pip install liger-kernel # to save GPU memory resources
