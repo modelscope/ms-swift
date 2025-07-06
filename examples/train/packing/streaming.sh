@@ -15,6 +15,8 @@ swift sft \
     --shuffle_buffer_size 1000 \
     --packing true \
     --save_strategy epoch \
+    --gradient_checkpointing false \
+    --vit_gradient_checkpointing true \
     --max_steps 1000 \
     --max_epochs 5 \
     --per_device_train_batch_size 1 \

@@ -19,6 +19,8 @@ swift sft \
     --num_train_epochs 3 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
+    --gradient_checkpointing false \
+    --vit_gradient_checkpointint true \
     --learning_rate 1e-4 \
     --lora_rank 8 \
     --lora_alpha 32 \

@@ -132,6 +132,16 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
             self.lazy_tokenize = self.model_meta.is_multimodal and not self.streaming
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
 
+    def _checkpoint_multimodal_packinng(self):
+        if self.model_meta.is_multimodal and (self.packing or self.padding_free) and self.gradient_checkpointing:
+            self.gradient_checkpointing = False
+            if self.vit_gradient_checkpointing is None:
+                self.vit_gradient_checkpointing = True
+            logger.warning(
+                'Packing or padding_free for multimodal models is not supported with gradient checkpointing.\n'
+                f'Setting gradient_checkpointing: {self.gradient_checkpointing}, '
+                f'Setting vit_gradient_checkpointing: {self.vit_gradient_checkpointing}')
+
     def __post_init__(self) -> None:
         if self.padding_free or self.packing:
             if self.packing:
@@ -172,6 +182,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
             self.accelerator_config = {'dispatch_batches': False}
         if self.split_dataset_ratio == 0 and not self.val_dataset and not self.eval_dataset:
             self.eval_strategy = 'no'
+        self._checkpoint_multimodal_packinng()
         self.training_args = TrainerFactory.get_training_args(self)
         self.training_args.remove_unused_columns = False
         self._add_version()

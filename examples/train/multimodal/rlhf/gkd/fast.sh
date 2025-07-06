@@ -32,6 +32,8 @@ swift rlhf \
     --learning_rate 1e-5 \
     --freeze_vit true \
     --gradient_accumulation_steps 1 \
+    --gradient_checkpointing false \
+    --vit_gradient_checkpointing true \
     --eval_steps 100 \
     --save_steps 100 \
     --save_total_limit 2 \
