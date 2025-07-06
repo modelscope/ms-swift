@@ -90,7 +90,7 @@ class SwanlabArguments:
                 secret=self.swanlab_lark_secret,
             )
             swanlab.register_callbacks([lark_callback])
-        
+
         INTEGRATION_TO_CALLBACK['swanlab'] = SwanLabCallback(
             project=self.swanlab_project,
             workspace=self.swanlab_workspace,
