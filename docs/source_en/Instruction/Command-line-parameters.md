@@ -535,6 +535,8 @@ Soft overlong reward parameters:
 - **swanlab_project**: SwanLab's project, which needs to be created in advance on the page: [https://swanlab.cn/space/~](https://swanlab.cn/space/~)
 - **swanlab_workspace**: Defaults to `None`, will use the username associated with the API key
 - **swanlab_exp_name**: Experiment name, can be left empty. If empty, the value of `--output_dir` will be used by default
+- swanlab_lark_webhook_url: Defaults to None. SwanLab's Lark webhook URL, used for pushing experiment results to Lark.
+- swanlab_lark_secret: Defaults to None. SwanLab's Lark secret, used for pushing experiment results to Lark.
 - **swanlab_mode**: Optional values are `cloud` and `local`, representing cloud mode or local mode
 
 
