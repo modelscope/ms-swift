@@ -4,6 +4,7 @@ from typing import Optional
 
 from swift.llm import safe_snapshot_download
 from swift.utils import find_free_port, get_logger
+from .base_args import BaseArguments
 from .infer_args import InferArguments
 
 logger = get_logger()
@@ -66,7 +67,7 @@ class DeployArguments(InferArguments):
         return super()._init_ckpt_dir(self.adapters + list(self.adapter_mapping.values()))
 
     def _init_stream(self):
-        pass
+        return BaseArguments._init_stream(self)
 
     def _init_eval_human(self):
         pass
