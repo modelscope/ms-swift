@@ -1433,7 +1433,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return
 
     def old_policy(self):
-        return self.num_iterations > 1 or self.args.steps_per_generation > self.args.gradient_accumulation_steps
+        return self.num_iterations > 1 or self.args.gradient_accumulation_steps % self.args.steps_per_generation != 0
 
     @property
     def _queue(self):
