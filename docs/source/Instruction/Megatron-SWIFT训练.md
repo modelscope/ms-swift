@@ -40,14 +40,14 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 
 首先，我们需要将HF格式的权重转为Megatron格式：
 - 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除即可。
+- "ms-swift>=3.6"推荐增加`--test_convert_precision true`参数测试转换精度。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
     --model Qwen/Qwen2.5-7B-Instruct \
     --to_mcore true \
     --torch_dtype bfloat16 \
-    --output_dir Qwen2.5-7B-Instruct-mcore \
-    --test_convert_precision true
+    --output_dir Qwen2.5-7B-Instruct-mcore
 ```
 
 然后，使用以下脚本进行训练，训练所需显存资源为2*80GiB：
@@ -88,15 +88,15 @@ megatron sft \
 
 最后，将Megatron格式权重转为HF格式：
 - 注意：`--mcore_model`请指向`iter_xxx`的上级目录。默认会使用`latest_checkpointed_iteration.txt`中对应的checkpoint。
-
+- 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除即可。
+- "ms-swift>=3.6"推荐增加`--test_convert_precision true`参数测试转换精度。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
     --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
-    --test_convert_precision true
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf
 ```
 
 我们对生成的HF格式权重进行推理：
