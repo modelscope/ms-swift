@@ -46,7 +46,8 @@ Hints:
   - Sub-dataset: This parameter is effective only when the dataset is an ID or folder. If a subset was specified during registration, and only one sub-dataset exists, the registered sub-dataset is selected by default; otherwise, it defaults to 'default'. You can use `/` to select multiple sub-datasets, e.g., `<dataset_id>:subset1/subset2`. You can also use 'all' to select all sub-datasets, e.g., `<dataset_id>:all`.
   - Sampling Size: By default, the complete dataset is used. If the sampling size is less than the total number of data samples, samples are selected randomly without repetition. If the sampling size exceeds the total number of data samples, then `sampling size%total data samples` samples are randomly sampled additionally, and data samples are repetitively sampled `sampling size//total data samples` times. Note: Streaming datasets only perform sequential sampling. If `--dataset_shuffle false` is set, non-streaming datasets will also perform sequential sampling.
 - 🔥val_dataset: A list of validation set IDs or paths. Default is `[]`.
-- 🔥split_dataset_ratio: Ratio for splitting the training set and validation set when val_dataset is not specified, default is 0.01. Set to 0 if no validation set split is needed.
+- 🔥split_dataset_ratio: The ratio used to split a validation set from the training set when val_dataset is not specified. The default is 0., meaning no validation set will be split from the training set.
+  - Note: For "ms-swift<3.6", the default value of this parameter is 0.01.
 - data_seed: Random seed for the dataset, default is 42.
 - 🔥dataset_num_proc: Number of processes for dataset preprocessing, default is 1.
 - 🔥load_from_cache_file: Whether to load the dataset from the cache, default is True.
@@ -85,7 +86,7 @@ Hints:
   - Note: `swift pt` is set to False by default, using the generation template.
 - 🔥padding_free: Flattens the data in a batch to avoid padding, thereby reducing memory usage and accelerating training. Default is False. Currently supported in CPT/SFT/DPO/GRPO/GKD.
   - Note: When using `padding_free`, it should be combined with `--attn_impl flash_attn` and "transformers>=4.44". For details, see [this PR](https://github.com/huggingface/transformers/pull/31629). (Same as packing)
-  - The supported multimodal models are the same as those supported for multimodal packing. Compared to packing, padding_free does not consume additional time or space.
+  - The supported multimodal models are the same as those supported for multimodal packing. Compared to packing, padding_free does not consume additional time or space. Note: Please use "ms-swift>=3.6" and follow [this PR](https://github.com/modelscope/ms-swift/pull/4838).
   - Megatron-SWIFT uses `padding_free` by default, i.e., `qkv_format='thd'`, and no additional configuration is required.
 - padding_side: Padding side when `batch_size>=2` during training. Options are 'left' and 'right', with 'right' as the default. (For inference with batch_size>=2, only left padding is applied.)
   - Note: PPO and GKD are set to 'left' by default.
@@ -94,7 +95,7 @@ Hints:
   - 'all': Calculate the loss for all tokens.
   - 'ignore_empty_think': On top of 'default', ignore the loss calculation for empty `'<think>\n\n</think>\n\n'`. See [this issue](https://github.com/modelscope/ms-swift/issues/4030) for more details.
   - `'react'`, `'hermes'`, `'qwen'`: On top of `'default'`, set the loss weight of the `tool_call` part to 2.
-- sequence_parallel_size: Sequence parallelism size, default is 1. Currently supported in CPT/SFT/DPO/GRPO. The training script refers to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/long_text/sequence_parallel.sh).
+- sequence_parallel_size: Sequence parallelism size, default is 1. Currently supported in CPT/SFT/DPO/GRPO. The training script refers to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/long_text/ulysses/sequence_parallel.sh).
 - response_prefix: The prefix character for the response, for example, setting the response_prefix to `'<think>\n'` for QwQ-32B. The default is None, and it is automatically set according to the model.
   - Note: If you are training the deepseek-r1/qwq model with a dataset that does not include `<think>...</think>`, please pass `--response_prefix ''` additionally when inferring after training.
 - template_backend: Selection of the template backend. Options are 'swift' and 'jinja', with 'swift' as the default. If using jinja, it applies transformer's `apply_chat_template`.
@@ -170,6 +171,7 @@ Other important parameters:
 - 🔥save_strategy: Strategy for saving the model, options include 'no', 'steps', 'epoch'. Default is 'steps'.
 - 🔥save_steps: Default is 500.
 - 🔥eval_strategy: Evaluation strategy. Default is None and follows the strategy of `save_strategy`.
+  - If neither `val_dataset` nor `eval_dataset` is used and `split_dataset_ratio` is 0, the default is 'no'.
 - 🔥eval_steps: Default is None. If there is an evaluation dataset, it follows the strategy of `save_steps`.
 - 🔥save_total_limit: Maximum number of checkpoints to save. Older checkpoints will be deleted. Default is None, saving all checkpoints.
 - max_steps: Maximum number of training steps. Should be set when the dataset is streamed. Default is -1.
@@ -386,7 +388,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - channels: Set of channels included in the dataset. Defaults to None. Used in conjunction with `--loss_type channel_loss`. Refer to [this example](https://github.com/modelscope/ms-swift/blob/main/examples/train/plugins/channel_loss.sh) for more details.
 - 🔥packing: Whether to use sequence packing to improve computational efficiency. The default value is False. Currently supports `swift pt/sft`.
   - Note: When using packing, please combine it with `--attn_impl flash_attn` and ensure "transformers>=4.44". For details, see [this PR](https://github.com/huggingface/transformers/pull/31629).
-  - Supported multimodal models reference: https://github.com/modelscope/ms-swift/blob/main/examples/train/packing/qwen2_5_vl.sh
+  - Supported multimodal models reference: https://github.com/modelscope/ms-swift/blob/main/examples/train/packing/qwen2_5_vl.sh. Note: Please use "ms-swift>=3.6" and follow [this PR](https://github.com/modelscope/ms-swift/pull/4838).
 - packing_cache: Specifies the directory for packing cache. The default value is `None`, which means the cache will be stored in the path defined by the environment variable `$MODELSCOPE_CACHE`. When using the packing feature across multiple nodes, ensure that all nodes share the same packing cache directory. You can achieve this by setting the `MODELSCOPE_CACHE` environment variable or by adding the `--packing_cache <shared_path>` argument in the command line.
 - 🔥lazy_tokenize: Whether to use lazy tokenization. If set to False, all dataset samples are tokenized before training (for multimodal models, this includes reading images from disk). This parameter defaults to False for LLM training, and True for MLLM training, to save memory.
 - use_logits_to_keep: Pass `logits_to_keep` in the `forward` method based on labels to reduce the computation and storage of unnecessary logits, thereby reducing memory usage and accelerating training. The default is `None`, which enables automatic selection.
@@ -397,8 +399,8 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - optimizer: Custom optimizer name for the plugin, defaults to None. Optional optimizer reference: [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/optimizer.py).
 - metric: Custom metric name for the plugin. Defaults to None, with the default set to 'acc' when `predict_with_generate=False` and 'nlg' when `predict_with_generate=True`.
 - eval_use_evalscope: Whether to use evalscope for evaluation, this parameter needs to be set to enable evaluation, refer to [example](../Instruction/Evaluation.md#evaluation-during-training). Default is False.
-- eval_datasets: Evaluation datasets, multiple datasets can be set, separated by spaces
-- eval_datasets_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
+- eval_dataset: Evaluation datasets, multiple datasets can be set, separated by spaces
+- eval_dataset_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
 - eval_limit: Number of samples from the evaluation dataset
 - eval_generation_config: Model inference configuration during evaluation, in JSON format, default is `{'max_tokens': 512}`
 
@@ -533,6 +535,8 @@ Soft overlong reward parameters:
 - **swanlab_project**: SwanLab's project, which needs to be created in advance on the page: [https://swanlab.cn/space/~](https://swanlab.cn/space/~)
 - **swanlab_workspace**: Defaults to `None`, will use the username associated with the API key
 - **swanlab_exp_name**: Experiment name, can be left empty. If empty, the value of `--output_dir` will be used by default
+- swanlab_lark_webhook_url: Defaults to None. SwanLab's Lark webhook URL, used for pushing experiment results to Lark.
+- swanlab_lark_secret: Defaults to None. SwanLab's Lark secret, used for pushing experiment results to Lark.
 - **swanlab_mode**: Optional values are `cloud` and `local`, representing cloud mode or local mode
 
 

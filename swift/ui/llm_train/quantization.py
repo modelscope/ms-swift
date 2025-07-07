@@ -39,27 +39,27 @@ class Quantization(BaseUI):
         },
         'bnb_4bit_compute_dtype': {
             'label': {
-                'zh': 'bnb_4bit_compute_dtype',
-                'en': 'bnb_4bit_compute_dtype'
+                'zh': '计算数据类型',
+                'en': 'Computational data type'
             },
         },
         'bnb_4bit_quant_type': {
             'label': {
-                'zh': 'bnb_4bit_quant_type',
-                'en': 'bnb_4bit_quant_type'
+                'zh': '量化数据类型',
+                'en': 'Quantization data type'
             },
         },
         'bnb_4bit_use_double_quant': {
             'label': {
-                'zh': 'bnb_4bit_use_double_quant',
-                'en': 'bnb_4bit_use_double_quant'
+                'zh': '使用嵌套量化',
+                'en': 'Use double quantization'
             },
         },
     }
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Accordion(elem_id='quantization_tab', open=False):
+        with gr.TabItem(elem_id='quantization_tab'):
             with gr.Row():
                 gr.Dropdown(elem_id='quant_bits', value=None)
                 gr.Dropdown(elem_id='quant_method', value=None)

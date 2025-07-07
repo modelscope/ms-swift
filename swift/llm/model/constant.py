@@ -154,6 +154,7 @@ class MLLMModelType:
     mimo_vl = 'mimo_vl'
 
     glm4v = 'glm4v'
+    glm4_1v = 'glm4_1v'
     glm_edge_v = 'glm_edge_v'
     cogvlm = 'cogvlm'
     cogagent_vqa = 'cogagent_vqa'
@@ -231,6 +232,7 @@ class MLLMModelType:
     megrez_omni = 'megrez_omni'
     valley = 'valley'
     gemma3_vision = 'gemma3_vision'
+    gemma3n = 'gemma3n'
     mistral_2503 = 'mistral_2503'
 
 

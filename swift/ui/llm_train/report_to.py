@@ -11,7 +11,7 @@ class ReportTo(BaseUI):
     group = 'llm_train'
 
     locale_dict = {
-        'reporter': {
+        'reporter_tab': {
             'label': {
                 'zh': '训练记录',
                 'en': 'Training report'
@@ -25,39 +25,51 @@ class ReportTo(BaseUI):
         },
         'swanlab_token': {
             'label': {
-                'zh': 'swanlab登录token',
-                'en': 'The login token of swanlab'
+                'zh': 'SwanLab登录token',
+                'en': 'The login token of SwanLab'
             },
         },
         'swanlab_project': {
             'label': {
-                'zh': 'swanlab项目名称',
-                'en': 'Project of swanlab'
+                'zh': 'SwanLab项目名称',
+                'en': 'Project of SwanLab'
             },
         },
         'swanlab_workspace': {
             'label': {
-                'zh': 'swanlab工作空间',
-                'en': 'Workspace of swanlab'
+                'zh': 'SwanLab工作空间',
+                'en': 'Workspace of SwanLab'
             },
         },
         'swanlab_exp_name': {
             'label': {
-                'zh': 'swanlab实验名称',
-                'en': 'Experiment of swanlab'
+                'zh': 'SwanLab实验名称',
+                'en': 'Experiment of SwanLab'
+            },
+        },
+        'swanlab_lark_webhook_url': {
+            'label': {
+                'zh': 'SwanLab飞书Webhook地址',
+                'en': 'Webhook URL of SwanLab Lark Callback'
+            },
+        },
+        'swanlab_lark_secret': {
+            'label': {
+                'zh': 'SwanLab飞书Secret',
+                'en': 'Secret of SwanLab Lark Callback'
             },
         },
         'swanlab_mode': {
             'label': {
-                'zh': 'swanlab工作模式',
-                'en': 'Work mode of swanlab'
+                'zh': 'SwanLab工作模式',
+                'en': 'Work mode of SwanLab'
             },
         },
     }
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Accordion(elem_id='reporter', open=False):
+        with gr.TabItem(elem_id='reporter_tab'):
             with gr.Blocks():
                 with gr.Row():
                     gr.Dropdown(
@@ -69,6 +81,9 @@ class ReportTo(BaseUI):
                         scale=20)
                     gr.Textbox(elem_id='swanlab_token', lines=1, scale=20)
                     gr.Textbox(elem_id='swanlab_project', lines=1, scale=20)
+                with gr.Row():
+                    gr.Textbox(elem_id='swanlab_lark_webhook_url', lines=1, scale=20)
+                    gr.Textbox(elem_id='swanlab_lark_secret', lines=1, scale=20)
                 with gr.Row():
                     gr.Textbox(elem_id='swanlab_workspace', lines=1, scale=20)
                     gr.Textbox(elem_id='swanlab_exp_name', lines=1, scale=20)

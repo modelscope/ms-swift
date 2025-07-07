@@ -110,6 +110,8 @@ class StdTemplateInputs:
     videos: List[str] = field(default_factory=list)
     objects: Dict[str, List[Any]] = field(default_factory=dict)
 
+    margin: Optional[float] = None  # for reward modeling
+
     def __post_init__(self):
         self.image_idx = 0
         self.audio_idx = 0
@@ -135,7 +137,7 @@ class StdTemplateInputs:
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any]) -> Tuple['StdTemplateInputs', Dict[str, Any]]:
         kwargs = {}
-        for key in ['rejected_response', 'label', 'channel']:
+        for key in ['rejected_response', 'label', 'channel', 'margin']:
             if key in inputs:
                 kwargs[key] = inputs[key]
         messages = inputs['messages']

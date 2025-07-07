@@ -1,10 +1,12 @@
 # 8 * 64GiB
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron rlhf \
     --rlhf_type dpo \
     --load Qwen1.5-MoE-A2.7B-mcore \
     --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji#20000' \
+    --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 4 \
     --moe_grouped_gemm true \

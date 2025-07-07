@@ -9,6 +9,7 @@ def test_channel():
         TrainArguments(
             model='Qwen/Qwen2.5-VL-7B-Instruct',
             dataset=['channel.jsonl#1000'],
+            split_dataset_ratio=0.01,
             channels=['aaa', 'abc'],
             loss_type='channel_loss'))
 

@@ -36,8 +36,9 @@ class Seq2SeqTrainingOverrideArguments(TrainArgumentsMixin, Seq2SeqTrainingArgum
             self.eval_strategy = self.save_strategy
         if self.eval_strategy == 'no':
             self.eval_steps = None
-            self.split_dataset_ratio = 0.
-            logger.info(f'Setting args.split_dataset_ratio: {self.split_dataset_ratio}')
+            if self.split_dataset_ratio > 0:
+                self.split_dataset_ratio = 0.
+                logger.info(f'Setting args.split_dataset_ratio: {self.split_dataset_ratio}')
         elif self.eval_strategy == 'steps' and self.eval_steps is None:
             self.eval_steps = self.save_steps
         self.evaluation_strategy = self.eval_strategy
@@ -67,6 +68,8 @@ class SwanlabArguments:
     swanlab_project: Optional[str] = None
     swanlab_workspace: Optional[str] = None
     swanlab_exp_name: Optional[str] = None
+    swanlab_lark_webhook_url: Optional[str] = None
+    swanlab_lark_secret: Optional[str] = None
     swanlab_mode: Literal['cloud', 'local'] = 'cloud'
 
     def _init_swanlab(self):
@@ -79,6 +82,15 @@ class SwanlabArguments:
         from swanlab.integration.transformers import SwanLabCallback
         if self.swanlab_token:
             swanlab.login(self.swanlab_token)
+
+        if self.swanlab_lark_webhook_url is not None:
+            from swanlab.plugin.notification import LarkCallback
+            lark_callback = LarkCallback(
+                webhook_url=self.swanlab_lark_webhook_url,
+                secret=self.swanlab_lark_secret,
+            )
+            swanlab.register_callbacks([lark_callback])
+
         INTEGRATION_TO_CALLBACK['swanlab'] = SwanLabCallback(
             project=self.swanlab_project,
             workspace=self.swanlab_workspace,
@@ -169,7 +181,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
 
         if getattr(self, 'accelerator_config', None) is None:
             self.accelerator_config = {'dispatch_batches': False}
-        if self.split_dataset_ratio == 0 and not self.val_dataset:
+        if self.split_dataset_ratio == 0 and not self.val_dataset and not self.eval_dataset:
             self.eval_strategy = 'no'
         self.training_args = TrainerFactory.get_training_args(self)
         self.training_args.remove_unused_columns = False

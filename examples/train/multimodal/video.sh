@@ -9,6 +9,7 @@ FPS_MAX_FRAMES=12 \
 swift sft \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
     --dataset swift/VideoChatGPT:all \
+    --split_dataset_ratio 0.01 \
     --train_type lora \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

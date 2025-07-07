@@ -5,6 +5,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \
     --load Qwen2.5-72B-Instruct-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 8 \
     --micro_batch_size 1 \
     --global_batch_size 16 \

@@ -77,8 +77,12 @@ class SwiftMixin:
                         'third_party': 'swift',
                     })
         if eval_dataset is None and args:
-            args.evaluation_strategy = IntervalStrategy.NO
-            args.eval_strategy = IntervalStrategy.NO
+            if getattr(args, 'eval_dataset', None):
+                # Avoid trainer throwing errors.
+                eval_dataset = []
+            else:
+                args.evaluation_strategy = IntervalStrategy.NO
+                args.eval_strategy = IntervalStrategy.NO
 
         self._custom_metrics = {}
         self.template = template
@@ -467,6 +471,8 @@ class SwiftMixin:
 
         if self.args.eval_use_evalscope and self.control.should_evaluate:
             self._evalscope_eval()
+            if not self.eval_dataset:
+                self.control.should_evaluate = False
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
@@ -510,8 +516,8 @@ class SwiftMixin:
         task_config = TaskConfig(
             model=custom_model,
             eval_type=EvalType.CUSTOM,
-            datasets=self.args.eval_datasets,
-            dataset_args=self.args.eval_datasets_args,
+            datasets=self.args.eval_dataset,
+            dataset_args=self.args.eval_dataset_args,
             limit=self.args.eval_limit,
             work_dir=os.path.join(self.args.output_dir, 'eval'),
             eval_batch_size=max_batch_size,
@@ -559,8 +565,9 @@ class SwiftMixin:
     def get_batch_samples(self, *args, **kwargs):
         res = super().get_batch_samples(*args, **kwargs)
         from swift.trainers.sequence_parallel import sequence_parallel
-        if self.template.sequence_parallel_size == 1 or 'Ulysses' == sequence_parallel.__class__.__name__:
-            # ulysses split inputs in the model hook, so no need to gather num_items_in_batch
+        if (self.template.sequence_parallel_size == 1 or 'Ulysses' == sequence_parallel.__class__.__name__
+                or 'RingAttention' == sequence_parallel.__class__.__name__):
+            # ulysses and ring attention split inputs in the model hook, so no need to gather num_items_in_batch
             return res
 
         batch_samples, num_items_in_batch = res

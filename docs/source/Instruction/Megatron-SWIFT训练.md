@@ -26,9 +26,9 @@ pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.12.0
 
 或者你也可以使用镜像：
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.27.0-swift3.5.1
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.27.0-swift3.5.1
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py311-torch2.6.0-vllm0.8.5.post1-modelscope1.27.0-swift3.5.1
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.27.1-swift3.5.3
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.27.1-swift3.5.3
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.27.1-swift3.5.3
 ```
 
 依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.12.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.12.0)）。
@@ -52,6 +52,7 @@ swift export \
 然后，使用以下脚本进行训练，训练所需显存资源为2*80GiB：
 - 若使用多机训练，建议共享磁盘，并将`--save`指定为相同的路径。
 ```shell
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
@@ -212,6 +213,8 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥no_load_optim: 不载入optimizer，默认为False。
 - 🔥no_load_rng: 不载入rng，默认为False。
 - 🔥finetune: 将模型加载并微调。不加载检查点的优化器和随机种子状态，并将迭代数设置为0。默认为False。
+  - 注意：断点续训`--load`，若设置`--finetune true`，将不会跳过数据集；若不设置，将跳过之前训练的数据集数量。
+  - 流式数据集`--streaming`，暂不支持跳过数据集。
 - ckpt_format: checkpoint的格式。可选为'torch', 'torch_dist', 'zarr'。默认为'torch_dist'。
 - no_initialization: 不对权重进行初始化，默认为True。
 - auto_detect_ckpt_format: 自动检测ckpt format为legacy还是distributed格式。默认为True。
@@ -249,7 +252,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 **评估参数**:
 - 🔥eval_iters: 评估的迭代次数，默认为-1，根据验证数据集的数量设置合适的值。
   - 注意：若使用流式数据集，该值需要手动设置。
-- 🔥eval_interval: 评估的间隔（steps），默认为None，即设置为save_interval。
+- 🔥eval_interval: 评估的间隔（steps），即每训练多少steps进行评估，默认为None，即设置为save_interval。
 
 **fp8参数**:
 - fp8_format: 用于前向和反向传播中FP8张量的FP8格式方案。可选为'e4m3'，'hybrid'。默认为None。

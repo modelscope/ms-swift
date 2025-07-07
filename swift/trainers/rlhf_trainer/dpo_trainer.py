@@ -56,9 +56,10 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             batch['output_router_logits'] = True
         if self.is_encoder_decoder:
             batch['labels'] = labels
-        position_ids = batch.get('position_ids')
-        with self.template.compute_loss_context(self.model, batch):
-            outputs = model(**batch, use_cache=False)
+        position_ids = batch.pop('_position_ids', None)
+        if position_ids is None:
+            position_ids = batch.get('position_ids')
+        outputs = model(**batch, use_cache=False)
         all_logits = outputs.logits
 
         if all_logits.shape[1] != labels.shape[1]:
@@ -121,3 +122,13 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         per_token_logps = selective_log_softmax(logits, labels)
         per_token_logps[~loss_mask] = 0
         return per_token_logps, logits.mean(-1), loss_mask
+
+    def training_step(self, model, inputs, *args, **kwargs):
+        inputs['_position_ids'] = inputs.get('position_ids')
+        with self.template.forward_context(self.model, inputs):
+            return super().training_step(model, inputs, *args, **kwargs)
+
+    def prediction_step(self, model, inputs, *args, **kwargs):
+        inputs['_position_ids'] = inputs.get('position_ids')
+        with self.template.forward_context(self.model, inputs):
+            return super().prediction_step(model, inputs, *args, **kwargs)

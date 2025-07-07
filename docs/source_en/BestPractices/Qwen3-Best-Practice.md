@@ -63,7 +63,7 @@ Before starting training, please ensure that your environment is properly config
 
 ```bash
 pip install ms-swift -U
-pip install transformers -U
+pip install transformers
 
 pip install deepspeed # for multi-GPU training
 pip install liger-kernel # to save GPU memory resources
@@ -225,6 +225,7 @@ swift sft \
     --model Qwen/Qwen3-8B \
     --train_type full \
     --dataset '<your-dataset>' \
+    --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
@@ -284,7 +285,7 @@ Notes on dataset requirements:
 
 We use AI-MO/NuminaMath-TIR as the dataset and compute the accuracy-based reward for model responses.
 
-During training, we utilize vLLM to accelerate the sampling process. By setting `num_infer_workers=8`, we deploy one vLLM engine per device to speed up sampling.
+During training, we utilize vLLM to accelerate the sampling process.
 
 ```bash
 # 70G*8
@@ -317,7 +318,6 @@ swift rlhf \
     --offload_model true \
     --offload_optimizer true \
     --deepspeed zero3 \
-    --num_infer_workers 8 \
     --tensor_parallel_size 1 \
     --temperature 1.0 \
     --top_p 0.85 \
@@ -336,11 +336,13 @@ We will use Alibaba Cloud DLC to launch training. The training environment consi
 ```bash
 # https://help.aliyun.com/zh/pai/user-guide/general-environment-variables
 # Ensure that the weight save path `--save` and packing cache path `--packing_cache` are the same and shared across both nodes.
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
 megatron sft \
     --load Qwen3-30B-A3B-Base-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 8 \
     --moe_grouped_gemm true \

@@ -1094,6 +1094,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             InferRequest.remove_response(messages)
             template_inputs, _ = StdTemplateInputs.from_dict({'messages': messages})
             res_context_list, _, _ = self.template._swift_encode(template_inputs)
+
             # check the type and convert
             processed_context = []
             for context in res_context_list:

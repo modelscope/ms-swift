@@ -1,10 +1,11 @@
-# Env: 8 * A100
-# Max Length: 512000
-# GPU Memory: 8 * 80GiB, Training Speed 150s/it
-NPROC_PER_NODE=8 \
+# Env: 4 * A100
+# Max Length: 256000
+# GPU Memory: 4 * 42GiB, Training Speed 43s/it
+NPROC_PER_NODE=4 \
 CELOSS_PARALLEL_SIZE=2048 \
+SEQUENCE_PARALLEL_IMPL=ring_attention \
 swift sft \
-    --model Qwen/QwQ-32B \
+    --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
     --dataset 'AI-ModelScope/LongAlpaca-12k' \
     --torch_dtype bfloat16 \
@@ -14,7 +15,7 @@ swift sft \
     --gradient_accumulation_steps 2 \
     --packing true \
     --rope_scaling yarn \
-    --max_length 512000 \
+    --max_length 256000 \
     --eval_steps 200 \
     --save_steps 200 \
     --logging_steps 5 \
@@ -26,4 +27,4 @@ swift sft \
     --save_only_model true \
     --deepspeed zero3_offload \
     --attn_impl flash_attn \
-    --sequence_parallel_size 8
+    --sequence_parallel_size 4
