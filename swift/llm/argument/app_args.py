@@ -19,6 +19,7 @@ class AppArguments(WebUIArguments, DeployArguments):
 
     lang: Literal['en', 'zh'] = 'en'
     verbose: bool = False
+    stream: bool = True
 
     def _init_torch_dtype(self) -> None:
         if self.base_url:
