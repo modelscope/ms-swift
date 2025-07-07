@@ -7,9 +7,9 @@ import torch.nn as nn
 from megatron.core.dist_checkpointing.mapping import ShardedStateDict
 from megatron.core.extensions.transformer_engine import (TEColumnParallelLinear, TELayerNormColumnParallelLinear,
                                                          TELinear, TERowParallelLinear)
+from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 from megatron.core.transformer.module import MegatronModule
-from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from peft.tuners.lora import model
 from peft.tuners.lora.layer import LoraLayer
 from peft.tuners.tuners_utils import BaseTunerLayer
@@ -107,7 +107,8 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         self.config.params_dtype = origin_params_dtype
         self.lora_A[adapter_name] = lora_a
         self.lora_B[adapter_name] = lora_b
-        self.lora_bias[adapter_name] = lora_bias
+        if hasattr(self, 'lora_bias'):
+            self.lora_bias[adapter_name] = lora_bias
         if use_rslora:
             self.scaling[adapter_name] = lora_alpha / (r**0.5)
         else:
