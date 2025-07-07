@@ -164,3 +164,6 @@ loss_scale_map = {
     'agentflan': AgentFlanLossScale,
     'alpha_umi': AlphaUmiLossScale,
 }
+
+for k, v in loss_scale_map.items():
+    v.name = k
