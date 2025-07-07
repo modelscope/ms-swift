@@ -4,8 +4,8 @@ from typing import Optional
 
 from swift.llm import safe_snapshot_download
 from swift.utils import find_free_port, get_logger
-from .infer_args import InferArguments
 from .base_args import BaseArguments
+from .infer_args import InferArguments
 
 logger = get_logger()
 
