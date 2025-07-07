@@ -3,6 +3,7 @@ from functools import partial
 from typing import Dict, Type
 
 import gradio as gr
+from packaging import version
 
 from swift.llm.argument.base_args.base_args import get_supported_tuners
 from swift.ui.base import BaseUI
@@ -21,6 +22,7 @@ from swift.ui.llm_grpo.runtime import GRPORuntime
 from swift.ui.llm_grpo.save import GRPOSave
 from swift.ui.llm_grpo.tuner import GRPOTuner
 from swift.ui.llm_train.llm_train import LLMTrain
+from swift.ui.llm_train.runtime import Runtime
 from swift.utils import get_device_count, get_logger
 
 logger = get_logger()
@@ -145,16 +147,6 @@ class LLMGRPO(LLMTrain):
                 'en': 'The data parallel size of DDP'
             }
         },
-        'tuner_backend': {
-            'label': {
-                'zh': 'Tuner backend',
-                'en': 'Tuner backend'
-            },
-            'info': {
-                'zh': 'Tuner实现框架',
-                'en': 'The tuner backend'
-            }
-        },
         'use_liger_kernel': {
             'label': {
                 'zh': '使用Liger kernel',
@@ -238,11 +230,17 @@ class LLMGRPO(LLMTrain):
                 with gr.Accordion(elem_id='train_param', open=True):
                     with gr.Row():
                         gr.Dropdown(elem_id='train_type', scale=4, choices=list(get_supported_tuners()))
-                        gr.Dropdown(elem_id='tuner_backend', scale=4)
                         gr.Textbox(elem_id='seed', scale=4)
                         gr.Dropdown(elem_id='torch_dtype', scale=4)
-                    with gr.Row():
                         gr.Checkbox(elem_id='use_liger_kernel', scale=4)
+                        gr.Textbox(elem_id='sequence_parallel_size', lines=1, scale=4)
+                    with gr.Row():
+                        gr.Dropdown(
+                            elem_id='gpu_id',
+                            multiselect=True,
+                            choices=[str(i) for i in range(device_count)] + ['cpu'],
+                            value=default_device,
+                            scale=8)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                         gr.Textbox(elem_id='ddp_num', value='1', scale=4)
                         gr.Dropdown(
@@ -251,17 +249,10 @@ class LLMGRPO(LLMTrain):
                             allow_custom_value=True,
                             value=None,
                             choices=['zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload'])
-                        gr.Textbox(elem_id='sequence_parallel_size', lines=1, scale=4)
                 GRPOHyper.build_ui(base_tab)
                 GRPORuntime.build_ui(base_tab)
                 with gr.Row(equal_height=True):
-                    gr.Dropdown(
-                        elem_id='gpu_id',
-                        multiselect=True,
-                        choices=[str(i) for i in range(device_count)] + ['cpu'],
-                        value=default_device,
-                        scale=8)
-                    gr.Textbox(elem_id='envs', scale=8)
+                    gr.Textbox(elem_id='envs', scale=12)
                     gr.Checkbox(elem_id='dry_run', value=False, scale=4)
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
@@ -284,13 +275,6 @@ class LLMGRPO(LLMTrain):
                     inputs=[base_tab.element('train_type')],
                     outputs=[cls.element('learning_rate')])
 
-                base_tab.element('gpu_id').change(
-                    cls.update_ddp_num,
-                    [base_tab.element('gpu_id'), base_tab.element('use_ddp')], base_tab.element('ddp_num'))
-                base_tab.element('use_ddp').change(
-                    cls.update_ddp_num,
-                    [base_tab.element('gpu_id'), base_tab.element('use_ddp')], base_tab.element('ddp_num'))
-
                 submit.click(
                     cls.train_local,
                     list(cls.valid_elements().values()), [
@@ -310,14 +294,48 @@ class LLMGRPO(LLMTrain):
                        cls.element('template')],
                     [LLMRollout.element('rollout_runtime_tab'),
                      LLMRollout.element('rollout_running_tasks')])
+                concurrency_limit = {}
+                if version.parse(gr.__version__) >= version.parse('4.0.0'):
+                    concurrency_limit = {'concurrency_limit': 5}
                 base_tab.element('running_tasks').change(
                     partial(GRPORuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                    list(base_tab.valid_elements().values()) + [cls.element('log')] + GRPORuntime.all_plots)
+                    list(base_tab.valid_elements().values()) + [cls.element('log')] + GRPORuntime.all_plots,
+                    **concurrency_limit)
                 GRPORuntime.element('kill_task').click(
                     GRPORuntime.kill_task,
                     [GRPORuntime.element('running_tasks')],
                     [GRPORuntime.element('running_tasks')] + [GRPORuntime.element('log')] + GRPORuntime.all_plots,
                 ).then(GRPORuntime.reset, [], [GRPORuntime.element('logging_dir')] + [GRPOHyper.element('output_dir')])
+
+                gpu_id_handle = base_tab.element('gpu_id').change(
+                    cls.update_ddp_num,
+                    [base_tab.element('gpu_id'), base_tab.element('use_ddp')], base_tab.element('ddp_num'))
+                use_ddp_handle = base_tab.element('use_ddp').change(
+                    cls.update_ddp_num,
+                    [base_tab.element('gpu_id'), base_tab.element('use_ddp')], base_tab.element('ddp_num'))
+                ddp_num_handle = base_tab.element('ddp_num').change(Rollout.update_num_gen, [
+                    GRPOHyper.element('per_device_train_batch_size'),
+                    GRPOHyper.element('gradient_accumulation_steps'),
+                    cls.element('ddp_num')
+                ], [Rollout.element('num_generations')])
+                ga_handle = GRPOHyper.element('gradient_accumulation_steps').change(Rollout.update_num_gen, [
+                    GRPOHyper.element('per_device_train_batch_size'),
+                    GRPOHyper.element('gradient_accumulation_steps'),
+                    cls.element('ddp_num')
+                ], [Rollout.element('num_generations')])
+                bs_handle = GRPOHyper.element('per_device_train_batch_size').change(Rollout.update_num_gen, [
+                    GRPOHyper.element('per_device_train_batch_size'),
+                    GRPOHyper.element('gradient_accumulation_steps'),
+                    cls.element('ddp_num')
+                ], [Rollout.element('num_generations')])
+
+                base_tab.element('gpu_id').input(fn=None, cancels=[gpu_id_handle, use_ddp_handle])
+                base_tab.element('use_ddp').input(fn=None, cancels=[gpu_id_handle, use_ddp_handle])
+                base_tab.element('per_device_train_batch_size').input(
+                    fn=None, cancels=[ddp_num_handle, ga_handle, bs_handle])
+                base_tab.element('gradient_accumulation_steps').input(
+                    fn=None, cancels=[ddp_num_handle, ga_handle, bs_handle])
+                base_tab.element('ddp_num').input(fn=None, cancels=[ddp_num_handle, ga_handle, bs_handle])
 
     @classmethod
     def prepare_sub_to_filter(cls):

@@ -124,7 +124,13 @@ class Hyper(BaseUI):
                     gr.Slider(elem_id='per_device_eval_batch_size', minimum=1, maximum=256, step=2, scale=20)
                     gr.Textbox(elem_id='learning_rate', value='1e-4', lines=1, scale=20)
                     gr.Textbox(elem_id='num_train_epochs', lines=1, scale=20)
-                    gr.Slider(elem_id='gradient_accumulation_steps', minimum=1, maximum=256, step=2, value=16, scale=20)
+                    gr.Slider(
+                        elem_id='gradient_accumulation_steps',
+                        minimum=1,
+                        maximum=256,
+                        step=2,
+                        value=1 if cls.group == 'llm_grpo' else 16,
+                        scale=20)
                 with gr.Row():
                     gr.Textbox(elem_id='eval_steps', lines=1, value='500', scale=20)
                     gr.Textbox(elem_id='save_steps', value='500', lines=1, scale=20)

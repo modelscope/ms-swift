@@ -104,7 +104,7 @@ class Advanced(BaseUI):
         with gr.TabItem(elem_id='advanced_tab'):
             with gr.Blocks():
                 with gr.Row():
-                    gr.Dropdown(elem_id='tuner_backend', scale=4)
+                    gr.Dropdown(elem_id='tuner_backend', scale=20)
                     gr.Textbox(elem_id='weight_decay', lines=1, scale=20)
                     gr.Textbox(elem_id='logging_steps', lines=1, scale=20)
                     gr.Textbox(elem_id='lr_scheduler_type', lines=1, scale=20)

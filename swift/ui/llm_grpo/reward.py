@@ -23,26 +23,6 @@ class Reward(BaseUI):
                 'en': 'GRPO algorithm reward function'
             }
         },
-        'reward_model_plugin': {
-            'label': {
-                'zh': '奖励模型逻辑',
-                'en': 'Reward model logic'
-            },
-            'info': {
-                'zh': '利用reward_model_plugin自定义奖励模型的处理逻辑',
-                'en': 'Use reward_model_plugin to customize the processing logic of the reward model'
-            }
-        },
-        'external_plugins': {
-            'label': {
-                'zh': '外部插件文件',
-                'en': 'External plugin file'
-            },
-            'info': {
-                'zh': '外部插件文件列表，将被注册进插件模块中',
-                'en': 'List of external plugin files that will be registered into the plugin module'
-            }
-        },
         'reward_weights': {
             'label': {
                 'zh': '奖励函数权重',
@@ -55,8 +35,8 @@ class Reward(BaseUI):
         },
         'reward_param': {
             'label': {
-                'zh': '奖励模型设置',
-                'en': 'Reward settings'
+                'zh': '奖励模型设置(更多参数->GRPO高级参数设置)',
+                'en': 'Reward settings(more params->GRPO advanced settings)'
             },
         }
     }
@@ -72,35 +52,3 @@ class Reward(BaseUI):
                     scale=2,
                     allow_custom_value=True)
                 gr.Textbox(elem_id='reward_weights', lines=1, scale=2)
-                gr.Textbox(elem_id='reward_model_plugin', lines=1, scale=3)
-                gr.Textbox(elem_id='external_plugins', lines=1, scale=3)
-
-    @classmethod
-    def after_build_ui(cls, base_tab: Type['BaseUI']):
-        cls.element('reward_model').change(
-            partial(cls.update_input_models, allow_keys=['reward_model_type'], is_reward_model=True, has_record=False),
-            inputs=[cls.element('reward_model')],
-            outputs=[cls.element('reward_model_type')])
-
-    @classmethod
-    def update_input_models(cls,
-                            models,
-                            allow_keys=None,
-                            has_record=False,
-                            arg_cls=BaseArguments,
-                            is_reward_model=False):
-        if models is None:
-            return gr.update()
-        rm_type_str = ''
-        for model in models:
-            rm_type_str = ' '.join([
-                rm_type_str,
-                cls.update_input_model(
-                    model,
-                    allow_keys=allow_keys,
-                    has_record=has_record,
-                    arg_cls=arg_cls,
-                    is_reward_model=is_reward_model)['value']
-            ])
-
-        return gr.update(value=rm_type_str.strip())
