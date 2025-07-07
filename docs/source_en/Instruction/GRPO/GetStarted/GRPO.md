@@ -273,7 +273,7 @@ Thus, the importance sampling ratio is always 1, and the clip operation does not
 
 The algorithm becomes off-policy (near-on-policy) under the following parameter settings:
 1. num_iterations > 1
-2. steps_per_generation > gradient_accumulation_steps
+2. gradient_accumulation_steps % steps_per_generation != 0
 
 Refer to [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851).
 
