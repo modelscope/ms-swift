@@ -110,7 +110,7 @@ class LLMRollout(BaseUI):
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Accordion(elem_id='llm_rollout', visible=False):
+        with gr.Accordion(elem_id='llm_rollout', open=False, visible=False):
             default_device = 'cpu'
             device_count = get_device_count()
             if device_count > 0:
@@ -119,7 +119,6 @@ class LLMRollout(BaseUI):
                 with gr.Row():
                     gr.Textbox(elem_id='tensor_parallel_size', lines=1, value='1', scale=4)
                     gr.Textbox(elem_id='data_parallel_size', lines=1, value='1', scale=4)
-                    gr.Textbox(elem_id='max_model_len', lines=1, value='', scale=4)
                     gr.Slider(elem_id='gpu_memory_utilization', minimum=0.0, maximum=1.0, step=0.05, value=0.9, scale=4)
                 with gr.Row(equal_height=True):
                     gr.Dropdown(

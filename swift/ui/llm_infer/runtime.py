@@ -138,7 +138,7 @@ class Runtime(BaseUI):
         cls.log_event[log_file] = False
         offset = 0
         latest_data = ''
-        lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
+        lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 100)))
         try:
             with open(log_file, 'r', encoding='utf-8') as input:
                 input.seek(offset)

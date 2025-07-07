@@ -75,6 +75,16 @@ class Optimizer(BaseUI):
                 'en': 'Muon Settings'
             },
         },
+        'use_muon': {
+            'label': {
+                'zh': '使用Muon',
+                'en': 'Use Muon'
+            },
+            'info': {
+                'zh': '使用Muon优化器，将在命令行参数中设置`--optimizer muon`',
+                'en': 'Using the Muon optimizer, set `--optimizer muon` in the command line'
+            }
+        },
         'multimodal_tab': {
             'label': {
                 'zh': '多模态参数设置',
@@ -93,16 +103,6 @@ class Optimizer(BaseUI):
                 'en': 'Learning rate of aligner'
             },
         },
-        'optimizer': {
-            'label': {
-                'zh': '优化器',
-                'en': 'Optimizer'
-            },
-            'info': {
-                'zh': 'Plugin中自定义优化器名称',
-                'en': 'Custom Optimizer name in plugin'
-            }
-        },
         'optimizer_params': {
             'label': {
                 'zh': '优化器参数',
@@ -114,17 +114,13 @@ class Optimizer(BaseUI):
     tabs_to_filter = {
         'galore': ['use_galore', 'galore_with_embedding', 'galore_rank', 'galore_update_proj_gap'],
         'lorap': ['lorap_lr_ratio'],
-        'multimodal': ['vit_lr', 'aligner_lr']
+        'multimodal': ['vit_lr', 'aligner_lr'],
+        'muon': ['use_muon']
     }
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='optimizer_params', open=False):
-            gr.Dropdown(
-                elem_id='optimizer',
-                choices=['galore', 'lorap', 'muon', 'multimodal'],
-                value='',
-                allow_custom_value=True)
             with gr.Tabs():
                 with gr.TabItem(elem_id='galore_tab'):
                     with gr.Row():
@@ -139,3 +135,6 @@ class Optimizer(BaseUI):
                     with gr.Row():
                         gr.Textbox(elem_id='vit_lr', lines=1, scale=20)
                         gr.Textbox(elem_id='aligner_lr', lines=1, scale=20)
+                with gr.TabItem(elem_id='muon_tab'):
+                    with gr.Row():
+                        gr.Checkbox(elem_id='use_muon', scale=4)
