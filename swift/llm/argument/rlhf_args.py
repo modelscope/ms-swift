@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
 from swift.trainers.arguments import GRPOArgumentsMixin, RLHFArgumentsMixin
-from swift.utils import get_logger, is_master, set_default_ddp_config
+from swift.utils import get_logger, is_master, is_mp, set_default_ddp_config
 from .train_args import TrainArguments
 
 logger = get_logger()
@@ -155,7 +155,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
             if self.use_vllm:
-                os.environ['USE_FAST_INFERENCE'] = '1'
                 set_default_ddp_config()
             if self.async_generate or not self.use_vllm:
                 self.sleep_level = 0
@@ -255,7 +254,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         trl_version = version.parse(trl.__version__)
         assert trl_version >= version.parse('0.17'), ('Your current version of `trl` is outdated. '
                                                       'Please update it by running: pip install -U trl')
-
+        if is_mp() and self.use_vllm:
+            raise ValueError('GRPO with vLLM is not compatible with `device_map`. '
+                             'Please set NPROC_PER_NODE equal to num_processes.')
         if self.use_liger_kernel:
             assert trl_version >= version.parse('0.18')
             if self.delta is not None:
