@@ -56,14 +56,14 @@ class InternvlTemplate(Template):
         encoded['pixel_values'] = pixel_values
         return encoded
 
-    def compute_loss_context(self, model, inputs):
+    def forward_context(self, model, inputs):
         model_name = model.language_model.__class__.__name__.lower()
         if self._packing and 'internlm2' in model_name:
             position_ids = inputs['position_ids']
             modeling_module = model.language_model.model.layers[0].attention.__class__
             return self._patch_flash_attention_forward(modeling_module, position_ids, use_new_func=True)
         else:
-            return super().compute_loss_context(model, inputs)
+            return super().forward_context(model, inputs)
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         embedding = model.get_input_embeddings()

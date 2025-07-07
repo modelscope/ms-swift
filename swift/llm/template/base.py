@@ -309,7 +309,7 @@ class Template(ProcessorMixin):
             added_tokens_len += token_len - 1
         return input_ids, labels
 
-    def compute_loss_context(self, model, inputs):
+    def forward_context(self, model, inputs):
         return nullcontext()
 
     @staticmethod
@@ -320,6 +320,7 @@ class Template(ProcessorMixin):
             return model
 
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        margin = inputs.margin
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
         assert chosen_inputs.rejected_response is not None, f'inputs: {inputs}'
         rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
@@ -331,6 +332,8 @@ class Template(ProcessorMixin):
             data = locals()[f'{prefix}_encoded']
             for k, v in data.items():
                 encoded[f'{prefix}_{k}'] = v
+        if margin:
+            encoded['margin'] = float(margin)
         return encoded
 
     def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -498,6 +501,8 @@ class Template(ProcessorMixin):
                     lengths += value
         if self.is_training:
             encoded['length'] = max(lengths)
+        else:
+            encoded.pop('length', None)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         if not self.remove_unused_columns:
@@ -1391,7 +1396,14 @@ class Template(ProcessorMixin):
         new_batch = []
         for prefix in [chosen_prefix, rejected_prefix]:
             new_batch += self._fetch_inputs_startswith(batch, prefix)
-        return self._data_collator(new_batch, padding_to=padding_to)
+        res = self._data_collator(new_batch, padding_to=padding_to)
+
+        # reward modeling
+        margin = [b['margin'] for b in batch if b.get('margin') is not None]
+        if margin:
+            res['margin'] = torch.tensor(margin, dtype=torch.float)
+
+        return res
 
     def _kto_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         new_batch = self._fetch_inputs_startswith(batch, 'chosen_')
@@ -1532,12 +1544,14 @@ class Template(ProcessorMixin):
             inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
             input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
             channel = [b['channel'] for b in batch if b.get('channel') is not None]
+
             if inputs_embeds:
                 res['inputs_embeds'] = inputs_embeds
             if input_ids:
                 res['input_ids'] = input_ids
             if channel:
                 res['channel'] = channel
+
             for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
                 val = [b[key] for b in batch if b.get(key) is not None]
                 if val:
