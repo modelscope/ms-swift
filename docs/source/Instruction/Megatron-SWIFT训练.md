@@ -46,7 +46,8 @@ swift export \
     --model Qwen/Qwen2.5-7B-Instruct \
     --to_mcore true \
     --torch_dtype bfloat16 \
-    --output_dir Qwen2.5-7B-Instruct-mcore
+    --output_dir Qwen2.5-7B-Instruct-mcore \
+    --test_convert_precision true
 ```
 
 然后，使用以下脚本进行训练，训练所需显存资源为2*80GiB：
@@ -94,7 +95,8 @@ swift export \
     --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
+    --test_convert_precision true
 ```
 
 我们对生成的HF格式权重进行推理：
