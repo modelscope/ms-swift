@@ -46,8 +46,10 @@ class BaseMegatronTrainer(ABC):
                 else:
                     raise ValueError(
                         'You are using a streaming training dataset. Please explicitly specify `--train_iters`.')
-            if val_dataset is not None and args.eval_iters < 0:
-                if hasattr(val_dataset, '__len__'):
+            if args.eval_iters < 0:
+                if val_dataset is None:
+                    args.eval_iters = 0
+                elif hasattr(val_dataset, '__len__'):
                     dataset_sample = len(val_dataset) // step_batch_size * step_batch_size
                     args.eval_iters = max(dataset_sample // args.global_batch_size, 1)
                 else:
