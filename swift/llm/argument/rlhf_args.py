@@ -308,25 +308,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if self.rlhf_type != 'grpo':
             return
 
-        if self.tensor_parallel_size is not None:
-            logger.warning(
-                "The parameter 'tensor_parallel_size' has been deprecated and will be removed in version 3.6. "
-                "It is recommended to use 'vllm_tensor_parallel_size' instead.")
-            self.vllm_tensor_parallel_size = self.tensor_parallel_size
-
-        if self.vllm_device is not None:
-            logger.warning("The parameter 'vllm_device' has been deprecated and will be removed in version 3.6. ")
-
-        if self.vllm_max_num_seqs is not None:
-            logger.warning("The parameter 'vllm_max_num_seqs' is automatically set, "
-                           'and has been deprecated and will be removed in version 3.6. ')
-
-        if self.num_infer_workers is not None:
-            logger.warning(
-                "The parameter 'num_infer_workers' has been deprecated and will be removed in version 3.6. "
-                'If you wish to use colocate mode, please use `vllm_mode colocate` instead. '
-                'If you wish to use async mode, please use `vllm_mode server` and external vLLM server instead.')
-
         if self.multi_turn_func:
             logger.warning("The parameter 'multi_turn_func' has been deprecated and will be removed in version 3.7. "
                            "Please use 'multi_turn_scheduler' instead")
