@@ -368,9 +368,6 @@ class Runtime(BaseUI):
     def after_build_ui(cls, base_tab: Type['BaseUI']):
         cls.element('show_running_cmd').click(Runtime.show_train_sh, cls.element('running_cmd'),
                                               [cls.element('show_sh')] + [cls.element('cmd_sh')])
-        change_running_cmd_handle = cls.element('running_cmd').change(
-            Runtime.show_train_sh, cls.element('running_cmd'), [cls.element('show_sh')] + [cls.element('cmd_sh')])
-        cls.element('running_cmd').input(fn=None, cancels=[change_running_cmd_handle])
         cls.element('save_cmd_as_sh').click(cls.save_cmd, cls.element('running_cmd'), [])
         cls.element('close_cmd_show').click(Runtime.close_cmd_show, [], [cls.element('show_sh')])
 

@@ -302,10 +302,10 @@ class LLMTrain(BaseUI):
                     cls.element('train_record'),
                 ])
 
-                gpu_id_handle = base_tab.element('gpu_id').change(
+                base_tab.element('gpu_id').change(
                     cls.update_ddp_num,
                     [base_tab.element('gpu_id'), base_tab.element('use_ddp')], base_tab.element('ddp_num'))
-                use_ddp_handle = base_tab.element('use_ddp').change(
+                base_tab.element('use_ddp').change(
                     cls.update_ddp_num,
                     [base_tab.element('gpu_id'), base_tab.element('use_ddp')], base_tab.element('ddp_num'))
                 base_tab.element('running_tasks').change(
@@ -316,9 +316,6 @@ class LLMTrain(BaseUI):
                     [Runtime.element('running_tasks')],
                     [Runtime.element('running_tasks')] + [Runtime.element('log')] + Runtime.all_plots,
                 ).then(Runtime.reset, [], [Runtime.element('logging_dir')] + [Hyper.element('output_dir')])
-
-                base_tab.element('gpu_id').input(fn=None, cancels=[gpu_id_handle, use_ddp_handle])
-                base_tab.element('use_ddp').input(fn=None, cancels=[gpu_id_handle, use_ddp_handle])
 
     @classmethod
     def update_runtime(cls):

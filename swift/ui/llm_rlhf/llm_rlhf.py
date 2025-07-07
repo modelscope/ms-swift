@@ -281,10 +281,10 @@ class LLMRLHF(LLMTrain):
                     with gr.Row():
                         gr.Textbox(elem_id='more_params', lines=4, scale=20)
 
-                gpu_id_handle = base_tab.element('gpu_id').change(
+                base_tab.element('gpu_id').change(
                     cls.update_ddp_num,
                     [base_tab.element('gpu_id'), base_tab.element('use_ddp')], base_tab.element('ddp_num'))
-                use_ddp_handle = base_tab.element('use_ddp').change(
+                base_tab.element('use_ddp').change(
                     cls.update_ddp_num,
                     [base_tab.element('gpu_id'), base_tab.element('use_ddp')], base_tab.element('ddp_num'))
                 cls.element('train_type').change(
@@ -313,9 +313,6 @@ class LLMRLHF(LLMTrain):
                     [RLHFRuntime.element('running_tasks')],
                     [RLHFRuntime.element('running_tasks')] + [RLHFRuntime.element('log')] + RLHFRuntime.all_plots,
                 ).then(RLHFRuntime.reset, [], [RLHFRuntime.element('logging_dir')] + [RLHFHyper.element('output_dir')])
-
-                base_tab.element('gpu_id').input(fn=None, cancels=[gpu_id_handle, use_ddp_handle])
-                base_tab.element('use_ddp').input(fn=None, cancels=[gpu_id_handle, use_ddp_handle])
 
     @classmethod
     def prepare_sub_to_filter(cls):
