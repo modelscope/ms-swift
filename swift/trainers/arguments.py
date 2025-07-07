@@ -216,7 +216,7 @@ class GRPOArgumentsMixin:
     scale_rewards: bool = True
 
     # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
-    token_entropy_percentile_threshold: Optional[float] = None
+    token_entropy_percentile_threshold: float = 0.0
 
     wandb_log_unique_prompts: Optional[bool] = None
     generation_batch_size: Optional[int] = None

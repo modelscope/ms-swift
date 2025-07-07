@@ -265,7 +265,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 raise ValueError('Liger loss does not support sequence parallel yet.')
             if self.padding_free:
                 raise ValueError('Liger loss does not support padding free yet.')
-
+            if self.token_entropy_percentile_threshold > 0:
+                raise ValueError('Liger loss does not support entropy mask yet.')
             from trl.import_utils import is_liger_kernel_available
             assert is_liger_kernel_available(), (
                 'Please install/update liger-kernel by running: pip install -U liger-kernel')
