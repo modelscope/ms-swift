@@ -1048,7 +1048,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             with torch.no_grad():
                 batch_encoded_inputs['old_per_token_logps'] = (self._get_per_token_logps_and_entropies(
-                    self.model, batch_encoded_inputs) if self.old_policy() else None)['logps']
+                    self.model, batch_encoded_inputs)['logps'] if self.old_policy() else None)
 
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
