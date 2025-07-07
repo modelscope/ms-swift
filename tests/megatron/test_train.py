@@ -18,6 +18,7 @@ def test_sft():
             model_author='swift',
             model_name='swift-robot',
             eval_iters=5,
+            sequence_parallel=True,
             finetune=True))
 
 
@@ -35,5 +36,5 @@ def test_pt():
 
 
 if __name__ == '__main__':
-    # test_sft()
-    test_pt()
+    test_sft()
+    # test_pt()
