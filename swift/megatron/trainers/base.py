@@ -17,9 +17,9 @@ from megatron.core.utils import StragglerDetector
 from megatron.training import ft_integration, get_args, get_timers, is_last_rank, pretrain, print_rank_0, training
 from packaging import version
 
-from swift.utils import activate_parameters, freeze_parameters, get_logger, get_model_parameter_info
+from swift.utils import get_logger
 from ..utils import prepare_mcore_model
-from .utils import get_modules_to_save, get_swift_datasets_provider, get_target_modules
+from .utils import get_swift_datasets_provider
 
 logger = get_logger()
 

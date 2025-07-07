@@ -2,11 +2,48 @@
 
 import torch.distributed as dist
 from megatron.core import mpu
+from megatron.core.extensions.transformer_engine import TELayerNormColumnParallelLinear, TELinear
+from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.training import get_args
 
-from swift.utils import activate_parameters, freeze_parameters, get_logger, get_model_parameter_info
+from swift.utils import activate_parameters, find_layers, freeze_parameters, get_logger, get_model_parameter_info
 
 logger = get_logger()
+
+
+def find_all_linears(model):
+
+    def _cond(name, module):
+        if isinstance(module, (TELinear, TELayerNormColumnParallelLinear)):
+            return True
+        return False
+
+    return find_layers(model, _cond)
+
+
+def find_embedding(model):
+    return find_layers(model, lambda name, module: isinstance(module, LanguageModelEmbedding))
+
+
+def get_target_modules(args, model):
+    if isinstance(args.target_modules, str):
+        return args.target_modules
+    target_modules = args.target_modules.copy()
+    if 'all-linear' in target_modules:
+        target_modules.remove('all-linear')
+        target_modules += find_all_linears(model)
+    if 'all-embedding' in target_modules:
+        target_modules.remove('all-embedding')
+        target_modules += find_embedding(model)
+    return target_modules
+
+
+def get_modules_to_save(args, model, task_type=None):
+    modules_to_save = args.modules_to_save.copy()
+    if 'all-embedding' in args.modules_to_save:
+        modules_to_save.remove('all-embedding')
+        modules_to_save += find_embedding(model)
+    return modules_to_save
 
 
 def prepare_mcore_model(model) -> None:
