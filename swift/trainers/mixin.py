@@ -117,6 +117,8 @@ class SwiftMixin:
             sequence_parallel.prepare_trainer(self)
         self._fix_gradient_checkpointing()
         update_generation_config_eos_token(self.model.generation_config, self.template)
+        if getattr(self.model, 'origin_generation_config', None):
+            self.model.origin_generation_config.eos_token_id = self.model.generation_config.eos_token_id
 
     def get_use_logits_to_keep(self, default_value: bool = True):
         use_logits_to_keep = self.args.use_logits_to_keep
