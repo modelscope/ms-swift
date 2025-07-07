@@ -201,6 +201,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.epsilon_low = args.epsilon
         self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
 
+        self.token_entropy_percentile_threshold = args.token_entropy_percentile_threshold
+
         self.use_liger_loss = self.args.use_liger_kernel
         if self.use_liger_loss:
             from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
@@ -1134,6 +1136,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             completion_mask = completion_mask * (~truncated_mask)
 
         per_token_logps = self._get_per_token_logps(model, inputs)
+
+        if self.token_entropy_percentile_threshold > 0.0:
+            logps_and_entropies = self._get_per_token_logps_and_entropies(
+                model, inputs, compute_entropy=True
+            )
+            per_token_logps = logps_and_entropies["logps"]
+            entropies = logps_and_entropies["entropies"]
+            # compute the entropy threshold across all tokens in the batch
+
+            entropy_threshold = torch.quantile(entropies.flatten(), self.token_entropy_percentile_threshold)
+            entropy_mask = entropies >= entropy_threshold
+        else:
+            per_token_logps = self._get_per_token_logps_and_entropies(model, inputs)["logps"]
+            entropy_mask = None
 
         # Compute the KL divergence between the model and the reference model
         if self.beta != 0.0:
