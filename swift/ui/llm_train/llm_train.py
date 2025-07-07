@@ -281,7 +281,7 @@ class LLMTrain(BaseUI):
                 Tuner.build_ui(base_tab)
                 Optimizer.build_ui(base_tab)
                 Task.build_ui(base_tab)
-                with gr.Accordion(elem_id='extra_params', open=True):
+                with gr.Accordion(elem_id='extra_params', open=False):
                     with gr.Tabs():
                         Advanced.build_ui(base_tab)
                         Quantization.build_ui(base_tab)

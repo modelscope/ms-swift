@@ -201,7 +201,7 @@ class Rollout(BaseUI):
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Accordion(elem_id='rollout_param', open=True):
+        with gr.Accordion(elem_id='rollout_param', open=False):
             with gr.Row():
                 gr.Slider(elem_id='temperature', minimum=0.0, maximum=10, step=0.1, value=1.0)
                 gr.Slider(elem_id='top_k', minimum=1, maximum=100, step=5, value=80)
