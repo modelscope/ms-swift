@@ -112,7 +112,8 @@ Refer to the [generation_config](https://huggingface.co/docs/transformers/main_c
 - top_p: The top_p parameter, defaults to None. It is read from generation_config.json.
 - repetition_penalty: The repetition penalty. Defaults to None and is read from generation_config.json.
 - num_beams: The number of beams reserved for parallel beam search, default is 1.
-- 🔥stream: Stream output, default is `False`.
+- 🔥stream: Streaming output. Default is `None`, which means it is set to True when using the interactive interface and False during batch inference on datasets.
+  - For "ms-swift<3.6", the default value of stream is False.
 - stop_words: Additional stop words beyond eos_token, default is`[]`.
   - Note: eos_token will be removed in the output response, whereas additional stop words will be retained in the output.
 - logprobs: Whether to output logprobs, default is False.
@@ -535,6 +536,8 @@ Soft overlong reward parameters:
 - **swanlab_project**: SwanLab's project, which needs to be created in advance on the page: [https://swanlab.cn/space/~](https://swanlab.cn/space/~)
 - **swanlab_workspace**: Defaults to `None`, will use the username associated with the API key
 - **swanlab_exp_name**: Experiment name, can be left empty. If empty, the value of `--output_dir` will be used by default
+- swanlab_lark_webhook_url: Defaults to None. SwanLab's Lark webhook URL, used for pushing experiment results to Lark.
+- swanlab_lark_secret: Defaults to None. SwanLab's Lark secret, used for pushing experiment results to Lark.
 - **swanlab_mode**: Optional values are `cloud` and `local`, representing cloud mode or local mode
 
 
