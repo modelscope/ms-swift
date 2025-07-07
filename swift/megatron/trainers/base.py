@@ -105,6 +105,9 @@ class BaseMegatronTrainer(ABC):
 
     @contextmanager
     def _patch_load_state_dict(self):
+        if self.args.train_type == 'full':
+            yield
+            return
         from megatron.training import checkpointing
         origin__load_base_checkpoint = checkpointing._load_base_checkpoint
 
@@ -330,7 +333,9 @@ class BaseMegatronTrainer(ABC):
 
     @contextmanager
     def _patch_generate_state_dict(self):
-
+        if self.args.train_type == 'full':
+            yield
+            return
         from megatron.training import checkpointing
         _origin_generate_state_dict = checkpointing.generate_state_dict
 
