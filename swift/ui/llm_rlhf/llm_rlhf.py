@@ -160,16 +160,6 @@ class LLMRLHF(LLMTrain):
                 'en': 'The data parallel size of DDP'
             }
         },
-        'tuner_backend': {
-            'label': {
-                'zh': 'Tuner backend',
-                'en': 'Tuner backend'
-            },
-            'info': {
-                'zh': 'Tuner实现框架',
-                'en': 'The tuner backend'
-            }
-        },
         'use_liger_kernel': {
             'label': {
                 'zh': '使用Liger kernel',
@@ -253,11 +243,16 @@ class LLMRLHF(LLMTrain):
                     with gr.Row():
                         gr.Dropdown(elem_id='rlhf_type', scale=2)
                         gr.Dropdown(elem_id='train_type', scale=2, choices=list(get_supported_tuners()))
-                        gr.Dropdown(elem_id='tuner_backend', scale=2)
                         gr.Textbox(elem_id='seed', scale=2)
                         gr.Dropdown(elem_id='torch_dtype', scale=2)
+                        gr.Checkbox(elem_id='use_liger_kernel', scale=2)
                     with gr.Row():
-                        gr.Checkbox(elem_id='use_liger_kernel', scale=4)
+                        gr.Dropdown(
+                            elem_id='gpu_id',
+                            multiselect=True,
+                            choices=[str(i) for i in range(device_count)] + ['cpu'],
+                            value=default_device,
+                            scale=4)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                         gr.Textbox(elem_id='ddp_num', value='1', scale=4)
                         gr.Dropdown(
@@ -270,13 +265,7 @@ class LLMRLHF(LLMTrain):
                 RLHFHyper.build_ui(base_tab)
                 RLHFRuntime.build_ui(base_tab)
                 with gr.Row(equal_height=True):
-                    gr.Dropdown(
-                        elem_id='gpu_id',
-                        multiselect=True,
-                        choices=[str(i) for i in range(device_count)] + ['cpu'],
-                        value=default_device,
-                        scale=8)
-                    gr.Textbox(elem_id='envs', scale=8)
+                    gr.Textbox(elem_id='envs', scale=12)
                     gr.Checkbox(elem_id='dry_run', value=False, scale=4)
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 

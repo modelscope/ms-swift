@@ -74,8 +74,8 @@ class RLHFRuntime(Runtime):
                 'en': 'Running Tasks'
             },
             'info': {
-                'zh': '运行中的任务（所有的swift rlhf命令）',
-                'en': 'All running tasks(started by swift rlhf)'
+                'zh': '运行中的任务（除`--rlhf_type grpo`之外的所有`swift rlhf`命令）',
+                'en': 'All running tasks(started by `swift rlhf` except `--rlhf_type grpo`)'
             }
         },
         'show_running_cmd': {
