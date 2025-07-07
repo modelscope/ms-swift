@@ -95,6 +95,38 @@ class GrpoAdvanced(BaseUI):
                 'en': 'Skip overlong truncated samples and exclude them from loss calculation'
             }
         },
+        'beta': {
+            'label': {
+                'zh': 'KL正则项系数',
+                'en': 'KL regularization coefficient'
+            }
+        },
+        'vllm_enable_prefix_caching': {
+            'label': {
+                'zh': '开启前缀缓存',
+                'en': 'Enable prefix cache'
+            },
+            'info': {
+                'zh': 'Colocate模式中vLLM透传参数',
+                'en': 'vLLM transparent transmission parameters in colocate mode'
+            }
+        },
+        'log_completions': {
+            'label': {
+                'zh': '记录生成内容',
+                'en': 'Record generated content'
+            },
+            'info': {
+                'zh': '是否记录训练中的模型生成内容',
+                'en': 'Whether to record the model generation content during training'
+            }
+        },
+        'num_iterations': {
+            'label': {
+                'zh': '每个批次更新次数',
+                'en': 'Num of updates per batch'
+            }
+        },
         'reward_model': {
             'label': {
                 'zh': '奖励模型id或路径',
@@ -113,6 +145,26 @@ class GrpoAdvanced(BaseUI):
             'info': {
                 'zh': 'SWIFT已支持的模型类型',
                 'en': 'Base model type supported by SWIFT'
+            }
+        },
+        'reward_model_plugin': {
+            'label': {
+                'zh': '奖励模型逻辑',
+                'en': 'Reward model logic'
+            },
+            'info': {
+                'zh': '利用reward_model_plugin自定义奖励模型的处理逻辑',
+                'en': 'Use reward_model_plugin to customize the processing logic of the reward model'
+            }
+        },
+        'external_plugins': {
+            'label': {
+                'zh': '外部插件文件',
+                'en': 'External plugin file'
+            },
+            'info': {
+                'zh': '外部插件文件列表，将被注册进插件模块中',
+                'en': 'List of external plugin files that will be registered into the plugin module'
             }
         },
         'ref_model_type': {
@@ -142,41 +194,50 @@ class GrpoAdvanced(BaseUI):
         with gr.TabItem(elem_id='grpo_advanced_tab'):
             with gr.Blocks():
                 with gr.Row():
-                    gr.Dropdown(elem_id='loss_type', choices=['grpo', 'bnpo', 'dr_grpo'], value='grpo', scale=20)
-                    gr.Textbox(elem_id='epsilon', value=0.2, lines=1, scale=20)
-                    gr.Textbox(elem_id='epsilon_high', value=None, lines=1, scale=20)
-                    gr.Textbox(elem_id='move_model_batches', lines=1, scale=20)
+                    gr.Dropdown(elem_id='loss_type', choices=['grpo', 'bnpo', 'dr_grpo'], value='grpo', scale=4)
+                    gr.Textbox(elem_id='epsilon', value=0.2, lines=1, scale=4)
+                    gr.Textbox(elem_id='epsilon_high', value=None, lines=1, scale=4)
+                    gr.Textbox(elem_id='beta', value=0.04, lines=1, scale=4)
+                    gr.Textbox(elem_id='num_iterations', lines=1, scale=4)
                 with gr.Row():
-                    gr.Textbox(elem_id='multi_turn_scheduler', lines=1, scale=20)
-                    gr.Textbox(elem_id='max_turns', lines=1, scale=20)
-                    gr.Checkbox(elem_id='dynamic_sample', scale=20)
-                    gr.Slider(elem_id='max_resample_times', minimum=1, maximum=16, step=1, value=3, scale=20)
-                    gr.Checkbox(elem_id='overlong_filter', scale=20)
+                    gr.Textbox(elem_id='move_model_batches', lines=1, scale=4)
+                    gr.Checkbox(elem_id='dynamic_sample', scale=4)
+                    gr.Slider(elem_id='max_resample_times', minimum=1, maximum=16, step=1, value=3, scale=4)
+                    gr.Checkbox(elem_id='overlong_filter', scale=4)
+                    gr.Checkbox(elem_id='vllm_enable_prefix_caching', scale=4)
+                with gr.Row():
+                    gr.Checkbox(elem_id='log_completions', scale=4)
+                    gr.Textbox(elem_id='multi_turn_scheduler', lines=1, scale=4)
+                    gr.Textbox(elem_id='max_turns', lines=1, scale=4)
+                    gr.Textbox(elem_id='external_plugins', lines=1, scale=8)
 
             with gr.Row():
-                gr.Dropdown(elem_id='reward_model', multiselect=True, choices=get_all_models(), scale=20)
+                gr.Textbox(elem_id='reward_model_plugin', lines=1, scale=8)
+                gr.Dropdown(elem_id='reward_model', multiselect=True, choices=get_all_models(), scale=8)
                 gr.Dropdown(
                     elem_id='reward_model_type',
                     multiselect=True,
                     choices=ModelType.get_model_name_list(),
                     allow_custom_value=True,
-                    scale=20)
+                    scale=4)
             with gr.Blocks():
                 with gr.Row():
                     gr.Dropdown(
-                        elem_id='ref_model', scale=20, value=None, choices=get_all_models(), allow_custom_value=True)
-                    gr.Dropdown(elem_id='ref_model_type', choices=ModelType.get_model_name_list(), value=None, scale=20)
+                        elem_id='ref_model', scale=12, value=None, choices=get_all_models(), allow_custom_value=True)
+                    gr.Dropdown(elem_id='ref_model_type', choices=ModelType.get_model_name_list(), value=None, scale=8)
 
     @classmethod
     def after_build_ui(cls, base_tab: Type['BaseUI']):
-        cls.element('ref_model').change(
+        ref_model_handle = cls.element('ref_model').change(
             partial(cls.update_input_model, allow_keys=['ref_model_type'], has_record=False, is_ref_model=True),
             inputs=[cls.element('ref_model')],
             outputs=[cls.element('ref_model_type')])
-        cls.element('reward_model').change(
+        reward_model_handle = cls.element('reward_model').change(
             partial(cls.update_input_models, allow_keys=['reward_model_type'], is_reward_model=True, has_record=False),
             inputs=[cls.element('reward_model')],
             outputs=[cls.element('reward_model_type')])
+        cls.element('ref_model').input(fn=None, cancels=[ref_model_handle])
+        cls.element('reward_model').input(fn=None, cancels=[reward_model_handle])
 
     @classmethod
     def update_input_models(cls,

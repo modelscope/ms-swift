@@ -116,8 +116,8 @@ class GRPORuntime(Runtime):
                 'en': 'Running Tasks'
             },
             'info': {
-                'zh': '运行中的任务（所有的swift rlhf命令）',
-                'en': 'All running tasks(started by swift rlhf)'
+                'zh': '运行中的任务（所有的`swift rlhf --rlhf_type grpo`命令）',
+                'en': 'All running tasks(started by `swift rlhf --rlhf_type grpo`)'
             }
         },
         'refresh_tasks': {

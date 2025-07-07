@@ -1,10 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import collections
 import os
+import re
 import sys
 import time
 import webbrowser
 from datetime import datetime
+from functools import partial
 from typing import Dict, List, Tuple, Type
 
 import gradio as gr
@@ -357,17 +359,20 @@ class Runtime(BaseUI):
                 )
 
                 base_tab.element('refresh_tasks').click(
-                    Runtime.refresh_tasks,
+                    partial(Runtime.refresh_tasks, group=cls.group),
                     [base_tab.element('running_tasks')],
                     [base_tab.element('running_tasks')],
                 )
 
     @classmethod
     def after_build_ui(cls, base_tab: Type['BaseUI']):
-        cls.element('show_running_cmd').click(cls.show_train_sh, cls.element('running_cmd'),
+        cls.element('show_running_cmd').click(Runtime.show_train_sh, cls.element('running_cmd'),
                                               [cls.element('show_sh')] + [cls.element('cmd_sh')])
+        change_running_cmd_handle = cls.element('running_cmd').change(
+            Runtime.show_train_sh, cls.element('running_cmd'), [cls.element('show_sh')] + [cls.element('cmd_sh')])
+        cls.element('running_cmd').input(fn=None, cancels=[change_running_cmd_handle])
         cls.element('save_cmd_as_sh').click(cls.save_cmd, cls.element('running_cmd'), [])
-        cls.element('close_cmd_show').click(cls.close_cmd_show, [], [cls.element('show_sh')])
+        cls.element('close_cmd_show').click(Runtime.close_cmd_show, [], [cls.element('show_sh')])
 
     @classmethod
     def get_plot(cls, task):
@@ -494,11 +499,11 @@ class Runtime(BaseUI):
             Runtime.handlers.pop(logging_dir)
 
     @staticmethod
-    def refresh_tasks(running_task=None):
+    def refresh_tasks(running_task=None, group=None):
         output_dir = running_task if not running_task or 'pid:' not in running_task else None
         process_name = 'swift'
         negative_names = ['swift.exe', 'swift-script.py']
-        cmd_name = ['pt', 'sft', 'rlhf']
+        cmd_name = ['pt', 'sft'] if group == 'llm_train' else ['rlhf']
         process = []
         selected = None
         for proc in psutil.process_iter():
@@ -512,6 +517,10 @@ class Runtime(BaseUI):
                     negative_name in cmdline for negative_name in negative_names  # noqa
                     for cmdline in cmdlines  # noqa
             ]) and any([cmdline in cmd_name for cmdline in cmdlines]):  # noqa
+                if any([group == 'llm_rlhf' and 'grpo' in cmdline for cmdline in cmdlines]):
+                    continue
+                if group == 'llm_grpo' and all(['grpo' not in cmdline for cmdline in cmdlines]):
+                    continue
                 process.append(Runtime.construct_running_task(proc))
                 if output_dir is not None and any(  # noqa
                     [output_dir == cmdline for cmdline in cmdlines]):  # noqa
@@ -600,6 +609,12 @@ class Runtime(BaseUI):
                     arg = all_args[e.elem_id].split(' ')
                 else:
                     arg = all_args[e.elem_id]
+                    if isinstance(e, gr.Slider) and isinstance(arg, str) and re.fullmatch(base_tab.int_regex, arg):
+                        arg = int(arg)
+                    elif isinstance(e, gr.Slider) and isinstance(arg, str) and re.fullmatch(base_tab.float_regex, arg):
+                        arg = float(arg)
+                    elif isinstance(e, gr.Checkbox) and isinstance(arg, str) and re.fullmatch(base_tab.bool_regex, arg):
+                        arg = True if arg.lower() == 'true' else False
                 ret.append(gr.update(value=arg))
             else:
                 ret.append(gr.update())
@@ -668,22 +683,22 @@ class Runtime(BaseUI):
     @classmethod
     def save_cmd(cls, cmd):
         if len(cmd) > 0:
-            cmd_sh, output_dir = cls.cmd_to_sh_format(cmd)
+            cmd_sh, output_dir = Runtime.cmd_to_sh_format(cmd)
             os.makedirs(output_dir, exist_ok=True)
             sh_file_path = os.path.join(output_dir, 'train.sh')
             gr.Info(cls.locale('save_cmd_alert', cls.lang)['value'].format(sh_file_path))
             with open(sh_file_path, 'w', encoding='utf-8') as f:
                 f.write(cmd_sh)
 
-    @classmethod
-    def show_train_sh(cls, cmd):
+    @staticmethod
+    def show_train_sh(cmd):
         if len(cmd) == 0:
             return gr.update(visible=False, open=False), None
-        cmd_sh, _ = cls.cmd_to_sh_format(cmd)
+        cmd_sh, _ = Runtime.cmd_to_sh_format(cmd)
         return gr.update(visible=True, open=True), cmd_sh
 
-    @classmethod
-    def cmd_to_sh_format(cls, cmd):
+    @staticmethod
+    def cmd_to_sh_format(cmd):
         cmd_sh = ''
         params = cmd.split('--')
         env_params = params[0].split('nohup')[0].strip()
@@ -696,6 +711,6 @@ class Runtime(BaseUI):
             cmd_sh += ('--' + param.strip() + ' \\\n')
         return cmd_sh, output_dir
 
-    @classmethod
-    def close_cmd_show(cls):
+    @staticmethod
+    def close_cmd_show():
         return gr.update(visible=False)
