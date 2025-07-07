@@ -180,7 +180,8 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
 
     def _init_stream(self):
         self.eval_human = not (self.dataset and self.split_dataset_ratio > 0 or self.val_dataset)
-
+        if self.stream is None:
+            self.stream = self.eval_human
         if self.stream and self.num_beams != 1:
             self.stream = False
             logger.info('Setting args.stream: False')
@@ -199,7 +200,6 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
         VllmArguments.__post_init__(self)
         self._init_result_path('infer_result')
         self._init_eval_human()
-        self._init_stream()
         self._init_ddp()
 
     def _init_eval_human(self):

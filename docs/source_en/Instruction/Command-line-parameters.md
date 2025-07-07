@@ -112,7 +112,8 @@ Refer to the [generation_config](https://huggingface.co/docs/transformers/main_c
 - top_p: The top_p parameter, defaults to None. It is read from generation_config.json.
 - repetition_penalty: The repetition penalty. Defaults to None and is read from generation_config.json.
 - num_beams: The number of beams reserved for parallel beam search, default is 1.
-- 🔥stream: Stream output, default is `False`.
+- 🔥stream: Streaming output. Default is `None`, which means it is set to True when using the interactive interface and False during batch inference on datasets.
+  - For "ms-swift<3.6", the default value of stream is False.
 - stop_words: Additional stop words beyond eos_token, default is`[]`.
   - Note: eos_token will be removed in the output response, whereas additional stop words will be retained in the output.
 - logprobs: Whether to output logprobs, default is False.

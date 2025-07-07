@@ -33,6 +33,7 @@ from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
 from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
+from swift.llm.utils import update_generation_config_eos_token
 from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker, use_torchacc
@@ -115,6 +116,9 @@ class SwiftMixin:
             from swift.trainers.sequence_parallel import sequence_parallel
             sequence_parallel.prepare_trainer(self)
         self._fix_gradient_checkpointing()
+        update_generation_config_eos_token(self.model.generation_config, self.template)
+        if getattr(self.model, 'origin_generation_config', None):
+            self.model.origin_generation_config.eos_token_id = self.model.generation_config.eos_token_id
 
     def get_use_logits_to_keep(self, default_value: bool = True):
         use_logits_to_keep = self.args.use_logits_to_keep
