@@ -135,10 +135,8 @@ class GRPOVllmEngine(VllmEngine):
         async def _infer_async_single(infer_request: Union[RolloutInferRequest, Dict[str, Any]],
                                       request_config: Optional[RequestConfig] = None,
                                       **kwargs):
-            # discard origin last turn reponse in first turn
             if isinstance(infer_request, Dict):
-                infer_request = RolloutInferRequest(
-                    messages=infer_request['messages'], data_dict=infer_request.get('data_dict', None))
+                infer_request = RolloutInferRequest(**infer_request)
             current_request = infer_request
             current_turn = 1
             while True:
@@ -169,6 +167,7 @@ class GRPOVllmEngine(VllmEngine):
                     return result
 
                 current_request = self.multi_turn_scheduler.step(current_request, result_choice, current_turn)
+                assert isinstance(current_request, RolloutInferRequest)
                 if current_request.messages[-1]['role'] == 'assistant':
                     # NOTE: engine will discard last response during inference
                     # https://github.com/modelscope/ms-swift/blob/v3.5.1/swift/llm/template/base.py#L416-L419
