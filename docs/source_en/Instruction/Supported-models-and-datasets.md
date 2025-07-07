@@ -508,10 +508,6 @@ The table below introduces the models integrated with ms-swift:
 |[LLM-Research/gemma-2-27b-it](https://modelscope.cn/models/LLM-Research/gemma-2-27b-it)|gemma2|gemma|transformers>=4.42|&#x2718;|-|[google/gemma-2-27b-it](https://huggingface.co/google/gemma-2-27b-it)|
 |[LLM-Research/gemma-3-1b-pt](https://modelscope.cn/models/LLM-Research/gemma-3-1b-pt)|gemma3_text|gemma3_text|transformers>=4.49|&#x2718;|-|[google/gemma-3-1b-pt](https://huggingface.co/google/gemma-3-1b-pt)|
 |[LLM-Research/gemma-3-1b-it](https://modelscope.cn/models/LLM-Research/gemma-3-1b-it)|gemma3_text|gemma3_text|transformers>=4.49|&#x2718;|-|[google/gemma-3-1b-it](https://huggingface.co/google/gemma-3-1b-it)|
-|[google/gemma-3n-E2B](https://www.modelscope.cn/models/google/gemma-3n-E2B)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E2B](https://huggingface.co/google/gemma-3n-E2B)|
-|[google/gemma-3n-E2B-it](https://modelscope.cn/models/google/gemma-3n-E2B-it)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E2B-it](https://huggingface.co/google/gemma-3n-E2B-it)|
-|[google/gemma-3n-E4B](https://www.modelscope.cn/models/google/gemma-3n-E4B)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E4B](https://huggingface.co/google/gemma-3n-E4B)|
-|[google/gemma-3n-E4B-it](https://www.modelscope.cn/models/google/gemma-3n-E4B-it)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E4B-it](https://huggingface.co/google/gemma-3n-E4B-it)|
 |[skywork/Skywork-13B-base](https://modelscope.cn/models/skywork/Skywork-13B-base)|skywork|skywork|-|&#x2718;|-|[skywork/Skywork-13B-base](https://huggingface.co/skywork/Skywork-13B-base)|
 |[skywork/Skywork-13B-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat)|skywork|skywork|-|&#x2718;|-|-|
 |[AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B](https://modelscope.cn/models/AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B)|skywork_o1|skywork_o1|transformers>=4.43|&#x2714;|-|[Skywork/Skywork-o1-Open-Llama-3.1-8B](https://huggingface.co/Skywork/Skywork-o1-Open-Llama-3.1-8B)|
@@ -799,6 +795,7 @@ The table below introduces the models integrated with ms-swift:
 |[moonshotai/Kimi-VL-A3B-Instruct](https://modelscope.cn/models/moonshotai/Kimi-VL-A3B-Instruct)|kimi_vl|kimi_vl|transformers<4.49|&#x2718;|-|[moonshotai/Kimi-VL-A3B-Instruct](https://huggingface.co/moonshotai/Kimi-VL-A3B-Instruct)|
 |[moonshotai/Kimi-VL-A3B-Thinking](https://modelscope.cn/models/moonshotai/Kimi-VL-A3B-Thinking)|kimi_vl|kimi_vl|transformers<4.49|&#x2718;|-|[moonshotai/Kimi-VL-A3B-Thinking](https://huggingface.co/moonshotai/Kimi-VL-A3B-Thinking)|
 |[moonshotai/Kimi-VL-A3B-Thinking-2506](https://modelscope.cn/models/moonshotai/Kimi-VL-A3B-Thinking-2506)|kimi_vl|kimi_vl|transformers<4.49|&#x2718;|-|[moonshotai/Kimi-VL-A3B-Thinking-2506](https://huggingface.co/moonshotai/Kimi-VL-A3B-Thinking-2506)|
+|[Kwai-Keye/Keye-VL-8B-Preview](https://modelscope.cn/models/Kwai-Keye/Keye-VL-8B-Preview)|keye_vl|keye_vl|-|&#x2718;|vision|[Kwai-Keye/Keye-VL-8B-Preview](https://huggingface.co/Kwai-Keye/Keye-VL-8B-Preview)|
 |[LLM-Research/Phi-3-vision-128k-instruct](https://modelscope.cn/models/LLM-Research/Phi-3-vision-128k-instruct)|phi3_vision|phi3_vision|transformers>=4.36|&#x2718;|vision|[microsoft/Phi-3-vision-128k-instruct](https://huggingface.co/microsoft/Phi-3-vision-128k-instruct)|
 |[LLM-Research/Phi-3.5-vision-instruct](https://modelscope.cn/models/LLM-Research/Phi-3.5-vision-instruct)|phi3_vision|phi3_vision|transformers>=4.36|&#x2718;|vision|[microsoft/Phi-3.5-vision-instruct](https://huggingface.co/microsoft/Phi-3.5-vision-instruct)|
 |[LLM-Research/Phi-4-multimodal-instruct](https://modelscope.cn/models/LLM-Research/Phi-4-multimodal-instruct)|phi4_multimodal|phi4_multimodal|transformers>=4.36,<4.49, backoff, soundfile|&#x2718;|vision, audio|[microsoft/Phi-4-multimodal-instruct](https://huggingface.co/microsoft/Phi-4-multimodal-instruct)|
@@ -836,9 +833,12 @@ The table below introduces the models integrated with ms-swift:
 |[LLM-Research/gemma-3-12b-it](https://modelscope.cn/models/LLM-Research/gemma-3-12b-it)|gemma3_vision|gemma3_vision|transformers>=4.49|&#x2718;|-|[google/gemma-3-12b-it](https://huggingface.co/google/gemma-3-12b-it)|
 |[LLM-Research/gemma-3-27b-pt](https://modelscope.cn/models/LLM-Research/gemma-3-27b-pt)|gemma3_vision|gemma3_vision|transformers>=4.49|&#x2718;|-|[google/gemma-3-27b-pt](https://huggingface.co/google/gemma-3-27b-pt)|
 |[LLM-Research/gemma-3-27b-it](https://modelscope.cn/models/LLM-Research/gemma-3-27b-it)|gemma3_vision|gemma3_vision|transformers>=4.49|&#x2718;|-|[google/gemma-3-27b-it](https://huggingface.co/google/gemma-3-27b-it)|
+|[google/gemma-3n-E2B](https://modelscope.cn/models/google/gemma-3n-E2B)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E2B](https://huggingface.co/google/gemma-3n-E2B)|
+|[google/gemma-3n-E4B](https://modelscope.cn/models/google/gemma-3n-E4B)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E4B](https://huggingface.co/google/gemma-3n-E4B)|
+|[google/gemma-3n-E2B-it](https://modelscope.cn/models/google/gemma-3n-E2B-it)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E2B-it](https://huggingface.co/google/gemma-3n-E2B-it)|
+|[google/gemma-3n-E4B-it](https://modelscope.cn/models/google/gemma-3n-E4B-it)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E4B-it](https://huggingface.co/google/gemma-3n-E4B-it)|
 |[mistralai/Mistral-Small-3.1-24B-Base-2503](https://modelscope.cn/models/mistralai/Mistral-Small-3.1-24B-Base-2503)|mistral_2503|mistral_2503|transformers>=4.49|&#x2718;|-|[mistralai/Mistral-Small-3.1-24B-Base-2503](https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Base-2503)|
 |[mistralai/Mistral-Small-3.1-24B-Instruct-2503](https://modelscope.cn/models/mistralai/Mistral-Small-3.1-24B-Instruct-2503)|mistral_2503|mistral_2503|transformers>=4.49|&#x2718;|-|[mistralai/Mistral-Small-3.1-24B-Instruct-2503](https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503)|
-|[Kwai-Keye/Keye-VL-8B-Preview](https://modelscope.cn/models/Kwai-Keye/Keye-VL-8B-Preview)|keye_vl|keye_vl|-|&#x2718;|-|[Kwai-Keye/Keye-VL-8B-Preview](https://huggingface.co/Kwai-Keye/Keye-VL-8B-Preview)|
 
 
 ## Datasets
