@@ -1605,24 +1605,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     raise ValueError('data_dict exists but is not a dictionary')
 
             # Collect all non-request_keys items as extra fields
-            extra_data = {
-                k: request[k]
-                for k in request
-                if k not in request_keys and k != 'data_dict'
-            }
+            extra_data = {k: request[k] for k in request if k not in request_keys and k != 'data_dict'}
 
             # Merge the data_dict, keeping keys from base_data_dict as priority
             final_data_dict = {**extra_data, **base_data_dict}
 
             # Create RolloutInferRequest instance
-            req_args = {
-                k: request[k]
-                for k in request_keys
-                if k in request
-            }
-            infer_requests.append(
-                RolloutInferRequest(**req_args, data_dict=final_data_dict)
-            )
+            req_args = {k: request[k] for k in request_keys if k in request}
+            infer_requests.append(RolloutInferRequest(**req_args, data_dict=final_data_dict))
 
         return infer_requests
 
