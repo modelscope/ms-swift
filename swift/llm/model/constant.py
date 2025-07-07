@@ -220,6 +220,7 @@ class MLLMModelType:
     got_ocr2_hf = 'got_ocr2_hf'
     step_audio = 'step_audio'
     kimi_vl = 'kimi_vl'
+    keye_vl = 'keye_vl'
 
     phi3_vision = 'phi3_vision'
     phi4_multimodal = 'phi4_multimodal'
