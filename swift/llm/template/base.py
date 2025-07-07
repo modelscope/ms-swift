@@ -309,7 +309,7 @@ class Template(ProcessorMixin):
             added_tokens_len += token_len - 1
         return input_ids, labels
 
-    def compute_loss_context(self, model, inputs):
+    def forward_context(self, model, inputs):
         return nullcontext()
 
     @staticmethod
