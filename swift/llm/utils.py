@@ -290,6 +290,8 @@ def get_temporary_cache_files_directory(prefix=None):
 
 
 def get_ckpt_dir(model_dir: str, adapters_dir: Optional[List[str]]) -> str:
+    if isinstance(adapters_dir, str):
+        adapters_dir = [adapters_dir]
     model_dirs = (adapters_dir or []).copy()
     if model_dir:
         model_dirs.append(model_dir)
