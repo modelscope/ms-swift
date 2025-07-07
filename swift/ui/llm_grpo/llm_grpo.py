@@ -227,7 +227,7 @@ class LLMGRPO(LLMTrain):
                 GRPOModel.build_ui(base_tab)
                 GRPODataset.build_ui(base_tab)
                 Reward.build_ui(base_tab)
-                with gr.Accordion(elem_id='train_param', open=True):
+                with gr.Accordion(elem_id='train_param', open=False):
                     with gr.Row():
                         gr.Dropdown(elem_id='train_type', scale=4, choices=list(get_supported_tuners()))
                         gr.Textbox(elem_id='seed', scale=4)
