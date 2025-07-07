@@ -291,6 +291,12 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             assert 'generation_batch_size' in GRPOConfig.__dict__, (
                 'generation_batch_size or steps_per_generation needs trl >= 0.18, '
                 'please install trl `pip install trl>=0.18')
+        if self.token_entropy_percentile_threshold > 0:
+            try:
+                from trl.trainer.utils import entropy_from_logits
+            except ImportError:
+                raise ImportError('To use the entropy mask functionality, please install trl from source: '
+                                  'pip install git+https://github.com/huggingface/trl.git')
 
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
