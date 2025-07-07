@@ -202,6 +202,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     mg_model = megatron_model_meta.model_provider()
     load_checkpoint([mg_model], None, None, strict=True)
     prepare_mcore_model(mg_model)
+    # [TODO] lora_rank ...
     logger.info('Megatron model created successfully.')
     megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
     if args.test_convert_precision:
