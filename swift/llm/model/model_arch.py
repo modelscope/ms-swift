@@ -72,6 +72,7 @@ class MLLMModelArch:
     valley = 'valley'
     gemma3n = 'gemma3n'
     mistral_2503 = 'mistral_2503'
+    keye_vl = 'keye_vl'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -601,6 +602,14 @@ register_model_arch(
         language_model='model.language_model',
         aligner=['model.embed_vision', 'model.embed_audio'],
         vision_tower=['model.vision_tower', 'model.audio_tower'],
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.keye_vl,
+        language_model='model',
+        aligner='mlp_AR',
+        vision_tower='visual',
     ))
 
 

@@ -178,3 +178,18 @@ register_model(
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2VLForConditionalGeneration'],
         tags=['vision']))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.keye_vl,
+        [
+            ModelGroup([
+                Model('Kwai-Keye/Keye-VL-8B-Preview', 'Kwai-Keye/Keye-VL-8B-Preview'),
+            ]),
+        ],
+        TemplateType.keye_vl,
+        get_model_tokenizer_multimodal,
+        model_arch=ModelArch.keye_vl,
+        architectures=['KeyeVLForConditionalGeneration'],
+        tags=['vision'],
+    ))
