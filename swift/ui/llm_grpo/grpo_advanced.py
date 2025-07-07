@@ -228,16 +228,14 @@ class GrpoAdvanced(BaseUI):
 
     @classmethod
     def after_build_ui(cls, base_tab: Type['BaseUI']):
-        ref_model_handle = cls.element('ref_model').change(
+        cls.element('ref_model').change(
             partial(cls.update_input_model, allow_keys=['ref_model_type'], has_record=False, is_ref_model=True),
             inputs=[cls.element('ref_model')],
             outputs=[cls.element('ref_model_type')])
-        reward_model_handle = cls.element('reward_model').change(
+        cls.element('reward_model').change(
             partial(cls.update_input_models, allow_keys=['reward_model_type'], is_reward_model=True, has_record=False),
             inputs=[cls.element('reward_model')],
             outputs=[cls.element('reward_model_type')])
-        cls.element('ref_model').input(fn=None, cancels=[ref_model_handle])
-        cls.element('reward_model').input(fn=None, cancels=[reward_model_handle])
 
     @classmethod
     def update_input_models(cls,

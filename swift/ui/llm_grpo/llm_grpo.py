@@ -294,48 +294,34 @@ class LLMGRPO(LLMTrain):
                        cls.element('template')],
                     [LLMRollout.element('rollout_runtime_tab'),
                      LLMRollout.element('rollout_running_tasks')])
-                concurrency_limit = {}
-                if version.parse(gr.__version__) >= version.parse('4.0.0'):
-                    concurrency_limit = {'concurrency_limit': 5}
-                base_tab.element('running_tasks').change(
-                    partial(GRPORuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                    list(base_tab.valid_elements().values()) + [cls.element('log')] + GRPORuntime.all_plots,
-                    **concurrency_limit)
+
                 GRPORuntime.element('kill_task').click(
                     GRPORuntime.kill_task,
                     [GRPORuntime.element('running_tasks')],
                     [GRPORuntime.element('running_tasks')] + [GRPORuntime.element('log')] + GRPORuntime.all_plots,
                 ).then(GRPORuntime.reset, [], [GRPORuntime.element('logging_dir')] + [GRPOHyper.element('output_dir')])
 
-                gpu_id_handle = base_tab.element('gpu_id').change(
+                base_tab.element('gpu_id').change(
                     cls.update_ddp_num,
                     [base_tab.element('gpu_id'), base_tab.element('use_ddp')], base_tab.element('ddp_num'))
-                use_ddp_handle = base_tab.element('use_ddp').change(
+                base_tab.element('use_ddp').change(
                     cls.update_ddp_num,
                     [base_tab.element('gpu_id'), base_tab.element('use_ddp')], base_tab.element('ddp_num'))
-                ddp_num_handle = base_tab.element('ddp_num').change(Rollout.update_num_gen, [
+                base_tab.element('ddp_num').change(Rollout.update_num_gen, [
                     GRPOHyper.element('per_device_train_batch_size'),
                     GRPOHyper.element('gradient_accumulation_steps'),
                     cls.element('ddp_num')
                 ], [Rollout.element('num_generations')])
-                ga_handle = GRPOHyper.element('gradient_accumulation_steps').change(Rollout.update_num_gen, [
+                GRPOHyper.element('gradient_accumulation_steps').change(Rollout.update_num_gen, [
                     GRPOHyper.element('per_device_train_batch_size'),
                     GRPOHyper.element('gradient_accumulation_steps'),
                     cls.element('ddp_num')
                 ], [Rollout.element('num_generations')])
-                bs_handle = GRPOHyper.element('per_device_train_batch_size').change(Rollout.update_num_gen, [
+                GRPOHyper.element('per_device_train_batch_size').change(Rollout.update_num_gen, [
                     GRPOHyper.element('per_device_train_batch_size'),
                     GRPOHyper.element('gradient_accumulation_steps'),
                     cls.element('ddp_num')
                 ], [Rollout.element('num_generations')])
-
-                base_tab.element('gpu_id').input(fn=None, cancels=[gpu_id_handle, use_ddp_handle])
-                base_tab.element('use_ddp').input(fn=None, cancels=[gpu_id_handle, use_ddp_handle])
-                base_tab.element('per_device_train_batch_size').input(
-                    fn=None, cancels=[ddp_num_handle, ga_handle, bs_handle])
-                base_tab.element('gradient_accumulation_steps').input(
-                    fn=None, cancels=[ddp_num_handle, ga_handle, bs_handle])
-                base_tab.element('ddp_num').input(fn=None, cancels=[ddp_num_handle, ga_handle, bs_handle])
 
     @classmethod
     def prepare_sub_to_filter(cls):
