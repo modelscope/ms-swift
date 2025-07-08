@@ -29,13 +29,10 @@ def test_moe():
 
 def test_convert():
     from swift.llm import export_main, ExportArguments
-    # Qwen2.5-3B-Instruct-mcore
-    export_main(
-        ExportArguments(
-            mcore_adapter=
-            '/mnt/nas2/huangjintao.hjt/work/llmscope/megatron_output/Qwen2.5-3B-Instruct/v388-20250705-184538',
-            to_hf=True,
-        ))
+    export_main(ExportArguments(
+        mcore_adapters=['megatron_output/vx-xxx'],
+        to_hf=True,
+    ))
 
 
 def test_parallel():
