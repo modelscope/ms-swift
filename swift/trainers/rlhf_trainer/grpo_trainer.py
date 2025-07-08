@@ -1047,8 +1047,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             })
 
             with torch.no_grad():
-                batch_encoded_inputs['old_per_token_logps'] = (self._get_per_token_logps_and_entropies(
-                    self.model, batch_encoded_inputs)['logps'] if self.old_policy() else None)
+                batch_encoded_inputs['old_per_token_logps'] = (
+                    self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)['logps']
+                    if self.old_policy() else None)
 
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
@@ -1313,6 +1314,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     assert self.token_entropy_percentile_threshold == 0, \
                         'for token_entropy_percentile_threshold > 0, plz install trl from source'
                     logps = super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
+                    entropies = None
         else:
             inputs = {
                 k: v
@@ -1334,7 +1336,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 from trl.trainer.utils import entropy_from_logits
                 entropies = entropy_from_logits(logits)
 
-            return {'logps': logps, 'entropies': entropies}
+        return {'logps': logps, 'entropies': entropies}
 
     @profiling_decorator
     def _get_last_hidden_state(self, unwrapped_model, inputs, logits_to_keep):
