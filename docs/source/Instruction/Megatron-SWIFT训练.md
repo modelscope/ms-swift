@@ -163,7 +163,7 @@ megatron sft \
     --model_name swift-robot
 ```
 
-mcore转换hf脚本：
+MCore转换HF脚本：
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
 swift export \

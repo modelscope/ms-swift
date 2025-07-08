@@ -403,26 +403,26 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 
 **Tuner Parameters**:
 
-- `train_type`: Options are `'lora'` and `'full'`. Default is `'full'`.
+- train_type: Options are `'lora'` and `'full'`. Default is `'full'`.
 
 Full-parameter Training:
 
-- `freeze_parameters`: Prefixes of parameters to be frozen. Default is `[]`.
-- `freeze_parameters_regex`: Regex expression for parameters to be frozen. Default is `None`.
-- `freeze_parameters_ratio`: The proportion of parameters to freeze from bottom to top. Default is `0`. Setting this to `1` will freeze all parameters; you can set trainable parameters separately using `trainable_parameters`. This parameter is incompatible with PP (pipeline parallel) mode.
-- `trainable_parameters`: Prefixes of additional trainable parameters. Default is `[]`.
-- `trainable_parameters_regex`: Regex expression to match additional trainable parameters. Default is `None`.
+- freeze_parameters: Prefixes of parameters to be frozen. Default is `[]`.
+- freeze_parameters_regex: Regex expression for parameters to be frozen. Default is `None`.
+- freeze_parameters_ratio: The proportion of parameters to freeze from bottom to top. Default is `0`. Setting this to `1` will freeze all parameters; you can set trainable parameters separately using `trainable_parameters`. This parameter is incompatible with PP (pipeline parallel) mode.
+- trainable_parameters: Prefixes of additional trainable parameters. Default is `[]`.
+- trainable_parameters_regex: Regex expression to match additional trainable parameters. Default is `None`.
 
 LoRA Training:
 
-- `adapter_load`: Path to the adapter weights to be loaded. Default is `None`.
-- 🔥 `target_modules`: Suffixes of modules to apply LoRA to. Default is `['all-linear']`.
-- 🔥 `target_regex`: Regex expression to specify LoRA modules. Default is `None`. If this value is provided, the `target_modules` parameter will be ignored.
-- 🔥 `lora_rank`: Default is `8`.
-- 🔥 `lora_alpha`: Default is `32`.
-- `lora_dropout`: Default is `0.05`.
-- `lora_bias`: Default is `'none'`. Available options: `'none'`, `'all'`. If you want all biases to be set as trainable, set this to `'all'`.
-- `use_rslora`: Default is `False`. Whether to use `RS-LoRA`.
+- adapter_load: Path to the adapter weights to be loaded. Default is `None`.
+- 🔥target_modules: Suffixes of modules to apply LoRA to. Default is `['all-linear']`.
+- 🔥target_regex: Regex expression to specify LoRA modules. Default is `None`. If this value is provided, the `target_modules` parameter will be ignored.
+- 🔥lora_rank: Default is `8`.
+- 🔥lora_alpha: Default is `32`.
+- lora_dropout: Default is `0.05`.
+- lora_bias: Default is `'none'`. Available options: `'none'`, `'all'`. If you want all biases to be set as trainable, set this to `'all'`.
+- use_rslora: Default is `False`. Whether to use `RS-LoRA`.
 
 **DPO Parameters**
 - ref_load: The path to load the reference model. Defaults to `None`, which means it will be set to `load`.
