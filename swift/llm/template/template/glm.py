@@ -121,7 +121,7 @@ class GLM4_1VTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         # TODO: model video infer bug
-        assert media_type in ['image']
+        assert media_type in ['image', 'video']
         if media_type == 'image':
             return [[-100]]
         elif media_type == 'video':
