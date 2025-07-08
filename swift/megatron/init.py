@@ -594,6 +594,7 @@ def _patch_megatron():
     _patch_transformer_engine()
     _patch__batched_p2p_ops()
     _patch_mla_attention()
+    from swift.megatron import tuners  # patch lora
     try:
         _patch_peft_BaseTuner()
         logger.info('Patch peft_BaseTuner successfully applied.')
