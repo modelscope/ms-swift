@@ -175,7 +175,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
 
 def convert_mcore2hf(args: ExportArguments) -> None:
-    from swift.megatron import prepare_mcore_model, adapter_load_context, prepare_adapter
+    from swift.megatron import prepare_mcore_model, adapter_state_dict_context, prepare_adapter
     kwargs = args.get_model_kwargs()
     hf_model, processor = get_model_tokenizer(**kwargs)
     if args.thread_count is None:
@@ -199,10 +199,13 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     extra_args_provider = megatron_model_meta.extra_args_provider
     initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
 
+    if megatron_args.train_type == 'lora':
+        assert megatron_args.target_modules == ['all-linear'], 'not support'
+        hf_model = prepare_adapter(hf_model)
     mg_model = megatron_model_meta.model_provider()
     load_checkpoint([mg_model], None, None, strict=True)
     mg_model = prepare_mcore_model(mg_model)
-    with adapter_load_context():
+    with adapter_state_dict_context():
         load_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
     logger.info('Megatron model created successfully.')
     megatron_model_meta.convert_mcore2hf(hf_model, mg_model)

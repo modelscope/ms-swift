@@ -64,6 +64,7 @@ def prepare_adapter(model):
         'use_rslora': args.use_rslora,
     }
     lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
+    logger.info(f'lora_config: {lora_config}')
     return Swift.prepare_model(model, lora_config)
 
 
@@ -77,7 +78,6 @@ def prepare_mcore_model(model):
         model.prepare_inputs_for_generation = None  # fix error
         model = prepare_adapter(model)
         model = model.model  # To avoid errors
-        logger.info(f'lora_config: {lora_config}')
     logger.info(f'model: {model}')
     logger.info_if(
         f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(model)}',
@@ -86,7 +86,7 @@ def prepare_mcore_model(model):
 
 
 @contextmanager
-def adapter_load_context():
+def adapter_state_dict_context():
     args = get_args()
     if args.train_type == 'full':
         yield

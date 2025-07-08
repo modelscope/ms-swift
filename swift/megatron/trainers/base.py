@@ -18,7 +18,7 @@ from megatron.training import ft_integration, get_args, get_timers, is_last_rank
 from packaging import version
 
 from swift.utils import get_logger
-from ..utils import prepare_mcore_model
+from ..utils import adapter_state_dict_context, prepare_mcore_model
 from .utils import get_swift_datasets_provider
 
 logger = get_logger()
@@ -302,38 +302,8 @@ class BaseMegatronTrainer(ABC):
 
         return total_loss_dict, collected_non_loss_data, False
 
-    @contextmanager
-    def _patch_generate_state_dict(self):
-        if self.args.train_type == 'full':
-            yield
-            return
-        from megatron.training import checkpointing
-        _origin_generate_state_dict = checkpointing.generate_state_dict
-
-        def generate_state_dict(args, model, *_args, **kwargs):
-            state_dict = _origin_generate_state_dict(args, model, *_args, **kwargs)
-            new_state_dict = {}
-            state_dict_model = state_dict['model']
-            for n, p in model[0].named_parameters():
-                if not p.requires_grad:
-                    continue
-                if n in state_dict_model:
-                    new_state_dict[n] = state_dict_model[n]
-                key = n.rsplit('.', 1)[0]
-                key = f'{key}._extra_state'
-                if key in state_dict_model:
-                    new_state_dict[key] = state_dict_model[key]
-            state_dict['model'] = new_state_dict
-            return state_dict
-
-        checkpointing.generate_state_dict = generate_state_dict
-        try:
-            yield
-        finally:
-            checkpointing.generate_state_dict = _origin_generate_state_dict
-
     def save_checkpoint(self, *args, **kwargs):
-        with self._patch_generate_state_dict():
+        with adapter_state_dict_context():
             return self._origin_save_checkpoint(*args, **kwargs)
 
     def _patch_megatron(self):
