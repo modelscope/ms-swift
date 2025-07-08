@@ -8,6 +8,7 @@ from megatron.core import mpu
 from megatron.core.extensions.transformer_engine import TELayerNormColumnParallelLinear, TELinear
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.training import get_args
+
 from swift.utils import activate_parameters, find_layers, freeze_parameters, get_logger, get_model_parameter_info
 
 logger = get_logger()
@@ -47,10 +48,12 @@ def get_modules_to_save(args, model, task_type=None):
         modules_to_save += find_embedding(model)
     return modules_to_save
 
+
 def set_linear_is_expert(model):
     for n, module in model.named_modules():
         if '.local_experts.' in n and isinstance(module, (TELinear, TELayerNormColumnParallelLinear)):
             module.is_expert = True
+
 
 def prepare_adapter(model):
     from swift.tuners import LoraConfig, Swift
