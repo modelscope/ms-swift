@@ -205,7 +205,7 @@ class TunerArguments:
 
     def _init_multimodal_full(self):
         model_arch = get_model_arch(self.model_meta.model_arch)
-        if not self.model_meta.is_multimodal or not model_arch:
+        if not self.model_meta.is_multimodal or not model_arch or self.train_type != 'full':
             return
         if self.freeze_llm:
             self.freeze_parameters += model_arch.language_model
