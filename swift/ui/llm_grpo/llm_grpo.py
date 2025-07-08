@@ -260,7 +260,7 @@ class LLMGRPO(LLMTrain):
                 LLMRollout.set_lang(cls.lang)
                 LLMRollout.build_ui(LLMRollout)
                 GRPOTuner.build_ui(base_tab)
-                with gr.Accordion(elem_id='extra_params', open=True):
+                with gr.Accordion(elem_id='extra_params', open=False):
                     with gr.Tabs():
                         GrpoAdvanced.build_ui(base_tab)
                         GRPOAdvanced.build_ui(base_tab)
