@@ -16,7 +16,6 @@ pip install 'ms-swift[all]' -U
 ## Source Code Installation
 
 ```shell
-# recommend
 # pip install git+https://github.com/modelscope/ms-swift.git
 
 # Full capabilities
