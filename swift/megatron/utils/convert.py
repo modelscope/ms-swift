@@ -217,7 +217,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         processor,
         args.output_dir,
         safe_serialization=args.safe_serialization,
-        model_dirs=[args.mcore_model, args.model_dir],
+        model_dirs=[megatron_args.load, args.model_dir],
         max_shard_size=args.max_shard_size,
         additional_saved_files=hf_model.model_meta.additional_saved_files)
     args.save_args()
