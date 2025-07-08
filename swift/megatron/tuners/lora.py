@@ -10,6 +10,7 @@ from megatron.core.extensions.transformer_engine import (TEColumnParallelLinear,
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 from megatron.core.transformer.module import MegatronModule
+from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint, sharded_state_dict_default
 from peft.tuners.lora import model
 from peft.tuners.lora.layer import LoraLayer
 from peft.tuners.tuners_utils import BaseTunerLayer
@@ -173,11 +174,24 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             sharded_offsets: Tuple[Tuple[int, int, int]] = (),
             metadata: Optional[dict] = None,
     ) -> ShardedStateDict:
-        res = super().sharded_state_dict(prefix=prefix, sharded_offsets=sharded_offsets, metadata=metadata)
+        sharded_state_dict = {}
+        # Save parameters
+        self._save_to_state_dict(sharded_state_dict, '', keep_vars=True)
+        sharded_state_dict = make_sharded_tensors_for_checkpoint(
+            sharded_state_dict, prefix, sharded_offsets=sharded_offsets)
+        # Recurse into submodules
+        for name, module in self.named_children():
+            if 'Dict' in module.__class__.__name__:
+                modules = module.named_children()
+            else:
+                modules = [(None, module)]
+            for n, m in modules:
+                _prefix = f'{prefix}{name}.' if n is None else f'{prefix}{name}.{n}.'
+                sharded_state_dict.update(sharded_state_dict_default(m, _prefix, sharded_offsets, metadata))
         if prefix.endswith('.linear_fc1.'):
-            res[f'{prefix}base_layer.weight'] = apply_swiglu_sharded_factory(res[f'{prefix}base_layer.weight'],
-                                                                             sharded_offsets)
-        return res
+            sharded_state_dict[f'{prefix}base_layer.weight'] = apply_swiglu_sharded_factory(
+                sharded_state_dict[f'{prefix}base_layer.weight'], sharded_offsets)
+        return sharded_state_dict
 
 
 def dispatch_megatron(

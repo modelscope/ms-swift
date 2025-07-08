@@ -2,4 +2,4 @@
 
 from .convert import convert_hf2mcore, convert_mcore2hf
 from .patcher import patch_megatron_tokenizer
-from .utils import prepare_mcore_model
+from .utils import adapter_load_context, prepare_adapter, prepare_mcore_model

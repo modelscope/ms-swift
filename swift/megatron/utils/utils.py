@@ -1,5 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+from contextlib import contextmanager
+
+import torch
 import torch.distributed as dist
 from megatron.core import mpu
 from megatron.core.extensions.transformer_engine import TELayerNormColumnParallelLinear, TELinear
@@ -46,30 +49,69 @@ def get_modules_to_save(args, model, task_type=None):
     return modules_to_save
 
 
-def prepare_mcore_model(model) -> None:
+def prepare_adapter(model):
+    args = get_args()
+    from swift.tuners import LoraConfig, Swift
+    target_modules = get_target_modules(args, model)
+    modules_to_save = get_modules_to_save(args, model)
+    lora_kwargs = {
+        'r': args.lora_rank,
+        'target_modules': target_modules,
+        'lora_alpha': args.lora_alpha,
+        'lora_dropout': args.lora_dropout,
+        'bias': args.lora_bias,
+        'modules_to_save': modules_to_save,
+        'use_rslora': args.use_rslora,
+    }
+    lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
+    return Swift.prepare_model(model, lora_config)
+
+
+def prepare_mcore_model(model):
     args = get_args()
     if args.train_type == 'full':
         freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
         if args.trainable_parameters or args.trainable_parameters_regex:
             activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
     elif args.train_type == 'lora':
-        from swift.tuners import LoraConfig, Swift
-        target_modules = get_target_modules(args, model)
-        modules_to_save = get_modules_to_save(args, model)
-        lora_kwargs = {
-            'r': args.lora_rank,
-            'target_modules': target_modules,
-            'lora_alpha': args.lora_alpha,
-            'lora_dropout': args.lora_dropout,
-            'bias': args.lora_bias,
-            'modules_to_save': modules_to_save,
-            'use_rslora': args.use_rslora,
-        }
-        lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
         model.prepare_inputs_for_generation = None  # fix error
-        model = Swift.prepare_model(model, lora_config)
+        model = prepare_adapter(model)
+        model = model.model  # To avoid errors
         logger.info(f'lora_config: {lora_config}')
     logger.info(f'model: {model}')
     logger.info_if(
         f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(model)}',
         cond=mpu.get_data_parallel_rank() == 0)
+    return model
+
+
+@contextmanager
+def adapter_load_context():
+    args = get_args()
+    if args.train_type == 'full':
+        yield
+        return
+    from megatron.training import checkpointing
+    _origin_generate_state_dict = checkpointing.generate_state_dict
+
+    def generate_state_dict(args, model, *_args, **kwargs):
+        state_dict = _origin_generate_state_dict(args, model, *_args, **kwargs)
+        new_state_dict = {}
+        state_dict_model = state_dict['model']
+        for n, p in model[0].named_parameters():
+            if not p.requires_grad:
+                continue
+            if n in state_dict_model:
+                new_state_dict[n] = state_dict_model[n]
+            key = n.rsplit('.', 1)[0]
+            key = f'{key}._extra_state'
+            if key in state_dict_model:
+                new_state_dict[key] = state_dict_model[key]
+        state_dict['model'] = new_state_dict
+        return state_dict
+
+    checkpointing.generate_state_dict = generate_state_dict
+    try:
+        yield
+    finally:
+        checkpointing.generate_state_dict = _origin_generate_state_dict

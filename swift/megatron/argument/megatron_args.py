@@ -1,10 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import timedelta
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import json
 import torch
 from transformers.utils.versions import require_version
 
@@ -52,6 +53,17 @@ class MegatronTunerMixin:
     def __post_init__(self):
         if self.freeze_parameters_ratio > 0 and self.pipeline_model_parallel_size > 1:
             raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
+
+        if self.adapter_load:
+            args_path = os.path.join(self.adapter_load, 'args.json')
+            if os.path.exists(args_path):
+                with open(args_path, 'r', encoding='utf-8') as f:
+                    old_args = json.load(f)
+                tuner_keys = list(f.name for f in fields(MegatronTunerMixin))
+                for key in tuner_keys:
+                    old_value = old_args.get(key)
+                    if old_value is not None:
+                        setattr(self, key, old_value)
 
 
 @dataclass
