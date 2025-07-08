@@ -1,7 +1,7 @@
 
 # Megatron-SWIFT训练
 
-SWIFT引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行，专家并行。支持Qwen3、[Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/train/megatron/qwen3_moe.sh)、Qwen2.5、Llama3、Deepseek-R1蒸馏系等模型的预训练和微调。完整支持的模型可以参考[支持的模型与数据集文档](./支持的模型和数据集.md)。
+SWIFT引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行，专家并行。支持Qwen3、[Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/train/megatron/qwen3_moe.sh)、Qwen2.5、Llama3、Deepseek-R1等模型的预训练和微调。完整支持的模型可以参考[支持的模型与数据集文档](./支持的模型和数据集.md)。
 
 ## 环境准备
 使用Megatron-SWIFT，除了安装swift依赖外，还需要安装以下内容：
@@ -119,6 +119,63 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - **更多案例**：包括packing、多机、32K上下文、DPO、MoE模型、预训练，可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron)。
 - 自定义数据集格式和ms-swift相同，参考[自定义数据集文档](../Customization/自定义数据集.md)。
 
+## LoRA训练
+相比全参数训练，LoRA训练在训练和MCore转换HF脚本有所区别：
+
+训练脚本：
+```bash
+# full: 2 * 70GiB 0.61s/it
+# lora: 2 * 14GiB 0.45s/it
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1 \
+megatron sft \
+    --load Qwen2.5-7B-Instruct-mcore \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
+              'AI-ModelScope/alpaca-gpt4-data-en#500' \
+              'swift/self-cognition#500' \
+    --train_type lora \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --target_modules all-linear \
+    --tensor_model_parallel_size 2 \
+    --sequence_parallel true \
+    --micro_batch_size 16 \
+    --global_batch_size 16 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
+    --finetune true \
+    --cross_entropy_loss_fusion true \
+    --lr 1e-4 \
+    --lr_warmup_fraction 0.05 \
+    --min_lr 1e-5 \
+    --max_epochs 1 \
+    --save megatron_output/Qwen2.5-7B-Instruct \
+    --save_interval 100 \
+    --max_length 2048 \
+    --system 'You are a helpful assistant.' \
+    --num_workers 4 \
+    --no_save_optim true \
+    --no_save_rng true \
+    --dataset_num_proc 4 \
+    --model_author swift \
+    --model_name swift-robot
+```
+
+mcore转换hf脚本：
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+swift export \
+    --mcore_adapter megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
+    --to_hf true \
+    --torch_dtype bfloat16 \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
+    --test_convert_model true
+```
+- 注意：`mcore_adapters`文件夹中包含`args.json`文件，转换过程中会读取文件中`mcore_model`和LoRA相关的参数信息，并将`mcore_model`和`mcore_adapters`进行merge-lora成完整权重，最终转换成HF格式权重。
+
+
 ## Benchmark
 
 使用`megatron sft`和`swift sft`在单机八卡A800环境下进行Dense/MoE模型全参数训练的速度对比如下，对应脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/benchmark)。
@@ -189,7 +246,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - extra_megatron_kwargs: 传入megatron的其他参数，使用json传递。默认为None。
 
 **学习率参数**:
-- 🔥lr: 初始学习率，最终会根据学习率预热策略和衰减策略决定每个迭代的学习率，默认为1e-5。
+- 🔥lr: 初始学习率，最终会根据学习率预热策略和衰减策略决定每个迭代的学习率。默认为None，全参数训练默认为1e-5，LoRA训练默认为1e-4。
 - lr_decay_style: 学习率衰减策略，默认为'cosine'。通常设置为'cosine', 'linear', 'constant'。
 - 🔥lr_decay_iters: 学习率衰减的迭代次数。默认为None，则设置为`--train_iters`。
 - lr_warmup_iters: 线性学习率预热的迭代次数，默认为0。
@@ -325,6 +382,27 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - kv_lora_rank: Key 和 Value 张量低秩表示的秩（rank）值。默认为None，自动从config.json读取。
 - qk_head_dim: QK 投影中 head 的维度。 `q_head_dim = qk_head_dim + qk_pos_emb_head_dim`。默认为None，自动从config.json读取。
 - qk_pos_emb_head_dim: QK 投影中位置嵌入的维度。默认为None，自动从config.json读取。
+
+**Tuner参数**:
+- train_type: 可选为'lora'和'full'。默认为'full'。
+
+全参数训练：
+- freeze_parameters: 需要被冻结参数的前缀，默认为`[]`。
+- freeze_parameters_regex: 需要被冻结参数的正则表达式，默认为None。
+- freeze_parameters_ratio: 从下往上冻结的参数比例，默认为0。可设置为1将所有参数冻结，结合`trainable_parameters`设置可训练参数。该参数不兼容pp并行。
+- trainable_parameters: 额外可训练参数的前缀，默认为`[]`。
+- trainable_parameters_regex: 匹配额外可训练参数的正则表达式，默认为None。
+
+lora训练：
+- adapter_load: 加载adapter的权重路径，默认为None。
+- 🔥target_modules: 指定lora模块的后缀, 默认为`['all-linear']`。
+- 🔥target_regex: 指定lora模块的regex表达式，默认为`None`。如果该值传入，则target_modules参数失效。
+- 🔥lora_rank: 默认为`8`。
+- 🔥lora_alpha: 默认为`32`。
+- lora_dropout: 默认为`0.05`。
+- lora_bias: 默认为`'none'`，可以选择的值: 'none'、'all'。如果你要将bias全都设置为可训练，你可以设置为`'all'`。
+- use_rslora: 默认为`False`，是否使用`RS-LoRA`。
+
 
 **DPO参数**:
 - ref_load: ref_model的加载路径。默认为None，即设置为`load`。

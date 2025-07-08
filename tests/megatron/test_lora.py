@@ -8,10 +8,15 @@ def test_sft():
     megatron_sft_main(
         MegatronTrainArguments(
             load='Qwen2.5-3B-Instruct-mcore',
-            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#5000'],
+            dataset=['AI-ModelScope/function-calling-chatml#10000'],
+            loss_scale='hermes',
             split_dataset_ratio=0.01,
             tensor_model_parallel_size=2,
+            load_from_cache_file=False,
             train_type='lora',
+            recompute_granularity='full',
+            recompute_method='uniform',
+            recompute_num_layers=1,
             # pipeline_model_parallel_size=2,
             # freeze_parameters_ratio=0.5,
             train_iters=100,
@@ -24,7 +29,26 @@ def test_sft():
 
 
 def test_moe():
-    pass
+    from swift.megatron import megatron_sft_main, MegatronTrainArguments
+    megatron_sft_main(
+        MegatronTrainArguments(
+            load='Qwen1.5-MoE-A2.7B-mcore',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#5000'],
+            split_dataset_ratio=0.01,
+            tensor_model_parallel_size=2,
+            train_type='lora',
+            recompute_granularity='full',
+            recompute_method='uniform',
+            recompute_num_layers=1,
+            # pipeline_model_parallel_size=2,
+            # freeze_parameters_ratio=0.5,
+            train_iters=100,
+            eval_iters=5,
+            save_interval=5,
+            no_save_optim=True,
+            no_save_rng=True,
+            sequence_parallel=True,
+            finetune=True))
 
 
 def test_convert():
@@ -35,11 +59,8 @@ def test_convert():
     ))
 
 
-def test_parallel():
-    pass
-
-
 def test_embedding():
+    # TODO
     pass
 
 
@@ -48,9 +69,11 @@ def test_modules_to_save():
 
 
 def test_resume():
+    # TODO
     pass
 
 
 if __name__ == '__main__':
-    # test_sft()
-    test_convert()
+    test_sft()
+    # test_moe()
+    # test_convert()
