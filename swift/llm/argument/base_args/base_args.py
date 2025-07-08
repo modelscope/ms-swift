@@ -263,9 +263,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             value = getattr(self, key, None)
             if key in load_keys and (value is None or isinstance(value, (list, tuple)) and len(value) == 0):
                 setattr(self, key, old_value)
-        if getattr(self, 'mcore_adapters', None):
-            if self.mcore_model is not None and 'load' in old_args:
-                self.mcore_model = old_args['load']
         logger.info(f'Successfully loaded {args_path}.')
 
     def save_args(self, output_dir=None) -> None:

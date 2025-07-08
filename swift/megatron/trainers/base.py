@@ -153,7 +153,8 @@ class BaseMegatronTrainer(ABC):
 
         def new_model_provider_func(*args, **kwargs):
             model = model_provider_func(*args, **kwargs)
-            return prepare_mcore_model(model)
+            prepare_mcore_model(model)
+            return model
 
         with self._patch_load_state_dict():
             return self._origin_setup_model_and_optimizer(new_model_provider_func, model_type, *_args, **kwargs)

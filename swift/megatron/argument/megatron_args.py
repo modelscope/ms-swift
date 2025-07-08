@@ -64,6 +64,10 @@ class MegatronTunerMixin:
                     old_value = old_args.get(key)
                     if old_value is not None:
                         setattr(self, key, old_value)
+                if self.adapter_load is not None and hasattr(self, 'load'):
+                    old_value = old_args.get('load')
+                    if self.load is None and old_value is not None:
+                        self.load = old_value
 
 
 @dataclass

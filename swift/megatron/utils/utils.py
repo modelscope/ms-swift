@@ -77,7 +77,6 @@ def prepare_mcore_model(model):
     elif args.train_type == 'lora':
         model.prepare_inputs_for_generation = None  # fix error
         model = prepare_adapter(model)
-        model = model.model  # To avoid errors
     logger.info(f'model: {model}')
     logger.info_if(
         f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(model)}',
@@ -115,7 +114,3 @@ def adapter_state_dict_context():
         yield
     finally:
         checkpointing.generate_state_dict = _origin_generate_state_dict
-
-
-def merge_mcore_adapter(mg_model):
-    return mg_model
