@@ -178,7 +178,7 @@ swift export \
     --to_hf true \
     --torch_dtype bfloat16 \
     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
-    --test_convert_model true
+    --test_convert_precision true
 ```
 
 - Note: The `mcore_adapters` folder contains an `args.json` file. During the conversion process, parameters related to `mcore_model` and LoRA will be loaded from this file. The system will then perform a merge-lora operation between the `mcore_model` and `mcore_adapters` to obtain the complete model weights, and finally convert them into HuggingFace (HF) format.
