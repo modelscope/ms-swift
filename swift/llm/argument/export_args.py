@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from dataclasses import dataclass
-from typing import Literal, Optional
+from dataclasses import dataclass, field
+from typing import List, Literal, Optional
 
 import torch
 import torch.distributed as dist
@@ -47,6 +47,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     to_mcore: bool = False
     to_hf: bool = False
     mcore_model: Optional[str] = None
+    mcore_adapters: List[str] = field(default_factory=list)
     thread_count: Optional[int] = None
     test_convert_precision: bool = False
 

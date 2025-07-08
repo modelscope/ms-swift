@@ -175,6 +175,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
 
 def convert_mcore2hf(args: ExportArguments) -> None:
+    from swift.megatron import prepare_mcore_model, adapter_state_dict_context, merge_mcore_adapter
     kwargs = args.get_model_kwargs()
     hf_model, processor = get_model_tokenizer(**kwargs)
     if args.thread_count is None:
@@ -187,7 +188,12 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
-    megatron_args = MegatronArguments(**kwargs, **convert_kwargs, load=args.mcore_model, torch_dtype=args.torch_dtype)
+    megatron_args = MegatronArguments(
+        **kwargs,
+        **convert_kwargs,
+        load=args.mcore_model,
+        adapter_load=args.mcore_adapters[0],
+        torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
     extra_args_provider = megatron_model_meta.extra_args_provider
@@ -195,6 +201,11 @@ def convert_mcore2hf(args: ExportArguments) -> None:
 
     mg_model = megatron_model_meta.model_provider()
     load_checkpoint([mg_model], None, None, strict=True)
+    if megatron_args.train_type != 'full':
+        mg_model = prepare_mcore_model(mg_model)
+        with adapter_state_dict_context():
+            load_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
+        merge_mcore_adapter()
     logger.info('Megatron model created successfully.')
     megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
     if args.test_convert_precision:

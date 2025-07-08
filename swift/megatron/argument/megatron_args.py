@@ -54,6 +54,17 @@ class MegatronTunerMixin:
         if self.freeze_parameters_ratio > 0 and self.pipeline_model_parallel_size > 1:
             raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
 
+        if self.adapter_load:
+            args_path = os.path.join(self.adapter_load, 'args.json')
+            if os.path.exists(args_path):
+                with open(args_path, 'r', encoding='utf-8') as f:
+                    old_args = json.load(f)
+                tuner_keys = list(f.name for f in fields(MegatronTunerMixin))
+                for key in tuner_keys:
+                    old_value = old_args.get(key)
+                    if old_value is not None:
+                        setattr(self, key, old_value)
+
 
 @dataclass
 class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):

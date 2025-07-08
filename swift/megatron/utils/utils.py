@@ -115,3 +115,7 @@ def adapter_state_dict_context():
         yield
     finally:
         checkpointing.generate_state_dict = _origin_generate_state_dict
+
+
+def merge_mcore_adapter(mg_model):
+    return mg_model
