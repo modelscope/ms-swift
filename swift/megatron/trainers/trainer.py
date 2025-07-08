@@ -105,9 +105,13 @@ class MegatronTrainer(BaseMegatronTrainer):
         with self.stimer(bdata=True):
             data = get_batch(data_iterator)
         timers('batch-generator').stop()
-
+        loss_scale = data.pop('loss_scale')
         with self.stimer:
             output_tensor = model(**data)
         labels = data.get('labels')
-        loss_mask = None if labels is None else (labels != -100).float()
+        if loss_scale is None:
+            loss_mask = None if labels is None else (labels != -100).float()
+        else:
+            loss_scale[labels == -100] = 0
+            loss_mask = loss_scale
         return output_tensor, partial(self.loss_func, loss_mask=loss_mask)

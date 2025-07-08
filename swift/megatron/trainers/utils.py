@@ -37,24 +37,26 @@ def get_batch_on_this_tp_rank(data_iterator):
         is_finished = data.pop('is_finished', False)
         input_ids = data['input_ids']
         seq_length = input_ids.shape[1]
+        has_loss_scale = 'loss_scale' in data
         batch = {
             'input_ids': input_ids.cuda(non_blocking=True),
             'labels': data['labels'].cuda(non_blocking=True),
             'attention_mask': None if 'attention_mask' not in data else data['attention_mask'].cuda(non_blocking=True),
-            'position_ids': data['position_ids'].cuda(non_blocking=True)
+            'position_ids': data['position_ids'].cuda(non_blocking=True),
+            'loss_scale': None if not has_loss_scale else data['loss_scale'].cuda(non_blocking=True),
         }
-        if is_finished:
-            seq_length = -seq_length  # add flag
-        seq_length = torch.tensor(seq_length).cuda(non_blocking=True)
-        _broadcast(seq_length)
+        flags = torch.tensor([seq_length, is_finished, has_loss_scale]).cuda(non_blocking=True)
+        _broadcast(flags)
         if args.pipeline_model_parallel_size == 1:
             _broadcast(batch['input_ids'])
             _broadcast(batch['labels'])
             _broadcast(batch['attention_mask'])
             _broadcast(batch['position_ids'])
+            _broadcast(batch['loss_scale'])
 
         elif mpu.is_pipeline_first_stage():
             batch['labels'] = None
+            batch['loss_scale'] = None
             _broadcast(batch['input_ids'])
             _broadcast(batch['attention_mask'])
             _broadcast(batch['position_ids'])
@@ -64,18 +66,18 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(batch['labels'])
             _broadcast(batch['attention_mask'])
             _broadcast(batch['position_ids'])
+            _broadcast(batch['loss_scale'])
 
     else:
-        seq_length = torch.empty((), dtype=torch.int64, device=torch.cuda.current_device())
-        _broadcast(seq_length)
-        if seq_length.item() < 0:
-            seq_length = -seq_length
-            is_finished = True
-        else:
-            is_finished = False
+        flags = torch.empty((3), dtype=torch.int64, device=torch.cuda.current_device())
+        _broadcast(flags)
+        seq_length, is_finished, has_loss_scale = flags.tolist()
         micro_batch_size = 1  # use qkv_format 'thd'
         input_ids = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
         labels = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
+        loss_scale = torch.empty(
+            (micro_batch_size,
+             seq_length), dtype=torch.float32, device=torch.cuda.current_device()) if has_loss_scale else None
         if args.create_attention_mask_in_dataloader:
             attention_mask = torch.empty((micro_batch_size, 1, seq_length, seq_length),
                                          dtype=torch.bool,
@@ -91,9 +93,11 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(labels)
             _broadcast(attention_mask)
             _broadcast(position_ids)
+            _broadcast(loss_scale)
 
         elif mpu.is_pipeline_first_stage():
             labels = None
+            loss_scale = None
 
             _broadcast(input_ids)
             _broadcast(attention_mask)
@@ -105,12 +109,14 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(labels)
             _broadcast(attention_mask)
             _broadcast(position_ids)  # compat packing & cp
+            _broadcast(loss_scale)
 
         batch = {
             'input_ids': input_ids,
             'labels': labels,
             'attention_mask': attention_mask,
-            'position_ids': position_ids
+            'position_ids': position_ids,
+            'loss_scale': loss_scale,
         }
     if is_finished:
         args.train_iters = args.curr_iteration + 1
@@ -183,7 +189,7 @@ def get_batch(data_iterator):
 
     # TODO: this is pretty hacky, find a better way
     if (not mpu.is_pipeline_first_stage()) and (not mpu.is_pipeline_last_stage()):
-        return {key: None for key in ['input_ids', 'attention_mask', 'position_ids']}
+        return {key: None for key in ['input_ids', 'attention_mask', 'position_ids', 'loss_scale']}
 
     # get batches based on the TP rank you are on
     batch = get_batch_on_this_tp_rank(data_iterator)
