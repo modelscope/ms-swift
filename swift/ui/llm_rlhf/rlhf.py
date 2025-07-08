@@ -147,7 +147,7 @@ class RLHF(BaseUI):
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Accordion(elem_id='rlhf_tab', open=True):
+        with gr.Accordion(elem_id='rlhf_tab', open=False):
             with gr.Blocks():
                 with gr.Row():
                     gr.Slider(elem_id='beta', minimum=0., maximum=5.0, step=0.1, value=0.1, scale=10)

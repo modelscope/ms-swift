@@ -272,7 +272,7 @@ class LLMRLHF(LLMTrain):
                 RLHFTuner.build_ui(base_tab)
                 RLHFOptimizer.build_ui(base_tab)
                 RLHF.build_ui(base_tab)
-                with gr.Accordion(elem_id='extra_params', open=True):
+                with gr.Accordion(elem_id='extra_params', open=False):
                     with gr.Tabs():
                         RLHFAdvanced.build_ui(base_tab)
                         RLHFQuantization.build_ui(base_tab)
