@@ -1,8 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
 from contextlib import contextmanager
 
-import torch
 import torch.distributed as dist
 from megatron.core import mpu
 from megatron.core.extensions.transformer_engine import TELayerNormColumnParallelLinear, TELinear
@@ -41,7 +39,7 @@ def get_target_modules(args, model):
     return target_modules
 
 
-def get_modules_to_save(args, model, task_type=None):
+def get_modules_to_save(args, model):
     modules_to_save = args.modules_to_save.copy()
     if 'all-embedding' in args.modules_to_save:
         modules_to_save.remove('all-embedding')

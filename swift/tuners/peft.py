@@ -4,7 +4,7 @@ import os.path
 from dataclasses import asdict, dataclass, field
 from functools import partial, reduce
 from types import MethodType
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import json
 import peft
