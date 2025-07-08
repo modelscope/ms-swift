@@ -205,8 +205,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     def _init_ckpt_dir(self, adapters=None):
         # compat megatron
         model = self.model or getattr(self, 'mcore_model', None) or getattr(self, 'load', None)
-        adapters = adapters or self.adapters or getattr(self, 'mcore_adapter', None)
-        self.ckpt_dir = get_ckpt_dir(model, adapters)
+        self.ckpt_dir = get_ckpt_dir(model, adapters or self.adapters)
         if self.ckpt_dir and self.load_args:
             self.load_args_from_ckpt()
 
@@ -263,9 +262,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             value = getattr(self, key, None)
             if key in load_keys and (value is None or isinstance(value, (list, tuple)) and len(value) == 0):
                 setattr(self, key, old_value)
-        if getattr(self, 'mcore_adapter', None) is not None and 'load' in old_args:
-            self.mcore_model = old_args['load']
-
         logger.info(f'Successfully loaded {args_path}.')
 
     def save_args(self, output_dir=None) -> None:
