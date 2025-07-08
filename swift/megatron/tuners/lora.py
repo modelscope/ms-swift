@@ -43,7 +43,8 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         self.is_parallel_a = isinstance(base_layer, TERowParallelLinear)
         self.fan_in_fan_out = fan_in_fan_out
         self._active_adapter = adapter_name
-        self.tp_size = base_layer.tp_size
+        self.tp_size = config.tensor_model_parallel_size
+        self.is_expert = getattr(base_layer, 'is_expert', False)
         self.update_layer(
             adapter_name,
             r,
@@ -90,7 +91,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 skip_bias_add=False,
                 init_method=self.config.init_method,
                 config=self.config,
-                is_expert=False,  # TODO: fix MoE
+                is_expert=self.is_expert,
             )
             lora_b = nn.Linear(in_features=r, out_features=self.out_features, bias=lora_bias, dtype=torch.float32)
         else:
@@ -104,7 +105,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 skip_bias_add=False,
                 init_method=self.config.init_method,
                 config=self.config,
-                is_expert=False,  # TODO: fix MoE
+                is_expert=self.is_expert,
             )
         self.config.params_dtype = origin_params_dtype
         self.lora_A[adapter_name] = lora_a
@@ -140,7 +141,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 self.base_layer.return_layernorm_output = True
                 result, bias = self.base_layer(x, *args, **kwargs)
                 result, x = result  # ln_out
-            elif isinstance(self.base_layer, TERowParallelLinear):
+            elif isinstance(self.base_layer, TELinear):
                 result, bias = self.base_layer(x, *args, **kwargs)
             else:
                 raise ValueError(f'Unsupported base layer type: {type(self.base_layer)}')
