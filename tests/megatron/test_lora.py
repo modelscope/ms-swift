@@ -60,7 +60,6 @@ def test_convert():
 
 
 def test_embedding():
-    # TODO
     pass
 
 
@@ -69,7 +68,6 @@ def test_modules_to_save():
 
 
 def test_resume():
-    # TODO
     pass
 
 
