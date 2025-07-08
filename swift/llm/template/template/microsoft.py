@@ -68,8 +68,10 @@ class FlorenceTemplate(Template):
         image_size = None
         if images:
             image_size = (images[0].width, images[0].height)
+        query_before, query_sep, query_after = template_inputs.query.partition('>')
+        task = query_before+query_sep if query_sep else ''
         return json.dumps(
-            self.processor.post_process_generation(response, task=template_inputs.query, image_size=image_size))
+            self.processor.post_process_generation(response, task=task, image_size=image_size))
 
 
 register_template(
