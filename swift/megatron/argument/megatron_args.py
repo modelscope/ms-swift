@@ -348,6 +348,8 @@ class MegatronArguments(ExtraMegatronArguments):
         parallel_state.create_group = create_group
 
     def __post_init__(self):
+        if self.train_type == 'lora':
+            require_version('peft>=0.12')
         MegatronTunerMixin.__post_init__(self)
         from swift.llm.argument.base_args.model_args import ModelArguments
         if self.use_flash_attn or self.attention_backend == 'flash':
