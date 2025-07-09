@@ -353,6 +353,9 @@ class Template(ProcessorMixin):
     def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         _encoded = {}
         labels = []
+        inference = len(inputs.messages) == 1
+        if inference:
+            inputs.messages.append({'role': 'assistant', 'content': ''})
 
         def split_multi_medias(_inputs):
             _content = _inputs.messages[-2]['content']
@@ -376,30 +379,31 @@ class Template(ProcessorMixin):
         anchor_encoded = self._encode_truncated(anchor)
         for key in anchor_encoded:
             _encoded[f'anchor_{key}'] = anchor_encoded[key]
-        positive = deepcopy(inputs)
-        positive.messages[-2]['content'] = positive.messages[-1]['content']
-        positive.messages[-1]['content'] = ''
-        positive.rejected_response = []
-        split_multi_medias(positive)
-        positive_encoded = self._encode_truncated(positive)
-        for key in positive_encoded:
-            _encoded[f'positive_{key}'] = positive_encoded[key]
-            _encoded[f'negative_{key}'] = []
-        labels.append(float(inputs.label) if inputs.label is not None else 1.0)
+        if not inference:
+            positive = deepcopy(inputs)
+            positive.messages[-2]['content'] = positive.messages[-1]['content']
+            positive.messages[-1]['content'] = ''
+            positive.rejected_response = []
+            split_multi_medias(positive)
+            positive_encoded = self._encode_truncated(positive)
+            for key in positive_encoded:
+                _encoded[f'positive_{key}'] = positive_encoded[key]
+                _encoded[f'negative_{key}'] = []
+            labels.append(float(inputs.label) if inputs.label is not None else 1.0)
 
-        rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
-        for i in range(rejected_len):
-            negative = deepcopy(inputs)
-            negative.messages[-2]['content'] = negative.rejected_response[i]
-            negative.messages[-1]['content'] = ''
-            negative.rejected_response = []
-            split_multi_medias(negative)
-            negative_encoded = self._encode_truncated(negative)
-            for key in negative_encoded:
-                _encoded[f'negative_{key}'].append(negative_encoded[key])
-            labels.append(0.0)
+            rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
+            for i in range(rejected_len):
+                negative = deepcopy(inputs)
+                negative.messages[-2]['content'] = negative.rejected_response[i]
+                negative.messages[-1]['content'] = ''
+                negative.rejected_response = []
+                split_multi_medias(negative)
+                negative_encoded = self._encode_truncated(negative)
+                for key in negative_encoded:
+                    _encoded[f'negative_{key}'].append(negative_encoded[key])
+                labels.append(0.0)
 
-        _encoded['labels'] = labels
+            _encoded['labels'] = labels
         return _encoded
 
     def _reranker_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -1457,7 +1461,7 @@ class Template(ProcessorMixin):
                     indexes.append(f'negative{i}_')
             for prefix in indexes:
                 new_batch += self._fetch_inputs_startswith([b], prefix)
-            labels.extend(b.get('labels', None))
+            labels.extend(b.get('labels', []))
         res = self._data_collator(new_batch, padding_to=padding_to)
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.float32)
