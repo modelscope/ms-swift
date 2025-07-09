@@ -448,7 +448,7 @@ def padding_free_context_grpo(self, model: torch.nn.Module, sp_instance):
 
         for length in seq_lengths:
             seq_state = logits[start:start + length]
-            padding = torch.zeros((max_length - length)).to(logits.dtype).to(logits.device)
+            padding = torch.zeros((max_length - length, ), dtype=logits.dtype, device=logits.device)
             if ctx['padding_left']:
                 seq_state = torch.cat((padding, seq_state), dim=0)
             else:
@@ -457,7 +457,6 @@ def padding_free_context_grpo(self, model: torch.nn.Module, sp_instance):
 
             if has_entropies:
                 ent_state = entropies[start:start + length]
-                padding = padding.to(entropies.dtype).to(entropies.device)
                 if ctx['padding_left']:
                     ent_state = torch.cat((padding, ent_state), dim=0)
                 else:
@@ -484,8 +483,11 @@ def padding_free_context_grpo(self, model: torch.nn.Module, sp_instance):
 
 
 @profiling_decorator
-def _get_per_token_logps_and_entropies_grpo(self: GRPOTrainer, model: torch.nn.Module, inputs: InputsType,
-                                            sp_instance: SequenceParallel):
+def _get_per_token_logps_and_entropies_grpo(self: GRPOTrainer,
+                                            model: torch.nn.Module,
+                                            inputs: InputsType,
+                                            sp_instance: SequenceParallel,
+                                            compute_entropy: bool = False):
     """Get per token logps for GRPO sequence parallel training"""
     try:
         from trl.trainer.utils import selective_log_softmax
@@ -546,13 +548,15 @@ def _get_per_token_logps_and_entropies_grpo(self: GRPOTrainer, model: torch.nn.M
     left_padding_len = shape1 - logits_to_keep_sharded
     per_token_logps = selective_log_softmax(logits_kept, labels_kept)
     entropies = None
-    if self.token_entropy_percentile_threshold > 0:
+    if compute_entropy:
         from trl.trainer.utils import entropy_from_logits
         entropies = entropy_from_logits(logits_kept)
-    _padding_logps = (
-        torch.zeros((per_token_logps.shape[0], left_padding_len)).to(per_token_logps.device).to(per_token_logps.dtype))
+    _padding_logps = torch.zeros((per_token_logps.shape[0], left_padding_len),
+                                 device=per_token_logps.device,
+                                 dtype=per_token_logps.dtype)
+
     per_token_logps_padded = torch.cat((_padding_logps, per_token_logps), dim=1)
-    _padding_labels = (torch.zeros((labels.shape[0], left_padding_len)).to(labels.device).to(labels.dtype))
+    _padding_labels = torch.zeros((labels.shape[0], left_padding_len), device=labels.device, dtype=labels.dtype)
     labels_padded = torch.cat((_padding_labels, labels_kept), dim=1)
     per_token_logps, _ = GatherLoss.apply(per_token_logps_padded, labels_padded, sp_instance.sp_group, 1)
     if padding_size > 0:
