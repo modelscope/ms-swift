@@ -1,10 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import timedelta
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import json
 import torch
 from transformers.utils.versions import require_version
 
@@ -27,7 +28,50 @@ class RLHFMegatronArgumentsMixin:
 
 
 @dataclass
-class ExtraMegatronArguments(RLHFMegatronArgumentsMixin):
+class MegatronTunerMixin:
+    train_type: Literal['lora', 'full'] = 'full'
+    # full
+    freeze_parameters: List[str] = field(default_factory=list)
+    freeze_parameters_regex: Optional[str] = None
+    freeze_parameters_ratio: float = 0.  # 0 ~ 1
+    trainable_parameters: List[str] = field(default_factory=list)
+    trainable_parameters_regex: Optional[str] = None
+    # lora
+    adapter_load: Optional[str] = None
+    target_modules: List[str] = field(default_factory=lambda: ['all-linear'])
+    target_regex: Optional[str] = None
+    modules_to_save: List[str] = field(default_factory=list)
+
+    # lora
+    lora_rank: int = 8
+    lora_alpha: int = 32
+    lora_dropout: float = 0.05
+    lora_bias: Literal['none', 'all'] = 'none'
+    lora_dtype: Literal['float16', 'bfloat16', 'float32', None] = None
+    use_rslora: bool = False
+
+    def __post_init__(self):
+        if self.freeze_parameters_ratio > 0 and self.pipeline_model_parallel_size > 1:
+            raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
+
+        if self.adapter_load:
+            args_path = os.path.join(self.adapter_load, 'args.json')
+            if os.path.exists(args_path):
+                with open(args_path, 'r', encoding='utf-8') as f:
+                    old_args = json.load(f)
+                tuner_keys = list(f.name for f in fields(MegatronTunerMixin))
+                for key in tuner_keys:
+                    old_value = old_args.get(key)
+                    if old_value is not None:
+                        setattr(self, key, old_value)
+                if self.adapter_load is not None and hasattr(self, 'load'):
+                    old_value = old_args.get('load')
+                    if self.load is None and old_value is not None:
+                        self.load = old_value
+
+
+@dataclass
+class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     padded_vocab_size: Optional[int] = None
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
@@ -78,9 +122,10 @@ class MegatronArguments(ExtraMegatronArguments):
     dataloader_type: Literal['single', 'cyclic', 'external'] = 'cyclic'
     manual_gc: bool = False
     manual_gc_interval: int = 0
+    no_check_for_nan_in_loss_and_grad: bool = False
 
     # learning rate
-    lr: float = 1e-5
+    lr: Optional[float] = None
     lr_decay_style: Literal['cosine', 'linear', 'constant'] = 'cosine'
     # The default is None, which will be set to `train_iters`.
     lr_decay_iters: Optional[int] = None
@@ -223,6 +268,11 @@ class MegatronArguments(ExtraMegatronArguments):
     extra_megatron_kwargs: Optional[Union[dict, str]] = None
 
     def _set_default(self):
+        if self.lr is None:
+            if self.train_type == 'full':
+                self.lr = 1e-5
+            else:
+                self.lr = 1e-4
         if self.num_query_groups is None:
             self.num_query_groups = 1
         if self.norm_epsilon is None:
@@ -299,6 +349,9 @@ class MegatronArguments(ExtraMegatronArguments):
         parallel_state.create_group = create_group
 
     def __post_init__(self):
+        if self.train_type == 'lora':
+            require_version('peft>=0.12')
+        MegatronTunerMixin.__post_init__(self)
         from swift.llm.argument.base_args.model_args import ModelArguments
         if self.use_flash_attn or self.attention_backend == 'flash':
             require_version('flash-attn')

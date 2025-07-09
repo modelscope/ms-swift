@@ -5,6 +5,7 @@
 可以使用pip进行安装：
 
 ```shell
+# 推荐
 pip install 'ms-swift'
 # 使用评测
 pip install 'ms-swift[eval]' -U

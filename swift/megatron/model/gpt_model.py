@@ -146,6 +146,9 @@ class GPTModel(McoreGPTModel):
             # decoder will get hidden_states from encoder.input_tensor
             decoder_input = None
 
+        if decoder_input is not None and self.training and torch.is_grad_enabled() and not decoder_input.requires_grad:
+            # fix LoRA incompatibility with gradient checkpointing
+            decoder_input = decoder_input.requires_grad_(True)
         # Rotary positional embeddings (embedding is None for PP intermediate devices)
         rotary_pos_emb = None
         rotary_pos_cos = None

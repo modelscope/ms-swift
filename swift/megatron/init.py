@@ -2,8 +2,10 @@
 import os
 import sys
 from datetime import datetime
+from typing import List, Optional, Tuple
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 from swift.llm import git_clone_github
@@ -570,10 +572,49 @@ def _patch_mla_attention():
     MLASelfAttention.get_query_key_value_tensors = get_query_key_value_tensors
 
 
+def _patch_peft_BaseTuner():
+    from peft.tuners.tuners_utils import BaseTuner
+    _origin_get_tied_target_modules = BaseTuner._get_tied_target_modules
+
+    def _get_tied_target_modules(self, model: nn.Module) -> List[str]:
+        try:
+            return _origin_get_tied_target_modules(self, model)
+        except AttributeError:
+            tied_target_modules = []
+            if model.share_embeddings_and_output_weights:
+                for target_module in self.targeted_module_names:
+                    if target_module.split('.')[-1] in ['output_layer', 'embedding']:
+                        tied_target_modules.append(target_module)
+            return tied_target_modules
+
+    BaseTuner._get_tied_target_modules = _get_tied_target_modules
+
+
+def _patch_TEGroupedLinear():
+    from megatron.core.extensions.transformer_engine import TEGroupedLinear
+
+    def sharded_state_dict(
+            self,
+            prefix: str = '',
+            sharded_offsets: Tuple[Tuple[int, int, int]] = (),
+            metadata: Optional[dict] = None,
+    ):
+        return self._sharded_state_dict_grouped(None, prefix, sharded_offsets, metadata)
+
+    TEGroupedLinear.sharded_state_dict = sharded_state_dict
+
+
 def _patch_megatron():
     _patch_transformer_engine()
     _patch__batched_p2p_ops()
     _patch_mla_attention()
+    _patch_TEGroupedLinear()
+    from swift.megatron import tuners  # patch lora
+    try:
+        _patch_peft_BaseTuner()
+        logger.info('Patch peft_BaseTuner successfully applied.')
+    except Exception:
+        pass
     try:
         _patch_training_log()
         logger.info('Patch training_log successfully applied.')
