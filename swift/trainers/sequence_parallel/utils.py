@@ -111,7 +111,7 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
     device = logits.device
 
     if labels.shape[1] > logits.shape[1]:
-        _, _, labels, _, _, _ = sp_instance.pad_and_split_inputs(None, None, labels, None, None, _)
+        _, _, labels, _, _, _ = sp_instance.pad_and_split_inputs(None, None, labels, None, None, None)
     if loss_scale.shape[1] > logits.shape[1]:
         _, _, _, _, _, loss_scale = sp_instance.pad_and_split_inputs(None, None, None, None, None, loss_scale)
     logits = logits.view(-1, logits.shape[-1])
