@@ -255,6 +255,12 @@ class RolloutResponseChoice(ChatCompletionResponseChoice):
 
 
 @dataclass
+class GymRolloutResponseChoice(RolloutResponseChoice):
+    trajectory_id: str
+    total_reward: float
+    step_rewards: List[float]
+
+@dataclass
 class CompletionResponseChoice:
     index: int
     text: str
@@ -265,7 +271,7 @@ class CompletionResponseChoice:
 @dataclass
 class ChatCompletionResponse:
     model: str
-    choices: List[Union[ChatCompletionResponseChoice, RolloutResponseChoice]]
+    choices: List[Union[ChatCompletionResponseChoice, RolloutResponseChoice, GymRolloutResponseChoice]]
     usage: UsageInfo
     id: str = field(default_factory=lambda: f'chatcmpl-{random_uuid()}')
     object: str = 'chat.completion'

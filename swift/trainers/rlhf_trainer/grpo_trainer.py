@@ -856,7 +856,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with unwrap_model_for_generation(
                     self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
             ), self.template.generate_context(), self.multi_turn_completion_length_context():
-                outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
+                if self.use_gym_engine:
+                    pass
+                else:
+                    outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
                 if mode == 'train':
                     # In training mode, ensure the model is returned to train() mode after inference
                     # This is necessary as pt engines set the model to eval mode during generation
@@ -887,6 +890,27 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func)
 
         return batch_encoded_inputs
+
+    def _generate_and_score_completions_gym(self, inputs: InputsType) -> InputsType:
+       total_rewards = torch.zeros((len(inputs),1), device=self.accelerator.device)
+       with unwrap_model_for_generation(
+                    self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
+            ), self.template.generate_context():
+
+            results: List[ChatCompletionResponse] = self._infer(inputs, self.request_config, False)
+            for i, output in enumerate(results):
+                _choices = []
+                for choice in output.choices:
+                    # concated in Engine
+                    _choices.append((choice.messages, choice.finish_reason,choice.total_reward,choice.step_rewards)) #TODO step reward在某些情况下可能需要
+                outputs.append(_choices)
+            outputs = [item for sublist in outputs for item in sublist]
+            for i,result in enumerate(outputs):
+                inputs[i]["messages"] = result.choices
+                inputs[i]['is_truncated'] = output[1] == 'length'
+                total_rewards[i] = output[2]
+            batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards)
+            return batch_encoded_inputs      
 
     def _score_completions(self, inputs: InputsType) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
         """Score completions using all reward functions
@@ -1413,7 +1437,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 } for request in infer_requests]
 
                 self._process_infer_requests_images(infer_requests)
-                return self.vllm_client.infer(infer_requests, asdict(request_config), use_tqdm=use_tqdm)
+                return self.vllm_client.infer(infer_requests, asdict(request_config), use_tqdm=use_tqdm) #TODO 使用vllm_gym_client推理
             else:
                 return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
 
