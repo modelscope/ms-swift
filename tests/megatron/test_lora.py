@@ -35,7 +35,10 @@ def test_moe():
             load='Qwen1.5-MoE-A2.7B-mcore',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#5000'],
             split_dataset_ratio=0.01,
+            moe_shared_expert_overlap=True,
+            moe_grouped_gemm=True,
             tensor_model_parallel_size=2,
+            # expert_model_parallel_size=2,
             train_type='lora',
             recompute_granularity='full',
             recompute_method='uniform',
@@ -72,6 +75,6 @@ def test_resume():
 
 
 if __name__ == '__main__':
-    test_sft()
-    # test_moe()
+    # test_sft()
+    test_moe()
     # test_convert()
