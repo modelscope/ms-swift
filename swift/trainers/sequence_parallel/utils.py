@@ -3,8 +3,7 @@ import math
 import os
 from contextlib import contextmanager
 from functools import partial
-from types import MethodType
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Tuple
 
 import datasets
 import numpy as np
@@ -13,8 +12,8 @@ import torch.distributed as dist
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
 
-from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_llm_model, to_device
-from swift.utils import get_current_device, get_device, get_dist_setting, seed_worker
+from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_llm_model
+from swift.utils import get_current_device, get_dist_setting, seed_worker
 
 # Conditional import for profiling decorator
 try:
