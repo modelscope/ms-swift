@@ -59,6 +59,7 @@ def test_convert():
     export_main(ExportArguments(
         mcore_adapters=['megatron_output/vx-xxx'],
         to_hf=True,
+        test_convert_precision=True,
     ))
 
 
@@ -76,5 +77,5 @@ def test_resume():
 
 if __name__ == '__main__':
     # test_sft()
-    test_moe()
-    # test_convert()
+    # test_moe()
+    test_convert()
