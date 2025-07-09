@@ -21,9 +21,9 @@ from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_llm_model, to_d
 from swift.utils import get_current_device, get_device, get_dist_setting, seed_worker
 from .base import CommonSequenceParallel
 from .utils import (ChunkedCrossEntropyLoss, GatherLoss, SequenceParallelDispatcher, SequenceParallelSampler,
-                    _get_per_token_logps_grpo, _get_train_sampler_grpo, _prepare_inputs, _prepare_inputs_grpo,
-                    get_common_dataloader, get_per_token_logps, loss_scale_sp_func, old_policy_grpo,
-                    padding_free_context_grpo, setup_compute_acc, split_by_mini_batches_grpo)
+                    _get_per_token_logps_and_entropies_grpo, _get_train_sampler_grpo, _prepare_inputs,
+                    _prepare_inputs_grpo, get_common_dataloader, get_per_token_logps, loss_scale_sp_func,
+                    old_policy_grpo, padding_free_context_grpo, setup_compute_acc, split_by_mini_batches_grpo)
 
 assert version.parse(torch.__version__) >= version.parse('2.0.0')
 torch._dynamo.config.capture_dynamic_output_shape_ops = True
@@ -296,7 +296,8 @@ class Ulysses(CommonSequenceParallel):
             trainer.old_policy = MethodType(partial(old_policy_grpo, sp_instance=self), trainer)
             trainer._get_train_sampler = MethodType(partial(_get_train_sampler_grpo, sp_instance=self), trainer)
             trainer._prepare_inputs = MethodType(partial(_prepare_inputs_grpo, sp_instance=self), trainer)
-            trainer._get_per_token_logps = MethodType(partial(_get_per_token_logps_grpo, sp_instance=self), trainer)
+            trainer._get_per_token_logps = MethodType(
+                partial(_get_per_token_logps_and_entropies_grpo, sp_instance=self), trainer)
             trainer.split_by_mini_batches = MethodType(partial(split_by_mini_batches_grpo, sp_instance=self), trainer)
 
         setup_compute_acc(self)

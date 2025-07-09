@@ -15,6 +15,9 @@ from torch.utils.data import DataLoader, Sampler
 
 from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_llm_model, to_device
 from swift.utils import get_current_device, get_device, get_dist_setting, seed_worker
+from ..rlhf_trainer import GRPOTrainer
+from ..rlhf_trainer.grpo_trainer import InputsType
+from .base import SequenceParallel
 
 # Conditional import for profiling decorator
 try:
@@ -464,7 +467,8 @@ def padding_free_context_grpo(self, model: torch.nn.Module, sp_instance):
 
 
 @profiling_decorator
-def _get_per_token_logps_grpo(self, model, inputs, sp_instance):
+def _get_per_token_logps_and_entropies_grpo(self: GRPOTrainer, model: torch.nn.Module, inputs: InputsType,
+                                            sp_instance: SequenceParallel):
     """Get per token logps for GRPO sequence parallel training"""
     try:
         from trl.trainer.utils import selective_log_softmax
@@ -524,6 +528,10 @@ def _get_per_token_logps_grpo(self, model, inputs, sp_instance):
     # other tokens will be padded with 0.
     left_padding_len = shape1 - logits_to_keep_sharded
     per_token_logps = selective_log_softmax(logits_kept, labels_kept)
+    entropies = None
+    if self.token_entropy_percentile_threshold > 0:
+        from trl.trainer.utils import entropy_from_logits
+        entropies = entropy_from_logits(logits_kept)
     _padding_logps = (
         torch.zeros((per_token_logps.shape[0], left_padding_len)).to(per_token_logps.device).to(per_token_logps.dtype))
     per_token_logps_padded = torch.cat((_padding_logps, per_token_logps), dim=1)
