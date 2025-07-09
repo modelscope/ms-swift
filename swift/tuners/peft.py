@@ -270,7 +270,7 @@ def adalora_mask_to_budget(self, model, budget):
 
 def keep_device_forward(self, *args, **kwargs):
     x = args[0]
-    weight = self.weight0 if not hasattr(self, 'weight') else self.weight
+    weight = self.weight if hasattr(self, 'weight') else self.weight0  # compat megatron
     if weight.device != x.device:
         return self.forward_origin(x.to(weight.device), *args[1:], **kwargs)
     else:
