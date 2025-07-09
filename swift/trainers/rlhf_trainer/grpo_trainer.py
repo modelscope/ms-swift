@@ -1312,7 +1312,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     entropies = result['entropies']
                 else:
                     assert self.token_entropy_percentile_threshold == 0, \
-                        'for token_entropy_percentile_threshold > 0, plz install trl from source'
+                        'Outdated `trl` version. Please install `trl` from source to use the entropy mask functionality: `pip install git+https://github.com/huggingface/trl.git`'
                     logps = super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
                     entropies = None
         else:
