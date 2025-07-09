@@ -5,8 +5,9 @@ from typing import Any, Optional, Tuple
 import torch
 import torch.nn as nn
 from megatron.core.dist_checkpointing.mapping import ShardedStateDict
-from megatron.core.extensions.transformer_engine import (TEColumnParallelLinear, TELayerNormColumnParallelLinear,
-                                                         TELinear, TERowParallelLinear)
+from megatron.core.extensions.transformer_engine import (TEColumnParallelGroupedLinear, TEColumnParallelLinear,
+                                                         TEGroupedLinear, TELayerNormColumnParallelLinear, TELinear,
+                                                         TERowParallelGroupedLinear, TERowParallelLinear)
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 from megatron.core.transformer.module import MegatronModule
@@ -40,7 +41,8 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         if use_dora:
             raise ValueError(f'{self.__class__.__name__} does not support DoRA yet, please set it to False')
 
-        self.is_parallel_a = isinstance(base_layer, TERowParallelLinear)
+        self.is_parallel_a = isinstance(base_layer, (TERowParallelLinear, TERowParallelGroupedLinear))
+        self.is_grouped = isinstance(base_layer, TEGroupedLinear)
         self.fan_in_fan_out = fan_in_fan_out
         self._active_adapter = adapter_name
         self.tp_size = config.tensor_model_parallel_size
@@ -81,6 +83,14 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         # lora needs to be forced to upgrade to 32-bit precision, otherwise it will overflow
         origin_params_dtype = self.config.params_dtype
         self.config.params_dtype = torch.float32
+        kwargs = {
+            'skip_bias_add': False,
+            'init_method': self.config.init_method,
+            'config': self.config,
+            'is_expert': self.is_expert,
+        }
+        if self.is_grouped:
+            print()
         if self.is_parallel_a:
             self.in_features = self.in_features * self.tp_size
             lora_a = TERowParallelLinear(
@@ -88,25 +98,40 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 output_size=r,
                 bias=False,
                 input_is_parallel=True,
-                skip_bias_add=False,
-                init_method=self.config.init_method,
-                config=self.config,
-                is_expert=self.is_expert,
+                **kwargs,
             )
-            lora_b = nn.Linear(in_features=r, out_features=self.out_features, bias=lora_bias, dtype=torch.float32)
+            lora_b = TELinear(
+                input_size=r,
+                output_size=self.out_features,
+                bias=lora_bias,
+                parallel_mode=None,
+                skip_weight_param_allocation=False,
+                **kwargs,
+            )
+            lora_a.parallel_mode = self.base_layer.parallel_mode  # fix moe_shared_expert_overlap
         else:
             self.out_features = self.out_features * self.tp_size
-            lora_a = nn.Linear(in_features=self.in_features, out_features=r, bias=False, dtype=torch.float32)
+            lora_a = TELinear(
+                input_size=self.in_features,
+                output_size=r,
+                bias=lora_bias,
+                parallel_mode=None,
+                skip_weight_param_allocation=False,
+                **kwargs)
             lora_b = TEColumnParallelLinear(
                 input_size=r,
                 output_size=self.out_features,
                 bias=lora_bias,
                 gather_output=False,
-                skip_bias_add=False,
-                init_method=self.config.init_method,
-                config=self.config,
-                is_expert=self.is_expert,
+                **kwargs,
             )
+            lora_b.parallel_mode = self.base_layer.parallel_mode  # fix moe_shared_expert_overlap
+        for lora in [lora_a, lora_b]:
+            if isinstance(lora, (TERowParallelLinear, TEColumnParallelLinear)) and lora.parallel_mode is None:
+                lora.ub_overlap_rs_fprop = False
+                lora.ub_overlap_ag_dgrad = False
+                lora.ub_overlap_ag_fprop = False
+                lora.ub_overlap_rs_dgrad = False
         self.config.params_dtype = origin_params_dtype
         self.lora_A[adapter_name] = lora_a
         self.lora_B[adapter_name] = lora_b
@@ -141,7 +166,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 self.base_layer.return_layernorm_output = True
                 result, bias = self.base_layer(x, *args, **kwargs)
                 result, x = result  # ln_out
-            elif isinstance(self.base_layer, TELinear):
+            elif isinstance(self.base_layer, (TELinear, TEGroupedLinear)):
                 result, bias = self.base_layer(x, *args, **kwargs)
             else:
                 raise ValueError(f'Unsupported base layer type: {type(self.base_layer)}')
@@ -279,7 +304,7 @@ def dispatch_megatron(
     else:
         target_base_layer = target
 
-    linear_cls = (TELayerNormColumnParallelLinear, TELinear)
+    linear_cls = (TELayerNormColumnParallelLinear, TELinear, TEGroupedLinear)
     if isinstance(target_base_layer, linear_cls):
         new_module = LoraParallelLinear(base_layer=target, adapter_name=adapter_name, **kwargs)
 

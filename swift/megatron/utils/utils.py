@@ -3,7 +3,7 @@ from contextlib import contextmanager
 
 import torch.distributed as dist
 from megatron.core import mpu
-from megatron.core.extensions.transformer_engine import TELayerNormColumnParallelLinear, TELinear
+from megatron.core.extensions.transformer_engine import TEGroupedLinear, TELayerNormColumnParallelLinear, TELinear
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.training import get_args
 
@@ -15,7 +15,7 @@ logger = get_logger()
 def find_all_linears(model):
 
     def _cond(name, module):
-        if isinstance(module, (TELinear, TELayerNormColumnParallelLinear)):
+        if isinstance(module, (TELinear, TELayerNormColumnParallelLinear, TEGroupedLinear)):
             return True
         return False
 
@@ -49,7 +49,8 @@ def get_modules_to_save(args, model):
 
 def set_linear_is_expert(model):
     for n, module in model.named_modules():
-        if '.local_experts.' in n and isinstance(module, (TELinear, TELayerNormColumnParallelLinear)):
+        if '.local_experts.' in n and isinstance(module, (TELinear, TELayerNormColumnParallelLinear)) or isinstance(
+                module, TEGroupedLinear):
             module.is_expert = True
 
 
