@@ -15,7 +15,6 @@ from torch.distributed.device_mesh import init_device_mesh
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
 from trl.extras.profiling import profiling_decorator
-from trl.trainer.grpo_trainer import RepeatSampler
 
 from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_llm_model, to_device
 from swift.utils import get_current_device, get_device, get_dist_setting, seed_worker
