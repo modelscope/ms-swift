@@ -595,6 +595,9 @@ class Template(ProcessorMixin):
             logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
         return preds, logprobs
 
+    def decode_embedding(self, logits: torch.Tensor):
+        return logits
+
     def decode(self,
                generate_ids: List[int],
                *,
