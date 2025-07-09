@@ -3,7 +3,7 @@ import math
 import os
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, Dict, Iterator, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Tuple
 
 import datasets
 import numpy as np
@@ -14,10 +14,14 @@ from torch.utils.data import DataLoader, Sampler
 
 from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_llm_model
 from swift.utils import get_current_device, get_dist_setting, seed_worker
-from ..rlhf_trainer import GRPOTrainer
-from ..rlhf_trainer.grpo_trainer import InputsType
 from .base import SequenceParallel
 
+if TYPE_CHECKING:
+    try:
+        from ..rlhf_trainer import GRPOTrainer
+        from ..rlhf_trainer.grpo_trainer import InputsType
+    except ImportError:
+        pass
 # Conditional import for profiling decorator
 try:
     from trl.extras.profiling import profiling_decorator
@@ -31,7 +35,7 @@ class GatherLoss(torch.autograd.Function):
     """Gather loss from sequence group"""
 
     @staticmethod
-    def forward(ctx, loss, labels, process_group, gather_idx=None):
+    def forward(ctx, loss, labels, process_group, gather_idx=None, entropies=None):
         """
         Args:
             loss: loss tensor after splitting
@@ -549,17 +553,21 @@ def _get_per_token_logps_and_entropies_grpo(self: GRPOTrainer,
     left_padding_len = shape1 - logits_to_keep_sharded
     per_token_logps = selective_log_softmax(logits_kept, labels_kept)
     entropies = None
-    if compute_entropy:
-        from trl.trainer.utils import entropy_from_logits
-        entropies = entropy_from_logits(logits_kept)
     _padding_logps = torch.zeros((per_token_logps.shape[0], left_padding_len),
                                  device=per_token_logps.device,
                                  dtype=per_token_logps.dtype)
 
     per_token_logps_padded = torch.cat((_padding_logps, per_token_logps), dim=1)
+
     _padding_labels = torch.zeros((labels.shape[0], left_padding_len), device=labels.device, dtype=labels.dtype)
     labels_padded = torch.cat((_padding_labels, labels_kept), dim=1)
     per_token_logps, _ = GatherLoss.apply(per_token_logps_padded, labels_padded, sp_instance.sp_group, 1)
+    if compute_entropy:
+        from trl.trainer.utils import entropy_from_logits
+        entropies = entropy_from_logits(logits_kept)
+        entropies_padded = torch.cat((_padding_logps, entropies), dim=1)
+        entropies, _ = GatherLoss.apply(entropies_padded, labels_padded, sp_instance.sp_group, 1)
+
     if padding_size > 0:
         per_token_logps = per_token_logps[:, :-padding_size]
     if self.padding_free:
@@ -575,7 +583,7 @@ def _get_per_token_logps_and_entropies_grpo(self: GRPOTrainer,
         delattr(llm_model, '_pack_input')
         logits_to_keep = _origin_logits_to_keep
         per_token_logps = per_token_logps[:, -logits_to_keep - 1:-1]
-        if entropies:
+        if compute_entropy:
             entropies = entropies[:, -logits_to_keep - 1:-1]
     # ignore the last token
     return {'logps': per_token_logps, 'entropies': entropies}

@@ -323,7 +323,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
             # However, vLLM requires that we always send at least one prompt. So we send a placeholder prompt to comply
             # with vLLM's requirement, and we later ignore the result.
             if not requests:
-                requests = RolloutInferRequest(messages=[{'role': 'user', 'content': '<placeholder>'}])
+                requests = [RolloutInferRequest(messages=[{'role': 'user', 'content': '<placeholder>'}])]
             # different seed bewteen vLLM Engine
             if request_config.seed:
                 request_config.seed += i * len(requests)
