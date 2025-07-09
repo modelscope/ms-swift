@@ -124,8 +124,37 @@ class KeyeVLTemplate(Template):
                 num_patches = pixel_values.shape[1]
                 position_ids = torch.arange(num_patches, device=device)
 
-                vision_outputs = model.visual(pixel_values=pixel_values, position_ids=position_ids)
+                # Create dummy grid that works with mlp_AR
+                # Assuming merge_size is 2, we need h and w divisible by merge_size
+                merge_size = getattr(self.processor.image_processor, 'merge_size', 2)
+                grid_size = int(np.sqrt(num_patches))
+
+                # Adjust grid_size to be divisible by merge_size
+                if grid_size % merge_size != 0:
+                    grid_size = ((grid_size + merge_size - 1) // merge_size) * merge_size
+
+                # For dummy case, use square layout that's compatible with mlp_AR
+                dummy_grid_hw = [(1, grid_size, grid_size)]
+                sample_indices = torch.zeros(num_patches, dtype=torch.int64, device=device)
+                cu_seqlens = torch.tensor([0, num_patches], dtype=torch.int32, device=device)
+
+                vision_outputs = model.visual(
+                    pixel_values=pixel_values,
+                    image_grid_thw=dummy_grid_hw,
+                    position_ids=position_ids,
+                    vision_return_embed_list=True,
+                    interpolate_pos_encoding=True,
+                    sample_indices=sample_indices,
+                    cu_seqlens=cu_seqlens,
+                    return_pooler_output=False,
+                    use_rope=True,
+                    window_size=-1,
+                )
                 image_embeds = vision_outputs.last_hidden_state
+                # Process through projector like in normal cases
+                image_embeds = model.mlp_AR(image_embeds, dummy_grid_hw)
+                # Concatenate all embeddings
+                image_embeds = torch.cat(image_embeds, dim=0)
                 inputs_embeds += image_embeds.mean() * 0.
         else:
             if pixel_values is not None:
