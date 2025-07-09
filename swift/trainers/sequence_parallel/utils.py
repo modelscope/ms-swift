@@ -3,8 +3,7 @@ import math
 import os
 from contextlib import contextmanager
 from functools import partial
-from types import MethodType
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Tuple
 
 import datasets
 import numpy as np
@@ -13,8 +12,8 @@ import torch.distributed as dist
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Sampler
 
-from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_llm_model, to_device
-from swift.utils import get_current_device, get_device, get_dist_setting, seed_worker
+from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_llm_model
+from swift.utils import get_current_device, get_dist_setting, seed_worker
 from ..rlhf_trainer import GRPOTrainer
 from ..rlhf_trainer.grpo_trainer import InputsType
 from .base import SequenceParallel
@@ -114,7 +113,9 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
     device = logits.device
 
     if labels.shape[1] > logits.shape[1]:
-        _, _, labels, _, _, loss_scale = sp_instance.pad_and_split_inputs(None, None, labels, None, None, loss_scale)
+        _, _, labels, _, _, _ = sp_instance.pad_and_split_inputs(None, None, labels, None, None, None)
+    if loss_scale.shape[1] > logits.shape[1]:
+        _, _, _, _, _, loss_scale = sp_instance.pad_and_split_inputs(None, None, None, None, None, loss_scale)
     logits = logits.view(-1, logits.shape[-1])
 
     labels = labels.flatten().to(device)

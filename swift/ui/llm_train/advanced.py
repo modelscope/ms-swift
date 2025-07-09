@@ -17,14 +17,14 @@ class Advanced(BaseUI):
                 'en': 'Advanced settings'
             },
         },
-        'optim': {
+        'tuner_backend': {
             'label': {
-                'zh': 'Optimizer类型',
-                'en': 'The Optimizer type'
+                'zh': 'Tuner backend',
+                'en': 'Tuner backend'
             },
             'info': {
-                'zh': '设置Optimizer类型',
-                'en': 'Set the Optimizer type'
+                'zh': 'Tuner实现框架',
+                'en': 'The tuner backend'
             }
         },
         'weight_decay': {
@@ -104,12 +104,12 @@ class Advanced(BaseUI):
         with gr.TabItem(elem_id='advanced_tab'):
             with gr.Blocks():
                 with gr.Row():
-                    gr.Textbox(elem_id='optim', lines=1, scale=20)
+                    gr.Dropdown(elem_id='tuner_backend', scale=20)
                     gr.Textbox(elem_id='weight_decay', lines=1, scale=20)
                     gr.Textbox(elem_id='logging_steps', lines=1, scale=20)
                     gr.Textbox(elem_id='lr_scheduler_type', lines=1, scale=20)
                 with gr.Row():
-                    gr.Dropdown(elem_id='truncation_strategy', scale=20)
+                    gr.Dropdown(elem_id='truncation_strategy', value=None, scale=20)
                     gr.Textbox(elem_id='max_steps', lines=1, scale=20)
                     gr.Textbox(elem_id='max_grad_norm', lines=1, scale=20)
                     gr.Slider(elem_id='warmup_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=20)

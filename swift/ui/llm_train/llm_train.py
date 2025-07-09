@@ -165,16 +165,6 @@ class LLMTrain(BaseUI):
                 'en': 'The data parallel size of DDP'
             }
         },
-        'tuner_backend': {
-            'label': {
-                'zh': 'Tuner backend',
-                'en': 'Tuner backend'
-            },
-            'info': {
-                'zh': 'Tuner实现框架',
-                'en': 'The tuner backend'
-            }
-        },
         'use_liger_kernel': {
             'label': {
                 'zh': '使用Liger kernel',
@@ -262,11 +252,16 @@ class LLMTrain(BaseUI):
                     with gr.Row():
                         gr.Dropdown(elem_id='train_stage', choices=['pt', 'sft'], value='sft', scale=4)
                         gr.Dropdown(elem_id='train_type', scale=4, choices=list(get_supported_tuners()))
-                        gr.Dropdown(elem_id='tuner_backend', scale=4)
                         gr.Textbox(elem_id='seed', scale=4)
                         gr.Dropdown(elem_id='torch_dtype', scale=4)
-                    with gr.Row():
                         gr.Checkbox(elem_id='use_liger_kernel', scale=4)
+                    with gr.Row():
+                        gr.Dropdown(
+                            elem_id='gpu_id',
+                            multiselect=True,
+                            choices=[str(i) for i in range(device_count)] + ['cpu'],
+                            value=default_device,
+                            scale=4)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                         gr.Textbox(elem_id='ddp_num', value='1', scale=4)
                         gr.Dropdown(
@@ -279,20 +274,14 @@ class LLMTrain(BaseUI):
                 Hyper.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
                 with gr.Row(equal_height=True):
-                    gr.Dropdown(
-                        elem_id='gpu_id',
-                        multiselect=True,
-                        choices=[str(i) for i in range(device_count)] + ['cpu'],
-                        value=default_device,
-                        scale=8)
-                    gr.Textbox(elem_id='envs', scale=8)
+                    gr.Textbox(elem_id='envs', scale=12)
                     gr.Checkbox(elem_id='dry_run', value=False, scale=4)
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
                 Tuner.build_ui(base_tab)
                 Optimizer.build_ui(base_tab)
                 Task.build_ui(base_tab)
-                with gr.Accordion(elem_id='extra_params', open=True):
+                with gr.Accordion(elem_id='extra_params', open=False):
                     with gr.Tabs():
                         Advanced.build_ui(base_tab)
                         Quantization.build_ui(base_tab)
@@ -305,16 +294,13 @@ class LLMTrain(BaseUI):
                 cls.element('train_type').change(
                     Hyper.update_lr, inputs=[base_tab.element('train_type')], outputs=[cls.element('learning_rate')])
 
-                submit.click(
-                    cls.train_local,
-                    list(cls.valid_elements().values()), [
-                        cls.element('running_cmd'),
-                        cls.element('logging_dir'),
-                        cls.element('runtime_tab'),
-                        cls.element('running_tasks'),
-                        cls.element('train_record'),
-                    ],
-                    queue=True)
+                submit.click(cls.train_local, list(cls.valid_elements().values()), [
+                    cls.element('running_cmd'),
+                    cls.element('logging_dir'),
+                    cls.element('runtime_tab'),
+                    cls.element('running_tasks'),
+                    cls.element('train_record'),
+                ])
 
                 base_tab.element('gpu_id').change(
                     cls.update_ddp_num,
@@ -402,10 +388,13 @@ class LLMTrain(BaseUI):
         use_liger_kernel = kwargs.get('use_liger_kernel', None)
         if use_liger_kernel:
             kwargs.pop('use_liger_kernel')
+        if other_kwargs.get('use_muon'):
+            kwargs['use_muon'] = other_kwargs.pop('use_muon')
 
         # filter kwargs
         tabs_relation_dict = cls.prepare_sub_to_filter()
         cls.remove_useless_args(kwargs, tabs_relation_dict)
+        use_muon = kwargs.pop('use_muon', None)
         if cls.group == 'llm_rlhf':
             cls.filter_rlhf_args(kwargs)
         try:
@@ -432,6 +421,8 @@ class LLMTrain(BaseUI):
                 params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
         if use_liger_kernel:
             params += f'--use_liger_kernel {cls.quote}{use_liger_kernel}{cls.quote} '
+        if use_muon:
+            params += f'--optimizer {cls.quote}muon{cls.quote} '
         if more_params_cmd != '':
             params += f'{more_params_cmd.strip()} '
         params += f'--add_version False --output_dir {sft_args.output_dir} ' \
@@ -518,7 +509,7 @@ class LLMTrain(BaseUI):
             time.sleep(1)  # to make sure the log file has been created.
             gr.Info(cls.locale('submit_alert', cls.lang)['value'])
         return run_command, sft_args.logging_dir, gr.update(open=True), Runtime.refresh_tasks(
-            sft_args.output_dir), gr.update(choices=cls.list_cache(sft_args.model))
+            sft_args.output_dir, cls.group), gr.update(choices=cls.list_cache(sft_args.model))
 
     @classmethod
     def prepare_sub_to_filter(cls):
@@ -537,13 +528,15 @@ class LLMTrain(BaseUI):
                 target_value = 'lora'
             elif target == 'vllm_mode' and target_value is None:
                 target_value = 'colocate'
-            elif target == 'optimizer' and target_value is None:
+            elif target == 'optimizer':
                 if uncleaned_kwargs.get('use_galore'):
                     target_value = 'galore'
                 if uncleaned_kwargs.get('lorap_lr_ratio'):
                     target_value = 'lorap'
                 if uncleaned_kwargs.get('vit_lr') or uncleaned_kwargs.get('aligner_lr'):
                     target_value = 'multimodal'
+                if uncleaned_kwargs.get('use_muon'):
+                    target_value = 'muon'
 
             for tab_key in tabs_to_filter.keys():
                 if tab_key == 'lora' and target_value in ('longlora', 'adalora'):

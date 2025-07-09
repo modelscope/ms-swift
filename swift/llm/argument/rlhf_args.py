@@ -302,10 +302,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
             return
 
-        if self.vllm_device is not None:
-            logger.warning("Configuration conflict: External vLLM engine detected, but 'vllm_device' is set to '%s'. ",
-                           self.vllm_device)
-
         if self.vllm_max_model_len is not None:
             logger.warning(
                 "Configuration conflict: 'vllm_max_model_len=%s' is ignored for external vLLM. "

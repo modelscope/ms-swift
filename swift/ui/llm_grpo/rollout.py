@@ -30,28 +30,6 @@ class Rollout(BaseUI):
                 'en': 'Maximum generation length in GRPO algorithm'
             }
         },
-        'beta': {
-            'label': {
-                'zh': 'KL正则项系数',
-                'en': 'KL regularization coefficient'
-            }
-        },
-        'num_iterations': {
-            'label': {
-                'zh': '每个批次更新次数',
-                'en': 'Num of updates per batch'
-            }
-        },
-        'log_completions': {
-            'label': {
-                'zh': '记录生成内容',
-                'en': 'Record generated content'
-            },
-            'info': {
-                'zh': '是否记录训练中的模型生成内容',
-                'en': 'Whether to record the model generation content during training'
-            }
-        },
         'async_generate': {
             'label': {
                 'zh': '异步生成',
@@ -107,16 +85,6 @@ class Rollout(BaseUI):
                 'en':
                 'Server mode uses the vLLM server deployed by swift rollout for sampling,'
                 ' colocate mode uses vLLM deployed in the program'
-            }
-        },
-        'vllm_enable_prefix_caching': {
-            'label': {
-                'zh': '开启前缀缓存',
-                'en': 'Enable prefix cache'
-            },
-            'info': {
-                'zh': 'vLLM透传参数',
-                'en': 'vLLM transparent transmission parameters'
             }
         },
         'vllm_gpu_memory_utilization': {
@@ -215,8 +183,8 @@ class Rollout(BaseUI):
         },
         'rollout_param': {
             'label': {
-                'zh': 'Rollout设置',
-                'en': 'Rollout settings'
+                'zh': 'Rollout设置(更多参数->GRPO高级参数设置)',
+                'en': 'Rollout settings(more params->GRPO advanced settings)'
             }
         }
     }
@@ -233,14 +201,7 @@ class Rollout(BaseUI):
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Accordion(elem_id='rollout_param', open=True):
-            with gr.Row():
-                gr.Slider(elem_id='num_generations', minimum=1, maximum=64, step=1, value=32, scale=4)
-                gr.Textbox(elem_id='max_completion_length', lines=1, value='512', scale=4)
-                gr.Checkbox(elem_id='log_completions', scale=4)
-                gr.Textbox(elem_id='beta', value=0.04, lines=1, scale=4)
-                gr.Textbox(elem_id='num_iterations', lines=1, scale=4)
-
+        with gr.Accordion(elem_id='rollout_param', open=False):
             with gr.Row():
                 gr.Slider(elem_id='temperature', minimum=0.0, maximum=10, step=0.1, value=1.0)
                 gr.Slider(elem_id='top_k', minimum=1, maximum=100, step=5, value=80)
@@ -250,20 +211,24 @@ class Rollout(BaseUI):
             with gr.Row():
                 gr.Checkbox(elem_id='use_vllm', value=True, scale=4)
                 gr.Dropdown(elem_id='vllm_mode', choices=['colocate', 'server'], scale=4)
+                gr.Slider(elem_id='num_generations', minimum=1, maximum=64, step=1, scale=4)
+                gr.Textbox(elem_id='max_completion_length', lines=1, value='512', scale=4)
 
             with gr.Accordion(elem_id='colocate_param', open=True):
                 with gr.Row():
-                    gr.Checkbox(elem_id='vllm_enable_prefix_caching', scale=4)
                     gr.Textbox(elem_id='vllm_gpu_memory_utilization', lines=1, value='0.5', scale=4)
                     gr.Textbox(elem_id='vllm_tensor_parallel_size', lines=1, value='1', scale=4)
                     gr.Textbox(elem_id='vllm_max_model_len', lines=1, value='', scale=4)
-                with gr.Row():
-                    gr.Dropdown(elem_id='sleep_level', choices=[0, 1], value=0, scale=4)
+                    gr.Dropdown(elem_id='sleep_level', choices=['0', '1'], value='0', scale=4, allow_custom_value=True)
                     gr.Checkbox(elem_id='offload_model', value=True, scale=4)
                     gr.Checkbox(elem_id='offload_optimizer', value=True, scale=4)
             with gr.Accordion(elem_id='server_param', open=True):
                 with gr.Row():
                     gr.Checkbox(elem_id='async_generate', scale=4)
-                    gr.Textbox(elem_id='vllm_server_host', scale=4)
+                    gr.Textbox(elem_id='vllm_server_host', value='127.0.0.1', scale=4)
                     gr.Textbox(elem_id='vllm_server_port', lines=1, scale=4)
                     gr.Textbox(elem_id='vllm_server_timeout', lines=1, scale=4, value=120)
+
+    @staticmethod
+    def update_num_gen(per_device_batch_size, steps_per_generation, num_processes):
+        return int(per_device_batch_size) * int(steps_per_generation) * int(num_processes)
