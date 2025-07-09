@@ -162,6 +162,7 @@ megatron sft \
     --model_author swift \
     --model_name swift-robot
 ```
+- MoE模型的LoRA训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/lora)。
 
 MCore转换HF脚本：
 ```bash

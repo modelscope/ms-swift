@@ -168,6 +168,7 @@ megatron sft \
     --model_author swift \
     --model_name swift-robot
 ```
+- For LoRA training scripts of MoE models, please refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/lora).
 
 MCore to HF Conversion Script:
 

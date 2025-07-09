@@ -192,7 +192,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         **kwargs,
         **convert_kwargs,
         load=args.mcore_model,
-        adapter_load=args.mcore_adapters[0],
+        adapter_load=args.mcore_adapters[0] if args.mcore_adapters else None,
         torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
@@ -201,7 +201,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
 
     mg_model = megatron_model_meta.model_provider()
     load_checkpoint([mg_model], None, None, strict=True)
-    if megatron_args.train_type != 'full':
+    if megatron_args.adapter_load is not None:
         peft_model = prepare_mcore_model(mg_model)
         with adapter_state_dict_context():
             load_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
