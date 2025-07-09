@@ -303,6 +303,8 @@ def get_ckpt_dir(model_dir: str, adapters_dir: Optional[List[str]]) -> str:
 
 
 def update_generation_config_eos_token(generation_config, template):
+    if generation_config is None:
+        return
     stop_words = template.template_meta.stop_words
     eos_token_id = generation_config.eos_token_id
     if isinstance(eos_token_id, int):
