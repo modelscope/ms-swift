@@ -438,9 +438,14 @@ def padding_free_context_grpo(self, model: torch.nn.Module, sp_instance):
 
         max_length = max(seq_lengths)
         logits = result.logits.squeeze(0)
-        unpacked_logits = []
+        has_entropies = hasattr(result, 'entropies') and result.entropies is not None
+        if has_entropies:
+            entropies = result.entropies.squeeze(0)
 
+        unpacked_logits = []
+        unpacked_entropies = [] if has_entropies else None
         start = 0
+
         for length in seq_lengths:
             seq_state = logits[start:start + length]
             padding = torch.zeros((max_length - length)).to(logits.dtype).to(logits.device)
@@ -449,8 +454,20 @@ def padding_free_context_grpo(self, model: torch.nn.Module, sp_instance):
             else:
                 seq_state = torch.cat((seq_state, padding), dim=0)
             unpacked_logits.append(seq_state)
+
+            if has_entropies:
+                ent_state = entropies[start:start + length]
+                padding = padding.to(entropies.dtype).to(entropies.device)
+                if ctx['padding_left']:
+                    ent_state = torch.cat((padding, ent_state), dim=0)
+                else:
+                    ent_state = torch.cat((ent_state, padding), dim=0)
+                unpacked_entropies.append(ent_state)
             start += length
+
         result.logits = torch.stack(unpacked_logits, dim=0)
+        if has_entropies:
+            result.entropies = torch.stack(unpacked_entropies, dim=0)
         return result
 
     llm_model = get_llm_model(model)
@@ -543,11 +560,17 @@ def _get_per_token_logps_and_entropies_grpo(self: GRPOTrainer, model: torch.nn.M
     if self.padding_free:
         llm_model = get_llm_model(model)
         output.logits = per_token_logps
+        output.entropies = entropies
         # unpack output after sp logps have been calculated
         _, inputs = llm_model._pack_input(None, None, inputs)
-        per_token_logps = llm_model._unpack_output(None, None, inputs, output).logits
+        output = llm_model._unpack_output(None, None, inputs, output)
+        per_token_logps = output.logits
+        entropies = output.entropies
         delattr(llm_model, '_unpack_output')
         delattr(llm_model, '_pack_input')
         logits_to_keep = _origin_logits_to_keep
+        per_token_logps = per_token_logps[:, -logits_to_keep - 1:-1]
+        if entropies:
+            entropies = entropies[:, -logits_to_keep - 1:-1]
     # ignore the last token
-    return per_token_logps[:, -logits_to_keep - 1:-1]
+    return {'logps': per_token_logps, 'entropies': entropies}
