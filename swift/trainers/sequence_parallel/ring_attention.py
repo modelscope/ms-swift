@@ -1,28 +1,17 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import math
 import os
 from functools import partial
 from types import MethodType
-from typing import Any, Dict, Iterator, List
 
-import datasets
-import numpy as np
 import torch
-import torch.distributed as dist
-import torch.nn as nn
 import torch.nn.functional as F
-from datasets import Dataset
 from packaging import version
-from torch.distributed.device_mesh import init_device_mesh
-from torch.nn import CrossEntropyLoss
-from torch.utils.data import DataLoader, Sampler
 
-from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_llm_model, to_device
-from swift.utils import get_current_device, get_device, get_dist_setting, seed_worker
+from swift.llm import get_llm_model
 from .base import CommonSequenceParallel
-from .utils import (ChunkedCrossEntropyLoss, GatherLoss, SequenceParallelDispatcher, SequenceParallelSampler,
-                    _get_per_token_logps_grpo, _get_train_sampler_grpo, _prepare_inputs, _prepare_inputs_grpo,
-                    get_common_dataloader, get_per_token_logps, loss_scale_sp_func, old_policy_grpo, setup_compute_acc,
+from .utils import (SequenceParallelDispatcher, SequenceParallelSampler, _get_per_token_logps_grpo,
+                    _get_train_sampler_grpo, _prepare_inputs, _prepare_inputs_grpo, get_common_dataloader,
+                    get_per_token_logps, loss_scale_sp_func, old_policy_grpo, setup_compute_acc,
                     split_by_mini_batches_grpo)
 
 RING_ATTN_GROUP = None
