@@ -108,8 +108,9 @@ def adapter_state_dict_context():
                 continue
             if n in state_dict_model:
                 new_state_dict[n] = state_dict_model[n]
-            key = n.rsplit('.', 1)[0]
-            key = f'{key}._extra_state'
+            key = n.replace('.weight', '._extra_state')
+            if key.endswith('._extra_state0'):
+                key = key.replace('._extra_state0', '._extra_state')
             if key in state_dict_model:
                 new_state_dict[key] = state_dict_model[key]
         state_dict['model'] = new_state_dict

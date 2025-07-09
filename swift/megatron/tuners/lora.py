@@ -1,9 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Code borrowed from huggingface/peft
+import math
 from typing import Any, Optional, Tuple
 
 import torch
 import torch.nn as nn
+from megatron.core import parallel_state
 from megatron.core.dist_checkpointing.mapping import ShardedStateDict
 from megatron.core.extensions.transformer_engine import (TEColumnParallelGroupedLinear, TEColumnParallelLinear,
                                                          TEGroupedLinear, TELayerNormColumnParallelLinear, TELinear,
@@ -89,43 +91,74 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             'config': self.config,
             'is_expert': self.is_expert,
         }
-        if self.is_grouped:
-            print()
         if self.is_parallel_a:
             self.in_features = self.in_features * self.tp_size
-            lora_a = TERowParallelLinear(
-                input_size=self.in_features,
-                output_size=r,
-                bias=False,
-                input_is_parallel=True,
-                **kwargs,
-            )
-            lora_b = TELinear(
-                input_size=r,
-                output_size=self.out_features,
-                bias=lora_bias,
-                parallel_mode=None,
-                skip_weight_param_allocation=False,
-                **kwargs,
-            )
-            lora_a.parallel_mode = self.base_layer.parallel_mode  # fix moe_shared_expert_overlap
+            if self.is_grouped:
+                lora_a = TERowParallelGroupedLinear(
+                    num_gemms=self.base_layer.num_gemms,
+                    input_size=self.in_features,
+                    output_size=r,
+                    bias=False,
+                    **kwargs,
+                )
+                lora_b = TEGroupedLinear(
+                    num_gemms=self.base_layer.num_gemms,
+                    input_size=r,
+                    output_size=self.out_features,
+                    bias=lora_bias,
+                    parallel_mode=None,
+                    **kwargs,
+                )
+            else:
+                lora_a = TERowParallelLinear(
+                    input_size=self.in_features,
+                    output_size=r,
+                    bias=False,
+                    input_is_parallel=True,
+                    **kwargs,
+                )
+                lora_b = TELinear(
+                    input_size=r,
+                    output_size=self.out_features,
+                    bias=lora_bias,
+                    parallel_mode=None,
+                    skip_weight_param_allocation=False,
+                    **kwargs,
+                )
+                lora_a.parallel_mode = self.base_layer.parallel_mode  # fix moe_shared_expert_overlap
         else:
             self.out_features = self.out_features * self.tp_size
-            lora_a = TELinear(
-                input_size=self.in_features,
-                output_size=r,
-                bias=lora_bias,
-                parallel_mode=None,
-                skip_weight_param_allocation=False,
-                **kwargs)
-            lora_b = TEColumnParallelLinear(
-                input_size=r,
-                output_size=self.out_features,
-                bias=lora_bias,
-                gather_output=False,
-                **kwargs,
-            )
-            lora_b.parallel_mode = self.base_layer.parallel_mode  # fix moe_shared_expert_overlap
+            if self.is_grouped:
+                lora_a = TEGroupedLinear(
+                    num_gemms=self.base_layer.num_gemms,
+                    input_size=self.in_features,
+                    output_size=r,
+                    bias=lora_bias,
+                    parallel_mode=None,
+                    **kwargs)
+                lora_b = TEColumnParallelGroupedLinear(
+                    num_gemms=self.base_layer.num_gemms,
+                    input_size=r,
+                    output_size=self.out_features,
+                    bias=lora_bias,
+                    **kwargs,
+                )
+            else:
+                lora_a = TELinear(
+                    input_size=self.in_features,
+                    output_size=r,
+                    bias=lora_bias,
+                    parallel_mode=None,
+                    skip_weight_param_allocation=False,
+                    **kwargs)
+                lora_b = TEColumnParallelLinear(
+                    input_size=r,
+                    output_size=self.out_features,
+                    bias=lora_bias,
+                    gather_output=False,
+                    **kwargs,
+                )
+                lora_b.parallel_mode = self.base_layer.parallel_mode  # fix moe_shared_expert_overlap
         for lora in [lora_a, lora_b]:
             if isinstance(lora, (TERowParallelLinear, TEColumnParallelLinear)) and lora.parallel_mode is None:
                 lora.ub_overlap_rs_fprop = False
@@ -153,6 +186,38 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 self.to(weight.device)
         self.set_adapter(self.active_adapters)
 
+    def reset_lora_parameters(self, adapter_name, init_lora_weights):
+        if init_lora_weights is False:
+            return
+
+        if adapter_name in self.lora_A.keys():
+            lora_a = self.lora_A[adapter_name]
+            lora_b = self.lora_B[adapter_name]
+            if isinstance(lora_a, TEGroupedLinear):
+                weights_a = [getattr(lora_a, f'weight{i}') for i in range(lora_a.num_gemms)]
+            else:
+                weights_a = [lora_a.weight]
+            if isinstance(lora_b, TEGroupedLinear):
+                weights_b = [getattr(lora_b, f'weight{i}') for i in range(lora_b.num_gemms)]
+            else:
+                weights_b = [lora_b.weight]
+            for weight_a in weights_a:
+                if init_lora_weights is True:
+                    # initialize A the same way as the default for nn.Linear and B to zero
+                    # https://github.com/microsoft/LoRA/blob/a0a92e0f26c067cf94747bdbf1ce73793fa44d19/loralib/layers.py#L124
+                    nn.init.kaiming_uniform_(weight_a, a=math.sqrt(5))
+                elif init_lora_weights.lower() == 'gaussian':
+                    nn.init.normal_(weight_a, std=1 / self.r[adapter_name])
+                else:
+                    raise ValueError(f'Unknown initialization {init_lora_weights=}')
+            for weight_b in weights_b:
+                nn.init.zeros_(weight_b)
+        if adapter_name in self.lora_embedding_A.keys():
+            # Initialize A to zeros and B the same way as the default for nn.Embedding, see:
+            # https://github.com/microsoft/LoRA/blob/4c0333854cb905966f8cc4e9a74068c1e507c7b7/loralib/layers.py#L59-L60
+            nn.init.zeros_(self.lora_embedding_A[adapter_name])
+            nn.init.normal_(self.lora_embedding_B[adapter_name])
+
     def forward(self, x: torch.Tensor, *args: Any, **kwargs: Any):
         previous_dtype = x.dtype
         if self.disable_adapters:
@@ -177,12 +242,15 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 lora_B = self.lora_B[active_adapter]
                 dropout = self.lora_dropout[active_adapter]
                 scaling = self.scaling[active_adapter]
-                x = x.to(lora_A.weight.dtype)
+                dtype = lora_A.weight0.dtype if isinstance(lora_A, TEGroupedLinear) else lora_A.weight.dtype
+                x = x.to(dtype)
 
-                lora_result = lora_A(dropout(x))
+                lora_result = lora_A(dropout(x), *args, **kwargs) if isinstance(lora_A, TEGroupedLinear) else lora_A(
+                    dropout(x))
                 if isinstance(lora_result, tuple):
                     lora_result = lora_result[0]
-                lora_result = lora_B(lora_result)
+                lora_result = lora_B(lora_result, *args, **kwargs) if isinstance(
+                    lora_B, TEGroupedLinear) else lora_B(lora_result)
                 if isinstance(lora_result, tuple):
                     lora_result = lora_result[0]
                 lora_result = lora_result * scaling
@@ -212,9 +280,26 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             for n, m in modules:
                 _prefix = f'{prefix}{name}.' if n is None else f'{prefix}{name}.{n}.'
                 sharded_state_dict.update(sharded_state_dict_default(m, _prefix, sharded_offsets, metadata))
-        if prefix.endswith('.linear_fc1.'):
-            sharded_state_dict[f'{prefix}base_layer.weight'] = apply_swiglu_sharded_factory(
-                sharded_state_dict[f'{prefix}base_layer.weight'], sharded_offsets)
+
+        if prefix.endswith('linear_fc1.'):
+            if isinstance(self.base_layer, TEGroupedLinear) and self.config.gated_linear_unit:
+                num_global_experts = (parallel_state.get_expert_model_parallel_world_size() * self.base_layer.num_gemms)
+                local_expert_indices_offset = (
+                    parallel_state.get_expert_model_parallel_rank() * self.base_layer.num_gemms)
+                ep_axis = len(sharded_offsets)
+                for i in range(self.base_layer.num_gemms):
+                    new_sharded_offsets = (
+                        *sharded_offsets,
+                        (ep_axis, local_expert_indices_offset + i, num_global_experts),
+                    )
+                    for k in (f'{prefix}base_layer.weight{i}', f'{prefix}base_layer.bias{i}'):
+                        if k in sharded_state_dict:
+                            sharded_state_dict[k] = apply_swiglu_sharded_factory(sharded_state_dict[k],
+                                                                                 new_sharded_offsets)
+            else:
+                for k, v in sharded_state_dict.items():
+                    if k in [f'{prefix}base_layer.weight', f'{prefix}base_layer.bias']:
+                        sharded_state_dict[k] = apply_swiglu_sharded_factory(sharded_state_dict[k], sharded_offsets)
         return sharded_state_dict
 
     def get_delta_weight(self, adapter) -> torch.Tensor:
