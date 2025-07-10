@@ -19,7 +19,7 @@ from megatron.training import ft_integration, get_args, get_timers, is_last_rank
 from megatron.training.checkpointing import load_checkpoint
 from packaging import version
 
-from swift.utils import get_logger
+from swift.utils import JsonlWriter, get_logger, is_master
 from ..utils import adapter_state_dict_context, prepare_mcore_model
 from .utils import get_swift_datasets_provider
 
@@ -309,10 +309,11 @@ class BaseMegatronTrainer(ABC):
         timers.log(['evaluate'])
 
         rerun_state_machine.set_mode(rerun_mode)
-        logs = {}
-        for key, val in total_loss_dict.items():
-            logs[key] = round(val, 8)
-        self.jsonl_writer.append(logs)
+        if is_master():
+            logs = {}
+            for key, val in total_loss_dict.items():
+                logs[key] = round(val, 8)
+            self.jsonl_writer.append(logs)
         return total_loss_dict, collected_non_loss_data, False
 
     def save_checkpoint(self, *args, **kwargs):
