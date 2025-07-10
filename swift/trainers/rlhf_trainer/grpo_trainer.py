@@ -47,6 +47,11 @@ from .rlhf_mixin import RLHFTrainerMixin
 from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge
 from .vllm_client import VLLMClient
 
+try:
+    from trl.trainer.utils import entropy_from_logits
+except ImportError:
+    from .utils import entropy_from_logits
+
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
 
@@ -232,7 +237,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'completion': deque(maxlen=maxlen),
             'rewards': defaultdict(lambda: deque(maxlen=maxlen)),
         }
-        if True:  # TODO: log_entropy?
+        self.compute_entropy = self.args.log_entropy or self.args.token_entropy_percentile_threshold
+        if self.args.log_entropy:
             self._textual_logs.update({'mean_entropy': deque(maxlen=maxlen)})
         # Ensure each process receives a unique seed to prevent duplicate completions when generating with
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
@@ -1011,8 +1017,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs (InputsType): List of input samples. Original shape is [spg*bs] where:
                 - spg: steps_per_generation
                 - bs: per-device batch size
-            rewards (torch.Tensor): Tensor of rewards corresponding to the inputs.
-                Shape should match the total number of samples (spg*bs*num_generations)
+            rewards (torch.Tensor): Tensor of global rewards corresponding to the inputs.
+                Shape should match the total number of samples (spg*bs*num_processes*num_generations)
 
         Returns:
             List[InputsType]: A list of prepared batch inputs, organized as [spg][bs]
@@ -1021,6 +1027,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         grouped_rewards = rewards.view(-1, self.num_generations)
         mean_grouped_rewards = grouped_rewards.mean(dim=1).repeat_interleave(self.num_generations, dim=0)
         std_grouped_rewards = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations, dim=0)
+
         advantages = (rewards - mean_grouped_rewards)
         if self.args.scale_rewards:
             advantages /= (std_grouped_rewards + 1e-4)
@@ -1085,8 +1092,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Log overall reward stats
         grouped_rewards = rewards.view(-1, self.num_generations)
+        std_grouped_rewards = grouped_rewards.std(dim=1)
+        is_std_zero = torch.isclose(std_grouped_rewards, torch.zeros_like(std_grouped_rewards))
+
         self._metrics[mode]['reward'].append(grouped_rewards.mean().item())
-        self._metrics[mode]['reward_std'].append(grouped_rewards.std(dim=1).mean().item())
+        self._metrics[mode]['reward_std'].append(std_grouped_rewards.mean().item())
+        self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
 
         # Log prompt and completion texts
         self._textual_logs['prompt'].extend(self._apply_chat_template_to_messages_list(gather_object(messages)))
@@ -1141,22 +1152,27 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask).to(completion_mask.device)
             completion_mask = completion_mask * (~truncated_mask)
 
-        if self.token_entropy_percentile_threshold > 0.0:
+        if self.compute_entropy:
             logps_and_entropies = self._get_per_token_logps_and_entropies(model, inputs, compute_entropy=True)
             per_token_logps = logps_and_entropies['logps']
             entropies = logps_and_entropies['entropies']
             # fill the padded token with NaN
             entropies = entropies.masked_fill(completion_mask == 0, float('nan'))
-            global_entropies_mean = gather_object(torch.nanmean(entropies, dim=1).tolist())
-            self._textual_logs['mean_entropy'].extend(global_entropies_mean)
-            agg_per_comletion_entropy_mean = self.accelerator.gather(torch.nanmean(entropies))
-            self._metrics[mode]['entropy/mean'].append(agg_per_comletion_entropy_mean.mean().item())
-            self._metrics[mode]['entropy/max'].append(agg_per_comletion_entropy_mean.max().item())
-            self._metrics[mode]['entropy/min'].append(agg_per_comletion_entropy_mean.min().item())
+            if self.args.log_entropy:
+                per_completion_entropies_mean = torch.nanmean(entropies, dim=1)
+                global_per_completion_entropies_mean = gather(per_completion_entropies_mean)
+                self._textual_logs['mean_entropy'].extend(global_per_completion_entropies_mean.tolist())
+                self._metrics[mode]['entropy/mean'].append(global_per_completion_entropies_mean.mean().item())
+                self._metrics[mode]['entropy/max'].append(global_per_completion_entropies_mean.max().item())
+                self._metrics[mode]['entropy/min'].append(global_per_completion_entropies_mean.min().item())
 
             # compute the entropy threshold across all tokens in the batch
-            entropy_threshold = torch.nanquantile(entropies.flatten().float(), self.token_entropy_percentile_threshold)
-            entropy_mask = entropies >= entropy_threshold
+            if self.args.token_entropy_percentile_threshold > 0:
+                entropy_threshold = torch.nanquantile(entropies.flatten().float(),
+                                                      self.token_entropy_percentile_threshold)
+                entropy_mask = entropies >= entropy_threshold
+            else:
+                entropy_mask = None
         else:
             per_token_logps = self._get_per_token_logps_and_entropies(model, inputs)['logps']
             entropy_mask = None
@@ -1311,7 +1327,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             parameters = inspect.signature(unwrapped_model.base_model.model.forward).parameters
         else:
             parameters = inspect.signature(unwrapped_model.forward).parameters
-        if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
+        use_local_entropy = not hasattr(super(), '_get_per_token_logps_and_entropies') and compute_entropy
+
+        can_use_super = (not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters
+                         and not use_local_entropy)
+
+        if can_use_super:
             # save memory
             with self.padding_free_context(model):
                 if hasattr(super(), '_get_per_token_logps_and_entropies'):
@@ -1320,9 +1341,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     logps = result['logps']
                     entropies = result['entropies']
                 else:
-                    assert self.token_entropy_percentile_threshold == 0, (
-                        'Outdated `trl` version. Please install `trl` from source to use '
-                        'the entropy mask functionality: `pip install git+https://github.com/huggingface/trl.git`')
                     logps = super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
                     entropies = None
         else:
@@ -1343,7 +1361,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             logps = selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
             entropies = None
             if compute_entropy:
-                from trl.trainer.utils import entropy_from_logits
                 entropies = entropy_from_logits(logits)
 
         return {'logps': logps, 'entropies': entropies}
@@ -1613,6 +1630,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         else:  # transformers<=4.46
             super().log(logs)
         self._metrics[mode].clear()
+
+        # NOTE:
+        # - mean_entropy only includes samples that went through training (computed in _compute_loss)
+        # - Other fields (e.g., prompt/completion/reward) are collected from rollout (in _prepare_inputs)
+        # Therefore, if mean_entropy exists, to ensure length consistency across fields,
+        # we align all data based on the number of samples in mean_entropy.
         seen_nums = len(self._textual_logs['mean_entropy']) \
             if 'mean_entropy' in self._textual_logs else len(self._textual_logs['prompt'])
         if self.accelerator.is_main_process and self.log_completions:
@@ -1623,7 +1646,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 **{k: list(v)[:seen_nums]
                    for k, v in self._textual_logs['rewards'].items()},
             }
-            if True:
+            if self.args.log_entropy:
                 table.update({'mean_entropy': self._textual_logs['mean_entropy']})
             self.jsonl_writer.append(table)
             if self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None:

@@ -31,6 +31,12 @@ except ImportError:
         return func
 
 
+try:
+    from trl.trainer.utils import entropy_from_logits
+except ImportError:
+    from ..rlhf_trainer.utils import entropy_from_logits
+
+
 class GatherLoss(torch.autograd.Function):
     """Gather loss from sequence group"""
 
@@ -563,7 +569,6 @@ def _get_per_token_logps_and_entropies_grpo(self: 'GRPOTrainer',
     labels_padded = torch.cat((_padding_labels, labels_kept), dim=1)
     per_token_logps, _ = GatherLoss.apply(per_token_logps_padded, labels_padded, sp_instance.sp_group, 1)
     if compute_entropy:
-        from trl.trainer.utils import entropy_from_logits
         entropies = entropy_from_logits(logits_kept)
         entropies_padded = torch.cat((_padding_logps, entropies), dim=1)
         entropies, _ = GatherLoss.apply(entropies_padded, labels_padded, sp_instance.sp_group, 1)

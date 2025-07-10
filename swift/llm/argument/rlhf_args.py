@@ -267,6 +267,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 raise ValueError('Liger loss does not support padding free yet.')
             if self.token_entropy_percentile_threshold > 0:
                 raise ValueError('Liger loss does not support entropy mask yet.')
+            if self.log_entropy:
+                raise ValueError('Liger loss does not support log entropy yet.')
             from trl.import_utils import is_liger_kernel_available
             assert is_liger_kernel_available(), (
                 'Please install/update liger-kernel by running: pip install -U liger-kernel')
@@ -291,12 +293,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             assert 'generation_batch_size' in GRPOConfig.__dict__, (
                 'generation_batch_size or steps_per_generation needs trl >= 0.18, '
                 'please install trl `pip install trl>=0.18')
-        if self.token_entropy_percentile_threshold > 0:
-            try:
-                from trl.trainer.utils import entropy_from_logits
-            except ImportError:
-                raise ImportError('To use the entropy mask functionality, please install trl from source: '
-                                  'pip install git+https://github.com/huggingface/trl.git')
 
     def _external_vllm_warning(self):
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:

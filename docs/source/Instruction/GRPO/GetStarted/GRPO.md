@@ -207,6 +207,18 @@ swift rollout \
 --vllm_server_timeout <超时时间> \
 ```
 
+## logged metrics
+
+- completions/mean_length：生成的 completion 的平均长度。
+- completions/min_length：生成的 completion 的最小长度。
+- completions/max_length：生成的 completion 的最大长度。
+- completions/clipped_ratio：被长度截断的 completion 占比。
+- reward/{reward_func_name}/mean：某个特定 reward function 的平均奖励值。
+- reward/{reward_func_name}/std：某个特定 reward function 的奖励标准差。
+- reward：加权 reward_weights 后的整体平均奖励。
+- reward_std：加权 reward_weights 后，每个 batch 内整体奖励的标准差。
+- frac_reward_zero_std：在生成 batch 中，reward 标准差为零的样本比例，意味着该 prompt 上的答案几乎无多样性（所有回答都对或都错）。
+- kl：生成的 completion 上，模型与参考模型之间的平均 KL 散度。仅当 beta 非零时记录。
 
 ## FAQ
 **1. 训练过程中 loss 等于0 / 接近0 / 小于0**
