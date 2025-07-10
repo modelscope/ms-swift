@@ -1589,9 +1589,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 wandb.log({'completions': wandb.Table(dataframe=df)})
 
             if self.args.report_to and 'swanlab' in self.args.report_to and swanlab.get_run() is not None:
-                headers = table.keys()
-                rows = table.values()
-                swanlab.log({"table": swanlab.echarts.Table().add(headers, rows)})
+                headers = list(table.keys())
+                rows = []
+                for i in range(len(table['step'])):
+                    row = []
+                    for header in headers:
+                        row.append(table[header][i])
+                    rows.append(row)
+                swanlab.log({"completions": swanlab.echarts.Table().add(headers, rows)})
 
     def is_async_generate_eval_rollout_done(self):
         return not self.eval_flag or not self.eval_queue.empty()
