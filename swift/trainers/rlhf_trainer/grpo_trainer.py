@@ -27,7 +27,7 @@ from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
 from transformers.trainer import Trainer
 from trl import GRPOTrainer as HFGRPOTrainer
-from trl.extras.profiling import profiling_context, profiling_decorator
+from trl.extras.profiling import profiling_decorator
 from trl.models import prepare_deepspeed
 from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import nanmax, nanmin, nanstd
@@ -43,7 +43,7 @@ from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_devic
                          is_vllm_available, is_wandb_available, seed_worker, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge
+from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge, patch_profiling_context
 from .vllm_client import VLLMClient
 
 del HFGRPOTrainer.__init__
@@ -908,7 +908,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
                 zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
-            with profiling_context(self, reward_func_name):
+            with patch_profiling_context(self, reward_func_name):
                 # reward model
                 if isinstance(reward_func, nn.Module):
                     output_reward_func = reward_model_plugin(inputs=inputs)
@@ -1401,7 +1401,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         *,
         use_tqdm: Optional[bool] = False,
     ) -> List[ChatCompletionResponse]:
-        with profiling_context(self, 'generate'):
+        with patch_profiling_context(self, 'generate'):
             if self.vllm_mode == 'server':
                 request_keys = ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
 

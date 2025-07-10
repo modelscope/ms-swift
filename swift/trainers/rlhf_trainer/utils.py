@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import time
 from contextlib import contextmanager
 from types import MethodType
 from typing import Any, Optional
@@ -7,6 +8,13 @@ import torch
 from peft.tuners import lora
 from peft.tuners.lora import LoraLayer
 from torch import nn
+
+from swift.utils import is_swanlab_available, is_wandb_available
+
+if is_wandb_available():
+    import wandb
+if is_swanlab_available():
+    import swanlab
 
 
 def round_robin(num_reqs, num_workers):
@@ -123,6 +131,22 @@ def patch_lora_unmerge(model):
             if isinstance(module, LoraLayer) and hasattr(module, 'unmerge_origin'):
                 module.unmerge = module.unmerge_origin
                 del module.unmerge_origin
+
+
+@contextmanager
+def patch_profiling_context(trainer, name: str):
+    start_time = time.perf_counter()
+    yield
+    end_time = time.perf_counter()
+    duration = end_time - start_time
+
+    profiling_metrics = {f'profiling/Time taken: {trainer.__class__.__name__}.{name}': duration}
+
+    if 'wandb' in trainer.args.report_to and wandb.run is not None and trainer.accelerator.is_main_process:
+        wandb.log(profiling_metrics)
+
+    if 'swanlab' in trainer.args.report_to and swanlab.get_run() is not None and trainer.accelerator.is_main_process:
+        swanlab.log(profiling_metrics)
 
 
 class _ForwardRedirection:
