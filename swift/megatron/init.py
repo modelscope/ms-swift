@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from packaging import version
 
 from swift.llm import git_clone_github
-from swift.utils import get_logger, is_megatron_available, safe_ddp_context, subprocess_run
+from swift.utils import JsonlWriter, get_logger, is_master, is_megatron_available, safe_ddp_context, subprocess_run
 
 logger = get_logger()
 
@@ -60,11 +60,13 @@ def _patch_training_log():
     from megatron.training.training import num_floating_point_operations
     from megatron.core.num_microbatches_calculator import get_num_microbatches
     from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory
+    jsonl_writer = None
 
     # Code borrowed from NVIDIA/Megatron-LM
     def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
                      report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad):
         """Log training information such as losses, timing, ...."""
+        nonlocal jsonl_writer
         args = get_args()
         timers = get_timers()
         writer = get_tensorboard_writer()
@@ -276,6 +278,28 @@ def _patch_training_log():
                 report_memory(f'(after {iteration} iterations)')
                 report_memory_flag = False
             timers.log(timers_to_log, normalizer=args.log_interval)
+
+            if is_master():
+                logging_path = os.path.join(args.save, 'logging.jsonl')
+                logs = {}
+                for k, v in total_loss_dict.items():
+                    if isinstance(v, torch.Tensor):
+                        v = v.item()
+                    logs[k] = round(v, 8)
+                if grad_norm is not None:
+                    logs['grad_norm'] = round(grad_norm, 8)
+                if params_norm is not None:
+                    logs['params_norm'] = round(params_norm, 8)
+                logs['learning_rate'] = round(learning_rate, 8)
+                logs['elapsed_time_per_iteration'] = round(elapsed_time_per_iteration, 8)
+                if args.log_throughput:
+                    logs['throughput'] = round(throughput, 8)
+                logs['loss_scale'] = round(loss_scale, 8)
+                logs['consumed_samples'] = args.consumed_train_samples
+                logs['global_step/max_steps'] = f'{iteration}/{args.train_iters}'
+                if jsonl_writer is None:
+                    jsonl_writer = JsonlWriter(logging_path, enable_async=True)
+                jsonl_writer.append(logs)
 
         return report_memory_flag
 
