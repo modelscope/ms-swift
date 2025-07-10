@@ -1,4 +1,4 @@
-# 8 * 64GiB
+# 8 * 62GiB; 0.9s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
@@ -7,7 +7,7 @@ megatron rlhf \
     --load Qwen1.5-MoE-A2.7B-mcore \
     --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji#20000' \
     --split_dataset_ratio 0.01 \
-    --tensor_model_parallel_size 2 \
+    --pipeline_model_parallel_size 2 \
     --expert_model_parallel_size 4 \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
