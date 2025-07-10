@@ -4,9 +4,11 @@ import sys
 from datetime import datetime
 from typing import List, Optional, Tuple
 
+import megatron.core
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from packaging import version
 
 from swift.llm import git_clone_github
 from swift.utils import get_logger, is_megatron_available, safe_ddp_context, subprocess_run
@@ -335,8 +337,13 @@ def _patch_mla_attention():
         # Adjust key, value for inference
         # ===================================================
         # rotary_pos_emb = None
-        query, key, value, _, attn_mask_type = self._adjust_key_value_for_inference(
-            inference_context, query, key, value, rotary_pos_emb=None)
+        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+        if megatron_core_013:
+            query, key, value, _, attn_mask_type, _ = self._adjust_key_value_for_inference(
+                inference_context, query, key, value, rotary_pos_emb=None)
+        else:
+            query, key, value, _, attn_mask_type = self._adjust_key_value_for_inference(
+                inference_context, query, key, value, rotary_pos_emb=None)
 
         # TODO: Currently, TE can only accept contiguous tensors for MLA
         query = query.contiguous()
