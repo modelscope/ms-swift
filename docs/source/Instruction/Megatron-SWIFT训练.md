@@ -21,7 +21,11 @@ git checkout e13873debc4699d39c6861074b9a3b2a02327f92
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
-pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.12.0
+# "ms-swift<3.7"请使用core_r0.12.0分支
+pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
+
+# 若使用多机训练，请额外设置`MODELSCOPE_CACHE`环境变量为共享存储路径
+expert MODELSCOPE_CACHE='/xxx/shared'
 ```
 
 或者你也可以使用镜像：
@@ -31,7 +35,7 @@ modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu
 modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.27.1-swift3.5.3
 ```
 
-依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.12.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.12.0)）。
+依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.13.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)）。
 
 
 ## 快速入门案例
@@ -168,10 +172,10 @@ MCore转换HF脚本：
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
-    --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
+    --mcore_adapters /mnt/nas2/huangjintao.hjt/work/llmscope/megatron_output/Qwen3-30B-A3B/v5-20250710-204630 \
     --to_hf true \
     --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
+    --output_dir /mnt/nas2/huangjintao.hjt/work/llmscope/megatron_output/Qwen3-30B-A3B/v5-20250710-204630-hf \
     --test_convert_precision true
 ```
 - 注意：`mcore_adapters`文件夹中包含`args.json`文件，转换过程中会读取文件中`mcore_model`和LoRA相关的参数信息，并将`mcore_model`和`mcore_adapters`进行merge-lora成完整权重，最终转换成HF格式权重。
@@ -238,7 +242,6 @@ swift export \
 - dataloader_type: 默认为'cyclic'，可选为'single', 'cyclic', 'external'。若开启`--streaming`，则设置为`external`。
 - manual_gc: 禁用默认垃圾回收器，手动触发垃圾回收。默认为False。
 - manual_gc_interval: 触发垃圾回收的间隔。默认为0。
-- no_check_for_nan_in_loss_and_grad: 默认为False。
 - seed: python、numpy、pytorch和cuda的随机种子，默认为42。
 - 🔥num_workers: dataloder的workers数量，默认为4。
   - 注意：若设置`--streaming true`，则设置为1。

@@ -15,6 +15,7 @@ from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.utils import StragglerDetector
 from megatron.training import ft_integration, get_args, get_timers, is_last_rank, pretrain, print_rank_0, training
+from megatron.training.checkpointing import load_checkpoint
 from packaging import version
 
 from swift.utils import get_logger
@@ -157,7 +158,13 @@ class BaseMegatronTrainer(ABC):
             return model
 
         with self._patch_load_state_dict():
-            return self._origin_setup_model_and_optimizer(new_model_provider_func, model_type, *_args, **kwargs)
+            model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
+                new_model_provider_func, model_type, *_args, **kwargs)
+        args = get_args()
+        if args.adapter_load is not None:
+            with adapter_state_dict_context():
+                load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
+        return model, optimizer, opt_param_scheduler
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         with self._training_context():

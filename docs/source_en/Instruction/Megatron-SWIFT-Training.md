@@ -22,7 +22,11 @@ git checkout e13873debc4699d39c6861074b9a3b2a02327f92
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
-pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.12.0
+# For "ms-swift<3.7", please use the core_r0.12.0 branch.
+pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
+
+# If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
+export MODELSCOPE_CACHE='/xxx/shared'
 ```
 
 Alternatively, you can also use the image:
@@ -32,7 +36,7 @@ modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu
 modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.27.1-swift3.5.3
 ```
 
-The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.12.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.12.0)).
+The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.13.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)).
 
 
 ## Quick Start Example
@@ -244,7 +248,6 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
 - dataloader_type: Default is 'cyclic', options are 'single', 'cyclic', 'external'. If `--streaming` is enabled, set it to external.
 - manual_gc: Disables the default garbage collector and manually triggers garbage collection. Default is False.
 - manual_gc_interval: Interval at which garbage collection is triggered. Default is 0.
-- no_check_for_nan_in_loss_and_grad: Default is False.
 - seed: Random seed for python, numpy, pytorch, and cuda, default is 42.
 - 🔥num_workers: Number of workers for the dataloader, default is 4.
   - Note: If `--streaming true` is set, it will be set to 1.
