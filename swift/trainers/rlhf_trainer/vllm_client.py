@@ -16,7 +16,7 @@ from requests import ConnectionError
 from torch import nn
 
 from swift.llm import AdapterRequest, RolloutInferRequest, Template
-from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig, RolloutResponseChoice
+from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig, RolloutResponseChoice, GymRolloutResponseChoice
 from swift.plugin import Metric
 from swift.utils import is_vllm_ascend_available, is_vllm_available
 
@@ -32,10 +32,10 @@ logger = logging.getLogger(__name__)
 
 class VLLMClient:
     """
-    A client class to interact with a vLLM server.
+    Client to interact with vLLM servers.
 
     This class provides methods to infer completions, initialize and manage weight update groups, and update model
-    weights in a distributed setting. Before using it, start the vLLM server with `trl vllm-serve`.
+    weights in a distributed setting.
 
     Args:
         base_url (`str` or `None`, *optional*, defaults to `None`):
@@ -62,6 +62,7 @@ class VLLMClient:
             raise ImportError('vLLM is not installed. Please install it with `pip install vllm`.')
 
         self.session = requests.Session()
+        
         if base_url is not None:
             # Parse the base_url to extract host and port
             parsed_url = urlparse(base_url)
@@ -133,16 +134,49 @@ class VLLMClient:
                 'adapter_request': adapter_request,
             },
         )
+        
         if response.status_code == 200:
-            if not getattr(self, 'use_async_engine', False):
-                return [from_dict(data_class=ChatCompletionResponse, data=resp) for resp in response.json()]
+            if getattr(self, 'use_gym_engine', False):
+                # Parse gym-specific response format
+                results = []
+                for resp in response.json():
+                    # Gym responses always use GymRolloutResponseChoice
+                    choices = []
+                    for choice_data in resp['choices']:
+                        choice = GymRolloutResponseChoice(
+                            index=choice_data['index'],
+                            message=choice_data['message'],
+                            finish_reason=choice_data['finish_reason'],
+                            logprobs=choice_data.get('logprobs'),
+                            messages=choice_data.get('messages', []),
+                            trajectory_id=choice_data.get('trajectory_id'),
+                            total_reward=choice_data.get('total_reward', 0.0),
+                            step_rewards=choice_data.get('step_rewards', [])
+                        )
+                        choices.append(choice)
+                    
+                    result = ChatCompletionResponse(
+                        model=resp['model'],
+                        choices=choices,
+                        usage=resp.get('usage'),
+                        id=resp.get('id'),
+                        created=resp.get('created'),
+                        object=resp.get('object', 'chat.completion')
+                    )
+                    results.append(result)
+                
+                return results
             else:
-                return [
-                    ChatCompletionResponse(
-                        choices=[RolloutResponseChoice(**choice) for choice in resp['choices']],
-                        **{k: v
-                           for k, v in resp.items() if k != 'choices'}) for resp in response.json()
-                ]
+                # Regular vLLM response parsing
+                if not getattr(self, 'use_async_engine', False):
+                    return [from_dict(data_class=ChatCompletionResponse, data=resp) for resp in response.json()]
+                else:
+                    return [
+                        ChatCompletionResponse(
+                            choices=[RolloutResponseChoice(**choice) for choice in resp['choices']],
+                            **{k: v for k, v in resp.items() if k != 'choices'}
+                        ) for resp in response.json()
+                    ]
         else:
             raise Exception(f'Request failed: {response.status_code}, {response.text}')
 
@@ -227,6 +261,7 @@ class VLLMClient:
         if response.status_code == 200:
             result = response.json()['engine_type']
             self.use_async_engine = result == 'AsyncLLMEngine'
+            self.use_gym_engine = result == 'GymVLLMEngine'  # 新增这一行
             return result
         else:
             raise Exception(f'Request failed: {response.status_code}, {response.text}')

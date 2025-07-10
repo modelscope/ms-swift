@@ -148,8 +148,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.reward_funcs.append(rm)
                 self.reward_func_names.append(rm.config._name_or_path.split('/')[-1])
 
-        if not self.reward_funcs:
-            raise ValueError('You must specify reward_funcs or reward_model')
+        # if not self.reward_funcs and self.use_gym_engine:
+        #     raise ValueError('You must specify reward_funcs or reward_model')
 
         # Reward weights
         if args.reward_weights is not None:
@@ -237,6 +237,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.use_fast_infer = self.use_vllm  # whether to use the PT backend
         self.vllm_use_async_engine = False
+        #gym engine 
+        self.use_gym_engine = False
         self.enable_offload = False
         if self.use_vllm:
             if not is_vllm_available():
@@ -245,11 +247,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.vllm_mode == 'server':
                 self.vllm_client: VLLMClient = vllm_client
                 if self.accelerator.is_main_process:
-                    vllm_use_async_engine = [self.vllm_client.get_engine_type() == 'AsyncLLMEngine']
+                    print(f"engine type:{self.vllm_client.get_engine_type() }")
+                    if self.vllm_client.get_engine_type() == 'AsyncLLMEngine':
+                        vllm_use_async_engine = [True]
+                        use_gym_engine = [False]
+                    elif self.vllm_client.get_engine_type() == 'GymVLLMEngine':
+                        vllm_use_async_engine = [False]  # 添加这行
+                        use_gym_engine = [True]
                 else:
                     vllm_use_async_engine = [False]
+                    use_gym_engine = [False]
                 self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
-
+                self.use_gym_engine = broadcast_object_list(use_gym_engine, from_process=0)[0]
             elif self.vllm_mode == 'colocate':
                 if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:
                     raise ValueError(
@@ -872,7 +881,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return inputs
 
     def _generate_and_score_completions(self, inputs: InputsType) -> InputsType:
-
+        if self.use_gym_engine:
+            #TODO gym_vlm_engine不支持reward model
+            return self._generate_and_score_completions_gym(inputs)
         inputs = self._generate_completions(inputs)
         total_rewards_per_func, total_rewards, completions = self._score_completions(inputs)
         mode = 'train' if self.model.training else 'eval'
@@ -890,27 +901,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func)
 
         return batch_encoded_inputs
-
-    def _generate_and_score_completions_gym(self, inputs: InputsType) -> InputsType:
-       total_rewards = torch.zeros((len(inputs),1), device=self.accelerator.device)
-       with unwrap_model_for_generation(
-                    self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
-            ), self.template.generate_context():
-
-            results: List[ChatCompletionResponse] = self._infer(inputs, self.request_config, False)
-            for i, output in enumerate(results):
-                _choices = []
-                for choice in output.choices:
-                    # concated in Engine
-                    _choices.append((choice.messages, choice.finish_reason,choice.total_reward,choice.step_rewards)) #TODO step reward在某些情况下可能需要
-                outputs.append(_choices)
-            outputs = [item for sublist in outputs for item in sublist]
-            for i,result in enumerate(outputs):
-                inputs[i]["messages"] = result.choices
-                inputs[i]['is_truncated'] = output[1] == 'length'
-                total_rewards[i] = output[2]
-            batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards)
-            return batch_encoded_inputs      
 
     def _score_completions(self, inputs: InputsType) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
         """Score completions using all reward functions
@@ -1002,7 +992,114 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs, rewards, rewards_per_func, completions = origin_data
 
         return inputs, rewards, rewards_per_func, completions
+    def _generate_and_score_completions_gym(self, inputs: InputsType) -> InputsType:
+        mode = 'train' if self.model.training else 'eval'
+        
+        if self.args.dynamic_sample and mode == 'train':
+            return self._generate_and_score_completions_gym_with_dynamic_sampling(inputs)
+        else:
+            # Single generation without dynamic sampling
+            total_rewards = torch.zeros((len(inputs), 1), device=self.accelerator.device)
+            
+            with unwrap_model_for_generation(
+                self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
+            ), self.template.generate_context():
+                
+                results: List[ChatCompletionResponse] = self._infer(inputs, self.request_config, False)
+                
+                for i, result in enumerate(results):
+                    choice = result.choices[0]  # Assuming single choice per result
+                    inputs[i]["messages"] = choice.messages
+                    inputs[i]['is_truncated'] = choice.finish_reason == 'length'
+                    total_rewards[i] = choice.total_reward
+            
+            batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards)
+            return batch_encoded_inputs
 
+    def _generate_and_score_completions_gym_with_dynamic_sampling(self, inputs: InputsType) -> InputsType:
+        """Generate completions with dynamic sampling for gym engine"""
+        resample_count = 0
+        valid_samples = []
+        valid_rewards = []
+        
+        origin_inputs = inputs.copy()
+        current_inputs = inputs
+        
+        while resample_count < self.args.max_resample_times:
+            # Generate completions for current inputs
+            current_rewards = torch.zeros((len(current_inputs), 1), device=self.accelerator.device)
+            current_processed_inputs = []
+            
+            with unwrap_model_for_generation(
+                self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
+            ), self.template.generate_context():
+                
+                results: List[ChatCompletionResponse] = self._infer(current_inputs, self.request_config, False)
+                
+                for i, result in enumerate(results):
+                    choice = result.choices[0]  # Assuming single choice per result
+                    processed_input = current_inputs[i].copy()
+                    processed_input["messages"] = choice.messages
+                    processed_input['is_truncated'] = choice.finish_reason == 'length'
+                    current_processed_inputs.append(processed_input)
+                    current_rewards[i] = choice.total_reward
+            
+            # Check variance for each group
+            grouped_rewards = current_rewards.view(-1, self.num_generations)
+            group_std = grouped_rewards.std(dim=1)
+            
+            # Create mask for valid samples (groups with std > 0)
+            valid_mask = (group_std > 0).repeat_interleave(self.num_generations)
+            
+            # Gather valid samples across all processes
+            all_processed_inputs = gather_object(current_processed_inputs)
+            all_rewards = gather(current_rewards)
+            
+            # Collect valid samples
+            for inp, reward, mask in zip(all_processed_inputs, all_rewards, valid_mask):
+                if mask:
+                    valid_samples.append(inp)
+                    valid_rewards.append(reward.item())
+            
+            # Check if we have enough valid samples
+            if len(valid_samples) >= self.args.generation_batch_size:
+                break
+            
+            # Resample if not enough valid samples
+            try:
+                current_inputs = next(self.resample_iterator)
+                current_inputs = Trainer._prepare_inputs(self, current_inputs)
+            except StopIteration:
+                logger.warning("Resample iterator exhausted, using original data")
+                break
+            
+            resample_count += 1
+        
+        # Prepare final results
+        if len(valid_samples) >= self.args.generation_batch_size:
+            # Use valid samples
+            process_slice = slice(
+                self.accelerator.process_index * len(origin_inputs),
+                (self.accelerator.process_index + 1) * len(origin_inputs),
+            )
+            
+            final_inputs = valid_samples[:self.args.generation_batch_size][process_slice]
+            final_rewards = torch.tensor(valid_rewards[:self.args.generation_batch_size], 
+                                    device=self.accelerator.device).view(-1, 1)[process_slice]
+            
+            inputs = final_inputs
+            total_rewards = final_rewards
+            
+        else:
+            # Fallback to original data if not enough valid samples
+            logger.warning(f'There are still std=0 groups present after {self.args.max_resample_times} retries.')
+            
+            # Use the last generated results
+            inputs = current_processed_inputs
+            total_rewards = current_rewards
+        
+        batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards)
+        return batch_encoded_inputs
     def split_by_mini_batches(self, inputs, advantages):
         # Slice to keep only the local part of the data
         # Slice to keep only the local part of the data
@@ -1433,7 +1530,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     **({
                         'data_dict': {k: request[k]
                                       for k in request if k not in request_keys}
-                    } if self.multi_turn_scheduler and self.vllm_use_async_engine else {})
+                    } if (self.multi_turn_scheduler and self.vllm_use_async_engine) or self.use_gym_engine else {}) # use gym infer
                 } for request in infer_requests]
 
                 self._process_infer_requests_images(infer_requests)

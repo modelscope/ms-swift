@@ -23,7 +23,7 @@ from trl.scripts.vllm_serve import WeightSyncWorkerExtension
 from swift.llm import InferArguments, RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.utils import get_device, get_logger
-from .infer_engine import GRPOVllmEngine, InferClient
+from .infer_engine import GRPOVllmEngine, GymVllmEngine, InferClient  # 只添加了 GymVllmEngine 导入
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
 
 try:
@@ -35,16 +35,6 @@ except ImportError:
 """
 This module defines the execution logic for `swift rollout`.
 It adds weight synchronization logic based on `vLLMEngine`.
-
-Usage:
-    swift rollout \
-        --model xxx \
-        --tensor_parallel_size xxx \
-        --data_parallel_size xxx \
-        --use_async_engine true/false \
-        --... \
-        --other_vllm_arguments
-
 Note:
 - Rollout is intended solely for GRPO training sampling.
 - For inference or deployment, please use the `swift infer` or `swift deploy` commands.
@@ -148,7 +138,10 @@ class SwiftRolloutDeploy(SwiftPipeline):
     def __init__(self, args: Union[List[str], RolloutArguments, None] = None):
         super().__init__(args)
         self.use_async_engine = self.args.use_async_engine
-        self.num_connections = 1 if self.use_async_engine else self.args.data_parallel_size
+        # 只添加这一行
+        self.use_gym_engine = getattr(self.args, 'use_gym_engine', False)
+        # 修改这一行：当使用 gym_engine 时也使用单连接
+        self.num_connections = 1 if (self.use_async_engine or self.use_gym_engine) else self.args.data_parallel_size
         safe_set_start_method()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_rl_rollout_app()
@@ -160,7 +153,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
     def _start_data_parallel_workers(self):
         for data_parallel_rank in range(self.num_connections):
             parent_conn, child_conn = Pipe()
-            worker_func = llm_worker_entry if self.use_async_engine else llm_worker
+            # 修改这一行：当使用 gym_engine 时也使用 async worker
+            worker_func = llm_worker_entry if (self.use_async_engine or self.use_gym_engine) else llm_worker
             process = Process(target=worker_func, args=(self.args, data_parallel_rank, self.master_port, child_conn))
             process.start()
             self.connections.append(parent_conn)
@@ -212,7 +206,11 @@ class SwiftRolloutDeploy(SwiftPipeline):
             engine_kwargs['data_parallel_size'] = args.data_parallel_size
         kwargs['engine_kwargs'] = engine_kwargs
 
-        return GRPOVllmEngine(**kwargs)
+        # 只修改这里：根据 use_gym_engine 选择引擎
+        if getattr(args, 'use_gym_engine', False):
+            return GymVllmEngine(**kwargs)
+        else:
+            return GRPOVllmEngine(**kwargs)
 
     async def health(self):
         """
@@ -294,7 +292,10 @@ class SwiftRolloutDeploy(SwiftPipeline):
         """
         Health check endpoint to verify that the server is running.
         """
-        if self.use_async_engine:
+        # 只修改这里：添加 gym engine 的判断
+        if self.use_gym_engine:
+            return {'engine_type': 'GymVLLMEngine'}
+        elif self.use_async_engine:
             return {'engine_type': 'AsyncLLMEngine'}
         else:
             return {'engine_type': 'LLMEngine'}
@@ -325,10 +326,11 @@ class SwiftRolloutDeploy(SwiftPipeline):
             if not requests:
                 requests = RolloutInferRequest(messages=[{'role': 'user', 'content': '<placeholder>'}])
             # different seed bewteen vLLM Engine
-            if request_config.seed:
+            if request_config and request_config.seed:
                 request_config.seed += i * len(requests)
             kwargs = {'infer_requests': requests, 'request_config': request_config, 'use_tqdm': use_tqdm}
-            method = 'async_infer' if self.use_async_engine else 'infer'
+            # 只修改这里：当使用 gym_engine 时也使用 async_infer
+            method = 'async_infer' if (self.use_async_engine or self.use_gym_engine) else 'infer'
             connection.send({'type': 'call', 'method': method, 'kwargs': kwargs})
 
         all_outputs = [connection.recv() for connection in self.connections]

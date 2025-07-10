@@ -11,7 +11,7 @@ from tqdm.asyncio import tqdm_asyncio
 from swift.llm import InferRequest, RolloutInferRequest, Template, VllmEngine
 from swift.plugin import Metric
 from swift.plugin.env import Env, envs
-from swift.plugin.context_manager import ContextManager, context_managers
+from swift.plugin.context_manager import context_managers
 from ..protocol import ChatCompletionResponse, ChatMessage, RequestConfig, RolloutResponseChoice,GymRolloutResponseChoice
 from .utils import AdapterRequest
 
@@ -98,18 +98,13 @@ class GymVllmEngine(VllmEngine):
         
         self.context_manager = context_managers[context_manager_name]()
         self.max_turns = kwargs.get('max_turns', 10)
-        self.num_generations = kwargs.get('num_generations', 1)
-        
-        # Dynamic sampling parameters
-        self.dynamic_sample = kwargs.get('dynamic_sample', False)
-        self.max_resample_times = kwargs.get('max_resample_times', 5)
-        self.variance_threshold = 1e-4  # If variance < this, resample
 
     def _create_env(self, env_config) -> Env:
         """Create environment instance."""
-        if env_config.get("name",None) not in envs:
-            raise ValueError(f"Environment '{env_config.get("name",None)}' not found in envs registry. Available: {list(envs.keys())}")
+        if env_config.get("name", "math_env") not in envs: # set math env for debug
+            raise ValueError(f"Environment '{env_config.get('name', None)}' not found in envs registry. Available: {list(envs.keys())}")
         return envs[env_config.get("name")](env_config)
+
     def infer(
         self,
         infer_requests: List[Union[InferRequest, Dict[str, Any]]],
@@ -120,7 +115,7 @@ class GymVllmEngine(VllmEngine):
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
     ) -> List[ChatCompletionResponse]:
-        assert not self.use_gym_engine, 'for Async Engine, use infer_async instead'
+        assert not self.use_gym_engine, 'for Gym Engine, use infer_async instead'
         return super().infer(
             infer_requests,
             request_config,
@@ -142,96 +137,89 @@ class GymVllmEngine(VllmEngine):
         # in GRPO n always equals 1
         assert request_config.n == 1
 
-        # Gym environment interaction for multiple trajectories per query with dynamic sampling
-        async def _infer_async_single_query(infer_request: Union[RolloutInferRequest, Dict[str, Any]],
-                                           request_config: Optional[RequestConfig] = None,
-                                           **kwargs):
-            if isinstance(infer_request, Dict):
-                infer_request = RolloutInferRequest(**infer_request)
+        # Process all infer_requests
+        async def _infer_async_batch(infer_requests: List[Union[RolloutInferRequest, Dict[str, Any]]],
+                                   request_config: Optional[RequestConfig] = None,
+                                   **kwargs):
             
-            # Dynamic sampling loop
-            resample_count = 0
-            while resample_count <= self.max_resample_times:
-                # Sample multiple trajectories for this query
-                results = []
-                
-                # Create multiple environments for parallel trajectory sampling
-                env_config = infer_request.data_dict.get('env_config', {})
-
-                envs = []
-                try:
-                    # Create independent environment instances for each trajectory
-                    for i in range(self.num_generations):
-                        env = self._create_env(env_config)
-                        envs.append(env)
-                    
-                    # Sample multiple trajectories in parallel
-                    trajectory_tasks = []
-                    for i, env in enumerate(envs):
-                        trajectory_id = f"{id(infer_request)}_{i}_{resample_count}"
-                        request_copy = deepcopy(infer_request)
-                        task = self._sample_single_trajectory(env, request_copy, trajectory_id, request_config, **kwargs)
-                        trajectory_tasks.append(task)
-                    
-                    # Wait for all trajectories to complete
-                    results = await asyncio.gather(*trajectory_tasks)
-                    
-                finally:
-                    # Clean up all environments asynchronously
-                    close_tasks = []
-                    for env in envs:
-                        close_tasks.append(self._close_env_async(env))
-                    if close_tasks:
-                        await asyncio.gather(*close_tasks, return_exceptions=True)
-                
-                # Check if dynamic sampling is needed
-                if not self.dynamic_sample or resample_count >= self.max_resample_times:
-                    return results
-                
-                # Extract rewards for variance check
-                rewards = []
-                for result in results:
-                    if hasattr(result.choices[0], 'total_reward'):
-                        rewards.append(result.choices[0].total_reward)
-                    else:
-                        # Fallback: assume reward is 0 if not available
-                        rewards.append(0.0)
-                
-                # Calculate variance
-                if len(rewards) > 1:
-                    mean_reward = sum(rewards) / len(rewards)
-                    variance = sum((r - mean_reward) ** 2 for r in rewards) / len(rewards)
-                    
-                    if variance > self.variance_threshold:
-                        # Good variance, return results
-                        return results
-                
-                # Variance too low, resample
-                resample_count += 1
-                if resample_count <= self.max_resample_times:
-                    print(f"Resampling trajectory for query (attempt {resample_count}/{self.max_resample_times}), "
-                          f"variance: {variance if len(rewards) > 1 else 'N/A'}")
+            # Create tasks for all infer_requests - each gets its own trajectory
+            tasks = []
+            envs = []
             
-            # Max retries reached, return last results
+            try:
+                # Create environments for all trajectories
+                for i, infer_request in enumerate(infer_requests):
+                    if isinstance(infer_request, Dict):
+                        infer_request = RolloutInferRequest(**infer_request)
+                    
+                    env_config = infer_request.data_dict.get('env_config', {})
+                    env = self._create_env(env_config)
+                    envs.append(env)
+                    
+                    trajectory_id = f"{id(infer_request)}_{i}"
+                    request_copy = deepcopy(infer_request)
+                    task = self._sample_single_trajectory(env, request_copy, trajectory_id, request_config, **kwargs)
+                    tasks.append(task)
+                
+                # Wait for all trajectories to complete
+                results = await asyncio.gather(*tasks)
+                
+            finally:
+                # Clean up all environments asynchronously
+                close_tasks = []
+                for env in envs:
+                    close_tasks.append(self._close_env_async(env))
+                if close_tasks:
+                    await asyncio.gather(*close_tasks, return_exceptions=True)
+            
             return results
 
-        # Create tasks for all queries
-        tasks = [_infer_async_single_query(infer_request, request_config, **kwargs) for infer_request in infer_requests]
+        # Process the batch
+        results = await _infer_async_batch(infer_requests, request_config, **kwargs)
         
-        # Process with progress bar using the same pattern as GRPOVllmEngine
+        # Update progress bar and metrics
         if use_tqdm is None:
             use_tqdm = len(infer_requests) > 1
         
-        results = await self._batch_infer_stream(tasks, use_tqdm, metrics)
+        # Create simple tasks for metrics update (since actual work is done)
+        metric_tasks = [asyncio.create_task(self._update_metrics_async(result, metrics)) for result in results]
         
-        # Flatten results since each query returns multiple trajectories
-        all_results = []
-        for query_results in results:
-            if isinstance(query_results, Exception):
-                raise query_results
-            all_results.extend(query_results)
+        # Process with progress bar using the correct pattern
+        await self._batch_metrics_update(metric_tasks, use_tqdm)
         
-        return all_results
+        return results
+
+    async def _batch_metrics_update(self, 
+                                   tasks: List[asyncio.Task],
+                                   use_tqdm: bool = True):
+        """批量更新指标，带进度条支持"""
+        prog_bar = tqdm_asyncio(total=len(tasks), dynamic_ncols=True, disable=not use_tqdm)
+
+        async def _new_run(task):
+            try:
+                res = await task
+            except Exception as e:
+                if getattr(self, 'strict', True):
+                    raise
+                res = e
+            prog_bar.update()
+            return res
+
+        new_tasks = [_new_run(task) for task in tasks]
+        
+        try:
+            # 使用 asyncio.gather 执行所有任务
+            results = await asyncio.gather(*new_tasks)
+        finally:
+            prog_bar.close()  # 确保进度条关闭
+        
+        return results
+
+    async def _update_metrics_async(self, result: ChatCompletionResponse, metrics: Optional[List[Metric]] = None):
+        """Async wrapper for metrics update."""
+        if metrics:
+            for metric in metrics:
+                metric.update(result)
 
     async def _close_env_async(self, env: Env):
         """Asynchronously close environment."""
@@ -243,27 +231,6 @@ class GymVllmEngine(VllmEngine):
                 env.close()
         except Exception:
             pass  # Ignore cleanup errors
-
-    async def _batch_infer_stream(self,
-                                  tasks,
-                                  use_tqdm: bool = True,
-                                  metrics: Optional[List[Metric]] = None):
-        prog_bar = tqdm_asyncio(total=len(tasks), dynamic_ncols=True, disable=not use_tqdm)
-
-        async def _new_run(task):
-            try:
-                res = await task
-            except Exception as e:
-                if getattr(self, 'strict', True):
-                    raise
-                res = e
-            prog_bar.update()
-            self._update_metrics(res, metrics)
-            return res
-
-        new_tasks = [_new_run(task) for task in tasks]
-
-        return await self.batch_run(new_tasks)
 
     async def _sample_single_trajectory(self, 
                                       env: Env, 
@@ -294,13 +261,13 @@ class GymVllmEngine(VllmEngine):
                 **infer_request.data_dict
             )
             
-            current_request = self.context_manager.manage_context(current_request,trajectory_id)
+            current_request = self.context_manager.manage_context(current_request, trajectory_id)
             
             # Remove any previous assistant response for generation
             InferRequest.remove_response(current_request.messages)
             
             # Generate LLM response using parent's async_infer
-            result: List[ChatCompletionResponse] = await super().async_infer([current_request], request_config, **kwargs)
+            result: List[ChatCompletionResponse] = await self.infer_async([current_request], request_config, **kwargs)
             result_choice: RolloutResponseChoice = result[0].choices[0]  # async_infer returns list
             
             # Environment step
