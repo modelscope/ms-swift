@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+import os
 import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
@@ -30,6 +31,9 @@ class BaseMegatronTrainer(ABC):
     def __init__(self, args):
         self.args = args
         self.stimer = StragglerDetector()
+        logging_path = os.path.join(args.save, 'logging.jsonl')
+        logger.info(f'logging_path: {logging_path}')
+        self.jsonl_writer = JsonlWriter(logging_path, enable_async=True)
         self._patch_megatron()
 
     @contextmanager
@@ -305,9 +309,10 @@ class BaseMegatronTrainer(ABC):
         timers.log(['evaluate'])
 
         rerun_state_machine.set_mode(rerun_mode)
-
-        rerun_state_machine.set_mode(rerun_mode)
-
+        logs = {}
+        for key, val in total_loss_dict.items():
+            logs[key] = round(val, 8)
+        self.jsonl_writer.append(logs)
         return total_loss_dict, collected_non_loss_data, False
 
     def save_checkpoint(self, *args, **kwargs):

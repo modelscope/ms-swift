@@ -211,6 +211,8 @@ def _patch_training_log():
             mtp_loss_scale = 1 / get_num_microbatches()
             MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, iteration, writer, wandb_writer, total_loss_dict)
         if iteration % args.log_interval == 0 or iteration == 1:
+            origin_total_loss_dict = total_loss_dict.copy()
+
             if args.record_memory_history and is_last_rank():
                 snapshot = torch.cuda.memory._snapshot()
                 from pickle import dump
@@ -281,11 +283,15 @@ def _patch_training_log():
 
             if is_master():
                 logging_path = os.path.join(args.save, 'logging.jsonl')
+                if jsonl_writer is None:
+                    logger.info(f'logging_path: {logging_path}')
+                    jsonl_writer = JsonlWriter(logging_path, enable_async=True)
                 logs = {}
-                for k, v in total_loss_dict.items():
-                    if isinstance(v, torch.Tensor):
-                        v = v.item()
-                    logs[k] = round(v, 8)
+                for key in origin_total_loss_dict:
+                    if key not in [advanced_iters_key, skipped_iters_key, nan_iters_key]:
+                        avg = origin_total_loss_dict[key].item() / float(
+                            max(1, origin_total_loss_dict[advanced_iters_key]))
+                        logs[key] = round(avg, 8)
                 if grad_norm is not None:
                     logs['grad_norm'] = round(grad_norm, 8)
                 if params_norm is not None:
@@ -297,8 +303,6 @@ def _patch_training_log():
                 logs['loss_scale'] = round(loss_scale, 8)
                 logs['consumed_samples'] = args.consumed_train_samples
                 logs['global_step/max_steps'] = f'{iteration}/{args.train_iters}'
-                if jsonl_writer is None:
-                    jsonl_writer = JsonlWriter(logging_path, enable_async=True)
                 jsonl_writer.append(logs)
 
         return report_memory_flag
