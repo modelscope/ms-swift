@@ -3,6 +3,7 @@
 import math
 from typing import Any, Optional, Tuple
 
+import megatron.core
 import torch
 import torch.nn as nn
 from megatron.core import parallel_state
@@ -14,6 +15,7 @@ from megatron.core.models.common.embeddings.language_model_embedding import Lang
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint, sharded_state_dict_default
+from packaging import version
 from peft.tuners.lora import model
 from peft.tuners.lora.layer import LoraLayer
 from peft.tuners.tuners_utils import BaseTunerLayer, check_adapters_to_merge
@@ -91,7 +93,8 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             'config': self.config,
             'is_expert': self.is_expert,
         }
-        if hasattr(self.base_layer, 'tp_group'):
+        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+        if megatron_core_013:
             kwargs['tp_group'] = self.base_layer.tp_group
         if self.is_parallel_a:
             self.in_features = self.in_features * self.tp_size
