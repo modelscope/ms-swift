@@ -67,11 +67,11 @@ def _patch_training_log():
                      report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad):
         """Log training information such as losses, timing, ...."""
         nonlocal jsonl_writer
+        args = get_args()
         if is_master() and jsonl_writer is None:
             logging_path = os.path.join(args.save, 'logging.jsonl')
             logger.info(f'logging_path: {logging_path}')
             jsonl_writer = JsonlWriter(logging_path, enable_async=True)
-        args = get_args()
         timers = get_timers()
         writer = get_tensorboard_writer()
         wandb_writer = get_wandb_writer()
