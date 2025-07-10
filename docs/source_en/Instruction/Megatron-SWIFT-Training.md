@@ -23,6 +23,9 @@ pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation -
 
 # megatron-core
 pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
+
+# If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
+export MODELSCOPE_CACHE='/xxx/shared'
 ```
 
 Alternatively, you can also use the image:

@@ -22,6 +22,9 @@ pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation -
 
 # megatron-core
 pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
+
+# 若使用多机训练，请额外设置`MODELSCOPE_CACHE`环境变量为共享存储路径
+expert MODELSCOPE_CACHE='/xxx/shared'
 ```
 
 或者你也可以使用镜像：
