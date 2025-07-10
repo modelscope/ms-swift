@@ -212,12 +212,13 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     if args.test_convert_precision:
         test_convert_precision(hf_model, mg_model, processor)
     logger.info('Successfully transferred MG model weights to HF model.')
+    ckpt_dir = megatron_args.load if megatron_args.adapter_load is None else megatron_args.adapter_load
     save_checkpoint(
         hf_model,
         processor,
         args.output_dir,
         safe_serialization=args.safe_serialization,
-        model_dirs=[megatron_args.load, args.model_dir],
+        model_dirs=[ckpt_dir, args.model_dir],
         max_shard_size=args.max_shard_size,
         additional_saved_files=hf_model.model_meta.additional_saved_files)
     args.save_args()

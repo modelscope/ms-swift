@@ -22,6 +22,7 @@ git checkout e13873debc4699d39c6861074b9a3b2a02327f92
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
+# For "ms-swift<3.7", please use the core_r0.12.0 branch.
 pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
 
 # If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
