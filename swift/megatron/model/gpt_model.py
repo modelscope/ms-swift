@@ -79,7 +79,7 @@ class GPTModel(McoreGPTModel):
                 use_cpu_initialization=config.use_cpu_initialization,
             )
             # save memory
-            for i in range(config.num_layers):
+            for i in range(len(self.decoder.layers)):
                 if hasattr(self.decoder.layers[i].self_attention, 'rotary_pos_emb'):
                     del self.decoder.layers[i].self_attention.rotary_pos_emb
         self.attention_scaling = 1.
