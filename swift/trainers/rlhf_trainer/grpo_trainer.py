@@ -1149,7 +1149,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             entropies = entropies.masked_fill(completion_mask == 0, float('nan'))
             global_entropies_mean = gather_object(torch.nanmean(entropies, dim=1).tolist())
             self._textual_logs['mean_entropy'].extend(global_entropies_mean)
-            self._metrics[mode]['entropy/mean'].append(self.accelerator.gather(torch.nanmean(entropies)).mean().item())
+            agg_per_comletion_entropy_mean = self.accelerator.gather(torch.nanmean(entropies))
+            self._metrics[mode]['entropy/mean'].append(agg_per_comletion_entropy_mean.mean().item())
+            self._metrics[mode]['entropy/max'].append(agg_per_comletion_entropy_mean.max().item())
+            self._metrics[mode]['entropy/min'].append(agg_per_comletion_entropy_mean.min().item())
+
             # compute the entropy threshold across all tokens in the batch
             entropy_threshold = torch.nanquantile(entropies.flatten().float(), self.token_entropy_percentile_threshold)
             entropy_mask = entropies >= entropy_threshold
