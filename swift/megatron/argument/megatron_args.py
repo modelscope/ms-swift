@@ -122,7 +122,6 @@ class MegatronArguments(ExtraMegatronArguments):
     dataloader_type: Literal['single', 'cyclic', 'external'] = 'cyclic'
     manual_gc: bool = False
     manual_gc_interval: int = 0
-    no_check_for_nan_in_loss_and_grad: bool = False
 
     # learning rate
     lr: Optional[float] = None

@@ -91,6 +91,8 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             'config': self.config,
             'is_expert': self.is_expert,
         }
+        if hasattr(self.base_layer, 'tp_group'):
+            kwargs['tp_group'] = self.base_layer.tp_group
         if self.is_parallel_a:
             self.in_features = self.in_features * self.tp_size
             if self.is_grouped:
