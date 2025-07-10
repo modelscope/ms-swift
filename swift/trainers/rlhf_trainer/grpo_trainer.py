@@ -39,8 +39,8 @@ from swift.llm.model.utils import get_llm_model
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
 from swift.plugin.multi_turn import MultiTurnScheduler
-from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_device, get_logger, is_vllm_available,
-                         is_wandb_available, is_swanlab_available, seed_worker, unwrap_model_for_generation)
+from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_device, get_logger, is_swanlab_available,
+                         is_vllm_available, is_wandb_available, seed_worker, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge
@@ -54,7 +54,7 @@ if is_wandb_available():
     import wandb
 if is_swanlab_available():
     import swanlab
-    
+
 InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
 # tuple: (messages, finish_reason)
 OutputsType = List[Tuple[List[Dict], str]]
@@ -1596,7 +1596,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     for header in headers:
                         row.append(table[header][i])
                     rows.append(row)
-                swanlab.log({"completions": swanlab.echarts.Table().add(headers, rows)})
+                swanlab.log({'completions': swanlab.echarts.Table().add(headers, rows)})
 
     def is_async_generate_eval_rollout_done(self):
         return not self.eval_flag or not self.eval_queue.empty()

@@ -83,4 +83,4 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
                 if swanlab.get_run() is not None:
                     swanlab_table = swanlab.echarts.Table()
                     swanlab_table.add(headers=df.columns.tolist(), rows=df.values.tolist())
-                    swanlab.log({"completions": swanlab_table})
+                    swanlab.log({'completions': swanlab_table})
