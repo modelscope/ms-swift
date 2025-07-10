@@ -232,6 +232,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'completion': deque(maxlen=maxlen),
             'rewards': defaultdict(lambda: deque(maxlen=maxlen)),
         }
+        if True:  # TODO: log_entropy?
+            self._textual_logs.update({'mean_entropy': deque(maxlen=maxlen)})
         # Ensure each process receives a unique seed to prevent duplicate completions when generating with
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
@@ -1141,9 +1143,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             logps_and_entropies = self._get_per_token_logps_and_entropies(model, inputs, compute_entropy=True)
             per_token_logps = logps_and_entropies['logps']
             entropies = logps_and_entropies['entropies']
+            # fill the padded token with NaN
+            entropies = entropies.masked_fill(completion_mask == 0, float('nan'))
+            global_entropies_mean = gather_object(torch.nanmean(entropies, dim=1))
+            self._textual_logs['entropy'].extend(global_entropies_mean.item())
+            self._metrics[mode]['entropy/mean'].append(self.accelerator.gather(torch.nanmean(entropies)).item())
             # compute the entropy threshold across all tokens in the batch
-
-            entropy_threshold = torch.quantile(entropies.flatten().float(), self.token_entropy_percentile_threshold)
+            entropy_threshold = torch.nanquantile(entropies.flatten().float(), self.token_entropy_percentile_threshold)
             entropy_mask = entropies >= entropy_threshold
         else:
             per_token_logps = self._get_per_token_logps_and_entropies(model, inputs)['logps']

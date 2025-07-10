@@ -488,9 +488,9 @@ def padding_free_context_grpo(self, model: torch.nn.Module, sp_instance):
 
 
 @profiling_decorator
-def _get_per_token_logps_and_entropies_grpo(self: GRPOTrainer,
+def _get_per_token_logps_and_entropies_grpo(self: 'GRPOTrainer',
                                             model: torch.nn.Module,
-                                            inputs: InputsType,
+                                            inputs: 'InputsType',
                                             sp_instance: SequenceParallel,
                                             compute_entropy: bool = False):
     """Get per token logps for GRPO sequence parallel training"""
