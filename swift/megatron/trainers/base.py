@@ -312,7 +312,7 @@ class BaseMegatronTrainer(ABC):
         if is_master():
             logs = {}
             for key, val in total_loss_dict.items():
-                logs[key] = round(val, 8)
+                logs[f'eval_{key}'] = round(val.item(), 8)
             self.jsonl_writer.append(logs)
         return total_loss_dict, collected_non_loss_data, False
 

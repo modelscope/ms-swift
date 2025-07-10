@@ -67,6 +67,10 @@ def _patch_training_log():
                      report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad):
         """Log training information such as losses, timing, ...."""
         nonlocal jsonl_writer
+        if is_master() and jsonl_writer is None:
+            logging_path = os.path.join(args.save, 'logging.jsonl')
+            logger.info(f'logging_path: {logging_path}')
+            jsonl_writer = JsonlWriter(logging_path, enable_async=True)
         args = get_args()
         timers = get_timers()
         writer = get_tensorboard_writer()
@@ -282,10 +286,6 @@ def _patch_training_log():
             timers.log(timers_to_log, normalizer=args.log_interval)
 
             if is_master():
-                logging_path = os.path.join(args.save, 'logging.jsonl')
-                if jsonl_writer is None:
-                    logger.info(f'logging_path: {logging_path}')
-                    jsonl_writer = JsonlWriter(logging_path, enable_async=True)
                 logs = {}
                 for key in origin_total_loss_dict:
                     if key not in [advanced_iters_key, skipped_iters_key, nan_iters_key]:
