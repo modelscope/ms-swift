@@ -221,5 +221,4 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         model_dirs=[ckpt_dir, args.model_dir],
         max_shard_size=args.max_shard_size,
         additional_saved_files=hf_model.model_meta.additional_saved_files)
-    args.save_args()
     logger.info(f'Successfully saved HF model weights in `{args.output_dir}`.')

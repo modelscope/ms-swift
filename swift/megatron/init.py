@@ -639,6 +639,49 @@ def _patch_TEGroupedLinear():
     TEGroupedLinear.sharded_state_dict = sharded_state_dict
 
 
+def _patch_peft_ModulesToSaveWrapper():
+    from peft.tuners import tuners_utils
+    from megatron.core.dist_checkpointing.mapping import ShardedStateDict
+    from .utils import tuners_sharded_state_dict
+
+    ModulesToSaveWrapper = tuners_utils.ModulesToSaveWrapper
+
+    class NewModulesToSaveWrapper(ModulesToSaveWrapper):
+
+        def __init__(self, module_to_save, *args, **kwargs):
+            tp_group = getattr(module_to_save, 'tp_group', None)
+            if tp_group is not None:
+                module_to_save.tp_group = None
+            super().__init__(module_to_save, *args, **kwargs)
+            if tp_group is not None:
+                module_to_save.tp_group = tp_group
+                for module in self.modules_to_save.values():
+                    module.tp_group = tp_group
+
+        def sharded_state_dict(
+                self,
+                prefix: str = '',
+                sharded_offsets: Tuple[Tuple[int, int, int]] = (),
+                metadata: Optional[dict] = None,
+        ) -> ShardedStateDict:
+            sharded_state_dict = tuners_sharded_state_dict(self, prefix, sharded_offsets, metadata)
+            if prefix == 'output_layer.':
+                output_layer_extra_state_key = f'{prefix}modules_to_save.default._extra_state'
+
+                # Old GPT checkpoints only stored the output layer weight key. So we remove the
+                # _extra_state key but check that it doesn't contain any data anyway
+                output_extra_state = sharded_state_dict.pop(output_layer_extra_state_key, None)
+                assert not (output_extra_state and output_extra_state.data
+                            ), f'Expected output layer extra state to be empty, got: {output_extra_state}'
+                # fix error
+                if f'{prefix}modules_to_save.default.weight' in sharded_state_dict:
+                    sharded_state_dict[f'{prefix}weight'] = sharded_state_dict[
+                        f'{prefix}modules_to_save.default.weight']
+            return sharded_state_dict
+
+    tuners_utils.ModulesToSaveWrapper = NewModulesToSaveWrapper
+
+
 def _patch_megatron():
     _patch_transformer_engine()
     _patch__batched_p2p_ops()
@@ -647,7 +690,8 @@ def _patch_megatron():
     from swift.megatron import tuners  # patch lora
     try:
         _patch_peft_BaseTuner()
-        logger.info('Patch peft_BaseTuner successfully applied.')
+        _patch_peft_ModulesToSaveWrapper()
+        logger.info('Patch peft successfully applied.')
     except Exception:
         pass
     try:
