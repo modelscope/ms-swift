@@ -157,9 +157,9 @@ class BaseMegatronTrainer(ABC):
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
         def new_model_provider_func(*args, **kwargs):
-            model = model_provider_func(*args, **kwargs)
-            prepare_mcore_model(model)
-            return model
+            self.unwrapped_model = model_provider_func(*args, **kwargs)
+            self.peft_model = prepare_mcore_model(self.unwrapped_model)
+            return self.unwrapped_model
 
         with self._patch_load_state_dict():
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
