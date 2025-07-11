@@ -225,15 +225,16 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
 
     def forward(self, x: torch.Tensor, *args: Any, **kwargs: Any):
         previous_dtype = x.dtype
+        if self.disable_adapters and self.merged:
+            self.unmerge()
 
         if isinstance(self.base_layer, TELayerNormColumnParallelLinear):
             if self.disable_adapters or self.merged:
                 self.base_layer.return_layernorm_output = False
+                result, bias = self.base_layer(x, *args, **kwargs)
             else:
                 self.base_layer.return_layernorm_output = True
-            result, bias = self.base_layer(x, *args, **kwargs)
-            if isinstance(result, (list, tuple)):
-                result, x = result  # ln_out
+                (result, x), bias = self.base_layer(x, *args, **kwargs)
         elif isinstance(self.base_layer, (TELinear, TEGroupedLinear)):
             result, bias = self.base_layer(x, *args, **kwargs)
         else:
