@@ -1,11 +1,6 @@
-Advanced Research
+Get Started
 ===============
 .. toctree::
    :maxdepth: 1
 
-   DAPO.md
-
-.. toctree::
-   :maxdepth: 1
-
-   entropy_mask.md
+   GRPO.md
