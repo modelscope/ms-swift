@@ -45,14 +45,14 @@ This section introduces a quick start example for fine-tuning the self-awareness
 
 First, we need to convert the weights from HF (Hugging Face) format to Megatron format:
 - If you encounter OOM, simply remove `CUDA_VISIBLE_DEVICES=0`.
-- For "ms-swift>=3.6", it is recommended to add the `--test_convert_precision true` parameter to test conversion precision.
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
     --model Qwen/Qwen2.5-7B-Instruct \
     --to_mcore true \
     --torch_dtype bfloat16 \
-    --output_dir Qwen2.5-7B-Instruct-mcore
+    --output_dir Qwen2.5-7B-Instruct-mcore \
+    --test_convert_precision true
 ```
 
 Next, use the following script to start training. The required GPU memory resources are 2*80GiB:
@@ -94,7 +94,6 @@ megatron sft \
 Finally, convert the Megatron format weights back to HF format:
 - Note: Please point `--mcore_model` to the parent directory of `iter_xxx`. By default, the corresponding checkpoint from `latest_checkpointed_iteration.txt` will be used.
 - If you encounter OOM, simply remove `CUDA_VISIBLE_DEVICES=0`.
-- For "ms-swift>=3.6", it is recommended to add the `--test_convert_precision true` parameter to test conversion precision.
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
@@ -102,7 +101,8 @@ swift export \
     --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
+    --test_convert_precision true
 ```
 
 We then perform inference on the generated HF format weights:
@@ -423,6 +423,7 @@ LoRA Training:
 - adapter_load: Path to the adapter weights to be loaded. Default is `None`.
 - 🔥target_modules: Suffixes of modules to apply LoRA to. Default is `['all-linear']`.
 - 🔥target_regex: Regex expression to specify LoRA modules. Default is `None`. If this value is provided, the `target_modules` parameter will be ignored.
+- 🔥modules_to_save: After attaching a tuner, explicitly specifies additional original model modules to participate in training and storage. The default is `[]`.
 - 🔥lora_rank: Default is `8`.
 - 🔥lora_alpha: Default is `32`.
 - lora_dropout: Default is `0.05`.
