@@ -20,7 +20,7 @@ from megatron.training.checkpointing import load_checkpoint
 from packaging import version
 
 from swift.utils import JsonlWriter, get_logger, is_master
-from ..utils import adapter_state_dict_context, prepare_mcore_model
+from ..utils import adapter_state_dict_context, copy_original_module_weight, prepare_mcore_model
 from .utils import get_swift_datasets_provider
 
 logger = get_logger()
@@ -176,6 +176,8 @@ class BaseMegatronTrainer(ABC):
         if args.adapter_load is not None:
             with adapter_state_dict_context():
                 load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
+        if args.train_type != 'full' and args.modules_to_save:
+            copy_original_module_weight(self.unwrapped_model)
         return model, optimizer, opt_param_scheduler
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):

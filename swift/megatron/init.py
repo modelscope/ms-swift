@@ -650,7 +650,6 @@ def _patch_peft_ModulesToSaveWrapper():
     class NewModulesToSaveWrapper(ModulesToSaveWrapper):
 
         def __init__(self, module_to_save, *args, **kwargs):
-            # Note: not use original_module
             tp_group = getattr(module_to_save, 'tp_group', None)
             if tp_group is not None:
                 module_to_save.tp_group = None
@@ -675,7 +674,10 @@ def _patch_peft_ModulesToSaveWrapper():
                 output_extra_state = sharded_state_dict.pop(output_layer_extra_state_key, None)
                 assert not (output_extra_state and output_extra_state.data
                             ), f'Expected output layer extra state to be empty, got: {output_extra_state}'
-
+                # fix error
+                if f'{prefix}modules_to_save.default.weight' in sharded_state_dict:
+                    sharded_state_dict[f'{prefix}weight'] = sharded_state_dict[
+                        f'{prefix}modules_to_save.default.weight']
             return sharded_state_dict
 
     tuners_utils.ModulesToSaveWrapper = NewModulesToSaveWrapper

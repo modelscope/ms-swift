@@ -145,3 +145,12 @@ def tuners_sharded_state_dict(
             _prefix = f'{prefix}{name}.' if n is None else f'{prefix}{name}.{n}.'
             sharded_state_dict.update(sharded_state_dict_default(m, _prefix, sharded_offsets, metadata))
     return sharded_state_dict
+
+
+def copy_original_module_weight(model):
+    for module in model.modules():
+        if 'ModulesToSaveWrapper' in module.__class__.__name__ and hasattr(module, 'original_module'):
+            original_module = module.original_module
+            modules_to_save = module.modules_to_save
+            if 'default' in modules_to_save:
+                original_module.load_state_dict(modules_to_save['default'].state_dict())

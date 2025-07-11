@@ -1,12 +1,13 @@
-# 2 * 60GiB; 4.50s/it
+# 2 * 60GiB, 3.4s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron rlhf \
-    --rlhf_type dpo \
+megatron sft \
     --load Qwen3-30B-A3B-Base-mcore \
-    --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji#20000' \
     --train_type lora \
+    --dataset AI-ModelScope/function-calling-chatml#10000 \
+    --loss_scale hermes \
+    --agent_template hermes \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
@@ -28,15 +29,12 @@ megatron rlhf \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
     --save megatron_output/Qwen3-30B-A3B-Base \
-    --eval_interval 100 \
-    --save_interval 100 \
+    --eval_interval 200 \
+    --save_interval 200 \
     --max_length 2048 \
     --num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --attention_backend flash \
-    --beta 0.1 \
-    --rpo_alpha 1 \
-    --loss_type sigmoid
+    --attention_backend flash
