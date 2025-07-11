@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import functools
 import time
 from contextlib import contextmanager
 from types import MethodType
@@ -147,6 +148,16 @@ def patch_profiling_context(trainer, name: str):
 
     if 'swanlab' in trainer.args.report_to and swanlab.get_run() is not None and trainer.accelerator.is_main_process:
         swanlab.log(profiling_metrics)
+
+
+def patch_profiling_decorator(func):
+
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        with patch_profiling_context(self, func.__name__):
+            return func(*args, **kwargs)
+
+    return wrapper
 
 
 class _ForwardRedirection:
