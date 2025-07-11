@@ -105,7 +105,7 @@ class Internvl2Template(InternvlTemplate):
         image_context = super().replace_tag('image', index, inputs)
         if media_type == 'image':
             return image_context
-        elif media_type == 'vidInternvl2Templateeo':
+        elif media_type == 'video':
             video_segments = get_env_args('video_segments', int, self.video_segments)
             load_video = partial(load_video_internvl, num_segments=video_segments)
             return self.replace_video2image(load_video, inputs, lambda i: [f'Frame{i + 1}: '] + image_context)
