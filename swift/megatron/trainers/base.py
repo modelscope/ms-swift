@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+import os
 import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
@@ -18,7 +19,7 @@ from megatron.training import ft_integration, get_args, get_timers, is_last_rank
 from megatron.training.checkpointing import load_checkpoint
 from packaging import version
 
-from swift.utils import get_logger
+from swift.utils import JsonlWriter, get_logger, is_master
 from ..utils import adapter_state_dict_context, prepare_mcore_model
 from .utils import get_swift_datasets_provider
 
@@ -30,6 +31,9 @@ class BaseMegatronTrainer(ABC):
     def __init__(self, args):
         self.args = args
         self.stimer = StragglerDetector()
+        logging_path = os.path.join(args.save, 'logging.jsonl')
+        logger.info(f'logging_path: {logging_path}')
+        self.jsonl_writer = JsonlWriter(logging_path, enable_async=True)
         self._patch_megatron()
 
     @contextmanager
@@ -305,9 +309,11 @@ class BaseMegatronTrainer(ABC):
         timers.log(['evaluate'])
 
         rerun_state_machine.set_mode(rerun_mode)
-
-        rerun_state_machine.set_mode(rerun_mode)
-
+        if is_master():
+            logs = {}
+            for key, val in total_loss_dict.items():
+                logs[f'eval_{key}'] = round(val.item(), 8)
+            self.jsonl_writer.append(logs)
         return total_loss_dict, collected_non_loss_data, False
 
     def save_checkpoint(self, *args, **kwargs):
