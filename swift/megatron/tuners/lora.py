@@ -225,21 +225,21 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
 
     def forward(self, x: torch.Tensor, *args: Any, **kwargs: Any):
         previous_dtype = x.dtype
-        if self.disable_adapters:
-            if self.merged:
-                self.unmerge()
-            result, bias = self.base_layer(x, *args, **kwargs)
-        elif self.merged:
-            result, bias = self.base_layer(x, *args, **kwargs)
-        else:
-            if isinstance(self.base_layer, TELayerNormColumnParallelLinear):
-                self.base_layer.return_layernorm_output = True
-                result, bias = self.base_layer(x, *args, **kwargs)
-                result, x = result  # ln_out
-            elif isinstance(self.base_layer, (TELinear, TEGroupedLinear)):
+        if self.disable_adapters and self.merged:
+            self.unmerge()
+
+        if isinstance(self.base_layer, TELayerNormColumnParallelLinear):
+            if self.disable_adapters or self.merged:
+                self.base_layer.return_layernorm_output = False
                 result, bias = self.base_layer(x, *args, **kwargs)
             else:
-                raise ValueError(f'Unsupported base layer type: {type(self.base_layer)}')
+                self.base_layer.return_layernorm_output = True
+                (result, x), bias = self.base_layer(x, *args, **kwargs)
+        elif isinstance(self.base_layer, (TELinear, TEGroupedLinear)):
+            result, bias = self.base_layer(x, *args, **kwargs)
+        else:
+            raise ValueError(f'Unsupported base layer type: {type(self.base_layer)}')
+        if not self.disable_adapters and not self.merged:
             for active_adapter in self.active_adapters:
                 if active_adapter not in self.lora_A.keys():
                     continue

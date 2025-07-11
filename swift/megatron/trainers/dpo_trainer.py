@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import namedtuple
+from contextlib import contextmanager, nullcontext
 from functools import partial
 
 import torch
@@ -40,13 +41,16 @@ class MegatronDPOTrainer(MegatronTrainer):
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
         args = get_args()
-        ref_model = get_model(model_provider_func, model_type)
-        if args.ref_load is None:
-            args.ref_load = args.load
-        args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
-            ref_model, None, None, load_arg='ref_load')
-        self.ref_model = ref_model[0]
-        self.ref_model.eval()
+        if args.train_type == 'full':
+            ref_model = get_model(model_provider_func, model_type)
+            if args.ref_load is None:
+                args.ref_load = args.load
+            args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
+                ref_model, None, None, load_arg='ref_load')
+            self.ref_model = ref_model[0]
+            self.ref_model.eval()
+        else:
+            self.ref_model = None
         return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
 
     @staticmethod
@@ -78,8 +82,7 @@ class MegatronDPOTrainer(MegatronTrainer):
 
         return output_tensor
 
-    def ref_forward(self, data_iterator):
-        ref_model = unwrap_model(self.ref_model)
+    def ref_forward(self, ref_model, data_iterator):
         with self.stimer(bdata=True):
             data = get_batch(data_iterator)
         data.pop('loss_scale', None)
@@ -144,13 +147,25 @@ class MegatronDPOTrainer(MegatronTrainer):
         loss = loss / mpu.get_context_parallel_world_size()
         return (loss, reporting_metric)
 
+    @contextmanager
+    def null_ref_context(self):
+        args = get_args()
+        if args.train_type == 'full':
+            context = nullcontext()
+            ref_model = unwrap_model(self.ref_model)
+        else:
+            context = self.peft_model.disable_adapter()
+            ref_model = self.unwrapped_model
+        with context:
+            yield ref_model
+
     def _replace_data_iterator(self, data_iterator):
         args = get_args()
         num_iters_per_step = args.global_batch_size // (args.micro_batch_size * mpu.get_data_parallel_world_size())
         res = []
-        for i in range(num_iters_per_step):
-            with torch.no_grad():
-                res.append(self.ref_forward(data_iterator))
+        with torch.no_grad(), self.null_ref_context() as ref_model:
+            for i in range(num_iters_per_step):
+                res.append(self.ref_forward(ref_model, data_iterator))
         return iter(res)
 
     def forward_step(self, data_iterator, model):

@@ -44,14 +44,14 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 
 首先，我们需要将HF格式的权重转为Megatron格式：
 - 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除即可。
-- "ms-swift>=3.6"推荐增加`--test_convert_precision true`参数测试转换精度。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
     --model Qwen/Qwen2.5-7B-Instruct \
     --to_mcore true \
     --torch_dtype bfloat16 \
-    --output_dir Qwen2.5-7B-Instruct-mcore
+    --output_dir Qwen2.5-7B-Instruct-mcore \
+    --test_convert_precision true
 ```
 
 然后，使用以下脚本进行训练，训练所需显存资源为2*80GiB：
@@ -93,14 +93,14 @@ megatron sft \
 最后，将Megatron格式权重转为HF格式：
 - 注意：`--mcore_model`请指向`iter_xxx`的上级目录。默认会使用`latest_checkpointed_iteration.txt`中对应的checkpoint。
 - 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除即可。
-- "ms-swift>=3.6"推荐增加`--test_convert_precision true`参数测试转换精度。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
     --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
+    --test_convert_precision true
 ```
 
 我们对生成的HF格式权重进行推理：
@@ -172,10 +172,10 @@ MCore转换HF脚本：
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
-    --mcore_adapters /mnt/nas2/huangjintao.hjt/work/llmscope/megatron_output/Qwen3-30B-A3B/v5-20250710-204630 \
+    --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
-    --output_dir /mnt/nas2/huangjintao.hjt/work/llmscope/megatron_output/Qwen3-30B-A3B/v5-20250710-204630-hf \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
     --test_convert_precision true
 ```
 - 注意：`mcore_adapters`文件夹中包含`args.json`文件，转换过程中会读取文件中`mcore_model`和LoRA相关的参数信息，并将`mcore_model`和`mcore_adapters`进行merge-lora成完整权重，最终转换成HF格式权重。
@@ -402,6 +402,7 @@ lora训练：
 - adapter_load: 加载adapter的权重路径，默认为None。
 - 🔥target_modules: 指定lora模块的后缀, 默认为`['all-linear']`。
 - 🔥target_regex: 指定lora模块的regex表达式，默认为`None`。如果该值传入，则target_modules参数失效。
+- 🔥modules_to_save: 在已附加tuner后，额外指定一部分原模型模块参与训练和存储。默认为`[]`。
 - 🔥lora_rank: 默认为`8`。
 - 🔥lora_alpha: 默认为`32`。
 - lora_dropout: 默认为`0.05`。
