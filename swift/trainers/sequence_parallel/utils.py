@@ -41,7 +41,7 @@ class GatherLoss(torch.autograd.Function):
     """Gather loss from sequence group"""
 
     @staticmethod
-    def forward(ctx, loss, labels, process_group, gather_idx=None, entropies=None):
+    def forward(ctx, loss, labels, process_group, gather_idx=None):
         """
         Args:
             loss: loss tensor after splitting

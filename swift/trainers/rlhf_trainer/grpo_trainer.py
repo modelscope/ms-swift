@@ -239,7 +239,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'completion': deque(maxlen=maxlen),
             'rewards': defaultdict(lambda: deque(maxlen=maxlen)),
         }
-        self.compute_entropy = self.args.log_entropy or self.args.token_entropy_percentile_threshold
+        self.compute_entropy = self.args.log_entropy or self.token_entropy_percentile_threshold > 0
         if self.args.log_entropy:
             self._textual_logs.update({'entropy': deque(maxlen=maxlen)})
         # Ensure each process receives a unique seed to prevent duplicate completions when generating with
