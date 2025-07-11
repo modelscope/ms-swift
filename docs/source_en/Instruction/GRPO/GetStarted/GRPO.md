@@ -1,6 +1,7 @@
 # GRPO
 
 **Changelog**
+- **2025-07-11** - Support for entropy mask and logging of entropy-related metrics. See [documentation](../AdvancedResearch/entropy_mask.md) for details.
 - **2025-06-22** - Refactored multi-round training and added support for AsyncEngine. Refer to the [documentation](../DeveloperGuide/multi_turn.md).
 - **2025-05-29** — Added support for padding-free (`--padding_free true`) and sequence parallelism (`--sequence_parallel_size N`).
 - **2025-05-23** — Added support for custom sampling batch size. Refer to the `generation_batch_size` / `steps_per_generation` parameters.
