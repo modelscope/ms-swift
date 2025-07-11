@@ -226,7 +226,5 @@ def entropy_from_logits(logits, chunk_size: int = 1) -> torch.Tensor:
     for logits_chunk in logits.split(chunk_size, dim=0):
         logps = F.log_softmax(logits_chunk, dim=-1)
         chunk_entropy = -(torch.exp(logps) * logps).sum(-1)
-        per_token_entropies.extend(chunk_entropy)
-
-    per_token_entropies = torch.stack(per_token_entropies)
-    return per_token_entropies
+        per_token_entropies.append(chunk_entropy)
+    return torch.cat(per_token_entropies, dim=0)
