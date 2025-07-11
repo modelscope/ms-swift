@@ -124,12 +124,20 @@ class BaseMegatronTrainer(ABC):
             state_dict_model = {}
             mapping = {}
             for k, v in sharded_state_dict['model'].items():
-                if 'lora_A' in k or 'lora_B' in k:
+                if 'lora_A' in k or 'lora_B' in k or 'original_module' in k:
                     continue
-                origin_k = k
-                k = k.replace('.base_layer', '')
-                mapping[k] = origin_k
-                v.key = v.key.replace('.base_layer', '')
+                # lora
+                if '.base_layer' in k:
+                    origin_k = k
+                    k = k.replace('.base_layer', '')
+                    mapping[k] = origin_k
+                    v.key = v.key.replace('.base_layer', '')
+                elif '.modules_to_save' in k:
+                    # modules to save
+                    origin_k = k
+                    k = k.replace('.modules_to_save.default', '')
+                    mapping[k] = origin_k
+                    v.key = v.key.replace('.modules_to_save.default', '')
                 state_dict_model[k] = v
             sharded_state_dict['model'] = state_dict_model
             res = origin__load_base_checkpoint(*_args, **kwargs)

@@ -647,15 +647,16 @@ def _patch_peft_ModulesToSaveWrapper():
 
     ModulesToSaveWrapper = tuners_utils.ModulesToSaveWrapper
 
-    class NewModulesToSaveWrapper(MegatronModule, ModulesToSaveWrapper):
+    class NewModulesToSaveWrapper(ModulesToSaveWrapper):
 
         def __init__(self, module_to_save, *args, **kwargs):
+            # Note: not use original_module
             tp_group = getattr(module_to_save, 'tp_group', None)
             if tp_group is not None:
                 module_to_save.tp_group = None
-            super().__init__(self, module_to_save, *args, **kwargs)
+            super().__init__(module_to_save, *args, **kwargs)
             if tp_group is not None:
-                module_to_save.tp_group = tp_group  # self.original_module
+                module_to_save.tp_group = tp_group
                 for module in self.modules_to_save.values():
                     module.tp_group = tp_group
 
@@ -665,7 +666,17 @@ def _patch_peft_ModulesToSaveWrapper():
                 sharded_offsets: Tuple[Tuple[int, int, int]] = (),
                 metadata: Optional[dict] = None,
         ) -> ShardedStateDict:
-            return tuners_sharded_state_dict(self, prefix, sharded_offsets, metadata)
+            sharded_state_dict = tuners_sharded_state_dict(self, prefix, sharded_offsets, metadata)
+            if prefix == 'output_layer.':
+                output_layer_extra_state_key = f'{prefix}modules_to_save.default._extra_state'
+
+                # Old GPT checkpoints only stored the output layer weight key. So we remove the
+                # _extra_state key but check that it doesn't contain any data anyway
+                output_extra_state = sharded_state_dict.pop(output_layer_extra_state_key, None)
+                assert not (output_extra_state and output_extra_state.data
+                            ), f'Expected output layer extra state to be empty, got: {output_extra_state}'
+
+            return sharded_state_dict
 
     tuners_utils.ModulesToSaveWrapper = NewModulesToSaveWrapper
 
