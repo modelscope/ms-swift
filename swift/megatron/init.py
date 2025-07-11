@@ -639,6 +639,49 @@ def _patch_TEGroupedLinear():
     TEGroupedLinear.sharded_state_dict = sharded_state_dict
 
 
+def _patch_peft_ModulesToSaveWrapper():
+    from peft.tuners import tuners_utils
+    from megatron.core.transformer.module import MegatronModule
+
+    ModulesToSaveWrapper = tuners_utils.ModulesToSaveWrapper
+
+    class NewModulesToSaveWrapper(MegatronModule, ModulesToSaveWrapper):
+
+        def __init__(self, module_to_save, *args, **kwargs):
+            tp_group = getattr(module_to_save, 'tp_group', None)
+            if tp_group is not None:
+                module_to_save.tp_group = None
+            super().__init__(self, module_to_save, *args, **kwargs)
+            if tp_group is not None:
+                module_to_save.tp_group = tp_group  # self.original_module
+                for module in self.modules_to_save.values():
+                    module.tp_group = tp_group
+
+        def sharded_state_dict(
+                self,
+                prefix: str = '',
+                sharded_offsets: Tuple[Tuple[int, int, int]] = (),
+                metadata: Optional[dict] = None,
+        ) -> ShardedStateDict:
+            sharded_state_dict = {}
+            # Save parameters
+            self._save_to_state_dict(sharded_state_dict, '', keep_vars=True)
+            sharded_state_dict = make_sharded_tensors_for_checkpoint(
+                sharded_state_dict, prefix, sharded_offsets=sharded_offsets)
+            # Recurse into submodules
+            for name, module in self.named_children():
+                if 'Dict' in module.__class__.__name__:
+                    modules = module.named_children()
+                else:
+                    modules = [(None, module)]
+                for n, m in modules:
+                    _prefix = f'{prefix}{name}.' if n is None else f'{prefix}{name}.{n}.'
+                    sharded_state_dict.update(sharded_state_dict_default(m, _prefix, sharded_offsets, metadata))
+            return sharded_state_dict
+
+    tuners_utils.ModulesToSaveWrapper = NewModulesToSaveWrapper
+
+
 def _patch_megatron():
     _patch_transformer_engine()
     _patch__batched_p2p_ops()
@@ -647,7 +690,8 @@ def _patch_megatron():
     from swift.megatron import tuners  # patch lora
     try:
         _patch_peft_BaseTuner()
-        logger.info('Patch peft_BaseTuner successfully applied.')
+        _patch_peft_ModulesToSaveWrapper()
+        logger.info('Patch peft successfully applied.')
     except Exception:
         pass
     try:
