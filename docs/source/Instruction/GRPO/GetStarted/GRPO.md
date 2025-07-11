@@ -224,6 +224,7 @@ swift rollout \
 - clip_ratio/low_min：不同句子中被 下CLIP 的的 token 最小比例
 - clip_ratio/high_mean：不同句子中被 上CLIP 的的 token 平均比例
 - clip_ratio/high_max：不同句子中被 上CLIP 的的 token 最大比例
+> 注意：如果开启`overlong_filter`, kl 和 clip_ratio 指标会过滤超长的样本
 
 如果设置了`log_entropy`参数，则会额外记录entropy相关指标，包括
 - entropy/mean: 不同句子中的 entropy 均值

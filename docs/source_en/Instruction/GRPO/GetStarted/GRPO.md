@@ -221,6 +221,7 @@ To configure the external vLLM server during training, use the following paramet
 - clip_ratio/low_min: The minimum proportion of tokens clipped by the lower CLIP bound across different sentences.
 - clip_ratio/high_mean: The average proportion of tokens clipped by the upper CLIP bound across different sentences.
 - clip_ratio/high_max: The maximum proportion of tokens clipped by the upper CLIP bound across different sentences.
+> Note: If `overlong_filter` is enabled, the kl and clip_ratio metrics will exclude overlength samples.
 
 If the `log_entropy` parameter is set, additional entropy-related metrics will be recorded, including:
 - entropy/mean: The average entropy across different sentences.

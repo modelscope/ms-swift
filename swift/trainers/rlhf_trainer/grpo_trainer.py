@@ -1146,13 +1146,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         completion_mask = inputs['completion_mask']
         truncated_mask = inputs['truncated_mask']
-        # apply the completion_mask to exclude loss and metrics for overlong completions
-        if self.args.overlong_filter and any(truncated_mask):
-            if all(truncated_mask):
-                logger.info('All completions are overlong and truncated, '
-                            'resulting in NaN some values for some metrics (e.g., KL)')
-            truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask).to(completion_mask.device)
-            completion_mask = completion_mask * (~truncated_mask)
 
         if self.compute_entropy:
             logps_and_entropies = self._get_per_token_logps_and_entropies(model, inputs, compute_entropy=True)
@@ -1180,6 +1173,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             per_token_logps = self._get_per_token_logps_and_entropies(model, inputs)['logps']
             entropy_mask = None
 
+        # apply the completion_mask to exclude loss and metrics for overlong completions
+        if self.args.overlong_filter and any(truncated_mask):
+            if all(truncated_mask):
+                logger.info('All completions are overlong and truncated, '
+                            'resulting in NaN some values for some metrics (e.g., KL)')
+            truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask).to(completion_mask.device)
+            completion_mask = completion_mask * (~truncated_mask)
+
         # Compute the KL divergence between the model and the reference model
         if self.beta != 0.0:
             with torch.no_grad():
@@ -1193,7 +1194,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
         advantages = inputs['advantages']
-        # When using num_iterations == 1 and steps_per_generation <= gradient_accumulation_steps
+        # When under on-policy training
         # old_per_token_logps == per_token_logps, so we can skip it's computation
         # (see _generate_and_score_completions) and use per_token_logps.detach() instead.
         old_per_token_logps = (
