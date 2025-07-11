@@ -641,7 +641,6 @@ def _patch_TEGroupedLinear():
 
 def _patch_peft_ModulesToSaveWrapper():
     from peft.tuners import tuners_utils
-    from megatron.core.transformer.module import MegatronModule
     from megatron.core.dist_checkpointing.mapping import ShardedStateDict
     from .utils import tuners_sharded_state_dict
 
