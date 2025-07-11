@@ -155,7 +155,7 @@ def patch_profiling_decorator(func):
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         with patch_profiling_context(self, func.__name__):
-            return func(*args, **kwargs)
+            return func(self, *args, **kwargs)
 
     return wrapper
 
