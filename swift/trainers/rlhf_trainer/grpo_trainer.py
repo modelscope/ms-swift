@@ -27,7 +27,6 @@ from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
 from transformers.trainer import Trainer
 from trl import GRPOTrainer as HFGRPOTrainer
-from trl.extras.profiling import profiling_context, profiling_decorator
 from trl.models import prepare_deepspeed
 from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import nanmax, nanmin, nanstd
@@ -39,11 +38,12 @@ from swift.llm.model.utils import get_llm_model
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
 from swift.plugin.multi_turn import MultiTurnScheduler
-from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_device, get_logger, is_vllm_available,
-                         is_wandb_available, seed_worker, unwrap_model_for_generation)
+from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_device, get_logger, is_swanlab_available,
+                         is_vllm_available, is_wandb_available, seed_worker, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge
+from .utils import (_ForwardRedirection, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
+                    patch_profiling_decorator)
 from .vllm_client import VLLMClient
 
 del HFGRPOTrainer.__init__
@@ -52,6 +52,8 @@ del HFGRPOTrainer.log
 logger = get_logger()
 if is_wandb_available():
     import wandb
+if is_swanlab_available():
+    import swanlab
 
 InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
 # tuple: (messages, finish_reason)
@@ -325,7 +327,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # flag indicating whether the evaluation has started
         self.eval_flag = False
 
-    @profiling_decorator
+    @patch_profiling_decorator
     def _prepare_inputs(self, generation_batch: dict[str, Union[torch.Tensor,
                                                                 Any]]) -> dict[str, Union[torch.Tensor, Any]]:
         # Prepares inputs for model training/evaluation by managing completion generation and batch handling.
@@ -479,7 +481,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template.set_mode(mode)
             template.max_length = max_length
 
-    @profiling_decorator
+    @patch_profiling_decorator
     def _move_model_to_vllm(self, skip_async_check=False):
         deepspeed_plugin = self.accelerator.state.deepspeed_plugin
         zero_stage_3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
@@ -906,7 +908,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
                 zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
-            with profiling_context(self, reward_func_name):
+            with patch_profiling_context(self, reward_func_name):
                 # reward model
                 if isinstance(reward_func, nn.Module):
                     output_reward_func = reward_model_plugin(inputs=inputs)
@@ -1110,7 +1112,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             prompts_text.append(''.join(processed_context))
         return prompts_text
 
-    @profiling_decorator
+    @patch_profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # Compute the per-token log probabilities for the model, return_outputs=True in mini-batch training
         if isinstance(inputs, list):
@@ -1275,7 +1277,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             remove_handle2.remove()
 
     # Get the per-token log probabilities for the completions for the model and the reference model
-    @profiling_decorator
+    @patch_profiling_decorator
     def _get_per_token_logps(self, model, inputs):
         from trl.trainer.utils import selective_log_softmax
         logits_to_keep = inputs['logits_to_keep']
@@ -1305,7 +1307,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         input_ids = input_ids[:, -logits_to_keep:]
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
 
-    @profiling_decorator
+    @patch_profiling_decorator
     def _get_last_hidden_state(self, unwrapped_model, inputs, logits_to_keep):
         # unwrap the model to access the model.model
         if is_peft_model(unwrapped_model):
@@ -1399,7 +1401,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         *,
         use_tqdm: Optional[bool] = False,
     ) -> List[ChatCompletionResponse]:
-        with profiling_context(self, 'generate'):
+        with patch_profiling_context(self, 'generate'):
             if self.vllm_mode == 'server':
                 request_keys = ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
 
@@ -1585,6 +1587,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if self.wandb_log_unique_prompts:
                     df = df.drop_duplicates(subset=['prompt'])
                 wandb.log({'completions': wandb.Table(dataframe=df)})
+
+            if self.args.report_to and 'swanlab' in self.args.report_to and swanlab.get_run() is not None:
+                headers = list(table.keys())
+                rows = []
+                for i in range(len(table['step'])):
+                    row = []
+                    for header in headers:
+                        row.append(table[header][i])
+                    rows.append(row)
+                swanlab.log({'completions': swanlab.echarts.Table().add(headers, rows)})
 
     def is_async_generate_eval_rollout_done(self):
         return not self.eval_flag or not self.eval_queue.empty()

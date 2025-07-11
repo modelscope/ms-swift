@@ -71,10 +71,11 @@ You can contact us and communicate with us by adding our group:
 - 🍉 **Toolbox Capabilities**: Offers not only training support for large models and multi-modal large models but also covers the entire process of inference, evaluation, quantization, and deployment.
 - **Inference Acceleration**: Supports inference acceleration engines like PyTorch, vLLM, SGLang, LmDeploy, and provides OpenAI API for accelerating inference, deployment, and evaluation modules.
 - **Model Evaluation**: Uses EvalScope as the evaluation backend and supports evaluation on 100+ datasets for both pure text and multi-modal models.
-- **Model Quantization**: Supports AWQ, GPTQ, and BNB quantized exports, with models that can use vLLM/SGLang/LmDeploy for inference acceleration and continue training.
+- **Model Quantization**: Supports AWQ, GPTQ, FP8, and BNB quantized exports, with models that can use vLLM/SGLang/LmDeploy for inference acceleration and continue training.
 
 
 ## 🎉 News
+- 🎁 2025.07.09: Megatron-SWIFT supports LoRA training. Compared to ms-swift, it achieves significant speedup on MoE models. Training scripts can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/megatron/lora).
 - 🎁 2025.06.23: Fine-tuning of reranker models is supported. Training scripts can be found here: [Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh).
 - 🎁 2025.06.18: Support for accelerating the ms-swift [inference](https://github.com/modelscope/ms-swift/blob/main/examples/infer/sglang), deployment, evaluation, and UI modules using the [sglang](https://github.com/sgl-project/sglang) inference acceleration engine. Simply set `--infer_backend sglang` to enable it.
 - 🎁 2025.06.15: Support for GKD training on both pure text large models and multimodal models. Training scripts can be found here: [Pure Text](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/gkd), [Multimodal](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/gkd).

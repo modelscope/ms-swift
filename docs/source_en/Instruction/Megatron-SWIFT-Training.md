@@ -1,7 +1,7 @@
 
 # Megatron-SWIFT Training
 
-SWIFT incorporates Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, context parallelism, and expert parallelism. It supports the pre-training and fine-tuning of models such as Qwen3, [Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/train/megatron/qwen3_moe.sh), Qwen2.5, Llama3, and the Deepseek-R1 distillation series. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](./Supported-models-and-datasets.md).
+SWIFT incorporates Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, context parallelism, and expert parallelism. It supports the pre-training and fine-tuning of models such as Qwen3, [Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/train/megatron/qwen3_moe.sh), Qwen2.5, Llama3, and the Deepseek-R1 series. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](./Supported-models-and-datasets.md).
 
 ## Environment Setup
 
@@ -22,7 +22,11 @@ git checkout e13873debc4699d39c6861074b9a3b2a02327f92
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
-pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.12.0
+# For "ms-swift<3.7", please use the core_r0.12.0 branch.
+pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
+
+# If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
+export MODELSCOPE_CACHE='/xxx/shared'
 ```
 
 Alternatively, you can also use the image:
@@ -32,7 +36,7 @@ modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu
 modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.27.1-swift3.5.3
 ```
 
-The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.12.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.12.0)).
+The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.13.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)).
 
 
 ## Quick Start Example
@@ -41,14 +45,14 @@ This section introduces a quick start example for fine-tuning the self-awareness
 
 First, we need to convert the weights from HF (Hugging Face) format to Megatron format:
 - If you encounter OOM, simply remove `CUDA_VISIBLE_DEVICES=0`.
-- For "ms-swift>=3.6", it is recommended to add the `--test_convert_precision true` parameter to test conversion precision.
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
     --model Qwen/Qwen2.5-7B-Instruct \
     --to_mcore true \
     --torch_dtype bfloat16 \
-    --output_dir Qwen2.5-7B-Instruct-mcore
+    --output_dir Qwen2.5-7B-Instruct-mcore \
+    --test_convert_precision true
 ```
 
 Next, use the following script to start training. The required GPU memory resources are 2*80GiB:
@@ -90,7 +94,6 @@ megatron sft \
 Finally, convert the Megatron format weights back to HF format:
 - Note: Please point `--mcore_model` to the parent directory of `iter_xxx`. By default, the corresponding checkpoint from `latest_checkpointed_iteration.txt` will be used.
 - If you encounter OOM, simply remove `CUDA_VISIBLE_DEVICES=0`.
-- For "ms-swift>=3.6", it is recommended to add the `--test_convert_precision true` parameter to test conversion precision.
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
@@ -98,7 +101,8 @@ swift export \
     --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
+    --test_convert_precision true
 ```
 
 We then perform inference on the generated HF format weights:
@@ -122,6 +126,67 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - For pretraining, you can use `megatron pt` instead of `megatron sft`, which will use a generative template for training.
 - **More examples**: Including packing, multi-node training, 32K context, DPO, MoE models, and pre-training, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
 - The custom dataset format is the same as `ms-swift`. Refer to the [custom dataset documentation](../Customization/Custom-dataset.md).
+
+## LoRA Training
+
+Compared to full parameter tuning, LoRA training differs in both the training and MCore-to-HF conversion scripts:
+
+Training Script:
+
+```bash
+# full: 2 * 70GiB 0.61s/it
+# lora: 2 * 14GiB 0.45s/it
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1 \
+megatron sft \
+    --load Qwen2.5-7B-Instruct-mcore \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
+              'AI-ModelScope/alpaca-gpt4-data-en#500' \
+              'swift/self-cognition#500' \
+    --train_type lora \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --target_modules all-linear \
+    --tensor_model_parallel_size 2 \
+    --sequence_parallel true \
+    --micro_batch_size 16 \
+    --global_batch_size 16 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
+    --finetune true \
+    --cross_entropy_loss_fusion true \
+    --lr 1e-4 \
+    --lr_warmup_fraction 0.05 \
+    --min_lr 1e-5 \
+    --max_epochs 1 \
+    --save megatron_output/Qwen2.5-7B-Instruct \
+    --save_interval 100 \
+    --max_length 2048 \
+    --system 'You are a helpful assistant.' \
+    --num_workers 4 \
+    --no_save_optim true \
+    --no_save_rng true \
+    --dataset_num_proc 4 \
+    --model_author swift \
+    --model_name swift-robot
+```
+- For LoRA training scripts of MoE models, please refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/lora).
+
+MCore to HF Conversion Script:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+swift export \
+    --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
+    --to_hf true \
+    --torch_dtype bfloat16 \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
+    --test_convert_precision true
+```
+
+- Note: The `mcore_adapters` folder contains an `args.json` file. During the conversion process, parameters related to `mcore_model` and LoRA will be loaded from this file. The system will then perform a merge-lora operation between the `mcore_model` and `mcore_adapters` to obtain the complete model weights, and finally convert them into HuggingFace (HF) format.
 
 ## Benchmark
 The speed comparison of full-parameter training for Dense/MoE models using `megatron sft` and `swift sft` on a single machine with eight A800 GPUs is shown below. The corresponding scripts can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/benchmark).
@@ -193,7 +258,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 
 **Learning Rate Parameters**:
 
-- 🔥lr: Initial learning rate, which will ultimately determine the learning rate for each iteration based on the warm-up and decay strategy, default is 1e-5.
+- 🔥lr: The initial learning rate. The actual learning rate for each iteration will be determined based on the learning rate warmup and decay strategies. The default value is None; for full-parameter training, the default is 1e-5, while for LoRA training, the default is 1e-4.
 - lr_decay_style: Learning rate decay strategy, default is 'cosine'. Commonly set to 'cosine', 'linear', or 'constant'.
 - 🔥lr_decay_iters: Number of iterations for learning rate decay. Default is None, meaning it will be set to `--train_iters`.
 - lr_warmup_iters: Number of iterations for linear learning rate warm-up, default is 0.
@@ -341,6 +406,29 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - qk_head_dim: Dimension of the head in the QK projection. `q_head_dim = qk_head_dim + qk_pos_emb_head_dim`. Default is None and will be automatically read from config.json.
 - qk_pos_emb_head_dim: Dimension of the position embedding in the QK projection. Default is None and will be automatically read from config.json.
 
+**Tuner Parameters**:
+
+- train_type: Options are `'lora'` and `'full'`. Default is `'full'`.
+
+Full-parameter Training:
+
+- freeze_parameters: Prefixes of parameters to be frozen. Default is `[]`.
+- freeze_parameters_regex: Regex expression for parameters to be frozen. Default is `None`.
+- freeze_parameters_ratio: The proportion of parameters to freeze from bottom to top. Default is `0`. Setting this to `1` will freeze all parameters; you can set trainable parameters separately using `trainable_parameters`. This parameter is incompatible with PP (pipeline parallel) mode.
+- trainable_parameters: Prefixes of additional trainable parameters. Default is `[]`.
+- trainable_parameters_regex: Regex expression to match additional trainable parameters. Default is `None`.
+
+LoRA Training:
+
+- adapter_load: Path to the adapter weights to be loaded. Default is `None`.
+- 🔥target_modules: Suffixes of modules to apply LoRA to. Default is `['all-linear']`.
+- 🔥target_regex: Regex expression to specify LoRA modules. Default is `None`. If this value is provided, the `target_modules` parameter will be ignored.
+- 🔥modules_to_save: After attaching a tuner, explicitly specifies additional original model modules to participate in training and storage. The default is `[]`.
+- 🔥lora_rank: Default is `8`.
+- 🔥lora_alpha: Default is `32`.
+- lora_dropout: Default is `0.05`.
+- lora_bias: Default is `'none'`. Available options: `'none'`, `'all'`. If you want all biases to be set as trainable, set this to `'all'`.
+- use_rslora: Default is `False`. Whether to use `RS-LoRA`.
 
 **DPO Parameters**
 - ref_load: The path to load the reference model. Defaults to `None`, which means it will be set to `load`.

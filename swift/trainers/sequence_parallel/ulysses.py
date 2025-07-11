@@ -1,29 +1,17 @@
-import math
-import os
-from contextlib import contextmanager
 from functools import partial
 from types import MethodType
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Optional, Tuple
 
-import datasets
-import numpy as np
 import torch
 import torch.distributed as dist
-import trl
 from packaging import version
-from torch.distributed.device_mesh import init_device_mesh
-from torch.nn import CrossEntropyLoss
-from torch.utils.data import DataLoader, Sampler
-from trl.extras.profiling import profiling_decorator
-from trl.trainer.grpo_trainer import RepeatSampler
 
-from swift.llm import DataLoaderDispatcher, DataLoaderShard, get_llm_model, to_device
-from swift.utils import get_current_device, get_device, get_dist_setting, seed_worker
+from swift.llm import get_llm_model
 from .base import CommonSequenceParallel
-from .utils import (ChunkedCrossEntropyLoss, GatherLoss, SequenceParallelDispatcher, SequenceParallelSampler,
-                    _get_per_token_logps_grpo, _get_train_sampler_grpo, _prepare_inputs, _prepare_inputs_grpo,
-                    get_common_dataloader, get_per_token_logps, loss_scale_sp_func, old_policy_grpo,
-                    padding_free_context_grpo, setup_compute_acc, split_by_mini_batches_grpo)
+from .utils import (SequenceParallelDispatcher, SequenceParallelSampler, _get_per_token_logps_grpo,
+                    _get_train_sampler_grpo, _prepare_inputs, _prepare_inputs_grpo, get_common_dataloader,
+                    get_per_token_logps, loss_scale_sp_func, old_policy_grpo, setup_compute_acc,
+                    split_by_mini_batches_grpo)
 
 assert version.parse(torch.__version__) >= version.parse('2.0.0')
 torch._dynamo.config.capture_dynamic_output_shape_ops = True
@@ -290,6 +278,7 @@ class Ulysses(CommonSequenceParallel):
             trainer.get_per_token_logps = partial(get_per_token_logps, sp_instance=self)
 
         elif trainer.__class__.__name__ == 'GRPOTrainer':
+            import trl
             assert version.parse(trl.__version__) >= version.parse('0.18.0')
             trainer.ulysses = self
             trainer.args.gradient_accumulation_steps = trainer.args.gradient_accumulation_steps * self.sp_world_size

@@ -23,6 +23,8 @@ def test_engine_stream():
     request_config = RequestConfig(max_tokens=1024, stream=True)
     gen_list = engine.infer(list(dataset), request_config=request_config)
     for resp in gen_list[0]:
+        if resp is None:
+            continue
         print(resp.choices[0].delta.content, flush=True, end='')
 
 

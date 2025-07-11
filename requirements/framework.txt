@@ -19,7 +19,7 @@ numpy<2.0
 openai
 oss2
 pandas
-peft>=0.11,<0.16
+peft>=0.11,<0.17
 pillow
 requests
 rouge
@@ -31,7 +31,7 @@ sortedcontainers>=1.5.9
 tensorboard
 tiktoken
 tqdm
-transformers>=4.33,<4.53
+transformers>=4.33,<4.54
 transformers_stream_generator
 trl>=0.15,<0.20
 uvicorn
