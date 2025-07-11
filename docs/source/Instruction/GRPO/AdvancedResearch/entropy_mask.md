@@ -1,11 +1,10 @@
 # Beyond the 80/20 Rule: High-Entropy Minority Tokens Drive Effective Reinforcement Learning for LLM Reasoning
 
-> 注意，使用该功能需要安装 ms-swift 和 trl 源码版本
+> 注意，使用该功能需要安装 ms-swift 源码版本
 >```
 >git clone https://github.com/modelscope/ms-swift.git
 >cd ms-swift
 >pip install -e .
->pip install git+https://github.com/huggingface/trl.git
 >```
 
 
@@ -17,7 +16,23 @@
 token 熵公式如下
 
 $
-H_t := -∑_{j=1}^{V} p_{t,j} \log p_{t,j}, where (p_{t,1}, ···, p_{t,V}) = \mathbf{p}_t = π_θ(\cdot | \mathbf{q}, \mathbf{o}_{<t}) = \text{Softmax}(\frac{\mathbf{z}_t}{T}) \
+H_t := -∑_{j=1}^{V} p_{t,j} \log p_{t,j}, \qquad where (p_{t,1}, ···, p_{t,V}) = \mathbf{p}_t = π_θ(\cdot | \mathbf{q}, \mathbf{o}_{<t}) = \text{Softmax}(\frac{\mathbf{z}_t}{T}) \
 $
 
+其中
+- $\pi_\theta$：参数为 $\theta$ 的模型
+- $\mathbf{q}$：输入查询（input query）。
+- $\mathbf{o}{<t} = (o_1, o_2, \cdots, o_{t-1})$：时间步 $t$ 之前已生成的 token 序列。
+- $V$：词表大小（vocabulary size）。
+- $\mathbf{z}_t \in \mathbb{R}^V$：时间步 $t$ 的 pre-softmax 逻辑值（logits）。
+- $\mathbf{p}_t \in \mathbb{R}^V$：模型对词表的概率分布。
+- $T \in \mathbb{R}$：解码温度（decoding temperature），控制分布的平滑程度。
+
+熵的计算对象：$H_t$ 是 token 生成分布 $\mathbf{p}_t$ 的熵，用于衡量训练策略 $\pi_\theta$ 在给定上下文 $(\mathbf{q}, \mathbf{o}_{<t})$ 下的不确定性。
+
+> "Token entropy" $H_t$ 始终指向位置 $t$ 的生成分布 $\mathbf{p}_t$ 的不确定性，而非 token $o_t$ 本身的属性。即$H_t$ 是位置 $t$ 对应分布 $\mathbf{p}_t$ 的熵，与采样得到的 token $o_t$ 无关。
+
+
 在实践中，我们可以在 GRPO 训练中通过参数 `token_entropy_percentile_threshold` 控制熵过滤的分位数。论文实验设置该参数为 0.8，即每次仅对处于熵分布前 20% 的 token 进行训练优化。
+
+使用参数`log_entropy`，可以记录训练过程中的熵值变化，参考[文档](../GetStarted/GRPO.md#logged-metrics)

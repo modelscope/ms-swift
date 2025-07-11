@@ -239,7 +239,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         }
         self.compute_entropy = self.args.log_entropy or self.args.token_entropy_percentile_threshold
         if self.args.log_entropy:
-            self._textual_logs.update({'mean_entropy': deque(maxlen=maxlen)})
+            self._textual_logs.update({'entropy': deque(maxlen=maxlen)})
         # Ensure each process receives a unique seed to prevent duplicate completions when generating with
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
@@ -1161,7 +1161,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.args.log_entropy:
                 per_completion_entropies_mean = torch.nanmean(entropies, dim=1)
                 global_per_completion_entropies_mean = gather(per_completion_entropies_mean)
-                self._textual_logs['mean_entropy'].extend(global_per_completion_entropies_mean.tolist())
+                self._textual_logs['entropy'].extend(global_per_completion_entropies_mean.tolist())
                 self._metrics[mode]['entropy/mean'].append(global_per_completion_entropies_mean.mean().item())
                 self._metrics[mode]['entropy/max'].append(global_per_completion_entropies_mean.max().item())
                 self._metrics[mode]['entropy/min'].append(global_per_completion_entropies_mean.min().item())
@@ -1170,6 +1170,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.args.token_entropy_percentile_threshold > 0:
                 entropy_threshold = torch.nanquantile(entropies.flatten().float(),
                                                       self.token_entropy_percentile_threshold)
+                self._metrics[mode]['entropy/threshold'].append(entropy_threshold.item())
                 entropy_mask = entropies >= entropy_threshold
             else:
                 entropy_mask = None
@@ -1227,9 +1228,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         is_high_clipped = (coef_1 > 1 + self.epsilon_high) & (advantages.unsqueeze(1) > 0)
         is_region_clipped = is_low_clipped | is_high_clipped
 
-        low_clip = (is_low_clipped * completion_mask).sum() / completion_mask.sum()
-        high_clip = (is_high_clipped * completion_mask).sum() / completion_mask.sum()
-        clip_ratio = (is_region_clipped * completion_mask).sum() / completion_mask.sum()
+        low_clip = (is_low_clipped * completion_mask).sum(1) / completion_mask.sum(1)
+        high_clip = (is_high_clipped * completion_mask).sum(1) / completion_mask.sum(1)
+        clip_ratio = (is_region_clipped * completion_mask).sum(1) / completion_mask.sum(1)
 
         gathered_low_clip = self.accelerator.gather_for_metrics(low_clip)
         self._metrics[mode]['clip_ratio/low_mean'].append(gathered_low_clip.nanmean().item())
@@ -1632,12 +1633,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics[mode].clear()
 
         # NOTE:
-        # - mean_entropy only includes samples that went through training (computed in _compute_loss)
+        # - entropy only includes samples that went through training (computed in _compute_loss)
         # - Other fields (e.g., prompt/completion/reward) are collected from rollout (in _prepare_inputs)
-        # Therefore, if mean_entropy exists, to ensure length consistency across fields,
-        # we align all data based on the number of samples in mean_entropy.
-        seen_nums = len(self._textual_logs['mean_entropy']) \
-            if 'mean_entropy' in self._textual_logs else len(self._textual_logs['prompt'])
+        # Therefore, if entropy exists, to ensure length consistency across fields,
+        # we align all data based on the number of samples in entropy.
+        seen_nums = len(self._textual_logs['entropy']) \
+            if 'entropy' in self._textual_logs else len(self._textual_logs['prompt'])
         if self.accelerator.is_main_process and self.log_completions:
             table = {
                 'step': [str(self.state.global_step)] * seen_nums,
@@ -1647,7 +1648,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                    for k, v in self._textual_logs['rewards'].items()},
             }
             if self.args.log_entropy:
-                table.update({'mean_entropy': self._textual_logs['mean_entropy']})
+                table.update({'entropy': self._textual_logs['entropy']})
             self.jsonl_writer.append(table)
             if self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None:
                 import pandas as pd
