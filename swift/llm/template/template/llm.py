@@ -32,7 +32,8 @@ register_template(
     ))
 
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_gme, template_cls=Qwen2VLTemplate, suffix=['<|endoftext|>']))
-register_template(TemplateMeta(LLMTemplateType.qwen3_emb, suffix=[], prefix=[], chat_sep=[], prompt=['{{QUERY}}']))
+register_template(
+    TemplateMeta(LLMTemplateType.qwen3_emb, suffix=['<|endoftext|>'], prefix=[], chat_sep=[], prompt=['{{QUERY}}']))
 
 register_template(
     TemplateMeta(LLMTemplateType.baichuan, prefix=['{{SYSTEM}}'], prompt=[[195], '{{QUERY}}', [196]], chat_sep=[]))
