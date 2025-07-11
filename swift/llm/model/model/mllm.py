@@ -201,4 +201,5 @@ register_model(
         model_arch=ModelArch.keye_vl,
         architectures=['KeyeVLForConditionalGeneration'],
         tags=['vision'],
+        requires=['keye_vl_utils'],
     ))

@@ -2,9 +2,13 @@
 import os
 import sys
 from datetime import datetime
+from typing import List, Optional, Tuple
 
+import megatron.core
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
+from packaging import version
 
 from swift.llm import git_clone_github
 from swift.utils import get_logger, is_megatron_available, safe_ddp_context, subprocess_run
@@ -333,8 +337,13 @@ def _patch_mla_attention():
         # Adjust key, value for inference
         # ===================================================
         # rotary_pos_emb = None
-        query, key, value, _, attn_mask_type = self._adjust_key_value_for_inference(
-            inference_context, query, key, value, rotary_pos_emb=None)
+        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+        if megatron_core_013:
+            query, key, value, _, attn_mask_type, _ = self._adjust_key_value_for_inference(
+                inference_context, query, key, value, rotary_pos_emb=None)
+        else:
+            query, key, value, _, attn_mask_type = self._adjust_key_value_for_inference(
+                inference_context, query, key, value, rotary_pos_emb=None)
 
         # TODO: Currently, TE can only accept contiguous tensors for MLA
         query = query.contiguous()
@@ -570,10 +579,49 @@ def _patch_mla_attention():
     MLASelfAttention.get_query_key_value_tensors = get_query_key_value_tensors
 
 
+def _patch_peft_BaseTuner():
+    from peft.tuners.tuners_utils import BaseTuner
+    _origin_get_tied_target_modules = BaseTuner._get_tied_target_modules
+
+    def _get_tied_target_modules(self, model: nn.Module) -> List[str]:
+        try:
+            return _origin_get_tied_target_modules(self, model)
+        except AttributeError:
+            tied_target_modules = []
+            if model.share_embeddings_and_output_weights:
+                for target_module in self.targeted_module_names:
+                    if target_module.split('.')[-1] in ['output_layer', 'embedding']:
+                        tied_target_modules.append(target_module)
+            return tied_target_modules
+
+    BaseTuner._get_tied_target_modules = _get_tied_target_modules
+
+
+def _patch_TEGroupedLinear():
+    from megatron.core.extensions.transformer_engine import TEGroupedLinear
+
+    def sharded_state_dict(
+            self,
+            prefix: str = '',
+            sharded_offsets: Tuple[Tuple[int, int, int]] = (),
+            metadata: Optional[dict] = None,
+    ):
+        return self._sharded_state_dict_grouped(None, prefix, sharded_offsets, metadata)
+
+    TEGroupedLinear.sharded_state_dict = sharded_state_dict
+
+
 def _patch_megatron():
     _patch_transformer_engine()
     _patch__batched_p2p_ops()
     _patch_mla_attention()
+    _patch_TEGroupedLinear()
+    from swift.megatron import tuners  # patch lora
+    try:
+        _patch_peft_BaseTuner()
+        logger.info('Patch peft_BaseTuner successfully applied.')
+    except Exception:
+        pass
     try:
         _patch_training_log()
         logger.info('Patch training_log successfully applied.')
@@ -584,7 +632,7 @@ def _patch_megatron():
 def init_megatron_env() -> None:
     if 'MEGATRON_LM_PATH' not in os.environ:
         os.environ['MEGATRON_LM_PATH'] = git_clone_github(
-            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.12.0')
+            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.13.0')
     with safe_ddp_context(hash_id='megatron-lm'):
         if not is_megatron_available():
             subprocess_run([sys.executable, '-m', 'pip', 'install', '-e', os.environ['MEGATRON_LM_PATH']])

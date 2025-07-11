@@ -6,7 +6,7 @@
 
 ## Quantization
 
-SWIFT supports quantization exports for AWQ, GPTQ, and BNB models. AWQ and GPTQ require a calibration dataset, which yields better quantization performance but takes longer to quantize. On the other hand, BNB does not require a calibration dataset and is quicker to quantize.
+SWIFT supports quantization exports for AWQ, GPTQ, FP8, and BNB models. AWQ and GPTQ require a calibration dataset, which yields better quantization performance but takes longer to quantize. On the other hand, FP8 and BNB does not require a calibration dataset and is quicker to quantize.
 
 | Quantization Technique | Multimodal | Inference Acceleration | Continued Training |
 | ---------------------- | ---------- | ---------------------- | ------------------ |

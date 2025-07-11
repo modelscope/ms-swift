@@ -25,6 +25,18 @@ info_set = set()
 warning_set = set()
 
 
+def info_if(self, msg, cond, *args, **kwargs):
+    if cond:
+        with logger_context(self, logging.INFO):
+            self.info(msg)
+
+
+def warning_if(self, msg, cond, *args, **kwargs):
+    if cond:
+        with logger_context(self, logging.INFO):
+            self.warning(msg)
+
+
 def info_once(self, msg, *args, **kwargs):
     hash_id = kwargs.get('hash_id') or msg
     if hash_id in info_set:
@@ -95,6 +107,8 @@ def get_logger(log_file: Optional[str] = None, log_level: Optional[int] = None, 
 
     logger.info_once = MethodType(info_once, logger)
     logger.warning_once = MethodType(warning_once, logger)
+    logger.info_if = MethodType(info_if, logger)
+    logger.warning_if = MethodType(warning_if, logger)
     return logger
 
 
@@ -111,14 +125,19 @@ else:
 
 
 @contextmanager
-def ms_logger_context(log_leval):
-    ms_logger = get_ms_logger()
-    origin_log_level = ms_logger.level
-    ms_logger.setLevel(log_leval)
+def logger_context(logger, log_leval):
+    origin_log_level = logger.level
+    logger.setLevel(log_leval)
     try:
         yield
     finally:
-        ms_logger.setLevel(origin_log_level)
+        logger.setLevel(origin_log_level)
+
+
+@contextmanager
+def ms_logger_context(log_leval):
+    with logger_context(get_ms_logger(), log_leval):
+        yield
 
 
 def add_file_handler_if_needed(logger, log_file, file_mode, log_level):

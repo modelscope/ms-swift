@@ -1,4 +1,4 @@
-# 8 * 56GiB
+# 8 * 60GiB; 9s/it
 # For ease of use, we use moonshotai/Moonlight-16B-A3B-Instruct, which is also based on the DeepseekV3ForCausalLM architecture.
 # https://modelscope.cn/models/moonshotai/Moonlight-16B-A3B-Instruct/file/view/master/config.json?status=1
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
@@ -8,7 +8,8 @@ megatron sft \
     --load Moonlight-16B-A3B-Instruct-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
     --split_dataset_ratio 0.01 \
-    --tensor_model_parallel_size 2 \
+    --pipeline_model_parallel_size 2 \
+    --decoder_last_pipeline_num_layers 13 \
     --expert_model_parallel_size 4 \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
@@ -35,4 +36,4 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --use_flash_attn true
+    --attention_backend flash

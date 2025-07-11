@@ -12,8 +12,8 @@ from torch.distributed.nn import all_reduce
 
 from swift.trainers import DPOTrainer
 from swift.utils import get_current_device, get_logger
-from ..utils import get_batch
 from .trainer import MegatronTrainer
+from .utils import get_batch
 
 logger = get_logger()
 
@@ -36,24 +36,18 @@ class MegatronDPOTrainer(MegatronTrainer):
 
     def __init__(self, args):
         super().__init__(args)
-        self._patch_setup_model_and_optimizer()
         self.dummy_dpo_trainer = DummyDPOTrainer(args)
 
-    def _patch_setup_model_and_optimizer(self):
-        origin_setup_model_and_optimizer = training.setup_model_and_optimizer
-
-        def setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs):
-            args = get_args()
-            ref_model = get_model(model_provider_func, model_type)
-            if args.ref_load is None:
-                args.ref_load = args.load
-            args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
-                ref_model, None, None, load_arg='ref_load')
-            self.ref_model = ref_model[0]
-            self.ref_model.eval()
-            return origin_setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
-
-        training.setup_model_and_optimizer = setup_model_and_optimizer
+    def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
+        args = get_args()
+        ref_model = get_model(model_provider_func, model_type)
+        if args.ref_load is None:
+            args.ref_load = args.load
+        args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
+            ref_model, None, None, load_arg='ref_load')
+        self.ref_model = ref_model[0]
+        self.ref_model.eval()
+        return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
 
     @staticmethod
     def _forward_step_helper(model, inputs):
@@ -88,6 +82,7 @@ class MegatronDPOTrainer(MegatronTrainer):
         ref_model = unwrap_model(self.ref_model)
         with self.stimer(bdata=True):
             data = get_batch(data_iterator)
+        data.pop('loss_scale', None)
         labels = data.get('labels')
         with torch.no_grad():
             output_tensor = self._forward_step_helper(ref_model, data)
