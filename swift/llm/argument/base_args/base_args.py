@@ -205,7 +205,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     def _init_ckpt_dir(self, adapters=None):
         # compat megatron
         model = self.model or getattr(self, 'mcore_model', None) or getattr(self, 'load', None)
-        self.ckpt_dir = get_ckpt_dir(model, adapters or self.adapters)
+        adapters = adapters or self.adapters or getattr(self, 'mcore_adapters', None)
+        self.ckpt_dir = get_ckpt_dir(model, adapters)
         if self.ckpt_dir and self.load_args:
             self.load_args_from_ckpt()
 

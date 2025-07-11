@@ -1,18 +1,21 @@
-# 8 * 62GiB; 0.9s/it
+# 2 * 55GiB; 4.50s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-NPROC_PER_NODE=8 \
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1 \
 megatron rlhf \
     --rlhf_type dpo \
-    --load Qwen1.5-MoE-A2.7B-mcore \
+    --load Qwen3-30B-A3B-Base-mcore \
     --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji#20000' \
+    --train_type lora \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --target_modules all-linear \
     --split_dataset_ratio 0.01 \
-    --pipeline_model_parallel_size 2 \
-    --expert_model_parallel_size 4 \
+    --expert_model_parallel_size 2 \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
     --moe_aux_loss_coeff 0.01 \
-    --micro_batch_size 4 \
+    --micro_batch_size 8 \
     --global_batch_size 16 \
     --recompute_granularity full \
     --recompute_method uniform \
@@ -20,12 +23,12 @@ megatron rlhf \
     --max_epochs 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
-    --lr 1e-5 \
+    --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
-    --min_lr 1e-6 \
-    --save megatron_output/Qwen1.5-MoE-A2.7B \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --min_lr 1e-5 \
+    --save megatron_output/Qwen3-30B-A3B-Base \
+    --eval_interval 100 \
+    --save_interval 100 \
     --max_length 8192 \
     --num_workers 8 \
     --dataset_num_proc 8 \
