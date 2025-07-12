@@ -121,6 +121,7 @@ class Internvl2Template(InternvlTemplate):
         input_ids = encoded['input_ids']
         idx_list = findall(input_ids, -100)
         labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
         images = inputs.images
         if images:
             has_video = bool(inputs.videos)
@@ -146,6 +147,7 @@ class Internvl2Template(InternvlTemplate):
             return img_tokens
 
         encoded['input_ids'], encoded['labels'] = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
+        encoded['loss_scale'] = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
         encoded['pixel_values'] = pixel_values
         return encoded
 

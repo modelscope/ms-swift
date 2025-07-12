@@ -40,6 +40,7 @@ class MegrezOmniTemplate(Template):
         encoded = super()._encode(inputs)
         input_ids = encoded['input_ids']
         labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
 
         for mm_key in ['images', 'audios']:
             mm_data = getattr(inputs, mm_key)
@@ -70,8 +71,11 @@ class MegrezOmniTemplate(Template):
                 return self._tokenize(padding[i])
 
             input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
+            loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
+
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
+        encoded['loss_scale'] = loss_scale
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:

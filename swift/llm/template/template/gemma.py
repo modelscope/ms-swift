@@ -109,9 +109,11 @@ class Gemma3VisionTemplate(Gemma3Template):
         if inputs.images:
             input_ids = encoded['input_ids']
             labels = encoded['labels']
+            loss_scale = encoded.get('loss_scale', None)
             idx_list = findall(input_ids, self.boi_token_id)
             img_tokens = self._tokenize(self.processor.full_image_sequence)
             input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, lambda _: img_tokens)
+            loss_scale = self._extend_loss_scale(loss_scale, idx_list, lambda _: img_tokens)
 
             # TODO: customize
             processor_kwargs = Gemma3ProcessorKwargs._defaults['images_kwargs']
@@ -126,6 +128,7 @@ class Gemma3VisionTemplate(Gemma3Template):
             encoded['input_ids'] = input_ids
             encoded['pixel_values'] = image_inputs['pixel_values']
             encoded['labels'] = labels
+            encoded['loss_scale'] = loss_scale
         return encoded
 
 
@@ -158,6 +161,7 @@ class Gemma3nTemplate(Gemma3Template):
         processor = self.processor
         input_ids = encoded['input_ids']
         labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
 
         # Initialize token_type_ids and other outputs
         array_ids = np.array(input_ids)
@@ -168,6 +172,7 @@ class Gemma3nTemplate(Gemma3Template):
             idx_list = findall(input_ids, self.boi_token_id)
             img_tokens = self._tokenize(processor.full_image_sequence)
             input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, lambda _: img_tokens)
+            loss_scale = self._extend_loss_scale(loss_scale, idx_list, lambda _: img_tokens)
 
             # Process images
             processor_kwargs = Gemma3nProcessorKwargs._defaults.get('images_kwargs', {})
@@ -184,6 +189,7 @@ class Gemma3nTemplate(Gemma3Template):
                 # Get audio token sequence from processor
                 audio_tokens = self._tokenize(processor.full_audio_sequence)
                 input_ids, labels = self._extend_tokens(input_ids, labels, audio_idx_list, lambda _: audio_tokens)
+                loss_scale = self._extend_loss_scale(loss_scale, audio_idx_list, lambda _: audio_tokens)
 
                 # Process audios
                 processor_kwargs = Gemma3nProcessorKwargs._defaults.get('audio_kwargs', {})
@@ -209,7 +215,7 @@ class Gemma3nTemplate(Gemma3Template):
         encoded['token_type_ids'] = mm_token_type_ids.tolist()
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
-
+        encoded['loss_scale'] = loss_scale
         return encoded
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
