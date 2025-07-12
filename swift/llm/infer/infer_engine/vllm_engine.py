@@ -16,7 +16,8 @@ from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
 from swift.utils import get_dist_setting, is_dist
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, EmbeddingResponse, EmbeddingResponseData, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
+                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
+                        EmbeddingResponseData, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .utils import AdapterRequest, InferStreamer, patch_npu_vllm, patch_vllm_memory_leak
@@ -271,8 +272,6 @@ class VllmEngine(InferEngine):
                 llm_inputs['multi_modal_data'] = mm_data
             if self.task_type == 'embed':
                 from vllm.pooling_params import PoolingParams
-                # llm_inputs.pop('prompt_token_ids')
-                # llm_inputs['prompt'] = '<|image_pad|>What is the capital of China?'
                 return self.engine.encode(llm_inputs, PoolingParams(), request_id)
             elif self.use_async_engine:
                 return self.engine.generate(llm_inputs, generation_config, request_id, **kwargs)
@@ -377,12 +376,12 @@ class VllmEngine(InferEngine):
             choices.append(choice)
         return ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
-    def _create_embedding_response(self, result, template, generation_config,
-                                         request_id) -> ChatCompletionResponse:
+    def _create_embedding_response(self, result, template, generation_config, request_id) -> EmbeddingResponse:
         assert result is not None
         embedding = result.outputs.data.cpu().numpy().tolist()
         usage_info = self._get_usage_info(len(result.prompt_token_ids), 0)
-        return EmbeddingResponse(model=self.model_name, data=[EmbeddingResponseData(embedding=embedding)], usage=usage_info, id=request_id)
+        return EmbeddingResponse(
+            model=self.model_name, data=[EmbeddingResponseData(embedding=embedding)], usage=usage_info, id=request_id)
 
     def _create_chat_completion_response(self, result, template, generation_config,
                                          request_id) -> ChatCompletionResponse:
@@ -409,7 +408,7 @@ class VllmEngine(InferEngine):
         inputs: Dict[str, Any],
         generation_config: SamplingParams,
         adapter_request: Optional[AdapterRequest] = None,
-    ) -> ChatCompletionResponse:
+    ) -> Union[ChatCompletionResponse, EmbeddingResponse]:
         request_id = random_uuid()
         result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
         result = None
@@ -525,6 +524,7 @@ class VllmEngine(InferEngine):
 
         template.set_mode('vllm')
         if self.task_type == 'embed':
+            # TODO Refactor me
             template.infer_backend = 'vllm'
             template.task_type = 'embedding'
             template.set_mode('embedding')

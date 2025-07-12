@@ -92,11 +92,11 @@ class SwiftInfer(SwiftPipeline):
         if args.result_path:
             logger.info(f'The inference results have been saved to result_path: `{args.result_path}`.')
         return result
-    
+
     @staticmethod
     def parse_data_from_response(response):
         if hasattr(response, 'choices'):
-            return res_or_gen.choices[0].message.content
+            return response.choices[0].message.content
         elif hasattr(response, 'data'):
             emb = response.data[0].embedding
             shape = len(emb)

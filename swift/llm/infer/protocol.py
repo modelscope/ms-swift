@@ -284,6 +284,7 @@ class EmbeddingResponseData:
     index: int = 0
     embedding: List[str] = field(default_factory=lambda: [])
 
+
 @dataclass
 class EmbeddingResponse:
     model: str

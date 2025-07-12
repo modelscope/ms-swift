@@ -256,7 +256,7 @@ def copy_files_by_pattern(source_dir, dest_dir, patterns, exclude_patterns=None)
 
     if isinstance(patterns, str):
         patterns = [patterns]
-    
+
     if exclude_patterns is None:
         exclude_patterns = []
     elif isinstance(exclude_patterns, str):
@@ -285,10 +285,10 @@ def copy_files_by_pattern(source_dir, dest_dir, patterns, exclude_patterns=None)
                 for file in files:
                     if fnmatch.fnmatch(file, file_pattern):
                         file_path = os.path.join(root, file)
-                        
+
                         if should_exclude_file(file_path, file):
                             continue
-                            
+
                         target_dir = os.path.join(dest_dir, rel_path)
                         if not os.path.exists(target_dir):
                             os.makedirs(target_dir)
@@ -303,10 +303,10 @@ def copy_files_by_pattern(source_dir, dest_dir, patterns, exclude_patterns=None)
             for file_path in matched_files:
                 if os.path.isfile(file_path):
                     file_name = os.path.basename(file_path)
-                    
+
                     if should_exclude_file(file_path, file_name):
                         continue
-                        
+
                     destination = os.path.join(dest_dir, file_name)
                     if not os.path.exists(destination):
                         shutil.copy2(file_path, destination)

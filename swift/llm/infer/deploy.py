@@ -16,7 +16,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from swift.llm import AdapterRequest, DeployArguments
-from swift.llm.infer.protocol import MultiModalRequestMixin, EmbeddingRequest
+from swift.llm.infer.protocol import EmbeddingRequest, MultiModalRequestMixin
 from swift.plugin import InferStats
 from swift.utils import JsonlWriter, get_logger
 from .infer import SwiftInfer
@@ -185,6 +185,7 @@ class SwiftDeploy(SwiftInfer):
 
             return StreamingResponse(_gen_wrapper(), media_type='text/event-stream')
         elif hasattr(res_or_gen, 'choices'):
+            # instance of ChatCompletionResponse
             return self._post_process(request_info, res_or_gen, return_cmpl_response)
         else:
             return res_or_gen

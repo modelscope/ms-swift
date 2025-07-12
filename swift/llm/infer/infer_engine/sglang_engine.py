@@ -13,7 +13,8 @@ from transformers import GenerationConfig
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid, EmbeddingResponse, EmbeddingResponseData)
+                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
+                        EmbeddingResponseData, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 
 
@@ -156,13 +157,15 @@ class SglangEngine(InferEngine):
 
         template.set_mode('pt')
         if self.task_type == 'embedding':
+            # TODO Refactor me
             template.infer_backend = 'sglang'
             template.task_type = self.task_type
             template.set_mode('embedding')
         loop = asyncio.get_running_loop()
         with torch.inference_mode():
             inputs = await loop.run_in_executor(None, template.encode, infer_request)
-        inputs.pop('length', None)
+        if self.task_type == 'embedding':
+            inputs.pop('length', None)
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)
@@ -172,21 +175,23 @@ class SglangEngine(InferEngine):
         if request_config.stream:
             return self._infer_stream_async(**kwargs)
         elif self.task_type == 'embedding':
-            kwargs.pop('generation_config')
+            kwargs.pop('generation_config', None)
             return await self._infer_embedding_async(**kwargs)
         else:
             return await self._infer_full_async(**kwargs)
 
-    async def _infer_embedding_async(self, template: Template, inputs: Dict[str, Any]) -> ChatCompletionResponse:
+    async def _infer_embedding_async(self, template: Template, inputs: Dict[str, Any]) -> EmbeddingResponse:
         from sglang.srt.managers.io_struct import EmbeddingReqInput
-        obj = EmbeddingReqInput(input_ids=inputs['input_ids'], 
-                                image_data=inputs.get('images'),
-                                audio_data=inputs.get('audios'))
+        obj = EmbeddingReqInput(
+            input_ids=inputs['input_ids'], image_data=inputs.get('images'), audio_data=inputs.get('audios'))
         generator = self.engine.tokenizer_manager.generate_request(obj, None)
         output = await generator.__anext__()
         usage_info = self._get_usage_info(output['meta_info']['prompt_tokens'], 0)
-        return EmbeddingResponse(model=self.model_name, data=[EmbeddingResponseData(embedding=output['embedding'])], usage=usage_info, id=random_uuid())
-        return output
+        return EmbeddingResponse(
+            model=self.model_name,
+            data=[EmbeddingResponseData(embedding=output['embedding'])],
+            usage=usage_info,
+            id=random_uuid())
 
     async def _infer_full_async(self, template: Template, inputs: Dict[str, Any],
                                 generation_config: Dict[str, Any]) -> ChatCompletionResponse:

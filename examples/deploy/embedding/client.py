@@ -7,6 +7,8 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def infer(client, model: str, messages):
+    # You can also use client.embeddings.create
+    # But this interface does not support multi-modal medias
     resp = client.chat.completions.create(model=model, messages=messages)
     emb = resp.data[0]['embedding']
     shape = len(emb)
@@ -27,25 +29,29 @@ def run_client(host: str = '127.0.0.1', port: int = 8000):
     print(f'model: {model}')
 
     messages = [{
-            'role': 'user',
-            'content': [
-                #                 {
-                # 'type': 'image',
-                # 'image': 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
-                # }, 
-                {
-                    'type': 'text',
-                    'text': 'What is the capital of China?'
-                },
-            ]
-        }]
-    response = infer(client, model, messages)
+        'role':
+        'user',
+        'content': [
+            #  {
+            #   'type': 'image',
+            #   'image': 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+            # },
+            {
+                'type': 'text',
+                'text': 'What is the capital of China?'
+            },
+        ]
+    }]
+    infer(client, model, messages)
 
 
 if __name__ == '__main__':
     from swift.llm import run_deploy, DeployArguments
-    from modelscope import snapshot_download
-    model_dir = snapshot_download('Qwen/Qwen3-Embedding-0.6B')
-    # model_dir = '/mnt/nas3/yzhao/tastelikefeet/swift/output/gme-Qwen2-VL-2B-Instruct/v8-20250712-161224/checkpoint-1'
-    with run_deploy(DeployArguments(model=model_dir, task_type='embedding', infer_backend='sglang', verbose=False, log_interval=-1)) as port:
+    with run_deploy(
+            DeployArguments(
+                model='Qwen/Qwen3-Embedding-0.6B',
+                task_type='embedding',
+                infer_backend='vllm',
+                verbose=False,
+                log_interval=-1)) as port:
         run_client(port=port)

@@ -411,8 +411,8 @@ class Template(ProcessorMixin):
             split_multi_medias(anchor)
             infer_backend = getattr(self, 'infer_backend', 'pt')
             mode = self.mode
-            # infer_backend comes from vllmengine, etc.
-            # TODO this code must be refactored
+            # infer_backend comes from vllm-engine, sglang-engine, etc.
+            # TODO Refactor me
             if infer_backend in ('vllm', 'sglang'):
                 self.mode = infer_backend
             _encoded = self._encode_truncated(anchor)
@@ -613,9 +613,6 @@ class Template(ProcessorMixin):
                 logprobs = F.logsigmoid(logits)
             logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
         return preds, logprobs
-
-    def decode_embedding(self, logits: torch.Tensor):
-        return logits
 
     def decode(self,
                generate_ids: List[int],
@@ -1106,6 +1103,7 @@ class Template(ProcessorMixin):
                 context_list.append('{{RESPONSE}}')
                 # self.is_training needed because we may want to continue generation from
                 # the current response
+                # TODO Refactor me
                 if self.is_training and not sep_token or (getattr(self, 'task_type', None) == 'embedding'):
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
@@ -1480,7 +1478,7 @@ class Template(ProcessorMixin):
                     for i in range(0, max_neg):
                         indexes.append(f'negative{i}_')
                 for prefix in indexes:
-                    new_batch += self._fetch_inputs_startswith([b], prefix) 
+                    new_batch += self._fetch_inputs_startswith([b], prefix)
             labels.extend(b.get('labels', []))
         res = self._data_collator(new_batch, padding_to=padding_to)
         if labels:
