@@ -49,7 +49,7 @@ if __name__ == '__main__':
     from swift.llm import run_deploy, DeployArguments
     with run_deploy(
             DeployArguments(
-                model='Qwen/Qwen3-Embedding-0.6B',
+                model='Qwen/Qwen3-Embedding-0.6B',  # GME/GTE models or your checkpoints are also supported
                 task_type='embedding',
                 infer_backend='vllm',
                 verbose=False,
