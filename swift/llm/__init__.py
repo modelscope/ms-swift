@@ -14,8 +14,8 @@ if TYPE_CHECKING:
     from .train import sft_main, pt_main, rlhf_main, get_multimodal_target_regex
     from .sampling import sampling_main
     from .argument import (EvalArguments, InferArguments, TrainArguments, ExportArguments, DeployArguments,
-                           RolloutArguments, RLHFArguments, WebUIArguments, BaseArguments, AppArguments,
-                           SamplingArguments)
+                           RolloutArguments, GymRolloutArguments, RLHFArguments, WebUIArguments, BaseArguments,
+                           AppArguments, SamplingArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
                            TemplateInputs, TemplateMeta, get_template_meta, InferRequest, load_image, MaxLengthError,
                            load_file, draw_bbox, RolloutInferRequest)

@@ -81,6 +81,7 @@ class DeployArguments(InferArguments):
 @dataclass
 class RolloutArguments(DeployArguments):
     use_async_engine: Optional[bool] = None
+    use_gym_env: Optional[bool] = None
     # only for GRPO rollout with AsyncEngine, see details in swift/plugin/multi_turn
     multi_turn_scheduler: Optional[str] = None
     max_turns: Optional[int] = None
@@ -89,7 +90,7 @@ class RolloutArguments(DeployArguments):
         super().__post_init__()
 
         if self.use_async_engine is None:
-            if self.multi_turn_scheduler:
+            if self.multi_turn_scheduler or self.use_gym_env:
                 self.use_async_engine = True
             else:
                 self.use_async_engine = False

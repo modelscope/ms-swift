@@ -6,6 +6,7 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     from .vllm_engine import VllmEngine
     from .grpo_vllm_engine import GRPOVllmEngine
+    from .gym_vllm_engine import GymVllmEngine
     from .lmdeploy_engine import LmdeployEngine
     from .sglang_engine import SglangEngine
     from .pt_engine import PtEngine
@@ -17,6 +18,7 @@ else:
     _import_structure = {
         'vllm_engine': ['VllmEngine'],
         'grpo_vllm_engine': ['GRPOVllmEngine'],
+        'gym_vllm_engine': ['GymVllmEngine'],
         'lmdeploy_engine': ['LmdeployEngine'],
         'sglang_engine': ['SglangEngine'],
         'pt_engine': ['PtEngine'],

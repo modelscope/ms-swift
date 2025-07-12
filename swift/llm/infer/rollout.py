@@ -23,7 +23,7 @@ from trl.scripts.vllm_serve import WeightSyncWorkerExtension
 from swift.llm import InferArguments, RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.utils import get_device, get_logger
-from .infer_engine import GRPOVllmEngine, InferClient
+from .infer_engine import GRPOVllmEngine, GymVllmEngine, InferClient
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
 
 try:
@@ -42,7 +42,7 @@ Usage:
         --tensor_parallel_size xxx \
         --data_parallel_size xxx \
         --use_async_engine true/false \
-        --... \
+        --use_gym_env true/false \
         --other_vllm_arguments
 
 Note:
@@ -110,13 +110,14 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
 
         # Handle commands
         if command['type'] in ['call', 'fire_and_forget']:
+            import traceback
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
             method = getattr(engine, method_name, None) or getattr(engine.engine, method_name, None)
             try:
                 result = await method(*args, **kwargs)
-            except Exception as e:
-                logger.error(f'Method execution failed: {e}')
+            except Exception:
+                logger.error(f'Method execution failed: {method_name}\n{traceback.format_exc()}')
                 result = None
 
             if command['type'] == 'call':
@@ -147,6 +148,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
 
     def __init__(self, args: Union[List[str], RolloutArguments, None] = None):
         super().__init__(args)
+        self.use_gym_env = self.args.use_gym_env
         self.use_async_engine = self.args.use_async_engine
         self.num_connections = 1 if self.use_async_engine else self.args.data_parallel_size
         safe_set_start_method()
@@ -197,7 +199,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
             'template': template,
             'use_async_engine': args.use_async_engine,
             'multi_turn_scheduler': args.multi_turn_scheduler,
-            'max_turn': args.max_turns
+            'max_turns': args.max_turns,
+            'use_gym_env': args.use_gym_env,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
         if infer_backend != 'vllm':
@@ -211,7 +214,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
         if args.use_async_engine and args.data_parallel_size > 1:
             engine_kwargs['data_parallel_size'] = args.data_parallel_size
         kwargs['engine_kwargs'] = engine_kwargs
-
+        if args.use_gym_env:
+            return GymVllmEngine(**kwargs)
         return GRPOVllmEngine(**kwargs)
 
     async def health(self):
@@ -295,6 +299,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
         Health check endpoint to verify that the server is running.
         """
         if self.use_async_engine:
+            if self.use_gym_env:
+                return {'engine_type': 'AsyncLLMEngine', 'gym_env': True}
             return {'engine_type': 'AsyncLLMEngine'}
         else:
             return {'engine_type': 'LLMEngine'}

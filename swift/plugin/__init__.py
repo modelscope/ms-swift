@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from .orm import orms, ORM
     from .multi_turn import multi_turns
     from .rm_plugin import rm_plugins
+    from .env import envs
+    from .context_manager import context_managers
 
 else:
     _import_structure = {
@@ -28,7 +30,9 @@ else:
         'prm': ['prms', 'PRM'],
         'orm': ['orms', 'ORM'],
         'multi_turn': ['multi_turns'],
-        'rm_plugin': ['rm_plugins']
+        'rm_plugin': ['rm_plugins'],
+        'env': ['env'],
+        'context_manager': ['context_managers']
     }
 
     import sys
