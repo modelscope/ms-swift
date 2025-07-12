@@ -215,6 +215,11 @@ class GRPOArgumentsMixin:
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
     scale_rewards: bool = True
 
+    # entropy
+    log_entropy: bool = False
+    # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
+    token_entropy_percentile_threshold: float = 0.0
+
     wandb_log_unique_prompts: Optional[bool] = None
     generation_batch_size: Optional[int] = None
     steps_per_generation: Optional[int] = None
