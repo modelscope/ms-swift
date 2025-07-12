@@ -104,6 +104,8 @@ class VllmArguments:
             'use_async_engine': self.use_async_engine,
             'quantization': self.vllm_quantization,
         }
+        if self.task_type == 'embedding':
+            kwargs['task_type'] = 'embed'
         return kwargs
 
 
@@ -135,6 +137,8 @@ class SglangArguments:
             'enable_dp_attention': self.sglang_enable_dp_attention,
             'disable_custom_all_reduce': self.sglang_disable_custom_all_reduce,
         }
+        if self.task_type == 'embedding':
+            kwargs['task_type'] = 'embedding'
         return kwargs
 
 

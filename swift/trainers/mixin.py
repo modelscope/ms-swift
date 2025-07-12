@@ -251,8 +251,10 @@ class SwiftMixin:
                     self.model.save_pretrained(output_dir, safe_serialization=save_safetensors)
                     # copy sentencetransformers files
                     from swift.utils import copy_files_by_pattern
-                    copy_files_by_pattern(self.model.model_dir, output_dir, '*.py')
-                    copy_files_by_pattern(self.model.model_dir, output_dir, '*.json')
+                    copy_files_by_pattern(
+                        self.model.model_dir, output_dir, '*.py', exclude_patterns=['model.safetensors.index.json'])
+                    copy_files_by_pattern(
+                        self.model.model_dir, output_dir, '*.json', exclude_patterns=['model.safetensors.index.json'])
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
