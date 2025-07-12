@@ -201,7 +201,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
             'multi_turn_scheduler': args.multi_turn_scheduler,
             'max_turns': args.max_turns,
             "use_gym_env":args.use_gym_env,
-            "context_manager":args.context_manager,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
         if infer_backend != 'vllm':

@@ -152,7 +152,8 @@ class VLLMClient:
                             messages=choice_data.get('messages', []),
                             trajectory_id=choice_data.get('trajectory_id'),
                             total_reward=choice_data.get('total_reward', 0.0),
-                            step_rewards=choice_data.get('step_rewards', [])
+                            step_rewards=choice_data.get('step_rewards', []),
+                            trajectory_info=choice_data.get('trajectory_info', []),
                         )
                         choices.append(choice)
                     

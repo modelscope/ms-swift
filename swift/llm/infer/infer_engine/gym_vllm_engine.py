@@ -10,7 +10,7 @@ from tqdm.asyncio import tqdm_asyncio
 from swift.llm import InferRequest, RolloutInferRequest, Template, VllmEngine
 from swift.plugin import Metric
 from swift.plugin.env import Env, envs
-from swift.plugin.context_manager import context_managers
+from swift.plugin.context_manager import context_managers,ContextManager
 from ..protocol import ChatCompletionResponse, ChatMessage, RequestConfig, RolloutResponseChoice, GymRolloutResponseChoice
 from .utils import AdapterRequest
 
@@ -87,13 +87,6 @@ class GymVllmEngine(VllmEngine):
             template=template,
         )
 
-        # Context manager setup
-        context_manager_name = kwargs.get('context_manager', 'dummyContextManager')
-        if context_manager_name not in context_managers:
-            raise ValueError(f"Context manager '{context_manager_name}' not found in context_managers registry. "
-                             f"Available: {list(context_managers.keys())}")
-
-        self.context_manager = context_managers[context_manager_name]()
         self.max_turns = kwargs.get('max_turns', 3)
 
     def _create_env(self, env_config) -> Env:
@@ -102,8 +95,15 @@ class GymVllmEngine(VllmEngine):
             raise ValueError(
                 f"Environment '{env_config.get('name', None)}' not found in envs registry. Available: {list(envs.keys())}"
             )
-        return envs[env_config.get('name', 'math_env')]()
-
+        return envs[env_config.get('name', 'math_env')](env_config)
+    
+    def _create_context_manager(self,ctx_config) -> ContextManager:
+        if ctx_config.get('name', 'dummyContextManager') not in context_managers:
+            raise ValueError(
+                f"Environment '{ctx_config.get('name', None)}' not found in envs registry. Available: {list(context_managers.keys())}"
+            )
+        return context_managers[ctx_config.get('name', 'dummyContextManager')](ctx_config)
+    
     def infer(
         self,
         infer_requests: List[Union[InferRequest, Dict[str, Any]]],
@@ -145,7 +145,9 @@ class GymVllmEngine(VllmEngine):
             # Create environment
             env_config = infer_request.data_dict.get('env_config', {})
             env = self._create_env(env_config)
-            
+            # Create ContextManager   
+            ctx_config = infer_request.data_dict.get('ctx_config', {})
+            context_manager = self._create_context_manager(ctx_config)
             try:
                 # Environment reset
                 observation, info, system_message = await env.reset(infer_request)
@@ -157,17 +159,16 @@ class GymVllmEngine(VllmEngine):
                 messages.append({'role': 'user', 'content': observation})
                 
                 current_request = deepcopy(infer_request)
-                current_request.messages = messages
                 current_turn = 1
                 done = False
                 total_reward = 0.0
                 step_rewards = []
                 trajectory_id = f"{id(infer_request)}_{hash(str(infer_request))}"
-                
+                trajectory_info = []
                 while True:
                     # Apply context management
-                    current_request = self.context_manager.manage_context(current_request, trajectory_id)
-                    
+                    messages = context_manager.manage_context(messages, trajectory_id)
+                    current_request.messages = messages
                     # Remove any previous assistant response for generation
                     InferRequest.remove_response(current_request.messages)
                     
@@ -179,11 +180,12 @@ class GymVllmEngine(VllmEngine):
                     messages.append({'role': 'assistant', 'content': completion})
                     
                     # Environment step
-                    next_observation, reward, done, step_info = await env.step(result_choice)
+                    next_observation, reward, done, step_info = await env.step(deepcopy(messages)) # avoid change
                     
                     # Accumulate rewards
                     total_reward += reward
                     step_rewards.append(reward)
+                    trajectory_info.append(step_info)
                     
                     if done or current_turn>self.max_turns:
                         break
@@ -201,7 +203,8 @@ class GymVllmEngine(VllmEngine):
                     messages=messages,
                     trajectory_id=trajectory_id,
                     total_reward=total_reward,
-                    step_rewards=step_rewards
+                    step_rewards=step_rewards,
+                    trajectory_info=trajectory_info
                 )
                 
                 return ChatCompletionResponse(

@@ -85,7 +85,6 @@ class RolloutArguments(DeployArguments):
     # only for GRPO rollout with AsyncEngine, see details in swift/plugin/multi_turn
     multi_turn_scheduler: Optional[str] = None
     max_turns: Optional[int] = None
-    context_manager: Optional[str] = "dummyContextManager"
     def __post_init__(self):
         super().__post_init__()
 

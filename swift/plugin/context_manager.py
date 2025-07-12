@@ -1,19 +1,20 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from abc import ABC, abstractmethod
 
-from swift.llm.template import RolloutInferRequest
+from swift.llm.utils import Messages
 
 
 class ContextManager(ABC):
     """Base context manager interface for managing conversation history."""
-    
+    def __init__(self,ctx_config):
+        self.ctx_config = ctx_config
     @abstractmethod
-    def manage_context(self, history: RolloutInferRequest,trajectory_id:str) -> RolloutInferRequest:
+    def manage_context(self, history: Messages,trajectory_id:str) -> Messages:
         """Manage conversation context and history.
         
         Args:
             history: Current conversation history
-            
+            trajectory_id: Current agent trajectory_id
         Returns:
             Modified conversation history with context management applied
         """
@@ -21,8 +22,10 @@ class ContextManager(ABC):
 
 
 class DummyContextManager(ContextManager):
+    def __init__(self, ctx_config):
+        super().__init__(ctx_config)
     
-    def manage_context(self, history: RolloutInferRequest,trajectory_id:str) -> RolloutInferRequest:
+    def manage_context(self, history: Messages,trajectory_id:str) -> Messages:
         return history
 
 # Registry for context managers

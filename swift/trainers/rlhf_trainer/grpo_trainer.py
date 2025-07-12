@@ -254,6 +254,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     use_gym_env = [False]
                 self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
                 self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
+                if self.use_gym_env:
+                    self._textual_logs["trajactory_info"] = deque(maxlen=maxlen)
             
             elif self.vllm_mode == 'colocate':
                 if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:
@@ -691,7 +693,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     for choice in output.choices:
                         # concated in Engine
                         if self.use_gym_env:
-                            _choices.append((choice.messages, choice.finish_reason,choice.total_reward))
+                            _choices.append((choice.messages, choice.finish_reason,choice.total_reward,choice.trajectory_info))
                         else:
                             _choices.append((choice.messages, choice.finish_reason))
                     outputs.append(_choices)
@@ -874,6 +876,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs[i]['is_truncated'] = output[1] == 'length'
             if self.use_gym_env:
                 inputs[i]['total_reward'] = output[2]
+                inputs[i]['trajectory_info'] = output[3]
 
         return inputs
 
@@ -891,8 +894,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards)
         # Log metrics
         messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
-
-        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func)
+        if self.use_gym_env:
+            trajactory_infos = [inputs[i]['trajectory_info'] for i in range(len(inputs))]
+        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func,trajactory_infos)
 
         return batch_encoded_inputs
 
@@ -1066,7 +1070,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return ga_batch_encoded_inputs
 
-    def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func):
+    def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func, trajactory_infos=None):
         """Log training/evaluation metrics"""
         mode = 'train' if self.model.training else 'eval'
         device = self.accelerator.device
@@ -1104,7 +1108,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         grouped_rewards = rewards.view(-1, self.num_generations)
         self._metrics[mode]['reward'].append(grouped_rewards.mean().item())
         self._metrics[mode]['reward_std'].append(grouped_rewards.std(dim=1).mean().item())
-
         # Log prompt and completion texts
         self._textual_logs['prompt'].extend(self._apply_chat_template_to_messages_list(gather_object(messages)))
         self._textual_logs['completion'].extend(gather_object(completions))
@@ -1112,6 +1115,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.use_gym_env:
             # 对于gym环境，记录gym_reward
             self._textual_logs['rewards']['gym_reward'].extend(rewards_per_func[:, 0].tolist())
+            self._textual_logs["trajactory_info"].extend(gather_object(trajactory_infos))
         else:
             # 原有的多奖励函数逻辑
             for i, name in enumerate(self.reward_func_names):
@@ -1606,6 +1610,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'completion': self._textual_logs['completion'],
                 **self._textual_logs['rewards'],
             }
+            if self.use_gym_env:
+                table["trajactory_info"] = self._textual_logs['trajactory_info']
             self.jsonl_writer.append(table)
             if self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None:
                 import pandas as pd

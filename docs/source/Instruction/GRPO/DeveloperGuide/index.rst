@@ -2,7 +2,7 @@ Developer Guide
 ===============
 .. toctree::
    :maxdepth: 1
-
+   GYM环境训练.md
    多轮训练.md
    多任务.md
    奖励函数.md
