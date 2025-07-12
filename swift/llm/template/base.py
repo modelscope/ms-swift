@@ -1222,6 +1222,8 @@ class Template(ProcessorMixin):
         if self.use_megatron:
             self._handle_megatron_cp(encoded)
             encoded['labels'] = encoded['labels'][1:] + [-100]
+            if encoded.get('loss_scale') is not None:
+                encoded['loss_scale'] = encoded['loss_scale'][1:] + [0]
             encoded['position_ids'] = list(range(len(encoded['labels'])))
         elif encoded.get('labels') is not None:
             encoded['labels'][0] = -100
@@ -1239,6 +1241,8 @@ class Template(ProcessorMixin):
         padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
         input_ids += [self.tokenizer.pad_token_id] * padding_len
         encoded['labels'] += [-100] * padding_len
+        if 'loss_scale' in encoded:
+            encoded['loss_scale'] += [0] * padding_len
 
     def debug_logger(self, inputs):
         if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):

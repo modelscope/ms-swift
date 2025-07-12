@@ -202,7 +202,7 @@ Other important parameters:
 - 🔥freeze_vit: This parameter is only effective for multimodal models and can be used for full parameter training and LoRA, with similar meanings as `freeze_llm`. The default is True.
   - Note: Here, "vit" refers not only to the vision_tower but also includes the audio_tower.
 - 🔥freeze_aligner: This parameter is only effective for multimodal models and can be used for full parameter training and LoRA, with similar meanings as `freeze_llm`. The default is True.
-- 🔥target_modules: Specifies LoRA modules, with a default of `all-linear`. Its behavior differs in LLM and multimodal LLM. For LLM, it automatically finds all linear modules except lm_head and adds a tuner. For multimodal LLM, by default, it only adds a tuner to the LLM part, and this behavior can be controlled by `freeze_llm`, `freeze_vit`, and `freeze_aligner`. This parameter is not limited to LoRA and can be used for other tuners.
+- 🔥target_modules: Specifies LoRA modules, with a default of `['all-linear']`. Its behavior differs in LLM and multimodal LLM. For LLM, it automatically finds all linear modules except lm_head and adds a tuner. For multimodal LLM, by default, it only adds a tuner to the LLM part, and this behavior can be controlled by `freeze_llm`, `freeze_vit`, and `freeze_aligner`. This parameter is not limited to LoRA and can be used for other tuners.
 - 🔥target_regex: Specifies a regex expression for LoRA modules, with a default of `None`. If this value is provided, the target_modules parameter becomes ineffective. This parameter is not limited to LoRA and can be used for other tuners.
 - init_weights: Specifies the method for initializing weights. LoRA can specify `true`, `false`, `gaussian`, `pissa`, `pissa_niter_[number of iters]`. Bone can specify `true`, `false`, `bat`. The default is `true`.
 - 🔥modules_to_save: After attaching a tuner, explicitly specifies additional original model modules to participate in training and storage. The default is `[]`. This parameter is not limited to LoRA and can be used for other tuners.
@@ -740,3 +740,4 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - NODE_RANK: Pass-through for the `--node_rank` parameter in torchrun.
 - LOG_LEVEL: The log level, default is 'INFO'. You can set it to 'WARNING', 'ERROR', etc.
 - SWIFT_DEBUG: During `engine.infer(...)`, if set to '1', the content of input_ids and generate_ids will be printed.
+- VLLM_USE_V1: Used to switch between V0 and V1 versions of vLLM.

@@ -5,6 +5,7 @@
 You can install it using pip:
 
 ```shell
+# recommend
 pip install 'ms-swift'
 # For evaluation usage
 pip install 'ms-swift[eval]' -U

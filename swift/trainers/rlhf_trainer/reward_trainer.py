@@ -77,3 +77,10 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
 
                 if wandb.run is not None:
                     wandb.log({'completions': wandb.Table(dataframe=df)})
+
+            if 'swanlab' in self.args.report_to:
+                import swanlab
+                if swanlab.get_run() is not None:
+                    swanlab_table = swanlab.echarts.Table()
+                    swanlab_table.add(headers=df.columns.tolist(), rows=df.values.tolist())
+                    swanlab.log({'completions': swanlab_table})
