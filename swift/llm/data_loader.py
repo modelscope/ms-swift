@@ -77,9 +77,10 @@ class DataLoaderShard(DataLoader):
 
 class DataLoaderDispatcher:
 
-    def __init__(self, base_dataloader, device=None):
+    def __init__(self, base_dataloader, device=None, skip_batches: int = 0):
         self.base_dataloader = base_dataloader
         self.device = device
+        self.skip_batches = skip_batches
 
     @property
     def rank(self):
@@ -101,8 +102,14 @@ class DataLoaderDispatcher:
         dist.scatter_object_list(outputs, inputs, global_src_rank, group=self.group)
         return outputs[0]
 
+    def _skip_batches(self, base_iter):
+        if self.rank == 0 and self.skip_batches > 0:
+            for _ in range(self.skip_batches):
+                [next(base_iter) for _ in range(self.world_size)]
+
     def __iter__(self):
         base_iter = iter(self.base_dataloader)
+        self._skip_batches(base_iter)
         while True:
             if self.rank == 0:
                 try:

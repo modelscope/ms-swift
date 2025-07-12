@@ -209,7 +209,8 @@ class DatasetLoader:
         kwargs = {'split': 'train', 'streaming': streaming, 'num_proc': num_proc}
         if file_type == 'csv':
             kwargs['na_filter'] = False
-        dataset = hf_load_dataset(file_type, data_files=dataset_path, **kwargs)
+        with safe_ddp_context(None, True):
+            dataset = hf_load_dataset(file_type, data_files=dataset_path, **kwargs)
         if columns:
             dataset = RowPreprocessor.safe_rename_columns(dataset, columns)
         dataset = dataset_meta.preprocess_func(
@@ -315,7 +316,8 @@ class DatasetLoader:
     @staticmethod
     def shuffle_dataset(dataset, seed: int, buffer_size: int = 1000):
         if isinstance(dataset, HfDataset):
-            return dataset.shuffle(seed=seed)
+            with safe_ddp_context(None, True):
+                return dataset.shuffle(seed=seed)
         else:
             return dataset.shuffle(seed=seed, buffer_size=buffer_size)
 
@@ -366,8 +368,9 @@ class DatasetLoader:
                 val_sample = max(int(train_len * split_dataset_ratio), 1)
                 train_sample = dataset_sample - val_sample
                 assert train_sample > 0
-                train_dataset, val_dataset = train_dataset.train_test_split(
-                    test_size=val_sample, shuffle=shuffle, seed=get_seed(random_state)).values()
+                with safe_ddp_context(None, True):
+                    train_dataset, val_dataset = train_dataset.train_test_split(
+                        test_size=val_sample, shuffle=shuffle, seed=get_seed(random_state)).values()
                 train_dataset = sample_dataset(train_dataset, train_sample, shuffle, random_state)
         return train_dataset, val_dataset
 

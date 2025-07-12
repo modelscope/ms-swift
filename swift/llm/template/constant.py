@@ -152,6 +152,7 @@ class MLLMTemplateType:
     cogvlm2 = 'cogvlm2'
     cogvlm2_video = 'cogvlm2_video'
     glm4v = 'glm4v'
+    glm4_1v = 'glm4_1v'
     glm_edge_v = 'glm_edge_v'
 
     minicpmv = 'minicpmv'
@@ -176,6 +177,7 @@ class MLLMTemplateType:
     got_ocr2_hf = 'got_ocr2_hf'
     step_audio = 'step_audio'
     kimi_vl = 'kimi_vl'
+    keye_vl = 'keye_vl'
     ernie_vl = 'ernie_vl'
 
     idefics3 = 'idefics3'
@@ -188,6 +190,7 @@ class MLLMTemplateType:
     megrez_omni = 'megrez_omni'
     valley = 'valley'
     gemma3_vision = 'gemma3_vision'
+    gemma3n = 'gemma3n'
     mistral_2503 = 'mistral_2503'
 
 

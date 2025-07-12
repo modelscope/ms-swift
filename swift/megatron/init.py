@@ -2,12 +2,16 @@
 import os
 import sys
 from datetime import datetime
+from typing import List, Optional, Tuple
 
+import megatron.core
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
+from packaging import version
 
 from swift.llm import git_clone_github
-from swift.utils import get_logger, is_megatron_available, safe_ddp_context, subprocess_run
+from swift.utils import JsonlWriter, get_logger, is_master, is_megatron_available, safe_ddp_context, subprocess_run
 
 logger = get_logger()
 
@@ -56,12 +60,18 @@ def _patch_training_log():
     from megatron.training.training import num_floating_point_operations
     from megatron.core.num_microbatches_calculator import get_num_microbatches
     from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory
+    jsonl_writer = None
 
     # Code borrowed from NVIDIA/Megatron-LM
     def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
                      report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad):
         """Log training information such as losses, timing, ...."""
+        nonlocal jsonl_writer
         args = get_args()
+        if is_master() and jsonl_writer is None:
+            logging_path = os.path.join(args.save, 'logging.jsonl')
+            logger.info(f'logging_path: {logging_path}')
+            jsonl_writer = JsonlWriter(logging_path, enable_async=True)
         timers = get_timers()
         writer = get_tensorboard_writer()
         wandb_writer = get_wandb_writer()
@@ -205,6 +215,8 @@ def _patch_training_log():
             mtp_loss_scale = 1 / get_num_microbatches()
             MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, iteration, writer, wandb_writer, total_loss_dict)
         if iteration % args.log_interval == 0 or iteration == 1:
+            origin_total_loss_dict = total_loss_dict.copy()
+
             if args.record_memory_history and is_last_rank():
                 snapshot = torch.cuda.memory._snapshot()
                 from pickle import dump
@@ -273,6 +285,26 @@ def _patch_training_log():
                 report_memory_flag = False
             timers.log(timers_to_log, normalizer=args.log_interval)
 
+            if is_master():
+                logs = {}
+                for key in origin_total_loss_dict:
+                    if key not in [advanced_iters_key, skipped_iters_key, nan_iters_key]:
+                        avg = origin_total_loss_dict[key].item() / float(
+                            max(1, origin_total_loss_dict[advanced_iters_key]))
+                        logs[key] = round(avg, 8)
+                if grad_norm is not None:
+                    logs['grad_norm'] = round(grad_norm, 8)
+                if params_norm is not None:
+                    logs['params_norm'] = round(params_norm, 8)
+                logs['learning_rate'] = round(learning_rate, 8)
+                logs['elapsed_time_per_iteration'] = round(elapsed_time_per_iteration, 8)
+                if args.log_throughput:
+                    logs['throughput'] = round(throughput, 8)
+                logs['loss_scale'] = round(loss_scale, 8)
+                logs['consumed_samples'] = args.consumed_train_samples
+                logs['global_step/max_steps'] = f'{iteration}/{args.train_iters}'
+                jsonl_writer.append(logs)
+
         return report_memory_flag
 
     training.training_log = training_log
@@ -333,8 +365,13 @@ def _patch_mla_attention():
         # Adjust key, value for inference
         # ===================================================
         # rotary_pos_emb = None
-        query, key, value, _, attn_mask_type = self._adjust_key_value_for_inference(
-            inference_context, query, key, value, rotary_pos_emb=None)
+        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+        if megatron_core_013:
+            query, key, value, _, attn_mask_type, _ = self._adjust_key_value_for_inference(
+                inference_context, query, key, value, rotary_pos_emb=None)
+        else:
+            query, key, value, _, attn_mask_type = self._adjust_key_value_for_inference(
+                inference_context, query, key, value, rotary_pos_emb=None)
 
         # TODO: Currently, TE can only accept contiguous tensors for MLA
         query = query.contiguous()
@@ -570,10 +607,93 @@ def _patch_mla_attention():
     MLASelfAttention.get_query_key_value_tensors = get_query_key_value_tensors
 
 
+def _patch_peft_BaseTuner():
+    from peft.tuners.tuners_utils import BaseTuner
+    _origin_get_tied_target_modules = BaseTuner._get_tied_target_modules
+
+    def _get_tied_target_modules(self, model: nn.Module) -> List[str]:
+        try:
+            return _origin_get_tied_target_modules(self, model)
+        except AttributeError:
+            tied_target_modules = []
+            if model.share_embeddings_and_output_weights:
+                for target_module in self.targeted_module_names:
+                    if target_module.split('.')[-1] in ['output_layer', 'embedding']:
+                        tied_target_modules.append(target_module)
+            return tied_target_modules
+
+    BaseTuner._get_tied_target_modules = _get_tied_target_modules
+
+
+def _patch_TEGroupedLinear():
+    from megatron.core.extensions.transformer_engine import TEGroupedLinear
+
+    def sharded_state_dict(
+            self,
+            prefix: str = '',
+            sharded_offsets: Tuple[Tuple[int, int, int]] = (),
+            metadata: Optional[dict] = None,
+    ):
+        return self._sharded_state_dict_grouped(None, prefix, sharded_offsets, metadata)
+
+    TEGroupedLinear.sharded_state_dict = sharded_state_dict
+
+
+def _patch_peft_ModulesToSaveWrapper():
+    from peft.tuners import tuners_utils
+    from megatron.core.dist_checkpointing.mapping import ShardedStateDict
+    from .utils import tuners_sharded_state_dict
+
+    ModulesToSaveWrapper = tuners_utils.ModulesToSaveWrapper
+
+    class NewModulesToSaveWrapper(ModulesToSaveWrapper):
+
+        def __init__(self, module_to_save, *args, **kwargs):
+            tp_group = getattr(module_to_save, 'tp_group', None)
+            if tp_group is not None:
+                module_to_save.tp_group = None
+            super().__init__(module_to_save, *args, **kwargs)
+            if tp_group is not None:
+                module_to_save.tp_group = tp_group
+                for module in self.modules_to_save.values():
+                    module.tp_group = tp_group
+
+        def sharded_state_dict(
+                self,
+                prefix: str = '',
+                sharded_offsets: Tuple[Tuple[int, int, int]] = (),
+                metadata: Optional[dict] = None,
+        ) -> ShardedStateDict:
+            sharded_state_dict = tuners_sharded_state_dict(self, prefix, sharded_offsets, metadata)
+            if prefix == 'output_layer.':
+                output_layer_extra_state_key = f'{prefix}modules_to_save.default._extra_state'
+
+                # Old GPT checkpoints only stored the output layer weight key. So we remove the
+                # _extra_state key but check that it doesn't contain any data anyway
+                output_extra_state = sharded_state_dict.pop(output_layer_extra_state_key, None)
+                assert not (output_extra_state and output_extra_state.data
+                            ), f'Expected output layer extra state to be empty, got: {output_extra_state}'
+                # fix error
+                if f'{prefix}modules_to_save.default.weight' in sharded_state_dict:
+                    sharded_state_dict[f'{prefix}weight'] = sharded_state_dict[
+                        f'{prefix}modules_to_save.default.weight']
+            return sharded_state_dict
+
+    tuners_utils.ModulesToSaveWrapper = NewModulesToSaveWrapper
+
+
 def _patch_megatron():
     _patch_transformer_engine()
     _patch__batched_p2p_ops()
     _patch_mla_attention()
+    _patch_TEGroupedLinear()
+    from swift.megatron import tuners  # patch lora
+    try:
+        _patch_peft_BaseTuner()
+        _patch_peft_ModulesToSaveWrapper()
+        logger.info('Patch peft successfully applied.')
+    except Exception:
+        pass
     try:
         _patch_training_log()
         logger.info('Patch training_log successfully applied.')
@@ -584,7 +704,7 @@ def _patch_megatron():
 def init_megatron_env() -> None:
     if 'MEGATRON_LM_PATH' not in os.environ:
         os.environ['MEGATRON_LM_PATH'] = git_clone_github(
-            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.12.0')
+            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.13.0')
     with safe_ddp_context(hash_id='megatron-lm'):
         if not is_megatron_available():
             subprocess_run([sys.executable, '-m', 'pip', 'install', '-e', os.environ['MEGATRON_LM_PATH']])

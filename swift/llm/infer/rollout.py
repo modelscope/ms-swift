@@ -8,15 +8,17 @@ import os
 import time
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import asdict
+from functools import wraps
 from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, get_type_hints
 
 import torch
 import uvicorn
 from aiohttp import ClientConnectorError
 from fastapi import FastAPI
+from trl.scripts.vllm_serve import WeightSyncWorkerExtension
 
 from swift.llm import InferArguments, RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
@@ -58,6 +60,7 @@ def safe_set_start_method():
 
 def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
     # Set required environment variables for DP to work with vLLM
+    args._import_external_plugins()
     os.environ['VLLM_DP_RANK'] = str(data_parallel_rank)
     os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
     os.environ['VLLM_DP_SIZE'] = str(args.data_parallel_size)
@@ -123,6 +126,8 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
 
 
 def llm_worker_entry(*args, **kwargs):
+    rollout_args: RolloutArguments = args[0]
+    rollout_args._import_external_plugins()
     asyncio.run(async_llm_worker(*args, **kwargs))
 
 
@@ -268,8 +273,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         # The function update_named_param is called this way: update_named_param("name", torch.float32, (10, 10))
         # So with collective_rpc we need to call it this way:
         # llm.collective_rpc("update_named_param", args=("name", torch.float32, (10, 10)))
-        dtype = torch.__getattribute__(request.dtype.split('.')[-1])
-        kwargs = {'method': 'update_named_param', 'args': (request.name, dtype, tuple(request.shape))}
+        kwargs = {'method': 'update_named_param', 'args': (request.name, request.dtype, tuple(request.shape))}
         for connection in self.connections:
             connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 
@@ -374,3 +378,22 @@ def run_rollout(args: RolloutArguments, return_url: bool = False):
     finally:
         process.terminate()
         logger.info('The deployment process has been terminated.')
+
+
+# https://github.com/huggingface/trl/pull/3690
+# This patch handles backward compatibility for dtype parameter type changes in TRL:
+# - For TRL <= 0.19: dtype_annotation is torch.dtype (needs patching)
+# - For TRL > 0.19: dtype_annotation is str (no patching needed)
+old_update_named_param = WeightSyncWorkerExtension.update_named_param
+dtype_annotation = get_type_hints(old_update_named_param).get('dtype')
+
+if not hasattr(WeightSyncWorkerExtension, 'old_update_named_param') and dtype_annotation == torch.dtype:
+
+    @wraps(old_update_named_param)
+    def patched_update_named_param(self, name, dtype, shape) -> None:
+        if isinstance(dtype, str):
+            dtype = getattr(torch, dtype.split('.')[-1])
+        return old_update_named_param(self, name, dtype, shape)
+
+    WeightSyncWorkerExtension.update_named_param = patched_update_named_param
+    WeightSyncWorkerExtension.old_update_named_param = old_update_named_param

@@ -1,10 +1,12 @@
 # pp2ep4: 7 * 73GiB, 2.5s/it
 # tp2ep4: 8 * 65GiB, 3s/it
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \
     --load Qwen1.5-MoE-A2.7B-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --split_dataset_ratio 0.01 \
     --pipeline_model_parallel_size 2 \
     --expert_model_parallel_size 4 \
     --moe_grouped_gemm true \
@@ -31,4 +33,4 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --use_flash_attn true
+    --attention_backend flash

@@ -51,7 +51,8 @@ def test_mllm():
     for padding_side in ['left', 'right']:
         model = 'Qwen/Qwen2-VL-2B-Instruct'
         dataset = ['AI-ModelScope/LaTeX_OCR#2000']
-        result = sft_main(TrainArguments(model=model, dataset=dataset, padding_side=padding_side, **kwargs))
+        result = sft_main(
+            TrainArguments(model=model, dataset=dataset, split_dataset_ratio=0.01, padding_side=padding_side, **kwargs))
         last_model_checkpoint = result['last_model_checkpoint']
         infer_result = infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
         res.append(infer_result)

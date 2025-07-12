@@ -12,11 +12,12 @@ def test_sft():
                 'AI-ModelScope/alpaca-gpt4-data-zh#500', 'swift/self-cognition#500',
                 'AI-ModelScope/alpaca-gpt4-data-en#500'
             ],
+            split_dataset_ratio=0.01,
             tensor_model_parallel_size=2,
             train_iters=100,
             model_author='swift',
             model_name='swift-robot',
-            eval_iters=5,
+            sequence_parallel=True,
             finetune=True))
 
 
@@ -26,6 +27,7 @@ def test_pt():
         MegatronTrainArguments(
             load='Qwen2-7B-mcore',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#500', 'AI-ModelScope/alpaca-gpt4-data-en#500'],
+            split_dataset_ratio=0.01,
             tensor_model_parallel_size=2,
             train_iters=200,
             eval_iters=5,
@@ -33,5 +35,5 @@ def test_pt():
 
 
 if __name__ == '__main__':
-    # test_sft()
-    test_pt()
+    test_sft()
+    # test_pt()

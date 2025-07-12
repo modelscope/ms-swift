@@ -27,7 +27,6 @@ from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
 from transformers.trainer import Trainer
 from trl import GRPOTrainer as HFGRPOTrainer
-from trl.extras.profiling import profiling_context, profiling_decorator
 from trl.models import prepare_deepspeed
 from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import nanmax, nanmin, nanstd
@@ -39,11 +38,12 @@ from swift.llm.model.utils import get_llm_model
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
 from swift.plugin.multi_turn import MultiTurnScheduler
-from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_device, get_logger, is_vllm_available,
-                         is_wandb_available, seed_worker, unwrap_model_for_generation)
+from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_device, get_logger, is_swanlab_available,
+                         is_vllm_available, is_wandb_available, seed_worker, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge
+from .utils import (_ForwardRedirection, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
+                    patch_profiling_decorator)
 from .vllm_client import VLLMClient
 
 del HFGRPOTrainer.__init__
@@ -52,6 +52,8 @@ del HFGRPOTrainer.log
 logger = get_logger()
 if is_wandb_available():
     import wandb
+if is_swanlab_available():
+    import swanlab
 
 InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
 # tuple: (messages, finish_reason)
@@ -188,6 +190,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         vllm_client = kwargs.pop('vllm_client')  # for external vllm
 
         super().__init__(model, ref_model, *_args, **kwargs)
+        if self.args.eval_strategy != 'no':
+            total_eval_batch_size = self.args.per_device_eval_batch_size * \
+                self.accelerator.num_processes // self.args.num_generations
+            assert len(self.eval_dataset) >= total_eval_batch_size, (
+                f'eval_dataset size {len(self.eval_dataset)} is smaller than '
+                f'total_eval_batch_size {total_eval_batch_size}. '
+                f'Please increase the size of eval_dataset or set a larger value for split_dataset_ratio.')
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
 
@@ -318,7 +327,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # flag indicating whether the evaluation has started
         self.eval_flag = False
 
-    @profiling_decorator
+    @patch_profiling_decorator
     def _prepare_inputs(self, generation_batch: dict[str, Union[torch.Tensor,
                                                                 Any]]) -> dict[str, Union[torch.Tensor, Any]]:
         # Prepares inputs for model training/evaluation by managing completion generation and batch handling.
@@ -472,7 +481,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template.set_mode(mode)
             template.max_length = max_length
 
-    @profiling_decorator
+    @patch_profiling_decorator
     def _move_model_to_vllm(self, skip_async_check=False):
         deepspeed_plugin = self.accelerator.state.deepspeed_plugin
         zero_stage_3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
@@ -899,7 +908,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
                 zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
-            with profiling_context(self, reward_func_name):
+            with patch_profiling_context(self, reward_func_name):
                 # reward model
                 if isinstance(reward_func, nn.Module):
                     output_reward_func = reward_model_plugin(inputs=inputs)
@@ -1087,10 +1096,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             InferRequest.remove_response(messages)
             template_inputs, _ = StdTemplateInputs.from_dict({'messages': messages})
             res_context_list, _, _ = self.template._swift_encode(template_inputs)
-            prompts_text.append(''.join(res_context_list))
+
+            # check the type and convert
+            processed_context = []
+            for context in res_context_list:
+                if isinstance(context, str):
+                    processed_context.append(context)
+                elif isinstance(context, list) and all(isinstance(x, int) for x in context):
+                    # decode the token ID to text
+                    decoded_text = self.template.tokenizer.decode(context)
+                    processed_context.append(decoded_text)
+                else:
+                    # other type value ,just add to process_context
+                    processed_context.append(str(context))
+            prompts_text.append(''.join(processed_context))
         return prompts_text
 
-    @profiling_decorator
+    @patch_profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # Compute the per-token log probabilities for the model, return_outputs=True in mini-batch training
         if isinstance(inputs, list):
@@ -1255,7 +1277,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             remove_handle2.remove()
 
     # Get the per-token log probabilities for the completions for the model and the reference model
-    @profiling_decorator
+    @patch_profiling_decorator
     def _get_per_token_logps(self, model, inputs):
         from trl.trainer.utils import selective_log_softmax
         logits_to_keep = inputs['logits_to_keep']
@@ -1285,7 +1307,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         input_ids = input_ids[:, -logits_to_keep:]
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
 
-    @profiling_decorator
+    @patch_profiling_decorator
     def _get_last_hidden_state(self, unwrapped_model, inputs, logits_to_keep):
         # unwrap the model to access the model.model
         if is_peft_model(unwrapped_model):
@@ -1379,7 +1401,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         *,
         use_tqdm: Optional[bool] = False,
     ) -> List[ChatCompletionResponse]:
-        with profiling_context(self, 'generate'):
+        with patch_profiling_context(self, 'generate'):
             if self.vllm_mode == 'server':
                 request_keys = ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
 
@@ -1413,7 +1435,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return
 
     def old_policy(self):
-        return self.num_iterations > 1 or self.args.steps_per_generation > self.args.gradient_accumulation_steps
+        return self.num_iterations > 1 or self.args.gradient_accumulation_steps % self.args.steps_per_generation != 0
 
     @property
     def _queue(self):
@@ -1566,24 +1588,56 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     df = df.drop_duplicates(subset=['prompt'])
                 wandb.log({'completions': wandb.Table(dataframe=df)})
 
+            if self.args.report_to and 'swanlab' in self.args.report_to and swanlab.get_run() is not None:
+                headers = list(table.keys())
+                rows = []
+                for i in range(len(table['step'])):
+                    row = []
+                    for header in headers:
+                        row.append(table[header][i])
+                    rows.append(row)
+                swanlab.log({'completions': swanlab.echarts.Table().add(headers, rows)})
+
     def is_async_generate_eval_rollout_done(self):
         return not self.eval_flag or not self.eval_queue.empty()
 
     def is_async_generate_train_rollout_done(self):
         return not self.train_queue.empty()
 
-    def inputs_to_rolloutrequest(self, inputs: InputsType) -> RolloutInferRequest:
+    def inputs_to_rolloutrequest(self, inputs: InputsType) -> List[RolloutInferRequest]:
+        """Convert a list of inputs to a list of RolloutInferRequest objects
 
+        If the input contains a 'data_dict' key, it will be used as the base for the new data_dict.
+        For other keys, if they overlap with keys in data_dict, the values from data_dict will be used.
+        Non-overlapping keys will be added to data_dict.
+
+        Args:
+            inputs: List of input dictionaries
+
+        Returns:
+            List of RolloutInferRequest objects
+        """
         request_keys = ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
-        infer_requests = [
-            RolloutInferRequest(
-                **{
-                    **{k: request[k]
-                       for k in request_keys if k in request}, 'data_dict':
-                    {k: request[k]
-                     for k in request if k not in request_keys}
-                }) for request in inputs
-        ]
+        infer_requests = []
+
+        for request in inputs:
+            # Get the base data_dict if it exists in the input
+            base_data_dict = {}
+            if 'data_dict' in request:
+                if isinstance(request['data_dict'], dict):
+                    base_data_dict = request['data_dict']
+                else:
+                    raise ValueError('data_dict exists but is not a dictionary')
+
+            # Collect all non-request_keys items as extra fields
+            extra_data = {k: request[k] for k in request if k not in request_keys and k != 'data_dict'}
+
+            # Merge the data_dict, keeping keys from base_data_dict as priority
+            final_data_dict = {**extra_data, **base_data_dict}
+
+            # Create RolloutInferRequest instance
+            req_args = {k: request[k] for k in request_keys if k in request}
+            infer_requests.append(RolloutInferRequest(**req_args, data_dict=final_data_dict))
 
         return infer_requests
 

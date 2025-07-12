@@ -309,7 +309,7 @@ class Template(ProcessorMixin):
             added_tokens_len += token_len - 1
         return input_ids, labels
 
-    def compute_loss_context(self, model, inputs):
+    def forward_context(self, model, inputs):
         return nullcontext()
 
     @staticmethod
@@ -320,6 +320,7 @@ class Template(ProcessorMixin):
             return model
 
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        margin = inputs.margin
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
         assert chosen_inputs.rejected_response is not None, f'inputs: {inputs}'
         rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
@@ -331,6 +332,8 @@ class Template(ProcessorMixin):
             data = locals()[f'{prefix}_encoded']
             for k, v in data.items():
                 encoded[f'{prefix}_{k}'] = v
+        if margin:
+            encoded['margin'] = float(margin)
         return encoded
 
     def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -405,6 +408,10 @@ class Template(ProcessorMixin):
 
         positive = deepcopy(inputs)
         positive.rejected_response = []
+        if '{doc}' in positive.messages[-2]['content']:
+            positive.messages[-2]['content'] = positive.messages[-2]['content'].replace(
+                '{doc}', inputs.messages[-1]['content'])
+            positive.messages.pop(-1)
         positive_encoded = self._encode_truncated(positive)
         for key in positive_encoded:
             _encoded[f'positive_{key}'] = positive_encoded[key]
@@ -414,7 +421,12 @@ class Template(ProcessorMixin):
         rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
         for i in range(rejected_len):
             negative = deepcopy(inputs)
-            negative.messages[-1]['content'] = negative.rejected_response[i]
+            if '{doc}' in negative.messages[-2]['content']:
+                negative.messages[-2]['content'] = negative.messages[-2]['content'].replace(
+                    '{doc}', negative.rejected_response[i])
+                negative.messages.pop(-1)
+            else:
+                negative.messages[-1]['content'] = negative.rejected_response[i]
             negative.rejected_response = []
             negative_encoded = self._encode_truncated(negative)
             for key in negative_encoded:
@@ -487,7 +499,10 @@ class Template(ProcessorMixin):
                     lengths.append(value)
                 elif isinstance(value, (tuple, list)):
                     lengths += value
-        encoded['length'] = max(lengths)
+        if self.is_training:
+            encoded['length'] = max(lengths)
+        else:
+            encoded.pop('length', None)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         if not self.remove_unused_columns:
@@ -1185,6 +1200,8 @@ class Template(ProcessorMixin):
         if self.use_megatron:
             self._handle_megatron_cp(encoded)
             encoded['labels'] = encoded['labels'][1:] + [-100]
+            if encoded.get('loss_scale') is not None:
+                encoded['loss_scale'] = encoded['loss_scale'][1:] + [0]
             encoded['position_ids'] = list(range(len(encoded['labels'])))
         elif encoded.get('labels') is not None:
             encoded['labels'][0] = -100
@@ -1202,6 +1219,8 @@ class Template(ProcessorMixin):
         padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
         input_ids += [self.tokenizer.pad_token_id] * padding_len
         encoded['labels'] += [-100] * padding_len
+        if 'loss_scale' in encoded:
+            encoded['loss_scale'] += [0] * padding_len
 
     def debug_logger(self, inputs):
         if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):
@@ -1381,7 +1400,14 @@ class Template(ProcessorMixin):
         new_batch = []
         for prefix in [chosen_prefix, rejected_prefix]:
             new_batch += self._fetch_inputs_startswith(batch, prefix)
-        return self._data_collator(new_batch, padding_to=padding_to)
+        res = self._data_collator(new_batch, padding_to=padding_to)
+
+        # reward modeling
+        margin = [b['margin'] for b in batch if b.get('margin') is not None]
+        if margin:
+            res['margin'] = torch.tensor(margin, dtype=torch.float)
+
+        return res
 
     def _kto_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         new_batch = self._fetch_inputs_startswith(batch, 'chosen_')
@@ -1522,12 +1548,14 @@ class Template(ProcessorMixin):
             inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
             input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
             channel = [b['channel'] for b in batch if b.get('channel') is not None]
+
             if inputs_embeds:
                 res['inputs_embeds'] = inputs_embeds
             if input_ids:
                 res['input_ids'] = input_ids
             if channel:
                 res['channel'] = channel
+
             for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
                 val = [b[key] for b in batch if b.get(key) is not None]
                 if val:
@@ -1637,19 +1665,62 @@ class Template(ProcessorMixin):
     def print_inputs(self, inputs: Dict[str, Any], tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
-        for key in [
-                'input', 'labels', 'generate', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels'
-        ]:
+
+        # Base keys to check
+        base_keys = [
+            'input', 'labels', 'generate', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels'
+        ]
+
+        # For reranker/embedding modes, also check prefixed keys
+        if self.mode in {'reranker', 'generative_reranker', 'embedding'}:
+            prefixes = []
+            if self.mode in {'reranker', 'generative_reranker'}:
+                prefixes = ['positive_', 'negative_']
+            elif self.mode == 'embedding':
+                prefixes = ['anchor_', 'positive_', 'negative_']
+
+            # Add prefixed keys for reranker/embedding modes
+            extended_keys = base_keys.copy()
+            for prefix in prefixes:
+                for base_key in ['input', 'labels']:
+                    extended_keys.append(f'{prefix}{base_key}')
+
+            # Also check for numbered negative keys (negative0_, negative1_, etc.)
+            input_keys = list(inputs.keys())
+            for key in input_keys:
+                if any(key.startswith(f'{prefix}') for prefix in prefixes):
+                    # Extract the base key after removing prefix
+                    for prefix in prefixes:
+                        if key.startswith(prefix):
+                            base_key = key[len(prefix):]
+                            if base_key in ['input_ids', 'labels'
+                                            ] or base_key.rstrip('0123456789_') in ['input', 'labels']:
+                                extended_keys.append(key.replace('_ids', ''))
+                            break
+
+            keys_to_check = list(set(extended_keys))
+        else:
+            keys_to_check = base_keys
+
+        for key in keys_to_check:
+            # Skip labels completely for certain modes
+            if key.endswith('labels') and self.mode in {'reranker', 'generative_reranker'}:
+                continue
+
             val = inputs.get(key)  # fix val is a tensor
             if val is None:
                 val = inputs.get(f'{key}_ids')
             if val is not None:
                 key_upper = key.upper()
                 logger.info(f'[{key_upper}_IDS] {val}')
-                if key == 'labels' and self.mode in {'seq_cls', 'embedding', 'reranker', 'generative_reranker'}:
+                if key.endswith('labels') and self.mode in {'seq_cls', 'embedding'}:
                     continue
                 if isinstance(val, (list, tuple, torch.Tensor)):
-                    val_str = self.safe_decode(val, **tokenizer_kwargs)
+                    # Handle nested lists (e.g., for reranker negative samples)
+                    if isinstance(val, (list, tuple)) and len(val) > 0 and isinstance(val[0], (list, tuple)):
+                        val_str = [self.safe_decode(sub_val, **tokenizer_kwargs) for sub_val in val]
+                    else:
+                        val_str = self.safe_decode(val, **tokenizer_kwargs)
                     logger.info(f'[{key_upper}] {val_str}')
         if inputs.get('loss_scale') is not None:
             val = inputs['loss_scale']

@@ -300,3 +300,23 @@ def get_ckpt_dir(model_dir: str, adapters_dir: Optional[List[str]]) -> str:
             ckpt_dir = model_dir
             break
     return ckpt_dir
+
+
+def update_generation_config_eos_token(generation_config, template):
+    if generation_config is None:
+        return
+    stop_words = template.template_meta.stop_words
+    eos_token_id = generation_config.eos_token_id
+    if isinstance(eos_token_id, int):
+        eos_token_id = [eos_token_id]
+    modified = False
+    for stop_word in stop_words:
+        if stop_word is None:
+            continue
+        if isinstance(stop_word, str):
+            stop_word = template._tokenize(stop_word)
+        if isinstance(stop_word, (list, tuple)) and len(stop_word) == 1 and stop_word[0] not in eos_token_id:
+            eos_token_id.append(stop_word[0])
+            modified = True
+    if modified:
+        generation_config.eos_token_id = eos_token_id

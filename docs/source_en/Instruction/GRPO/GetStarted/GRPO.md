@@ -273,13 +273,13 @@ Thus, the importance sampling ratio is always 1, and the clip operation does not
 
 The algorithm becomes off-policy (near-on-policy) under the following parameter settings:
 1. num_iterations > 1
-2. steps_per_generation > gradient_accumulation_steps
+2. gradient_accumulation_steps % steps_per_generation != 0
 
 Refer to [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851).
 
 **6. Why is there a validation process even when `val_dataset` is not set, and how can I disable it?**
 
-When `val_dataset` is not explicitly passed, the `split_dataset_ratio` parameter is responsible for splitting part of the `dataset` into a validation dataset, which defaults to splitting 1% of the data.
+When `val_dataset` is not explicitly passed, the `split_dataset_ratio` parameter is responsible for splitting part of the `dataset` into a validation dataset, which defaults to splitting 1% of the data. (In "ms-swift>=3.6", the default value of split_dataset_ratio will be changed from 0.01 to 0.)
 
 To disable the validation process, set `--split_dataset_ratio 0`.
 

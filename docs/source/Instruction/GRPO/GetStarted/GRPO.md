@@ -274,13 +274,13 @@ $
 
 在设置以下参数情况下，算法为off-policy (near-on-policy)
 1. num_iterations > 1
-2. steps_per_generation > gradient_accumulation_steps
+2. gradient_accumulation_steps % steps_per_generation != 0
 
 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
 
 **6. 为什么没有设置val_dataset，仍然有验证过程，如何取消**
 
-当没有显式传入`val_dataset`时，参数`split_dataset_ratio`负责切分部分`dataset`为验证数据集，默认切分1%数据
+当没有显式传入`val_dataset`时，参数`split_dataset_ratio`负责切分部分`dataset`为验证数据集，默认切分1%数据（在"ms-swift>=3.6"中，`split_dataset_ratio`的默认值将从0.01修改为0.）
 
 通过设置`--split_dataset_ratio 0` 来取消验证过程
 

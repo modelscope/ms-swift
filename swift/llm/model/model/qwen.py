@@ -3,7 +3,7 @@ import os
 from typing import Any, Dict, Optional, Tuple, Type
 
 import torch
-from transformers import AutoConfig, BitsAndBytesConfig, PreTrainedTokenizerBase
+from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
@@ -40,6 +40,12 @@ def get_model_tokenizer_qwen(model_dir: str,
     use_flash_attn = AttnImpl.to_use_flash_attn(kwargs.pop('attn_impl', None), 'auto')
     model_config.use_flash_attn = use_flash_attn
     kwargs['model_config'] = model_config
+    tokenizer = kwargs.get('tokenizer')
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+    if tokenizer.eos_token_id is None:
+        tokenizer.eos_token_id = tokenizer.eod_id
+    kwargs['tokenizer'] = tokenizer
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     try:
         # fix mp+ddp bug
@@ -47,8 +53,6 @@ def get_model_tokenizer_qwen(model_dir: str,
         logger.info('registered_causal_mask to cuda')
     except AttributeError:
         pass
-    if tokenizer.eos_token_id is None:
-        tokenizer.eos_token_id = tokenizer.eod_id
     return model, tokenizer
 
 

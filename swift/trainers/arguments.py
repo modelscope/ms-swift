@@ -58,9 +58,9 @@ class TrainArgumentsMixin:
 
     # train-eval loop args
     eval_use_evalscope: bool = False
-    eval_datasets: List[str] = field(default_factory=list)
+    eval_dataset: List[str] = field(default_factory=list)
+    eval_dataset_args: Optional[Union[str, dict]] = None
     eval_limit: Optional[int] = None
-    eval_datasets_args: Optional[Union[str, dict]] = None
     eval_generation_config: Optional[Union[str, dict]] = None
 
     @staticmethod
@@ -118,7 +118,7 @@ class TrainArgumentsMixin:
                 import evalscope
             except ImportError:
                 raise ImportError('evalscope is not installed, please install it by `pip install evalscope`')
-            self.eval_datasets_args = ModelArguments.parse_to_dict(self.eval_datasets_args)
+            self.eval_dataset_args = ModelArguments.parse_to_dict(self.eval_dataset_args)
             self.eval_generation_config = ModelArguments.parse_to_dict(self.eval_generation_config)
 
         super().__post_init__()
@@ -155,14 +155,11 @@ class GRPOArgumentsMixin:
     top_k: int = 50
     top_p: float = 0.9
     repetition_penalty: float = 1.
-    num_infer_workers: Optional[int] = None  # deprecated
     # vllm
     vllm_mode: Literal['server', 'colocate'] = 'colocate'
     # internal vllm (colocate)
-    vllm_device: Optional[List[str]] = None  # deprecated
     vllm_gpu_memory_utilization: float = 0.9
     vllm_max_model_len: Optional[int] = None
-    vllm_max_num_seqs: Optional[int] = None  # deprecated
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_enable_prefix_caching: bool = True
@@ -195,7 +192,6 @@ class GRPOArgumentsMixin:
     ref_model_mixup_alpha: float = 0.6
 
     async_generate: bool = False
-    tensor_parallel_size: Optional[int] = None  # deprecated
 
     sleep_level: int = 0
     move_model_batches: Optional[int] = None

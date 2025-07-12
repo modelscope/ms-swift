@@ -26,15 +26,21 @@ ShareGPT format:
 {"system": "<system>", "conversation": [{"human": "<query1>", "assistant": "<response1>"}, {"human": "<query2>", "assistant": "<response2>"}]}
 ```
 
-Alpaca format:
-```jsonl
-{"system": "<system>", "instruction": "<query-inst>", "input": "<query-input>", "output": "<response>"}
-```
-
 Query-Response format:
 ```jsonl
 {"system": "<system>", "query": "<query2>", "response": "<response2>", "history": [["<query1>", "<response1>"]]}
 ```
+Note: The following fields will be automatically converted to the corresponding system, query, and response fields.
+- system: 'system', 'system_prompt'.
+- query: 'query', 'prompt', 'input', 'instruction', 'question', 'problem'.
+- response: 'response', 'answer', 'output', 'targets', 'target', 'answer_key', 'answers', 'solution', 'text', 'completion', 'content'.
+
+Alpaca format:
+```jsonl
+{"system": "<system>", "instruction": "<query-inst>", "input": "<query-input>", "output": "<response>"}
+```
+- Note: The instruction and input fields will be combined into the query field. If instruction and input are not empty strings, then `query = f'{instruction}\n{input}'`.
+
 
 ## Standard Dataset Format
 
@@ -63,6 +69,8 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 {"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}, {"role": "assistant", "content": "Tomorrow's weather will be sunny"}], "rejected_response": "I don't know"}
 {"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}], "rejected_response": "I don't know"}
 ```
+
+> Note: RM additionally supports the margin column. For details, refer to the [RM documentation](../Instruction/RLHF.md#rm).
 
 #### KTO
 

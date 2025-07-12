@@ -153,6 +153,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self._init_custom_register()
         self._import_external_plugins()
         self._init_model_kwargs()
+        self._init_stream()
         # The Seq2SeqTrainingArguments has a property called world_size, which cannot be assigned a value.
         self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
         logger.info(f'rank: {self.rank}, local_rank: {self.local_rank}, '
@@ -204,7 +205,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     def _init_ckpt_dir(self, adapters=None):
         # compat megatron
         model = self.model or getattr(self, 'mcore_model', None) or getattr(self, 'load', None)
-        self.ckpt_dir = get_ckpt_dir(model, adapters or self.adapters)
+        adapters = adapters or self.adapters or getattr(self, 'mcore_adapters', None)
+        self.ckpt_dir = get_ckpt_dir(model, adapters)
         if self.ckpt_dir and self.load_args:
             self.load_args_from_ckpt()
 
@@ -223,6 +225,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'bnb_4bit_quant_type',
             'bnb_4bit_use_double_quant',
         ]
+        if 'megatron' in self.__class__.__name__.lower():
+            force_load_keys = []
         # If the current value is None or an empty list and it is among the following keys
         load_keys = [
             'custom_register_path',
