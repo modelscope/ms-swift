@@ -338,7 +338,8 @@ class PtEngine(InferEngine):
             preds = template.decode_prm(inputs['input_ids'], logits)
             logprobs = [None] * len(preds)
         elif template.mode == 'embedding':
-            logprobs = [None] * len(logits)
+            preds = logits
+            logprobs = [None] * len(preds)
         else:
             raise ValueError(f'Unsupported mode: {template.mode}')
 
