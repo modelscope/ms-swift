@@ -523,6 +523,7 @@ class VllmEngine(InferEngine):
 
         template.set_mode('vllm')
         if self.task_type == 'embed':
+            template.infer_backend = 'vllm'
             template.set_mode('embedding')
         loop = asyncio.get_running_loop()
         with torch.inference_mode():

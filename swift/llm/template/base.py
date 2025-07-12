@@ -409,7 +409,14 @@ class Template(ProcessorMixin):
             anchor.messages[-1]['content'] = ''
             anchor.rejected_response = []
             split_multi_medias(anchor)
-            _encoded = self._encode_truncated(anchor)
+            infer_backend = getattr(self, 'infer_backend', 'pt')
+            mode = self.mode
+            # infer_backend comes from vllmengine, etc.
+            # TODO this code must be refactored
+            if infer_backend in ('vllm', 'sglang'):
+                self.mode = infer_backend
+                _encoded = self._encode_truncated(anchor)
+                self.mode = mode
             _encoded.pop('labels', None)
         return _encoded
 
