@@ -31,8 +31,8 @@ else:
         'orm': ['orms', 'ORM'],
         'multi_turn': ['multi_turns'],
         'rm_plugin': ['rm_plugins'],
-        'env':['env'],
-        'context_manager':['context_managers']
+        'env': ['env'],
+        'context_manager': ['context_managers']
     }
 
     import sys

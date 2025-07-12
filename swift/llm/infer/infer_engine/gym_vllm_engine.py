@@ -1,17 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
-from typing import Any, Dict, List, Optional, Union
 import asyncio
+import os
 from copy import deepcopy
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 from tqdm.asyncio import tqdm_asyncio
 
 from swift.llm import InferRequest, RolloutInferRequest, Template, VllmEngine
 from swift.plugin import Metric
+from swift.plugin.context_manager import ContextManager, context_managers
 from swift.plugin.env import Env, envs
-from swift.plugin.context_manager import context_managers,ContextManager
-from ..protocol import ChatCompletionResponse, ChatMessage, RequestConfig, RolloutResponseChoice, GymRolloutResponseChoice
+from ..protocol import (ChatCompletionResponse, ChatMessage, GymRolloutResponseChoice, RequestConfig,
+                        RolloutResponseChoice)
 from .utils import AdapterRequest
 
 try:
@@ -92,18 +93,16 @@ class GymVllmEngine(VllmEngine):
     def _create_env(self, env_config) -> Env:
         """Create environment instance."""
         if env_config.get('name', 'math_env') not in envs:
-            raise ValueError(
-                f"Environment '{env_config.get('name', None)}' not found in envs registry. Available: {list(envs.keys())}"
-            )
+            raise ValueError((f"Environment '{env_config.get('name', None)}' not found in envs registry. "
+                              f'Available: {list(envs.keys())}'))
         return envs[env_config.get('name', 'math_env')](env_config)
-    
-    def _create_context_manager(self,ctx_config) -> ContextManager:
+
+    def _create_context_manager(self, ctx_config) -> ContextManager:
         if ctx_config.get('name', 'dummyContextManager') not in context_managers:
-            raise ValueError(
-                f"Environment '{ctx_config.get('name', None)}' not found in envs registry. Available: {list(context_managers.keys())}"
-            )
+            raise ValueError((f"Environment '{ctx_config.get('name', None)}' not found in envs registry. "
+                              f'Available: {list(context_managers.keys())}'))
         return context_managers[ctx_config.get('name', 'dummyContextManager')](ctx_config)
-    
+
     def infer(
         self,
         infer_requests: List[Union[InferRequest, Dict[str, Any]]],
@@ -141,29 +140,29 @@ class GymVllmEngine(VllmEngine):
                                       **kwargs):
             if isinstance(infer_request, Dict):
                 infer_request = RolloutInferRequest(**infer_request)
-            
+
             # Create environment
             env_config = infer_request.data_dict.get('env_config', {})
             env = self._create_env(env_config)
-            # Create ContextManager   
+            # Create ContextManager
             ctx_config = infer_request.data_dict.get('ctx_config', {})
             context_manager = self._create_context_manager(ctx_config)
             try:
                 # Environment reset
                 observation, info, system_message = await env.reset(infer_request)
-                
+
                 # Initialize conversation
                 messages = []
                 if system_message:
                     messages.append({'role': 'system', 'content': system_message})
                 messages.append({'role': 'user', 'content': observation})
-                
+
                 current_request = deepcopy(infer_request)
                 current_turn = 1
                 done = False
                 total_reward = 0.0
                 step_rewards = []
-                trajectory_id = f"{id(infer_request)}_{hash(str(infer_request))}"
+                trajectory_id = f'{id(infer_request)}_{hash(str(infer_request))}'
                 trajectory_info = []
                 while True:
                     # Apply context management
@@ -171,29 +170,29 @@ class GymVllmEngine(VllmEngine):
                     current_request.messages = messages
                     # Remove any previous assistant response for generation
                     InferRequest.remove_response(current_request.messages)
-                    
+
                     # Generate LLM response using parent's infer_async
                     result: ChatCompletionResponse = await self.infer_async(current_request, request_config, **kwargs)
                     result_choice: RolloutResponseChoice = result.choices[0]
-                    
+
                     completion = result_choice.message.content
                     messages.append({'role': 'assistant', 'content': completion})
-                    
+
                     # Environment step
-                    next_observation, reward, done, step_info = await env.step(deepcopy(messages)) # avoid change
-                    
+                    next_observation, reward, done, step_info = await env.step(deepcopy(messages))  # avoid change
+
                     # Accumulate rewards
                     total_reward += reward
                     step_rewards.append(reward)
                     trajectory_info.append(step_info)
-                    
-                    if done or current_turn>self.max_turns:
+
+                    if done or current_turn > self.max_turns:
                         break
                     messages.append({'role': 'user', 'content': next_observation})
                     current_request.messages = messages
-                    
+
                     current_turn += 1
-                
+
                 # Create final result with gym-specific information
                 final_choice = GymRolloutResponseChoice(
                     index=result_choice.index,
@@ -204,16 +203,11 @@ class GymVllmEngine(VllmEngine):
                     trajectory_id=trajectory_id,
                     total_reward=total_reward,
                     step_rewards=step_rewards,
-                    trajectory_info=trajectory_info
-                )
-                
+                    trajectory_info=trajectory_info)
+
                 return ChatCompletionResponse(
-                    model=self.model_name,
-                    choices=[final_choice],
-                    usage=result.usage,
-                    id=f"gym_{trajectory_id}"
-                )
-                
+                    model=self.model_name, choices=[final_choice], usage=result.usage, id=f'gym_{trajectory_id}')
+
             finally:
                 # Clean up environment
                 await self._close_env_async(env)

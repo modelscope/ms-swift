@@ -237,7 +237,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.use_fast_infer = self.use_vllm  # whether to use the PT backend
         self.vllm_use_async_engine = False
-        #gym engine 
+        # gym engine
         self.vllm_use_async_engine = False
         self.enable_offload = False
         if self.use_vllm:
@@ -255,8 +255,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
                 self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
                 if self.use_gym_env:
-                    self._textual_logs["trajactory_info"] = deque(maxlen=maxlen)
-            
+                    self._textual_logs['trajactory_info'] = deque(maxlen=maxlen)
+
             elif self.vllm_mode == 'colocate':
                 if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:
                     raise ValueError(
@@ -693,7 +693,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     for choice in output.choices:
                         # concated in Engine
                         if self.use_gym_env:
-                            _choices.append((choice.messages, choice.finish_reason,choice.total_reward,choice.trajectory_info))
+                            _choices.append(
+                                (choice.messages, choice.finish_reason, choice.total_reward, choice.trajectory_info))
                         else:
                             _choices.append((choice.messages, choice.finish_reason))
                     outputs.append(_choices)
@@ -896,7 +897,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
         if self.use_gym_env:
             trajactory_infos = [inputs[i]['trajectory_info'] for i in range(len(inputs))]
-        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func,trajactory_infos)
+        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func,
+                          trajactory_infos)
 
         return batch_encoded_inputs
 
@@ -998,6 +1000,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs, rewards, rewards_per_func, completions = origin_data
 
         return inputs, rewards, rewards_per_func, completions
+
     def split_by_mini_batches(self, inputs, advantages):
         # Slice to keep only the local part of the data
         # Slice to keep only the local part of the data
@@ -1111,15 +1114,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Log prompt and completion texts
         self._textual_logs['prompt'].extend(self._apply_chat_template_to_messages_list(gather_object(messages)))
         self._textual_logs['completion'].extend(gather_object(completions))
-        
+
         if self.use_gym_env:
             # 对于gym环境，记录gym_reward
             self._textual_logs['rewards']['gym_reward'].extend(rewards_per_func[:, 0].tolist())
-            self._textual_logs["trajactory_info"].extend(gather_object(trajactory_infos))
+            self._textual_logs['trajactory_info'].extend(gather_object(trajactory_infos))
         else:
             # 原有的多奖励函数逻辑
             for i, name in enumerate(self.reward_func_names):
                 self._textual_logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
+
     def _apply_chat_template_to_messages_list(self, messages_list: InputsType):
         prompts_text = []
         for messages in messages_list:
@@ -1441,7 +1445,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     **({
                         'data_dict': {k: request[k]
                                       for k in request if k not in request_keys}
-                    } if (self.multi_turn_scheduler and self.vllm_use_async_engine) or (self.vllm_use_async_engine and self.use_gym_env) else {}) # use gym infer
+                    } if (
+                        (self.multi_turn_scheduler and self.vllm_use_async_engine) or
+                        (self.vllm_use_async_engine and self.use_gym_env)
+                    ) else {})  # use gym infer
                 } for request in infer_requests]
 
                 self._process_infer_requests_images(infer_requests)
@@ -1611,7 +1618,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 **self._textual_logs['rewards'],
             }
             if self.use_gym_env:
-                table["trajactory_info"] = self._textual_logs['trajactory_info']
+                table['trajactory_info'] = self._textual_logs['trajactory_info']
             self.jsonl_writer.append(table)
             if self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None:
                 import pandas as pd

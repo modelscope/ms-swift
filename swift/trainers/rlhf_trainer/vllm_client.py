@@ -16,7 +16,8 @@ from requests import ConnectionError
 from torch import nn
 
 from swift.llm import AdapterRequest, RolloutInferRequest, Template
-from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig, RolloutResponseChoice, GymRolloutResponseChoice
+from swift.llm.infer.protocol import (ChatCompletionResponse, GymRolloutResponseChoice, RequestConfig,
+                                      RolloutResponseChoice)
 from swift.plugin import Metric
 from swift.utils import is_vllm_ascend_available, is_vllm_available
 
@@ -62,7 +63,7 @@ class VLLMClient:
             raise ImportError('vLLM is not installed. Please install it with `pip install vllm`.')
 
         self.session = requests.Session()
-        
+
         if base_url is not None:
             # Parse the base_url to extract host and port
             parsed_url = urlparse(base_url)
@@ -135,7 +136,6 @@ class VLLMClient:
             },
         )
 
-        
         if response.status_code == 200:
             if getattr(self, 'use_gym_env', False):
                 # Parse gym-specific response format
@@ -156,17 +156,16 @@ class VLLMClient:
                             trajectory_info=choice_data.get('trajectory_info', []),
                         )
                         choices.append(choice)
-                    
+
                     result = ChatCompletionResponse(
                         model=resp['model'],
                         choices=choices,
                         usage=resp.get('usage'),
                         id=resp.get('id'),
                         created=resp.get('created'),
-                        object=resp.get('object', 'chat.completion')
-                    )
+                        object=resp.get('object', 'chat.completion'))
                     results.append(result)
-                
+
                 return results
             else:
                 # Regular vLLM response parsing
@@ -176,8 +175,8 @@ class VLLMClient:
                     return [
                         ChatCompletionResponse(
                             choices=[RolloutResponseChoice(**choice) for choice in resp['choices']],
-                            **{k: v for k, v in resp.items() if k != 'choices'}
-                        ) for resp in response.json()
+                            **{k: v
+                               for k, v in resp.items() if k != 'choices'}) for resp in response.json()
                     ]
         else:
             raise Exception(f'Request failed: {response.status_code}, {response.text}')
@@ -265,7 +264,7 @@ class VLLMClient:
             result = response.json()
             engine = result['engine_type']
             self.use_async_engine = engine == 'AsyncLLMEngine'
-            self.use_gym_env = result.get("gym_env",False)  # 新增这一行
+            self.use_gym_env = result.get('gym_env', False)  # 新增这一行
             return engine
         else:
             raise Exception(f'Request failed: {response.status_code}, {response.text}')

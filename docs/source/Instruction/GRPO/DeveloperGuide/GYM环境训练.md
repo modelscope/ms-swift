@@ -10,33 +10,33 @@ class Env(ABC):
 
     def __init__(self, env_config):
         """
-        
+
         Args:
             env_config: 环境配置，比如可用工具等
         """
         self.env_config = env_config
-    
+
     @abstractmethod
     async def reset(self, config: RolloutInferRequest) -> Tuple[str, Dict[str, Any], str]:
         """
-        
+
         Args:
             config: 环境初始化信息，应该放在
-            
+
         Returns:
             - observation: 第一个user消息作为初始观察或者环境信息，会作为user message
             - info: 用于DEBUG和日志的额外信息，会在logging.jsonl中记录
             - system_message: 用户当前环境采样的系统提示词
         """
         pass
-    
+
     @abstractmethod
     async def step(self, action: Messages) -> Tuple[str, float, bool, Dict[str, Any]]:
         """
-        
+
         Args:
             action: 所有对话消息，最后一个消息为当前采样回复
-            
+
         Returns:
             - next_observation: 环境响应，将作为user message返回
             - reward: 奖励
@@ -58,10 +58,10 @@ class ContextManager(ABC):
     @abstractmethod
     def manage_context(self, history: Messages,trajectory_id:str) -> Messages:
         """动态调整当前agent的上下文
-        
+
         Args:
             history: 当前的消息历史
-            
+
         Returns:
             调整后的消息历史
         """

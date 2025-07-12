@@ -259,7 +259,8 @@ class GymRolloutResponseChoice(RolloutResponseChoice):
     trajectory_id: str = None
     total_reward: float = 0.0
     step_rewards: List[float] = None
-    trajectory_info: List[Dict[str,Any]] = None
+    trajectory_info: List[Dict[str, Any]] = None
+
 
 @dataclass
 class CompletionResponseChoice:

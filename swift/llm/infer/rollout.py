@@ -23,7 +23,7 @@ from trl.scripts.vllm_serve import WeightSyncWorkerExtension
 from swift.llm import InferArguments, RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.utils import get_device, get_logger
-from .infer_engine import GRPOVllmEngine, InferClient ,GymVllmEngine
+from .infer_engine import GRPOVllmEngine, GymVllmEngine, InferClient
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
 
 try:
@@ -116,7 +116,7 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
             method = getattr(engine, method_name, None) or getattr(engine.engine, method_name, None)
             try:
                 result = await method(*args, **kwargs)
-            except Exception as e:
+            except Exception:
                 logger.error(f'Method execution failed: {method_name}\n{traceback.format_exc()}')
                 result = None
 
@@ -200,7 +200,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
             'use_async_engine': args.use_async_engine,
             'multi_turn_scheduler': args.multi_turn_scheduler,
             'max_turns': args.max_turns,
-            "use_gym_env":args.use_gym_env,
+            'use_gym_env': args.use_gym_env,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
         if infer_backend != 'vllm':
@@ -300,7 +300,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         """
         if self.use_async_engine:
             if self.use_gym_env:
-                return {'engine_type': 'AsyncLLMEngine',"gym_env":True}
+                return {'engine_type': 'AsyncLLMEngine', 'gym_env': True}
             return {'engine_type': 'AsyncLLMEngine'}
         else:
             return {'engine_type': 'LLMEngine'}

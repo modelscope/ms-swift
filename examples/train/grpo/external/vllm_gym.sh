@@ -40,4 +40,3 @@ swift rlhf \
     --num_iterations 1 \
     --report_to tensorboard \
     --beta 0
-
