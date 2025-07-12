@@ -98,7 +98,8 @@ def test_convert_precision(hf_model, mg_model, processor, torch_dtype=torch.floa
                 'role':
                 'assistant',
                 'content':
-                'ms-swift is an official framework provided by the ModelScope community for fine-tuning and deploying large language models and multi-modal large models.'
+                'ms-swift is an official framework provided by the ModelScope community for fine-tuning '
+                'and deploying large language models and multi-modal large models.'
             },
         ]
     })
