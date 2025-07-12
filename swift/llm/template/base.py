@@ -415,7 +415,8 @@ class Template(ProcessorMixin):
             # TODO this code must be refactored
             if infer_backend in ('vllm', 'sglang'):
                 self.mode = infer_backend
-                _encoded = self._encode_truncated(anchor)
+            _encoded = self._encode_truncated(anchor)
+            if infer_backend in ('vllm', 'sglang'):
                 self.mode = mode
             _encoded.pop('labels', None)
         return _encoded
@@ -1131,7 +1132,7 @@ class Template(ProcessorMixin):
         return res_context_list, loss_scale_list, answer_len
 
     def _encode_truncated(self, inputs):
-        if self.mode in {'vllm', 'lmdeploy'}:
+        if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
             encoded = Template._encode(self, inputs)
             for key in ['images', 'audios', 'videos']:
                 encoded[key] = getattr(inputs, key)

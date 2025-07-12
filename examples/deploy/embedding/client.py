@@ -42,7 +42,7 @@ def run_client(host: str = '127.0.0.1', port: int = 8000):
 if __name__ == '__main__':
     from swift.llm import run_deploy, DeployArguments
     from modelscope import snapshot_download
-    model_dir = snapshot_download('iic/gme-Qwen2-VL-2B-Instruct')
-    # model_dir = '/mnt/nas3/yzhao/tastelikefeet/swift/output/gte_Qwen2-1.5B-instruct/v2-20250711-133234/checkpoint-1'
-    with run_deploy(DeployArguments(model=model_dir, task_type='embedding', infer_backend='vllm', verbose=False, log_interval=-1)) as port:
+    # model_dir = snapshot_download('iic/gme-Qwen2-VL-2B-Instruct')
+    model_dir = '/mnt/nas3/yzhao/tastelikefeet/swift/output/gme-Qwen2-VL-2B-Instruct/v8-20250712-161224/checkpoint-1'
+    with run_deploy(DeployArguments(model=model_dir, task_type='embedding', infer_backend='pt', verbose=False, log_interval=-1)) as port:
         run_client(port=port)

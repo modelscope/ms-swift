@@ -178,7 +178,9 @@ class SglangEngine(InferEngine):
 
     async def _infer_embedding_async(self, template: Template, inputs: Dict[str, Any]) -> ChatCompletionResponse:
         from sglang.srt.managers.io_struct import EmbeddingReqInput
-        obj = EmbeddingReqInput(input_ids=inputs['input_ids'], image_data=None)
+        obj = EmbeddingReqInput(input_ids=inputs['input_ids'], 
+                                image_data=inputs.get('images'),
+                                audio_data=inputs.get('audios'))
         generator = self.engine.tokenizer_manager.generate_request(obj, None)
         output = await generator.__anext__()
         usage_info = self._get_usage_info(output['meta_info']['prompt_tokens'], 0)
