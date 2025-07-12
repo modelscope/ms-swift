@@ -107,7 +107,9 @@ SWIFT provides two scaffold training scripts:
 
 ## Inference
 
-SWIFT currently does not support Embedding model inference and deployment (due to time constraints). You can use the original model's code for inference:
+SWIFT has supported the deployment of GME、GTE、Qwen3-Embedding models，please check[here](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/embedding/client.py).
+
+You can also use the original model's code for inference:
 
 https://www.modelscope.cn/models/iic/gte_Qwen2-7B-instruct
 

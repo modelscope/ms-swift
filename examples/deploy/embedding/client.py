@@ -32,7 +32,7 @@ def run_client(host: str = '127.0.0.1', port: int = 8000):
         'role':
         'user',
         'content': [
-            #  {
+            # {
             #   'type': 'image',
             #   'image': 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
             # },
