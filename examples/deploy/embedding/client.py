@@ -28,13 +28,16 @@ def run_client(host: str = '127.0.0.1', port: int = 8000):
 
     messages = [{
             'role': 'user',
-            'content': [{
-                'type': 'image',
-                'image': 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
-            }, {
-                'type': 'text',
-                'text': 'What is the capital of China?'
-            }]
+            'content': [
+                #                 {
+                # 'type': 'image',
+                # 'image': 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+                # }, 
+                {
+                    'type': 'text',
+                    'text': 'What is the capital of China?'
+                },
+            ]
         }]
     response = infer(client, model, messages)
 
@@ -42,7 +45,7 @@ def run_client(host: str = '127.0.0.1', port: int = 8000):
 if __name__ == '__main__':
     from swift.llm import run_deploy, DeployArguments
     from modelscope import snapshot_download
-    # model_dir = snapshot_download('iic/gme-Qwen2-VL-2B-Instruct')
-    model_dir = '/mnt/nas3/yzhao/tastelikefeet/swift/output/gme-Qwen2-VL-2B-Instruct/v8-20250712-161224/checkpoint-1'
-    with run_deploy(DeployArguments(model=model_dir, task_type='embedding', infer_backend='pt', verbose=False, log_interval=-1)) as port:
+    model_dir = snapshot_download('Qwen/Qwen3-Embedding-0.6B')
+    # model_dir = '/mnt/nas3/yzhao/tastelikefeet/swift/output/gme-Qwen2-VL-2B-Instruct/v8-20250712-161224/checkpoint-1'
+    with run_deploy(DeployArguments(model=model_dir, task_type='embedding', infer_backend='sglang', verbose=False, log_interval=-1)) as port:
         run_client(port=port)

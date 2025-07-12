@@ -1104,7 +1104,9 @@ class Template(ProcessorMixin):
             elif response is not None:
                 # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
-                if self.is_training and not sep_token:
+                # self.is_training needed because we may want to continue generation from
+                # the current response
+                if self.is_training and not sep_token or (getattr(self, 'task_type', None) == 'embedding'):
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
             elif template_meta.response_prefix:
@@ -1306,7 +1308,7 @@ class Template(ProcessorMixin):
 
     @property
     def is_training(self):
-        return self.mode not in {'vllm', 'lmdeploy', 'pt'}
+        return self.mode not in {'vllm', 'lmdeploy', 'sglang', 'pt'}
 
     def set_mode(
         self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto', 'gkd', 'embedding', 'reranker',

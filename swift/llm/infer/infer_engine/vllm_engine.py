@@ -271,6 +271,8 @@ class VllmEngine(InferEngine):
                 llm_inputs['multi_modal_data'] = mm_data
             if self.task_type == 'embed':
                 from vllm.pooling_params import PoolingParams
+                # llm_inputs.pop('prompt_token_ids')
+                # llm_inputs['prompt'] = '<|image_pad|>What is the capital of China?'
                 return self.engine.encode(llm_inputs, PoolingParams(), request_id)
             elif self.use_async_engine:
                 return self.engine.generate(llm_inputs, generation_config, request_id, **kwargs)
@@ -524,6 +526,7 @@ class VllmEngine(InferEngine):
         template.set_mode('vllm')
         if self.task_type == 'embed':
             template.infer_backend = 'vllm'
+            template.task_type = 'embedding'
             template.set_mode('embedding')
         loop = asyncio.get_running_loop()
         with torch.inference_mode():
