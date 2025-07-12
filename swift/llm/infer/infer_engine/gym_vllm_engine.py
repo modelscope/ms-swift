@@ -3,7 +3,6 @@ import os
 from typing import Any, Dict, List, Optional, Union
 import asyncio
 from copy import deepcopy
-import math
 
 import torch
 from tqdm.asyncio import tqdm_asyncio
@@ -12,7 +11,7 @@ from swift.llm import InferRequest, RolloutInferRequest, Template, VllmEngine
 from swift.plugin import Metric
 from swift.plugin.env import Env, envs
 from swift.plugin.context_manager import context_managers
-from ..protocol import ChatCompletionResponse, ChatMessage, RequestConfig, RolloutResponseChoice,GymRolloutResponseChoice
+from ..protocol import ChatCompletionResponse, ChatMessage, RequestConfig, RolloutResponseChoice, GymRolloutResponseChoice
 from .utils import AdapterRequest
 
 try:
@@ -31,7 +30,7 @@ class GymVllmEngine(VllmEngine):
         model_id_or_path: str,
         torch_dtype: Optional[torch.dtype] = None,
         *,
-        use_gym_engine: bool = False,
+        use_async_engine: bool = False,
         model_type: Optional[str] = None,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
@@ -62,7 +61,7 @@ class GymVllmEngine(VllmEngine):
         super().__init__(
             model_id_or_path=model_id_or_path,
             torch_dtype=torch_dtype,
-            use_gym_engine=use_gym_engine,
+            use_async_engine=use_async_engine,
             model_type=model_type,
             use_hf=use_hf,
             hub_token=hub_token,
@@ -88,22 +87,22 @@ class GymVllmEngine(VllmEngine):
             template=template,
         )
 
-        # Environment and context manager configuration from kwargs
-        
-        # Context manager setup - use dummy if not specified
+        # Context manager setup
         context_manager_name = kwargs.get('context_manager', 'dummyContextManager')
         if context_manager_name not in context_managers:
             raise ValueError(f"Context manager '{context_manager_name}' not found in context_managers registry. "
-                           f"Available: {list(context_managers.keys())}")
-        
+                             f"Available: {list(context_managers.keys())}")
+
         self.context_manager = context_managers[context_manager_name]()
-        self.max_turns = kwargs.get('max_turns', 10)
+        self.max_turns = kwargs.get('max_turns', 3)
 
     def _create_env(self, env_config) -> Env:
         """Create environment instance."""
-        if env_config.get("name", "math_env") not in envs: # set math env for debug
-            raise ValueError(f"Environment '{env_config.get('name', None)}' not found in envs registry. Available: {list(envs.keys())}")
-        return envs[env_config.get("name")](env_config)
+        if env_config.get('name', 'math_env') not in envs:
+            raise ValueError(
+                f"Environment '{env_config.get('name', None)}' not found in envs registry. Available: {list(envs.keys())}"
+            )
+        return envs[env_config.get('name', 'math_env')]()
 
     def infer(
         self,
@@ -115,7 +114,7 @@ class GymVllmEngine(VllmEngine):
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
     ) -> List[ChatCompletionResponse]:
-        assert not self.use_gym_engine, 'for Gym Engine, use infer_async instead'
+        assert not self.use_async_engine, 'for Async Engine, use infer_async instead'
         return super().infer(
             infer_requests,
             request_config,
@@ -134,65 +133,99 @@ class GymVllmEngine(VllmEngine):
                           **kwargs) -> List[ChatCompletionResponse]:
         if request_config is None:
             request_config = RequestConfig()
-        # in GRPO n always equals 1
         assert request_config.n == 1
 
-        # Process all infer_requests
-        async def _infer_async_batch(infer_requests: List[Union[RolloutInferRequest, Dict[str, Any]]],
-                                   request_config: Optional[RequestConfig] = None,
-                                   **kwargs):
+        # change here, gym environment loop
+        async def _infer_async_single(infer_request: Union[RolloutInferRequest, Dict[str, Any]],
+                                      request_config: Optional[RequestConfig] = None,
+                                      **kwargs):
+            if isinstance(infer_request, Dict):
+                infer_request = RolloutInferRequest(**infer_request)
             
-            # Create tasks for all infer_requests - each gets its own trajectory
-            tasks = []
-            envs = []
+            # Create environment
+            env_config = infer_request.data_dict.get('env_config', {})
+            env = self._create_env(env_config)
             
             try:
-                # Create environments for all trajectories
-                for i, infer_request in enumerate(infer_requests):
-                    if isinstance(infer_request, Dict):
-                        infer_request = RolloutInferRequest(**infer_request)
-                    
-                    env_config = infer_request.data_dict.get('env_config', {})
-                    env = self._create_env(env_config)
-                    envs.append(env)
-                    
-                    trajectory_id = f"{id(infer_request)}_{i}"
-                    request_copy = deepcopy(infer_request)
-                    task = self._sample_single_trajectory(env, request_copy, trajectory_id, request_config, **kwargs)
-                    tasks.append(task)
+                # Environment reset
+                observation, info, system_message = await env.reset(infer_request)
                 
-                # Wait for all trajectories to complete
-                results = await asyncio.gather(*tasks)
+                # Initialize conversation
+                messages = []
+                if system_message:
+                    messages.append({'role': 'system', 'content': system_message})
+                messages.append({'role': 'user', 'content': observation})
+                
+                current_request = deepcopy(infer_request)
+                current_request.messages = messages
+                current_turn = 1
+                done = False
+                total_reward = 0.0
+                step_rewards = []
+                trajectory_id = f"{id(infer_request)}_{hash(str(infer_request))}"
+                
+                while True:
+                    # Apply context management
+                    current_request = self.context_manager.manage_context(current_request, trajectory_id)
+                    
+                    # Remove any previous assistant response for generation
+                    InferRequest.remove_response(current_request.messages)
+                    
+                    # Generate LLM response using parent's infer_async
+                    result: ChatCompletionResponse = await self.infer_async(current_request, request_config, **kwargs)
+                    result_choice: RolloutResponseChoice = result.choices[0]
+                    
+                    completion = result_choice.message.content
+                    messages.append({'role': 'assistant', 'content': completion})
+                    
+                    # Environment step
+                    next_observation, reward, done, step_info = await env.step(result_choice)
+                    
+                    # Accumulate rewards
+                    total_reward += reward
+                    step_rewards.append(reward)
+                    
+                    if done or current_turn>self.max_turns:
+                        break
+                    messages.append({'role': 'user', 'content': next_observation})
+                    current_request.messages = messages
+                    
+                    current_turn += 1
+                
+                # Create final result with gym-specific information
+                final_choice = GymRolloutResponseChoice(
+                    index=result_choice.index,
+                    message=result_choice.message,
+                    finish_reason=result_choice.finish_reason,
+                    logprobs=result_choice.logprobs,
+                    messages=messages,
+                    trajectory_id=trajectory_id,
+                    total_reward=total_reward,
+                    step_rewards=step_rewards
+                )
+                
+                return ChatCompletionResponse(
+                    model=self.model_name,
+                    choices=[final_choice],
+                    usage=result.usage,
+                    id=f"gym_{trajectory_id}"
+                )
                 
             finally:
-                # Clean up all environments asynchronously
-                close_tasks = []
-                for env in envs:
-                    close_tasks.append(self._close_env_async(env))
-                if close_tasks:
-                    await asyncio.gather(*close_tasks, return_exceptions=True)
-            
-            return results
+                # Clean up environment
+                await self._close_env_async(env)
 
-        # Process the batch
-        results = await _infer_async_batch(infer_requests, request_config, **kwargs)
-        
-        # Update progress bar and metrics
+        tasks = [_infer_async_single(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
             use_tqdm = len(infer_requests) > 1
-        
-        # Create simple tasks for metrics update (since actual work is done)
-        metric_tasks = [asyncio.create_task(self._update_metrics_async(result, metrics)) for result in results]
-        
-        # Process with progress bar using the correct pattern
-        await self._batch_metrics_update(metric_tasks, use_tqdm)
-        
-        return results
+        return await self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
-    async def _batch_metrics_update(self, 
-                                   tasks: List[asyncio.Task],
-                                   use_tqdm: bool = True):
-        """批量更新指标，带进度条支持"""
+    async def _batch_infer_stream(self,
+                                  tasks,
+                                  stream: bool = True,
+                                  use_tqdm: bool = True,
+                                  metrics: Optional[List[Metric]] = None):
+        assert not stream
         prog_bar = tqdm_asyncio(total=len(tasks), dynamic_ncols=True, disable=not use_tqdm)
 
         async def _new_run(task):
@@ -203,23 +236,12 @@ class GymVllmEngine(VllmEngine):
                     raise
                 res = e
             prog_bar.update()
+            self._update_metrics(res, metrics)
             return res
 
         new_tasks = [_new_run(task) for task in tasks]
-        
-        try:
-            # 使用 asyncio.gather 执行所有任务
-            results = await asyncio.gather(*new_tasks)
-        finally:
-            prog_bar.close()  # 确保进度条关闭
-        
-        return results
 
-    async def _update_metrics_async(self, result: ChatCompletionResponse, metrics: Optional[List[Metric]] = None):
-        """Async wrapper for metrics update."""
-        if metrics:
-            for metric in metrics:
-                metric.update(result)
+        return await self.batch_run(new_tasks)
 
     async def _close_env_async(self, env: Env):
         """Asynchronously close environment."""
@@ -227,82 +249,9 @@ class GymVllmEngine(VllmEngine):
             if hasattr(env, 'close') and asyncio.iscoroutinefunction(env.close):
                 await env.close()
             elif hasattr(env, 'close'):
-                # Fallback for sync close
                 env.close()
         except Exception:
-            pass  # Ignore cleanup errors
-
-    async def _sample_single_trajectory(self, 
-                                      env: Env, 
-                                      infer_request: RolloutInferRequest,
-                                      trajectory_id: str,
-                                      request_config: RequestConfig,
-                                      **kwargs) -> ChatCompletionResponse:
-        """Sample a single trajectory using the given environment."""
-        
-        # Environment reset (async)
-        observation, info, system_message = await env.reset(infer_request)
-        
-        # Initialize conversation with system message and initial observation
-        messages = []
-        if system_message:
-            messages.append({'role': 'system', 'content': system_message})
-        messages.append({'role': 'user', 'content': observation})
-        
-        current_turn = 1
-        done = False
-        total_reward = 0.0  # Track cumulative reward
-        step_rewards = []   # Track individual step rewards
-        
-        while not done and current_turn <= self.max_turns:
-            # Apply context management
-            current_request = RolloutInferRequest(
-                messages=messages.copy(),
-                **infer_request.data_dict
-            )
-            
-            current_request = self.context_manager.manage_context(current_request, trajectory_id)
-            
-            # Remove any previous assistant response for generation
-            InferRequest.remove_response(current_request.messages)
-            
-            # Generate LLM response using parent's async_infer
-            result: List[ChatCompletionResponse] = await self.infer_async([current_request], request_config, **kwargs)
-            result_choice: RolloutResponseChoice = result[0].choices[0]  # async_infer returns list
-            
-            # Environment step
-            next_observation, reward, done, step_info = await env.step(result_choice) # TODO 在step_info中记录每个reward func的信息作为日志
-            
-            # Accumulate rewards
-            total_reward += reward
-            step_rewards.append(reward)
-            
-            # Update conversation history
-            messages.append({'role': 'assistant', 'content': result_choice.message.content})
-            
-            if not done:
-                messages.append({'role': 'user', 'content': next_observation})
-            
-            current_turn += 1
-        
-        # Set final messages and trajectory info in result choice
-        result_choice = GymRolloutResponseChoice(
-                        index=result_choice.index,
-                        message=result_choice.message,
-                        finish_reason=result_choice.finish_reason,
-                        logprobs=result_choice.logprobs,
-                        messages=messages,
-                        trajectory_id=trajectory_id,
-                        total_reward=total_reward,
-                        step_rewards=step_rewards
-                    )
-        
-        return ChatCompletionResponse(
-            model=self.model_name,
-            choices=[result_choice],
-            usage=result[0].usage,
-            id=f"gym_{trajectory_id}"
-        )
+            pass
 
     def _create_chat_completion_response(self, result, template: Template, generation_config,
                                          request_id) -> ChatCompletionResponse:
@@ -315,10 +264,11 @@ class GymVllmEngine(VllmEngine):
             response = template.decode(output.token_ids)
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
             toolcall = self._get_toolcall(response, template)
-            choice = RolloutResponseChoice(
+            choice = GymRolloutResponseChoice(
                 index=output.index,
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
                 finish_reason=output.finish_reason,
-                logprobs=logprobs)
+                logprobs=logprobs,
+            )
             choices.append(choice)
         return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)

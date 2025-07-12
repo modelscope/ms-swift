@@ -81,24 +81,19 @@ class DeployArguments(InferArguments):
 @dataclass
 class RolloutArguments(DeployArguments):
     use_async_engine: Optional[bool] = None
-    use_gym_engine: Optional[bool] = "dummyContextManager"
+    use_gym_env: Optional[bool] = None
     # only for GRPO rollout with AsyncEngine, see details in swift/plugin/multi_turn
     multi_turn_scheduler: Optional[str] = None
     max_turns: Optional[int] = None
-    context_manager: Optional[str] = None
+    context_manager: Optional[str] = "dummyContextManager"
     def __post_init__(self):
         super().__post_init__()
 
         if self.use_async_engine is None:
-            if self.multi_turn_scheduler:
+            if self.multi_turn_scheduler or self.use_gym_env:
                 self.use_async_engine = True
-                self.use_gym_engine = False
             else:
                 self.use_async_engine = False
-        if self.use_gym_engine is None:
-            if self.context_manager:
-                self.use_async_engine = False
-                self.use_gym_engine = True
 
                 
 

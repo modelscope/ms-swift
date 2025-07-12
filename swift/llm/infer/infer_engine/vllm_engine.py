@@ -41,7 +41,6 @@ class VllmEngine(InferEngine):
         torch_dtype: Optional[torch.dtype] = None,
         *,
         use_async_engine: bool = False,
-        use_gym_engine: bool = False,
         model_type: Optional[str] = None,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
@@ -72,7 +71,6 @@ class VllmEngine(InferEngine):
             engine_kwargs = {}
         patch_vllm_memory_leak()
         self.use_async_engine = use_async_engine
-        self.use_gym_engine = use_gym_engine
         self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
@@ -116,7 +114,7 @@ class VllmEngine(InferEngine):
 
     def _prepare_engine(self) -> None:
         with patch_auto_tokenizer(self.tokenizer), patch_auto_config(self.config):
-            llm_engine_cls = AsyncLLMEngine if (self.use_async_engine or self.use_gym_engine) else LLMEngine
+            llm_engine_cls = AsyncLLMEngine if self.use_async_engine else LLMEngine
             engine = llm_engine_cls.from_engine_args(self.engine_args)
         self.engine = engine
 
@@ -140,7 +138,7 @@ class VllmEngine(InferEngine):
         **engine_kwargs,
     ) -> None:
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
-        if self.use_async_engine or self.use_gym_engine:
+        if self.use_async_engine:
             engine_cls = AsyncEngineArgs
             engine_kwargs['disable_log_requests'] = True
         else:
@@ -265,12 +263,12 @@ class VllmEngine(InferEngine):
                         mm_data = {key.rstrip('s'): media_data[0]}
             if mm_data:
                 llm_inputs['multi_modal_data'] = mm_data
-            if self.use_async_engine or self.use_gym_engine:
+            if self.use_async_engine:
                 return self.engine.generate(llm_inputs, generation_config, request_id, **kwargs)
             else:
                 return self.engine.add_request(request_id, llm_inputs, generation_config, **kwargs)
         else:
-            if self.use_async_engine or self.use_gym_engine:
+            if self.use_async_engine:
                 return self.engine.generate(None, generation_config, request_id, input_ids, **kwargs)
             else:
                 return self.engine.add_request(request_id, None, generation_config, input_ids, **kwargs)
@@ -416,7 +414,7 @@ class VllmEngine(InferEngine):
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
     ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
-        if self.use_async_engine or self.use_gym_engine:
+        if self.use_async_engine:
             return super().infer(
                 infer_requests,
                 request_config,
@@ -498,8 +496,8 @@ class VllmEngine(InferEngine):
         adapter_request: Optional[AdapterRequest] = None,
         pre_infer_hook=None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
-        if not (self.use_async_engine or self.use_gym_engine):
-            raise ValueError('If you want to use `infer_async`, you need to pass `use_async_engine` or `use_gym_engine`  as True.')
+        if not self.use_async_engine:
+            raise ValueError('If you want to use `infer_async`, you need to pass `use_async_engine` as True.')
         request_config = deepcopy(request_config or RequestConfig())
         if template is None:
             template = self.default_template

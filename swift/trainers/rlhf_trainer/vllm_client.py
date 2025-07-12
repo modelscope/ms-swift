@@ -134,9 +134,10 @@ class VLLMClient:
                 'adapter_request': adapter_request,
             },
         )
+
         
         if response.status_code == 200:
-            if getattr(self, 'use_gym_engine', False):
+            if getattr(self, 'use_gym_env', False):
                 # Parse gym-specific response format
                 results = []
                 for resp in response.json():
@@ -258,11 +259,13 @@ class VLLMClient:
     def get_engine_type(self):
         url = f'{self.base_url}/get_engine_type/'
         response = self.session.post(url)
+        self.use_gym_env = False
         if response.status_code == 200:
-            result = response.json()['engine_type']
-            self.use_async_engine = result == 'AsyncLLMEngine'
-            self.use_gym_engine = result == 'GymVLLMEngine'  # 新增这一行
-            return result
+            result = response.json()
+            engine = result['engine_type']
+            self.use_async_engine = engine == 'AsyncLLMEngine'
+            self.use_gym_env = result.get("gym_env",False)  # 新增这一行
+            return engine
         else:
             raise Exception(f'Request failed: {response.status_code}, {response.text}')
 
