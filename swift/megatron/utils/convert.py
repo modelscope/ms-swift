@@ -11,7 +11,7 @@ from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoin
 from megatron.training.initialize import initialize_megatron
 from megatron.training.utils import get_ltor_masks_and_position_ids
 
-from swift.llm import ExportArguments, HfConfigFactory, get_model_tokenizer, get_template, save_checkpoint
+from swift.llm import ExportArguments, HfConfigFactory, get_model_tokenizer, get_template, save_checkpoint, to_device
 from swift.utils import get_logger, get_n_params_grads
 from ..argument import MegatronArguments
 from ..model import get_megatron_model_meta
@@ -87,21 +87,36 @@ def test_convert_precision(hf_model, mg_model, processor, torch_dtype=torch.floa
     _test_params_sum(mg_model)
 
     template = get_template(hf_model.model_meta.template, processor)
-    input_ids = template.encode({'messages': [{'role': 'user', 'content': 'who are you?'}]})['input_ids']
-    input_ids = torch.tensor(input_ids)[None].to('cuda')
+    template.set_mode('train')
+    inputs = template.encode({
+        'messages': [
+            {
+                'role': 'user',
+                'content': 'Introduction to ms-swift.'
+            },
+            {
+                'role':
+                'assistant',
+                'content':
+                'ms-swift is an official framework provided by the ModelScope community for fine-tuning and deploying large language models and multi-modal large models.'
+            },
+        ]
+    })
+    inputs = to_device(template.data_collator([inputs]), 'cuda')
 
     HfConfigFactory.set_model_config_attr(hf_model, 'use_cache', False)
     share_embedding = mg_model.share_embeddings_and_output_weights
     hf_modules = _find_modules(hf_model)
     with torch.inference_mode(), _model_cpu_forward_context(hf_modules, torch_dtype, share_embedding=share_embedding):
-        hf_logits = hf_model(input_ids).logits
+        hf_logits = hf_model(**inputs).logits
     hf_model = hf_model.to('cpu')
 
+    input_ids = inputs['input_ids']
     attention_mask, _, position_ids = get_ltor_masks_and_position_ids(input_ids, -100, True, True, True)
     packed_seq_params = None
     mg_torch_dtype = torch_dtype
     # thd
-    # from ..train.utils import get_packed_seq_params
+    # from ..trainers.utils import get_packed_seq_params
     # mg_torch_dtype = None
     # packed_seq_params = get_packed_seq_params(position_ids)
     # attention_mask = None
@@ -115,8 +130,10 @@ def test_convert_precision(hf_model, mg_model, processor, torch_dtype=torch.floa
             position_ids=position_ids,
             packed_seq_params=packed_seq_params)
 
-    mean_diff = (mg_logits - hf_logits).abs().mean().item()
+    token_mean_diff = (mg_logits - hf_logits).abs().mean(dim=-1)
+    mean_diff = token_mean_diff.mean().item()
     max_diff = (mg_logits - hf_logits).abs().max().item()
+    print(f'token_mean_diff: {token_mean_diff}')
     print(f'mean_diff: {mean_diff}, max_diff: {max_diff} (Please check that mean_diff is less than 0.1).')
     hf_tokens = hf_logits.argmax(-1)
     mg_tokens = mg_logits.argmax(-1)
