@@ -372,14 +372,14 @@ class Template(ProcessorMixin):
             assert len(_inputs.audios) == audio_size
             inputs.audios = inputs.audios[audio_size:]
 
-        anchor = deepcopy(inputs)
-        anchor.messages[-1]['content'] = ''
-        anchor.rejected_response = []
-        split_multi_medias(anchor)
-        anchor_encoded = self._encode_truncated(anchor)
-        for key in anchor_encoded:
-            _encoded[f'anchor_{key}'] = anchor_encoded[key]
         if not inference:
+            anchor = deepcopy(inputs)
+            anchor.messages[-1]['content'] = ''
+            anchor.rejected_response = []
+            split_multi_medias(anchor)
+            anchor_encoded = self._encode_truncated(anchor)
+            for key in anchor_encoded:
+                _encoded[f'anchor_{key}'] = anchor_encoded[key]
             positive = deepcopy(inputs)
             positive.messages[-2]['content'] = positive.messages[-1]['content']
             positive.messages[-1]['content'] = ''
@@ -404,6 +404,13 @@ class Template(ProcessorMixin):
                 labels.append(0.0)
 
             _encoded['labels'] = labels
+        else:
+            anchor = deepcopy(inputs)
+            anchor.messages[-1]['content'] = ''
+            anchor.rejected_response = []
+            split_multi_medias(anchor)
+            _encoded = self._encode_truncated(anchor)
+            _encoded.pop('labels', None)
         return _encoded
 
     def _reranker_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -1445,22 +1452,25 @@ class Template(ProcessorMixin):
         labels = []
         new_batch = []
         for b in batch:
-            keys = [key for key in b.keys() if 'negative' in key]
-            max_neg = None
-            for key in keys:
-                value_list = b[key]
-                suffix = key[len('negative_'):]
-                max_neg = len(value_list)
-                for i, value in enumerate(value_list):
-                    b[f'negative{i}_{suffix}'] = value
-                b.pop(key)
+            if 'input_ids' in b:
+                new_batch += [b]
+            else:
+                keys = [key for key in b.keys() if 'negative' in key]
+                max_neg = None
+                for key in keys:
+                    value_list = b[key]
+                    suffix = key[len('negative_'):]
+                    max_neg = len(value_list)
+                    for i, value in enumerate(value_list):
+                        b[f'negative{i}_{suffix}'] = value
+                    b.pop(key)
 
-            indexes = ['anchor_', 'positive_']
-            if max_neg is not None:
-                for i in range(0, max_neg):
-                    indexes.append(f'negative{i}_')
-            for prefix in indexes:
-                new_batch += self._fetch_inputs_startswith([b], prefix)
+                indexes = ['anchor_', 'positive_']
+                if max_neg is not None:
+                    for i in range(0, max_neg):
+                        indexes.append(f'negative{i}_')
+                for prefix in indexes:
+                    new_batch += self._fetch_inputs_startswith([b], prefix) 
             labels.extend(b.get('labels', []))
         res = self._data_collator(new_batch, padding_to=padding_to)
         if labels:

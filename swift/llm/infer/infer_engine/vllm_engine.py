@@ -16,7 +16,7 @@ from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
 from swift.utils import get_dist_setting, is_dist
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
+                        ChatCompletionStreamResponse, EmbeddingResponse, EmbeddingResponseData, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .utils import AdapterRequest, InferStreamer, patch_npu_vllm, patch_vllm_memory_leak
@@ -66,10 +66,12 @@ class VllmEngine(InferEngine):
         quantization: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
+        task_type: Optional[str] = None,
     ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
         patch_vllm_memory_leak()
+        self.task_type = task_type
         self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -100,6 +102,7 @@ class VllmEngine(InferEngine):
             distributed_executor_backend=distributed_executor_backend,
             enable_sleep_mode=enable_sleep_mode,
             quantization=quantization,
+            task=task_type,
             **engine_kwargs,
         )
         context = nullcontext()
@@ -135,6 +138,7 @@ class VllmEngine(InferEngine):
         enable_prefix_caching: bool = False,
         distributed_executor_backend: Optional[str] = None,
         enable_sleep_mode: bool = False,
+        task: Optional[str] = None,
         **engine_kwargs,
     ) -> None:
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
@@ -158,6 +162,8 @@ class VllmEngine(InferEngine):
                 'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
         if 'enable_sleep_mode' in parameters:
             engine_kwargs['enable_sleep_mode'] = enable_sleep_mode
+        if task is not None:
+            engine_kwargs['task'] = task
 
         model_info = self.model_info
         if self.config.architectures is None:
@@ -263,7 +269,10 @@ class VllmEngine(InferEngine):
                         mm_data = {key.rstrip('s'): media_data[0]}
             if mm_data:
                 llm_inputs['multi_modal_data'] = mm_data
-            if self.use_async_engine:
+            if self.task_type == 'embed':
+                from vllm.pooling_params import PoolingParams
+                return self.engine.encode(llm_inputs, PoolingParams(), request_id)
+            elif self.use_async_engine:
                 return self.engine.generate(llm_inputs, generation_config, request_id, **kwargs)
             else:
                 return self.engine.add_request(request_id, llm_inputs, generation_config, **kwargs)
@@ -366,6 +375,13 @@ class VllmEngine(InferEngine):
             choices.append(choice)
         return ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
+    def _create_embedding_response(self, result, template, generation_config,
+                                         request_id) -> ChatCompletionResponse:
+        assert result is not None
+        embedding = result.outputs.data.cpu().numpy().tolist()
+        usage_info = self._get_usage_info(len(result.prompt_token_ids), 0)
+        return EmbeddingResponse(model=self.model_name, data=[EmbeddingResponseData(embedding=embedding)], usage=usage_info, id=request_id)
+
     def _create_chat_completion_response(self, result, template, generation_config,
                                          request_id) -> ChatCompletionResponse:
         assert result is not None
@@ -397,7 +413,10 @@ class VllmEngine(InferEngine):
         result = None
         async for result in result_generator:
             pass
-        return self._create_chat_completion_response(result, template, generation_config, request_id)
+        if self.task_type == 'embed':
+            return self._create_embedding_response(result, template, generation_config, request_id)
+        else:
+            return self._create_chat_completion_response(result, template, generation_config, request_id)
 
     def _batch_infer_stream(self, *args, **kwargs):
         if hasattr(self.engine, 'engine'):
@@ -503,6 +522,8 @@ class VllmEngine(InferEngine):
             template = self.default_template
 
         template.set_mode('vllm')
+        if self.task_type == 'embed':
+            template.set_mode('embedding')
         loop = asyncio.get_running_loop()
         with torch.inference_mode():
             inputs = await loop.run_in_executor(None, template.encode, infer_request)
