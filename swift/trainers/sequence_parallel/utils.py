@@ -500,7 +500,7 @@ def _get_per_token_logps_grpo(self, model, inputs, sp_instance):
     _, _, labels, _, _, _ = sp_instance.pad_and_split_inputs(None, None, input_ids.clone(), None, None, None)
 
     shape1 = logits.shape[1]
-    labels = torch.where(labels == -100, self.tokenizer.pad_token_id, labels)
+    labels = torch.where(labels == -100, self.processing_class.pad_token_id, labels)
     # calculate padding size for example, 9 to 10 if sp=2
     padding_size = shape1 * sp_instance.sp_world_size - origin_length
     # left shift one token to leave the last token
