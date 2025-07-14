@@ -237,6 +237,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'model_revision',
             'torch_dtype',
             'attn_impl',
+            'new_special_tokens',
             'num_labels',
             'problem_type',
             # quant_args
