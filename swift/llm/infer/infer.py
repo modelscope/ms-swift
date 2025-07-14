@@ -93,6 +93,18 @@ class SwiftInfer(SwiftPipeline):
             logger.info(f'The inference results have been saved to result_path: `{args.result_path}`.')
         return result
 
+    @staticmethod
+    def parse_data_from_response(response):
+        if hasattr(response, 'choices'):
+            return response.choices[0].message.content
+        elif hasattr(response, 'data'):
+            emb = response.data[0].embedding
+            shape = len(emb)
+            sample = str(emb)
+            if len(emb) > 6:
+                sample = str(emb[:3])[:-1] + ', ..., ' + str(emb[-3:])[1:]
+            return f'Embedding(shape: [1, {shape}]): {sample}'
+
     def infer_single(self, infer_request: Union[InferRequest, Dict[str, Any]], request_config: RequestConfig) -> str:
         res_or_gen = self.infer([infer_request],
                                 request_config,
@@ -107,7 +119,7 @@ class SwiftInfer(SwiftPipeline):
                 response += delta
             print()
         else:
-            response = res_or_gen.choices[0].message.content
+            response = self.parse_data_from_response(res_or_gen)
             print(response)
         print('-' * 50)
         return response

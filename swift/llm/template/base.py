@@ -353,6 +353,9 @@ class Template(ProcessorMixin):
     def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         _encoded = {}
         labels = []
+        inference = len(inputs.messages) == 1
+        if inference:
+            inputs.messages.append({'role': 'assistant', 'content': ''})
 
         def split_multi_medias(_inputs):
             _content = _inputs.messages[-2]['content']
@@ -369,37 +372,53 @@ class Template(ProcessorMixin):
             assert len(_inputs.audios) == audio_size
             inputs.audios = inputs.audios[audio_size:]
 
-        anchor = deepcopy(inputs)
-        anchor.messages[-1]['content'] = ''
-        anchor.rejected_response = []
-        split_multi_medias(anchor)
-        anchor_encoded = self._encode_truncated(anchor)
-        for key in anchor_encoded:
-            _encoded[f'anchor_{key}'] = anchor_encoded[key]
-        positive = deepcopy(inputs)
-        positive.messages[-2]['content'] = positive.messages[-1]['content']
-        positive.messages[-1]['content'] = ''
-        positive.rejected_response = []
-        split_multi_medias(positive)
-        positive_encoded = self._encode_truncated(positive)
-        for key in positive_encoded:
-            _encoded[f'positive_{key}'] = positive_encoded[key]
-            _encoded[f'negative_{key}'] = []
-        labels.append(float(inputs.label) if inputs.label is not None else 1.0)
+        if not inference:
+            anchor = deepcopy(inputs)
+            anchor.messages[-1]['content'] = ''
+            anchor.rejected_response = []
+            split_multi_medias(anchor)
+            anchor_encoded = self._encode_truncated(anchor)
+            for key in anchor_encoded:
+                _encoded[f'anchor_{key}'] = anchor_encoded[key]
+            positive = deepcopy(inputs)
+            positive.messages[-2]['content'] = positive.messages[-1]['content']
+            positive.messages[-1]['content'] = ''
+            positive.rejected_response = []
+            split_multi_medias(positive)
+            positive_encoded = self._encode_truncated(positive)
+            for key in positive_encoded:
+                _encoded[f'positive_{key}'] = positive_encoded[key]
+                _encoded[f'negative_{key}'] = []
+            labels.append(float(inputs.label) if inputs.label is not None else 1.0)
 
-        rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
-        for i in range(rejected_len):
-            negative = deepcopy(inputs)
-            negative.messages[-2]['content'] = negative.rejected_response[i]
-            negative.messages[-1]['content'] = ''
-            negative.rejected_response = []
-            split_multi_medias(negative)
-            negative_encoded = self._encode_truncated(negative)
-            for key in negative_encoded:
-                _encoded[f'negative_{key}'].append(negative_encoded[key])
-            labels.append(0.0)
+            rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
+            for i in range(rejected_len):
+                negative = deepcopy(inputs)
+                negative.messages[-2]['content'] = negative.rejected_response[i]
+                negative.messages[-1]['content'] = ''
+                negative.rejected_response = []
+                split_multi_medias(negative)
+                negative_encoded = self._encode_truncated(negative)
+                for key in negative_encoded:
+                    _encoded[f'negative_{key}'].append(negative_encoded[key])
+                labels.append(0.0)
 
-        _encoded['labels'] = labels
+            _encoded['labels'] = labels
+        else:
+            anchor = deepcopy(inputs)
+            anchor.messages[-1]['content'] = ''
+            anchor.rejected_response = []
+            split_multi_medias(anchor)
+            infer_backend = getattr(self, 'infer_backend', 'pt')
+            mode = self.mode
+            # infer_backend comes from vllm-engine, sglang-engine, etc.
+            # TODO Refactor me
+            if infer_backend in ('vllm', 'sglang'):
+                self.mode = infer_backend
+            _encoded = self._encode_truncated(anchor)
+            if infer_backend in ('vllm', 'sglang'):
+                self.mode = mode
+            _encoded.pop('labels', None)
         return _encoded
 
     def _reranker_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -1082,7 +1101,10 @@ class Template(ProcessorMixin):
             elif response is not None:
                 # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
-                if self.is_training and not sep_token:
+                # self.is_training needed because we may want to continue generation from
+                # the current response
+                # TODO Refactor me
+                if self.is_training and not sep_token or (getattr(self, 'task_type', None) == 'embedding'):
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
             elif template_meta.response_prefix:
@@ -1110,7 +1132,7 @@ class Template(ProcessorMixin):
         return res_context_list, loss_scale_list, answer_len
 
     def _encode_truncated(self, inputs):
-        if self.mode in {'vllm', 'lmdeploy'}:
+        if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
             encoded = Template._encode(self, inputs)
             for key in ['images', 'audios', 'videos']:
                 encoded[key] = getattr(inputs, key)
@@ -1288,7 +1310,7 @@ class Template(ProcessorMixin):
 
     @property
     def is_training(self):
-        return self.mode not in {'vllm', 'lmdeploy', 'pt'}
+        return self.mode not in {'vllm', 'lmdeploy', 'sglang', 'pt'}
 
     def set_mode(
         self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto', 'gkd', 'embedding', 'reranker',
@@ -1442,23 +1464,26 @@ class Template(ProcessorMixin):
         labels = []
         new_batch = []
         for b in batch:
-            keys = [key for key in b.keys() if 'negative' in key]
-            max_neg = None
-            for key in keys:
-                value_list = b[key]
-                suffix = key[len('negative_'):]
-                max_neg = len(value_list)
-                for i, value in enumerate(value_list):
-                    b[f'negative{i}_{suffix}'] = value
-                b.pop(key)
+            if 'input_ids' in b:
+                new_batch += [b]
+            else:
+                keys = [key for key in b.keys() if 'negative' in key]
+                max_neg = None
+                for key in keys:
+                    value_list = b[key]
+                    suffix = key[len('negative_'):]
+                    max_neg = len(value_list)
+                    for i, value in enumerate(value_list):
+                        b[f'negative{i}_{suffix}'] = value
+                    b.pop(key)
 
-            indexes = ['anchor_', 'positive_']
-            if max_neg is not None:
-                for i in range(0, max_neg):
-                    indexes.append(f'negative{i}_')
-            for prefix in indexes:
-                new_batch += self._fetch_inputs_startswith([b], prefix)
-            labels.extend(b.get('labels', None))
+                indexes = ['anchor_', 'positive_']
+                if max_neg is not None:
+                    for i in range(0, max_neg):
+                        indexes.append(f'negative{i}_')
+                for prefix in indexes:
+                    new_batch += self._fetch_inputs_startswith([b], prefix)
+            labels.extend(b.get('labels', []))
         res = self._data_collator(new_batch, padding_to=padding_to)
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.float32)

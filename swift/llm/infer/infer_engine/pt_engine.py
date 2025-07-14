@@ -19,7 +19,8 @@ from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer,
 from swift.plugin import Metric
 from swift.tuners import Swift
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
+                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
+                        EmbeddingResponseData, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 from .utils import AdapterRequest, InferStreamer, LogitsStreamer, TokensIteratorStreamer, prepare_generation_config
 
@@ -325,11 +326,19 @@ class PtEngine(InferEngine):
             call_kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
         inputs.pop('labels', None)
-        logits = self.model(**inputs, **call_kwargs).logits
+        output = self.model(**inputs, **call_kwargs)
+        if hasattr(output, 'logits'):
+            logits = output.logits
+        elif 'last_hidden_state' in output:
+            # embeddings
+            logits = output['last_hidden_state']
         if template.mode == 'seq_cls':
             preds, logprobs = template.decode_seq_cls(logits, top_logprobs)
         elif template.mode == 'prm':
             preds = template.decode_prm(inputs['input_ids'], logits)
+            logprobs = [None] * len(preds)
+        elif template.mode == 'embedding':
+            preds = logits
             logprobs = [None] * len(preds)
         else:
             raise ValueError(f'Unsupported mode: {template.mode}')
@@ -337,14 +346,22 @@ class PtEngine(InferEngine):
         res = []
         for i, pred in enumerate(preds):
             usage_info = self._get_usage_info(num_prompt_tokens, 1)
-            choices = [
-                ChatCompletionResponseChoice(
-                    index=0,
-                    message=ChatMessage(role='assistant', content=pred, tool_calls=None),
-                    finish_reason='stop',
-                    logprobs=logprobs[i])
-            ]
-            res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
+            if template.mode != 'embedding':
+                choices = [
+                    ChatCompletionResponseChoice(
+                        index=0,
+                        message=ChatMessage(role='assistant', content=pred, tool_calls=None),
+                        finish_reason='stop',
+                        logprobs=logprobs[i])
+                ]
+                res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
+            else:
+                res.append(
+                    EmbeddingResponse(
+                        model=self.model_name,
+                        usage=usage_info,
+                        data=[EmbeddingResponseData(embedding=pred.to(torch.float32).cpu().numpy().tolist())]))
+
         return res
 
     def _infer_full(self,
@@ -502,7 +519,8 @@ class PtEngine(InferEngine):
             return _gen_wrapper()
         else:
             if len(kwargs) > 0:
-                infer_func = self._infer_forward if template.mode in ('seq_cls', 'prm') else self._infer_full
+                infer_func = self._infer_forward if template.mode in ('seq_cls', 'prm',
+                                                                      'embedding') else self._infer_full
                 res = infer_func(**kwargs)
             else:
                 res = []
