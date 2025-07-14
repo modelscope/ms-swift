@@ -231,17 +231,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
         self.num_completions_to_print = args.num_completions_to_print
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
-        # maxlen is set to the total number of forward passes per step. This value of `maxlen` ensures we log only the
-        # final optimization step.
-        maxlen = self.accelerator.num_processes * args.per_device_train_batch_size * args.steps_per_generation
         self._textual_logs = {
-            'prompt': deque(maxlen=maxlen),
-            'completion': deque(maxlen=maxlen),
-            'rewards': defaultdict(lambda: deque(maxlen=maxlen)),
+            'prompt': deque(maxlen=args.generation_batch_size),
+            'completion': deque(maxlen=args.generation_batch_size),
+            'rewards': defaultdict(lambda: deque(maxlen=args.generation_batch_size)),
         }
         self.compute_entropy = self.args.log_entropy or self.top_entropy_quantile < 1.0
         if self.args.log_entropy:
-            self._textual_logs.update({'entropy': deque(maxlen=maxlen)})
+            self._textual_logs.update({'entropy': deque(maxlen=args.generation_batch_size)})
         # Ensure each process receives a unique seed to prevent duplicate completions when generating with
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
