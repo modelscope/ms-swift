@@ -227,7 +227,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     num_proc=args.dataset_num_proc,
                     strict=args.strict,
                     load_from_cache_file=args.load_from_cache_file)
-                if val_dataset is not None:
+                if val_dataset is not None and not predict_with_generate:
                     val_dataset = packing_dataset_cls(
                         self.template,
                         val_dataset,

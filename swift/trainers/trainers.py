@@ -216,9 +216,15 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
     def _patch_predict_with_generate(self):
         origin_data_collator = self.data_collator
         self.data_collator = self._predict_data_collator
+        _packing = self.template._packing
+        padding_free = self.template.padding_free
+        self.template._packing = False
+        self.template.padding_free = False
         try:
             yield
         finally:
+            self.template._packing = _packing
+            self.template.padding_free = padding_free
             self.data_collator = origin_data_collator
 
     def evaluate(self, *args, **kwargs):
