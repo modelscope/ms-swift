@@ -28,5 +28,4 @@ swift sft \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
-    --deepspeed zero2 \
-    --use_liger_kernel true
+    --deepspeed zero2
