@@ -3,7 +3,7 @@ import math
 import os
 from contextlib import contextmanager
 from functools import partial
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 
 import datasets
 import numpy as np
@@ -494,11 +494,12 @@ def padding_free_context_grpo(self, model: torch.nn.Module, sp_instance):
 
 
 @profiling_decorator
-def _get_per_token_logps_and_entropies_grpo(self: 'GRPOTrainer',
-                                            model: torch.nn.Module,
-                                            inputs: 'InputsType',
-                                            sp_instance: SequenceParallel,
-                                            compute_entropy: bool = False):
+def _get_per_token_logps_and_entropies_grpo(
+        self: 'GRPOTrainer',
+        model: torch.nn.Module,
+        inputs: 'InputsType',
+        sp_instance: SequenceParallel,
+        compute_entropy: bool = False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     """Get per token logps for GRPO sequence parallel training"""
     try:
         from trl.trainer.utils import selective_log_softmax

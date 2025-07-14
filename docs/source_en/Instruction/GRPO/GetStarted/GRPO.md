@@ -223,10 +223,11 @@ To configure the external vLLM server during training, use the following paramet
 - clip_ratio/high_max: The maximum proportion of tokens clipped by the upper CLIP bound across different sentences.
 > Note: If `overlong_filter` is enabled, the kl and clip_ratio metrics will exclude overlength samples.
 
-If the `log_entropy` parameter is set, additional entropy-related metrics will be recorded, including:
-- entropy/mean: The average entropy across different sentences.
-- entropy/max: The maximum entropy across different sentences.
-- entropy/min: The minimum entropy across different sentences.
+If the `log_entropy` parameter is set, additional entropy-related metrics will be logged, including:
+- entropy/mean: the average entropy across different sentences
+- entropy/max: the maximum entropy among different sentences
+- entropy/min: the minimum entropy among different sentences
+> Note: Here, sentence entropy refers to the mean entropy of tokens in each completion.
 
 If `top_entropy_quantile` is set to a value smaller than 1.0, the entropy threshold value will also be recorded:
 - entropy/threshold: Tokens with entropy below this value will be excluded from the loss calculation.

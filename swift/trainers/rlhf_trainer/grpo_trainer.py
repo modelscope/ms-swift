@@ -1316,7 +1316,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _get_per_token_logps_and_entropies(self,
                                            model,
                                            inputs,
-                                           compute_entropy=False) -> dict[str, Optional[torch.Tensor]]:
+                                           compute_entropy=False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
         unwrapped_model = self.accelerator.unwrap_model(model)

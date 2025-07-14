@@ -228,8 +228,10 @@ swift rollout \
 
 如果设置了`log_entropy`参数，则会额外记录entropy相关指标，包括
 - entropy/mean: 不同句子中的 entropy 均值
-- entropy/max: 不同句子中的 entropy 最小值
-- entropy/min: 不同句子中的 entropy 最大值
+- entropy/max: 不同句子中的 entropy 最大值
+- entropy/min: 不同句子中的 entropy 最小值
+> 注意这里的 句子 entropy 指 completion中的token entropy 均值
+
 
 如果设置了`top_entropy_quantile`参数<1.0, 则会记录entropy threshold的值
 - entropy/threshold: 分位点处的 entropy 值，小于该值的 token 将不会被计算 loss
