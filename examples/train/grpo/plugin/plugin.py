@@ -491,17 +491,17 @@ class ToolUseFormatReward(ORM):
         for response, ans in zip(responses, solution):
             reward = min_possible_reward
             if '<response>' in ans and '<tool_call>' not in ans:
-                pattern = r'^<think>.*?</think>\n<response>.*?</response>$'
+                pattern = r'^<think>.*?</think>\s*<response>.*?</response>$'
                 if re.search(pattern, response,
                              re.DOTALL) and response.count('<response>') == 1 and response.count('</response>') == 1:
                     reward = max_possible_reward
             elif '<response>' not in ans and '<tool_call>' in ans:
-                pattern = r'^<think>.*?</think>\n<tool_call>\n.*?\n</tool_call>$'
+                pattern = r'^<think>.*?</think>\s*<tool_call>.*?</tool_call>$'
                 if re.search(pattern, response,
                              re.DOTALL) and response.count('<tool_call>') == 1 and response.count('</tool_call>') == 1:
                     reward = max_possible_reward
             elif '<response>' in ans and '<tool_call>' in ans:
-                pattern = r'^<think>.*?</think>\n<tool_call>\n.*?\n</tool_call>\n<response>.*?</response>$'
+                pattern = r'^<think>.*?</think>\s*<tool_call>.*?</tool_call>\s*<response>.*?</response>$'
                 if (re.search(pattern, response, re.DOTALL) and response.count('<tool_call>') == 1
                         and response.count('</tool_call>') == 1 and response.count('<response>') == 1
                         and response.count('</response>') == 1):
