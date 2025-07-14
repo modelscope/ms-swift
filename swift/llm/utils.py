@@ -310,7 +310,9 @@ def update_generation_config_eos_token(generation_config, template):
         return
     stop_words = template.template_meta.stop_words
     eos_token_id = generation_config.eos_token_id
-    if isinstance(eos_token_id, int):
+    if eos_token_id is None:
+        eos_token_id = []
+    elif isinstance(eos_token_id, int):
         eos_token_id = [eos_token_id]
     modified = False
     for stop_word in stop_words:
