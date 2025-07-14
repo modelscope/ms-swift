@@ -5,7 +5,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
-    --dataset 'test_new_special_tokens/add.jsonl' \
+    --dataset 'swift/new_special_tokens' \
     --split_dataset_ratio 0.01 \
     --new_special_tokens examples/train/new_special_tokens/tokens.txt \
     --torch_dtype bfloat16 \
