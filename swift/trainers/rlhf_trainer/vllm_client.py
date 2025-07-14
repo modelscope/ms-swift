@@ -264,7 +264,7 @@ class VLLMClient:
             result = response.json()
             engine = result['engine_type']
             self.use_async_engine = engine == 'AsyncLLMEngine'
-            self.use_gym_env = result.get('gym_env', False)  # 新增这一行
+            self.use_gym_env = result.get('gym_env', False)
             return engine
         else:
             raise Exception(f'Request failed: {response.status_code}, {response.text}')

@@ -53,14 +53,14 @@ class Env(ABC):
 
 def count_qwen_tokens(messages: List[Dict[str, Any]], max_tokens: int = 2048) -> Tuple[int, bool]:
     """
-    计算Qwen消息的token数量并检查是否超过16k限制
+    Calculate token count for Qwen messages and check if it exceeds the 16k limit
 
     Args:
-        messages: OpenAI格式的消息列表
-        max_tokens: 最大token限制，默认2k
+        messages: List of messages in OpenAI format
+        max_tokens: Maximum token limit, default 2k
 
     Returns:
-        Tuple[int, bool]: (token数量, 是否在限制内)
+        Tuple[int, bool]: (token count, whether within limit)
     """
     try:
         from modelscope import AutoTokenizer
@@ -72,7 +72,7 @@ def count_qwen_tokens(messages: List[Dict[str, Any]], max_tokens: int = 2048) ->
         return token_count, token_count >= max_tokens
 
     except Exception as e:
-        print(f'Token计算失败: {e}')
+        print(f'Token calculation failed: {e}')
         return 0, False
 
 
@@ -105,12 +105,12 @@ class SimpleMathEnv(Env):
         acc = self.acc_func([action[-1]['content']], [self.solution])[0]
         if count_qwen_tokens(action)[1]:
             done = True
-            info['stop_reason'] = '超过最大长度'
+            info['stop_reason'] = 'Exceeded maximum length'
 
         if acc == 1:
             done = True
             reward = 1.0
-            info['stop_reason'] = '正确'
+            info['stop_reason'] = 'Correct'
         info['math_reward'] = reward
         return next_obs, reward, done, info
 

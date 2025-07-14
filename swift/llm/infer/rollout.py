@@ -23,7 +23,7 @@ from trl.scripts.vllm_serve import WeightSyncWorkerExtension
 from swift.llm import InferArguments, RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.utils import get_device, get_logger
-from .infer_engine import GRPOVllmEngine, GymVllmEngine, InferClient
+from .infer_engine import GRPOVllmEngine, InferClient
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
 
 try:
@@ -214,8 +214,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         if args.use_async_engine and args.data_parallel_size > 1:
             engine_kwargs['data_parallel_size'] = args.data_parallel_size
         kwargs['engine_kwargs'] = engine_kwargs
-        if args.use_gym_env:
-            return GymVllmEngine(**kwargs)
+
         return GRPOVllmEngine(**kwargs)
 
     async def health(self):

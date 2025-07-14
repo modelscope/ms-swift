@@ -148,18 +148,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.reward_funcs.append(rm)
                 self.reward_func_names.append(rm.config._name_or_path.split('/')[-1])
 
-        # if not self.reward_funcs and self.use_gym_env:
-        #     raise ValueError('You must specify reward_funcs or reward_model')
-
-        # Reward weights
-        if args.reward_weights is not None:
-            if len(args.reward_weights) != len(reward_funcs):
-                raise ValueError(f'Number of reward weights ({len(args.reward_weights)}) must match number of reward '
-                                 f'functions ({len(reward_funcs)})')
-            self.reward_weights = torch.tensor(args.reward_weights, dtype=torch.float32)
-        else:
-            self.reward_weights = torch.ones(len(reward_funcs), dtype=torch.float32)
-
         self.multi_turn_scheduler = None
         if self.args.multi_turn_scheduler:
             if isinstance(self.args.multi_turn_scheduler, str):
@@ -236,7 +224,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if is_peft_model(self.model):
             self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.use_fast_infer = self.use_vllm  # whether to use the PT backend
-        self.vllm_use_async_engine = False
         # gym engine
         self.vllm_use_async_engine = False
         self.enable_offload = False
@@ -256,6 +243,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
                 if self.use_gym_env:
                     self._textual_logs['trajactory_info'] = deque(maxlen=maxlen)
+                    self.reward_func_names = ['gym_reward']
 
             elif self.vllm_mode == 'colocate':
                 if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:
@@ -282,6 +270,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             from swift.llm import PtEngine
             self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
 
+        if not self.reward_funcs and not self.use_gym_env:
+            raise ValueError('You must specify reward_funcs or reward_model')
+
+        # Reward weights
+        if args.reward_weights is not None:
+            if len(args.reward_weights) != len(reward_funcs):
+                raise ValueError(f'Number of reward weights ({len(args.reward_weights)}) must match number of reward '
+                                 f'functions ({len(reward_funcs)})')
+            self.reward_weights = torch.tensor(args.reward_weights, dtype=torch.float32)
+        else:
+            self.reward_weights = torch.ones(len(reward_funcs), dtype=torch.float32)
         self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
         self.request_config = RequestConfig(
             n=1,
@@ -895,6 +894,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards)
         # Log metrics
         messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
+        trajactory_infos = None
         if self.use_gym_env:
             trajactory_infos = [inputs[i]['trajectory_info'] for i in range(len(inputs))]
         self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func,
@@ -916,13 +916,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         device = self.accelerator.device
         completions = [example['messages'][-1]['content'] for example in inputs]
-        # 如果使用gym环境，直接从inputs中提取奖励
+        # If using gym environment, extract rewards directly from inputs
         if self.use_gym_env:
             total_rewards = torch.tensor([inp['total_reward'] for inp in inputs], dtype=torch.float32, device=device)
-            # 对于gym环境，只有一个总奖励，所以rewards_per_func就是total_rewards的reshape
+            # For gym environment, there's only one total reward, so rewards_per_func is just total_rewards reshaped
             rewards_per_func = total_rewards.unsqueeze(1)  # shape: [num_examples, 1]
             total_rewards_per_func = gather(rewards_per_func)
-            total_rewards_gathered = total_rewards_per_func.squeeze(1)  # 从gathered数据中恢复
+            total_rewards_gathered = total_rewards_per_func.squeeze(1)  # Recover from gathered data
             return total_rewards_per_func, total_rewards_gathered, completions
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
 
@@ -1092,20 +1092,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self._metrics[mode]['completions/clipped_ratio'].append(clipped_completions_ratio)
 
-        # Calculate mean reward per function, but only for samples where the function was applied (non-NaN values)
-        if self.use_gym_env:
-            # 对于gym环境，使用固定的奖励函数名
-            mean_rewards = torch.nanmean(rewards_per_func[:, 0]).item()
-            self._metrics[mode]['rewards/gym_reward/mean'].append(mean_rewards)
-            std_rewards = nanstd(rewards_per_func[:, 0]).item()
-            self._metrics[mode]['rewards/gym_reward/std'].append(std_rewards)
-        else:
-            # 原有的多奖励函数逻辑
-            for i, reward_func_name in enumerate(self.reward_func_names):
-                mean_rewards = torch.nanmean(rewards_per_func[:, i]).item()
-                self._metrics[mode][f'rewards/{reward_func_name}/mean'].append(mean_rewards)
-                std_rewards = nanstd(rewards_per_func[:, i]).item()
-                self._metrics[mode][f'rewards/{reward_func_name}/std'].append(std_rewards)
+        for i, reward_func_name in enumerate(self.reward_func_names):
+            mean_rewards = torch.nanmean(rewards_per_func[:, i]).item()
+            self._metrics[mode][f'rewards/{reward_func_name}/mean'].append(mean_rewards)
+            std_rewards = nanstd(rewards_per_func[:, i]).item()
+            self._metrics[mode][f'rewards/{reward_func_name}/std'].append(std_rewards)
 
         # Log overall reward stats
         grouped_rewards = rewards.view(-1, self.num_generations)
@@ -1116,13 +1107,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._textual_logs['completion'].extend(gather_object(completions))
 
         if self.use_gym_env:
-            # 对于gym环境，记录gym_reward
-            self._textual_logs['rewards']['gym_reward'].extend(rewards_per_func[:, 0].tolist())
             self._textual_logs['trajactory_info'].extend(gather_object(trajactory_infos))
-        else:
-            # 原有的多奖励函数逻辑
-            for i, name in enumerate(self.reward_func_names):
-                self._textual_logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
+
+        for i, name in enumerate(self.reward_func_names):
+            self._textual_logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
 
     def _apply_chat_template_to_messages_list(self, messages_list: InputsType):
         prompts_text = []
