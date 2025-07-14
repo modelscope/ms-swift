@@ -93,3 +93,7 @@ class RolloutArguments(DeployArguments):
                 self.use_async_engine = True
             else:
                 self.use_async_engine = False
+
+    def _init_eval_human(self):
+        # to skip DDP check in InferArguments._init_ddp
+        self.eval_human = True
