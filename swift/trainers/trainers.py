@@ -237,6 +237,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         **gen_kwargs,
     ) -> Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
         if not self.args.predict_with_generate or prediction_loss_only:
+            inputs['_position_ids'] = inputs.get('position_ids')
             with self.template.forward_context(self.model, inputs):
                 return super().prediction_step(
                     model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys)
@@ -277,15 +278,19 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 compute_loss_func = get_loss_func('loss_scale')
 
         sample_channels = inputs.pop('channel', None)
-        if sample_channels is not None and self.args.channels is not None:
+        position_ids = inputs.pop('_position_ids', None)
+        if self.args.channels is not None:
+            assert sample_channels is not None, f'sample_channels: {sample_channels}'
             state = self.state
             setattr(state, 'local_step', getattr(state, 'local_step', 0))
             setattr(state, 'ch_loss_steps', getattr(state, 'ch_loss_steps', {}))
 
             loss_kwargs['sample_channels'] = sample_channels
             loss_kwargs['trainer'] = self
-            if inputs.get('position_ids') is not None:
-                loss_kwargs['position_ids'] = inputs['position_ids']
+            if position_ids is None:
+                position_ids = inputs.get('position_ids')
+            if position_ids is not None:
+                loss_kwargs['position_ids'] = position_ids
 
         use_logits_to_keep = self.get_use_logits_to_keep('labels' in inputs and self.label_smoother is None
                                                          and compute_loss_func is None)
@@ -352,5 +357,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         return (loss, outputs) if return_outputs else loss
 
     def training_step(self, model, inputs, *args, **kwargs):
+        inputs['_position_ids'] = inputs.get('position_ids')
         with self.template.forward_context(self.model, inputs):
             return super().training_step(model, inputs, *args, **kwargs)
