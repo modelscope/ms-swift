@@ -14,7 +14,8 @@ def test_channel():
             max_length=128,
             channels=['aaa', 'abc'],
             attn_impl='flash_attn',
-            loss_type='channel_loss'))
+            loss_type='channel_loss',
+            eval_steps=10))
 
 
 if __name__ == '__main__':
