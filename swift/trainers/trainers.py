@@ -265,10 +265,10 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         labels_list = pad_sequence(labels_list, batch_first=True, padding_value=0)
         return None, response_list, labels_list
 
-    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+    def _prepare_inputs(self, inputs):
+        inputs = super()._prepare_inputs(inputs)
         from swift.plugin.loss import get_loss_func
         loss_kwargs = {}
-        labels = None
         compute_loss_func = self.compute_loss_func
         loss_scale = inputs.pop('loss_scale', None)
         if loss_scale is not None:
@@ -287,14 +287,25 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             if inputs.get('position_ids') is not None:
                 loss_kwargs['position_ids'] = inputs['position_ids']
 
-        if (self.label_smoother is not None or compute_loss_func is not None) and 'labels' in inputs:
-            labels = inputs.pop('labels')
-
-        use_logits_to_keep = self.get_use_logits_to_keep('labels' in inputs)
+        use_logits_to_keep = self.get_use_logits_to_keep('labels' in inputs and self.label_smoother is None
+                                                         and compute_loss_func is None)
         if use_logits_to_keep:
             inputs['labels'], logits_to_keep = self.get_logits_to_keep(inputs['labels'])
             if logits_to_keep is not None:
                 inputs['logits_to_keep'] = logits_to_keep
+
+        inputs['compute_loss_func'] = compute_loss_func
+        inputs['loss_kwargs'] = loss_kwargs
+        return inputs
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        labels = None
+        compute_loss_func = inputs.pop('compute_loss_func', None)
+        loss_kwargs = inputs.pop('loss_kwargs', {})
+
+        if (self.label_smoother is not None or compute_loss_func is not None) and 'labels' in inputs:
+            labels = inputs.pop('labels')
+
         outputs = model(**inputs)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
