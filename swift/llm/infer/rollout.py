@@ -22,7 +22,7 @@ from trl.scripts.vllm_serve import WeightSyncWorkerExtension
 
 from swift.llm import InferArguments, RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
-from swift.utils import get_device, get_logger
+from swift.utils import get_device, get_logger, get_node_setting
 from .infer_engine import GRPOVllmEngine, InferClient
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
 
@@ -58,16 +58,19 @@ def safe_set_start_method():
         multiprocessing.set_start_method('spawn')
 
 
-def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
+def llm_worker(args: RolloutArguments, local_dp_rank: int, global_dp_rank: int, master_ip: str, master_port: int,
+               connection: Connection) -> None:
     # Set required environment variables for DP to work with vLLM
     args._import_external_plugins()
-    os.environ['VLLM_DP_RANK'] = str(data_parallel_rank)
-    os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
+    os.environ['VLLM_DP_RANK'] = str(global_dp_rank)
+    os.environ['VLLM_DP_RANK_LOCAL'] = str(local_dp_rank)
     os.environ['VLLM_DP_SIZE'] = str(args.data_parallel_size)
+    os.environ['VLLM_DP_MASTER_IP'] = master_ip
     os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
+
     kwargs = {}
     if args.tensor_parallel_size == 1 and args.data_parallel_size > 1:
-        kwargs['device'] = get_device(str(data_parallel_rank))
+        kwargs['device'] = get_device(str(local_dp_rank))
     kwargs['template'] = args.get_template(None)
     engine = SwiftRolloutDeploy.get_infer_engine(args, **kwargs)
 
@@ -94,8 +97,7 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
             break
 
 
-async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int,
-                           connection: Connection) -> None:
+async def async_llm_worker(args: RolloutArguments, connection: Connection) -> None:
     engine = SwiftRolloutDeploy.get_infer_engine(args)
     # Send ready signal to parent process
     connection.send({'status': 'ready'})
@@ -148,7 +150,18 @@ class SwiftRolloutDeploy(SwiftPipeline):
     def __init__(self, args: Union[List[str], RolloutArguments, None] = None):
         super().__init__(args)
         self.use_async_engine = self.args.use_async_engine
+        # internal DP for AsyncLLMEngine, external DP for LLMEngine
         self.num_connections = 1 if self.use_async_engine else self.args.data_parallel_size
+        self.node_rank, nnodes = get_node_setting()
+        if nnodes == 1:
+            self.master_addr = '127.0.0.1'
+            self.master_port = get_open_port()
+        else:
+            self.master_addr = os.environ.get('MASTER_ADDR')
+            self.master_port = os.environ.get('MASTER_PORT')
+        dp_size = self.args.data_parallel_size
+        assert dp_size % nnodes == 0, 'dp_size should be divisible by node_size'
+        self.dp_per_node = dp_size // nnodes
         safe_set_start_method()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_rl_rollout_app()
@@ -158,10 +171,21 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self._start_data_parallel_workers()
 
     def _start_data_parallel_workers(self):
-        for data_parallel_rank in range(self.num_connections):
+        if not self.use_async_engine:
+            # External DP for LLMEngine
+            for local_dp_rank, global_dp_rank in enumerate(
+                    range(self.node_rank * self.dp_per_node, (self.node_rank + 1) * self.dp_per_node)):
+                parent_conn, child_conn = Pipe()
+                process = Process(
+                    target=llm_worker,
+                    args=(self.args, local_dp_rank, global_dp_rank, self.master_addr, self.master_port, child_conn))
+                process.start()
+                self.connections.append(parent_conn)
+                self.processes.append(process)
+        else:
+            # Internal DP for AsyncLLMEngine
             parent_conn, child_conn = Pipe()
-            worker_func = llm_worker_entry if self.use_async_engine else llm_worker
-            process = Process(target=worker_func, args=(self.args, data_parallel_rank, self.master_port, child_conn))
+            process = Process(target=llm_worker_entry, args=(self.args, child_conn))
             process.start()
             self.connections.append(parent_conn)
             self.processes.append(process)
