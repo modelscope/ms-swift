@@ -50,7 +50,7 @@ def test_mllm_mp():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
-            model='bytedance-research/Valley-Eagle-7B',
+            model='Qwen/Qwen2.5-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20'],
             # dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             split_dataset_ratio=0.01,
@@ -270,10 +270,13 @@ def test_predict_with_generate():
     sft_main(
         TrainArguments(
             model='Qwen/Qwen2-7B-Instruct',
-            dataset=['AI-ModelScope/alpaca-gpt4-data-en#40'],
-            split_dataset_ratio=0.01,
+            dataset=['AI-ModelScope/alpaca-gpt4-data-en#400'],
             predict_with_generate=True,
-            split_dataset_ratio=0.5,
+            # padding_free=True,
+            max_length=512,
+            packing=True,
+            attn_impl='flash_attn',
+            split_dataset_ratio=0.01,
             **kwargs))
 
 
