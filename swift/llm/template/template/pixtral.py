@@ -18,6 +18,7 @@ class PixtralTemplate(Template):
         images = inputs.images
         input_ids = encoded['input_ids']
         labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
         idx_list = findall(input_ids, 10)
         if idx_list:
             image_inputs = processor.image_processor(images, patch_size=processor.patch_size, return_tensors='pt')
@@ -37,6 +38,7 @@ class PixtralTemplate(Template):
                 return img_tokens
 
             encoded['input_ids'], encoded['labels'] = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
+            encoded['loss_scale'] = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
 
         return encoded
 
