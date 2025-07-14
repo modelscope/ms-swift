@@ -51,4 +51,5 @@ register_model(
         get_model_tokenizer_ernie_vl,
         model_arch=ModelArch.ernie_vl,
         architectures=['Ernie4_5_VLMoeForConditionalGeneration'],
+        requires=['transformers>=4.52'],
     ))
