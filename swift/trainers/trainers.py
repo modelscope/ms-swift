@@ -279,7 +279,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
 
         sample_channels = inputs.pop('channel', None)
         position_ids = inputs.pop('_position_ids', None)
-        if sample_channels is not None and self.args.channels is not None:
+        if self.args.channels is not None:
+            assert sample_channels is not None, f'sample_channels: {sample_channels}'
             state = self.state
             setattr(state, 'local_step', getattr(state, 'local_step', 0))
             setattr(state, 'ch_loss_steps', getattr(state, 'ch_loss_steps', {}))
