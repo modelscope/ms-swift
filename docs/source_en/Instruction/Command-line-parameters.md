@@ -33,6 +33,7 @@ Hints:
 - 🔥torch_dtype: Data type of model weights, supports `float16`, `bfloat16`, `float32`. The default is None, and it is read from the 'config.json' file.
 - attn_impl: The type of attention, with options including `flash_attn`, `sdpa`, and `eager`. The default is None, which reads from `config.json`.
   - Note: These three implementations may not all be supported, depending on the support of the corresponding model.
+- new_special_tokens: The special tokens to be added. Default is `[]`. See the example [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/new_special_tokens).
 - num_labels: This parameter is required for classification models (i.e., `--task_type seq_cls`). It represents the number of labels, with a default value of None.
 - problem_type: This parameter is required for classification models (i.e., `--task_type seq_cls`). The options are 'regression', 'single_label_classification', and 'multi_label_classification'. The default value is None, and it will be automatically set based on the number of labels and the dataset type.
 - rope_scaling: Type of rope, supports `linear` and `dynamic` and `yarn`, should be used in conjunction with `max_length`. Default is None.
@@ -658,7 +659,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 
 Specific model arguments can be set using `--model_kwargs` or environment variables, for example: `--model_kwargs '{"fps_max_frames": 12}'` or `FPS_MAX_FRAMES=12`.
 
-### qwen2_vl, qvq, qwen2_5_vl
+### qwen2_vl, qvq, qwen2_5_vl, mimo_vl
 The parameter meanings are the same as in the `qwen_vl_utils` or `qwen_omni_utils` library. You can refer to [here](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)
 
 - IMAGE_FACTOR: Default is 28
