@@ -230,7 +230,7 @@ swift rollout \
 - entropy/mean: 不同句子中的 entropy 均值
 - entropy/max: 不同句子中的 entropy 最大值
 - entropy/min: 不同句子中的 entropy 最小值
-> 注意这里的 句子 entropy 指 completion中的token entropy 均值
+> 注意这里的 句子 entropy 指 completion 中的 token entropy 均值
 
 
 如果设置了`top_entropy_quantile`参数<1.0, 则会记录entropy threshold的值
