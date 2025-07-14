@@ -265,7 +265,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 raise ValueError('Liger loss does not support sequence parallel yet.')
             if self.padding_free:
                 raise ValueError('Liger loss does not support padding free yet.')
-            if self.token_entropy_percentile_threshold > 0:
+            if self.top_entropy_quantile < 1.0:
                 raise ValueError('Liger loss does not support entropy mask yet.')
             if self.log_entropy:
                 raise ValueError('Liger loss does not support log entropy yet.')

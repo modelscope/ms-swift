@@ -209,7 +209,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.epsilon_low = args.epsilon
         self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
 
-        self.token_entropy_percentile_threshold = args.token_entropy_percentile_threshold
+        self.top_entropy_quantile = args.top_entropy_quantile
 
         self.use_liger_loss = self.args.use_liger_kernel
         if self.use_liger_loss:
@@ -239,7 +239,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'completion': deque(maxlen=maxlen),
             'rewards': defaultdict(lambda: deque(maxlen=maxlen)),
         }
-        self.compute_entropy = self.args.log_entropy or self.token_entropy_percentile_threshold > 0
+        self.compute_entropy = self.args.log_entropy or self.top_entropy_quantile < 1.0
         if self.args.log_entropy:
             self._textual_logs.update({'entropy': deque(maxlen=maxlen)})
         # Ensure each process receives a unique seed to prevent duplicate completions when generating with
@@ -1058,8 +1058,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             })
 
             with torch.no_grad():
-                batch_encoded_inputs['old_per_token_logps'] = (
-                    self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)['logps']
+                batch_encoded_inputs['old_per_token_logps'], _ = (
+                    self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)
                     if self.old_policy() else None)
 
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
@@ -1147,10 +1147,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completion_mask = inputs['completion_mask']
         truncated_mask = inputs['truncated_mask']
 
+        per_token_logps, entropies = self._get_per_token_logps_and_entropies(
+            model, inputs, compute_entropy=self.top_entropy_quantile < 1.0)
+
         if self.compute_entropy:
-            logps_and_entropies = self._get_per_token_logps_and_entropies(model, inputs, compute_entropy=True)
-            per_token_logps = logps_and_entropies['logps']
-            entropies = logps_and_entropies['entropies']
             # fill the padded token with NaN
             entropies = entropies.masked_fill(completion_mask == 0, float('nan'))
             if self.args.log_entropy:
@@ -1162,15 +1162,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._metrics[mode]['entropy/min'].append(global_per_completion_entropies_mean.min().item())
 
             # compute the entropy threshold across all tokens in the batch
-            if self.args.token_entropy_percentile_threshold > 0:
-                entropy_threshold = torch.nanquantile(entropies.flatten().float(),
-                                                      self.token_entropy_percentile_threshold)
+            if self.args.top_entropy_quantile < 1.0:
+                entropy_threshold = torch.nanquantile(entropies.flatten().float(), 1 - self.top_entropy_quantile)
                 self._metrics[mode]['entropy/threshold'].append(entropy_threshold.item())
                 entropy_mask = entropies >= entropy_threshold
-            else:
-                entropy_mask = None
         else:
-            per_token_logps = self._get_per_token_logps_and_entropies(model, inputs)['logps']
             entropy_mask = None
 
         # apply the completion_mask to exclude loss and metrics for overlong completions
@@ -1185,10 +1181,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.beta != 0.0:
             with torch.no_grad():
                 if self.ref_model is not None:
-                    ref_per_token_logps = self._get_per_token_logps_and_entropies(self.ref_model, inputs)['logps']
+                    ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(self.ref_model, inputs)
                 else:
                     with self.accelerator.unwrap_model(self.model).disable_adapter():
-                        ref_per_token_logps = self._get_per_token_logps_and_entropies(self.model, inputs)['logps']
+                        ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(self.model, inputs)
 
             per_token_kl = (
                 torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
@@ -1340,10 +1336,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # save memory
             with self.padding_free_context(model):
                 if hasattr(super(), '_get_per_token_logps_and_entropies'):
-                    result = super()._get_per_token_logps_and_entropies(
+                    logps, entropies = super()._get_per_token_logps_and_entropies(
                         model, input_ids, inputs['attention_mask'], logits_to_keep, compute_entropy=compute_entropy)
-                    logps = result['logps']
-                    entropies = result['entropies']
                 else:
                     logps = super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
                     entropies = None
@@ -1367,7 +1361,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if compute_entropy:
                 entropies = entropy_from_logits(logits)
 
-        return {'logps': logps, 'entropies': entropies}
+        return logps, entropies
 
     @patch_profiling_decorator
     def _get_last_hidden_state(self, unwrapped_model, inputs, logits_to_keep):
@@ -1406,10 +1400,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.beta != 0.0:
             with torch.no_grad():
                 if self.ref_model is not None:
-                    ref_per_token_logps = self._get_per_token_logps_and_entropies(self.ref_model, inputs)['logps']
+                    ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(self.ref_model, inputs)
                 else:
                     with self.accelerator.unwrap_model(self.model).disable_adapter():
-                        ref_per_token_logps = self._get_per_token_logps_and_entropies(self.model, inputs)['logps']
+                        ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(self.model, inputs)
 
         # get the last hidden state of the model
         last_hidden_state = self._get_last_hidden_state(unwrapped_model, inputs, logits_to_keep)

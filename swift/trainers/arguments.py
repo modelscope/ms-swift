@@ -218,7 +218,7 @@ class GRPOArgumentsMixin:
     # entropy
     log_entropy: bool = False
     # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
-    token_entropy_percentile_threshold: float = 0.0
+    top_entropy_quantile: float = 1.0
 
     wandb_log_unique_prompts: Optional[bool] = None
     generation_batch_size: Optional[int] = None

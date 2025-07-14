@@ -591,4 +591,4 @@ def _get_per_token_logps_and_entropies_grpo(self: 'GRPOTrainer',
         if compute_entropy:
             entropies = entropies[:, -logits_to_keep - 1:-1]
     # ignore the last token
-    return {'logps': per_token_logps, 'entropies': entropies}
+    return per_token_logps, entropies
