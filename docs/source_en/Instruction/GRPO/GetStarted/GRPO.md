@@ -228,8 +228,8 @@ If the `log_entropy` parameter is set, additional entropy-related metrics will b
 - entropy/max: The maximum entropy across different sentences.
 - entropy/min: The minimum entropy across different sentences.
 
-If `token_entropy_percentile_threshold` is set to a value greater than 0, the entropy threshold value will also be recorded:
-- entropy/threshold: The entropy value at the `token_entropy_percentile_threshold` percentile; tokens below this value will be excluded from loss calculation.
+If `top_entropy_quantile` is set to a value smaller than 1.0, the entropy threshold value will also be recorded:
+- entropy/threshold: Tokens with entropy below this value will be excluded from the loss calculation.
 
 If `log_completions` is set, the training dynamics will be saved in the output directory, including:
 - step: The training step at the time of logging.

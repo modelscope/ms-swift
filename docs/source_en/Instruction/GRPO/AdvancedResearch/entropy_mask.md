@@ -30,6 +30,6 @@ Object of entropy computation: $H_t$ is the entropy of the token generation dist
 
 > "Token entropy" $H_t$ always refers to the uncertainty of the generation distribution $\mathbf{p}_t$ at position $t$, rather than a property of the token $o_t$ itself. In other words, $H_t$ is the entropy of the distribution $\mathbf{p}_t$ at position $t$, and is independent of the sampled token $o_t$.
 
-In practice, during GRPO training, the parameter `token_entropy_percentile_threshold` can be used to control the percentile threshold for entropy filtering. In the paper’s experiments, this parameter is set to 0.8, meaning that only the top 20% of tokens (in terms of entropy) are used for training optimization in each batch.
+In practice, during GRPO training, the top_entropy_quantile parameter can be used to control the percentile threshold for entropy filtering. In the experiments from the paper, this parameter is set to 0.2, meaning that only the top 20% of tokens (with the highest entropy) at each sequence position are used for optimization in each batch.
 
 By setting the parameter `log_entropy`, you can record the changes in entropy during training; see the [documentation](../GetStarted/GRPO.md#logged-metrics) for reference.

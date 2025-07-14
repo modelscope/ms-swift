@@ -33,6 +33,6 @@ $
 > "Token entropy" $H_t$ 始终指向位置 $t$ 的生成分布 $\mathbf{p}_t$ 的不确定性，而非 token $o_t$ 本身的属性。即$H_t$ 是位置 $t$ 对应分布 $\mathbf{p}_t$ 的熵，与采样得到的 token $o_t$ 无关。
 
 
-在实践中，我们可以在 GRPO 训练中通过参数 `token_entropy_percentile_threshold` 控制熵过滤的分位数。论文实验设置该参数为 0.8，即每次仅对处于熵分布前 20% 的 token 进行训练优化。
+在实践中，我们可以在 GRPO 训练中通过参数 `top_entropy_quantile` 控制训练范围。论文实验设置该参数为 0.2，即每次仅对处于熵分布前 20% 的 token 进行训练优化。
 
-使用参数`log_entropy`，可以记录训练过程中的熵值变化，参考[文档](../GetStarted/GRPO.md#logged-metrics)
+同时使用参数`log_entropy`，可以记录训练过程中的熵值变化，参考[文档](../GetStarted/GRPO.md#logged-metrics)

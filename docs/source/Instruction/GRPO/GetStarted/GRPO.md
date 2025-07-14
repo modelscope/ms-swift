@@ -231,8 +231,8 @@ swift rollout \
 - entropy/max: 不同句子中的 entropy 最小值
 - entropy/min: 不同句子中的 entropy 最大值
 
-如果设置了`token_entropy_percentile_threshold`参数>0, 则会记录entropy threshold的值
-- entropy/threshold: `token_entropy_percentile_threshold`分位点处的 entropy 值，小于该值的 token 将不会被计算 loss
+如果设置了`top_entropy_quantile`参数<1.0, 则会记录entropy threshold的值
+- entropy/threshold: 分位点处的 entropy 值，小于该值的 token 将不会被计算 loss
 
 如果设置了`log_completions`, 将保存训练动态在output对应文件夹中，包括
 - step：记录时的训练步数
