@@ -154,7 +154,7 @@ def _add_gradient_checkpointing(module_list):
 def dynamic_gradient_checkpointing(model, including_vit: bool = False) -> None:
     from .model import ModelMeta, get_model_arch
     if isinstance(model, PeftModel):
-        return model.model
+        model = model.model
     model_meta: ModelMeta = model.model_meta
     model_arch = get_model_arch(model_meta.model_arch)
     if model_meta.is_multimodal and model_arch:
