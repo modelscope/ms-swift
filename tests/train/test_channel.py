@@ -10,7 +10,10 @@ def test_channel():
             model='Qwen/Qwen2.5-VL-7B-Instruct',
             dataset=['channel.jsonl#1000'],
             split_dataset_ratio=0.01,
+            packing=True,
+            max_length=128,
             channels=['aaa', 'abc'],
+            attn_impl='flash_attn',
             loss_type='channel_loss'))
 
 
