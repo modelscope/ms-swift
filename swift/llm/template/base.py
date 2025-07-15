@@ -25,7 +25,7 @@ from swift.utils import get_dist_setting, get_env_args, get_logger, use_torchacc
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
-from .vision_utils import load_audio, load_batch, load_image, rescale_image
+from .vision_utils import load_audio, load_batch, load_image, load_tensor, rescale_image
 
 logger = get_logger()
 if TYPE_CHECKING:
@@ -37,12 +37,13 @@ class MaxLengthError(ValueError):
 
 
 class Template(ProcessorMixin):
-    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>', '<cot-process>', '<start-image>']
-    special_keys = ['images', 'videos', 'audios', 'objects']
+    special_tokens = ['<image>', '<video>', '<audio>', '<tensor>', '<bbox>', '<ref-object>', '<cot-process>', '<start-image>']
+    special_keys = ['images', 'videos', 'audios', 'tensors', 'objects']
 
     image_placeholder = ['<image>']
     video_placeholder = ['<video>']
     audio_placeholder = ['<audio>']
+    tensor_placeholder = ['<tensor>']
     cot_process_placeholder = ['ки']
     placeholder_tokens = []  # For clearer printing
     load_images = True
@@ -790,7 +791,7 @@ class Template(ProcessorMixin):
         return self.tokenizer(
             context, return_attention_mask=False, add_special_tokens=False, **tokenizer_kwargs)['input_ids']
 
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio', 'tensor'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         """Override this function to do your own replace operation.
 
@@ -812,6 +813,8 @@ class Template(ProcessorMixin):
             return self.video_placeholder
         elif media_type == 'audio':
             return self.audio_placeholder
+        elif media_type == 'tensor':
+            return self.tensor_placeholder
 
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
         """Replace objects referenced by the bbox to contents or input_ids. This is useful in the grounding task.
@@ -898,11 +901,11 @@ class Template(ProcessorMixin):
         res_loss_scale: List[float] = []  # result of loss_scale_list
 
         # reset
-        for k in ['video', 'audio', 'object', 'box']:
+        for k in ['video', 'audio', 'tensor', 'object', 'box']:
             setattr(inputs, f'{k}_idx', 0)
 
         for context, loss_scale in zip(context_list, loss_scale_list):
-            for k in ['video', 'audio']:
+            for k in ['video', 'audio', 'tensor']:
                 if context == f'<{k}>' and inputs.is_multimodal and getattr(inputs, f'{k}_idx') < len(
                         getattr(inputs, f'{k}s')):
                     c_list = self.replace_tag(k, getattr(inputs, f'{k}_idx'), inputs)
@@ -1302,6 +1305,84 @@ class Template(ProcessorMixin):
             context_list += replace_tag(i)
         inputs.image_idx += len(new_images)
         return context_list
+
+    def replace_tensor2image(self, load_tensor_func, inputs, replace_tag: Callable) -> List[Context]:
+        """Replace tensor with image representations.
+        
+        This method is similar to replace_video2image but handles tensor files.
+        It loads a tensor from a .pt file and converts it to image representations.
+        """
+        context_list = []
+        if self.mode in {'vllm', 'lmdeploy'}:
+            tensor_path = inputs.tensors.pop(inputs.tensor_idx)
+            inputs.tensor_idx -= 1
+        else:
+            tensor_path = inputs.tensors[inputs.tensor_idx]
+        
+        images = inputs.images
+        # Load tensor and convert to images
+        tensor = load_tensor_func(tensor_path)
+        new_images = self._tensor_to_images(tensor)
+        inputs.images = images[:inputs.image_idx] + new_images + images[inputs.image_idx:]
+        
+        for i in range(len(new_images)):
+            context_list += replace_tag(i)
+        inputs.image_idx += len(new_images)
+        return context_list
+
+    def _tensor_to_images(self, tensor: torch.Tensor) -> List[Image.Image]:
+        """Convert a tensor to a list of PIL Images.
+        
+        This method handles the conversion of tensor data to PIL Images.
+        It supports various tensor formats and converts them appropriately.
+        """
+        from PIL import Image
+        import numpy as np
+        
+        # Handle different tensor shapes
+        if tensor.dim() == 4:  # Batch of images (B, C, H, W)
+            images = []
+            for i in range(tensor.shape[0]):
+                img_tensor = tensor[i]
+                img = self._single_tensor_to_image(img_tensor)
+                images.append(img)
+            return images
+        elif tensor.dim() == 3:  # Single image (C, H, W)
+            return [self._single_tensor_to_image(tensor)]
+        elif tensor.dim() == 2:  # Grayscale image (H, W)
+            return [self._single_tensor_to_image(tensor.unsqueeze(0))]
+        else:
+            raise ValueError(f"Unsupported tensor shape: {tensor.shape}")
+
+    def _single_tensor_to_image(self, tensor: torch.Tensor) -> Image.Image:
+        """Convert a single tensor to PIL Image."""
+        from PIL import Image
+        import numpy as np
+        
+        # Move to CPU and convert to numpy
+        tensor = tensor.cpu()
+        
+        # Handle different channel formats
+        if tensor.shape[0] == 3:  # RGB (3, H, W)
+            # Convert from (C, H, W) to (H, W, C)
+            img_array = tensor.permute(1, 2, 0).numpy()
+        elif tensor.shape[0] == 1:  # Grayscale (1, H, W)
+            # Convert from (1, H, W) to (H, W)
+            img_array = tensor.squeeze(0).numpy()
+        else:
+            raise ValueError(f"Unsupported number of channels: {tensor.shape[0]}")
+        
+        # Normalize to [0, 255] if needed
+        if img_array.max() <= 1.0:
+            img_array = (img_array * 255).astype(np.uint8)
+        else:
+            img_array = img_array.astype(np.uint8)
+        
+        # Convert to PIL Image
+        if len(img_array.shape) == 2:  # Grayscale
+            return Image.fromarray(img_array, mode='L')
+        else:  # RGB
+            return Image.fromarray(img_array, mode='RGB')
 
     def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
                          num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:

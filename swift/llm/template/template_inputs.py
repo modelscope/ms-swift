@@ -19,7 +19,7 @@ class InferRequest:
             "role": "user",  # or assistant/system/role
             "content": [  # str or List[Dict[str, Any]]
                 {
-                    "type": "image",  # or audio/video
+                    "type": "image",  # or audio/video/tensor
                     "image": "<url/path/base64/PIL.Image>",
                 },
                 {"type": "text", "text": "Please describe the picture."},
@@ -35,12 +35,13 @@ class InferRequest:
     images: List[Union[str, Image.Image]] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
+    tensors: List[str] = field(default_factory=list)
 
     tools: Optional[List[Tool]] = None
     objects: Dict[str, List[Any]] = field(default_factory=dict)
 
     def __post_init__(self):
-        for key in ['images', 'audios', 'videos']:
+        for key in ['images', 'audios', 'videos', 'tensors']:
             val = getattr(self, key)
             if isinstance(val, str):
                 setattr(self, key, [val])
@@ -108,6 +109,7 @@ class StdTemplateInputs:
     images: List[Union[str, Image.Image]] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
+    tensors: List[str] = field(default_factory=list)
     objects: Dict[str, List[Any]] = field(default_factory=dict)
     rejected_images: List[Union[str, Image.Image]] = field(default_factory=list)
 
@@ -135,7 +137,7 @@ class StdTemplateInputs:
 
     @property
     def is_multimodal(self):
-        return bool(self.images or self.audios or self.videos or self.objects)
+        return bool(self.images or self.audios or self.videos or self.tensors or self.objects)
 
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any]) -> Tuple['StdTemplateInputs', Dict[str, Any]]:
@@ -179,7 +181,7 @@ class StdTemplateInputs:
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
-        res = {'images': [], 'audios': [], 'videos': [], 'rejected_images': []}
+        res = {'images': [], 'audios': [], 'videos': [], 'tensors': [], 'rejected_images': []}
         for message in messages:
             content = message['content']
             if isinstance(content, str):

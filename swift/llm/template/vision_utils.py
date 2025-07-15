@@ -273,3 +273,26 @@ def load_video_ovis2(video_path, num_frames):
         frames = [clip.get_frame(index / clip.fps) for index in sampled_indices]
         frames = [Image.fromarray(frame, mode='RGB') for frame in frames]
     return frames
+
+
+def load_tensor(tensor_path: Union[str, bytes]) -> torch.Tensor:
+    """Load a tensor from a .pt file.
+    
+    Args:
+        tensor_path: Path to the .pt file, can be a URL, local file path, or bytes
+        
+    Returns:
+        The loaded tensor
+    """
+    tensor_io = load_file(tensor_path)
+    if isinstance(tensor_io, BytesIO):
+        # Load the tensor from BytesIO
+        tensor = torch.load(tensor_io, map_location='cpu')
+    else:
+        # Direct tensor object
+        tensor = tensor_io
+    
+    if not isinstance(tensor, torch.Tensor):
+        raise ValueError(f"Expected a torch.Tensor, but got {type(tensor)}")
+    
+    return tensor
