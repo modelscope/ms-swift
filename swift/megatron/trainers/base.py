@@ -155,12 +155,20 @@ class BaseMegatronTrainer(ABC):
 
         checkpointing._load_base_checkpoint = _load_base_checkpoint
         torch.nn.Module.load_state_dict = load_state_dict
+        
+        args = get_args()
+        origin_no_load_optim = args.no_load_optim
+        origin_no_load_rng = args.no_load_rng
+        args.no_load_optim = True
+        args.no_load_rng = True
 
         try:
             yield
         finally:
             checkpointing._load_base_checkpoint = origin__load_base_checkpoint
             torch.nn.Module.load_state_dict = origin_load_state_dict
+            args.no_load_optim = origin_no_load_optim
+            args.no_load_rng = origin_no_load_rng
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
