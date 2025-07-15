@@ -159,6 +159,8 @@ class Phi4MMTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
+            if self.mode == 'vllm':
+                return [f'<|image_{index + 1}|>']  # <|image_1|>
             return [[-100]]
         elif media_type == 'audio':
             import soundfile as sf

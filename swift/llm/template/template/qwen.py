@@ -704,6 +704,8 @@ class Ovis2Template(Ovis1_6Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
+            if self.mode == 'vllm':
+                return ['<image>\n']
             return [[-200], '\n']
         elif media_type == 'video':
             nframes = get_env_args('nframes', int, self.nframes)
