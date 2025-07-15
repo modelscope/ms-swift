@@ -10,7 +10,7 @@ from concurrent.futures import Future
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from dataclasses import asdict, dataclass, field
-from functools import partial
+from functools import partial, wraps
 from math import ceil
 from queue import Queue
 from types import MethodType
@@ -29,7 +29,7 @@ from transformers.trainer import Trainer
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import prepare_deepspeed
 from trl.trainer.callbacks import SyncRefModelCallback
-from trl.trainer.grpo_trainer import nanmax, nanmin, nanstd
+from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
 
 from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInferRequest, RowPreprocessor, Template,
                        get_model_arch, to_device)
@@ -58,6 +58,45 @@ if is_swanlab_available():
 InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
 # tuple: (messages, finish_reason)
 OutputsType = List[Tuple[List[Dict], str]]
+if not hasattr(RepeatSampler, 'patched'):
+    original_init = RepeatSampler.__init__
+
+    @wraps(original_init)
+    def patched_init(self, data_source, mini_repeat_count, batch_size=1, repeat_count=1, shuffle=True, seed=None):
+        original_init(self, data_source, mini_repeat_count, batch_size, repeat_count, shuffle, seed)
+        self.actual_num_samples = (len(data_source) // batch_size) * batch_size
+        if self.actual_num_samples < len(self.data_source):
+            dropped = len(data_source) - self.actual_num_samples
+            logger.info(f'Dropping last {dropped} samples to form complete batches. '
+                        f'Original dataset size: {len(data_source)}, '
+                        f'Adjusted size: {self.actual_num_samples} '
+                        f'(using batch_size={batch_size})')
+
+    def patched_iter(self):
+        if self.shuffle:
+            indexes = torch.randperm(self.num_samples, generator=self.generator).tolist()
+        else:
+            indexes = list(range(self.num_samples))
+
+        # Truncate to only include complete batches
+        indexes = indexes[:self.actual_num_samples]
+
+        # Create batches (all will be full batches)
+        batches = [indexes[i:i + self.batch_size] for i in range(0, self.actual_num_samples, self.batch_size)]
+
+        for batch in batches:
+            for _ in range(self.repeat_count):
+                for index in batch:
+                    for _ in range(self.mini_repeat_count):
+                        yield index
+
+    def patched_len(self) -> int:
+        return self.actual_num_samples * self.mini_repeat_count * self.repeat_count
+
+    RepeatSampler.__init__ = patched_init
+    RepeatSampler.__iter__ = patched_iter
+    RepeatSampler.__len__ = patched_len
+    RepeatSampler.patched = True
 
 
 class GRPOCallback(TrainerCallback):
