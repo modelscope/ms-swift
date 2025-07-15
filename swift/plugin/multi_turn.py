@@ -24,9 +24,12 @@ class MultiTurnScheduler(ABC):
 
 
 class MathTipsScheduler(MultiTurnScheduler):
-    from .orm import MathAccuracy
     tips_prompt = 'But wait... It seems I made a mistake,'
-    acc_func = MathAccuracy()
+
+    def __init__(self, max_turns=None, *args, **kwargs):
+        from .orm import MathAccuracy
+        super().__init__(max_turns, *args, **kwargs)
+        self.acc_func = kwargs.get('acc_function', MathAccuracy())
 
     def check_finished(self, infer_request: RolloutInferRequest, result: RolloutResponseChoice,
                        current_turn: int) -> bool:

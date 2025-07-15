@@ -124,6 +124,35 @@ def test_qwen2_5_omni():
     assert response
 
 
+def test_ovis2():
+    response = _infer_image('AIDC-AI/Ovis2-1B', max_model_len=4096)
+    assert response[:200] == ('The image showcases a charming digital painting of a kitten, capturing its '
+                              'adorable features in a unique style. The kitten has a predominantly white face '
+                              'with black stripes and spots, giving it a stri')
+
+
+def test_keye_vl():
+    response = _infer_image('Kwai-Keye/Keye-VL-8B-Preview', max_model_len=4096)
+    assert response[:200] == ('<analysis>This question asks for a description of the image, which is '
+                              'straightforward and involves observing the visual content. Therefore, '
+                              '/no_think is more appropriate.</analysis>The image features ')
+
+
+def test_kimi_vl():
+    response = _infer_image('moonshotai/Kimi-VL-A3B-Instruct', max_model_len=4096)
+    print(f'response: {response}')
+
+
+def test_glm4v():
+    response = _infer_image('ZhipuAI/glm-4v-9b', max_model_len=4096)
+    print(f'response: {response}')
+
+
+def test_glm4_1v():
+    response = _infer_image('ZhipuAI/GLM-4.1V-9B-Thinking', max_model_len=4096)
+    print(f'response: {response}')
+
+
 if __name__ == '__main__':
     from swift.llm import VllmEngine, InferRequest, RequestConfig
     # test_qwen2_vl()
@@ -135,4 +164,9 @@ if __name__ == '__main__':
     # test_minicpmv_2_6()
     # test_minicpmo_2_6_video()
     # test_qwen2_5_vl_video()
-    test_qwen2_5_omni()
+    # test_qwen2_5_omni()
+    # test_ovis2()
+    # test_keye_vl()
+    # test_kimi_vl()
+    # test_glm4v()
+    test_glm4_1v()
