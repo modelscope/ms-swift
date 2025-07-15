@@ -19,7 +19,7 @@ from megatron.training import ft_integration, get_args, get_timers, is_last_rank
 from megatron.training.checkpointing import load_checkpoint
 from packaging import version
 
-from swift.utils import JsonlWriter, get_logger, is_master
+from swift.utils import JsonlWriter, deep_getattr, get_logger, is_master
 from ..utils import adapter_state_dict_context, copy_original_module_weight, prepare_mcore_model
 from .utils import get_swift_datasets_provider
 
@@ -178,7 +178,26 @@ class BaseMegatronTrainer(ABC):
                 load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
         if args.train_type != 'full' and args.modules_to_save:
             copy_original_module_weight(self.unwrapped_model)
+        if args.initialize_embedding:
+            self._initialize_embedding(self.unwrapped_model)
         return model, optimizer, opt_param_scheduler
+
+    @staticmethod
+    def _initialize_embedding(model):
+        # compat new_special_tokens
+        init_method = model.config.init_method
+        for key in ['embedding.word_embeddings', 'output_layer']:
+            if key == 'output_layer' and model.share_embeddings_and_output_weights:
+                continue
+            module = deep_getattr(model, key)
+            if module is None:
+                continue
+            initialize_mask = (module.weight == 0).all(dim=-1)
+            num_to_initialize = initialize_mask.sum().item()
+            if num_to_initialize == 0:
+                continue
+            tensor = module.weight.new_empty(num_to_initialize, module.weight.shape[1])
+            module.weight.data[initialize_mask] = init_method(tensor)
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         with self._training_context():

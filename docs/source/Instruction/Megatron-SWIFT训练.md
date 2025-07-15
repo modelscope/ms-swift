@@ -43,7 +43,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 这里介绍使用2卡80GiB A100对Qwen2.5-7B-Instruct模型进行自我认知微调的快速入门案例，以下最佳实践可以在10分钟内完成。
 
 首先，我们需要将HF格式的权重转为Megatron格式：
-- 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除即可。
+- 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除即可。若出现内存不足，请将`--test_convert_precision true`删除。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -92,7 +92,7 @@ megatron sft \
 
 最后，将Megatron格式权重转为HF格式：
 - 注意：`--mcore_model`请指向`iter_xxx`的上级目录。默认会使用`latest_checkpointed_iteration.txt`中对应的checkpoint。
-- 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除即可。
+- 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除即可。若出现内存不足，请将`--test_convert_precision true`删除。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \

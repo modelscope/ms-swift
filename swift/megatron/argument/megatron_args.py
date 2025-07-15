@@ -73,6 +73,7 @@ class MegatronTunerMixin:
 @dataclass
 class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     padded_vocab_size: Optional[int] = None
+    initialize_embedding: bool = False
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
     # streaming dataloader

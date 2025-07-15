@@ -623,7 +623,7 @@ def get_model_tokenizer(
         if num_new_tokens > 0:
             logger.info(f'Added {num_new_tokens} new special tokens.')
             if model is not None and model.config.vocab_size < len(tokenizer):
-                model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=64)
+                model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=128)
 
     problem_type = kwargs.get('problem_type')
     if problem_type is None and model_info.num_labels == 1:

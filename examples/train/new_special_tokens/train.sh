@@ -7,7 +7,7 @@ swift sft \
     --train_type lora \
     --dataset 'swift/new_special_tokens' \
     --split_dataset_ratio 0.01 \
-    --new_special_tokens examples/train/new_special_tokens/tokens.txt \
+    --new_special_tokens 'examples/train/new_special_tokens/tokens.txt' \
     --torch_dtype bfloat16 \
     --num_train_epochs 5 \
     --per_device_train_batch_size 16 \
