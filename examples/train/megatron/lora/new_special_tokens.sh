@@ -1,3 +1,4 @@
+# 2 * 60GiB, 2.7s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
@@ -11,13 +12,15 @@ megatron sft \
     --target_modules all-linear \
     --modules_to_save word_embeddings output_layer \
     --split_dataset_ratio 0.01 \
-    --pipeline_model_parallel_size 2 \
+    --expert_model_parallel_size 2 \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
     --moe_aux_loss_coeff 0.01 \
     --micro_batch_size 32 \
     --global_batch_size 64 \
-    --recompute_granularity selective \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
     --max_epochs 5 \
     --finetune true \
     --cross_entropy_loss_fusion true \
