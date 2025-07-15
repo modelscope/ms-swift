@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 from typing import Any, Dict, Type
 
 import torch
@@ -31,9 +32,10 @@ def _patch_tokenizer(tokenizer):
     if hasattr(tokenizer_cls, '_origin_pad'):
         return
     tokenizer_cls._origin_pad = tokenizer_cls._pad
+    parameters = inspect.signature(tokenizer_cls._origin_pad).parameters
 
     def _pad(self, *args, **kwargs):
-        if 'padding_side' in kwargs and kwargs['padding_side'] is None:
+        if 'padding_side' in kwargs and kwargs['padding_side'] is None and 'padding_side' not in parameters:
             kwargs.pop('padding_side')
         return tokenizer_cls._origin_pad(self, *args, **kwargs)
 
