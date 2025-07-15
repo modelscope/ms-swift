@@ -238,32 +238,32 @@ class Template(ProcessorMixin):
         if self.model_meta.is_multimodal:
             self._replace_image_tags(inputs)
             self._replace_start_image_tags(inputs)
-        images = inputs.images
-        load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}
-        load_images_origin = load_images
-        if self.max_pixels is not None or inputs.objects:
-            load_images = True
-        if images:
-            for i, image in enumerate(images):
-                images[i] = self._load_image(images[i], load_images)
-        if inputs.objects:
-            self._get_height_width(inputs)
-        if self.max_pixels is not None:
-            # Scale the image proportionally without affecting the scaled objects.
-            images = [rescale_image(img, self.max_pixels) for img in images]
-        if images and not load_images_origin:  # fix pt & qwen-vl
-            for i, image in enumerate(images):
-                if isinstance(image, Image.Image):
-                    images[i] = self._save_pil_image(image)
-        inputs.images = images
+
+        for img_field in ['images', 'rejected_images']:
+            images = getattr(inputs, img_field, None)
+            if not images:
+                continue
+            load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}
+            load_images_origin = load_images
+            if self.max_pixels is not None or inputs.objects:
+                load_images = True
+            if images:
+                for i, image in enumerate(images):
+                    images[i] = self._load_image(image, load_images)
+            if inputs.objects:
+                self._get_height_width(inputs)
+            if self.max_pixels is not None and images:
+                images = [rescale_image(img, self.max_pixels) for img in images]
+            if images and not load_images_origin:  # fix pt & qwen-vl
+                for i, image in enumerate(images):
+                    if isinstance(image, Image.Image):
+                        images[i] = self._save_pil_image(image)
+            setattr(inputs, img_field, images)
 
         if self.mode == 'vllm' and inputs.audios:
             sampling_rate = get_env_args('sampling_rate', int, None)
             inputs.audios = load_batch(
                 inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate, return_sr=True))
-
-        if inputs.is_multimodal:
-            self._add_default_tags(inputs)
 
     @staticmethod
     def _replace_image_tags(inputs: StdTemplateInputs):
@@ -336,8 +336,12 @@ class Template(ProcessorMixin):
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         margin = inputs.margin
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
-        assert chosen_inputs.rejected_response is not None, f'inputs: {inputs}'
-        rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
+
+        assert chosen_inputs.rejected_response or chosen_inputs.rejected_images, f'inputs: {inputs}'
+        if chosen_inputs.rejected_response:
+            rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
+        if chosen_inputs.rejected_images:
+            rejected_inputs.images = chosen_inputs.rejected_images
         chosen_encoded = self._encode_truncated(chosen_inputs)
         rejected_encoded = self._encode_truncated(rejected_inputs)
 
@@ -1145,7 +1149,10 @@ class Template(ProcessorMixin):
             answer_len = 0
         return res_context_list, loss_scale_list, answer_len
 
-    def _encode_truncated(self, inputs):
+    def _encode_truncated(self, inputs: StdTemplateInputs):
+        if inputs.is_multimodal:
+            self._add_default_tags(inputs)
+
         if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
             encoded = Template._encode(self, inputs)
             for key in ['images', 'audios', 'videos']:
