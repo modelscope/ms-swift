@@ -67,16 +67,19 @@ class RowPreprocessor:
 
     @staticmethod
     def _cast_images(row: Dict[str, Any]) -> None:
-        images = row.get('images')
+        for key in ['images', 'rejected_images']:
+            images = row.get(key, None)
+            if images is None:
+                continue
 
-        if isinstance(images, str) or isinstance(images, list) and images and isinstance(images[0], str):
-            if isinstance(images, str):
-                images = [images]
-            for i, image in enumerate(images):
-                images[i] = {'bytes': None, 'path': image}
-            row['images'] = images
-        elif isinstance(images, dict):
-            row['images'] = [images]
+            if isinstance(images, str) or (isinstance(images, list) and images and isinstance(images[0], str)):
+                if isinstance(images, str):
+                    images = [images]
+                for i, image in enumerate(images):
+                    images[i] = {'bytes': None, 'path': image}
+                row[key] = images
+            elif isinstance(images, dict):
+                row[key] = [images]
 
     @staticmethod
     def _check_rejected_response(row: Dict[str, Any]) -> None:
@@ -275,8 +278,9 @@ class RowPreprocessor:
 
     def _cast_pil_image(self, dataset):
         features = dataset.features
-        if 'images' in features and isinstance(features['images'], Image) and features['images'].decode:
-            dataset = dataset.cast_column('images', Image(decode=False))
+        for col in ['images', 'rejected_images']:
+            if (col in features and isinstance(features[col], Image) and getattr(features[col], 'decode', False)):
+                dataset = dataset.cast_column(col, Image(decode=False))
         return dataset
 
     def __call__(

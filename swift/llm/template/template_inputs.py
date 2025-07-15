@@ -176,7 +176,7 @@ class StdTemplateInputs:
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
-        res = {'images': [], 'audios': [], 'videos': []}
+        res = {'images': [], 'audios': [], 'videos': [], 'rejected_images': []}
         for message in messages:
             content = message['content']
             if isinstance(content, str):
