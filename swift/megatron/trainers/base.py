@@ -178,7 +178,23 @@ class BaseMegatronTrainer(ABC):
                 load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
         if args.train_type != 'full' and args.modules_to_save:
             copy_original_module_weight(self.unwrapped_model)
+        if args.initialize_embedding:
+            self._initialize_embedding(self.unwrapped_model)
         return model, optimizer, opt_param_scheduler
+
+    @staticmethod
+    def _initialize_embedding(model):
+        init_method = model.config.init_method
+        weight = model.embedding.word_embeddings.weight
+        initialize_mask = (weight == 0).all(dim=-1)
+        num_to_initialize = initialize_mask.sum().item()
+        if num_to_initialize == 0:
+            return
+        tensor = weight.new_empty(num_to_initialize, weight.shape[1])
+        # compat new_special_tokens
+        weight.data[initialize_mask] = init_method(tensor)
+        if not model.share_embeddings_and_output_weights:
+            model.output_layer.weight.data[initialize_mask] = init_method(tensor)
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         with self._training_context():
