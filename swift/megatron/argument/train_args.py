@@ -1,7 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import math
 import os
 from dataclasses import dataclass
-import math
+
 from swift.llm import BaseArguments
 from swift.llm.argument.base_args import to_abspath
 from swift.utils import add_version_to_work_dir, get_logger, init_process_group, is_master
