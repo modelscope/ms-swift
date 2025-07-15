@@ -70,6 +70,8 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 {"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}], "rejected_response": "I don't know"}
 ```
 
+The format of multimodal data should follow the specifications in [Multimodal Dataset](#multimodal), with additional columns such as `images` to represent other modality inputs. When it is necessary to associate different image information with preference data, the `rejected_images` field can be used to indicate the images related to the rejected responses. In the alignment dataset, at least one of `rejected_images` or `rejected_response` must be provided for each entry.
+
 > Note: RM additionally supports the margin column. For details, refer to the [RM documentation](../Instruction/RLHF.md#rm).
 
 #### KTO
