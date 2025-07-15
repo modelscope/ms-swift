@@ -91,7 +91,7 @@ def test_llm_vllm_zero2():
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
-def test_mllm_zero2():
+def test_mllm_pt():
     from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
     result = rlhf_main(
         RLHFArguments(
@@ -104,7 +104,6 @@ def test_mllm_zero2():
             reward_funcs=['accuracy', 'format'],
             max_completion_length=4096,
             num_generations=2,
-            deepspeed='zero2',
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
@@ -115,4 +114,4 @@ if __name__ == '__main__':
     # test_llm_zero3()
     test_llm_vllm()
     # test_llm_vllm_zero2()
-    # test_mllm_zero2()
+    # test_mllm_pt()
