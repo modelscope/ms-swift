@@ -101,7 +101,7 @@ def test_mllm_pt():
             # dataset=['AI-MO/NuminaMath-TIR#100'],
             dataset=['modelscope/coco_2014_caption:validation#100'],
             system=SYSTEM_PROMPT,
-            reward_funcs=['accuracy', 'format'],
+            reward_funcs=['format'],
             max_completion_length=4096,
             num_generations=2,
             **kwargs))
@@ -112,6 +112,6 @@ def test_mllm_pt():
 if __name__ == '__main__':
     # test_llm()
     # test_llm_zero3()
-    test_llm_vllm()
+    # test_llm_vllm()
     # test_llm_vllm_zero2()
-    # test_mllm_pt()
+    test_mllm_pt()
