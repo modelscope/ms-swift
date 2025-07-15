@@ -143,6 +143,11 @@ def test_kimi_vl():
     print(f'response: {response}')
 
 
+def test_glm4v():
+    response = _infer_image('ZhipuAI/glm-4v-9b', max_model_len=4096)
+    print(f'response: {response}')
+
+
 def test_glm4_1v():
     response = _infer_image('ZhipuAI/GLM-4.1V-9B-Thinking', max_model_len=4096)
     print(f'response: {response}')
@@ -163,4 +168,5 @@ if __name__ == '__main__':
     # test_ovis2()
     # test_keye_vl()
     # test_kimi_vl()
+    # test_glm4v()
     test_glm4_1v()
