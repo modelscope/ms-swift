@@ -12,6 +12,7 @@ import torch
 from swift.llm import PtEngine, RequestConfig, Template, to_device
 from swift.llm.infer.protocol import ChatCompletionResponse
 from swift.plugin import ORM, orms, rm_plugins
+from swift.plugin.env import Env, envs
 from swift.plugin.multi_turn import MultiTurnScheduler, multi_turns
 from swift.plugin.rm_plugin import DefaultRMPlugin
 from swift.utils import get_logger
@@ -893,3 +894,10 @@ class ReToolScheduler(MultiTurnScheduler):
 
 
 multi_turns['retool'] = ReToolScheduler
+
+
+class CustomEnv(Env):
+    pass
+
+
+envs['custom_env'] = CustomEnv

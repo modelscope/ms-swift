@@ -137,7 +137,10 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 self.loss_scale = 'default'
             elif self.rlhf_type == 'grpo':
                 if self.loss_scale is None:
-                    self.loss_scale = 'default'
+                    if self.multi_turn_scheduler:
+                        self.loss_scale = 'default'
+                    else:
+                        self.loss_scale = 'last_round'
             else:
                 self.loss_scale = 'last_round'
         if self.rlhf_type == 'grpo' and self.beta == 0.0:
