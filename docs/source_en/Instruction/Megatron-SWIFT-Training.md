@@ -44,7 +44,7 @@ The training module in the dependent library Megatron-LM will be cloned and inst
 This section introduces a quick start example for fine-tuning the self-awareness of the Qwen2.5-7B-Instruct model using two 80GiB A100 GPUs. The following best practices can be completed within 10 minutes.
 
 First, we need to convert the weights from HF (Hugging Face) format to Megatron format:
-- If you encounter OOM, simply remove `CUDA_VISIBLE_DEVICES=0`.
+- If OOM (Out of Memory) occurs, simply remove `CUDA_VISIBLE_DEVICES=0`. If you encounter insufficient memory, please remove `--test_convert_precision true`.
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -93,7 +93,7 @@ megatron sft \
 
 Finally, convert the Megatron format weights back to HF format:
 - Note: Please point `--mcore_model` to the parent directory of `iter_xxx`. By default, the corresponding checkpoint from `latest_checkpointed_iteration.txt` will be used.
-- If you encounter OOM, simply remove `CUDA_VISIBLE_DEVICES=0`.
+- If OOM (Out of Memory) occurs, simply remove `CUDA_VISIBLE_DEVICES=0`. If you encounter insufficient memory, please remove `--test_convert_precision true`.
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
@@ -420,7 +420,7 @@ Full-parameter Training:
 
 LoRA Training:
 
-- adapter_load: Path to the adapter weights to be loaded. Default is `None`.
+- adapter_load: The path to the adapter weights for loading, used for resuming LoRA training from a checkpoint. The default is None. The method for resuming LoRA training from a checkpoint is the same as for full-parameter training. Please pay attention to the meaning of the `--finetune` parameter.
 - 🔥target_modules: Suffixes of modules to apply LoRA to. Default is `['all-linear']`.
 - 🔥target_regex: Regex expression to specify LoRA modules. Default is `None`. If this value is provided, the `target_modules` parameter will be ignored.
 - 🔥modules_to_save: After attaching a tuner, explicitly specifies additional original model modules to participate in training and storage. The default is `[]`.
