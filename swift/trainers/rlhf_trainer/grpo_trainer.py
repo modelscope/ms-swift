@@ -316,7 +316,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.async_generate:
             self.add_callback(GRPOCallback(self))
 
-        if self.args.dynamic_sample or self.template.truncation_strategy == 'delete':
+        if self.args.dynamic_sample or self.template.truncation_strategy == 'raise':
             self.resample_dataset = deepcopy(self.train_dataset)
 
             def cyclic_iter(iterable):
@@ -324,7 +324,24 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     for x in iterable:
                         yield x
 
-            self.resample_iterator = cyclic_iter(self.get_resample_dataloader())
+            if self.args.dynamic_sample:
+                self.dynamic_resample_iterator = cyclic_iter(self.get_resample_dataloader())
+            if self.template.truncation_strategy == 'raise':
+
+                @contextmanager
+                def context():
+                    origin_ng = self.num_generations
+                    origin_gbs = self.args.generation_batch_size
+                    try:
+                        self.num_generations = 1
+                        self.args.generation_batch_size = 1
+                        yield
+                    finally:
+                        self.num_generations = origin_ng
+                        self.args.generation_batch_size = origin_gbs
+
+                with context():
+                    self.truncated_resample_iterator = cyclic_iter(self.get_resample_dataloader())
         # flag indicating whether the evaluation has started
         self.eval_flag = False
 
@@ -872,7 +889,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return inputs
 
     def _generate_and_score_completions(self, inputs: InputsType) -> InputsType:
-        if self.template.truncation_strategy == 'delete':
+        if self.template.truncation_strategy == 'raise':
             inputs = self.resample_truncated_inputs(inputs)
 
         inputs = self._generate_completions(inputs)
@@ -963,7 +980,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if len(valid_samples) >= self.args.generation_batch_size:
                 break
 
-            inputs = next(self.resample_iterator)
+            inputs = next(self.dynamic_resample_iterator)
             inputs = Trainer._prepare_inputs(self, inputs)
             inputs = self._generate_completions(inputs)
             rewards_per_func, rewards, completions = self._score_completions(inputs)
@@ -1562,15 +1579,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def resample_truncated_inputs(self, inputs: InputsType) -> InputsType:
         template = self.template
-        with self._template_context(template):
-            for i, data in enumerate(inputs):
-                while True:
-                    try:
-                        template.encode(data)
-                        inputs[i] = data
-                        break
-                    except MaxLengthError:
-                        data = next(self.resample_iterator)
+        for i, data in enumerate(inputs):
+            while True:
+                try:
+                    template.encode(data)
+                    inputs[i] = data
+                    break
+                except MaxLengthError:
+                    data = next(self.truncated_resample_iterator)
         return inputs
 
     def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
