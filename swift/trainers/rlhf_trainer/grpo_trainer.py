@@ -343,18 +343,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.template.truncation_strategy == 'raise':
 
                 @contextmanager
-                def context():
+                def single_sample_context():
+                    # Patch generation-related parameters to ensure that only one sample is processed per iteration
+                    # when resampling truncated data.
                     origin_ng = self.num_generations
                     origin_gbs = self.args.generation_batch_size
+                    origin_spg = self.args.steps_per_generation
                     try:
                         self.num_generations = 1
                         self.args.generation_batch_size = 1
+                        self.args.steps_per_generation = 1
                         yield
                     finally:
                         self.num_generations = origin_ng
                         self.args.generation_batch_size = origin_gbs
+                        self.args.steps_per_generation = origin_spg
 
-                with context():
+                with single_sample_context():
                     self.truncated_resample_iterator = cyclic_iter(self.get_resample_dataloader())
         # flag indicating whether the evaluation has started
         self.eval_flag = False
