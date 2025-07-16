@@ -293,7 +293,6 @@ def test_predict_with_generate_zero3():
             split_dataset_ratio=0.01,
             predict_with_generate=True,
             freeze_vit=False,
-            split_dataset_ratio=0.5,
             deepspeed='zero3',
             **kwargs))
 
