@@ -9,7 +9,7 @@ import torch.nn.functional as F
 import transformers
 from packaging import version
 
-from swift.llm import to_device, to_float_dtype
+from swift.llm import get_packed_seq_params, to_device, to_float_dtype
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
@@ -313,7 +313,8 @@ class Qwen2VLTemplate(Template):
         inputs['position_ids'] = inputs.pop('real_position_ids')
         transformers_ge_453 = version.parse(transformers.__version__) >= version.parse('4.53')
         if transformers_ge_453:
-            inputs.update(self.get_packed_seq_params(position_ids))
+            inputs.update(get_packed_seq_params(position_ids))
+            return super().forward_context(model, inputs)
         if self.version == 'v2':
             from transformers.models.qwen2_vl import modeling_qwen2_vl as modeling_module
         elif self.version == 'v2_5':

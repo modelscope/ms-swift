@@ -552,13 +552,8 @@ class SwiftMixin:
         return labels, logits_to_keep
 
     def get_cu_seqlens(self, position_ids, logits_to_keep) -> torch.Tensor:
-        assert position_ids.shape[0] == 1
-        position_ids = position_ids[0]
-        indices = torch.arange(position_ids.shape[0], device=position_ids.device)
-        cu_seqlens = torch.concat([
-            indices[position_ids == 0],
-            torch.tensor(position_ids.shape, device=position_ids.device),
-        ])
+        from swift.llm import get_packed_seq_params
+        cu_seqlens = get_packed_seq_params(position_ids)
         res_cu_seqlens = cu_seqlens.clone()
         if isinstance(logits_to_keep, torch.Tensor):
             for i in range(cu_seqlens.shape[0] - 1):
