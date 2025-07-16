@@ -35,6 +35,7 @@ from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInfer
                        get_model_arch, to_device)
 from swift.llm.infer.protocol import ChatCompletionResponse
 from swift.llm.model.utils import get_llm_model
+from swift.llm.template.base import MaxLengthError
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
 from swift.plugin.multi_turn import MultiTurnScheduler
@@ -315,7 +316,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.async_generate:
             self.add_callback(GRPOCallback(self))
 
-        if self.args.dynamic_sample:
+        if self.args.dynamic_sample or self.template.truncation_strategy == 'delete':
             self.resample_dataset = deepcopy(self.train_dataset)
 
             def cyclic_iter(iterable):
@@ -871,6 +872,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return inputs
 
     def _generate_and_score_completions(self, inputs: InputsType) -> InputsType:
+        if self.template.truncation_strategy == 'delete':
+            inputs = self.resample_truncated_inputs(inputs)
 
         inputs = self._generate_completions(inputs)
         total_rewards_per_func, total_rewards, completions = self._score_completions(inputs)
@@ -1556,6 +1559,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             dataloader_params['prefetch_factor'] = self.args.dataloader_prefetch_factor
 
         return self.accelerator.prepare(DataLoader(resample_dataset, **dataloader_params))
+
+    def resample_truncated_inputs(self, inputs: InputsType) -> InputsType:
+        template = self.template
+        with self._template_context(template):
+            for i, data in enumerate(inputs):
+                while True:
+                    try:
+                        template.encode(data)
+                        inputs[i] = data
+                        break
+                    except MaxLengthError:
+                        data = next(self.resample_iterator)
+        return inputs
 
     def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
         mode = 'train' if self.model.training else 'eval'
