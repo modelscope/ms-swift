@@ -43,7 +43,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 这里介绍使用2卡80GiB A100对Qwen2.5-7B-Instruct模型进行自我认知微调的快速入门案例，以下最佳实践可以在10分钟内完成。
 
 首先，我们需要将HF格式的权重转为Megatron格式：
-- 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除即可。
+- 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除即可。若出现内存不足，请将`--test_convert_precision true`删除。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -92,7 +92,7 @@ megatron sft \
 
 最后，将Megatron格式权重转为HF格式：
 - 注意：`--mcore_model`请指向`iter_xxx`的上级目录。默认会使用`latest_checkpointed_iteration.txt`中对应的checkpoint。
-- 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除即可。
+- 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除即可。若出现内存不足，请将`--test_convert_precision true`删除。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -399,7 +399,7 @@ swift export \
 - trainable_parameters_regex: 匹配额外可训练参数的正则表达式，默认为None。
 
 lora训练：
-- adapter_load: 加载adapter的权重路径，默认为None。
+- adapter_load: 加载adapter的权重路径，用于lora断点续训，默认为None。lora断点续训方式与全参数一致，请关注`--finetune`参数的含义。
 - 🔥target_modules: 指定lora模块的后缀, 默认为`['all-linear']`。
 - 🔥target_regex: 指定lora模块的regex表达式，默认为`None`。如果该值传入，则target_modules参数失效。
 - 🔥modules_to_save: 在已附加tuner后，额外指定一部分原模型模块参与训练和存储。默认为`[]`。
