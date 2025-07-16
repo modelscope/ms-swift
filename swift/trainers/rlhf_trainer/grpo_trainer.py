@@ -1593,15 +1593,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.engine.max_model_len = original_max_len
             del self.engine.set_grpo_max_model_len
 
-    def resample_truncated_inputs(self, inputs: InputsType) -> InputsType:
+    def resample_truncated_inputs(self, inputs: InputsType, n_try_fetch: int = 10) -> InputsType:
         template = self.template
         for i, data in enumerate(inputs):
+            n_try = 0
             while True:
                 try:
                     template.encode(data)
                     inputs[i] = data
                     break
                 except MaxLengthError:
+                    n_try += 1
+                    if n_try > n_try_fetch:
+                        raise RuntimeError('Failed to resample a valid data.',
+                                           'You can avoid this issue by increasing `max_length` or ',
+                                           'modifying the `truncation_strategy`.')
                     data = next(self.truncated_resample_iterator)[0]
         return inputs
 
