@@ -571,6 +571,11 @@ Deployment Arguments inherit from the [inference arguments](#inference-arguments
   - multi_turn_scheduler: Multi-turn GRPO parameter; pass the corresponding plugin name, and make sure to implement it in plugin/multi_turn.py.
   - max_turns: Maximum number of rounds for multi-turn GRPO. The default is None, which means there is no limit.
 
+### Rollout Arguments
+The rollout parameters inherit from the [deployment parameters](#deployment-arguments).
+- multi_turn_scheduler: Multi-turn training scheduler. The default is None. For details, please refer to the [documentation](./GRPO/DeveloperGuide/multi_turn.md).
+- max_turns: Maximum number of turns in multi-turn training. The default is None, which means there is no constraint.
+
 ### Web-UI Arguments
 - server_name: Host for the web UI, default is '0.0.0.0'.
 - server_port: Port for the web UI, default is 7860.
