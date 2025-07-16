@@ -2,13 +2,6 @@
 
 ---
 **NOTE**
-The scripts in this folder require the source code version of ms-swift.
-
-```
-git clone https://github.com/modelscope/ms-swift.git
-cd ms-swift
-pip install -e .
-```
 
 ## **Introduction**
 

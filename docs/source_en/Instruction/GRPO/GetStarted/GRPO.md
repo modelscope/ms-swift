@@ -191,7 +191,7 @@ swift rollout \
   --tensor_parallel_size 2 \
   --data_parallel_size 2
 ```
-For more rollout parameters, refer to the [documentation](../../../Instruction/Command-line-parameters.md#vllm-arguments).
+For more rollout parameters, refer to the [vllm arguments](../../../Instruction/Command-line-parameters.md#vllm-arguments) and [rollout arguments](../../../Instruction/Command-line-parameters.md#rollout-arguments)
 
 Note: When set `use_async_engine`, enabling only DP (Data Parallelism) may cause errors. [Related issue](https://github.com/vllm-project/vllm/issues/18567). If errors occur, try enabling both TP (Tensor Parallelism) and DP.
 

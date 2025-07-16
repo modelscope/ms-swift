@@ -6,13 +6,6 @@
 
 1. vLLM version 0.8.3 or higher.
 2. trl version 0.17.0 or higher
-3. ms-swift source code version
-
-```
-git clone https://github.com/modelscope/ms-swift.git
-cd ms-swift
-pip install -e .
-```
 
 ## **Introduction**
 
