@@ -260,6 +260,7 @@ def test_resume_only_model():
     last_model_checkpoint = result['last_model_checkpoint']
     print(f'last_model_checkpoint: {last_model_checkpoint}')
 
+
 def test_llm_transformers_4_33():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
