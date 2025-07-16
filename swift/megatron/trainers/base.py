@@ -155,7 +155,7 @@ class BaseMegatronTrainer(ABC):
 
         checkpointing._load_base_checkpoint = _load_base_checkpoint
         torch.nn.Module.load_state_dict = load_state_dict
-        
+
         args = get_args()
         origin_no_load_optim = args.no_load_optim
         origin_no_load_rng = args.no_load_rng
@@ -183,7 +183,8 @@ class BaseMegatronTrainer(ABC):
         args = get_args()
         if args.adapter_load is not None:
             with adapter_state_dict_context():
-                load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
+                args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
+                    model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
         if args.train_type != 'full' and args.modules_to_save:
             copy_original_module_weight(self.unwrapped_model)
         if args.initialize_embedding:
