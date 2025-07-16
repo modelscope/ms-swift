@@ -119,6 +119,10 @@ class SwiftMixin:
         update_generation_config_eos_token(self.model.generation_config, self.template)
         if getattr(self.model, 'origin_generation_config', None):
             self.model.origin_generation_config.eos_token_id = self.model.generation_config.eos_token_id
+        if self.args.resume_only_model and self.args.ignore_data_skip:
+            # The weights have already been loaded outside the trainer,
+            # so reading train_state is skipped here.
+            self.args.resume_from_checkpoint = None
 
     @contextmanager
     def _patch_deepspeed_load_checkpoint(self):
