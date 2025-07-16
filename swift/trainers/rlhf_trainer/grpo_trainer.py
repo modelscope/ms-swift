@@ -10,7 +10,7 @@ from concurrent.futures import Future
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from dataclasses import asdict, dataclass, field
-from functools import partial, wraps
+from functools import partial
 from math import ceil
 from queue import Queue
 from types import MethodType
