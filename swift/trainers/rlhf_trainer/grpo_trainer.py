@@ -30,7 +30,7 @@ from trl import GRPOTrainer as HFGRPOTrainer
 from trl.extras.profiling import profiling_context, profiling_decorator
 from trl.models import prepare_deepspeed
 from trl.trainer.callbacks import SyncRefModelCallback
-from trl.trainer.grpo_trainer import nanmax, nanmin, nanstd
+from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
 
 from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInferRequest, RowPreprocessor, Template,
                        get_model_arch, to_device)
@@ -56,6 +56,14 @@ if is_wandb_available():
 InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
 # tuple: (messages, finish_reason)
 OutputsType = List[Tuple[List[Dict], str]]
+if not hasattr(RepeatSampler, 'old_len_func'):
+    origin_len_func = RepeatSampler.__len__
+
+    def patched_len(self) -> int:
+        return (self.num_samples // self.batch_size) * self.batch_size * self.mini_repeat_count * self.repeat_count
+
+    RepeatSampler.__len__ = patched_len
+    RepeatSampler.old_len_func = origin_len_func
 
 
 class GRPOCallback(TrainerCallback):

@@ -1,10 +1,11 @@
 import os
 import re
-from typing import Dict, List, Union
+from typing import TYPE_CHECKING, Dict, List, Union
 
 import json
 
-from swift.llm import InferRequest
+if TYPE_CHECKING:
+    from swift.llm import InferRequest
 
 
 class ORM:
@@ -109,7 +110,7 @@ class ReactORM(ORM):
         action, action_input = ReactORM.parse_action(text)
         return action, action_input
 
-    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], solution: List[str], **kwargs) -> List[float]:
+    def __call__(self, infer_requests: List[Union['InferRequest', Dict]], solution: List[str], **kwargs) -> List[float]:
         rewards = []
         if not isinstance(infer_requests[0], str):
             predictions = [request['messages'][-1]['content'] for request in infer_requests]
@@ -211,7 +212,7 @@ class MathORM(ORM):
             value = False
         return value
 
-    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], ground_truths: List[str],
+    def __call__(self, infer_requests: List[Union['InferRequest', Dict]], ground_truths: List[str],
                  **kwargs) -> List[float]:
         rewards = []
         predictions = [request.messages[-1]['content'] for request in infer_requests]
