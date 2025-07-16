@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
+import transformers
+from packaging import version
 
 from swift.llm import to_device, to_float_dtype
 from swift.utils import get_env_args, is_deepspeed_enabled
@@ -307,14 +309,17 @@ class Qwen2VLTemplate(Template):
     def forward_context(self, model, inputs):
         if 'real_position_ids' not in inputs:
             return super().forward_context(model, inputs)
+        position_ids = inputs['position_ids']
+        inputs['position_ids'] = inputs.pop('real_position_ids')
+        transformers_ge_453 = version.parse(transformers.__version__) >= version.parse('4.53')
+        if transformers_ge_453:
+            inputs.update(self.get_packed_seq_params(position_ids))
         if self.version == 'v2':
             from transformers.models.qwen2_vl import modeling_qwen2_vl as modeling_module
         elif self.version == 'v2_5':
             from transformers.models.qwen2_5_vl import modeling_qwen2_5_vl as modeling_module
         elif self.version == 'omni':
             from transformers.models.qwen2_5_omni import modeling_qwen2_5_omni as modeling_module
-        position_ids = inputs['position_ids']
-        inputs['position_ids'] = inputs.pop('real_position_ids')
         return self._patch_flash_attention_forward(modeling_module, position_ids)
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:

@@ -124,7 +124,7 @@ def get_batch_on_this_tp_rank(data_iterator):
     return batch
 
 
-def get_packed_seq_params(position_ids: torch.Tensor) -> Optional[PackedSeqParams]:
+def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
     position_ids_f = position_ids.flatten()
     indices_q = torch.arange(position_ids_f.shape[0], device=position_ids_f.device, dtype=torch.int32)
 

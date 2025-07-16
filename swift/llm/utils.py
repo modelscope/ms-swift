@@ -325,3 +325,21 @@ def update_generation_config_eos_token(generation_config, template):
             modified = True
     if modified:
         generation_config.eos_token_id = eos_token_id
+
+
+def get_packed_seq_params(position_ids: torch.Tensor):
+    position_ids_f = position_ids.flatten()
+    indices_q = torch.arange(position_ids_f.shape[0], device=position_ids_f.device, dtype=torch.int32)
+
+    cu_seqlens = torch.cat([
+        indices_q[position_ids_f == 0],
+        torch.tensor(position_ids_f.shape, device=position_ids_f.device, dtype=torch.int32),
+    ])
+
+    max_length = position_ids_f.max() + 1
+    return {
+        'cumulative_seqlens_q': cu_seqlens,
+        'cumulative_seqlens_k': cu_seqlens,
+        'max_length_q': max_length,
+        'max_length_k': max_length,
+    }
