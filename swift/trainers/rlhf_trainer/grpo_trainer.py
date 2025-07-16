@@ -347,6 +347,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with seed_context():
                 if self.args.dynamic_sample:
                     self.dynamic_resample_iterator = cyclic_iter(self.get_train_dataloader())
+
                 if self.template.truncation_strategy == 'raise':
 
                     @contextmanager
@@ -1601,7 +1602,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     inputs[i] = data
                     break
                 except MaxLengthError:
-                    data = next(self.truncated_resample_iterator)
+                    data = next(self.truncated_resample_iterator)[0]
         return inputs
 
     def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
