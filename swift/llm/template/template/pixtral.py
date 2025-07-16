@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, List, Optional
 
+import torch
+
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -22,8 +24,8 @@ class PixtralTemplate(Template):
         idx_list = findall(input_ids, 10)
         if idx_list:
             image_inputs = processor.image_processor(images, patch_size=processor.patch_size, return_tensors='pt')
-            encoded['pixel_values'] = image_inputs['pixel_values'][0]
-            image_sizes = image_inputs['image_sizes'][0]
+            encoded['pixel_values'] = image_inputs['pixel_values']
+            image_sizes = image_inputs['image_sizes']
 
             def _get_new_tokens(i):
                 height, width = image_sizes[i]
@@ -46,6 +48,7 @@ class PixtralTemplate(Template):
         pixel_values = self.gather_list(batch, 'pixel_values')
         res = super()._data_collator(batch, padding_to=padding_to)
         if pixel_values:
+            pixel_values = torch.stack(pixel_values)
             res['pixel_values'] = pixel_values
         return res
 
