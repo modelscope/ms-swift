@@ -12,6 +12,8 @@ import torch
 from swift.llm import PtEngine, RequestConfig, Template, to_device
 from swift.llm.infer.protocol import ChatCompletionResponse
 from swift.plugin import ORM, orms, rm_plugins
+# register context manager(used in gym training)
+from swift.plugin.context_manager import ContextManager, context_managers
 from swift.plugin.env import Env, envs
 from swift.plugin.multi_turn import MultiTurnScheduler, multi_turns
 from swift.plugin.rm_plugin import DefaultRMPlugin
@@ -896,8 +898,16 @@ class ReToolScheduler(MultiTurnScheduler):
 multi_turns['retool'] = ReToolScheduler
 
 
+# register GYM env
 class CustomEnv(Env):
     pass
 
 
 envs['custom_env'] = CustomEnv
+
+
+class CustomCtxManager(ContextManager):
+    pass
+
+
+context_managers['custom_ctx'] = CustomCtxManager

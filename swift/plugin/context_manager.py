@@ -1,7 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
-from swift.llm.utils import Messages
+if TYPE_CHECKING:
+    from swift.llm.utils import Messages
 
 
 class ContextManager(ABC):
@@ -11,7 +13,7 @@ class ContextManager(ABC):
         self.ctx_config = ctx_config
 
     @abstractmethod
-    def manage_context(self, history: Messages, trajectory_id: str) -> Messages:
+    def manage_context(self, history: 'Messages', trajectory_id: str) -> 'Messages':
         """Manage conversation context and history.
 
         Args:
@@ -28,7 +30,7 @@ class DummyContextManager(ContextManager):
     def __init__(self, ctx_config):
         super().__init__(ctx_config)
 
-    def manage_context(self, history: Messages, trajectory_id: str) -> Messages:
+    def manage_context(self, history: 'Messages', trajectory_id: str) -> 'Messages':
         return history
 
 
