@@ -1,7 +1,7 @@
 Developer Guide
 ===============
 .. toctree::
-   :maxdepth:
+   :maxdepth: 1
 
    多轮训练.md
    多任务.md
