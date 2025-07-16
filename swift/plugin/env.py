@@ -80,11 +80,11 @@ def count_qwen_tokens(messages: List[Dict[str, Any]], max_tokens: int = 2048) ->
 
 class SimpleMathEnv(Env):
     tips_prompt = 'The answer is not correct, It seems You made a mistake, you need to recheck very carefully.'
-    acc_func = MathAccuracy()
-    solution = ''
 
     def __init__(self, env_config):
         super().__init__(env_config)
+        self.acc_func = MathAccuracy()
+        self.solution = ''
 
     async def reset(self, config: 'RolloutInferRequest') -> Tuple[str, Dict[str, Any], str]:
         obs = config.data_dict['problem']

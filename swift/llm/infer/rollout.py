@@ -20,7 +20,7 @@ from aiohttp import ClientConnectorError
 from fastapi import FastAPI
 from trl.scripts.vllm_serve import WeightSyncWorkerExtension
 
-from swift.llm import InferArguments, RolloutArguments, SwiftPipeline
+from swift.llm import RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.utils import get_device, get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
@@ -190,7 +190,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
                 process.join()  # ensure process termination after calling terminate()
 
     @staticmethod
-    def get_infer_engine(args: InferArguments, template=None, **kwargs):
+    def get_infer_engine(args: RolloutArguments, template=None, **kwargs):
         kwargs.update({
             'model_id_or_path': args.model,
             'model_type': args.model_type,
@@ -201,6 +201,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
             'multi_turn_scheduler': args.multi_turn_scheduler,
             'max_turns': args.max_turns,
             'use_gym_env': args.use_gym_env,
+            'gym_env': args.gym_env,
+            'context_manager': args.context_manager,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
         if infer_backend != 'vllm':
