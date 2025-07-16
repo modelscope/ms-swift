@@ -92,7 +92,9 @@ class GRPOVllmEngine(VllmEngine):
         # Get sampling controller configurations from kwargs
         multi_turn_scheduler = kwargs.get('multi_turn_scheduler', None)
         use_gym_env = kwargs.get('use_gym_env', False)
-
+        if use_gym_env:
+            self.gym_env = kwargs.get('gym_env', None)
+            self.context_manager = kwargs.get('context_manager', None)
         # Ensure mutual exclusivity of sampling controllers
         if use_gym_env and multi_turn_scheduler is not None:
             raise ValueError('gym_env and multi_turn_scheduler are mutually exclusive sampling controllers')
@@ -113,19 +115,29 @@ class GRPOVllmEngine(VllmEngine):
         else:
             self.multi_turn_scheduler = None
 
-    def _create_env(self, env_config) -> Env:
+    def _create_env(self, env_config: Dict) -> Env:
         """Create environment instance for gym sampling."""
-        if env_config.get('name', 'math_env') not in envs:
-            raise ValueError((f"Environment '{env_config.get('name', None)}' not found in envs registry. "
+        env_name = env_config.get('name', None)
+        if not env_name:
+            env_name = self.gym_env
+        if env_name not in envs:
+            raise ValueError((f"Environment '{env_name}' not found in envs registry. "
                               f'Available: {list(envs.keys())}'))
-        return envs[env_config.get('name', 'math_env')](env_config)
+        return envs[env_name](env_config)
 
-    def _create_context_manager(self, ctx_config) -> ContextManager:
+    def _create_context_manager(self, ctx_config: Dict) -> ContextManager:
         """Create context manager for gym sampling."""
-        if ctx_config.get('name', 'dummyContextManager') not in context_managers:
-            raise ValueError((f"Context manager '{ctx_config.get('name', None)}' not found in registry. "
+        ctx_name = ctx_config.get('name', None)
+        if not ctx_name:
+            ctx_name = self.context_manager
+
+        if not ctx_name:
+            ctx_name = 'dummyContextManager'
+
+        if ctx_name not in context_managers:
+            raise ValueError((f"Context manager '{ctx_name}' not found in registry. "
                               f'Available: {list(context_managers.keys())}'))
-        return context_managers[ctx_config.get('name', 'dummyContextManager')](ctx_config)
+        return context_managers[ctx_name](ctx_config)
 
     def infer(
         self,

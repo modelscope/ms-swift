@@ -6,6 +6,7 @@
 #   --model_type qwen2_5\
 #   --max_turns 3\
 #   --use_gym_env true
+#   --gym_env math_env
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
 NPROC_PER_NODE=6 \
@@ -39,4 +40,5 @@ swift rlhf \
     --log_completions true \
     --num_iterations 1 \
     --report_to tensorboard \
-    --beta 0
+    --beta 0 \
+    --loss_scale default

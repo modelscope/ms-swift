@@ -1,10 +1,10 @@
-# GYM环境训练
+# GYM Environment Training
 
-注意：该 feature 需要使用 ms-swift>=3.7 且目前仅支持纯文本模型
+Note: This feature requires ms-swift>=3.7 and currently only supports pure-text models.
 
-## Gym接口
+## Gym Interface
 
-GYM源自于[OpenAI Gym](https://github.com/openai/gym)，是一个抽象的强化学习环境接口，基于现在Model as Agent的趋势，我们在swift中定义了类似的一个接口,为Agent提供端到端的强化学习训练。
+GYM originates from [OpenAI Gym](https://github.com/openai/gym) and is an abstract interface for reinforcement learning environments. Based on the current "Model as Agent" trend, we have defined a similar interface in swift to provide end-to-end reinforcement learning training for Agents.
 ```python
 class Env(ABC):
 
@@ -12,7 +12,7 @@ class Env(ABC):
         """
 
         Args:
-            env_config: 环境配置，比如可用工具等
+            env_config: Environment configuration, such as available tools, etc.
         """
         self.env_config = env_config
 
@@ -21,12 +21,12 @@ class Env(ABC):
         """
 
         Args:
-            config: 环境初始化信息，应该放在
+            config: Environment initialization information.
 
         Returns:
-            - observation: 第一个user消息作为初始观察或者环境信息，会作为user message
-            - info: 用于DEBUG和日志的额外信息，会在logging.jsonl中记录
-            - system_message: 用户当前环境采样的系统提示词
+            - observation: The first user message as the initial observation or environment information, which will be treated as a user message.
+            - info: Extra information for DEBUG and logging, which will be recorded in logging.jsonl.
+            - system_message: The system prompt sampled for the user's current environment.
         """
         pass
 
@@ -35,13 +35,13 @@ class Env(ABC):
         """
 
         Args:
-            action: 所有对话消息，最后一个消息为当前采样回复
+            action: All dialogue messages, with the last message being the current sampled response.
 
         Returns:
-            - next_observation: 环境响应，将作为user message返回
-            - reward: 奖励
-            - done: 是否结束
-            - info: 用于DEBUG和日志的额外信息，会在logging.jsonl中记录
+            - next_observation: The environment's response, which will be returned as a user message.
+            - reward: The reward.
+            - done: Whether the episode has finished.
+            - info: Extra information for DEBUG and logging, which will be recorded in logging.jsonl.
         """
         pass
     @abstractmethod
@@ -49,11 +49,11 @@ class Env(ABC):
         """Clean up environment resources."""
         pass
 ```
-除此之外，根据[Kimi-Reseacher的实践](https://moonshotai.github.io/Kimi-Researcher/)，我们还额外提供了一个`ContextMangaer`接口,方便你动态的管理当前的Agent上下文。
+Additionally, based on the practices of [Kimi-Researcher](https://moonshotai.github.io/Kimi-Researcher/), we also provide an extra `ContextManager` interface to help you dynamically manage the current Agent's context.
 
-**ContextManager指定（非必需）**
-1. 在数据集中提供 [ctx_config](#注意事项) 列中的 name 键指定， 初始化相关的参数放在其他键中
-2. 使用参数 `--context_manager ctx_name` 指定
+**Specifying the ContextManager (Optional)**
+1. In the dataset, specify it using the `name` key in the [`ctx_config`](#Notes) column. Place related initialization parameters in other keys.
+2. Use the parameter `--context_manager ctx_name` to specify it.
 
 
 ```python
@@ -63,17 +63,19 @@ class ContextManager(ABC):
 
     @abstractmethod
     def manage_context(self, history: Messages,trajectory_id:str) -> Messages:
-        """动态调整当前agent的上下文
+        """Dynamically adjusts the current agent's context.
 
         Args:
-            history: 当前的消息历史
+            history: The current message history.
 
         Returns:
-            调整后的消息历史
+            The adjusted message history.
         """
         pass
 ```
-入参示例
+
+Input Parameter Example
+
 ```python
 infer_request
 """
@@ -105,7 +107,8 @@ RolloutResponseChoice(
         messages=None)
 """
 ```
-在 `rollout` 命令中使用参数 `use_gym_env` 来指定使用gym作为训练的环境接口
+
+In the `rollout` command, use the parameter `use_gym_env` to specify the use of gym as the training environment interface.
 ```bash
 swift rollout \
     --model xxx \
@@ -113,33 +116,30 @@ swift rollout \
     --max_turns xxx
 ```
 
-> 注意
-
-**环境选择**
-1. 在数据集中需要提供 [env_config](#注意事项) 列中的name键指定, 初始化相关的参数放在其他键中
-2. 使用参数 `--gym_env env_name` 指定
+**Environment Selection**
+1. In the dataset, you need to specify it using the `name` key in the [`env_config`](#Notes) column. Place related initialization parameters in other keys.
+2. Use the parameter `--gym_env env_name` to specify it.
 
 
-## 最佳实践
+## Best Practices
 
-- [训练脚本](../../../../../examples/train/grpo/external/vllm_gym.sh)
+- [Training Script](../../../../../examples/train/grpo/external/vllm_gym.sh)
 
-通过参数`external_plugins`, 我们可以将本地的`Env`和`ContextManager`注册进 ms-swift 中，具体实现参考[代码](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py)
+Using the `external_plugins` parameter, we can register local `Env` and `ContextManager` classes into ms-swift. For the specific implementation, refer to the [code](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py).
 
-## 注意事项
+## Notes
 
-1. 参考训练数据格式
+1. Reference Training Data Format
 ```json
-{"messages": [{"role": "system", "content": "你是个有用无害的助手"}, {"role": "user", "content": "告诉我明天的天气"}],"env_config":{"name":"custom_env","other_config":"xxxx"},"ctx_config":{"name":"custom_ctx","other_config":"xxxx"}}
+{"messages": [{"role": "system", "content": "You are a helpful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}],"env_config":{"name":"custom_env","other_config":"xxxx"},"ctx_config":{"name":"custom_ctx","other_config":"xxxx"}}
 ```
-2. gym 环境目前仅兼容纯文本模型和 AsyncEngine
+2. The gym environment currently only supports LLM and AsyncEngine.
 
-3. 默认仅对最后一轮response进行训练，如果gym涉及到多轮response生成，使用参数`--loss_scale default`对所有轮次的response进行训练，具体参考[文档](./多轮训练.md#损失掩码)
+3. By default, only the response from the last round is used for training. If the gym involves generating multi-turn responses, use the parameter `--loss_scale default` to train on the responses from all rounds. For more details, please refer to the [documentation](./multi_turn.md#loss-masking).
 
-4. 数据流程
-整个gym数据流程如下:
+4. Data Flow
+The entire gym data flow is as follows:
 <img src="../../../../resources/gym_env.png" width="400" />
 
-
-5. 奖励日志
-由于gym的奖励是在step函数内计算完成，所以需要手动通过`info`返回日志，最终的记录会放在completions.jsonl中的`trajactory_info`字段.
+5. Reward Logging
+Since the gym reward is calculated within the `step` function, you need to manually return the log via `info`. The final record will be placed in the `trajectory_info` field of `completions.jsonl`.

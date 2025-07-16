@@ -86,6 +86,10 @@ class RolloutArguments(DeployArguments):
     multi_turn_scheduler: Optional[str] = None
     max_turns: Optional[int] = None
 
+    # GYM env
+    gym_env: Optional[str] = None
+    context_manager: Optional[str] = None
+
     def __post_init__(self):
         super().__post_init__()
 
