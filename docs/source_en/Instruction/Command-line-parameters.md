@@ -184,8 +184,8 @@ Other important parameters:
 - 🔥resume_from_checkpoint: Parameter for resuming training from a checkpoint, pass the checkpoint path. Default is None. For resuming training from a checkpoint, keep other parameters unchanged and add `--resume_from_checkpoint checkpoint_dir` additionally.
   - Note: `resume_from_checkpoint` will load the model weights, optimizer weights, and random seed, and continue training from the last trained steps. You can specify `--resume_only_model` to load only the model weights.
 - resume_only_model: Default is False. If set to True when specifying resume_from_checkpoint, only the model weights will be resumed, while the optimizer states and random seed will be ignored.
-  - Note: In "ms-swift>=3.7", resume_only_model will perform data skipping by default, and this behavior can be controlled by the `ignore_data_skip` parameter.
-- ignore_data_skip: When resuming from a checkpoint, whether to skip certain epochs and batches so that data loading remains consistent with the previous training interruption. Default is False. If set to True, training will start faster (since the skipping process can take time), but the training results will not be the same as before the interruption.
+  - Note: In "ms-swift>=3.7", resume_only_model will perform data skipping by default, controlled by the `ignore_data_skip` parameter. To restore the behavior of "ms-swift<3.7", please set `--ignore_data_skip true`.
+- ignore_data_skip: When both `resume_from_checkpoint` and `resume_only_model` are set, this parameter controls whether to skip already trained data and restore training states such as epoch and step numbers. Default is False. If set to True, training state will not be loaded and data skipping will not occur; training will start from step 0.
 - 🔥ddp_find_unused_parameters: Default is None.
 - 🔥dataloader_num_workers: Defaults to None. If the platform is Windows, it is set to 0; otherwise, it is set to 1.
 - dataloader_pin_memory: Default is True.
