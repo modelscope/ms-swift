@@ -173,7 +173,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         })
         if is_master():
             jsonl_path = os.path.join(training_args.output_dir, 'logging.jsonl')
-            append_to_jsonl(jsonl_path, self.train_msg)
+            append_to_jsonl(jsonl_path, self.train_msg, strict=False)
         return self.train_msg
 
     def train(self, trainer):
