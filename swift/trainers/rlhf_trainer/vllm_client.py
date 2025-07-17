@@ -3,13 +3,12 @@ import logging
 import socket
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Union
 from urllib.parse import urlparse
 
 import requests
 import torch
-from dacite import from_dict
 from requests import ConnectionError
 from torch import nn
 
@@ -58,7 +57,6 @@ class VLLMClient:
 
         self.num_servers = len(self.base_urls)
 
-        # 为每个服务器创建独立session
         self.sessions = [requests.Session() for _ in range(self.num_servers)]
 
         if isinstance(group_ports, int):
