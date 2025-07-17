@@ -1,4 +1,4 @@
-# NOTE: Requires NCCL connectivity between the training master node and rollout nodes 
+# NOTE: Requires NCCL connectivity between the training master node and rollout nodes
 # This script demonstrates multi-node rollout and multi-node training with swift.
 # node1 and node2: multi-node rollout servers
 # node3 and node4: distributed training nodes
