@@ -21,6 +21,13 @@ all_langs = ['zh', 'en']
 builder: Type['BaseUI'] = None
 base_builder: Type['BaseUI'] = None
 
+DEFAULT_GRPO_SYSTEM = (
+    'A conversation between User and Assistant. The user asks a question, and the Assistant solves it. '
+    'The assistant first thinks about the reasoning process in the mind and then provides the user '
+    'with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> '
+    '</answer> tags, respectively, i.e., <think> reasoning process here </think>'
+    '<answer> answer here </answer>')
+
 
 def update_data(fn):
 
@@ -32,6 +39,7 @@ def update_data(fn):
         if builder is not None:
             choices = base_builder.choice(elem_id)
             if choices:
+                choices = [str(choice) if choice is not None else None for choice in choices]
                 kwargs['choices'] = choices
 
         if not isinstance(self, (Tab, TabItem, Accordion)) and 'interactive' not in kwargs:  # noqa
@@ -259,10 +267,15 @@ class BaseUI:
     def get_choices_from_dataclass(dataclass):
         choice_dict = {}
         for f in fields(dataclass):
+            default_value = f.default
+            if 'MISSING_TYPE' in str(default_value):
+                default_value = None
             if 'choices' in f.metadata:
-                choice_dict[f.name] = f.metadata['choices']
+                choice_dict[f.name] = list(f.metadata['choices'])
             if 'Literal' in str(f.type) and typing.get_args(f.type):
-                choice_dict[f.name] = typing.get_args(f.type)
+                choice_dict[f.name] = list(typing.get_args(f.type))
+            if f.name in choice_dict and default_value not in choice_dict[f.name]:
+                choice_dict[f.name].insert(0, default_value)
         return choice_dict
 
     @staticmethod
@@ -278,7 +291,7 @@ class BaseUI:
                     default_dict[f.name] = ' '.join(default_dict[f.name])
                 except TypeError:
                     default_dict[f.name] = None
-            if not default_dict[f.name]:
+            if not default_dict[f.name] and default_dict[f.name] not in (0, False):
                 default_dict[f.name] = None
         return default_dict
 
@@ -290,7 +303,13 @@ class BaseUI:
         return arguments
 
     @classmethod
-    def update_input_model(cls, model, allow_keys=None, has_record=True, arg_cls=BaseArguments, is_ref_model=False):
+    def update_input_model(cls,
+                           model,
+                           allow_keys=None,
+                           has_record=True,
+                           arg_cls=BaseArguments,
+                           is_ref_model=False,
+                           is_reward_model=False):
         keys = cls.valid_element_keys()
         if allow_keys:
             keys = [key for key in keys if key in allow_keys]
@@ -348,18 +367,26 @@ class BaseUI:
         else:
             values = []
             for key in keys:
-                if key not in ('template', 'model_type', 'ref_model_type', 'system'):
+                if key not in ('template', 'model_type', 'ref_model_type', 'reward_model_type', 'system'):
                     values.append(gr.update())
-                elif key in ('template', 'model_type', 'ref_model_type'):
+                elif key in ('template', 'model_type', 'ref_model_type', 'reward_model_type'):
                     if key == 'ref_model_type':
                         if is_ref_model:
+                            values.append(gr.update(value=getattr(model_meta, 'model_type')))
+                        else:
+                            values.append(gr.update())
+                    elif key == 'reward_model_type':
+                        if is_reward_model:
                             values.append(gr.update(value=getattr(model_meta, 'model_type')))
                         else:
                             values.append(gr.update())
                     else:
                         values.append(gr.update(value=getattr(model_meta, key)))
                 else:
-                    values.append(gr.update(value=TEMPLATE_MAPPING[model_meta.template].default_system))
+                    if cls.group == 'llm_grpo':
+                        values.append(gr.update(value=DEFAULT_GRPO_SYSTEM))
+                    else:
+                        values.append(gr.update(value=TEMPLATE_MAPPING[model_meta.template].default_system))
 
         if has_record:
             return [gr.update(choices=cls.list_cache(model))] + values
@@ -380,3 +407,12 @@ class BaseUI:
             else:
                 updates.append(gr.update())
         return updates
+
+    @classmethod
+    def update_ddp_num(cls, gpu_ids, use_ddp):
+        if use_ddp:
+            if 'cpu' in gpu_ids:
+                return None
+            else:
+                return len(gpu_ids)
+        return 1

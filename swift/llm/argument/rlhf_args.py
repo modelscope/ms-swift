@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
-from swift.trainers.arguments import GRPOArgumentsMixin
-from swift.utils import get_logger, set_default_ddp_config
+from swift.trainers.arguments import GRPOArgumentsMixin, RLHFArgumentsMixin
+from swift.utils import get_logger, is_master, is_mp, set_default_ddp_config
 from .train_args import TrainArguments
 
 logger = get_logger()
@@ -13,11 +13,20 @@ logger = get_logger()
 
 @dataclass
 class RewardModelArguments:
-    reward_model: Optional[str] = None
+    reward_model: Optional[List[str]] = None
     reward_adapters: List[str] = field(default_factory=list)
-    reward_model_type: Optional[str] = field(
+    reward_model_type: Optional[List[str]] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
-    reward_model_revision: Optional[str] = None
+    reward_model_revision: Optional[List[str]] = None
+
+
+@dataclass
+class TeacherModelArguments:
+    teacher_model: Optional[str] = None
+    teacher_adapters: List[str] = field(default_factory=list)
+    teacher_model_type: Optional[List[str]] = field(
+        default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+    teacher_model_revision: Optional[List[str]] = None
 
 
 @dataclass
@@ -34,24 +43,19 @@ class PPOArguments:
     num_mini_batches: int = 1
     local_rollout_forward_batch_size: int = 64
     num_sample_generations: int = 10
-    response_length: int = 512
+    response_length: Optional[int] = None  # compat. use max_completion_length instead
     missing_eos_penalty: Optional[float] = None
 
 
 @dataclass
 class GRPOArguments(GRPOArgumentsMixin):
     num_generations: int = 8  # G in the GRPO paper
-    max_completion_length: int = 512
-    ds3_gather_for_generation: bool = True
     reward_funcs: List[str] = field(default_factory=list)
     reward_weights: List[float] = None
     log_completions: bool = False
 
     # vLLM in GRPO
     use_vllm: bool = False
-    vllm_device: List[str] = field(default_factory=lambda: ['auto'])
-    vllm_gpu_memory_utilization: float = 0.9
-    vllm_max_model_len: Optional[int] = None
 
     # multi step
     num_iterations: int = 1
@@ -60,7 +64,8 @@ class GRPOArguments(GRPOArgumentsMixin):
 
 
 @dataclass
-class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArguments):
+class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardModelArguments, RLHFArgumentsMixin,
+                    TrainArguments):
     """
     RLHFArguments is a dataclass that holds arguments specific to the Reinforcement
         Learning with Human Feedback (RLHF) training backend.
@@ -78,7 +83,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         desirable_weight (float): Weight for desirable outcomes in KTO. Default is 1.0.
         undesirable_weight (float): Weight for undesirable outcomes in KTO. Default is 1.0.
     """
-    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo'] = 'dpo'
+    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo', 'gkd'] = 'dpo'
     ref_model: Optional[str] = None
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
@@ -86,6 +91,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
     beta: Optional[float] = None
     label_smoothing: float = 0
+    max_completion_length: int = 512
     loss_scale: Optional[str] = None  # 'last_round'
     # DPO
     rpo_alpha: float = 1.
@@ -96,30 +102,45 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     # KTO
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
-    # PPO/GRPO
+    # PPO/GRPO/GKD
     temperature: float = 0.9
     # RM
     center_rewards_coefficient: Optional[float] = None
+    # GKD
+    lmbda: float = 0.5
+    seq_kd: bool = False
+    # compat
+    max_new_tokens: Optional[int] = None  # use max_completion_length instead
 
     def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
         if self.rlhf_type == 'ppo':
             training_args['world_size'] = self.global_world_size
 
     def __post_init__(self):
+        self._deprecated_warning()
         self._init_grpo()
         self._init_rm()
         self._init_simpo()
-        self._init_ppo()
+        self._init_max_completion_length()
+        self._init_padding_side()
         self._set_default()
+        self._init_external_vllm()
         super().__post_init__()
-        self._check_rlhf()
+        self._check_padding_free()
         self._check_grpo()
+        self._external_vllm_warning()
 
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
                 # Avoid padding labels during the model's forward pass in multimodal models.
                 # Some multimodal models do not expand the image pad token.
                 self.loss_scale = 'default'
+            elif self.rlhf_type == 'grpo':
+                if self.loss_scale is None:
+                    if self.multi_turn_scheduler:
+                        self.loss_scale = 'default'
+                    else:
+                        self.loss_scale = 'last_round'
             else:
                 self.loss_scale = 'last_round'
         if self.rlhf_type == 'grpo' and self.beta == 0.0:
@@ -133,20 +154,17 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
-            if self.use_vllm or self.use_lmdeploy:
-                os.environ['USE_FAST_INFERENCE'] = '1'
+            if self.use_vllm:
                 set_default_ddp_config()
             if self.async_generate or not self.use_vllm:
                 self.sleep_level = 0
-            if self.sleep_level > 0:
-                self.gradient_accumulation_steps = 1
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
             if self.truncation_strategy is None:
                 self.truncation_strategy = 'left'
-            assert self.truncation_strategy == 'left', \
-                "GRPO requires `truncation_strategy='left'`," \
-                f"Current value: `truncation_strategy='{self.truncation_strategy}'`."
+            assert self.truncation_strategy in ['left', 'delete'], (
+                "GRPO requires `truncation_strategy 'left' or 'delete'`, "
+                f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")  # noqa
             if self.beta is None:
                 self.beta = 0.04  # https://arxiv.org/abs/2402.03300
             if self.async_generate:
@@ -160,11 +178,25 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 if self.soft_max_length is None:
                     self.soft_max_length = self.max_completion_length
                     logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
+            if self.use_vllm:
+                # set vllm mode
+                if self.vllm_server_host is not None:
+                    if self.vllm_mode != 'server':
+                        self.vllm_mode = 'server'
+                        logger.warning('set vllm_mode to `server` since vllm_server_host is provided')
+                else:
+                    if self.vllm_mode != 'colocate':
+                        self.vllm_mode = 'colocate'
+                        logger.warning('set vllm_mode to `colocate` since vllm_server_host is not provided')
 
-    def _init_ppo(self):
-        if self.rlhf_type == 'ppo':
+    def _init_padding_side(self):
+        if self.rlhf_type in {'ppo', 'gkd'}:
             self.padding_side = 'left'
             # TODO: streaming, MLLM
+
+    def _init_max_completion_length(self):
+        max_completion_length = self.response_length or self.max_new_tokens or self.max_completion_length
+        self.max_completion_length = self.max_new_tokens = self.response_length = max_completion_length
 
     def _init_metric_for_best_model(self):
         if self.rlhf_type not in {'ppo', 'grpo'}:
@@ -187,59 +219,105 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             self.task_type = 'seq_cls'
             self.num_labels = 1
 
+    def _init_external_vllm(self):
+        if self.rlhf_type != 'grpo' or self.vllm_server_host is None:
+            return
+        from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
+        if is_master():
+            self.vllm_client = VLLMClient(
+                base_url=self.vllm_server_base_url,
+                host=self.vllm_server_host,
+                server_port=self.vllm_server_port,
+                connection_timeout=self.vllm_server_timeout)
+            self.vllm_client.init_communicator()
+
     def _set_default(self):
         if self.beta is None:
-            self.beta = 0.1
+            if self.rlhf_type == 'gkd':
+                self.beta = 0.5
+            else:
+                self.beta = 0.1
         if self.loss_type is None:
             if self.rlhf_type in ['dpo', 'cpo']:
                 self.loss_type = 'sigmoid'  # else None
             elif self.rlhf_type in ['kto']:
                 self.loss_type = 'kto'
-
-    def _check_rlhf(self):
-        if self.sequence_parallel_size > 1:
-            raise ValueError('RLHF do not support sequence parallel')
+            elif self.rlhf_type == 'grpo':
+                self.loss_type = 'grpo'
 
     def _check_grpo(self):
         if self.rlhf_type != 'grpo':
             return
-        from swift.utils import get_device_count, get_dist_setting
-        device_count = get_device_count()
-        _, _, _, local_world_size = get_dist_setting()
-        num_infer_workers = self.num_infer_workers
-        fast_infer = self.use_vllm or self.use_lmdeploy
-        if fast_infer:
-            is_colocate_mode = (device_count == num_infer_workers)
+        from packaging import version
 
-            if is_colocate_mode:
-                # colocate mode
-                assert device_count == local_world_size, (
-                    f'Colocate mode requires device_count({device_count}) == num_infer_workers({num_infer_workers}). '
-                    'Please check if your device count matches NPROC_PER_NODE setting.')
-                logger.info(
-                    'You are using colocate mode because you have set num_infer_workers to be the same as '
-                    'NPROC_PER_NODE, where model training and sampling will be performed on a single GPU. '
-                    'If you encounter an Out-of-Memory (OOM) error, it is recommended to set the `sleep_level`, '
-                    '`offload_model`, and `offload_optimizer` parameters.')
-                assert not self.async_generate, 'async_generate requires async mode, but you are under colocate mode'
-                if self.use_lmdeploy and self.tensor_parallel_size > 1:
-                    raise ValueError('Currently LMDeploy do not support tensor parallel')
-                if self.use_vllm and self.sleep_level:
-                    logger.warning('It is highly recommended to use `sleep_level==1` in colocate mode,'
-                                   'otherwise it may lead to an OOM (Out of Memory) error.')
-            else:
-                # async mode
-                assert device_count == (local_world_size + num_infer_workers), (
-                    f'Async mode requires total GPUs({device_count}) = training GPUs({local_world_size}) + '
-                    f'inference workers({num_infer_workers}). Please adjust your GPU allocation.')
-                logger.info(
-                    'You are using async mode, where model training and sampling will be performed on different GPUs.')
-                if self.sleep_level > 0:
-                    logger.warning('You are using different GPUs for training and rollout, '
-                                   'so you do not need to use sleep_level > 0')
+        import trl
+        trl_version = version.parse(trl.__version__)
+        assert trl_version >= version.parse('0.17'), ('Your current version of `trl` is outdated. '
+                                                      'Please update it by running: pip install -U trl')
+        if is_mp() and self.use_vllm:
+            raise ValueError('GRPO with vLLM is not compatible with `device_map`. '
+                             'Please set NPROC_PER_NODE equal to num_processes.')
+        if self.use_liger_kernel:
+            assert trl_version >= version.parse('0.18')
+            if self.delta is not None:
+                raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
+            if self.sequence_parallel_size > 1:
+                raise ValueError('Liger loss does not support sequence parallel yet.')
+            if self.padding_free:
+                raise ValueError('Liger loss does not support padding free yet.')
 
-                assert self.tensor_parallel_size == 1, ('async mode do not support tensor parallel right now')
+            from trl.import_utils import is_liger_kernel_available
+            assert is_liger_kernel_available(), (
+                'Please install/update liger-kernel by running: pip install -U liger-kernel')
+        if self.vllm_mode == 'server':
+            assert not self.use_vllm or self.vllm_server_host is not None
 
-        if self.mini_batch_size:
-            assert self.per_device_train_batch_size % self.mini_batch_size == 0,\
-                'per_device_train_batch_size needs be divisible by mini_batch_size'
+        if self.async_generate:
+            assert self.vllm_mode == 'server', 'async generate require vllm_mode == server, '
+            'please deploy vLLM server by `swift rollout` and assign with `vllm_server_host` '
+            'for more infomations, please check '
+            'https://swift.readthedocs.io/en/latest/Instruction/GRPO/getstarted/GRPO.html'
+
+        if not self.use_vllm and self.vllm_tensor_parallel_size != 1:
+            self.vllm_tensor_parallel_size = 1
+            logger.warning('set vllm_tensor_parallel_size to 1 since use_vllm false')
+
+        if self.async_generate and self.multi_turn_scheduler is not None:
+            raise NotImplementedError('Currently, async_generate is not supported with multi-turn functionality.')
+
+        if self.generation_batch_size or self.steps_per_generation:
+            from trl.trainer.grpo_config import GRPOConfig
+            assert 'generation_batch_size' in GRPOConfig.__dict__, (
+                'generation_batch_size or steps_per_generation needs trl >= 0.18, '
+                'please install trl `pip install trl>=0.18')
+
+    def _external_vllm_warning(self):
+        if self.rlhf_type != 'grpo' or not self.vllm_server_host:
+            return
+
+        if self.vllm_max_model_len is not None:
+            logger.warning(
+                "Configuration conflict: 'vllm_max_model_len=%s' is ignored for external vLLM. "
+                'Please specify it when launching the inference service: '
+                '`swift rollout --max_model_len <value>`', self.vllm_max_model_len)
+
+    def _deprecated_warning(self):
+        if self.rlhf_type != 'grpo':
+            return
+
+        if self.multi_turn_func:
+            logger.warning("The parameter 'multi_turn_func' has been deprecated and will be removed in version 3.7. "
+                           "Please use 'multi_turn_scheduler' instead")
+
+            self.multi_turn_scheduler = self.multi_turn_func
+
+        if self.gc_collect_after_offload:
+            logger.warning(
+                "The parameter 'gc_collect_after_offload' has been deprecated and will be removed in version 3.7. ")
+
+    def _check_padding_free(self):
+        if self.padding_free:
+            supported_types = ['grpo', 'dpo', 'gkd']
+            if self.rlhf_type not in supported_types:
+                raise NotImplementedError(f"The current rlhf_type '{self.rlhf_type}' does not support padding_free. "
+                                          'Please set --padding_free to false.')

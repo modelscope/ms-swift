@@ -18,7 +18,7 @@ from .utils import ChatmlTemplateMeta
 
 class InternvlTemplate(Template):
     skip_prompt = False
-    num_image_token = 256
+    num_image_token = None
     placeholder_tokens = ['<IMG_CONTEXT>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -38,6 +38,8 @@ class InternvlTemplate(Template):
         if images:
             labels = encoded.get('labels')
             input_size = get_env_args('input_size', int, 448)
+            if self.num_image_token is None:
+                self.num_image_token = int((input_size // 14)**2 * (0.5**2))
             max_num = get_env_args('max_num', int, 12)
             pixel_values_images = [transform_image(image, input_size, max_num) for image in images]
             pixel_values = torch.cat(pixel_values_images, dim=0).to(self.model_info.torch_dtype)
@@ -54,14 +56,14 @@ class InternvlTemplate(Template):
         encoded['pixel_values'] = pixel_values
         return encoded
 
-    def compute_loss_context(self, model, inputs):
+    def forward_context(self, model, inputs):
         model_name = model.language_model.__class__.__name__.lower()
         if self._packing and 'internlm2' in model_name:
             position_ids = inputs['position_ids']
             modeling_module = model.language_model.model.layers[0].attention.__class__
             return self._patch_flash_attention_forward(modeling_module, position_ids, use_new_func=True)
         else:
-            return super().compute_loss_context(model, inputs)
+            return super().forward_context(model, inputs)
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         embedding = model.get_input_embeddings()
@@ -119,10 +121,13 @@ class Internvl2Template(InternvlTemplate):
         input_ids = encoded['input_ids']
         idx_list = findall(input_ids, -100)
         labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
         images = inputs.images
         if images:
             has_video = bool(inputs.videos)
             input_size = get_env_args('input_size', int, 448)
+            if self.num_image_token is None:
+                self.num_image_token = int((input_size // 14)**2 * (0.5**2))
             max_num = get_env_args('max_num', int, 12)
             video_max_num = get_env_args('video_max_num', int, 1)
             if has_video:
@@ -142,6 +147,7 @@ class Internvl2Template(InternvlTemplate):
             return img_tokens
 
         encoded['input_ids'], encoded['labels'] = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
+        encoded['loss_scale'] = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
         encoded['pixel_values'] = pixel_values
         return encoded
 

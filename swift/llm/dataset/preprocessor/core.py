@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
+import os
 from collections import Counter
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -11,7 +12,7 @@ from datasets import IterableDataset as HfIterableDataset
 from datasets import Sequence, Value
 
 from swift.llm import history_to_messages
-from swift.utils import get_logger
+from swift.utils import get_logger, is_dist, is_master, safe_ddp_context
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
@@ -19,13 +20,16 @@ logger = get_logger()
 
 
 class RowPreprocessor:
-    standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
+    standard_keys = [
+        'messages', 'rejected_response', 'rejected_images', 'label', 'images', 'videos', 'audios', 'tools', 'objects',
+        'channel', 'margin'
+    ]
 
     def __init__(self,
                  *,
                  columns: Optional[Dict[str, str]] = None,
                  dataset_sample: Optional[int] = None,
-                 random_state: Union[np.random.RandomState, int, None] = None,
+                 random_state: Union[np.random.RandomState, int, None] = 42,
                  traceback_limit: int = 10) -> None:
         self.columns = columns or {}
         self.origin_columns = self.columns.copy()  # Higher priority and raise Error
@@ -56,30 +60,27 @@ class RowPreprocessor:
             for key in keys:
                 message.pop(key)
 
-        if messages[0]['role'] == 'system':
-            messages = messages[1:]
-        if messages and messages[0]['role'] == 'assistant':
-            messages = [{'role': 'user', 'content': ''}] + messages  # pretrain
-        for user_message, assistant_message in zip(messages[::2], messages[1::2]):
-            if (user_message['role'] not in {'user', 'tool'} or 'content' not in user_message
-                    or user_message['content'] is None):
-                raise ValueError(f'user_message: {user_message}')
-            if (assistant_message['role'] not in {'assistant'} or 'content' not in assistant_message
-                    or assistant_message['content'] in {'', None}):
-                raise ValueError(f'assistant_message: {assistant_message}')
+        for message in messages:
+            role, content = message['role'], message['content']
+            # The terms 'tool' and 'tool_response' have the same meaning, ensuring compatibility.
+            assert role in {'system', 'user', 'tool_call', 'tool_response', 'tool', 'assistant'}, f'message: {message}'
+            assert content is not None, f'message: {message}'
 
     @staticmethod
     def _cast_images(row: Dict[str, Any]) -> None:
-        images = row.get('images')
+        for key in ['images', 'rejected_images']:
+            images = row.get(key, None)
+            if images is None:
+                continue
 
-        if isinstance(images, str) or isinstance(images, list) and images and isinstance(images[0], str):
-            if isinstance(images, str):
-                images = [images]
-            for i, image in enumerate(images):
-                images[i] = {'bytes': None, 'path': image}
-            row['images'] = images
-        elif isinstance(images, dict):
-            row['images'] = [images]
+            if isinstance(images, str) or (isinstance(images, list) and images and isinstance(images[0], str)):
+                if isinstance(images, str):
+                    images = [images]
+                for i, image in enumerate(images):
+                    images[i] = {'bytes': None, 'path': image}
+                row[key] = images
+            elif isinstance(images, dict):
+                row[key] = [images]
 
     @staticmethod
     def _check_rejected_response(row: Dict[str, Any]) -> None:
@@ -124,8 +125,9 @@ class RowPreprocessor:
                 if k not in batched:
                     batched[k] = [None] * i
                 batched[k].append(v)
-        # Make all the lengths of v the same.
-        batched = {k: v + [None] * (len(rows) - len(v)) for k, v in batched.items()}
+            # Make all the lengths of v the same.
+            for k in set(batched.keys()) - set(row.keys()):
+                batched[k].append(None)
         return batched
 
     @staticmethod
@@ -261,7 +263,9 @@ class RowPreprocessor:
                 features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
                 features['objects'] = {
                     'ref': Sequence(feature=Value(dtype='string'), length=-1),
-                    'bbox': Sequence(feature=Sequence(feature=Value(dtype='float64'), length=-1), length=-1)
+                    'bbox': Sequence(feature=Sequence(feature=Value(dtype='float64'), length=-1), length=-1),
+                    'bbox_type': Value(dtype='string'),
+                    'image_id': Sequence(feature=Value(dtype='int64'), length=-1),
                 }
             ArrowWriter.__origin_init__(self, schema, features, *args, **kwargs)
 
@@ -275,8 +279,9 @@ class RowPreprocessor:
 
     def _cast_pil_image(self, dataset):
         features = dataset.features
-        if 'images' in features and isinstance(features['images'], Image) and features['images'].decode:
-            dataset = dataset.cast_column('images', Image(decode=False))
+        for col in ['images', 'rejected_images']:
+            if (col in features and isinstance(features[col], Image) and getattr(features[col], 'decode', False)):
+                dataset = dataset.cast_column(col, Image(decode=False))
         return dataset
 
     def __call__(
@@ -284,6 +289,7 @@ class RowPreprocessor:
         dataset: DATASET_TYPE,
         *,
         num_proc: int = 1,
+        load_from_cache_file: bool = True,
         strict: bool = False,
         batch_size: Optional[int] = None,
     ) -> DATASET_TYPE:
@@ -295,17 +301,23 @@ class RowPreprocessor:
 
         map_kwargs = {'batched': True, 'batch_size': batch_size}
         if isinstance(dataset, HfDataset):
-            map_kwargs['num_proc'] = num_proc
+            if not load_from_cache_file and is_dist() and not is_master():
+                load_from_cache_file = True
+            map_kwargs.update({
+                'num_proc': num_proc,
+                'load_from_cache_file': load_from_cache_file,
+            })
         # compat GRPO: The solution field will be retained.
         dataset = RowPreprocessor.get_features_dataset(dataset)
         if 'solution' in dataset.features:
-            dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
+            with safe_ddp_context(None, True):
+                dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
         dataset = self._rename_columns(dataset)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
 
         ignore_max_length_error = True if isinstance(dataset, HfDataset) and num_proc > 1 else False
-        with self._patch_arrow_writer():
+        with self._patch_arrow_writer(), safe_ddp_context(None, True):
             try:
                 dataset_mapped = dataset.map(
                     self.batched_preprocess,
@@ -344,8 +356,12 @@ class ResponsePreprocessor(RowPreprocessor):
         response = row.pop('response', None)
         if response is not None:
             if isinstance(response, (list, tuple)):
+                from transformers.utils import strtobool
                 # sometimes response is a list, pick one randomly
-                response = self.random_state.choice(response)
+                if strtobool(os.environ.get('RANDOM_DATASET_RESPONSE', 'True')):
+                    response = self.random_state.choice(response)
+                else:
+                    response = response[0]
         history = row.pop('history', None) or []
         query = row.pop('query', None)
         system = row.pop('system', None)
@@ -395,7 +411,6 @@ class MessagesPreprocessor(RowPreprocessor):
             user_role: Optional[str] = None,  # 'user', 'human'
             assistant_role: Optional[str] = None,  # 'assistant', 'gpt', 'bot'
             system_role: str = 'system',
-            tool_role: str = 'tool',
             # 'conversation', 'conversations' -> 'messages'
             columns: Optional[Dict[str, str]] = None,
             repair_messages: Callable[[Union[str, List[Dict[str, str]]]],
@@ -407,9 +422,10 @@ class MessagesPreprocessor(RowPreprocessor):
         self.content_keys = ['content', 'value'] if content_key is None else [content_key]
         self.user_roles = ['user', 'human'] if user_role is None else [user_role]
         self.assistant_roles = ['assistant', 'gpt', 'bot'] if assistant_role is None else [assistant_role]
+        self.tool_call_roles = ['function_call']
+        self.tool_response_roles = ['function_response', 'observation', 'observations']
 
         self.system_role = system_role
-        self.tool_role = tool_role
         self.repair_messages = repair_messages
         self.inner_key = inner_key
 
@@ -436,32 +452,27 @@ class MessagesPreprocessor(RowPreprocessor):
         if system is not None:
             new_messages.append({'role': 'system', 'content': system})
         for message in messages:
-            if self.tool_role in message:
-                user_message = {'role': 'tool', 'content': message[self.tool_role]}
-            else:
-                user_message = {'role': 'user', 'content': message['user']}
+            user_message = {'role': 'user', 'content': message['user']}
             assistant_message = {'role': 'assistant', 'content': message['assistant']}
             new_messages.append(user_message)
             new_messages.append(assistant_message)
         return new_messages
 
     def to_std_messages(self, messages: List[Dict[str, str]], system: Optional[str]) -> None:
-        start_idx = 0
         if messages[0]['role'] == self.system_role:
             messages[0]['role'] = 'system'
-            start_idx = 1
         elif system is not None:
             messages.insert(0, {'role': 'system', 'content': system})
-            start_idx = 1
-        for user_message, assistant_message in zip(messages[start_idx::2], messages[start_idx + 1::2]):
-            user_role = user_message['role']
-            assistant_role = assistant_message['role']
-            if user_role in self.user_roles:
-                user_message['role'] = 'user'
-            elif user_role == self.tool_role:
-                user_message['role'] = 'tool'
-            if assistant_role in self.assistant_roles:
-                assistant_message['role'] = 'assistant'
+        for message in messages:
+            role = message['role']
+            if role in self.user_roles:
+                message['role'] = 'user'
+            elif role in self.assistant_roles:
+                message['role'] = 'assistant'
+            elif role.replace('-', '_') in self.tool_call_roles:
+                message['role'] = 'tool_call'
+            elif role.replace('-', '_') in self.tool_response_roles:
+                message['role'] = 'tool_response'
 
     @staticmethod
     def _to_std_key(messages: List[Dict[str, str]], std_key: str, optional_keys: List[str]) -> None:
@@ -519,8 +530,9 @@ class AutoPreprocessor:
         dataset: DATASET_TYPE,
         *,
         num_proc: int = 1,
+        load_from_cache_file: bool = True,
         strict: bool = False,
     ) -> DATASET_TYPE:
         dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns)
         preprocessor = self._get_preprocessor(dataset)
-        return preprocessor(dataset, num_proc=num_proc, strict=strict)
+        return preprocessor(dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)

@@ -9,10 +9,14 @@ if TYPE_CHECKING:
     from .loss_scale import loss_scale_map
     from .metric import InferStats, MeanMetric, Metric, compute_acc, get_metric, compute_rouge_bleu
     from .optimizer import optimizers_map
-    from .tools import get_tools_prompt, get_tools_keyword
+    from .agent_template import agent_templates
     from .tuner import Tuner, extra_tuners, PeftTuner
     from .prm import prms, PRM
     from .orm import orms, ORM
+    from .multi_turn import multi_turns
+    from .rm_plugin import rm_plugins
+    from .env import envs
+    from .context_manager import context_managers
 
 else:
     _import_structure = {
@@ -21,10 +25,14 @@ else:
         'loss_scale': ['loss_scale_map'],
         'metric': ['InferStats', 'MeanMetric', 'Metric', 'compute_acc', 'get_metric', 'compute_rouge_bleu'],
         'optimizer': ['optimizers_map'],
-        'tools': ['get_tools_prompt', 'get_tools_keyword'],
+        'agent_template': ['agent_templates'],
         'tuner': ['Tuner', 'extra_tuners', 'PeftTuner'],
         'prm': ['prms', 'PRM'],
-        'orm': ['orms', 'ORM']
+        'orm': ['orms', 'ORM'],
+        'multi_turn': ['multi_turns'],
+        'rm_plugin': ['rm_plugins'],
+        'env': ['env'],
+        'context_manager': ['context_managers']
     }
 
     import sys

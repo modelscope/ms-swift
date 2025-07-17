@@ -11,21 +11,11 @@ class SelfCog(BaseUI):
     group = 'llm_train'
 
     locale_dict = {
-        'self_cognition': {
+        'selfcog_tab': {
             'label': {
                 'zh': '自我认知任务参数设置',
                 'en': 'Self cognition settings'
             },
-        },
-        'self_cognition_sample': {
-            'label': {
-                'zh': '数据及采样条数',
-                'en': 'Dataset sample size'
-            },
-            'info': {
-                'zh': '设置数据集采样的条数',
-                'en': 'Set the dataset sample size'
-            }
         },
         'model_name': {
             'label': {
@@ -51,7 +41,7 @@ class SelfCog(BaseUI):
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Accordion(elem_id='self_cognition', open=False):
+        with gr.TabItem(elem_id='selfcog_tab'):
             with gr.Row():
                 gr.Textbox(elem_id='model_name', scale=20, is_list=True)
                 gr.Textbox(elem_id='model_author', scale=20, is_list=True)

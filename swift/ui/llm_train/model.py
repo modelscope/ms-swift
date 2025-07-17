@@ -45,8 +45,8 @@ class Model(BaseUI):
         },
         'system': {
             'label': {
-                'zh': 'system字段',
-                'en': 'system'
+                'zh': 'System字段',
+                'en': 'System'
             },
             'info': {
                 'zh': '选择system字段的内容',
@@ -92,7 +92,7 @@ class Model(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='model_param', open=True):
-            with gr.Row():
+            with gr.Row(equal_height=True):
                 model = gr.Dropdown(
                     elem_id='model',
                     scale=20,
@@ -104,7 +104,7 @@ class Model(BaseUI):
                 train_record = gr.Dropdown(elem_id='train_record', choices=[], scale=20)
                 clear_cache = gr.Button(elem_id='clear_cache', scale=2)
             with gr.Row():
-                gr.Textbox(elem_id='system', lines=1, scale=20)
+                gr.Textbox(elem_id='system', lines=4 if cls.group == 'llm_grpo' else 1, scale=20)
 
         def clear_record(model):
             if model:

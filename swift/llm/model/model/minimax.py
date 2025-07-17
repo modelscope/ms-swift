@@ -27,10 +27,6 @@ def get_model_tokenizer_minimax_vl(model_dir: str,
     device_ids = list(range(max(local_rank, 0), n_gpu, local_world_size))
     config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['model_config'] = config
-    if kwargs.get('attn_impl') == 'flash_attn':
-        config.attn_type_list = [1] * len(config.attn_type_list)
-    else:
-        config.attn_type_list = [0] * len(config.attn_type_list)
     if 'quantization_config' in model_kwargs:
         quantization_config = model_kwargs['quantization_config']
         from transformers import QuantoConfig
@@ -111,10 +107,6 @@ def get_model_tokenizer_minimax_text(model_dir: str,
     device_ids = list(range(max(local_rank, 0), n_gpu, local_world_size))
     config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['model_config'] = config
-    if kwargs.get('attn_impl') == 'flash_attn':
-        config.attn_type_list = [1] * len(config.attn_type_list)
-    else:
-        config.attn_type_list = [0] * len(config.attn_type_list)
     if 'quantization_config' in model_kwargs:
         quantization_config = model_kwargs['quantization_config']
         from transformers import QuantoConfig
@@ -154,3 +146,15 @@ register_model(
         TemplateType.minimax,
         get_model_tokenizer_minimax_text,
         architectures=['MiniMaxText01ForCausalLM']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.minimax_m1, [
+            ModelGroup([
+                Model('MiniMax/MiniMax-M1-40k', 'MiniMaxAI/MiniMax-M1-40k'),
+                Model('MiniMax/MiniMax-M1-80k', 'MiniMaxAI/MiniMax-M1-80k'),
+            ]),
+        ],
+        TemplateType.minimax_m1,
+        get_model_tokenizer_minimax_text,
+        architectures=['MiniMaxM1ForCausalLM']))

@@ -43,11 +43,7 @@ class Llama3TemplateMeta(TemplateMeta):
     suffix: Prompt = field(default_factory=lambda: ['<|eot_id|>'])
     system_prefix: Optional[Prompt] = field(
         default_factory=lambda: ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
-    tool_prompt: Optional[Prompt] = field(default_factory=lambda: [
-        '<|start_header_id|>tool<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-        '<|start_header_id|>assistant<|end_header_id|>\n\n'
-    ])
-    default_tools_prompt: str = 'toolbench'
+    agent_template: str = 'llama3'
 
 
 register_template(Llama3TemplateMeta(LLMTemplateType.llama3))
@@ -123,6 +119,8 @@ class Llama4Template(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
+        if self.mode == 'vllm':
+            return ['<|image|>']
         return [[-100]]
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -131,6 +129,7 @@ class Llama4Template(Template):
         if images:
             split_token = self._tokenize('\n')
             input_ids, labels = encoded['input_ids'], encoded['labels']
+            loss_scale = encoded['loss_scale']
             idx_list = findall(input_ids, -100)
             media_inputs = self.processor(
                 text='\n'.join(['<|image|>'] * len(idx_list)),
@@ -141,6 +140,7 @@ class Llama4Template(Template):
 
             encoded['input_ids'], encoded['labels'] = self._extend_tokens(input_ids, labels, idx_list,
                                                                           lambda i: splited_tokens[i])
+            encoded['loss_scale'] = self._extend_loss_scale(loss_scale, idx_list, lambda i: splited_tokens[i])
             encoded['pixel_values'] = media_inputs['pixel_values']
         return encoded
 
@@ -157,6 +157,7 @@ class Llama4TemplateMeta(TemplateMeta):
     stop_words: List[Word] = field(default_factory=lambda: ['<|end_of_text|>', '<|eom|>'])
     system_prefix: Optional[Prompt] = field(
         default_factory=lambda: ['<|begin_of_text|><|header_start|>system<|header_end|>\n\n{{SYSTEM}}<|eot|>'])
+    agent_template: str = 'llama4'
 
 
 register_template(Llama4TemplateMeta(MLLMTemplateType.llama4, template_cls=Llama4Template))

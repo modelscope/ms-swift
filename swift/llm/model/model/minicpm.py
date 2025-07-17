@@ -183,6 +183,10 @@ register_model(
             ModelGroup([
                 Model('OpenBMB/MiniCPM-2B-128k', 'openbmb/MiniCPM-2B-128k'),
             ]),
+            ModelGroup([
+                Model('OpenBMB/MiniCPM4-0.5B', 'openbmb/MiniCPM4-0.5B'),
+                Model('OpenBMB/MiniCPM4-8B', 'openbmb/MiniCPM4-8B'),
+            ]),
         ],
         TemplateType.chatml,
         get_model_tokenizer_with_flash_attn,

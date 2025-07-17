@@ -24,7 +24,7 @@ Please refer to our [Code of Conduct documentation](./CODE_OF_CONDUCT.md).
 ### Submitting PR (Pull Requests)
 
 Any feature development is carried out in the form of Fork and then PR on GitHub.
-1. Fork: Go to the [SWIFT](https://github.com/modelscope/swift) page and click the **Fork button**. After completion, a SWIFT code repository will be cloned under your personal organization.
+1. Fork: Go to the [ms-swift](https://github.com/modelscope/ms-swift) page and click the **Fork button**. After completion, a SWIFT code repository will be cloned under your personal organization.
 2. Clone: Clone the code repository generated in the first step to your local machine and **create a new branch** for development. During development, please click the **Sync Fork button** in time to synchronize with the `main` branch to prevent code expiration and conflicts.
 3. Submit PR: After development and testing, push the code to the remote branch. On GitHub, go to the **Pull Requests page**, create a new PR, select your code branch as the source branch, and the `modelscope/swift:main` branch as the target branch.
 

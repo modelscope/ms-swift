@@ -39,7 +39,7 @@ def infer_lora(infer_request: 'InferRequest'):
     args = BaseArguments.from_pretrained(adapter_path)
     # method1
     # engine = PtEngine(args.model, adapters=[adapter_path])
-    # template = get_template(args.template, engine.tokenizer, args.system)
+    # template = get_template(args.template, engine.processor, args.system)
     # engine.default_template = template
 
     # method2

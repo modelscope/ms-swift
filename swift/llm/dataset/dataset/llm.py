@@ -325,13 +325,20 @@ register_dataset(
 
 class StsbPreprocessor(ResponsePreprocessor):
 
+    def __init__(self, sim_threshold: Optional[float] = None):
+        self.sim_threshold = sim_threshold
+        super().__init__()
+
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         row = {
             'query': row['sentence1'],
             'response': row['sentence2'],
             'label': row['score'],
         }
-        return super().preprocess(row)
+        if self.sim_threshold is None or float(row['label']) >= self.sim_threshold:
+            return super().preprocess(row)
+        else:
+            return None
 
 
 class StsbGeneratePreprocessor(ResponsePreprocessor):
@@ -364,10 +371,43 @@ register_dataset(
         hf_dataset_id='sentence-transformers/stsb',
         subsets=[
             SubsetDataset('default', preprocess_func=StsbPreprocessor()),  # embedding
+            SubsetDataset('positive', preprocess_func=StsbPreprocessor(sim_threshold=0.75)),  # infonce
             SubsetDataset('generate', preprocess_func=StsbGeneratePreprocessor()),
             SubsetDataset('reg', preprocess_func=StsbRegressionPreprocessor()),
         ],
         tags=['similarity', '🔥']))
+
+
+class MTEBRerankPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+        query = row['query']
+        positives = row['positive'] if isinstance(row['positive'], list) else [row['positive']]
+        negatives = row['negative'] if isinstance(row['negative'], list) else [row['negative']]
+
+        expanded_rows = []
+        for positive in positives:
+            expanded_row = {'query': query, 'response': positive, 'rejected_response': negatives}
+            expanded_rows.append(super().preprocess(expanded_row))
+
+        return expanded_rows
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='MTEB/scidocs-reranking',
+        hf_dataset_id='mteb/scidocs-reranking',
+        split=['validation', 'test'],
+        preprocess_func=MTEBRerankPreprocessor(),
+        tags=['rerank', '🔥']))
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='MTEB/stackoverflowdupquestions-reranking',
+        hf_dataset_id='mteb/stackoverflowdupquestions-reranking',
+        split=['train', 'test'],
+        preprocess_func=MTEBRerankPreprocessor(),
+        tags=['rerank', '🔥']))
 
 
 def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:
@@ -606,7 +646,17 @@ register_dataset(
         huge_dataset=True))
 
 
-class XlamFunctionCallingPreprocessor(ResponsePreprocessor):
+class XlamFunctionCallingPreprocessor(RowPreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        messages = [{'role': 'user', 'content': row['query']}]
+        response = row['answers']
+        response = json.loads(response)
+        messages += [{'role': 'tool_call', 'content': json.dumps(content)} for content in response]
+        return {'messages': messages, 'tools': row['tools']}
+
+
+class XlamFunctionCallingGRPOPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         query = row['query']
@@ -624,9 +674,12 @@ class XlamFunctionCallingPreprocessor(ResponsePreprocessor):
 register_dataset(
     DatasetMeta(
         ms_dataset_id='LLM-Research/xlam-function-calling-60k',
-        subsets=['dataset'],
-        preprocess_func=XlamFunctionCallingPreprocessor(),
-        tags=['agent']))
+        hf_dataset_id='Salesforce/xlam-function-calling-60k',
+        subsets=[
+            SubsetDataset('default', 'dataset', preprocess_func=XlamFunctionCallingPreprocessor()),
+            SubsetDataset('grpo', 'dataset', preprocess_func=XlamFunctionCallingGRPOPreprocessor())
+        ],
+        tags=['agent', 'grpo', '🔥']))
 
 
 class HHRLHFCNPreprocessor(MessagesPreprocessor):
@@ -663,11 +716,22 @@ register_dataset(
         preprocess_func=MessagesPreprocessor(repair_messages=repair_conversations),
         tags=['chat', 'em']))
 
+
+class EmojiPreprocessr(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        # Remove dirty characters
+        row['query'] = row['query'].replace('️', '')
+        row['response'] = row['response'].replace('️', '')
+        row['rejected_response'] = row['rejected_response'].replace('️', '')
+        return super().preprocess(row)
+
+
 register_dataset(
     DatasetMeta(
         ms_dataset_id='hjh0119/shareAI-Llama3-DPO-zh-en-emoji',
         hf_dataset_id='shareAI/DPO-zh-en-emoji',
-        preprocess_func=ResponsePreprocessor(columns={
+        preprocess_func=EmojiPreprocessr(columns={
             'answer_zh': 'response',
             'answer_en': 'rejected_response'
         }),
@@ -734,6 +798,27 @@ register_dataset(
         tags=['chat', 'zh']))
 
 
+class FunctionCallChatmlPreprocessor(MessagesPreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        res = super().preprocess(row)
+
+        if res['function_description']:
+            res['tools'] = res['function_description'].split('\n\n')
+        messages = res['messages']
+        if messages[0]['role'] == 'system':
+            messages.pop(0)
+        return res
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='AI-ModelScope/function-calling-chatml',
+        hf_dataset_id='Locutusque/function-calling-chatml',
+        preprocess_func=FunctionCallChatmlPreprocessor(),
+        tags=['agent', 'en', 'sft', '🔥']))
+
+
 class Dolly15kPreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -791,8 +876,17 @@ register_dataset(
 
 
 class SelfCognitionPreprocessor(ResponsePreprocessor):
-    name: Optional[Tuple[str, str]] = None
-    author: Optional[Tuple[str, str]] = None
+
+    def __init__(self, *args, query_suffix: str = '', response_prefix: str = '', **kwargs):
+        self.query_suffix = query_suffix
+        self.response_prefix = response_prefix
+        self.name: Optional[Tuple[str, str]] = None
+        self.author: Optional[Tuple[str, str]] = None
+        super().__init__(*args, **kwargs)
+
+    def set_name_author(self, name, author):
+        self.name = name
+        self.author = author
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         for key in ['name', 'author']:
@@ -805,6 +899,9 @@ class SelfCognitionPreprocessor(ResponsePreprocessor):
             placeholder = '{{' + key.upper() + '}}'
             row['query'] = row['query'].replace(placeholder, val)
             row['response'] = row['response'].replace(placeholder, val)
+
+        row['query'] = row['query'] + self.query_suffix
+        row['response'] = self.response_prefix + row['response']
         return super().preprocess(row)
 
 
@@ -812,5 +909,14 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/self-cognition',
         hf_dataset_id='modelscope/self-cognition',
-        preprocess_func=SelfCognitionPreprocessor(),
+        subsets=[
+            SubsetDataset(preprocess_func=SelfCognitionPreprocessor()),
+            SubsetDataset(
+                'qwen3',
+                preprocess_func=SelfCognitionPreprocessor(
+                    query_suffix=' /no_think', response_prefix='<think>\n\n</think>\n\n')),
+            SubsetDataset(
+                'empty_think', preprocess_func=SelfCognitionPreprocessor(response_prefix='<think>\n\n</think>\n\n')),
+        ],
+        dataset_name='self-cognition',
         tags=['chat', 'self-cognition', '🔥']))

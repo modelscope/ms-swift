@@ -98,8 +98,10 @@ class TunerArguments:
     """
     # full
     freeze_parameters: List[str] = field(default_factory=list)
+    freeze_parameters_regex: Optional[str] = None
     freeze_parameters_ratio: float = 0.  # 0 ~ 1
     trainable_parameters: List[str] = field(default_factory=list)
+    trainable_parameters_regex: Optional[str] = None
     # lora or full
     freeze_llm: bool = False
     freeze_vit: bool = True
@@ -203,7 +205,7 @@ class TunerArguments:
 
     def _init_multimodal_full(self):
         model_arch = get_model_arch(self.model_meta.model_arch)
-        if not self.model_meta.is_multimodal or not model_arch:
+        if not self.model_meta.is_multimodal or not model_arch or self.train_type != 'full':
             return
         if self.freeze_llm:
             self.freeze_parameters += model_arch.language_model

@@ -27,6 +27,15 @@ class MinimaxTemplateMeta(TemplateMeta):
 
 register_template(MinimaxTemplateMeta(LLMTemplateType.minimax))
 
+register_template(
+    MinimaxTemplateMeta(
+        LLMTemplateType.minimax_m1,
+        prefix=['<begin_of_document>'],
+        system_prefix=[
+            '<begin_of_document><beginning_of_sentence>system ai_setting=assistant\n{{SYSTEM}}<end_of_sentence>\n'
+        ],
+    ))
+
 
 class MinimaxVLTemplate(Template):
     image_placeholder = ['<image>']

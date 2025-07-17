@@ -16,6 +16,7 @@ def test_llm():
         TrainArguments(
             model='Qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#1000', 'swift/self-cognition#1000'],
+            split_dataset_ratio=0.01,
             packing=True,
             max_length=4096,
             attn_impl='flash_attn',

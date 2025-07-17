@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 from modelscope.hub.utils.utils import get_cache_dir
+from peft import PeftModel
 from transformers import FeatureExtractionMixin, GenerationConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers import ProcessorMixin as HfProcessorMixin
 
@@ -150,20 +151,26 @@ def _add_gradient_checkpointing(module_list):
         module.__old_forward = __old_forward
 
 
-def dynamic_gradient_checkpointing(model) -> None:
+def dynamic_gradient_checkpointing(model, including_vit: bool = False) -> None:
     from .model import ModelMeta, get_model_arch
+    if isinstance(model, PeftModel):
+        model = model.model
     model_meta: ModelMeta = model.model_meta
     model_arch = get_model_arch(model_meta.model_arch)
     if model_meta.is_multimodal and model_arch:
-        tower_names = model_arch.language_model + model_arch.vision_tower
+        tower_names = model_arch.language_model.copy()
+        if including_vit:
+            tower_names += model_arch.vision_tower
     else:
         tower_names = [None]
 
+    model.supports_gradient_checkpointing = True
     for tower_name in tower_names:
         if tower_name is None:
             model_tower = model
         else:
             model_tower = deep_getattr(model, tower_name)
+        model_tower.supports_gradient_checkpointing = True
         module_list = find_module_list(model_tower)
         if module_list is None:
             continue
@@ -231,7 +238,14 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     model_dirs: List[str] = None,
                     additional_saved_files: Optional[List[str]] = None) -> None:
     if model is not None:
-        model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
+        if model.__class__.__name__ != 'SentenceTransformer':
+            model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
+        else:
+            model.save_pretrained(output_dir, safe_serialization=safe_serialization)
+            # copy sentencetransformers files
+            from swift.utils import copy_files_by_pattern
+            copy_files_by_pattern(model.model_dir, output_dir, '*.py')
+            copy_files_by_pattern(model.model_dir, output_dir, '*.json')
     processor.save_pretrained(output_dir)
 
     if model_dirs is None:
@@ -240,10 +254,12 @@ def save_checkpoint(model: Optional[PreTrainedModel],
         model_dirs = model_dirs.copy()
     if model and model.model_dir and model.model_dir not in model_dirs:
         model_dirs.append(model.model_dir)
-    for src_file in additional_saved_files or [] + ['preprocessor_config.json', 'args.json']:
+    for src_file in (additional_saved_files or []) + ['preprocessor_config.json', 'args.json']:
+        tgt_path = os.path.join(output_dir, src_file)
+        if os.path.exists(tgt_path) and src_file == 'args.json':
+            continue
         for model_dir in model_dirs:
             src_path: str = os.path.join(model_dir, src_file)
-            tgt_path = os.path.join(output_dir, src_file)
             if os.path.isfile(src_path):
                 shutil.copy(src_path, tgt_path)
                 break
@@ -287,3 +303,25 @@ def get_ckpt_dir(model_dir: str, adapters_dir: Optional[List[str]]) -> str:
             ckpt_dir = model_dir
             break
     return ckpt_dir
+
+
+def update_generation_config_eos_token(generation_config, template):
+    if generation_config is None:
+        return
+    stop_words = template.template_meta.stop_words
+    eos_token_id = generation_config.eos_token_id
+    if eos_token_id is None:
+        eos_token_id = []
+    elif isinstance(eos_token_id, int):
+        eos_token_id = [eos_token_id]
+    modified = False
+    for stop_word in stop_words:
+        if stop_word is None:
+            continue
+        if isinstance(stop_word, str):
+            stop_word = template._tokenize(stop_word)
+        if isinstance(stop_word, (list, tuple)) and len(stop_word) == 1 and stop_word[0] not in eos_token_id:
+            eos_token_id.append(stop_word[0])
+            modified = True
+    if modified:
+        generation_config.eos_token_id = eos_token_id

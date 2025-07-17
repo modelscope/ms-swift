@@ -1,3 +1,4 @@
+# For more information, visit: https://www.aliyun.com/activity/bigdata/pai-dlc
 # https://help.aliyun.com/zh/pai/user-guide/general-environment-variables
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
@@ -6,6 +7,7 @@ swift sft \
     --train_type full \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#20000' \
               'AI-ModelScope/alpaca-gpt4-data-en#20000' \
+    --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \

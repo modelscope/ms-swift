@@ -1,10 +1,10 @@
-# 14GiB * 2
+# 80GiB * 2
 nproc_per_node=2
 
 CUDA_VISIBLE_DEVICES=0,1 \
 accelerate launch --config_file "./examples/train/multi-gpu/fsdp_qlora/fsdp_offload.json" \
     swift/cli/sft.py \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen2.5-72B-Instruct \
     --train_type lora \
     --dataset 'swift/self-cognition#1000' \
     --torch_dtype bfloat16 \

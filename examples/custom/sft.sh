@@ -6,6 +6,7 @@ swift sft \
     --model AI-ModelScope/Nemotron-Mini-4B-Instruct \
     --train_type lora \
     --dataset swift/stsb \
+    --split_dataset_ratio 0.01 \
     --num_train_epochs 3 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \

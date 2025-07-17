@@ -115,3 +115,9 @@ copybutton_prompt_is_regexp = True
 
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {'https://docs.python.org/': None}
+
+myst_enable_extensions = [
+    'amsmath',
+    'dollarmath',
+    'colon_fence',
+]

@@ -4,7 +4,7 @@ There are three methods for accessing custom datasets, each offering progressive
 
 1. **Recommended**: Directly use the command line parameter to access the dataset with `--dataset <dataset_path1> <dataset_path2>`. This will use `AutoPreprocessor` to convert your dataset into a standard format (supporting four dataset formats; see the introduction to AutoPreprocessor below). You can use `--columns` to transform column names. The supported input formats include csv, json, jsonl, txt, and folders (e.g. git clone open-source datasets). This solution does not require modifying `dataset_info.json` and is suitable for users new to ms-swift. The following two solutions are suitable for developers looking to extend ms-swift.
 2. Add the dataset to `dataset_info.json`, which you can refer to in the built-in [dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json) of ms-swift. This solution also uses AutoPreprocessor to convert the dataset to a standard format. `dataset_info.json` is a list of metadata for datasets, and one of the fields ms_dataset_id/hf_dataset_id/dataset_path must be filled. Column name transformation can be done through the `columns` field. Datasets added to `dataset_info.json` or registered ones will automatically generate [supported dataset documentation](https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html) when running [run_dataset_info.py](https://github.com/modelscope/ms-swift/blob/main/scripts/utils/run_dataset_info.py). In addition, you can use the external `dataset_info.json` approach by parsing the JSON file with `--custom_dataset_info xxx.json` (to facilitate users who prefer `pip install` over `git clone`), and then specify `--dataset <dataset_id/dataset_dir/dataset_path>`.
-3. Manually register the dataset to have the most flexible customization capability for preprocessing functions, allowing the use of functions to preprocess datasets, but it is more difficult. You can refer to the [built-in datasets](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/dataset/llm.py) or [examples](https://github.com/modelscope/swift/blob/main/examples/custom). You can specify `--custom_register_path xxx.py` to parse external registration content (convenient for users who use pip install instead of git clone).
+3. Manually register the dataset to have the most flexible customization capability for preprocessing functions, allowing the use of functions to preprocess datasets, but it is more difficult. You can refer to the [built-in datasets](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/dataset/llm.py) or [examples](https://github.com/modelscope/ms-swift/blob/main/examples/custom). You can specify `--custom_register_path xxx.py` to parse external registration content (convenient for users who use pip install instead of git clone).
    - Solutions one and two leverage solution three under the hood, where the registration process occurs automatically.
 
 The following is an introduction to the dataset formats that `AutoPreprocessor` can handle:
@@ -26,15 +26,21 @@ ShareGPT format:
 {"system": "<system>", "conversation": [{"human": "<query1>", "assistant": "<response1>"}, {"human": "<query2>", "assistant": "<response2>"}]}
 ```
 
-Alpaca format:
-```jsonl
-{"system": "<system>", "instruction": "<query-inst>", "input": "<query-input>", "output": "<response>"}
-```
-
 Query-Response format:
 ```jsonl
 {"system": "<system>", "query": "<query2>", "response": "<response2>", "history": [["<query1>", "<response1>"]]}
 ```
+Note: The following fields will be automatically converted to the corresponding system, query, and response fields.
+- system: 'system', 'system_prompt'.
+- query: 'query', 'prompt', 'input', 'instruction', 'question', 'problem'.
+- response: 'response', 'answer', 'output', 'targets', 'target', 'answer_key', 'answers', 'solution', 'text', 'completion', 'content'.
+
+Alpaca format:
+```jsonl
+{"system": "<system>", "instruction": "<query-inst>", "input": "<query-input>", "output": "<response>"}
+```
+- Note: The instruction and input fields will be combined into the query field. If instruction and input are not empty strings, then `query = f'{instruction}\n{input}'`.
+
 
 ## Standard Dataset Format
 
@@ -64,6 +70,10 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 {"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}], "rejected_response": "I don't know"}
 ```
 
+The format of multimodal data should follow the specifications in [Multimodal Dataset](#multimodal), with additional columns such as `images` to represent other modality inputs. When it is necessary to associate different image information with preference data, the `rejected_images` field can be used to indicate the images related to the rejected responses. In the alignment dataset, at least one of `rejected_images` or `rejected_response` must be provided for each entry.
+
+> Note: RM additionally supports the margin column. For details, refer to the [RM documentation](../Instruction/RLHF.md#rm).
+
 #### KTO
 
 ```jsonl
@@ -79,6 +89,22 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 {"messages": [{"role": "user", "content": "What is your name?"}]}
 ```
 - Note: GRPO will pass through all additional field content to the ORM, unlike other training methods that, by default, delete extra fields. For example, you can additionally pass in 'solution'. The custom ORM needs to include a positional argument called `completions`, with other arguments as keyword arguments passed through from the additional dataset fields.
+
+#### GKD
+
+If `seq_kd` is not enabled, i.e., the parameter is set to False, the dataset format is as follows (you can use a teacher model to pre-distill the data):
+
+```jsonl
+{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}, {"role": "assistant", "content": "Tomorrow's weather will be sunny"}]}
+{"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}]}
+```
+
+If `seq_kd` is enabled, the final round of the 'assistant' part is not required (the teacher model generates data during training):
+
+```jsonl
+{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}]}
+{"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}]}
+```
 
 ### Sequence Classification
 
@@ -109,7 +135,11 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 
 ### Embedding
 
-Please refer to [embedding训练文档](../BestPractices/Embedding.md#dataset-format).
+Please refer to [Embedding training document](../BestPractices/Embedding.md#dataset-format).
+
+### Reranker
+
+Please refer to [Reranker training document](../BestPractices/Reranker.md#dataset-format).
 
 ### Multimodal
 
@@ -169,6 +199,7 @@ The format will automatically convert the dataset format to the corresponding mo
 
 - ref: Used to replace `<ref-object>`.
 - bbox: Used to replace `<bbox>`. If the length of each box in the bbox is 2, it represents the x and y coordinates. If the box length is 4, it represents the x and y coordinates of two points.
+  - Note: `<ref-object>` and `<bbox>` do not have a corresponding relationship; references and bounding boxes replace their own placeholders separately.
 - bbox_type: Optional values are 'real' and 'norm1'. The default is 'real', meaning the bbox represents the actual bounding box value. If set to 'norm1', the bbox is normalized to the range 0~1.
 - image_id: This parameter is only effective when bbox_type is 'real'. It indicates the index of the image corresponding to the bbox, used for scaling the bbox. The index starts from 0, and the default is 0 for all.
 
@@ -179,8 +210,19 @@ The format will automatically convert the dataset format to the corresponding mo
 ```
 
 ### Agent Format
-
-Refer to the [Agent documentation](../Instruction/Agent-support.md) for the Agent format.
+Here are example data samples for a text-only Agent and a multimodal Agent:
+```jsonl
+{"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"realtime_aqi\", \"description\": \"Weather forecast. Get real-time air quality, including current air quality, PM2.5, and PM10 information.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g., Shanghai\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "What is the weather like in Beijing and Shanghai today?"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Beijing\"}}"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Shanghai\"}}"}, {"role": "tool_response", "content": "{\"city\": \"Beijing\", \"aqi\": \"10\", \"unit\": \"celsius\"}"}, {"role": "tool_response", "content": "{\"city\": \"Shanghai\", \"aqi\": \"72\", \"unit\": \"fahrenheit\"}"}, {"role": "assistant", "content": "According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution."}]}
+{"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"click\", \"description\": \"Click on a position on the screen\", \"parameters\": {\"type\": \"object\", \"properties\": {\"x\": {\"type\": \"integer\", \"description\": \"X-coordinate representing the horizontal position on the screen\"}, \"y\": {\"type\": \"integer\", \"description\": \"Y-coordinate representing the vertical position on the screen\"}}, \"required\": [\"x\", \"y\"]}}}]", "messages": [{"role": "user", "content": "<image>What time is it now?"}, {"role": "assistant", "content": "<think>\nI can check the current time by opening the calendar app.\n</think>\n"}, {"role": "tool_call", "content": "{\"name\": \"click\", \"arguments\": {\"x\": 105, \"y\": 132}}"}, {"role": "tool_response", "content": "{\"images\": \"<image>\", \"status\": \"success\"}"}, {"role": "assistant", "content": "Successfully opened the calendar app. The current time is 11 o'clock in the morning."}], "images": ["desktop.png", "calendar.png"]}
+```
+- When the `agent_template` is set to "react_en", "hermes", etc., this format is compatible with training for all model Agents and allows easy switching between different models.
+- Among them, `tools` is a JSON string containing a list of tools, and the `content` section of `messages` where the `role` is `'tool_call'` or `'tool_response/tool'` must also be a JSON string.
+- The `tools` field will be combined with the `{"role": "system", ...}` section during training/inference according to the `agent_template`, forming a complete system section.
+- The `{"role": "tool_call", ...}` part will automatically be converted into corresponding formats of `{"role": "assistant", ...}` based on the `agent_template`. Multiple consecutive `{"role": "assistant", ...}` entries will be concatenated to form a complete assistant_content.
+- The `{"role": "tool_response", ...}` can also be written as `{"role": "tool", ...}`, these two forms are equivalent. This part will also be automatically converted according to the `agent_template`. During training, this part does not participate in loss calculations, similar to `{"role": "user", ...}`.
+- This format supports parallel tool calls; refer to the first data sample for an example. In multimodal Agent data samples, the number of `<image>` tags should match the length of "images", and their positions indicate where the image features are inserted. It also supports other modalities, such as audios and videos.
+- Note: You can also manually process the data into the messages format with roles set to system, user, or assistant. The purpose of agent_template is to automatically map the tools field and the messages with roles tool_call and tool_response into the standard messages format with roles system, user, and assistant.
+- For more details, please refer to [Agent Documentation](../Instruction/Agent-support.md).
 
 
 ## dataset_info.json

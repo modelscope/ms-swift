@@ -8,6 +8,7 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from tqdm import tqdm
 
+from swift.utils import get_hf_endpoint, use_hf_hub
 from ..media import MediaResource
 from ..preprocessor import GroundingMixin, MessagesPreprocessor, ResponsePreprocessor, RowPreprocessor
 from ..register import DatasetMeta, SubsetDataset, register_dataset
@@ -27,8 +28,11 @@ class ShareGPT4oPreprocessor(MessagesPreprocessor):
         return row
 
     def prepare_dataset(self, dataset):
-        url = ('https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?'
-               'Revision=master&FilePath=images.zip')
+        if not use_hf_hub():
+            url = ('https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?'
+                   'Revision=master&FilePath=images.zip')
+        else:
+            url = f'{get_hf_endpoint()}/datasets/OpenGVLab/ShareGPT-4o/blob/main/images.zip'
         local_dir = MediaResource.download(url, 'sharegpt_4o_images')
         self.prefix_path = os.path.join(local_dir, 'mnt', 'petrelfs', 'wangwenhai', 'workspace_cef', '4o', 'image')
         return super().prepare_dataset(dataset)
@@ -186,8 +190,12 @@ class MantisPreprocessor(MessagesPreprocessor):
         super().__init__(columns=columns)
 
     def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
-        url = (f'https://www.modelscope.cn/api/v1/datasets/swift/Mantis-Instruct/repo?Revision='
-               f'master&FilePath={self.subset}/train_images.zip')  # noqa
+        if not use_hf_hub():
+            url = (f'https://www.modelscope.cn/api/v1/datasets/swift/Mantis-Instruct/repo?Revision='
+                   f'master&FilePath={self.subset}/train_images.zip')  # noqa
+        else:
+            url = (f'{get_hf_endpoint()}/datasets/TIGER-Lab/Mantis-Instruct/'
+                   f'resolve/main/{self.subset}/train_images.zip')
         self.local_dir = MediaResource.download(url, f'mantis_{self.subset}')
         return super().prepare_dataset(dataset)
 
@@ -324,7 +332,10 @@ class EmoSchemaPreprocessor(ResponsePreprocessor):
 
     def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
         for i in range(1, 6):
-            url = f'https://modelscope.cn/datasets/AI-ModelScope/egoschema/resolve/master/videos_chunked_0{i}.zip'
+            if not use_hf_hub():
+                url = f'https://modelscope.cn/datasets/AI-ModelScope/egoschema/resolve/master/videos_chunked_0{i}.zip'
+            else:
+                url = f'{get_hf_endpoint()}/datasets/lmms-lab/egoschema/resolve/main/videos_chunked_0{i}.zip'
             local_dir = MediaResource.download(url, 'egoschema')
 
         self.local_dir = os.path.join(local_dir, 'videos')
@@ -388,53 +399,49 @@ class LLaVAVideo178KPreprocessor(MessagesPreprocessor):
         self.subset = subset
         super().__init__(columns=columns)
 
+    url_prefix = 'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
+    if use_hf_hub():
+        url_prefix = f'{get_hf_endpoint()}/datasets/lmms-lab/LLaVA-Video-178K/resolve/main/'
+
     video_resources = {
         '0_30_s_academic_v0_1':
         _generate_url_list(
-            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
-            '0_30_s_academic_v0_1/0_30_s_academic_v0_1_videos_{}.tar.gz',
+            url_prefix + '0_30_s_academic_v0_1/0_30_s_academic_v0_1_videos_{}.tar.gz',
             8,
         ),
         '0_30_s_youtube_v0_1':
         _generate_url_list(
-            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
-            '0_30_s_youtube_v0_1/0_30_s_youtube_v0_1_videos_{}.tar.gz',
+            url_prefix + '0_30_s_youtube_v0_1/0_30_s_youtube_v0_1_videos_{}.tar.gz',
             19,
         ),
         '1_2_m_academic_v0_1':
         _generate_url_list(
-            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
-            '1_2_m_academic_v0_1/1_2_m_academic_v0_1_videos_{}.tar.gz',
+            url_prefix + '1_2_m_academic_v0_1/1_2_m_academic_v0_1_videos_{}.tar.gz',
             14,
         ),
         '1_2_m_youtube_v0_1':
         _generate_url_list(
-            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
-            '1_2_m_youtube_v0_1/1_2_m_youtube_v0_1_videos_{}.tar.gz',
+            url_prefix + '1_2_m_youtube_v0_1/1_2_m_youtube_v0_1_videos_{}.tar.gz',
             50,
         ),
         '2_3_m_academic_v0_1':
         _generate_url_list(
-            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
-            '2_3_m_academic_v0_1/2_3_m_academic_v0_1_videos_{}.tar.gz',
+            url_prefix + '2_3_m_academic_v0_1/2_3_m_academic_v0_1_videos_{}.tar.gz',
             18,
         ),
         '2_3_m_youtube_v0_1':
         _generate_url_list(
-            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
-            '2_3_m_youtube_v0_1/2_3_m_youtube_v0_1_videos_{}.tar.gz',
+            url_prefix + '2_3_m_youtube_v0_1/2_3_m_youtube_v0_1_videos_{}.tar.gz',
             98,
         ),
         '30_60_s_academic_v0_1':
         _generate_url_list(
-            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
-            '30_60_s_academic_v0_1/30_60_s_academic_v0_1_videos_{}.tar.gz',
+            url_prefix + '30_60_s_academic_v0_1/30_60_s_academic_v0_1_videos_{}.tar.gz',
             10,
         ),
         '30_60_s_youtube_v0_1':
         _generate_url_list(
-            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
-            '30_60_s_youtube_v0_1/30_60_s_youtube_v0_1_videos_{}.tar.gz',
+            url_prefix + '30_60_s_youtube_v0_1/30_60_s_youtube_v0_1_videos_{}.tar.gz',
             13,
         ),
     }
@@ -495,7 +502,10 @@ class MovieChat1KPreprocessor(ResponsePreprocessor):
                   [f'TFS-{i}.mp4' for i in range(1, 13)] + \
                   [f'UWA-{i}.mp4' for i in range(1, 5)] + ['UWA-6.mp4']
         for file in mp4_set:
-            url = f'https://modelscope.cn/datasets/AI-ModelScope/MovieChat-1K-test/resolve/master/videos/{file}'
+            if not use_hf_hub():
+                url = f'https://modelscope.cn/datasets/AI-ModelScope/MovieChat-1K-test/resolve/master/videos/{file}'
+            else:
+                url = f'{get_hf_endpoint()}/datasets/Enxin/MovieChat-1K-test/resolve/main/videos/{file}'
             self.local_dir = MediaResource.download(url, 'moviechat_1k_test', file_type='file')
         return super().prepare_dataset(dataset)
 
@@ -522,7 +532,10 @@ register_dataset(
 class VideoChatGPTPreprocessor(ResponsePreprocessor):
 
     def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
-        url = 'https://modelscope.cn/datasets/swift/VideoChatGPT/resolve/master/videos.zip'
+        if not use_hf_hub():
+            url = 'https://modelscope.cn/datasets/swift/VideoChatGPT/resolve/master/videos.zip'
+        else:
+            url = f'{get_hf_endpoint()}/datasets/lmms-lab/VideoChatGPT/resolve/main/videos.zip'
         local_dir = MediaResource.download(url, 'video_chatgpt')
         self.local_dir = os.path.join(local_dir, 'Test_Videos')
         return super().prepare_dataset(dataset)
@@ -894,9 +907,13 @@ register_dataset(
 class LLaVAPretrainPreprocessor(MessagesPreprocessor):
 
     def prepare_dataset(self, dataset):
+        if not use_hf_hub():
+            url = ('https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/LLaVA-Pretrain/repo?'
+                   'Revision=master&FilePath=images.zip')
+        else:
+            url = f'{get_hf_endpoint()}/datasets/liuhaotian/LLaVA-Pretrain/resolve/main/images.zip'
         self.media_dir = MediaResource.download(
-            ('https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/LLaVA-Pretrain/repo?'
-             'Revision=master&FilePath=images.zip'),
+            url,
             # noqa
             'llava_pretrain')
         return super().prepare_dataset(dataset)

@@ -1,9 +1,10 @@
 import os
-from typing import Any, Dict, List, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 import json
 
-from swift.llm import InferRequest
+if TYPE_CHECKING:
+    from swift.llm import InferRequest
 
 
 class PRM:
@@ -41,7 +42,7 @@ Given the upper information, give your reward(-1.0~1.0) of the following answer:
 
 class QwenMaxPRM(PRM):
 
-    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], ground_truths: List[str],
+    def __call__(self, infer_requests: List[Union['InferRequest', Dict]], ground_truths: List[str],
                  **kwargs) -> List[float]:
         # TODO: check request_config
         rewards = []
@@ -54,14 +55,14 @@ class QwenMaxPRM(PRM):
         )
 
         for request, ground_truth in zip(infer_requests, ground_truths):
-            previous = request['messages'][:-1]
+            previous = request.messages[:-1]
             if previous[0]['role'] == 'system':
                 previous = previous[1:]
 
-            assert request['messages'][-1]['role'] == 'assistant'
+            assert request.messages[-1]['role'] == 'assistant'
             query = QUERY.replace('#query#', json.dumps(previous))
             query = query.replace('#ground_truth#', ground_truth)
-            query = query.replace('#response#', request['messages'][-1]['content'])
+            query = query.replace('#response#', request.messages[-1]['content'])
             messages = [
                 {
                     'role': 'system',
@@ -107,7 +108,7 @@ class ClientPRM(PRM):
             'model': model,
         }
 
-    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], ground_truths: List[str],
+    def __call__(self, infer_requests: List[Union['InferRequest', Dict]], ground_truths: List[str],
                  **kwargs) -> List[float]:
         prm_infer_requests = []
         request_config = kwargs.get('request_config')

@@ -509,10 +509,11 @@ def test_phi4_vision():
 
 def test_gemma3_vision():
     pt_engine = PtEngine('LLM-Research/gemma-3-4b-it')
-    response = _infer_model(pt_engine)
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>Describe this image in detail.'}])
     pt_engine.default_template.template_backend = 'jinja'
-    response2 = _infer_model(pt_engine)
-    assert response == response2
+    response2 = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>Describe this image in detail.'}])
+    assert response[:80] == response2[:80] == (
+        "Here's a detailed description of the image:\n\n**Overall Impression:**\n\nThe image ")
 
 
 def test_mistral_2503():
@@ -549,8 +550,62 @@ def test_kimi_vl():
                         'while the second image is a cartoon of four sheep standing in a field.')
 
 
+def test_kimi_vl_thinking():
+    pt_engine = PtEngine('moonshotai/Kimi-VL-A3B-Thinking-2506')
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    assert response[:200] == ("◁think▷So, let's analyze the two images. The first image is a close - "
+                              'up of a real kitten with detailed fur, whiskers, and a realistic style. '
+                              'The second image is an illustration of four sheep in a car')
+
+
+def test_glm4_1v():
+    models = ['ZhipuAI/GLM-4.1V-9B-Thinking']
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    for model in models:
+        pt_engine = PtEngine(model)
+        response = _infer_model(pt_engine, messages=messages, images=images)
+        pt_engine.default_template.template_backend = 'jinja'
+        response2 = _infer_model(pt_engine, messages=messages, images=images)
+        assert response == response2
+
+
+def test_gemma3n():
+    pt_engine = PtEngine('google/gemma-3n-E2B-it')
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
+def test_keye_vl():
+    pt_engine = PtEngine('Kwai-Keye/Keye-VL-8B-Preview')
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
 if __name__ == '__main__':
-    from swift.llm import PtEngine, RequestConfig, get_template
+    from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
 
     logger = get_logger()
@@ -601,4 +656,8 @@ if __name__ == '__main__':
     # test_llama4()
     # test_internvl3_8b()
     # test_internvl3_9b()
-    test_kimi_vl()
+    # test_kimi_vl()
+    # test_kimi_vl_thinking()
+    # test_glm4_1v()
+    # test_gemma3n()
+    test_keye_vl()

@@ -102,7 +102,7 @@ class MediaResource:
                     'you can manually download the resources and extracting to the local dir.')
         logger.info('Now begin.')
         download_config = DownloadConfig(cache_dir=MediaResource.cache_dir)
-        download_config.storage_options = {'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}}
+        download_config.storage_options = {'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=86400)}}
         if file_type == 'file':
             filename = media_type.split('/')[-1]
             final_path = os.path.join(final_folder, filename)

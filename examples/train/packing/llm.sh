@@ -7,6 +7,7 @@ swift sft \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
+    --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --num_train_epochs 3 \
     --attn_impl flash_attn \

@@ -17,14 +17,29 @@ class GLMTemplateMeta(TemplateMeta):
     auto_add_bos: bool = True
 
 
-class GLM4Z1Template(Template):
+class GLM4Template(Template):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
-        if not self.is_training:
-            for message in inputs.messages:
-                if message['role'] == 'assistant' and isinstance(message['content'], str):
-                    message['content'] = message['content'].split('</think>')[-1].strip()
-        return super()._swift_encode(inputs)
+        res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
+        for i, res_context in enumerate(res_context_list):
+            # The last round or is tool_call.
+            if isinstance(res_context, str) and res_context.endswith('<|assistant|>\n') and (
+                    i + 1 >= len(res_context_list) or '<|observation|>' in res_context_list[i + 1]):
+                res_context_list[i] = res_context_list[i][:-len('\n')]
+        return res_context_list, loss_scale_list, answer_len
+
+    def decode(self, *args, **kwargs):
+        response = super().decode(*args, **kwargs)
+        return response.lstrip('\n')
+
+
+class GLM4_0414Template(GLM4Template):
+
+    def _swift_prepare_messages(self, messages):
+        super()._swift_prepare_messages(messages)
+        for i, message in enumerate(messages):
+            if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:
+                message['content'] = message['content'].split('</think>')[-1].strip()
 
 
 register_template(
@@ -43,15 +58,19 @@ class GLM4TemplateMeta(GLMTemplateMeta):
     suffix: Prompt = field(default_factory=lambda: ['<|user|>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|system|>\n{{SYSTEM}}'])
 
-    default_tools_prompt: str = 'glm4'
-    tool_prompt: Optional[Prompt] = field(default_factory=lambda: ['<|observation|>\n{{QUERY}}<|assistant|>\n'])
+    agent_template: str = 'glm4'
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>', '<|user|>', '<|observation|>'])
 
 
 @dataclass
-class GLM4Z1TemplateMeta(GLM4TemplateMeta):
+class GLM4_0414TemplateMeta(GLM4TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ['[gMASK]<sop>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>\n{{SYSTEM}}'])
+    agent_template: str = 'glm4_0414'
+
+
+class GLM4_1VTemplateMeta(GLM4_0414TemplateMeta):
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>{{SYSTEM}}'])
 
 
 class GLM4VTemplate(Template):
@@ -59,6 +78,8 @@ class GLM4VTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
+        if self.mode == 'vllm':
+            return ['<|begin_of_image|><|endoftext|><|end_of_image|>']
         return [[-100]]
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -91,12 +112,136 @@ class GLM4VTemplate(Template):
         return res
 
 
-# not '<|assistant|>\n'
+class GLM4_1VTemplate(Template):
+    begin_of_image_token = 151339
+    end_of_image_token = 151340
+    image_token = 151343
+    begin_of_video_token = 151341
+    end_of_video_token = 151342
+    video_token = 151344
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        # TODO: model video infer bug
+        if self.mode == 'vllm':
+            if media_type == 'image':
+                return ['<|begin_of_image|><|image|><|end_of_image|>']
+            elif media_type == 'video':
+                return ['<|begin_of_video|><|video|><|end_of_video|>']
+        assert media_type in ['image']
+        if media_type == 'image':
+            return [[-100]]
+        elif media_type == 'video':
+            return [[-200]]
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        processor = self.processor
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        image_idx_list = findall(input_ids, -100)
+        video_idx_list = findall(input_ids, -200)
+        if image_idx_list:
+            images = inputs.images
+            image_inputs = processor.image_processor(images=images, return_tensors='pt')
+            encoded['pixel_values'] = image_inputs['pixel_values']
+            encoded['image_grid_thw'] = image_grid_thw = image_inputs['image_grid_thw']
+            merge_length = processor.image_processor.merge_size**2
+            added_tokens_len = 0
+            for i, idx in enumerate(image_idx_list):
+                num_image_tokens = image_grid_thw[i].prod() // merge_length
+                image_tokens = [self.begin_of_image_token
+                                ] + [self.image_token] * num_image_tokens + [self.end_of_image_token]
+
+                input_ids = input_ids[:added_tokens_len + idx] + image_tokens + input_ids[added_tokens_len + idx + 1:]
+                if labels is not None:
+                    labels = labels[:added_tokens_len + idx] + [-100] * len(image_tokens) + labels[added_tokens_len
+                                                                                                   + idx + 1:]
+                added_tokens_len += len(image_tokens) - 1
+
+        if video_idx_list:
+            # TODO: model video infer bug
+            assert len(
+                video_idx_list) <= 1, f'GLM4.1V model only support 1 video, but detected {len(video_idx_list)} <video> '
+            assert not image_idx_list, "GLM4.1V model doesn't support inputs containing both video and images"
+
+            video_fnames = inputs.videos
+            from transformers.video_utils import load_video
+            from transformers.image_utils import load_image
+            import numpy as np
+            video_metadata = []
+            videos = []
+            for fname in video_fnames:
+                if isinstance(fname, (list, tuple)) and isinstance(fname[0], str):
+                    video = [np.array(load_image(image_fname)) for image_fname in fname]
+                    # create a 4D video because `load_video` always returns a 4D array
+                    video = np.stack(video)
+                    metadata = None
+                else:
+                    video, metadata = load_video(fname)
+                videos.append(video)
+                video_metadata.append(metadata)
+            videos = [videos]
+            video_metadata = [video_metadata]
+
+            videos_inputs = processor.video_processor(videos=videos, video_metadata=video_metadata, return_tensors='pt')
+            encoded['pixel_values_videos'] = videos_inputs['pixel_values_videos']
+            encoded['video_grid_thw'] = video_grid_thw = videos_inputs['video_grid_thw']
+            timestamps = videos_inputs.pop('timestamps')
+            num_frames = len(video_grid_thw)
+            video_structure = [self.begin_of_video_token]
+            if hasattr(timestamps, 'tolist'):
+                timestamps_list = timestamps.tolist()[0]
+            else:
+                timestamps_list = timestamps[0] if isinstance(timestamps[0], list) else timestamps
+            unique_timestamps = []
+            for idx in range(0, len(timestamps_list)):
+                unique_timestamps.append(timestamps_list[idx])
+            selected_timestamps = unique_timestamps[:num_frames]
+            while len(selected_timestamps) < num_frames:
+                selected_timestamps.append(selected_timestamps[-1] if selected_timestamps else 0)
+            merge_length = processor.video_processor.merge_size**2
+            added_tokens_len = 0
+            for frame_idx in range(num_frames):
+                timestamp_sec = selected_timestamps[frame_idx]
+                num_image_tokens = video_grid_thw[frame_idx].prod() // merge_length
+                timestamp_sec_token = processor.tokenizer(str(timestamp_sec))['input_ids']
+                frame_structure = [self.begin_of_image_token] + [self.image_token] * num_image_tokens + \
+                    [self.end_of_image_token] + timestamp_sec_token
+                video_structure += frame_structure
+            video_structure += [self.end_of_video_token]
+
+            for i, idx in enumerate(video_idx_list):
+                # BUG in GLM4.1V?: All video placeholder take same tokens
+                # https://github.com/huggingface/transformers/blob/v4.53.0/src/transformers/models/glm4v/processing_glm4v.py#L165-L194
+                input_ids = input_ids[:added_tokens_len + idx] + video_structure + \
+                    input_ids[added_tokens_len + idx + 1:]
+                if labels is not None:
+                    labels = labels[:added_tokens_len + idx] + [-100] * len(video_structure) + \
+                        labels[added_tokens_len + idx + 1:]
+                added_tokens_len += len(video_structure) - 1
+
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+        encoded['position_ids'] = list(range(len(input_ids)))
+        return encoded
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
+        for media_type in ['image', 'video']:
+            grid_thw = self.concat_tensor(batch, f'{media_type}_grid_thw', 0)
+            if grid_thw is not None:
+                res[f'{media_type}_grid_thw'] = grid_thw
+        return res
+
+
 register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate, suffix=['<|endoftext|>']))
 
-register_template(GLM4TemplateMeta(LLMTemplateType.glm4))
+register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template))
 
-register_template(GLM4Z1TemplateMeta(LLMTemplateType.glm4_z1, template_cls=GLM4Z1Template))
+register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4_0414Template))
+
+register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
 
 glm4z1rumination_system = (
     '你是一个专业的深度研究助手，通过提供的工具与模拟浏览器交互，来帮助用户完成深度信息调研和报告撰写任务。'
@@ -132,8 +277,8 @@ glm4z1rumination_system = (
     '"parameters": {"type": "object", "properties": {}, "additionalProperties": false}}]')
 
 register_template(
-    GLM4Z1TemplateMeta(
-        LLMTemplateType.glm4_z1_rumination, template_cls=GLM4Z1Template, default_system=glm4z1rumination_system))
+    GLM4_0414TemplateMeta(
+        LLMTemplateType.glm4_z1_rumination, template_cls=GLM4_0414Template, default_system=glm4z1rumination_system))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 

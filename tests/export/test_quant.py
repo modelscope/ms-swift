@@ -60,10 +60,17 @@ def test_reward_model():
             quant_method='gptq'))
 
 
+def test_fp8():
+    from swift.llm import export_main, ExportArguments, infer_main, InferArguments
+    export_main(ExportArguments(model='Qwen/Qwen2.5-3B-Instruct', quant_method='fp8'))
+    infer_main(InferArguments(model='Qwen2.5-3B-Instruct-fp8'))
+
+
 if __name__ == '__main__':
     # test_llm_quant('gptq')
     # test_vlm_quant('gptq')
     # test_audio_quant('gptq')
     # test_vlm_bnb_quant()
     # test_bert()
-    test_reward_model()
+    # test_reward_model()
+    test_fp8()

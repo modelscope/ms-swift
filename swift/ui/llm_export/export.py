@@ -14,12 +14,12 @@ class Export(BaseUI):
     locale_dict = {
         'merge_lora': {
             'label': {
-                'zh': '合并lora',
-                'en': 'Merge lora'
+                'zh': '合并LoRA',
+                'en': 'Merge LoRA'
             },
             'info': {
                 'zh':
-                'lora合并的路径在填入的checkpoint同级目录，请查看运行时log获取更具体的信息',
+                'LoRA合并的路径在填入的checkpoint同级目录，请查看运行时log获取更具体的信息',
                 'en':
                 'The output path is in the sibling directory as the input checkpoint. '
                 'Please refer to the runtime log for more specific information.'
@@ -27,7 +27,7 @@ class Export(BaseUI):
         },
         'device_map': {
             'label': {
-                'zh': '合并lora使用的device_map',
+                'zh': '合并LoRA使用的device_map',
                 'en': 'The device_map when merge-lora'
             },
             'info': {

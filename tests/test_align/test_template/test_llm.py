@@ -44,6 +44,14 @@ def test_qwen2_5():
     assert response == response2
 
 
+def test_qwen3():
+    pt_engine = PtEngine('Qwen/Qwen3-4B')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
+
+
 def test_phi4():
     pt_engine = PtEngine('LLM-Research/phi-4')
     response = _infer_model(pt_engine)
@@ -68,20 +76,21 @@ def test_qwen1half():
 
 
 def test_glm4():
-    # The Jinja prompt is missing \n.
     pt_engine = PtEngine('ZhipuAI/glm-4-9b-chat')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_glm4_0414():
     models = ['ZhipuAI/GLM-4-9B-0414', 'ZhipuAI/GLM-Z1-9B-0414', 'ZhipuAI/GLM-Z1-Rumination-32B-0414']
     for model in models:
         pt_engine = PtEngine(model)
-        _infer_model(pt_engine)
+        response = _infer_model(pt_engine)
         pt_engine.default_template.template_backend = 'jinja'
-        _infer_model(pt_engine)
+        response2 = _infer_model(pt_engine)
+        assert response == response2
 
 
 def test_qwq():
@@ -166,6 +175,7 @@ def test_glm_edge():
 
 
 def test_llama():
+    from swift.llm import VllmEngine
     # pt_engine = PtEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct-BNB-NF4')
     # pt_engine = PtEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct')
     # pt_engine = PtEngine('LLM-Research/Meta-Llama-3-8B-Instruct')
@@ -293,6 +303,14 @@ def test_deepseek_r1_distill():
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
+def test_deepseek_prover_v2():
+    pt_engine = PtEngine('deepseek-ai/DeepSeek-Prover-V2-7B')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 def test_qwen2_5_prm():
     pt_engine = PtEngine('Qwen/Qwen2.5-Math-7B-PRM800K')
     data = {
@@ -372,8 +390,64 @@ def test_gemma3():
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
+def test_mimo():
+    pt_engine = PtEngine('XiaomiMiMo/MiMo-7B-RL-0530')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
+def test_minicpm():
+    pt_engine = PtEngine('OpenBMB/MiniCPM4-0.5B')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
+def test_minimax():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3,4,5,6,7'
+    from transformers import QuantoConfig
+    quantization_config = QuantoConfig(weights='int8')
+    messages = [{
+        'role': 'system',
+        'content': 'You are a helpful assistant.'
+    }, {
+        'role': 'user',
+        'content': 'who are you?'
+    }]
+    pt_engine = PtEngine('MiniMax/MiniMax-M1-40k', quantization_config=quantization_config)
+    res = _infer_model(pt_engine, messages=messages)
+    print(f'res: {res}')
+
+
+def test_kimi_dev():
+    pt_engine = PtEngine('moonshotai/Kimi-Dev-72B')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
+def test_hunyuan():
+    pt_engine = PtEngine('Tencent-Hunyuan/Hunyuan-A13B-Instruct')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
+def test_ernie():
+    pt_engine = PtEngine('PaddlePaddle/ERNIE-4.5-0.3B-PT')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 if __name__ == '__main__':
-    from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
+    from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen2_5()
@@ -401,10 +475,18 @@ if __name__ == '__main__':
     # test_phi4_mini()
     # test_internlm3()
     # test_deepseek_r1_distill()
+    # test_deepseek_prover_v2()
     # test_qwen2_5_prm()
     # test_mistral_small()
     # test_baichuan_m1()
     # test_moonlight()
     # test_ling()
     # test_gemma3()
-    test_glm4_0414()
+    # test_glm4_0414()
+    # test_qwen3()
+    # test_mimo()
+    # test_minicpm()
+    # test_minimax()
+    # test_kimi_dev()
+    # test_hunyuan()
+    test_ernie()

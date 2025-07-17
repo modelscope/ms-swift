@@ -4,6 +4,7 @@ import os
 from abc import ABC, abstractmethod
 from typing import List, Union
 
+import swift
 from swift.utils import get_logger, parse_args, seed_everything
 from .argument import BaseArguments
 from .utils import ProcessorMixin
@@ -44,6 +45,7 @@ class SwiftPipeline(ABC, ProcessorMixin):
 
     def main(self):
         logger.info(f'Start time of running main: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}')
+        logger.info(f'swift.__version__: {swift.__version__}')
         result = self.run()
         logger.info(f'End time of running main: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}')
         return result

@@ -9,7 +9,8 @@ def test_cogvlm():
     sft_main(
         TrainArguments(
             model='ZhipuAI/cogvlm2-video-llama3-chat',
-            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#200', 'swift/VideoChatGPT:Generic#200']))
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#200', 'swift/VideoChatGPT:Generic#200'],
+            split_dataset_ratio=0.01))
 
 
 if __name__ == '__main__':

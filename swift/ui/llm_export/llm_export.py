@@ -30,7 +30,7 @@ class LLMExport(BaseUI):
         'llm_export': {
             'label': {
                 'zh': 'LLM导出',
-                'en': 'LLM export',
+                'en': 'LLM Export',
             }
         },
         'more_params': {
@@ -76,7 +76,7 @@ class LLMExport(BaseUI):
                 Model.build_ui(base_tab)
                 Export.build_ui(base_tab)
                 ExportRuntime.build_ui(base_tab)
-                with gr.Row():
+                with gr.Row(equal_height=True):
                     gr.Textbox(elem_id='more_params', lines=4, scale=20)
                     gr.Button(elem_id='export', scale=2, variant='primary')
                 gr.Dropdown(
@@ -188,4 +188,4 @@ class LLMExport(BaseUI):
         run_command, export_args, log_file = cls.export(*args)
         os.system(run_command)
         time.sleep(2)
-        return gr.update(open=True), ExportRuntime.refresh_tasks(log_file), [None]
+        return gr.update(open=True), ExportRuntime.refresh_tasks(log_file)

@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from copy import deepcopy
-from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from dataclasses import asdict, dataclass, field, fields
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import json
 from PIL import Image
@@ -29,8 +28,7 @@ class InferRequest:
         The above content is equivalent to:
         [{"role": "user", "content": "<image>Please describe the picture."}]
         and additionally passing in images: ["<url/path/base64/PIL.Image>"].
-    tools: Organize tools into the format of tools_prompt for system. for example, 'react_en'.
-        Specifying this parameter will override system.
+    tools: Organize tools into the format of agent_template for system. for example, 'react_en'.
     """
     messages: Messages
 
@@ -75,6 +73,17 @@ class InferRequest:
 
 
 @dataclass
+class RolloutInferRequest(InferRequest):
+    """
+    A request class that modifies the 'images' attribute
+    to be a list of strings for compatibility with POST requests.
+    The strings can represent image URLs or Base64 encoded images.
+    """
+    images: List[str] = field(default_factory=list)
+    data_dict: Dict = field(default_factory=dict)
+
+
+@dataclass
 class TemplateInputs(InferRequest):
     """The training functionality has been added on top of the InferRequest.
 
@@ -90,16 +99,19 @@ class StdTemplateInputs:
     messages: List[Dict[str, str]]
     # None: use default system; '': not use system
     system: Optional[str] = None
+    tools: Optional[List[Tool]] = None
 
     rejected_response: Optional[str] = None
     label: Optional[int] = None
+    channel: Optional[str] = None
 
     images: List[Union[str, Image.Image]] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
     objects: Dict[str, List[Any]] = field(default_factory=dict)
+    rejected_images: List[Union[str, Image.Image]] = field(default_factory=list)
 
-    agent_keyword: Optional[Dict[str, str]] = None
+    margin: Optional[float] = None  # for reward modeling
 
     def __post_init__(self):
         self.image_idx = 0
@@ -113,8 +125,8 @@ class StdTemplateInputs:
             self.videos = [self.videos]
         if self.audios and not isinstance(self.audios, (list, tuple)):
             self.audios = [self.audios]
-        if self.agent_keyword is None:
-            self.agent_keyword = {}
+        if self.rejected_images and not isinstance(self.rejected_images, (list, tuple)):
+            self.rejected_images = [self.rejected_images]
 
     def to_history(self):
         if not self.messages:
@@ -126,10 +138,9 @@ class StdTemplateInputs:
         return bool(self.images or self.audios or self.videos or self.objects)
 
     @classmethod
-    def from_dict(cls, inputs: Dict[str, Any], *, tools_prompt: str = 'react_en') -> 'StdTemplateInputs':
-        from swift.plugin import get_tools_prompt, get_tools_keyword
+    def from_dict(cls, inputs: Dict[str, Any]) -> Tuple['StdTemplateInputs', Dict[str, Any]]:
         kwargs = {}
-        for key in ['rejected_response', 'label']:
+        for key in ['rejected_response', 'label', 'channel', 'margin']:
             if key in inputs:
                 kwargs[key] = inputs[key]
         messages = inputs['messages']
@@ -142,15 +153,11 @@ class StdTemplateInputs:
         else:
             system = None
 
-        keyword = None
-        if tools is not None:
-            if system is not None:
-                logger.warning_once(
-                    'You have tools prompt but you also have a system field, so the system field will be ignored')
-            if isinstance(tools, str):
-                tools = json.loads(tools)
-            system = get_tools_prompt(tools, tools_prompt)
-            keyword = get_tools_keyword(tools_prompt)
+        for message in messages:
+            if message['role'] == 'tool_response':
+                message['role'] = 'tool'
+            if message['role'] in {'tool_call', 'tool'} and not isinstance(message['content'], str):
+                message['content'] = json.dumps(message['content'], ensure_ascii=False)
 
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
         for k in list(media_kwargs.keys()):
@@ -165,12 +172,14 @@ class StdTemplateInputs:
             else:
                 media_kwargs[k] = inputs_mm_data
 
-        StdTemplateInputs.messages_join_observation(messages, tools_prompt)
-        return cls(messages=messages, system=system, objects=objects, agent_keyword=keyword, **kwargs, **media_kwargs)
+        all_keys = set(f.name for f in fields(StdTemplateInputs))
+        extra_kwargs = {k: v for k, v in inputs.items() if k not in all_keys}
+        return cls(
+            messages=messages, system=system, tools=tools, objects=objects, **kwargs, **media_kwargs), extra_kwargs
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
-        res = {'images': [], 'audios': [], 'videos': []}
+        res = {'images': [], 'audios': [], 'videos': [], 'rejected_images': []}
         for message in messages:
             content = message['content']
             if isinstance(content, str):
@@ -194,47 +203,3 @@ class StdTemplateInputs:
                     res[f'{key}s'].append(value)
             message['content'] = new_content
         return res
-
-    @staticmethod
-    def messages_join_observation(messages: Messages, tools_prompt='react_en') -> None:
-        """
-        Joins observations from 'tool' message into the 'assistant' response.
-
-        Example:
-        ---------
-        Original messages:
-        messages = [
-            {'role': 'user', 'content': "What's the weather today in Hangzhou?"},
-            {'role': 'assistant', 'content': 'Action: get_weather\nAction Input:\
-                    [{"location": "Hangzhou"}]\nObservations:'},
-            {'role': 'tool', 'content': 'It is 26 degrees Celsius and sunny in Hangzhou today.'}
-        ]
-
-        Transformed messages:
-        messages = [
-            {'role': 'user', 'content': "What's the weather today in Hangzhou?"},
-            {'role': 'assistant', 'content': 'Action: get_weather\nAction Input:\
-                    [{"location": "Hangzhou"}]\nObservations: It is 26 degrees Celsius and sunny in Hangzhou today.\n'}
-        ]
-        """
-        if len(messages) < 2:
-            return
-        i = 1
-        from swift.plugin import get_tools_keyword
-        keyword = get_tools_keyword(tools_prompt)
-        while i < len(messages):
-            pre_message, message = messages[i - 1], messages[i]
-            pre_role, pre_content = pre_message['role'], pre_message['content']
-            role, content = message['role'], message['content']
-            if (pre_role == 'assistant' and role == 'tool' and isinstance(pre_content, str)
-                    and pre_content.endswith(keyword.get('observation'))):
-                assert isinstance(pre_content, str)
-                pre_message['content'] = pre_content + content + '\n'  # assistant
-                messages.pop(i)  # remove tool
-            elif (pre_role == 'assistant' and role == 'assistant' and isinstance(pre_content, str)
-                  and isinstance(content, str)):
-                # Consecutive messages from the assistant role need to be merged to prevent errors.
-                pre_message['content'] = pre_content + content
-                messages.pop(i)
-            else:
-                i += 1

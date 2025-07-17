@@ -113,8 +113,8 @@ class TorchAccMixin:
         # additional files
         if xm.is_master_ordinal(local=False):
             if self.args is not None and self.args.sft_type == 'full':
-                additional_files = getattr(self.args, 'additional_saved_files',
-                                           None) or [] + ['preprocessor_config.json']
+                additional_files = (getattr(self.args, 'additional_saved_files', None)
+                                    or []) + ['preprocessor_config.json']
                 if model_dir is not None:
                     for file in additional_files:
                         src_path = os.path.join(model_dir, file)

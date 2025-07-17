@@ -82,9 +82,24 @@ swift eval \
 Where:
 - model: Can specify a local model path or a model ID on modelscope
 - eval_backend: Options are Native, OpenCompass, VLMEvalKit; default is Native
-- infer_backend: Options are pt, vllm, lmdeploy; default is pt
+- infer_backend: Options are pt, vllm, sglang, lmdeploy; default is pt
 - eval_limit: Sample size for each evaluation set; default is None, which means using all data; can be used for quick validation
 - eval_dataset: Evaluation dataset(s); multiple datasets can be set, separated by spaces
+
+**Complex Evaluation Example**
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift eval \
+    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --eval_backend Native \
+    --infer_backend pt \
+    --eval_limit 10 \
+    --eval_dataset gsm8k \
+    --dataset_args '{"gsm8k": {"few_shot_num": 0, "filters": {"remove_until": "</think>"}}}' \
+    --eval_generation_config '{"max_tokens": 512, "temperature": 0}' \
+    --extra_eval_args '{"ignore_errors": true, "debug": true}'
+```
 
 For a specific list of evaluation parameters, please refer to [here](./Command-line-parameters.md#evaluation-arguments).
 
@@ -116,8 +131,8 @@ swift sft \
   --eval_steps "5" \
   --per_device_eval_batch_size "5" \
   --eval_use_evalscope \
-  --eval_datasets "gsm8k" \
-  --eval_datasets_args '{"gsm8k": {"few_shot_num": 0}}' \
+  --eval_dataset "gsm8k" \
+  --eval_dataset_args '{"gsm8k": {"few_shot_num": 0}}' \
   --eval_limit "10"
 ```
 
@@ -125,8 +140,8 @@ Note that the launch command is `sft`, and the evaluation-related parameters inc
 - eval_strategy: Evaluation strategy. Defaults to None, following the `save_strategy` policy
 - eval_steps: Defaults to None. If an evaluation dataset exists, it follows the `save_steps` policy
 - eval_use_evalscope: Whether to use evalscope for evaluation, this parameter needs to be set to enable evaluation
-- eval_datasets: Evaluation datasets, multiple datasets can be set, separated by spaces
-- eval_datasets_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
+- eval_dataset: Evaluation datasets, multiple datasets can be set, separated by spaces
+- eval_dataset_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
 - eval_limit: Number of samples from the evaluation dataset
 - eval_generation_config: Model inference configuration during evaluation, in JSON format, default is `{'max_tokens': 512}`
 

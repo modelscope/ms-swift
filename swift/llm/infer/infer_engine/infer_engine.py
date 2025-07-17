@@ -10,11 +10,11 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 from tqdm import tqdm
 
 from swift.llm import InferRequest, ProcessorMixin, get_template
-from swift.llm.template import Template, split_action_action_input
+from swift.llm.template import Template
 from swift.llm.utils import get_ckpt_dir
 from swift.plugin import Metric
 from swift.utils import get_logger
-from ..protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
+from ..protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse,
                         RequestConfig, UsageInfo)
 from .base import BaseInferEngine
 
@@ -22,10 +22,8 @@ logger = get_logger()
 
 
 class InferEngine(BaseInferEngine, ProcessorMixin):
-    llm_max_batch_size = 1024 * 1024
-    mllm_max_batch_size = 1024
 
-    def _post_init(self):
+    def _post_init(self, template=None):
         processor = self.processor
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
@@ -33,14 +31,18 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.model_name = self.model_info.model_name
         self.max_model_len = self.model_info.max_model_len
         self.config = self.model_info.config
-        if getattr(self, 'default_template', None) is None:
+        if template is None:
             ckpt_dir = get_ckpt_dir(self.model_dir, getattr(self, 'adapters', None))
+            logger.info('Create the default_template for the infer_engine')
             if ckpt_dir:
                 from swift.llm import BaseArguments
                 args = BaseArguments.from_pretrained(ckpt_dir)
-                self.default_template = get_template(args.template, self.processor, default_system=args.system)
+                self.default_template = args.get_template(self.processor)
             else:
                 self.default_template = get_template(self.model_meta.template, self.processor)
+        else:
+            self.default_template = template
+            self.default_template.init_processor(self.processor)
 
         self._adapters_pool = {}
 
@@ -70,7 +72,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             else:
                 queue.put(None)
 
-        thread = Thread(target=lambda: asyncio.run(_run_async_iter()))
+        loop = asyncio.get_event_loop()
+        thread = Thread(target=lambda: loop.run_until_complete(_run_async_iter()))
         thread.start()
         pre_output = None
         while True:
@@ -155,36 +158,16 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         tasks = [self.infer_async(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
             use_tqdm = not request_config.stream and len(infer_requests) > 1
-        if request_config.stream:
-            return self._batch_infer_stream(tasks, True, use_tqdm, metrics)
-        else:
-            i = 0
-            result = []
-            max_batch_size = self.llm_max_batch_size
-            if hasattr(self, 'model_meta') and self.model_meta.is_multimodal:
-                # vllm & lmdeploy
-                max_batch_size = self.mllm_max_batch_size
-            prog_bar = tqdm(
-                total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm or len(tasks) <= max_batch_size)
-            while i < len(tasks):
-                tasks_samples = tasks[i:i + max_batch_size]
-                res = self._batch_infer_stream(tasks_samples, False, use_tqdm, metrics)
-                result += res
-                i += max_batch_size
-                prog_bar.update(len(tasks_samples))
-            return result
+        return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
     @staticmethod
-    def _get_toolcall(response: Union[str, List[Dict[str, Any]]],
-                      tools_prompt='react_en') -> Optional[List[ChatCompletionMessageToolCall]]:
-        if not isinstance(response, str):
-            response = '\n'.join([resp['text'] for resp in response if resp['type'] == 'text'])
-
-        action, action_input = split_action_action_input(response, tools_prompt=tools_prompt)
-        if action is None:
-            return None
-
-        return [ChatCompletionMessageToolCall(function=Function(name=action, arguments=action_input))]
+    def _get_toolcall(response: str, template: Template) -> Optional[List[ChatCompletionMessageToolCall]]:
+        try:
+            functions = template.agent_template.get_toolcall(response)
+        except Exception:
+            functions = None
+        if functions:
+            return [ChatCompletionMessageToolCall(function=function) for function in functions]
 
     @staticmethod
     def _get_num_tokens(inputs: Dict[str, Any]) -> int:
@@ -275,7 +258,12 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
     @staticmethod
     def safe_asyncio_run(coro):
-        return InferEngine.thread_run(asyncio.run, args=(coro, ))
+        loop = asyncio.get_event_loop()
+
+        def asyncio_run(core):
+            return loop.run_until_complete(core)
+
+        return InferEngine.thread_run(asyncio_run, args=(coro, ))
 
     @staticmethod
     def _batch_encode(infer_requests: List[InferRequest], template: Template, strict: bool):

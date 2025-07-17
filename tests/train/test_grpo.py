@@ -25,6 +25,7 @@ def test_llm():
             model='Qwen/Qwen2.5-1.5B-Instruct',
             train_type='full',
             dataset=['AI-MO/NuminaMath-TIR#100'],
+            split_dataset_ratio=0.1,
             system=SYSTEM_PROMPT,
             reward_funcs=['accuracy', 'format'],
             max_completion_length=4096,
@@ -90,7 +91,7 @@ def test_llm_vllm_zero2():
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
-def test_mllm_zero2():
+def test_mllm_pt():
     from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
     result = rlhf_main(
         RLHFArguments(
@@ -100,10 +101,9 @@ def test_mllm_zero2():
             # dataset=['AI-MO/NuminaMath-TIR#100'],
             dataset=['modelscope/coco_2014_caption:validation#100'],
             system=SYSTEM_PROMPT,
-            reward_funcs=['accuracy', 'format'],
+            reward_funcs=['format'],
             max_completion_length=4096,
             num_generations=2,
-            deepspeed='zero2',
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
@@ -112,6 +112,6 @@ def test_mllm_zero2():
 if __name__ == '__main__':
     # test_llm()
     # test_llm_zero3()
-    test_llm_vllm()
+    # test_llm_vllm()
     # test_llm_vllm_zero2()
-    # test_mllm_zero2()
+    test_mllm_pt()

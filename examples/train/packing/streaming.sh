@@ -1,5 +1,6 @@
 # 4 * 36GB
 # A demo using the Hugging Face dataset
+# The first model weights will be saved around step 70.
 NPROC_PER_NODE=4 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -9,11 +10,13 @@ swift sft \
     --train_type lora \
     --dataset 'HF::linxy/LaTeX_OCR:full#20000' \
     --torch_dtype bfloat16 \
-    --max_steps 1000 \
     --attn_impl flash_attn \
     --streaming true \
     --shuffle_buffer_size 1000 \
     --packing true \
+    --save_strategy epoch \
+    --max_steps 1000 \
+    --max_epochs 5 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --learning_rate 1e-4 \
@@ -21,8 +24,6 @@ swift sft \
     --lora_alpha 32 \
     --target_modules all-linear \
     --gradient_accumulation_steps 1 \
-    --eval_steps 100 \
-    --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 8192 \

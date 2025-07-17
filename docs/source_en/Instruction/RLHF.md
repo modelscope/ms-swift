@@ -15,7 +15,7 @@ For RLHF training of text models or multimodal large models using a custom datas
 ## GRPO
 [Paper on arXiv](https://arxiv.org/abs/2402.03300)
 
-Reference the training script [here](./GRPO.md).
+Reference the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo).
 
 ## DPO
 [Paper on arXiv](https://arxiv.org/abs/2305.18290)
@@ -27,7 +27,7 @@ Hyperparameters:
 It is recommended to perform SFT training on the preferred answers from the preference dataset before starting DPO training to ensure the data meets the distribution requirements of the DPO algorithm.
 We also mixed SFT loss into the DPO loss for stable training. You can adjust the coefficient of SFT loss with the hyperparameter `rpo_alpha`, which defaults to `1.`.
 
-Reference the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/dpo.sh).
+Reference the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/dpo).
 
 ## RM
 [Paper on arXiv](https://arxiv.org/abs/2203.02155)
@@ -37,6 +37,18 @@ Reward Modeling stage in RLHF.
 Use the base model or instruct model trained with SFT as the foundation model. Add a value head and train it using the preference dataset to create the reward model.
 
 The weights of the added value head will be saved in `value_head.safetensors` or `value_head.bin`.
+
+The loss function for reward modeling is as follows:
+
+$
+\text{loss} = -\log \sigma \left( r^{(c)} - r^{(r)} - m \right) + \lambda \left( r^{(c)} + r^{(r)} \right)^2
+$
+
+- $r^{(c)}$: The score assigned by the model to the chosen response.
+- $r^{(r)}$: The score assigned by the model to the rejected response.
+- $\lambda$: L2 regularization coefficient that encourages the model outputs to be close to zero. It is set by the parameter `center_rewards_coefficient`, as described in [the paper](https://arxiv.org/pdf/2307.09288), and defaults to 0.
+- $m$: Margin term that encourages the model to distinguish between samples of different difficulty levels. The dataset needs to provide a `margin` column for this; by default, it is 0. This term is also introduced in [the paper](https://arxiv.org/pdf/2307.09288).
+
 
 Reference the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/rm.sh).
 

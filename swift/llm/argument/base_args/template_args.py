@@ -20,7 +20,6 @@ class TemplateArguments:
         max_length (Optional[int]): Maximum length for the template. Default is None.
         truncation_strategy (Literal): Strategy for truncating the template. Default is 'delete'.
         max_pixels (Optional[int]): Maximum number of pixels for the template. Default is None.
-        tools_prompt (str): Override the default tools prompt in the template. Default is 'react_en'.
         padding_side: The padding_side when the training batch_size >= 2
         loss_scale (str): Loss scale for training. Default is 'default',
             meaning only calculate the loss of the assistant.
@@ -35,42 +34,58 @@ class TemplateArguments:
 
     truncation_strategy: Literal['delete', 'left', 'right', None] = None
     max_pixels: Optional[int] = None
-    tools_prompt: str = 'react_en'  # Override the default_tools_prompt in the template.
+    agent_template: Optional[str] = None
     norm_bbox: Literal['norm1000', 'none', None] = None
-    response_prefix: Optional[str] = None
+    use_chat_template: Optional[bool] = None
     # train
+    padding_free: bool = False
     padding_side: Literal['left', 'right'] = 'right'
     loss_scale: str = 'default'
     sequence_parallel_size: int = 1
     # infer/deploy
-    use_chat_template: bool = True
+    response_prefix: Optional[str] = None
     template_backend: Literal['swift', 'jinja'] = 'swift'
 
     def __post_init__(self):
         if self.template is None and hasattr(self, 'model_meta'):
             self.template = self.model_meta.template
-        if self.system is not None and self.system.endswith('.txt'):
-            assert os.path.isfile(self.system), f'self.system: {self.system}'
-            with open(self.system, 'r') as f:
-                self.system = f.read()
+        if self.use_chat_template is None:
+            self.use_chat_template = True
+        if self.system is not None:
+            if self.system.endswith('.txt'):
+                assert os.path.isfile(self.system), f'self.system: {self.system}'
+                with open(self.system, 'r') as f:
+                    self.system = f.read()
+            else:
+                self.system = self.system.replace('\\n', '\n')
+        if self.response_prefix is not None:
+            self.response_prefix = self.response_prefix.replace('\\n', '\n')
         if self.truncation_strategy is None:
             self.truncation_strategy = 'delete'
 
     def get_template_kwargs(self):
+        from ..train_args import TrainArguments
         truncation_strategy = self.truncation_strategy
         if truncation_strategy == 'delete':
             truncation_strategy = 'raise'
+        remove_unused_columns = self.remove_unused_columns  # from DataArguments
+        if not isinstance(self, TrainArguments) or hasattr(self, 'rlhf_type') and self.rlhf_type == 'grpo':
+            remove_unused_columns = True
         return {
             'default_system': self.system,
             'max_length': self.max_length,
             'truncation_strategy': truncation_strategy,
             'max_pixels': self.max_pixels,
-            'tools_prompt': self.tools_prompt,
+            'agent_template': self.agent_template,
             'norm_bbox': self.norm_bbox,
-            'response_prefix': self.response_prefix,
-            'loss_scale': self.loss_scale,
+            'use_chat_template': self.use_chat_template,
+            'remove_unused_columns': remove_unused_columns,
+            # train
+            'padding_free': self.padding_free,
             'padding_side': self.padding_side,
+            'loss_scale': self.loss_scale,
             'sequence_parallel_size': self.sequence_parallel_size,
+            # infer/deploy
+            'response_prefix': self.response_prefix,
             'template_backend': self.template_backend,
-            'use_chat_template': self.use_chat_template
         }

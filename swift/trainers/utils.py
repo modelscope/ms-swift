@@ -4,6 +4,7 @@ import inspect
 from types import FunctionType, MethodType
 from typing import List, Union
 
+from peft import PeftModel
 from torch.nn import Module
 
 from swift.utils import get_logger
@@ -13,7 +14,10 @@ logger = get_logger()
 
 def can_return_loss(model: Module) -> bool:
     """Check if a given model can return loss."""
-    signature = inspect.signature(model.forward)
+    if isinstance(model, PeftModel):
+        signature = inspect.signature(model.model.forward)
+    else:
+        signature = inspect.signature(model.forward)
     for p in signature.parameters:
         if p == 'return_loss' and signature.parameters[p].default is True:
             return True
@@ -23,7 +27,10 @@ def can_return_loss(model: Module) -> bool:
 def find_labels(model: Module) -> List[str]:
     """Find the labels used by a given model."""
     model_name = model.__class__.__name__
-    signature = inspect.signature(model.forward)
+    if isinstance(model, PeftModel):
+        signature = inspect.signature(model.model.forward)
+    else:
+        signature = inspect.signature(model.forward)
     if 'QuestionAnswering' in model_name:
         return [p for p in signature.parameters if 'label' in p or p in ('start_positions', 'end_positions')]
     else:

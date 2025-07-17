@@ -13,7 +13,11 @@ def test_sft():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
-            model='Qwen/Qwen2.5-7B-Instruct', dataset=['swift/self-cognition#200'], use_liger_kernel=True, **kwargs))
+            model='Qwen/Qwen2.5-7B-Instruct',
+            dataset=['swift/self-cognition#200'],
+            split_dataset_ratio=0.01,
+            use_liger_kernel=True,
+            **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
 
@@ -27,6 +31,7 @@ def test_mllm_dpo():
             model='Qwen/Qwen2.5-VL-3B-Instruct',
             train_type='full',
             dataset=['swift/RLAIF-V-Dataset#1000'],
+            split_dataset_ratio=0.01,
             dataset_num_proc=8,
             deepspeed='zero3',
             use_liger_kernel=True,

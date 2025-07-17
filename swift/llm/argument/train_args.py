@@ -36,8 +36,9 @@ class Seq2SeqTrainingOverrideArguments(TrainArgumentsMixin, Seq2SeqTrainingArgum
             self.eval_strategy = self.save_strategy
         if self.eval_strategy == 'no':
             self.eval_steps = None
-            self.split_dataset_ratio = 0.
-            logger.info(f'Setting args.split_dataset_ratio: {self.split_dataset_ratio}')
+            if self.split_dataset_ratio > 0:
+                self.split_dataset_ratio = 0.
+                logger.info(f'Setting args.split_dataset_ratio: {self.split_dataset_ratio}')
         elif self.eval_strategy == 'steps' and self.eval_steps is None:
             self.eval_steps = self.save_steps
         self.evaluation_strategy = self.eval_strategy
@@ -67,6 +68,8 @@ class SwanlabArguments:
     swanlab_project: Optional[str] = None
     swanlab_workspace: Optional[str] = None
     swanlab_exp_name: Optional[str] = None
+    swanlab_lark_webhook_url: Optional[str] = None
+    swanlab_lark_secret: Optional[str] = None
     swanlab_mode: Literal['cloud', 'local'] = 'cloud'
 
     def _init_swanlab(self):
@@ -79,6 +82,15 @@ class SwanlabArguments:
         from swanlab.integration.transformers import SwanLabCallback
         if self.swanlab_token:
             swanlab.login(self.swanlab_token)
+
+        if self.swanlab_lark_webhook_url is not None:
+            from swanlab.plugin.notification import LarkCallback
+            lark_callback = LarkCallback(
+                webhook_url=self.swanlab_lark_webhook_url,
+                secret=self.swanlab_lark_secret,
+            )
+            swanlab.register_callbacks([lark_callback])
+
         INTEGRATION_TO_CALLBACK['swanlab'] = SwanLabCallback(
             project=self.swanlab_project,
             workspace=self.swanlab_workspace,
@@ -89,14 +101,13 @@ class SwanlabArguments:
 
 
 @dataclass
-class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideArguments, BaseArguments):
+class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrainingOverrideArguments):
     """
     TrainArguments class is a dataclass that inherits from multiple argument classes:
     TunerArguments, Seq2SeqTrainingOverrideArguments, and BaseArguments.
 
     Args:
         add_version (bool): Flag to add version information to output_dir. Default is True.
-        resume_only_model (bool): Flag to resume training only the model. Default is False.
         loss_type (Optional[str]): Type of loss function to use. Default is None.
         packing (bool): Flag to enable packing of datasets. Default is False.
         lazy_tokenize (Optional[bool]): Flag to enable lazy tokenization. Default is None.
@@ -106,16 +117,11 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
         metric (Optional[str]): Metric to use for evaluation, define it in the plugin package. Default is None.
     """
     add_version: bool = True
-    resume_only_model: bool = False
     create_checkpoint_symlink: bool = False
-
-    # dataset
-    packing: bool = False
     lazy_tokenize: Optional[bool] = None
 
     # plugin
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
-    optimizer: Optional[str] = None
     metric: Optional[str] = None
 
     # extra
@@ -136,12 +142,22 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
 
     def __post_init__(self) -> None:
+        if self.padding_free or self.packing:
+            if self.packing:
+                feature = 'packing'
+                self.padding_free = False
+            else:
+                feature = 'padding_free'
+            if self.attn_impl != 'flash_attn':
+                raise ValueError(f'The "{feature}" feature needs to be used in conjunction with "flash_attn". '
+                                 'Please specify `--attn_impl flash_attn`.')
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
-            if self.train_type == 'full':
-                self.model = self.resume_from_checkpoint
-            else:
-                self.adapters = [self.resume_from_checkpoint]
+            if self.resume_only_model:
+                if self.train_type == 'full':
+                    self.model = self.resume_from_checkpoint
+                else:
+                    self.adapters = [self.resume_from_checkpoint]
         BaseArguments.__post_init__(self)
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
         TunerArguments.__post_init__(self)
@@ -163,10 +179,12 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
 
         if getattr(self, 'accelerator_config', None) is None:
             self.accelerator_config = {'dispatch_batches': False}
+        if self.split_dataset_ratio == 0 and not self.val_dataset and not self.eval_dataset:
+            self.eval_strategy = 'no'
         self.training_args = TrainerFactory.get_training_args(self)
         self.training_args.remove_unused_columns = False
-
         self._add_version()
+        self._check_packing()
 
         if 'swanlab' in self.report_to:
             self._init_swanlab()
@@ -222,6 +240,9 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
         if is_master():
             os.makedirs(self.output_dir, exist_ok=True)
 
+        if self.run_name is None:
+            self.run_name = self.output_dir
+
         self.training_args.output_dir = self.output_dir
-        self.training_args.run_name = self.output_dir
+        self.training_args.run_name = self.run_name
         self.training_args.logging_dir = self.logging_dir

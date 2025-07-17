@@ -56,6 +56,8 @@ def test_step_audio_chat():
 
 
 def test_qwen2_5_omni():
+    USE_AUDIO_IN_VIDEO = True
+    os.environ['USE_AUDIO_IN_VIDEO'] = str(USE_AUDIO_IN_VIDEO)
     pt_engine = PtEngine('Qwen/Qwen2.5-Omni-7B')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
@@ -63,12 +65,23 @@ def test_qwen2_5_omni():
     assert response == response2
 
 
+def test_gemma3n():
+    pt_engine = PtEngine('google/gemma-3n-E4B-it')
+    messages = [{'role': 'user', 'content': '<audio>Transcribe this audio and complete the statement'}]
+    audios = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/guess_age_gender.wav']
+    response = _infer_model(pt_engine, messages=messages, audios=audios)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, audios=audios)
+    assert response == response2
+
+
 if __name__ == '__main__':
-    from swift.llm import PtEngine, RequestConfig, get_template
+    from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen_audio()
     # test_qwen2_audio()
     # test_xcomposer2d5_ol()
     # test_step_audio_chat()
-    test_qwen2_5_omni()
+    # test_qwen2_5_omni()
+    test_gemma3n()

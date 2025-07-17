@@ -19,6 +19,7 @@ Swift DOCUMENTATION
 
    Instruction/Command-line-parameters.md
    Instruction/Pre-training-and-Fine-tuning.md
+   Instruction/GRPO/index.rst
    Instruction/RLHF.md
    Instruction/Inference-and-deployment.md
    Instruction/Megatron-SWIFT-Training.md
@@ -26,10 +27,9 @@ Swift DOCUMENTATION
    Instruction/Evaluation.md
    Instruction/Export-and-push.md
    Instruction/Reinforced-Fine-tuning.md
-   Instruction/GRPO.md
+   Instruction/Agent-support.md
    Instruction/Supported-models-and-datasets.md
    Instruction/Use-tuners.md
-   Instruction/Agent-support.md
    Instruction/Frequently-asked-questions.md
 
 
@@ -49,7 +49,10 @@ Swift DOCUMENTATION
    BestPractices/GRPO.md
    BestPractices/GRPO-Multi-Modal-Training.md
    BestPractices/GRPO-Code-Training.md
+   BestPractices/Qwen3-Best-Practice.md
    BestPractices/Embedding.md
+   BestPractices/Reranker.md
+   BestPractices/Rapidly-Training-VL-model.md
    BestPractices/NPU-support.md
    BestPractices/More-Best-Practices.md
 

@@ -11,7 +11,7 @@ class Save(BaseUI):
     group = 'llm_train'
 
     locale_dict = {
-        'save_param': {
+        'save_tab': {
             'label': {
                 'zh': '存储参数设置',
                 'en': 'Saving settings'
@@ -71,7 +71,7 @@ class Save(BaseUI):
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Accordion(elem_id='save_param', open=False):
+        with gr.TabItem(elem_id='save_tab'):
             with gr.Blocks():
                 with gr.Row():
                     gr.Checkbox(elem_id='push_to_hub', scale=20)

@@ -1,5 +1,4 @@
 # NPU Support
-Author: [chuanzhubin](https://github.com/chuanzhubin)
 
 ## Environment Preparation
 
@@ -116,6 +115,7 @@ ASCEND_RT_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --dataset AI-ModelScope/blossom-math-v2 \
+    --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
     --train_type lora \
     --output_dir output \
@@ -137,6 +137,7 @@ ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --dataset AI-ModelScope/blossom-math-v2 \
+    --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
     --train_type lora \
     --output_dir output \
@@ -155,6 +156,7 @@ ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --dataset AI-ModelScope/blossom-math-v2 \
+    --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
     --train_type lora \
     --output_dir output \
@@ -172,6 +174,7 @@ ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --dataset AI-ModelScope/blossom-math-v2 \
+    --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
     --train_type lora \
     --output_dir output \

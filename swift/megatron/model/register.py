@@ -1,11 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from dataclasses import dataclass, field
+from argparse import ArgumentParser
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 import torch.nn as nn
 from transformers import PretrainedConfig
 
-from swift.llm import MODEL_MAPPING, ModelGroup
+from swift.llm import MODEL_MAPPING
 
 MEGATRON_MODEL_MAPPING = {}
 
@@ -19,6 +20,8 @@ class MegatronModelMeta:
     convert_hf_config: Callable[[PretrainedConfig], Dict[str, Any]]
     convert_mcore2hf: Callable[[nn.Module, nn.Module], None]
     convert_hf2mcore: Callable[[nn.Module, nn.Module], None]
+
+    extra_args_provider: Optional[Callable[[ArgumentParser], ArgumentParser]] = None
 
 
 def register_megatron_model(megatron_model_meta: MegatronModelMeta, *, exist_ok: bool = False):

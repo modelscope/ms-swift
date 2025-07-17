@@ -1,6 +1,8 @@
+# This script is used in DLC (Deep Learning Containers)
+# For more information, visit: https://www.aliyun.com/activity/bigdata/pai-dlc
+# https://help.aliyun.com/zh/pai/user-guide/general-environment-variables
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
-PYTHONPATH=. \
 torchrun \
     --nproc_per_node=8 \
     --nnodes=${WORLD_SIZE} \
@@ -14,7 +16,11 @@ torchrun \
     --system examples/train/grpo/prompt.txt \
     --num_train_epochs 1 \
     --max_length 2048 \
+    --use_vllm true \
+    --vllm_mode colocate \
     --vllm_max_model_len 2048 \
+    --vllm_gpu_memory_utilization 0.3 \
+    --vllm_tensor_parallel_size 4 \
     --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 4 \
     --learning_rate 1e-6 \
@@ -27,11 +33,7 @@ torchrun \
     --max_completion_length 2048 \
     --reward_funcs accuracy format \
     --num_generations 48 \
-    --use_vllm true \
-    --vllm_gpu_memory_utilization 0.3 \
     --sleep_level 1 \
     --deepspeed zero3_offload \
-    --num_infer_workers 8 \
-    --tensor_parallel_size 4 \
     --temperature 1.0 \
     --top_p 0.85

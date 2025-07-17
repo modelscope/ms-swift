@@ -55,6 +55,8 @@ def _test_client(port: int, print_logprobs: bool = False, test_vlm: bool = False
     print(f'query: {query}')
     print('response: ', end='')
     for chunk in gen_list[0]:
+        if chunk is None:
+            continue
         print(chunk.choices[0].delta.content, end='', flush=True)
         if print_logprobs and chunk.choices[0].logprobs is not None:
             pprint(chunk.choices[0].logprobs)

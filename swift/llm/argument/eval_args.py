@@ -21,14 +21,17 @@ class EvalArguments(DeployArguments):
         eval_dataset (List[str]): List of evaluation datasets. Default is an empty list.
         eval_limit (Optional[str]): Limit number of each evaluation dataset. Default is None.
         local_dataset(bool): Download extra dataset from opencompass, default False.
+        eval_generation_config (Optional[Union[Dict, str]]): The generation config for evaluation. Default is None.
         eval_output_dir (str): The eval output dir.
         temperature (float): The temperature.
         verbose (bool): Output verbose information.
-        eval_url(str): The extra eval url, use this as --model.
+        eval_url (str): The extra eval url, use this as --model.
+        extra_eval_args (Optional[Union[Dict, str]]): Additional evaluation arguments. Default is an empty dict.
     """
     eval_dataset: List[str] = field(default_factory=list)
     eval_limit: Optional[int] = None
     dataset_args: Optional[Union[Dict, str]] = None
+    eval_generation_config: Optional[Union[Dict, str]] = field(default_factory=dict)
     eval_output_dir: str = 'eval_output'
     eval_backend: Literal['Native', 'OpenCompass', 'VLMEvalKit'] = 'Native'
     local_dataset: bool = False
@@ -36,6 +39,7 @@ class EvalArguments(DeployArguments):
     temperature: Optional[float] = 0.
     verbose: bool = False
     eval_num_proc: int = 16
+    extra_eval_args: Optional[Union[Dict, str]] = field(default_factory=dict)
     # If eval_url is set, ms-swift will not perform deployment operations and
     # will directly use the URL for evaluation.
     eval_url: Optional[str] = None
@@ -50,6 +54,8 @@ class EvalArguments(DeployArguments):
         self._init_eval_url()
         self._init_eval_dataset()
         self.dataset_args = self.parse_to_dict(self.dataset_args)
+        self.eval_generation_config = self.parse_to_dict(self.eval_generation_config)
+        self.extra_eval_args = self.parse_to_dict(self.extra_eval_args)
         self.eval_output_dir = to_abspath(self.eval_output_dir)
         logger.info(f'eval_output_dir: {self.eval_output_dir}')
 

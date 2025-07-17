@@ -16,6 +16,7 @@ ROUTE_MAPPING: Dict[str, str] = {
     'merge-lora': 'swift.cli.merge_lora',
     'web-ui': 'swift.cli.web_ui',
     'deploy': 'swift.cli.deploy',
+    'rollout': 'swift.cli.rollout',
     'rlhf': 'swift.cli.rlhf',
     'sample': 'swift.cli.sample',
     'export': 'swift.cli.export',

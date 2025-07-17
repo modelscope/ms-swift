@@ -708,5 +708,13 @@
             "problem_statement": "query"
         },
         "tags": ["grpo", "code"]
+    },
+    {
+        "ms_dataset_id": "iic/DocQA-RL-1.6K",
+        "hf_dataset_id": "Tongyi-Zhiwen/DocQA-RL-1.6K",
+        "columns": {
+            "prompt": "messages"
+        },
+        "tags": ["docqa", "rl", "long-sequence"]
     }
 ]
