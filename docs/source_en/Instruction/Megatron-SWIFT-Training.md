@@ -10,9 +10,12 @@ To use Megatron-SWIFT, in addition to installing the `swift` dependencies, you a
 ```shell
 # Recommended PyTorch version: 2.5 / 2.6
 pip install pybind11
+
 # transformer_engine
 # If an installation error occurs, you can refer to this issue for resolution: https://github.com/modelscope/ms-swift/issues/3793
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.3
+# If the above command fails, you can also install it using the following command:
+# pip install transformer_engine[pytorch]
 
 # apex
 git clone https://github.com/NVIDIA/apex
@@ -203,8 +206,8 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
 
 |                  | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
 | ---------------- | ----------- | --------------- | --------------- |
-| Training Speed   | 2.93s/it    | 6.02s/it        | 24.30s/it       |
-| GPU Memory Usage | 8\*66GB      | 8\*72GB          | 8\*50GB          |
+| Training Speed   | 2.95s/it    | 6.02s/it        | 24.30s/it       |
+| GPU Memory Usage | 8\*57GB      | 8\*72GB          | 8\*50GB          |
 
 ## Command Line Arguments
 
@@ -304,8 +307,8 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - 🔥sequence_parallel: Enable sequence parallel optimization. Default is False.
 - 🔥context_parallel_size: CP (Context Parallelism) size, default is 1.
 - tp_comm_overlap: Overlap tensor parallel communication with GEMM (General Matrix Multiplication) kernels (to reduce communication time). Default is False.
-- overlap_grad_reduce: Overlap grad reduction operations in DDP (to reduce DP communication time). Default is False.
-- overlap_param_gather: Overlap all-gather of parameters in the distributed optimizer (to reduce DP communication time). Default is False.
+- 🔥overlap_grad_reduce: Overlap grad reduction operations in DDP (to reduce DP communication time). Default is False.
+- 🔥overlap_param_gather: Overlap all-gather of parameters in the distributed optimizer (to reduce DP communication time). Default is False.
 - distributed_timeout_minutes: The timeout duration for torch.distributed (in minutes). This parameter is deprecated and is now controlled by the `ddp_timeout` in the [Base Arguments](./Command-line-parameters.md#base-arguments), with a default value of 300000 minutes.
 
 **Logging Parameters**:

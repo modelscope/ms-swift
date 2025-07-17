@@ -50,6 +50,7 @@ class TrainArgumentsMixin:
     use_logits_to_keep: Optional[bool] = None
     channels: List[str] = None
     ds3_gather_for_generation: bool = True
+    resume_only_model: bool = False
 
     # torchacc
     metric_warmup_step: Optional[float] = 0

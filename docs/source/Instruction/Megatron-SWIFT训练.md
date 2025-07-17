@@ -9,9 +9,12 @@ SWIFT引入了Megatron的并行技术来加速大模型的训练，包括数据�
 ```shell
 # 推荐torch版本：2.5 / 2.6
 pip install pybind11
+
 # transformer_engine
 # 若出现安装错误，可以参考该issue解决: https://github.com/modelscope/ms-swift/issues/3793
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.3
+# 若以上命令报错也可以使用以下方式安装
+# pip install transformer_engine[pytorch]
 
 # apex
 git clone https://github.com/NVIDIA/apex
@@ -196,8 +199,8 @@ swift export \
 
 |          | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
 | -------- | ----------- | ---------- | ---------- |
-| 训练速度 |      2.93s/it       |  6.02s/it   | 24.30s/it |
-| 显存占用 | 8\*66GB     |  8\*72GB   | 8\*50GB |
+| 训练速度 |      2.95s/it       |  6.02s/it   | 24.30s/it |
+| 显存占用 | 8\*57GB     |  8\*72GB   | 8\*50GB |
 
 
 ## 命令行参数
@@ -294,8 +297,8 @@ swift export \
 - 🔥sequence_parallel: 启动序列并行的优化器。默认为False。
 - 🔥context_parallel_size: cp数，默认为1。
 - tp_comm_overlap: 启用张量并行通信与GEMM（通用矩阵乘法）内核的重叠（降低通信耗时）。默认为False。
-- overlap_grad_reduce: 启用DDP中grad reduce操作的重叠（降低DP通信耗时）。默认为False。
-- overlap_param_gather: 启用分布式优化器中参数all-gather的重叠（降低DP通信耗时）。默认为False。
+- 🔥overlap_grad_reduce: 启用DDP中grad reduce操作的重叠（降低DP通信耗时）。默认为False。
+- 🔥overlap_param_gather: 启用分布式优化器中参数all-gather的重叠（降低DP通信耗时）。默认为False。
 - distributed_timeout_minutes: torch.distributed的timeout时间（单位为分钟），该参数失效，使用[基础参数](./命令行参数.md#基本参数)中的ddp_timeout控制，默认为300000分钟。
 
 **日志参数**:
