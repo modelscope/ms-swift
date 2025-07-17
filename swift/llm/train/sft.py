@@ -58,9 +58,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             template.model = self.model
         self.template = template
 
-    def _get_dataset(self):
+    @staticmethod
+    def _get_dataset(args):
         # The random shuffling of the training set occurs in the dataloader of the trainer.
-        args = self.args
         dataset_kwargs = args.get_dataset_kwargs()
         train_dataset, val_dataset = load_dataset(
             args.dataset, split_dataset_ratio=args.split_dataset_ratio, shuffle=args.dataset_shuffle, **dataset_kwargs)
@@ -92,7 +92,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def run(self):
         args = self.args
 
-        train_dataset, val_dataset = self._get_dataset()
+        train_dataset, val_dataset = self._get_dataset(args)
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
 
         if args.task_type == 'seq_cls':
@@ -218,42 +218,34 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._save_val_dataset(val_dataset)
         is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
         predict_with_generate = getattr(args, 'predict_with_generate', False)
+        datasets = [train_dataset, val_dataset]
         if not is_grpo:
-            if args.packing:
-                packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
-                train_dataset = packing_dataset_cls(
-                    self.template,
-                    train_dataset,
-                    num_proc=args.dataset_num_proc,
-                    strict=args.strict,
-                    load_from_cache_file=args.load_from_cache_file)
-                if val_dataset is not None and not predict_with_generate:
-                    val_dataset = packing_dataset_cls(
+            lazy_tokenize = args.lazy_tokenize and not args.packing
+            is_multimodal = args.model_meta.is_multimodal
+            for i, dataset in enumerate(datasets):
+                if dataset is None or predict_with_generate:
+                    continue
+                if lazy_tokenize:
+                    dataset = LazyLLMDataset(dataset, template.encode, strict=args.strict, random_state=args.data_seed)
+                elif args.packing:
+                    packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
+                    dataset = packing_dataset_cls(
                         self.template,
-                        val_dataset,
+                        dataset,
                         num_proc=args.dataset_num_proc,
                         strict=args.strict,
                         load_from_cache_file=args.load_from_cache_file)
-            elif args.lazy_tokenize:
-                train_dataset = LazyLLMDataset(
-                    train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-                if val_dataset is not None and not predict_with_generate:
-                    val_dataset = LazyLLMDataset(
-                        val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-            else:
-                preprocessor = EncodePreprocessor(template=template)
-                train_dataset = preprocessor(
-                    train_dataset,
-                    num_proc=args.dataset_num_proc,
-                    load_from_cache_file=args.load_from_cache_file,
-                    strict=args.strict)
-                if val_dataset is not None and not predict_with_generate:
-                    val_dataset = preprocessor(
-                        val_dataset,
+                else:
+                    preprocessor = EncodePreprocessor(template=template)
+                    dataset = preprocessor(
+                        dataset,
                         num_proc=args.dataset_num_proc,
                         load_from_cache_file=args.load_from_cache_file,
                         strict=args.strict)
-
+                    if is_multimodal:
+                        dataset = LazyLLMDataset(dataset, template.encode)
+                datasets[i] = dataset
+            train_dataset, val_dataset = datasets
             if is_master():
                 inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
                 template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})

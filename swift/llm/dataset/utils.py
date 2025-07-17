@@ -119,12 +119,11 @@ class LazyLLMDataset(Dataset):
 
 class BasePackingDataset:
 
-    def __init__(self, template, dataset, num_proc: int = 1, *, packing_interval: int = 128, strict: bool = False):
+    def __init__(self, template, dataset, num_proc: int = 1, *, strict: bool = False):
         template._packing = True
         self.template = template
         self.dataset = dataset
         self.num_proc = num_proc
-        self.packing_interval = packing_interval
         self.strict = strict
         assert num_proc >= 1, f'num_proc: {num_proc}'
         self.workers = []
@@ -136,15 +135,11 @@ class BasePackingDataset:
         # https://arxiv.org/pdf/2404.10830
         import binpacking
         sequences = binpacking.to_constant_volume(sequences, template.max_length, weight_pos=1)
-        res = []
         if sequences and not is_finished:
             sequences, ret_sequences = sequences[:-1], sequences[-1]
         else:
             ret_sequences = []
-        for row in sequences:
-            packed = template.packing_row(row)
-            res.append(packed)
-        return res, ret_sequences
+        return sequences, ret_sequences
 
     def _encode_data(self, data) -> Dict[str, Any]:
         res = None
@@ -286,87 +281,33 @@ class PackingDataset(BasePackingDataset, Dataset):
         dataset,
         num_proc: int = 1,
         *,
-        packing_interval: int = 128,
         strict: bool = False,
         load_from_cache_file: bool = True,
         **kwargs,
     ):
         from datasets.fingerprint import update_fingerprint
         num_proc = min(len(dataset), num_proc)
-        super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
+        super().__init__(template, dataset, num_proc, strict=strict)
         self.load_from_cache_file = load_from_cache_file
-        template = copy(template)
-        template.model = None  # Avoid hashing the model.
-        fingerprint = update_fingerprint(dataset._fingerprint, 'PackingDataset', {
-            'template': template,
-            'packing_interval': packing_interval,
-            'strict': strict,
-        })
-        self.dataset_name = f'packing-cache-{fingerprint}'
-        with safe_ddp_context(None, True):
-            self.create_packed_dataset()
+        preprocessor = EncodePreprocessor(template=template)
+        self.dataset = preprocessor(
+            dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)
+        self.packed_idx = self.create_packed_idx()
 
-    def create_packed_dataset(self):
-        cache_dir = IndexedDataset.get_cache_dir(self.dataset_name)
-        logger.info(f'packing cache_dir: {cache_dir}')
-        if not os.path.exists(os.path.join(cache_dir,
-                                           IndexedDataset.IDX_FNAME)) or not self.load_from_cache_file and is_master():
-            self._queue = mp.Queue(maxsize=1000)
-            self._terminated_workers = 0
-            self.prog_bar = tqdm(
-                total=len(self.dataset), dynamic_ncols=True, desc=f'Packing (num_proc={self.num_proc})')
-            for i in range(self.num_proc):
-                shard_dataset = self.dataset.shard(self.num_proc, i)
-                worker = mp.Process(target=self._producer, args=(shard_dataset, ), daemon=True)
-                worker.start()
-                self.workers.append(worker)
-
-            self.packing_dataset()
-            self.prog_bar.close()
-            for worker in self.workers:
-                worker.terminate()
-        self.packed_dataset = IndexedDataset(self.dataset_name)
-
-    def fetch_packing_data(self, res: Optional[list] = None):
-        res = res or []
-        for _ in range(self.packing_interval):
-            data = self._queue.get()
-            if data is None:
-                self._terminated_workers += 1
-                if self._terminated_workers == self.num_proc:
-                    break
-                continue
-            self.prog_bar.update(1)
-            if data:
-                res.append((data, data['length']))
-        return res
-
-    def packing_dataset(self):
-        data = []
-        indexed_dataset_builder = IndexedDatasetBuilder(self.dataset_name)
-        while True:
-            data = self.fetch_packing_data(data)
-            is_finished = self._terminated_workers == self.num_proc
-            res, data = self.calculate_matched_group(self.template, data, is_finished=is_finished)
-            indexed_dataset_builder.add_items(res)
-            if is_finished:
-                break
-        indexed_dataset_builder.finalize()
-
-    def _producer(self, shard_dataset):
-        for data in shard_dataset:
-            encoded_data = self._encode_data(data)  # ignore
-            self._queue.put(encoded_data)
-        self._queue.put(None)
-        while True:
-            # Wait for the main process to terminate to avoid fd anomalies.
-            time.sleep(0.1)
+    def create_packed_idx(self):
+        lengths = self.dataset['length']
+        data = [(i, length) for i, length in enumerate(lengths)]
+        return self.calculate_matched_group(self.template, data, is_finished=True)[0]
 
     def __getitem__(self, index):
-        return self.packed_dataset[index].copy()
+        sequence = self.packed_idx[index]
+        row = []
+        for i, length in sequence:
+            row.append((self.dataset[i], length))
+        return self.template.packing_row(row)
 
     def __len__(self):
-        return len(self.packed_dataset)
+        return len(self.packed_idx)
 
 
 class IterablePackingDataset(BasePackingDataset, IterableDataset):
@@ -382,7 +323,8 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
         cyclic: bool = False,
         **kwargs,
     ):
-        super().__init__(template, dataset, num_proc, packing_interval=packing_interval, strict=strict)
+        super().__init__(template, dataset, num_proc, strict=strict)
+        self.packing_interval = packing_interval
         self._in_queue = mp.Queue()
         self._out_queue = mp.Queue()
         self.workers = []
@@ -439,7 +381,11 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
             num_samples = self._put_data_in_queue(iterator)
             finished = num_samples != self.packing_interval
             data = self._fetch_data_out_queue(data, num_samples)
-            res, data = self.calculate_matched_group(self.template, data, is_finished=finished)
+            sequences, data = self.calculate_matched_group(self.template, data, is_finished=finished)
+            res = []
+            for row in sequences:
+                packed = template.packing_row(row)
+                res.append(packed)
             yield from res
             if finished:
                 break
@@ -450,6 +396,11 @@ class EncodePreprocessor(RowPreprocessor):
     def __init__(self, template: 'Template'):
         super().__init__()
         self.template = template
+        self.is_multimodal = template.model_meta.is_multimodal
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        return self.template.encode(row)
+        encoded = self.template.encode(row)
+        if self.is_multimodal:
+            row['length'] = encoded['length']
+            encoded = row
+        return encoded

@@ -12,7 +12,6 @@ logger = get_logger()
 class MegatronRLHF(MegatronSft):
     args_class = MegatronRLHFArguments
     args: args_class
-    trainer_cls = MegatronDPOTrainer
 
     def prepare_trainer(self):
         args = self.args
