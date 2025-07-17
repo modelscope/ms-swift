@@ -225,9 +225,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
         if is_master():
             self.vllm_client = VLLMClient(
-                base_url=self.vllm_server_base_url,
-                host=self.vllm_server_host,
-                server_port=self.vllm_server_port,
+                base_urls=self.vllm_server_base_url,
+                hosts=self.vllm_server_host,
+                server_ports=self.vllm_server_port,
                 connection_timeout=self.vllm_server_timeout)
             self.vllm_client.init_communicator()
 
