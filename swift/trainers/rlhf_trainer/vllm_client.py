@@ -146,25 +146,7 @@ class VLLMClient:
                     return
 
                 resp_data = response.json()
-                if self.use_gym_env:
-                    parsed = []
-                    for resp in resp_data:
-                        choices = [GymRolloutResponseChoice(**c) for c in resp['choices']]
-                        parsed.append(
-                            ChatCompletionResponse(
-                                choices=choices, **{k: v
-                                                    for k, v in resp.items() if k != 'choices'}))
-                    results[i] = parsed
-                else:
-                    if self.use_async_engine:
-                        results[i] = [
-                            ChatCompletionResponse(
-                                choices=[RolloutResponseChoice(**c) for c in resp['choices']],
-                                **{k: v
-                                   for k, v in resp.items() if k != 'choices'}) for resp in resp_data
-                        ]
-                    else:
-                        results[i] = [from_dict(data_class=ChatCompletionResponse, data=resp) for resp in resp_data]
+                results[i] = self.parse_resp_data(resp_data)
             except Exception as e:
                 errors[i] = e
 
@@ -249,10 +231,21 @@ class VLLMClient:
             self.update_named_param(name, param.data)
 
     def reset_prefix_cache(self):
-        for i in range(self.num_servers):
-            response = self.sessions[i].post(f'{self.base_urls[i]}/reset_prefix_cache/')
-            if response.status_code != 200:
-                raise Exception(f'Server {i} reset failed: {response.text}')
+        errors = [None] * self.num_servers
+        def _reset_single_server(i):
+            try:
+                response = self.sessions[i].post(f'{self.base_urls[i]}/reset_prefix_cache/')
+                if response.status_code != 200:
+                    raise Exception(f'Server {i} reset failed: {response.text}')
+            except Exception as e:
+                errors[i] = e
+        with ThreadPoolExecutor(max_workers=self.num_servers) as executor:
+            futures = [executor.submit(_reset_single_server, i) for i in range(self.num_servers)]
+            for future in futures:
+                future.result()
+        all_errors = [e for e in errors if e is not None]
+        if all_errors:
+            raise RuntimeError(f'Multiple errors on reset_prefix_cache: {all_errors}')
 
     def get_engine_type(self):
         # assume that all server has same engine type
@@ -273,3 +266,19 @@ class VLLMClient:
                     logger.warning(f'Server {i} close failed: {response.text}')
             except Exception as e:
                 logger.warning(f'Error closing server {i} communicator: {str(e)}')
+
+    def parse_resp_data(self, resp_data):
+        if self.use_gym_env:
+            choice_class = GymRolloutResponseChoice
+        elif self.use_async_engine:
+            choice_class = RolloutResponseChoice
+        else:
+            choice_class = ChatCompletionResponseChoice
+        result = [
+            choice_class(
+                choices=[RolloutResponseChoice(**c) for c in resp['choices']],
+                **{k: v
+                    for k, v in resp.items() if k != 'choices'}) for resp in resp_data
+        ]
+
+        return result
