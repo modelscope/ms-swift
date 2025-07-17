@@ -14,8 +14,8 @@ from requests import ConnectionError
 from torch import nn
 
 from swift.llm import AdapterRequest, RolloutInferRequest, Template
-from swift.llm.infer.protocol import (ChatCompletionResponseChoice, GymRolloutResponseChoice, RequestConfig,
-                                      RolloutResponseChoice)
+from swift.llm.infer.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, GymRolloutResponseChoice,
+                                      RequestConfig, RolloutResponseChoice)
 from swift.plugin import Metric
 from swift.utils import is_vllm_ascend_available, is_vllm_available
 
@@ -276,8 +276,8 @@ class VLLMClient:
         else:
             choice_class = ChatCompletionResponseChoice
         result = [
-            choice_class(
-                choices=[RolloutResponseChoice(**c) for c in resp['choices']],
+            ChatCompletionResponse(
+                choices=[choice_class(**c) for c in resp['choices']],
                 **{k: v
                    for k, v in resp.items() if k != 'choices'}) for resp in resp_data
         ]
