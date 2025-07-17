@@ -21,6 +21,7 @@ def encode_dataset(args, template, dataset):
 def export_to_bin_dataset(args):
     _, processor = args.get_model_processor(load_model=False)
     template = args.get_template(processor)
+    template.set_mode('train')
     from ..train import SwiftSft
     train_dataset, val_dataset = SwiftSft._get_dataset(args)
 
