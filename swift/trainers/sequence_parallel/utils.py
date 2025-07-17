@@ -295,8 +295,8 @@ def get_common_dataloader(sp_instance,
 
         if not isinstance(dataset, torch.utils.data.IterableDataset):
             if skip_batches > 0:
-                from accelerate.data_loader import SkipBatchesSampler
-                sampler = SkipBatchesSampler(sampler, skip_batches=skip_batches * batch_size)
+                from accelerate.data_loader import SkipBatchSampler
+                sampler = SkipBatchSampler(sampler, skip_batches=skip_batches * batch_size)
             dataloader_params['sampler'] = sampler
             dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
             dataloader_params['worker_init_fn'] = partial(
