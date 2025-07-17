@@ -169,7 +169,7 @@ class GRPOArgumentsMixin:
     # external vllm (server)
     vllm_server_base_url: Optional[List[str]] = None
     vllm_server_host: Optional[List[str]] = None
-    vllm_server_port: List[int] = 8000
+    vllm_server_port: List[int] = field(default_factory=lambda: [8000])
     vllm_server_timeout: float = 240.0
     vllm_client = None  # Not required to set, used for client instantiation
 

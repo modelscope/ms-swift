@@ -1,7 +1,6 @@
 # GRPO
 
 **更新日志**
-
 - **2025-07-17** - 支持多机rollout(vllm_server_host和vllm_server_port支持传入多个)，参考[脚本](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/multi_node/server_multi_node.sh)
 - **2025-07-16** - Rollout 支持 GYM 环境接口，参考[文档](../DeveloperGuide/GYM环境训练.md)
 - **2025-06-22** - 多轮训练重构并支持AsyncEngine，参考[文档](../DeveloperGuide/多轮训练.md)
