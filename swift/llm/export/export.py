@@ -4,6 +4,7 @@ from typing import List, Union
 from swift.llm import ExportArguments, SwiftPipeline
 from swift.tuners import swift_to_peft_format
 from swift.utils import get_logger
+from .bin_dataset import export_to_bin_dataset
 from .merge_lora import merge_lora
 from .ollama import export_to_ollama
 from .quant import quantize_model
@@ -29,6 +30,8 @@ class SwiftExport(SwiftPipeline):
             quantize_model(args)
         elif args.to_ollama:
             export_to_ollama(args)
+        elif args.to_bin_dataset:
+            export_to_bin_dataset(args)
         elif args.to_mcore:
             from swift.megatron import convert_hf2mcore
             convert_hf2mcore(args)
