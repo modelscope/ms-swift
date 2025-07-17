@@ -14,7 +14,7 @@ from requests import ConnectionError
 from torch import nn
 
 from swift.llm import AdapterRequest, RolloutInferRequest, Template
-from swift.llm.infer.protocol import (ChatCompletionResponse, GymRolloutResponseChoice, RequestConfig,
+from swift.llm.infer.protocol import (ChatCompletionResponseChoice, GymRolloutResponseChoice, RequestConfig,
                                       RolloutResponseChoice)
 from swift.plugin import Metric
 from swift.utils import is_vllm_ascend_available, is_vllm_available
@@ -185,7 +185,6 @@ class VLLMClient:
 
             time.sleep(0.1)
 
-            # 创建客户端通信器
             pg = StatelessProcessGroup.create(
                 host=self.hosts[i], port=self.group_ports[i], rank=rank, world_size=world_size)
             comm = PyNcclCommunicator(pg, device=0)
@@ -232,6 +231,7 @@ class VLLMClient:
 
     def reset_prefix_cache(self):
         errors = [None] * self.num_servers
+
         def _reset_single_server(i):
             try:
                 response = self.sessions[i].post(f'{self.base_urls[i]}/reset_prefix_cache/')
@@ -239,6 +239,7 @@ class VLLMClient:
                     raise Exception(f'Server {i} reset failed: {response.text}')
             except Exception as e:
                 errors[i] = e
+
         with ThreadPoolExecutor(max_workers=self.num_servers) as executor:
             futures = [executor.submit(_reset_single_server, i) for i in range(self.num_servers)]
             for future in futures:
@@ -278,7 +279,7 @@ class VLLMClient:
             choice_class(
                 choices=[RolloutResponseChoice(**c) for c in resp['choices']],
                 **{k: v
-                    for k, v in resp.items() if k != 'choices'}) for resp in resp_data
+                   for k, v in resp.items() if k != 'choices'}) for resp in resp_data
         ]
 
         return result
