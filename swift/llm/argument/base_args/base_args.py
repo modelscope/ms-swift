@@ -88,6 +88,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     # dist
     ddp_timeout: int = 18000000
+    os.environ['DDP_TIMEOUT'] = str(ddp_timeout)
     ddp_backend: Optional[str] = None
 
     # extra

@@ -5,6 +5,7 @@ from typing import Optional, Tuple
 import torch
 import torch.distributed as dist
 from transformers.utils import strtobool
+from datetime import timedelta
 
 from .logger import get_logger
 
@@ -96,7 +97,8 @@ def is_dist_ta() -> bool:
         if not dist.is_initialized():
             import torchacc as ta
             # Initialize in advance
-            dist.init_process_group(backend=ta.dist.BACKEND_NAME)
+            timeout = timedelta(int(os.environ['DDP_TIMEOUT']))
+            dist.init_process_group(backend=ta.dist.BACKEND_NAME, timeout=timeout)
         return True
     else:
         return False
