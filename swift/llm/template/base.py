@@ -1243,12 +1243,11 @@ class Template(ProcessorMixin):
         encoded['loss_scale'] = loss_scale
         if self.use_megatron:
             self._handle_megatron_cp(encoded)
-            encoded['labels'] = encoded['labels'][1:] + [-100]
-            if encoded.get('loss_scale') is not None:
-                encoded['loss_scale'] = encoded['loss_scale'][1:] + [0]
             encoded['position_ids'] = list(range(len(encoded['labels'])))
-        elif encoded.get('labels') is not None:
+        if encoded.get('labels') is not None:
             encoded['labels'][0] = -100
+        if encoded.get('loss_scale') is not None:
+            encoded['loss_scale'][0] = 0
         if not self.is_training:
             for k in list(encoded.keys()):
                 if k.endswith('labels') or k.endswith('loss_scale'):
