@@ -81,6 +81,8 @@ class LazyLLMDataset(Dataset):
         self._idx_list = self.random_state.permutation(len(self.dataset)).tolist()
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
+        if isinstance(idx, str):
+            return self.dataset[idx]
         for i in range(self.n_try_fetch):
             n_try = i
             if i == 0:
@@ -145,6 +147,8 @@ class PackingDataset(Dataset):
         preprocessor = EncodePreprocessor(template=template)
         self.dataset = preprocessor(
             dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)
+        if template.model_meta.is_multimodal:
+            self.dataset = LazyLLMDataset(self.dataset, encode_func=template.encode)
         self.packed_idx = self.create_packed_idx()
 
     def create_packed_idx(self):
