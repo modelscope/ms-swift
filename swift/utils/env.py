@@ -97,7 +97,7 @@ def is_dist_ta() -> bool:
         if not dist.is_initialized():
             import torchacc as ta
             # Initialize in advance
-            timeout = timedelta(int(os.environ['DDP_TIMEOUT']))
+            timeout = timedelta(seconds=int(os.environ['DDP_TIMEOUT']))
             dist.init_process_group(backend=ta.dist.BACKEND_NAME, timeout=timeout)
         return True
     else:
