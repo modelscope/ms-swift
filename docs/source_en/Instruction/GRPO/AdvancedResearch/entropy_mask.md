@@ -14,7 +14,7 @@ The paper demonstrates that within the token distribution during model reasoning
 The formula for token entropy is as follows:
 
 $
-H_t := -\sum_{j=1}^{V} p_{t,j} \log p_{t,j}, \qquad \text{where } (p_{t,1}, \cdots, p_{t,V}) = \mathbf{p}_t = \pi_\theta(\cdot | \mathbf{q}, \mathbf{o}_{<t}) = \text{Softmax}\left(\frac{\mathbf{z}_t}{T}\right) \
+H_t := -\sum_{j=1}^{V} p_{t,j} \log p_{t,j}, \qquad \text{where } (p_{t,1}, \cdots, p_{t,V}) = \mathbf{p}_t = \pi_\theta(\cdot | \mathbf{q}, \mathbf{o}_{<t}) = \text{Softmax}\left(\frac{\mathbf{z}_t}{T}\right)
 $
 
 Where:

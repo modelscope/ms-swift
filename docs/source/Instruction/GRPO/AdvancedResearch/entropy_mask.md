@@ -16,13 +16,13 @@
 token 熵公式如下
 
 $
-H_t := -∑_{j=1}^{V} p_{t,j} \log p_{t,j}, \qquad where (p_{t,1}, ···, p_{t,V}) = \mathbf{p}_t = π_θ(\cdot | \mathbf{q}, \mathbf{o}_{<t}) = \text{Softmax}(\frac{\mathbf{z}_t}{T}) \
+H_t := -∑_{j=1}^{V} p_{t,j} \log p_{t,j}, \qquad where (p_{t,1}, ···, p_{t,V}) = \mathbf{p}_t = π_θ(\cdot | \mathbf{q}, \mathbf{o}_{<t}) = \text{Softmax}(\frac{\mathbf{z}_t}{T})
 $
 
 其中
 - $\pi_\theta$：参数为 $\theta$ 的模型
 - $\mathbf{q}$：输入查询（input query）。
-- $\mathbf{o}{<t} = (o_1, o_2, \cdots, o_{t-1})$：时间步 $t$ 之前已生成的 token 序列。
+- $\mathbf{o}_{<t} = (o_1, o_2, \cdots, o_{t-1})$：时间步 $t$ 之前已生成的 token 序列。
 - $V$：词表大小（vocabulary size）。
 - $\mathbf{z}_t \in \mathbb{R}^V$：时间步 $t$ 的 pre-softmax 逻辑值（logits）。
 - $\mathbf{p}_t \in \mathbb{R}^V$：模型对词表的概率分布。

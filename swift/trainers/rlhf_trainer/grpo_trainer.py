@@ -260,7 +260,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
                 self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
                 if self.use_gym_env:
-                    self._textual_logs['trajactory_info'] = deque(maxlen=maxlen)
+                    self._textual_logs['trajactory_info'] = deque(maxlen=args.generation_batch_size)
                     self.reward_func_names = ['gym_reward']
 
             elif self.vllm_mode == 'colocate':
@@ -1270,7 +1270,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         per_token_loss2 = coef_2 * advantages.unsqueeze(1)
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
         if entropy_mask is not None:
-            completion_mask = entropy_mask
+            completion_mask = completion_mask & entropy_mask
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
