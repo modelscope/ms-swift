@@ -25,7 +25,7 @@ class PixtralTemplate(Template):
         if idx_list:
             image_inputs = processor.image_processor(images, patch_size=processor.patch_size, return_tensors='pt')
             encoded['pixel_values'] = image_inputs['pixel_values']
-            image_sizes = image_inputs['image_sizes']
+            encoded['image_sizes'] = image_sizes = image_inputs['image_sizes']
 
             def _get_new_tokens(i):
                 height, width = image_sizes[i]
@@ -46,10 +46,14 @@ class PixtralTemplate(Template):
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         pixel_values = self.gather_list(batch, 'pixel_values')
+        image_sizes = self.gather_list(batch, 'image_sizes')
         res = super()._data_collator(batch, padding_to=padding_to)
         if pixel_values:
             pixel_values = torch.stack(pixel_values)
             res['pixel_values'] = pixel_values
+        if image_sizes:
+            image_sizes = torch.stack(image_sizes)
+            res['image_sizes'] = image_sizes  
         return res
 
 
