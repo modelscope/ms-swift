@@ -38,9 +38,9 @@ def get_batch_on_this_tp_rank(data_iterator):
         input_ids = data['input_ids']
         seq_length = input_ids.shape[1]
         has_loss_scale = 'loss_scale' in data
-        data['labels'] = torch.roll(data['labels'], -1, dim=-1)
+        data['labels'] = torch.roll(data['labels'], -1, dims=-1)
         if has_loss_scale:
-            data['loss_scale'] = torch.roll(data['loss_scale'], -1, dim=-1)
+            data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
         batch = {
             'input_ids': input_ids.cuda(non_blocking=True),
             'labels': data['labels'].cuda(non_blocking=True),
