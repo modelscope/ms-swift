@@ -127,12 +127,6 @@ def calculate_matched_group(template, sequences, is_finished: bool = True):
     return sequences, ret_sequences
 
 
-class BasePackingDataset:
-
-    def __init__(self, template, dataset, num_proc: int = 1, *, strict: bool = False):
-        pass
-
-
 class IndexedDatasetBuilder:
     CHUNK_SIZE = 1e10
 
