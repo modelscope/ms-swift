@@ -259,7 +259,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 inputs = train_dataset[0]
             if val_dataset is not None and hasattr(val_dataset, '__len__') and len(val_dataset) == 0:
                 val_dataset = None
-            if isinstance(train_dataset, (HfDataset, PackingDataset)):
+            if not args.lazy_tokenize and not args.streaming:
                 self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
                 if val_dataset is not None and not predict_with_generate:
                     self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
