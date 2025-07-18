@@ -233,9 +233,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if is_peft_model(self.model):
             self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.use_fast_infer = self.use_vllm  # whether to use the PT backend
-        # gym engine
         self.vllm_use_async_engine = False
         self.enable_offload = False
+        # gym engine
+        self.use_gym_env = False
         if self.use_vllm:
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
