@@ -24,7 +24,6 @@ git checkout e13873debc4699d39c6861074b9a3b2a02327f92
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
-# "ms-swift<3.7"请使用core_r0.12.0分支
 pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
 
 # 若使用多机训练，请额外设置`MODELSCOPE_CACHE`环境变量为共享存储路径
@@ -175,10 +174,10 @@ MCore转换HF脚本：
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
-    --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
+    --mcore_adapters /mnt/nas2/huangjintao.hjt/work/llmscope/megatron_output/Qwen3-30B-A3B-Base/v8-20250718-132130 \
     --to_hf true \
     --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
+    --output_dir /mnt/data/jintao/mcore/Qwen3-30B-A3B-Base/v8-20250718-132130-hf \
     --test_convert_precision true
 ```
 - 注意：`mcore_adapters`文件夹中包含`args.json`文件，转换过程中会读取文件中`mcore_model`和LoRA相关的参数信息，并将`mcore_model`和`mcore_adapters`进行merge-lora成完整权重，最终转换成HF格式权重。
