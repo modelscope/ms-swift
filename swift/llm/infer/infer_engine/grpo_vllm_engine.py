@@ -12,8 +12,8 @@ from swift.plugin import Metric, multi_turns
 from swift.plugin.context_manager import ContextManager, context_managers
 from swift.plugin.env import Env, envs
 from swift.plugin.multi_turn import MultiTurnScheduler
-from ..protocol import (ChatCompletionResponse, ChatMessage, GymRolloutResponseChoice, RequestConfig,
-                        RolloutResponseChoice)
+from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage, GymRolloutResponseChoice,
+                        RequestConfig, RolloutResponseChoice)
 from .utils import AdapterRequest
 
 try:
@@ -346,19 +346,19 @@ class GRPOVllmEngine(VllmEngine):
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
             toolcall = self._get_toolcall(response, template)
 
-            # Use appropriate choice type based on sampling controller
             if self.use_gym_env:
-                choice = GymRolloutResponseChoice(
-                    index=output.index,
-                    message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                    finish_reason=output.finish_reason,
-                    logprobs=logprobs,
-                )
+                choice_cls = GymRolloutResponseChoice
+            elif self.use_async_engine:
+                choice_cls = RolloutResponseChoice
             else:
-                choice = RolloutResponseChoice(
-                    index=output.index,
-                    message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                    finish_reason=output.finish_reason,
-                    logprobs=logprobs)
+                choice_cls = ChatCompletionResponseChoice
+
+            choice = choice_cls(
+                index=output.index,
+                message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+                finish_reason=output.finish_reason,
+                logprobs=logprobs,
+            )
+
             choices.append(choice)
         return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
