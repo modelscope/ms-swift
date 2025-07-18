@@ -162,9 +162,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
             if self.truncation_strategy is None:
                 self.truncation_strategy = 'left'
-            assert self.truncation_strategy == 'left', \
-                "GRPO requires `truncation_strategy='left'`," \
-                f"Current value: `truncation_strategy='{self.truncation_strategy}'`."
+            assert self.truncation_strategy in ['left', 'delete'], (
+                "GRPO requires `truncation_strategy 'left' or 'delete'`, "
+                f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")  # noqa
             if self.beta is None:
                 self.beta = 0.04  # https://arxiv.org/abs/2402.03300
             if self.async_generate:
@@ -225,9 +225,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
         if is_master():
             self.vllm_client = VLLMClient(
-                base_url=self.vllm_server_base_url,
-                host=self.vllm_server_host,
-                server_port=self.vllm_server_port,
+                base_urls=self.vllm_server_base_url,
+                hosts=self.vllm_server_host,
+                server_ports=self.vllm_server_port,
                 connection_timeout=self.vllm_server_timeout)
             self.vllm_client.init_communicator()
 

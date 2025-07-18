@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import math
 import os
 from dataclasses import dataclass
 
@@ -17,9 +18,12 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
     # dataset
     lazy_tokenize: bool = False
 
-    def init_model_args(self, config):
+    def init_model_args(self, tokenizer, config):
         self.megatron_model_meta = get_megatron_model_meta(self.model_type)
         kwargs = self.megatron_model_meta.convert_hf_config(config)
+        if self.new_special_tokens and kwargs['padded_vocab_size'] < len(tokenizer):
+            kwargs['padded_vocab_size'] = math.ceil(len(tokenizer) / 128) * 128
+            self.initialize_embedding = True
         logger.info(f'megatron_config: {kwargs}')
         for k, v in kwargs.items():
             if getattr(self, k) is None:
@@ -43,7 +47,6 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
         self.load = to_abspath(self.load, check_path_exist=True)
         BaseArguments.__post_init__(self)
         self._init_save()
-        self._check_packing()
         self.seq_length = self.seq_length or self.max_length
         if self.streaming:
             self.dataloader_type = 'external'

@@ -1,7 +1,9 @@
 # GRPO
 
 **Changelog**
-- **2025-07-11** - Support for entropy mask and logging of entropy-related metrics. See [documentation](../AdvancedResearch/entropy_mask.md) for details.
+- **2025-07-18** - Support for entropy mask and logging of entropy-related metrics. See [documentation](../AdvancedResearch/entropy_mask.md) for details.
+- **2025-07-17** - Added support for multi-node rollout (both vllm_server_host and vllm_server_port now accept multiple values). See the reference [script](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/multi_node/server_multi_node.sh) for details.
+- **2025-07-16** - Rollout now supports GYM environment interfaces. For more information, refer to the [documentation](../DeveloperGuide/gym_env.md).
 - **2025-06-22** - Refactored multi-round training and added support for AsyncEngine. Refer to the [documentation](../DeveloperGuide/multi_turn.md).
 - **2025-05-29** — Added support for padding-free (`--padding_free true`) and sequence parallelism (`--sequence_parallel_size N`).
 - **2025-05-23** — Added support for custom sampling batch size. Refer to the `generation_batch_size` / `steps_per_generation` parameters.
@@ -192,7 +194,7 @@ swift rollout \
   --tensor_parallel_size 2 \
   --data_parallel_size 2
 ```
-For more rollout parameters, refer to the [documentation](../../../Instruction/Command-line-parameters.md#vllm-arguments).
+For more rollout parameters, refer to the [vllm arguments](../../../Instruction/Command-line-parameters.md#vllm-arguments) and [rollout arguments](../../../Instruction/Command-line-parameters.md#rollout-arguments)
 
 Note: When set `use_async_engine`, enabling only DP (Data Parallelism) may cause errors. [Related issue](https://github.com/vllm-project/vllm/issues/18567). If errors occur, try enabling both TP (Tensor Parallelism) and DP.
 

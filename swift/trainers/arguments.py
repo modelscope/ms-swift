@@ -50,6 +50,7 @@ class TrainArgumentsMixin:
     use_logits_to_keep: Optional[bool] = None
     channels: List[str] = None
     ds3_gather_for_generation: bool = True
+    resume_only_model: bool = False
 
     # torchacc
     metric_warmup_step: Optional[float] = 0
@@ -166,9 +167,9 @@ class GRPOArgumentsMixin:
     vllm_tensor_parallel_size: int = 1
 
     # external vllm (server)
-    vllm_server_base_url: Optional[str] = None
-    vllm_server_host: Optional[str] = None
-    vllm_server_port: int = 8000
+    vllm_server_base_url: Optional[List[str]] = None
+    vllm_server_host: Optional[List[str]] = None
+    vllm_server_port: List[int] = field(default_factory=lambda: [8000])
     vllm_server_timeout: float = 240.0
     vllm_client = None  # Not required to set, used for client instantiation
 

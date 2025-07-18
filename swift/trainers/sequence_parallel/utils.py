@@ -124,7 +124,7 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
 
     if labels.shape[1] > logits.shape[1]:
         _, _, labels, _, _, _ = sp_instance.pad_and_split_inputs(None, None, labels, None, None, None)
-    if loss_scale.shape[1] > logits.shape[1]:
+    if loss_scale is not None and loss_scale.shape[1] > logits.shape[1]:
         _, _, _, _, _, loss_scale = sp_instance.pad_and_split_inputs(None, None, None, None, None, loss_scale)
     logits = logits.view(-1, logits.shape[-1])
 
@@ -308,8 +308,8 @@ def get_common_dataloader(sp_instance,
 
         if not isinstance(dataset, torch.utils.data.IterableDataset):
             if skip_batches > 0:
-                from accelerate.data_loader import SkipBatchesSampler
-                sampler = SkipBatchesSampler(sampler, skip_batches=skip_batches * batch_size)
+                from accelerate.data_loader import SkipBatchSampler
+                sampler = SkipBatchSampler(sampler, skip_batches=skip_batches * batch_size)
             dataloader_params['sampler'] = sampler
             dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
             dataloader_params['worker_init_fn'] = partial(
@@ -534,7 +534,7 @@ def _get_per_token_logps_and_entropies_grpo(
     _, _, labels, _, _, _ = sp_instance.pad_and_split_inputs(None, None, input_ids.clone(), None, None, None)
 
     shape1 = logits.shape[1]
-    labels = torch.where(labels == -100, self.tokenizer.pad_token_id, labels)
+    labels = torch.where(labels == -100, self.processing_class.pad_token_id, labels)
     # calculate padding size for example, 9 to 10 if sp=2
     padding_size = shape1 * sp_instance.sp_world_size - origin_length
     # left shift one token to leave the last token

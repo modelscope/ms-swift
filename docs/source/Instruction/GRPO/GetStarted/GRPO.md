@@ -1,7 +1,9 @@
 # GRPO
 
 **更新日志**
-- **2025-07-11** - 支持 entropy mask 与 entropy 相关指标记录，参考[文档](../AdvancedResearch/entropy_mask.md)
+- **2025-07-18** - 支持 entropy mask 与 entropy 相关指标记录，参考[文档](../AdvancedResearch/entropy_mask.md)
+- **2025-07-17** - 支持多机rollout(vllm_server_host和vllm_server_port支持传入多个)，参考[脚本](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/multi_node/server_multi_node.sh)
+- **2025-07-16** - Rollout 支持 GYM 环境接口，参考[文档](../DeveloperGuide/GYM环境训练.md)
 - **2025-06-22** - 多轮训练重构并支持AsyncEngine，参考[文档](../DeveloperGuide/多轮训练.md)
 - **2025-05-29** — 支持了padding_free(--padding_free true)和序列并行(--sequence_parallel_size N)。
 - **2025-05-23** — 支持自定义采样批量大小，参考 generation_batch_size / steps_per_generation 参数。
@@ -194,7 +196,7 @@ swift rollout \
   --data_parallel_size 2
 ```
 
-更多 rollout 参数参考[文档](../../../Instruction/命令行参数.md#vllm参数)
+更多 rollout 参数参考[vLLM参数](../../../Instruction/命令行参数.md#vllm参数)和[rollout 参数](../../../Instruction/命令行参数.md#rollout参数)
 
 注意：在使用 use_async_engine 时，仅开启 DP 可能会导致错误，相关问题参考： [vllm issue](https://github.com/vllm-project/vllm/issues/18567)。如果出现错误，请尝试同时启用 TP 和 DP。
 

@@ -119,6 +119,8 @@ class Llama4Template(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
+        if self.mode == 'vllm':
+            return ['<|image|>']
         return [[-100]]
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -127,6 +129,7 @@ class Llama4Template(Template):
         if images:
             split_token = self._tokenize('\n')
             input_ids, labels = encoded['input_ids'], encoded['labels']
+            loss_scale = encoded['loss_scale']
             idx_list = findall(input_ids, -100)
             media_inputs = self.processor(
                 text='\n'.join(['<|image|>'] * len(idx_list)),
@@ -137,6 +140,7 @@ class Llama4Template(Template):
 
             encoded['input_ids'], encoded['labels'] = self._extend_tokens(input_ids, labels, idx_list,
                                                                           lambda i: splited_tokens[i])
+            encoded['loss_scale'] = self._extend_loss_scale(loss_scale, idx_list, lambda i: splited_tokens[i])
             encoded['pixel_values'] = media_inputs['pixel_values']
         return encoded
 

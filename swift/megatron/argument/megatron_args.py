@@ -73,6 +73,7 @@ class MegatronTunerMixin:
 @dataclass
 class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     padded_vocab_size: Optional[int] = None
+    initialize_embedding: bool = False
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
     # streaming dataloader
@@ -348,6 +349,7 @@ class MegatronArguments(ExtraMegatronArguments):
         parallel_state.create_group = create_group
 
     def __post_init__(self):
+        require_version('numpy<2.0', 'Please install numpy<2.0 by running: `pip install "numpy<2.0"`.')
         if self.train_type == 'lora':
             require_version('peft>=0.12')
         MegatronTunerMixin.__post_init__(self)

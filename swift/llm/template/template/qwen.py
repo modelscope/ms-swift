@@ -265,6 +265,7 @@ class Qwen2VLTemplate(Template):
         processor = self.processor
         input_ids = encoded['input_ids']
         labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
         images = inputs.images
         videos = inputs.videos
         for media_type in ['images', 'videos']:
@@ -295,10 +296,12 @@ class Qwen2VLTemplate(Template):
                     return [media_token] * token_len
 
                 input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
+                loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
                 encoded.update(media_inputs)
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
+        encoded['loss_scale'] = loss_scale
         return encoded
 
     def forward_context(self, model, inputs):
@@ -492,6 +495,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         media_inputs = to_float_dtype(media_inputs, self.model_info.torch_dtype)
         input_ids = encoded['input_ids']
         labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
         # audio
         audio_token_id = self._tokenize('<|AUDIO|>')
         idx_list = findall(input_ids, audio_token_id)
@@ -510,6 +514,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 return audio_token_id * audio_lengths[i]
 
             input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_audio_tokens)
+            loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_audio_tokens)
 
         for media_type in ['image', 'video']:
             token = f'<|{media_type.upper()}|>'
@@ -548,6 +553,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
 
                     input_ids, labels = self._extend_tokens(input_ids, labels, idx_list,
                                                             _get_new_tokens_use_audio_in_video)
+                    loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens_use_audio_in_video)
 
                 else:
 
@@ -556,9 +562,11 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                         return token_id * token_len
 
                     input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
+                    loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
+        encoded['loss_scale'] = loss_scale
         encoded.update(media_inputs)
         return encoded
 
@@ -696,6 +704,8 @@ class Ovis2Template(Ovis1_6Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
+            if self.mode == 'vllm':
+                return ['<image>\n']
             return [[-200], '\n']
         elif media_type == 'video':
             nframes = get_env_args('nframes', int, self.nframes)

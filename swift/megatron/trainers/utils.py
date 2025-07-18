@@ -15,7 +15,7 @@ def get_swift_datasets_provider(train_dataset, val_dataset):
         data_parallel_size = mpu.get_data_parallel_world_size()
         step_batch_size = args.micro_batch_size * data_parallel_size
         # To avoid errors caused by the validation set being insufficient to complete a single step.
-        if val_dataset is not None and len(val_dataset) < step_batch_size:
+        if val_dataset is not None and hasattr(val_dataset, '__len__') and len(val_dataset) < step_batch_size:
             val_dataset = None
         return train_dataset, val_dataset, None
 
@@ -38,6 +38,9 @@ def get_batch_on_this_tp_rank(data_iterator):
         input_ids = data['input_ids']
         seq_length = input_ids.shape[1]
         has_loss_scale = 'loss_scale' in data
+        data['labels'] = torch.roll(data['labels'], -1, dims=-1)
+        if has_loss_scale:
+            data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
         batch = {
             'input_ids': input_ids.cuda(non_blocking=True),
             'labels': data['labels'].cuda(non_blocking=True),

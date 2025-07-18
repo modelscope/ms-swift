@@ -33,6 +33,8 @@ Hints:
 - 🔥torch_dtype: Data type of model weights, supports `float16`, `bfloat16`, `float32`. The default is None, and it is read from the 'config.json' file.
 - attn_impl: The type of attention, with options including `flash_attn`, `sdpa`, and `eager`. The default is None, which reads from `config.json`.
   - Note: These three implementations may not all be supported, depending on the support of the corresponding model.
+- new_special_tokens: The special tokens to be added. Default is `[]`. See the example [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/new_special_tokens).
+  - Note: You can also pass a file path ending with `.txt`, where each line represents a special token.
 - num_labels: This parameter is required for classification models (i.e., `--task_type seq_cls`). It represents the number of labels, with a default value of None.
 - problem_type: This parameter is required for classification models (i.e., `--task_type seq_cls`). The options are 'regression', 'single_label_classification', and 'multi_label_classification'. The default value is None, and it will be automatically set based on the number of labels and the dataset type.
 - rope_scaling: Type of rope, supports `linear` and `dynamic` and `yarn`, should be used in conjunction with `max_length`. Default is None.
@@ -181,6 +183,9 @@ Other important parameters:
 - save_only_model: Whether to save only the model weights without including optimizer state, random seed state, etc. Default is False.
 - 🔥resume_from_checkpoint: Parameter for resuming training from a checkpoint, pass the checkpoint path. Default is None. For resuming training from a checkpoint, keep other parameters unchanged and add `--resume_from_checkpoint checkpoint_dir` additionally.
   - Note: `resume_from_checkpoint` will load the model weights, optimizer weights, and random seed, and continue training from the last trained steps. You can specify `--resume_only_model` to load only the model weights.
+- resume_only_model: Default is False. If set to True when specifying resume_from_checkpoint, only the model weights will be resumed, while the optimizer states and random seed will be ignored.
+  - Note: In "ms-swift>=3.7", resume_only_model will perform data skipping by default, controlled by the `ignore_data_skip` parameter. To restore the behavior of "ms-swift<3.7", please set `--ignore_data_skip true`.
+- ignore_data_skip: When both `resume_from_checkpoint` and `resume_only_model` are set, this parameter controls whether to skip already trained data and restore training states such as epoch and step numbers. Default is False. If set to True, training state will not be loaded and data skipping will not occur; training will start from step 0.
 - 🔥ddp_find_unused_parameters: Default is None.
 - 🔥dataloader_num_workers: Defaults to None. If the platform is Windows, it is set to 0; otherwise, it is set to 1.
 - dataloader_pin_memory: Default is True.
@@ -382,7 +387,6 @@ Parameter meanings can be found in the [lmdeploy documentation](https://lmdeploy
 Training arguments include the [base arguments](#base-arguments), [Seq2SeqTrainer arguments](#Seq2SeqTrainer-arguments), [tuner arguments](#tuner-arguments), and also include the following parts:
 
 - add_version: Add directory to output_dir with `'<version>-<timestamp>'` to prevent weight overwrite, default is True.
-- resume_only_model: Defaults to False. If set to True in conjunction with `resume_from_checkpoint`, only the model weights are resumed.
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. If in an offline environment, please set to False.
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
 - loss_type: Type of loss. Defaults to None, which uses the model's built-in loss function.
@@ -391,6 +395,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
   - Note: When using packing, please combine it with `--attn_impl flash_attn` and ensure "transformers>=4.44". For details, see [this PR](https://github.com/huggingface/transformers/pull/31629).
   - Supported multimodal models reference: https://github.com/modelscope/ms-swift/blob/main/examples/train/packing/qwen2_5_vl.sh. Note: Please use "ms-swift>=3.6" and follow [this PR](https://github.com/modelscope/ms-swift/pull/4838).
 - packing_cache: Specifies the directory for packing cache. The default value is `None`, which means the cache will be stored in the path defined by the environment variable `$MODELSCOPE_CACHE`. When using the packing feature across multiple nodes, ensure that all nodes share the same packing cache directory. You can achieve this by setting the `MODELSCOPE_CACHE` environment variable or by adding the `--packing_cache <shared_path>` argument in the command line.
+  - Note: This parameter will be removed in "ms-swift>=3.7". The `packing_cache` setting will no longer be required for multi-node packing.
 - 🔥lazy_tokenize: Whether to use lazy tokenization. If set to False, all dataset samples are tokenized before training (for multimodal models, this includes reading images from disk). This parameter defaults to False for LLM training, and True for MLLM training, to save memory.
 - use_logits_to_keep: Pass `logits_to_keep` in the `forward` method based on labels to reduce the computation and storage of unnecessary logits, thereby reducing memory usage and accelerating training. The default is `None`, which enables automatic selection.
   - Note: For stability, this value is set to False by default for multimodal models and needs to be manually enabled.
@@ -471,6 +476,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - Note: If `--reward_model` is included in GRPO training, it is added to the end of the reward functions.
 - reward_model_plugin: The logic for the reward model, which defaults to ORM logic. For more information, please refer to [Customized Reward Models](./GRPO/DeveloperGuide/reward_model.md#custom-reward-model).
 - dataset_shuffle: Whether to shuffle the dataset randomly. Default is True.
+- truncation_strategy: The method to handle inputs exceeding `max_length`. Supported values are `delete` and `left`, representing deletion and left-side truncation respectively. The default is `left`. Note that for multi-modal models, left-side truncation may remove multi-modal tokens and cause a shape mismatch error during model forward. Using the `delete` strategy will resample other data from the original dataset to replace over-length inputs.
 - loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo'], default is 'grpo'. For details, see this [pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb`, default is False.
   - Note: If `--report_to wandb` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
@@ -573,6 +579,11 @@ Deployment Arguments inherit from the [inference arguments](#inference-arguments
   - multi_turn_scheduler: Multi-turn GRPO parameter; pass the corresponding plugin name, and make sure to implement it in plugin/multi_turn.py.
   - max_turns: Maximum number of rounds for multi-turn GRPO. The default is None, which means there is no limit.
 
+### Rollout Arguments
+The rollout parameters inherit from the [deployment parameters](#deployment-arguments).
+- multi_turn_scheduler: Multi-turn training scheduler. The default is None. For details, please refer to the [documentation](./GRPO/DeveloperGuide/multi_turn.md).
+- max_turns: Maximum number of turns in multi-turn training. The default is None, which means there is no constraint.
+
 ### Web-UI Arguments
 - server_name: Host for the web UI, default is '0.0.0.0'.
 - server_port: Port for the web UI, default is 7860.
@@ -661,7 +672,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 
 Specific model arguments can be set using `--model_kwargs` or environment variables, for example: `--model_kwargs '{"fps_max_frames": 12}'` or `FPS_MAX_FRAMES=12`.
 
-### qwen2_vl, qvq, qwen2_5_vl
+### qwen2_vl, qvq, qwen2_5_vl, mimo_vl
 The parameter meanings are the same as in the `qwen_vl_utils` or `qwen_omni_utils` library. You can refer to [here](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)
 
 - IMAGE_FACTOR: Default is 28

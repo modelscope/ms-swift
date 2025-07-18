@@ -108,7 +108,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
 
     Args:
         add_version (bool): Flag to add version information to output_dir. Default is True.
-        resume_only_model (bool): Flag to resume training only the model. Default is False.
         loss_type (Optional[str]): Type of loss function to use. Default is None.
         packing (bool): Flag to enable packing of datasets. Default is False.
         lazy_tokenize (Optional[bool]): Flag to enable lazy tokenization. Default is None.
@@ -118,7 +117,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
         metric (Optional[str]): Metric to use for evaluation, define it in the plugin package. Default is None.
     """
     add_version: bool = True
-    resume_only_model: bool = False
     create_checkpoint_symlink: bool = False
     lazy_tokenize: Optional[bool] = None
 
@@ -186,7 +184,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
         self.training_args = TrainerFactory.get_training_args(self)
         self.training_args.remove_unused_columns = False
         self._add_version()
-        self._check_packing()
 
         if 'swanlab' in self.report_to:
             self._init_swanlab()

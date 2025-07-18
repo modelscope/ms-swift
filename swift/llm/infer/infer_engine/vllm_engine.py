@@ -167,8 +167,9 @@ class VllmEngine(InferEngine):
             engine_kwargs['task'] = task
 
         model_info = self.model_info
-        if self.config.architectures is None:
-            architectures = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM']}[self.model_meta.model_type]
+        arch_mapping = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM'], 'glm4v': ['GLM4VForCausalLM']}
+        if self.model_meta.model_type in arch_mapping:
+            architectures = arch_mapping[self.model_meta.model_type]
             engine_kwargs['hf_overrides'] = {'architectures': architectures}
         engine_args = engine_cls(
             model=self.model_dir,

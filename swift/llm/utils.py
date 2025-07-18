@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 from modelscope.hub.utils.utils import get_cache_dir
+from peft import PeftModel
 from transformers import FeatureExtractionMixin, GenerationConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers import ProcessorMixin as HfProcessorMixin
 
@@ -152,6 +153,8 @@ def _add_gradient_checkpointing(module_list):
 
 def dynamic_gradient_checkpointing(model, including_vit: bool = False) -> None:
     from .model import ModelMeta, get_model_arch
+    if isinstance(model, PeftModel):
+        model = model.model
     model_meta: ModelMeta = model.model_meta
     model_arch = get_model_arch(model_meta.model_arch)
     if model_meta.is_multimodal and model_arch:
@@ -307,7 +310,9 @@ def update_generation_config_eos_token(generation_config, template):
         return
     stop_words = template.template_meta.stop_words
     eos_token_id = generation_config.eos_token_id
-    if isinstance(eos_token_id, int):
+    if eos_token_id is None:
+        eos_token_id = []
+    elif isinstance(eos_token_id, int):
         eos_token_id = [eos_token_id]
     modified = False
     for stop_word in stop_words:

@@ -78,6 +78,8 @@ class GLM4VTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
+        if self.mode == 'vllm':
+            return ['<|begin_of_image|><|endoftext|><|end_of_image|>']
         return [[-100]]
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -121,6 +123,11 @@ class GLM4_1VTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         # TODO: model video infer bug
+        if self.mode == 'vllm':
+            if media_type == 'image':
+                return ['<|begin_of_image|><|image|><|end_of_image|>']
+            elif media_type == 'video':
+                return ['<|begin_of_video|><|video|><|end_of_video|>']
         assert media_type in ['image']
         if media_type == 'image':
             return [[-100]]
