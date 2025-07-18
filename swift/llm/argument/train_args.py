@@ -184,7 +184,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
         self.training_args = TrainerFactory.get_training_args(self)
         self.training_args.remove_unused_columns = False
         self._add_version()
-        self._check_packing()
 
         if 'swanlab' in self.report_to:
             self._init_swanlab()

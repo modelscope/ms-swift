@@ -9,8 +9,8 @@ from swift.hub import get_hub
 from swift.llm import Processor, Template, get_model_tokenizer, get_template, load_by_unsloth, safe_snapshot_download
 from swift.llm.utils import get_ckpt_dir
 from swift.plugin import extra_tuners
-from swift.utils import (check_json_format, check_shared_disk, get_dist_setting, get_logger, import_external_file,
-                         is_dist, is_master, set_device, use_hf_hub)
+from swift.utils import (check_json_format, get_dist_setting, get_logger, import_external_file, is_dist, is_master,
+                         set_device, use_hf_hub)
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments
@@ -80,7 +80,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     load_data_args: bool = False
     # dataset
     packing: bool = False
-    packing_cache: Optional[str] = None
     custom_register_path: List[str] = field(default_factory=list)  # .py
     # hub
     use_hf: bool = False
@@ -131,17 +130,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self.adapters = [
             safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token) for adapter in self.adapters
         ]
-
-    def _check_packing(self):
-        if not self.packing:
-            return
-        error = ValueError('When using the packing feature across multiple nodes, ensure that all nodes share '
-                           'the same packing cache directory. You can achieve this by setting the '
-                           '`MODELSCOPE_CACHE` environment variable or by adding the `--packing_cache '
-                           '<shared_path>` argument in the command line.')
-        check_shared_disk(error, self.packing_cache)
-        if self.packing_cache:
-            os.environ['PACKING_CACHE'] = self.packing_cache
 
     def __post_init__(self):
         if self.use_hf or use_hf_hub():
