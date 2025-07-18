@@ -1,23 +1,14 @@
-
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import bisect
 import mmap
-import multiprocessing as mp
 import os
 import pickle
 import threading
 from queue import Queue
-from typing import Any, Callable, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Any, List
 
-import numpy as np
-from datasets import Dataset as HfDataset
 from modelscope.hub.utils.utils import get_cache_dir
-from torch.utils.data import Dataset, IterableDataset
-
-from swift.utils import get_logger
-from ..template import MaxLengthError
-from .preprocessor import RowPreprocessor
-
+from torch.utils.data import Dataset
 
 
 class IndexedDatasetBuilder:

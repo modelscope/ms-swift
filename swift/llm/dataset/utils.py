@@ -1,16 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import bisect
-import mmap
 import multiprocessing as mp
-import os
-import pickle
-import threading
-from queue import Queue
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 import numpy as np
 from datasets import Dataset as HfDataset
-from modelscope.hub.utils.utils import get_cache_dir
 from torch.utils.data import Dataset, IterableDataset
 
 from swift.utils import get_logger
