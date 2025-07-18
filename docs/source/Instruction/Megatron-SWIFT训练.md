@@ -174,10 +174,10 @@ MCore转换HF脚本：
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
-    --mcore_adapters /mnt/nas2/huangjintao.hjt/work/llmscope/megatron_output/Qwen3-30B-A3B-Base/v8-20250718-132130 \
+    --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
-    --output_dir /mnt/data/jintao/mcore/Qwen3-30B-A3B-Base/v8-20250718-132130-hf \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
     --test_convert_precision true
 ```
 - 注意：`mcore_adapters`文件夹中包含`args.json`文件，转换过程中会读取文件中`mcore_model`和LoRA相关的参数信息，并将`mcore_model`和`mcore_adapters`进行merge-lora成完整权重，最终转换成HF格式权重。
