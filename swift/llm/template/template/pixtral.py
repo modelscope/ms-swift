@@ -53,7 +53,7 @@ class PixtralTemplate(Template):
             res['pixel_values'] = pixel_values
         if image_sizes:
             image_sizes = torch.stack(image_sizes)
-            res['image_sizes'] = image_sizes  
+            res['image_sizes'] = image_sizes
         return res
 
 
