@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 import requests
 import torch
+from dacite import from_dict
 from requests import ConnectionError
 from torch import nn
 
@@ -275,9 +276,9 @@ class VLLMClient:
             choice_cls = ChatCompletionResponseChoice
         result = [
             ChatCompletionResponse(
-                choices=[choice_cls(**c) for c in resp['choices']], **{k: v
-                                                                       for k, v in resp.items() if k != 'choices'})
-            for resp in resp_data
+                choices=[from_dict(data_class=choice_cls, data=c) for c in resp['choices']],
+                **{k: v
+                   for k, v in resp.items() if k != 'choices'}) for resp in resp_data
         ]
 
         return result
