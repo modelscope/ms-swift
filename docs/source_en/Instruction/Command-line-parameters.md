@@ -183,6 +183,9 @@ Other important parameters:
 - save_only_model: Whether to save only the model weights without including optimizer state, random seed state, etc. Default is False.
 - 🔥resume_from_checkpoint: Parameter for resuming training from a checkpoint, pass the checkpoint path. Default is None. For resuming training from a checkpoint, keep other parameters unchanged and add `--resume_from_checkpoint checkpoint_dir` additionally.
   - Note: `resume_from_checkpoint` will load the model weights, optimizer weights, and random seed, and continue training from the last trained steps. You can specify `--resume_only_model` to load only the model weights.
+- resume_only_model: Default is False. If set to True when specifying resume_from_checkpoint, only the model weights will be resumed, while the optimizer states and random seed will be ignored.
+  - Note: In "ms-swift>=3.7", resume_only_model will perform data skipping by default, controlled by the `ignore_data_skip` parameter. To restore the behavior of "ms-swift<3.7", please set `--ignore_data_skip true`.
+- ignore_data_skip: When both `resume_from_checkpoint` and `resume_only_model` are set, this parameter controls whether to skip already trained data and restore training states such as epoch and step numbers. Default is False. If set to True, training state will not be loaded and data skipping will not occur; training will start from step 0.
 - 🔥ddp_find_unused_parameters: Default is None.
 - 🔥dataloader_num_workers: Defaults to None. If the platform is Windows, it is set to 0; otherwise, it is set to 1.
 - dataloader_pin_memory: Default is True.
@@ -384,7 +387,6 @@ Parameter meanings can be found in the [lmdeploy documentation](https://lmdeploy
 Training arguments include the [base arguments](#base-arguments), [Seq2SeqTrainer arguments](#Seq2SeqTrainer-arguments), [tuner arguments](#tuner-arguments), and also include the following parts:
 
 - add_version: Add directory to output_dir with `'<version>-<timestamp>'` to prevent weight overwrite, default is True.
-- resume_only_model: Defaults to False. If set to True in conjunction with `resume_from_checkpoint`, only the model weights are resumed.
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. If in an offline environment, please set to False.
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
 - loss_type: Type of loss. Defaults to None, which uses the model's built-in loss function.
@@ -473,6 +475,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - Note: If `--reward_model` is included in GRPO training, it is added to the end of the reward functions.
 - reward_model_plugin: The logic for the reward model, which defaults to ORM logic. For more information, please refer to [Customized Reward Models](./GRPO/DeveloperGuide/reward_model.md#custom-reward-model).
 - dataset_shuffle: Whether to shuffle the dataset randomly. Default is True.
+- truncation_strategy: The method to handle inputs exceeding `max_length`. Supported values are `delete` and `left`, representing deletion and left-side truncation respectively. The default is `left`. Note that for multi-modal models, left-side truncation may remove multi-modal tokens and cause a shape mismatch error during model forward. Using the `delete` strategy will resample other data from the original dataset to replace over-length inputs.
 - loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo'], default is 'grpo'. For details, see this [pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb`, default is False.
   - Note: If `--report_to wandb` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.

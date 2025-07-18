@@ -10,13 +10,11 @@ from concurrent.futures import Future
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from dataclasses import asdict, dataclass, field
-from functools import partial
 from math import ceil
 from queue import Queue
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import datasets
 import torch
 import torch.nn as nn
 import transformers
@@ -35,8 +33,9 @@ from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInfer
                        get_model_arch, to_device)
 from swift.llm.infer.protocol import ChatCompletionResponse
 from swift.llm.model.utils import get_llm_model
+from swift.llm.template.base import MaxLengthError
 from swift.llm.template.template_inputs import StdTemplateInputs
-from swift.plugin import loss_scale_map, multi_turns, orms, rm_plugins
+from swift.plugin import multi_turns, orms, rm_plugins
 from swift.plugin.multi_turn import MultiTurnScheduler
 from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_device, get_logger, is_swanlab_available,
                          is_vllm_available, is_wandb_available, seed_worker, unwrap_model_for_generation)
@@ -234,9 +233,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if is_peft_model(self.model):
             self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.use_fast_infer = self.use_vllm  # whether to use the PT backend
-        # gym engine
         self.vllm_use_async_engine = False
         self.enable_offload = False
+        # gym engine
+        self.use_gym_env = False
         if self.use_vllm:
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
@@ -329,7 +329,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.async_generate:
             self.add_callback(GRPOCallback(self))
 
-        if self.args.dynamic_sample:
+        if self.args.dynamic_sample or self.template.truncation_strategy == 'raise':
             self.resample_dataset = deepcopy(self.train_dataset)
 
             def cyclic_iter(iterable):
@@ -337,7 +337,39 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     for x in iterable:
                         yield x
 
-            self.resample_iterator = cyclic_iter(self.get_resample_dataloader())
+            @contextmanager
+            def seed_context():
+                # Use a different seed to ensure the resample dataset does not overlap with train_dataset
+                seed = self.args.seed
+                self.args.seed = seed + 1
+                yield
+                self.args.seed = seed
+
+            with seed_context():
+                if self.args.dynamic_sample:
+                    self.dynamic_resample_iterator = cyclic_iter(self.get_train_dataloader())
+
+                if self.template.truncation_strategy == 'raise':
+
+                    @contextmanager
+                    def single_sample_context():
+                        # Patch generation-related parameters to ensure that only one sample is processed per iteration
+                        # when resampling truncated data.
+                        origin_ng = self.num_generations
+                        origin_gbs = self.args.generation_batch_size
+                        origin_spg = self.args.steps_per_generation
+                        try:
+                            self.num_generations = 1
+                            self.args.generation_batch_size = 1
+                            self.args.steps_per_generation = 1
+                            yield
+                        finally:
+                            self.num_generations = origin_ng
+                            self.args.generation_batch_size = origin_gbs
+                            self.args.steps_per_generation = origin_spg
+
+                    with single_sample_context():
+                        self.truncated_resample_iterator = cyclic_iter(self.get_train_dataloader())
         # flag indicating whether the evaluation has started
         self.eval_flag = False
 
@@ -891,6 +923,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return inputs
 
     def _generate_and_score_completions(self, inputs: InputsType) -> InputsType:
+        if self.template.truncation_strategy == 'raise':
+            inputs = self.resample_truncated_inputs(inputs)
+
         inputs = self._generate_completions(inputs)
         total_rewards_per_func, total_rewards, completions = self._score_completions(inputs)
         mode = 'train' if self.model.training else 'eval'
@@ -990,7 +1025,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if len(valid_samples) >= self.args.generation_batch_size:
                 break
 
-            inputs = next(self.resample_iterator)
+            inputs = next(self.dynamic_resample_iterator)
             inputs = Trainer._prepare_inputs(self, inputs)
             inputs = self._generate_completions(inputs)
             rewards_per_func, rewards, completions = self._score_completions(inputs)
@@ -1559,38 +1594,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.engine.max_model_len = original_max_len
             del self.engine.set_grpo_max_model_len
 
-    def get_resample_dataloader(self) -> DataLoader:
-        resample_dataset = self.resample_dataset
-        data_collator = self.data_collator
-        if isinstance(resample_dataset, datasets.Dataset):
-            resample_dataset = self._remove_unused_columns(resample_dataset, description='training')
-        else:
-            data_collator = self._get_collator_with_removed_columns(data_collator, description='training')
-
-        dataloader_params = {
-            'batch_size': self._train_batch_size * self.args.steps_per_generation,
-            'collate_fn': data_collator,
-            'num_workers': self.args.dataloader_num_workers,
-            'pin_memory': self.args.dataloader_pin_memory,
-            'persistent_workers': self.args.dataloader_persistent_workers,
-        }
-
-        @contextmanager
-        def seed_context(self):
-            seed = self.args.seed
-            self.args.seed = seed + 1
-            yield
-            self.args.seed = seed
-
-        if not isinstance(resample_dataset, torch.utils.data.IterableDataset):
-            with seed_context(self):  # Set a different seed for resampling than the train_dataset.
-                dataloader_params['sampler'] = self._get_train_sampler()
-            dataloader_params['drop_last'] = self.args.dataloader_drop_last
-            dataloader_params['worker_init_fn'] = partial(
-                seed_worker, num_workers=self.args.dataloader_num_workers, rank=self.args.process_index)
-            dataloader_params['prefetch_factor'] = self.args.dataloader_prefetch_factor
-
-        return self.accelerator.prepare(DataLoader(resample_dataset, **dataloader_params))
+    def resample_truncated_inputs(self, inputs: InputsType, n_try_fetch: int = 10) -> InputsType:
+        template = self.template
+        for i, data in enumerate(inputs):
+            n_try = 0
+            while True:
+                try:
+                    template.encode(data)
+                    inputs[i] = data
+                    break
+                except MaxLengthError:
+                    n_try += 1
+                    if n_try > n_try_fetch:
+                        raise RuntimeError('Failed to resample a valid data.',
+                                           'You can avoid this issue by increasing `max_length` or ',
+                                           'modifying the `truncation_strategy`.')
+                    data = next(self.truncated_resample_iterator)[0]
+        return inputs
 
     def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
         mode = 'train' if self.model.training else 'eval'

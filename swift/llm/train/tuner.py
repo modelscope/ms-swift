@@ -390,8 +390,6 @@ class TunerMixin:
         else:
             raise ValueError(f'args.train_type: {args.train_type}')
 
-        if args.resume_only_model:
-            args.training_args.resume_from_checkpoint = None
         if args.use_galore:
             from swift.trainers.optimizers.galore import GaLoreConfig
             if args.galore_target_modules is None:
