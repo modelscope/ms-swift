@@ -268,16 +268,16 @@ class VLLMClient:
 
     def parse_resp_data(self, resp_data):
         if self.use_gym_env:
-            choice_class = GymRolloutResponseChoice
+            choice_cls = GymRolloutResponseChoice
         elif self.use_async_engine:
-            choice_class = RolloutResponseChoice
+            choice_cls = RolloutResponseChoice
         else:
-            choice_class = ChatCompletionResponseChoice
+            choice_cls = ChatCompletionResponseChoice
         result = [
             ChatCompletionResponse(
-                choices=[choice_class(**c) for c in resp['choices']],
-                **{k: v
-                   for k, v in resp.items() if k != 'choices'}) for resp in resp_data
+                choices=[choice_cls(**c) for c in resp['choices']], **{k: v
+                                                                       for k, v in resp.items() if k != 'choices'})
+            for resp in resp_data
         ]
 
         return result
