@@ -61,6 +61,16 @@ def fetch_one(element: Union[Tuple, List, Set, Dict, Any], item_type: Optional[T
         return element
 
 
+def split_tokens(tokens: List[int], sub_tokens: Union[int, List[int]]) -> List[List[int]]:
+    split_idx = findall(tokens, sub_tokens)
+    split_idx = [-1, *split_idx, len(tokens)]
+    res = []
+    for i in range(len(split_idx) - 1):
+        idx, idx_next = split_idx[i] + 1, split_idx[i + 1]
+        res.append(tokens[idx:idx_next])
+    return res
+
+
 def findall(token_list: List[int], sub_token_list: Union[int, List[int]]) -> List[int]:
     """Find the index of a token in the token_list."""
     if isinstance(sub_token_list, int):
@@ -82,6 +92,8 @@ def align_image_inputs(input_ids: List[int], labels: List[int], new_input_ids,
     if isinstance(new_input_ids, torch.Tensor):
         new_input_ids = new_input_ids.tolist()
 
+    if labels is None:
+        return new_input_ids, None
     # Find the tokens after the image_token in input_ids, and then align them.
     i, j = 0, 0
     while i < len(input_ids):

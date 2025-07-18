@@ -150,7 +150,7 @@ class HfConfigFactory:
         INF = int(1e9)
         max_model_len = INF
 
-        possible_keys = [
+        possible_keys = {
             'seq_length',  # qwen, chatglm
             'max_position_embeddings',  # qwen1.5, llama2
             'n_positions',  # polylm, phi-2
@@ -160,7 +160,9 @@ class HfConfigFactory:
             'max_seq_len',
             'max_sequence_length',
             'max_seq_length',
-        ]
+        }
+        if getattr(config, 'model_type', None) == 'ernie4_5_moe_vl':
+            possible_keys.discard('max_sequence_length')
         for key in possible_keys:
             max_len_key = HfConfigFactory.get_config_attr(config, key)
             if max_len_key is not None:

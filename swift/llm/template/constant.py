@@ -178,6 +178,7 @@ class MLLMTemplateType:
     step_audio = 'step_audio'
     kimi_vl = 'kimi_vl'
     keye_vl = 'keye_vl'
+    ernie_vl = 'ernie_vl'
 
     idefics3 = 'idefics3'
     pixtral = 'pixtral'
