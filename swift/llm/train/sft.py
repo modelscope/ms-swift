@@ -223,7 +223,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             template.model = None
             lazy_tokenize = args.lazy_tokenize and not args.packing
             for i, dataset in enumerate(datasets):
-                if dataset is None or predict_with_generate:
+                if dataset is None:
+                    continue
+                if i == 1 and predict_with_generate:
+                    # val_dataset
                     continue
                 if lazy_tokenize:
                     dataset = LazyLLMDataset(dataset, template.encode, strict=args.strict, random_state=args.data_seed)
@@ -245,8 +248,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     if args.model_meta.is_multimodal:
                         dataset = LazyLLMDataset(dataset, template.encode)
                 datasets[i] = dataset
-
-            template.model = self.model  # Avoid serializing the model.
+            if hasattr(self, 'model'):
+                template.model = self.model  # Avoid serializing the model.
             train_dataset, val_dataset = datasets
             if is_master():
                 inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
