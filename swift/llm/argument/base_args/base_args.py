@@ -9,8 +9,8 @@ from swift.hub import get_hub
 from swift.llm import Processor, Template, get_model_tokenizer, get_template, load_by_unsloth, safe_snapshot_download
 from swift.llm.utils import get_ckpt_dir
 from swift.plugin import extra_tuners
-from swift.utils import (check_json_format, get_dist_setting, get_logger, import_external_file,
-                         is_dist, is_master, set_device, use_hf_hub)
+from swift.utils import (check_json_format, get_dist_setting, get_logger, import_external_file, is_dist, is_master,
+                         set_device, use_hf_hub)
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments
