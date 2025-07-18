@@ -207,7 +207,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         if isinstance(dataset, HfDataset):
             length = dataset['length']
         else:
-            length = dataset.packed_dataset.length_list
+            length = dataset.dataset['length']
         _, stat_str = stat_array(length)
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
@@ -221,7 +221,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         datasets = [train_dataset, val_dataset]
         if not is_grpo:
             lazy_tokenize = args.lazy_tokenize and not args.packing
-            is_multimodal = args.model_meta.is_multimodal
             for i, dataset in enumerate(datasets):
                 if dataset is None or predict_with_generate:
                     continue
@@ -242,7 +241,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                         num_proc=args.dataset_num_proc,
                         load_from_cache_file=args.load_from_cache_file,
                         strict=args.strict)
-                    if is_multimodal:
+                    if args.model_meta.is_multimodal:
                         dataset = LazyLLMDataset(dataset, template.encode)
                 datasets[i] = dataset
             train_dataset, val_dataset = datasets

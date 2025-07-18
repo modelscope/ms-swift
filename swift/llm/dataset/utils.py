@@ -5,8 +5,6 @@ import multiprocessing as mp
 import os
 import pickle
 import threading
-import time
-from copy import copy
 from queue import Queue
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -14,9 +12,8 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from modelscope.hub.utils.utils import get_cache_dir
 from torch.utils.data import Dataset, IterableDataset
-from tqdm import tqdm
 
-from swift.utils import get_logger, is_master, safe_ddp_context
+from swift.utils import get_logger
 from ..template import MaxLengthError
 from .preprocessor import RowPreprocessor
 
@@ -117,38 +114,23 @@ class LazyLLMDataset(Dataset):
         return len(self.dataset)
 
 
+def calculate_matched_group(template, sequences, is_finished: bool = True):
+    if len(sequences) == 0:
+        return [], []
+    # https://arxiv.org/pdf/2404.10830
+    import binpacking
+    sequences = binpacking.to_constant_volume(sequences, template.max_length, weight_pos=1)
+    if sequences and not is_finished:
+        sequences, ret_sequences = sequences[:-1], sequences[-1]
+    else:
+        ret_sequences = []
+    return sequences, ret_sequences
+
+
 class BasePackingDataset:
 
     def __init__(self, template, dataset, num_proc: int = 1, *, strict: bool = False):
-        template._packing = True
-        self.template = template
-        self.dataset = dataset
-        self.num_proc = num_proc
-        self.strict = strict
-        assert num_proc >= 1, f'num_proc: {num_proc}'
-        self.workers = []
-
-    @staticmethod
-    def calculate_matched_group(template, sequences, is_finished: bool = True):
-        if len(sequences) == 0:
-            return [], []
-        # https://arxiv.org/pdf/2404.10830
-        import binpacking
-        sequences = binpacking.to_constant_volume(sequences, template.max_length, weight_pos=1)
-        if sequences and not is_finished:
-            sequences, ret_sequences = sequences[:-1], sequences[-1]
-        else:
-            ret_sequences = []
-        return sequences, ret_sequences
-
-    def _encode_data(self, data) -> Dict[str, Any]:
-        res = None
-        try:
-            res = self.template.encode(data)
-        except Exception as e:
-            if self.strict and not isinstance(e, MaxLengthError):
-                raise
-        return res or {}
+        pass
 
 
 class IndexedDatasetBuilder:
@@ -273,7 +255,7 @@ class IndexedDataset(Dataset):
         return len(self.idx_list) - 1
 
 
-class PackingDataset(BasePackingDataset, Dataset):
+class PackingDataset(Dataset):
 
     def __init__(
         self,
@@ -285,8 +267,12 @@ class PackingDataset(BasePackingDataset, Dataset):
         load_from_cache_file: bool = True,
         **kwargs,
     ):
-        from datasets.fingerprint import update_fingerprint
-        num_proc = min(len(dataset), num_proc)
+        template._packing = True
+        self.template = template
+        self.dataset = dataset
+        self.num_proc = num_proc
+        self.strict = strict
+        self.workers = []
         super().__init__(template, dataset, num_proc, strict=strict)
         self.load_from_cache_file = load_from_cache_file
         preprocessor = EncodePreprocessor(template=template)
@@ -297,7 +283,7 @@ class PackingDataset(BasePackingDataset, Dataset):
     def create_packed_idx(self):
         lengths = self.dataset['length']
         data = [(i, length) for i, length in enumerate(lengths)]
-        return self.calculate_matched_group(self.template, data, is_finished=True)[0]
+        return calculate_matched_group(self.template, data, is_finished=True)[0]
 
     def __getitem__(self, index):
         sequence = self.packed_idx[index]
@@ -310,7 +296,7 @@ class PackingDataset(BasePackingDataset, Dataset):
         return len(self.packed_idx)
 
 
-class IterablePackingDataset(BasePackingDataset, IterableDataset):
+class IterablePackingDataset(IterableDataset):
 
     def __init__(
         self,
@@ -323,7 +309,12 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
         cyclic: bool = False,
         **kwargs,
     ):
-        super().__init__(template, dataset, num_proc, strict=strict)
+        template._packing = True
+        self.template = template
+        self.dataset = dataset
+        self.num_proc = num_proc
+        self.strict = strict
+
         self.packing_interval = packing_interval
         self._in_queue = mp.Queue()
         self._out_queue = mp.Queue()
@@ -337,7 +328,12 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
     def _processor(self):
         while True:
             i, data = self._in_queue.get()
-            encoded_data = self._encode_data(data)
+            encoded_data = {}
+            try:
+                encoded_data = self.template.encode(data)
+            except Exception as e:
+                if self.strict and not isinstance(e, MaxLengthError):
+                    raise
             self._out_queue.put((i, encoded_data))
 
     def _put_data_in_queue(self, iterator) -> int:
@@ -381,10 +377,10 @@ class IterablePackingDataset(BasePackingDataset, IterableDataset):
             num_samples = self._put_data_in_queue(iterator)
             finished = num_samples != self.packing_interval
             data = self._fetch_data_out_queue(data, num_samples)
-            sequences, data = self.calculate_matched_group(self.template, data, is_finished=finished)
+            sequences, data = calculate_matched_group(self.template, data, is_finished=finished)
             res = []
             for row in sequences:
-                packed = template.packing_row(row)
+                packed = self.template.packing_row(row)
                 res.append(packed)
             yield from res
             if finished:
