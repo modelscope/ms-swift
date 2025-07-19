@@ -1,4 +1,5 @@
-# DAPO
+# DAPO: An Open-Source LLM Reinforcement Learning System at Scale
+
 
 
 [Decoupled Clip and Dynamic sAmpling Policy Optimization (DAPO)](https://arxiv.org/abs/2503.14476)在GRPO的基础上设置了几种trick，分别是
