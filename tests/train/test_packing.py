@@ -44,12 +44,11 @@ def test_streaming():
 
 
 def test_mllm_streaming():
-    os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
-            model='Qwen/Qwen2-VL-7B-Instruct',
-            dataset=['HF::linxy/LaTeX_OCR#20000'],
+            model='Qwen/Qwen2.5-VL-7B-Instruct',
+            dataset=['AI-ModelScope/LaTeX_OCR#20000'],
             packing=True,
             max_length=8192,
             streaming=True,
@@ -63,5 +62,5 @@ def test_mllm_streaming():
 
 if __name__ == '__main__':
     # test_llm()
-    test_streaming()
-    # test_mllm_streaming()
+    # test_streaming()
+    test_mllm_streaming()

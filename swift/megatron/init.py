@@ -4,7 +4,6 @@ import sys
 from datetime import datetime
 from typing import List, Optional, Tuple
 
-import megatron.core
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -312,6 +311,7 @@ def _patch_training_log():
 
 def _patch_mla_attention():
     # support thd
+    import megatron.core
     from megatron.core.utils import deprecate_inference_params
     from megatron.core import parallel_state, tensor_parallel
     from megatron.core.transformer.multi_latent_attention import MultiLatentAttention, MLASelfAttention

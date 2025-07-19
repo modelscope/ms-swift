@@ -88,6 +88,7 @@ class Template(ProcessorMixin):
         self._processor_inited = False
         self._version = 'v1'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
+        self.model = None
 
         if not use_chat_template:
             template_meta = template_meta.to_generate_template_meta()
@@ -1242,12 +1243,11 @@ class Template(ProcessorMixin):
         encoded['loss_scale'] = loss_scale
         if self.use_megatron:
             self._handle_megatron_cp(encoded)
-            encoded['labels'] = encoded['labels'][1:] + [-100]
-            if encoded.get('loss_scale') is not None:
-                encoded['loss_scale'] = encoded['loss_scale'][1:] + [0]
             encoded['position_ids'] = list(range(len(encoded['labels'])))
-        elif encoded.get('labels') is not None:
+        if encoded.get('labels') is not None:
             encoded['labels'][0] = -100
+        if encoded.get('loss_scale') is not None:
+            encoded['loss_scale'][0] = 0
         if not self.is_training:
             for k in list(encoded.keys()):
                 if k.endswith('labels') or k.endswith('loss_scale'):
