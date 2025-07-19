@@ -40,6 +40,9 @@ class ExportArguments(MergeArguments, BaseArguments):
     quant_batch_size: int = 1
     group_size: int = 128
 
+    # bin_dataset
+    to_bin_dataset: bool = False
+
     # ollama
     to_ollama: bool = False
 
