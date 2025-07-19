@@ -14,7 +14,7 @@ pip install pybind11
 # 若出现安装错误，可以参考该issue解决: https://github.com/modelscope/ms-swift/issues/3793
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.3
 # 若以上命令报错也可以使用以下方式安装
-# pip install transformer_engine[pytorch]
+# pip install --no-build-isolation transformer_engine[pytorch]
 
 # apex
 git clone https://github.com/NVIDIA/apex
