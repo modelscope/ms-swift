@@ -58,8 +58,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             template.model = self.model
         self.template = template
 
-    @staticmethod
-    def _get_dataset(args):
+    def _get_dataset(self, args=None):
+        args = args or self.args
         # The random shuffling of the training set occurs in the dataloader of the trainer.
         dataset_kwargs = args.get_dataset_kwargs()
         train_dataset, val_dataset = load_dataset(
@@ -92,7 +92,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def run(self):
         args = self.args
 
-        train_dataset, val_dataset = self._get_dataset(args)
+        train_dataset, val_dataset = self._get_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
 
         if args.task_type == 'seq_cls':
