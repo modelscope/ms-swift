@@ -330,7 +330,6 @@ class Qwen2VLTemplate(Template):
                 image_embeds = model.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
                 inputs_embeds += image_embeds.mean() * 0.
         else:
-            merge_length = self.processor.image_processor.merge_size**2
             if pixel_values is None:
                 pixel_values_mixed = pixel_values_videos
                 grid_thw = video_grid_thw
@@ -349,6 +348,7 @@ class Qwen2VLTemplate(Template):
                 image_embeds = mixed_embeds
                 video_embeds = None
             else:
+                merge_length = self.processor.image_processor.merge_size ** 2
                 image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
                 image_embeds = mixed_embeds[:image_tokens]
                 video_embeds = mixed_embeds[image_tokens:]
