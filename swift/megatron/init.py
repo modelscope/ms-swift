@@ -7,6 +7,7 @@ from typing import List, Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import peft
 from packaging import version
 
 from swift.llm import git_clone_github
@@ -640,11 +641,14 @@ def _patch_TEGroupedLinear():
 
 
 def _patch_peft_ModulesToSaveWrapper():
-    from peft.tuners import tuners_utils
+    if version.parse(peft.__version__) >= version.parse('0.16'):
+        from peft.utils import other as module
+    else:
+        from peft.tuners import tuners_utils as module
     from megatron.core.dist_checkpointing.mapping import ShardedStateDict
     from .utils import tuners_sharded_state_dict
 
-    ModulesToSaveWrapper = tuners_utils.ModulesToSaveWrapper
+    ModulesToSaveWrapper = module.ModulesToSaveWrapper
 
     class NewModulesToSaveWrapper(ModulesToSaveWrapper):
 
@@ -679,7 +683,7 @@ def _patch_peft_ModulesToSaveWrapper():
                         f'{prefix}modules_to_save.default.weight']
             return sharded_state_dict
 
-    tuners_utils.ModulesToSaveWrapper = NewModulesToSaveWrapper
+    module.ModulesToSaveWrapper = NewModulesToSaveWrapper
 
 
 def _patch_megatron():
