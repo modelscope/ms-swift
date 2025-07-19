@@ -348,7 +348,7 @@ class Qwen2VLTemplate(Template):
                 image_embeds = mixed_embeds
                 video_embeds = None
             else:
-                merge_length = self.processor.image_processor.merge_size ** 2
+                merge_length = self.processor.image_processor.merge_size**2
                 image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
                 image_embeds = mixed_embeds[:image_tokens]
                 video_embeds = mixed_embeds[image_tokens:]
