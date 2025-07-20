@@ -163,7 +163,7 @@ class QuantEngine(ProcessorMixin):
             'w_bit': args.quant_bits,
             'version': 'GEMM'
         }
-        if self.model_info.is_moe_model:
+        if self.model.model_info.is_moe_model:
             quant_config['modules_to_not_convert'] = self.get_awq_modules_to_not_convert()
         logger.info(f'quant_config: {quant_config}')
         logger.info('Start quantizing the model...')
