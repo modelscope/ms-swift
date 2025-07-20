@@ -136,19 +136,6 @@ class QuantEngine(ProcessorMixin):
         finally:
             awq_model.move_embed = _origin_move_embed
 
-    def get_awq_modules_to_not_convert(self):
-        block_name = self.get_block_name_to_quantize(self.model)
-        block = deep_getattr(self.model, block_name)[-1]
-        prefix, experts = self._get_experts(block)
-        num_experts = len(experts)
-
-        def cond(name, module):
-            if isinstance(module, nn.Linear) and module.out_features == num_experts:
-                return True
-            return False
-
-        return find_layers(self.model, cond, min_name_len=2)  # min_name_len: fix Qwen3-MoE
-
     def awq_model_quantize(self) -> None:
         from awq.quantize import quantizer
         from transformers import AwqConfig
@@ -164,7 +151,7 @@ class QuantEngine(ProcessorMixin):
             'version': 'GEMM'
         }
         if self.model.model_info.is_moe_model:
-            quant_config['modules_to_not_convert'] = self.get_awq_modules_to_not_convert()
+            quant_config['modules_to_not_convert'] = self.args.get_modules_to_not_convert()
         logger.info(f'quant_config: {quant_config}')
         logger.info('Start quantizing the model...')
         with self._patch_awq_move_embed(self.model):
