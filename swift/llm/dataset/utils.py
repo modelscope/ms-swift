@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 import numpy as np
 from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset, IterableDataset
+from tqdm import tqdm
 
 from swift.utils import get_logger
-from tqdm import tqdm
 from ..template import MaxLengthError
 from .preprocessor import RowPreprocessor
 
@@ -160,7 +160,7 @@ class PackingDataset(Dataset):
         input_data, res = [], []
         prog_bar = tqdm(total=len(data), dynamic_ncols=True, desc='Packing: ')
         while True:
-            new_data = data[i:i+batch_size]
+            new_data = data[i:i + batch_size]
             input_data += new_data
             prog_bar.update(len(new_data))
             if not input_data:
