@@ -227,9 +227,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         return {'content': res}
 
     @staticmethod
-    def _get_finish_reason(max_tokens: int, num_prompt_tokens: int, is_finished: bool):
+    def _get_finish_reason(max_tokens: int, completion_tokens: int, is_finished: bool):
         if is_finished:
-            if num_prompt_tokens >= max_tokens:
+            if completion_tokens >= max_tokens:
                 finish_reason = 'length'
             else:
                 finish_reason = 'stop'
