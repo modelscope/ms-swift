@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from transformers import Seq2SeqTrainingArguments
 from transformers.utils.versions import require_version
@@ -68,9 +68,15 @@ class SwanlabArguments:
     swanlab_project: Optional[str] = None
     swanlab_workspace: Optional[str] = None
     swanlab_exp_name: Optional[str] = None
+    swanlab_mode: Literal['cloud', 'local'] = 'cloud'
+
+    swanlab_notification_methods: Optional[List[str]] = None
+    # lark https://docs.swanlab.cn/plugin/notification-lark.html
     swanlab_lark_webhook_url: Optional[str] = None
     swanlab_lark_secret: Optional[str] = None
-    swanlab_mode: Literal['cloud', 'local'] = 'cloud'
+
+    # slack https://docs.swanlab.cn/plugin/notification-slack.html
+    swanlab_slack_webhook_url: Optional[str] = None
 
     def _init_swanlab(self):
         if not is_swanlab_available():
@@ -83,13 +89,19 @@ class SwanlabArguments:
         if self.swanlab_token:
             swanlab.login(self.swanlab_token)
 
-        if self.swanlab_lark_webhook_url is not None:
+        if 'lark' in self.swanlab_notification_methods and self.swanlab_lark_webhook_url is not None:
             from swanlab.plugin.notification import LarkCallback
             lark_callback = LarkCallback(
                 webhook_url=self.swanlab_lark_webhook_url,
                 secret=self.swanlab_lark_secret,
             )
             swanlab.register_callbacks([lark_callback])
+
+        if 'slack' in self.swanlab_notification_methods and self.swanlab_slack_webhook_url is not None:
+            from swanlab.plugin.notification import SlackCallback
+
+            slack_callback = SlackCallback(webhook_url=self.swanlab_slack_webhook_url, language='zh')
+            swanlab.register_callbacks([slack_callback])
 
         INTEGRATION_TO_CALLBACK['swanlab'] = SwanLabCallback(
             project=self.swanlab_project,

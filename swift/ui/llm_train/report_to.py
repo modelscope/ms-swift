@@ -47,6 +47,12 @@ class ReportTo(BaseUI):
                 'en': 'Experiment of SwanLab'
             },
         },
+        'swanlab_notification_methods': {
+            'label': {
+                'zh': 'SwanLab通知方式',
+                'en': 'Notification methods of SwanLab'
+            },
+        },
         'swanlab_lark_webhook_url': {
             'label': {
                 'zh': 'SwanLab飞书Webhook地址',
@@ -57,6 +63,12 @@ class ReportTo(BaseUI):
             'label': {
                 'zh': 'SwanLab飞书Secret',
                 'en': 'Secret of SwanLab Lark Callback'
+            },
+        },
+        'swanlab_slack_webhook_url': {
+            'label': {
+                'zh': 'SwanLab Slack Webhook地址',
+                'en': 'Webhook URL of SwanLab Slack Callback'
             },
         },
         'swanlab_mode': {
@@ -81,9 +93,20 @@ class ReportTo(BaseUI):
                         scale=20)
                     gr.Textbox(elem_id='swanlab_token', lines=1, scale=20)
                     gr.Textbox(elem_id='swanlab_project', lines=1, scale=20)
+
+                with gr.Row():
+                    gr.Dropdown(
+                        elem_id='swanlab_notification_methods',
+                        multiselect=True,
+                        is_list=True,
+                        choices=['lark', 'slack'],
+                        allow_custom_value=True,
+                        scale=20)
                 with gr.Row():
                     gr.Textbox(elem_id='swanlab_lark_webhook_url', lines=1, scale=20)
                     gr.Textbox(elem_id='swanlab_lark_secret', lines=1, scale=20)
+                with gr.Row():
+                    gr.Textbox(elem_id='swanlab_slack_webhook_url', lines=1, scale=20)
                 with gr.Row():
                     gr.Textbox(elem_id='swanlab_workspace', lines=1, scale=20)
                     gr.Textbox(elem_id='swanlab_exp_name', lines=1, scale=20)
