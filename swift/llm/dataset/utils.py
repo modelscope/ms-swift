@@ -7,6 +7,7 @@ from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset, IterableDataset
 
 from swift.utils import get_logger
+from tqdm import tqdm
 from ..template import MaxLengthError
 from .preprocessor import RowPreprocessor
 
@@ -154,7 +155,22 @@ class PackingDataset(Dataset):
     def create_packed_idx(self):
         lengths = self.dataset['length']
         data = [(i, length) for i, length in enumerate(lengths)]
-        return calculate_matched_group(self.template, data, is_finished=True)[0]
+        i = 0
+        batch_size = 1000
+        input_data, res = [], []
+        prog_bar = tqdm(total=len(data), dynamic_ncols=True, desc='Packing: ')
+        while True:
+            new_data = data[i:i+batch_size]
+            input_data += new_data
+            prog_bar.update(len(new_data))
+            if not input_data:
+                break
+            i += batch_size
+            is_finished = len(new_data) != batch_size
+            sequences, input_data = calculate_matched_group(self.template, input_data, is_finished=is_finished)
+            res += sequences
+        prog_bar.close()
+        return res
 
     def __getitem__(self, index):
         sequence = self.packed_idx[index]
