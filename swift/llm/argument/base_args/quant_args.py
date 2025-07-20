@@ -90,8 +90,8 @@ class QuantizeArguments:
 
     def get_modules_to_not_convert(self):
         from swift.llm import get_model_arch
-        if not hasattr(self, 'model_meta'):
-            return
+        if not hasattr(self, 'model_meta') or not hasattr(self, 'model_info'):
+            return None
         model_arch = get_model_arch(self.model_meta.model_arch)
         res = []
         if self.model_info.is_moe_model:
@@ -99,13 +99,11 @@ class QuantizeArguments:
         if model_arch is not None:
             for key in ['vision_tower', 'aligner']:
                 value = getattr(model_arch, key, None)
-                if value is None:
-                    continue
-                res += value
-        if res:
-            res.append('lm_head')
-        else:
-            res = None
+                if value:
+                    res += value
+        if not res:
+            return None
+        res.append('lm_head')
         return res
 
     def __post_init__(self):
