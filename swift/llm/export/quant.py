@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from swift.llm import (ExportArguments, HfConfigFactory, MaxLengthError, ProcessorMixin, deep_getattr, get_model_arch,
                        load_dataset, prepare_model_template, save_checkpoint, to_device)
-from swift.utils import find_layers, get_logger, get_model_parameter_info
+from swift.utils import get_logger, get_model_parameter_info
 
 logger = get_logger()
 
