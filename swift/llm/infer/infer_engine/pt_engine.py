@@ -287,7 +287,7 @@ class PtEngine(InferEngine):
                 toolcall = None
                 if is_finished[i]:
                     toolcall = self._get_toolcall(template.decode(generate_ids), template)
-                finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens,
+                finish_reason = self._get_finish_reason(generation_config.max_new_tokens, usage_info.completion_tokens,
                                                         is_finished[i])
 
                 choices = [
@@ -407,7 +407,8 @@ class PtEngine(InferEngine):
                 logprobs = self._get_logprobs(logprobs_list, generate_ids, generation_config.top_logprobs)
                 usage_info = self._update_usage_info(usage_info, len(generate_ids))
                 response = template.decode(generate_ids, template_inputs=template_inputs[i])
-                finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens, True)
+                finish_reason = self._get_finish_reason(generation_config.max_new_tokens, usage_info.completion_tokens,
+                                                        True)
                 toolcall = self._get_toolcall(response, template)
                 choices.append(
                     ChatCompletionResponseChoice(
