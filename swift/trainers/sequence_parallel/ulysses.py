@@ -161,6 +161,27 @@ class Ulysses(CommonSequenceParallel):
         self.sp_world_size = size
         self._init_device_mesh()
 
+        try:
+            from transformers import masking_utils
+
+            def flash_attention_mask(batch_size,
+                                     cache_position,
+                                     kv_length,
+                                     kv_offset=0,
+                                     mask_function=masking_utils.causal_mask_function,
+                                     attention_mask=None,
+                                     **kwargs):
+                if attention_mask is not None:
+                    if attention_mask.all():
+                        attention_mask = None
+
+                return attention_mask
+
+            masking_utils.flash_attention_mask = flash_attention_mask
+            masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['flash_attention_2'] = flash_attention_mask
+        except ImportError:
+            pass
+
         from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
         ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'] = ALL_ATTENTION_FUNCTIONS['flash_attention_2']
         ALL_ATTENTION_FUNCTIONS['sdpa_origin'] = ALL_ATTENTION_FUNCTIONS['sdpa']
@@ -244,7 +265,8 @@ class Ulysses(CommonSequenceParallel):
         else:
             base_model = llm_model.model
         if hasattr(base_model, 'language_model'):
-            self.causal_mask_func = base_model.language_model._update_causal_mask
+            if hasattr(base_model.language_model, '_update_causal_mask'):
+                self.causal_mask_func = base_model.language_model._update_causal_mask
         else:
             self.causal_mask_func = base_model._update_causal_mask
         base_model.register_forward_pre_hook(pre_forward_split_hook, with_kwargs=True)
