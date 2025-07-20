@@ -106,6 +106,7 @@ class QuantEngine(ProcessorMixin):
             prog_bar.update()
             if i == n_samples:
                 break
+        prog_bar.close()
         if is_multimodal and args.quant_method == 'gptq':
             return samples
         # now concatenate all samples and split according to block size

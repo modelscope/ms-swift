@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 import numpy as np
 from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset, IterableDataset
+from tqdm import tqdm
 
 from swift.utils import get_logger
 from ..template import MaxLengthError
@@ -154,7 +155,21 @@ class PackingDataset(Dataset):
     def create_packed_idx(self):
         lengths = self.dataset['length']
         data = [(i, length) for i, length in enumerate(lengths)]
-        return calculate_matched_group(self.template, data, is_finished=True)[0]
+        i = 0
+        PACKING_BATCH_SIZE = 1000
+        input_data, res = [], []
+        with tqdm(total=len(data), dynamic_ncols=True, desc='Packing: ') as prog_bar:
+            while True:
+                new_data = data[i:i + PACKING_BATCH_SIZE]
+                input_data += new_data
+                prog_bar.update(len(new_data))
+                if not input_data:
+                    break
+                i += PACKING_BATCH_SIZE
+                is_finished = i >= len(data)
+                sequences, input_data = calculate_matched_group(self.template, input_data, is_finished=is_finished)
+                res += sequences
+        return res
 
     def __getitem__(self, index):
         sequence = self.packed_idx[index]
