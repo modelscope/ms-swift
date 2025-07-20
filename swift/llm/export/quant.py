@@ -8,7 +8,7 @@ import torch.nn as nn
 from tqdm import tqdm
 
 from swift.llm import (ExportArguments, HfConfigFactory, MaxLengthError, ProcessorMixin, deep_getattr, get_model_arch,
-                       is_moe_model, load_dataset, prepare_model_template, save_checkpoint, to_device)
+                       load_dataset, prepare_model_template, save_checkpoint, to_device)
 from swift.utils import find_layers, get_logger, get_model_parameter_info
 
 logger = get_logger()
@@ -163,7 +163,7 @@ class QuantEngine(ProcessorMixin):
             'w_bit': args.quant_bits,
             'version': 'GEMM'
         }
-        if is_moe_model(self.model):
+        if self.model_info.is_moe_model:
             quant_config['modules_to_not_convert'] = self.get_awq_modules_to_not_convert()
         logger.info(f'quant_config: {quant_config}')
         logger.info('Start quantizing the model...')
@@ -215,7 +215,7 @@ class QuantEngine(ProcessorMixin):
 
     @staticmethod
     def get_modules_in_block_to_quantize(model, block_name: str):
-        if not is_moe_model(model):
+        if not model.model_info.is_moe_model:
             return
         from optimum.gptq.utils import get_layers
         # Do not quantize the gate part.
