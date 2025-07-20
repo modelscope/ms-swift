@@ -64,6 +64,7 @@ class ModelInfo:
 
     # extra
     rope_scaling: Optional[Dict[str, Any]] = None
+    is_moe_model: bool = False
     config: Optional[PretrainedConfig] = None
     task_type: Literal['causal_lm', 'seq_cls', 'embedding', None] = None
     num_labels: Optional[int] = None
@@ -112,6 +113,15 @@ class HfConfigFactory:
                     v = getattr(config, k)
                 res += HfConfigFactory._get_config_attrs(v, attr_name, k)
         return res
+
+    @staticmethod
+    def is_moe_model(config) -> bool:
+        if 'Moe' in config.__class__.__name__:
+            return True
+        for key in ['num_experts', 'num_experts_per_tok', 'moe_intermediate_size']:
+            if HfConfigFactory.get_config_attr(config, key):
+                return True
+        return False
 
     @staticmethod
     def get_config_attr(config: Union[PretrainedConfig, Dict[str, Any]], attr_name: str) -> Optional[Any]:
