@@ -209,6 +209,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             try:
                 length = dataset['length']
             except KeyError:
+                logger.warning_once("The HfDataset is missing the 'length' column, skipping statistics.")
                 return
         else:
             length = dataset.dataset['length']
