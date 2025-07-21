@@ -10,7 +10,7 @@ from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
 from swift.trainers.arguments import TrainArgumentsMixin
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
-                         is_mp, is_pai_training_job, is_swanlab_available)
+                         is_mp, is_pai_training_job, is_swanlab_available, json_parse_to_dict)
 from .base_args import BaseArguments, to_abspath
 from .tuner_args import TunerArguments
 
@@ -206,7 +206,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                     self.deepspeed = os.path.join(ds_config_folder, ds_config)
                     break
 
-            self.deepspeed = self.parse_to_dict(self.deepspeed)
+            self.deepspeed = json_parse_to_dict(self.deepspeed)
             if self.zero_hpz_partition_size is not None:
                 assert 'zero_optimization' in self.deepspeed
                 self.deepspeed['zero_optimization']['zero_hpz_partition_size'] = self.zero_hpz_partition_size

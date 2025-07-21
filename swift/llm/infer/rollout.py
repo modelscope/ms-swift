@@ -39,9 +39,9 @@ It adds weight synchronization logic based on `vLLMEngine`.
 Usage:
     swift rollout \
         --model xxx \
-        --tensor_parallel_size xxx \
-        --data_parallel_size xxx \
-        --use_async_engine true/false \
+        --vllm_tensor_parallel_size xxx \
+        --vllm_data_parallel_size xxx \
+        --vllm_use_async_engine true/false \
         --use_gym_env true/false \
         --other_vllm_arguments
 

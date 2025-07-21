@@ -16,5 +16,5 @@ from .torch_utils import (Serializer, activate_parameters, check_shared_disk, em
                           init_process_group, safe_ddp_context, seed_worker, set_default_ddp_config, set_device,
                           show_layers, time_synchronize, unwrap_model_for_generation)
 from .utils import (add_version_to_work_dir, check_json_format, copy_files_by_pattern, deep_getattr, find_free_port,
-                    get_env_args, import_external_file, lower_bound, parse_args, patch_getattr, read_multi_line,
-                    seed_everything, split_list, subprocess_run, test_time, upper_bound)
+                    get_env_args, import_external_file, json_parse_to_dict, lower_bound, parse_args, patch_getattr,
+                    read_multi_line, seed_everything, split_list, subprocess_run, test_time, upper_bound)

@@ -599,11 +599,11 @@ swift infer \
     --merge_lora true \
     --infer_backend vllm \
     --load_data_args true \
-    --gpu_memory_utilization 0.9 \
-    --tensor_parallel_size 2 \
-    --max_model_len 32768 \
+    --vllm_gpu_memory_utilization 0.9 \
+    --vllm_tensor_parallel_size 2 \
+    --vllm_max_model_len 32768 \
     --max_new_tokens 15536 \
-    --limit_mm_per_prompt '{"image": 8, "video": 2}'
+    --vllm_limit_mm_per_prompt '{"image": 8, "video": 2}'
 ```
 ```text
 Failed: Cuda error /workspace/csrc/custom_all_reduce.cuh:368 'invalid argument'

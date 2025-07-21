@@ -179,20 +179,20 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --tensor_parallel_size 2 \
-  --data_parallel_size 1
+  --vllm_tensor_parallel_size 2 \
+  --vllm_data_parallel_size 1
 
 CUDA_VISIBLE_DEVICES=0,1 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --tensor_parallel_size 2 \
-  --data_parallel_size 1
+  --vllm_tensor_parallel_size 2 \
+  --vllm_data_parallel_size 1
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --tensor_parallel_size 2 \
-  --data_parallel_size 2
+  --vllm_tensor_parallel_size 2 \
+  --vllm_data_parallel_size 2
 ```
 
 更多 rollout 参数参考[vLLM参数](../../../Instruction/命令行参数.md#vllm参数)和[rollout 参数](../../../Instruction/命令行参数.md#rollout参数)

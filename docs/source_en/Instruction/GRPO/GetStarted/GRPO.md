@@ -178,20 +178,20 @@ Use the `swift rollout` command to deploy the vLLM server (currently only suppor
 CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --tensor_parallel_size 2 \
-  --data_parallel_size 1
+  --vllm_tensor_parallel_size 2 \
+  --vllm_data_parallel_size 1
 
 CUDA_VISIBLE_DEVICES=0,1 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --tensor_parallel_size 2 \
-  --data_parallel_size 1
+  --vllm_tensor_parallel_size 2 \
+  --vllm_data_parallel_size 1
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --tensor_parallel_size 2 \
-  --data_parallel_size 2
+  --vllm_tensor_parallel_size 2 \
+  --vllm_data_parallel_size 2
 ```
 For more rollout parameters, refer to the [vllm arguments](../../../Instruction/Command-line-parameters.md#vllm-arguments) and [rollout arguments](../../../Instruction/Command-line-parameters.md#rollout-arguments)
 
