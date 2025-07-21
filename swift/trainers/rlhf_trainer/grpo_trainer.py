@@ -832,6 +832,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _prefetch(self, dataloader: DataLoader):
         inputs = next(iter(dataloader))
         all_inputs = gather_object(inputs)
+        self._set_inputs_system(all_inputs)
         if self.state.global_step != self._last_loaded_step:
             self._move_model_to_vllm(skip_async_check=True)
             self._last_loaded_step = self.state.global_step
