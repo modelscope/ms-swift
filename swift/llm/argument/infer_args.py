@@ -2,7 +2,7 @@
 import datetime as dt
 import os
 from dataclasses import dataclass
-from typing import Literal, Optional, Union
+from typing import Literal, Optional
 
 import torch.distributed as dist
 
