@@ -183,7 +183,27 @@ class VllmArguments:
     # rollout
     vllm_data_parallel_size: int = 1
 
+    # compatibility (will be removed in ms-swift 3.8 and later)
+    gpu_memory_utilization: Optional[float] = None
+    tensor_parallel_size: Optional[int] = None
+    max_model_len: Optional[int] = None
+    limit_mm_per_prompt: Optional[Union[dict, str]] = None
+    data_parallel_size: Optional[int] = None
+
+    def _handle_compatibility(self):
+        if self.gpu_memory_utilization is not None:
+            self.vllm_gpu_memory_utilization = self.gpu_memory_utilization
+        if self.tensor_parallel_size is not None:
+            self.vllm_tensor_parallel_size = self.tensor_parallel_size
+        if self.max_model_len is not None:
+            self.vllm_max_model_len = self.max_model_len
+        if self.limit_mm_per_prompt is not None:
+            self.vllm_limit_mm_per_prompt = self.limit_mm_per_prompt
+        if self.data_parallel_size is not None:
+            self.vllm_data_parallel_size = self.data_parallel_size
+
     def __post_init__(self):
+        self._handle_compatibility()
         self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
 
     def get_vllm_engine_kwargs(self):
