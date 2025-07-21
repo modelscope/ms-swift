@@ -710,7 +710,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             - List of responses per prompt
             - Each response is a tuple of (message_history, finish_reason)
         """
-        self._set_inputs_system(inputs)
         # infer first turn
         results: List[ChatCompletionResponse] = self._infer(inputs, request_config, is_global_inputs)
         outputs = []
@@ -901,6 +900,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             and truncation flag set in 'is_truncated' field.
         """
         mode = 'train' if self.model.training else 'eval'
+        self._set_inputs_system(inputs)
         if self.use_fast_infer:
             inputs, outputs = self._fast_infer(inputs)
         else:
