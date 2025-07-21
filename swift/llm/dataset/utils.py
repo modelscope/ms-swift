@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 import numpy as np
 import torch.distributed as dist
-from accelerate.utils import broadcast_object_list
 from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
