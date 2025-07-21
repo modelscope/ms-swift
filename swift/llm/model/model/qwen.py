@@ -553,7 +553,7 @@ register_model(
                 Model('swift/Qwen3-235B-A22B-AWQ', 'cognitivecomputations/Qwen3-235B-A22B-AWQ'),
             ]),
             ModelGroup([
-                Model('Qwen/Qwen3-235B-A22B-Instruct-250718', 'Qwen/Qwen3-235B-A22B-Instruct-250718'),
+                Model('Qwen/Qwen3-235B-A22B-Instruct-2507', 'Qwen/Qwen3-235B-A22B-Instruct-2507'),
                 Model('Qwen/Qwen3-235B-A22B-Instruct-2507-FP8', 'Qwen/Qwen3-235B-A22B-Instruct-2507-FP8'),
             ]),
         ],
