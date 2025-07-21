@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
-from swift.trainers.arguments import GRPOArgumentsMixin, RLHFArgumentsMixin
+from swift.trainers import GRPOArgumentsMixin, RLHFArgumentsMixin
 from swift.utils import get_logger, is_master, is_mp, set_default_ddp_config
 from .train_args import TrainArguments
 
@@ -125,7 +125,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         self._init_padding_side()
         self._set_default()
         self._init_external_vllm()
-        super().__post_init__()
+        GRPOArguments.__post_init__(self)
+        TrainArguments.__post_init__(self)
         self._check_padding_free()
         self._check_grpo()
         self._external_vllm_warning()
@@ -302,7 +303,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             logger.warning(
                 "Configuration conflict: 'vllm_max_model_len=%s' is ignored for external vLLM. "
                 'Please specify it when launching the inference service: '
-                '`swift rollout --max_model_len <value>`', self.vllm_max_model_len)
+                '`swift rollout --vllm_max_model_len <value>`', self.vllm_max_model_len)
 
     def _deprecated_warning(self):
         if self.rlhf_type != 'grpo':

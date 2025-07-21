@@ -335,19 +335,19 @@ The following parameters are effective when `train_type` is set to `reft`.
 
 Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 
-- 🔥gpu_memory_utilization: GPU memory ratio, ranging from 0 to 1. Default is `0.9`.
-- 🔥tensor_parallel_size: Tensor parallelism size. Default is `1`.
-- pipeline_parallel_size: Pipeline parallelism size. Default is `1`.
-- data_parallel_size: Data parallelism size, default is 1, effective in the infer and rollout commands.
-- max_num_seqs: Maximum number of sequences to be processed in a single iteration. Default is `256`.
-- 🔥max_model_len: Default is `None`, meaning it will be read from `config.json`.
-- disable_custom_all_reduce: Disables the custom all-reduce kernel and falls back to NCCL. For stability, the default is `True`.
-- enforce_eager: Determines whether vllm uses PyTorch eager mode or constructs a CUDA graph, default is `False`. Setting it to True can save memory but may affect efficiency.
-- 🔥limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--limit_mm_per_prompt '{"image": 5, "video": 2}'`.
+- 🔥vllm_gpu_memory_utilization: GPU memory ratio, ranging from 0 to 1. Default is `0.9`.
+- 🔥vllm_tensor_parallel_size: Tensor parallelism size. Default is `1`.
+- vllm_pipeline_parallel_size: Pipeline parallelism size. Default is `1`.
+- vllm_data_parallel_size: Data parallelism size, default is 1, effective in the infer and rollout commands.
+- vllm_max_num_seqs: Maximum number of sequences to be processed in a single iteration. Default is `256`.
+- 🔥vllm_max_model_len: Default is `None`, meaning it will be read from `config.json`.
+- vllm_disable_custom_all_reduce: Disables the custom all-reduce kernel and falls back to NCCL. For stability, the default is `True`.
+- vllm_enforce_eager: Determines whether vllm uses PyTorch eager mode or constructs a CUDA graph, default is `False`. Setting it to True can save memory but may affect efficiency.
+- 🔥vllm_limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--vllm_limit_mm_per_prompt '{"image": 5, "video": 2}'`.
 - vllm_max_lora_rank: Default is `16`. This is the parameter supported by vllm for lora.
 - vllm_quantization: vllm is able to quantize model with this argument，supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
-- enable_prefix_caching: Enable the automatic prefix caching of vllm to save processing time for querying repeated prefixes. The default is `False`.
-- use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
+- vllm_enable_prefix_caching: Enable the automatic prefix caching of vllm to save processing time for querying repeated prefixes. The default is `False`.
+- vllm_use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
 
 ### SGLang Arguments
 Parameter meanings can be found in the [sglang documentation](https://docs.sglang.ai/backend/server_arguments.html).
@@ -368,11 +368,11 @@ Parameter meanings can be found in the [sglang documentation](https://docs.sglan
 
 Parameter meanings can be found in the [lmdeploy documentation](https://lmdeploy.readthedocs.io/en/latest/api/pipeline.html#turbomindengineconfig).
 
-- 🔥tp: tensor parallelism degree. Default is `1`.
-- session_len: Maximum session length. Default is `None`.
-- cache_max_entry_count: The percentage of GPU memory occupied by the k/v cache. Default is `0.8`.
-- quant_policy: Default is `0`. Set it to `4` or `8` when quantizing k/v to 4-bit or 8-bit, respectively.
-- vision_batch_size: The `max_batch_size` parameter passed to `VisionConfig`. Default is `1`.
+- 🔥lmdeploy_tp: tensor parallelism degree. Default is `1`.
+- lmdeploy_session_len: Maximum session length. Default is `None`.
+- lmdeploy_cache_max_entry_count: The percentage of GPU memory occupied by the k/v cache. Default is `0.8`.
+- lmdeploy_quant_policy: Default is `0`. Set it to `4` or `8` when quantizing k/v to 4-bit or 8-bit, respectively.
+- lmdeploy_vision_batch_size: The `max_batch_size` parameter passed to `VisionConfig`. Default is `1`.
 
 ### Merge Arguments
 
@@ -498,7 +498,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - vllm_server_port: The service port of the vLLM server. Default is 8000.
   - vllm_server_timeout: The connection timeout for the vLLM server. Default is 240 seconds.
   - async_generate: Use async rollout to improve train speed. Note that rollout will use the model updated in the previous round when enabled. Multi-turn scenarios are not supported. Default is `false`.
-- vllm_mode colocate parameter
+- vllm_mode colocate parameter (For more parameter support, refer to the [vLLM Arguments](#vLLM-Arguments).)
   - vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
   - vllm_max_model_len: vLLM passthrough parameter, the total length limit of model, default is None.
   - vllm_enforce_eager: vLLM passthrough parameter, default is False.

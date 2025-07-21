@@ -107,8 +107,8 @@ The above example provides streaming inference for both full parameters and LoRA
 - SWIFT saves inference results, and you can specify the save path using `--result_path`.
 - To output log probabilities, simply specify `--logprobs true` during inference. SWIFT will save these results. Note that setting `--stream true` will prevent storage of results.
 - Using `infer_backend=pt` supports inference for all models supported by SWIFT, while `infer_backend=vllm/lmdeploy` supports only a subset of models. Please refer to the documentation for [vllm](https://docs.vllm.ai/en/latest/models/supported_models.html), [sglang](https://docs.sglang.ai/supported_models/generative_models.html) and [lmdeploy](https://lmdeploy.readthedocs.io/en/latest/supported_models/supported_models.html).
-- If you encounter OOM when using `--infer_backend vllm`, you can lower `--max_model_len`, `--max_num_seqs`, choose an appropriate `--gpu_memory_utilization`, or set `--enforce_eager true`. Alternatively, you can address this by using tensor parallelism with `--tensor_parallel_size`.
-- When inferring multimodal models using `--infer_backend vllm`, you need to input multiple images. You can set `--limit_mm_per_prompt` to resolve this, for example: `--limit_mm_per_prompt '{"image": 10, "video": 5}'`.
+- If you encounter OOM when using `--infer_backend vllm`, you can lower `--vllm_max_model_len`, `--vllm_max_num_seqs`, choose an appropriate `--vllm_gpu_memory_utilization`, or set `--vllm_enforce_eager true`. Alternatively, you can address this by using tensor parallelism with `--vllm_tensor_parallel_size`.
+- When inferring multimodal models using `--infer_backend vllm`, you need to input multiple images. You can set `--vllm_limit_mm_per_prompt` to resolve this, for example: `--vllm_limit_mm_per_prompt '{"image": 10, "video": 5}'`.
 - If you encounter OOM issues while inferring qwen2-vl/qwen2.5-vl, you can address this by setting `MAX_PIXELS`, `VIDEO_MAX_PIXELS`, and `FPS_MAX_FRAMES`. For more information, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/app/mllm.sh).
 - SWIFT's built-in dialogue templates align with dialogue templates run using transformers. You can refer to [here](https://github.com/modelscope/ms-swift/blob/main/tests/test_align/test_template/test_vision.py) for testing. If there are any misalignments, please feel free to submit an issue or PR for correction.
 
@@ -228,10 +228,10 @@ FPS_MAX_FRAMES=12 \
 swift deploy \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
     --infer_backend vllm \
-    --gpu_memory_utilization 0.9 \
-    --max_model_len 8192 \
+    --vllm_gpu_memory_utilization 0.9 \
+    --vllm_max_model_len 8192 \
     --max_new_tokens 2048 \
-    --limit_mm_per_prompt '{"image": 5, "video": 2}' \
+    --vllm_limit_mm_per_prompt '{"image": 5, "video": 2}' \
     --served_model_name Qwen2.5-VL-3B-Instruct
 ```
 
