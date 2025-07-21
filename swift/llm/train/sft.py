@@ -205,7 +205,12 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _stat_dataset(self, dataset: Union[HfDataset, PackingDataset]):
         if isinstance(dataset, HfDataset):
-            length = dataset['length']
+            # TODO: Temporary fix; awaiting template refactor.
+            try:
+                length = dataset['length']
+            except KeyError:
+                logger.warning_once("The HfDataset is missing the 'length' column, skipping statistics.")
+                return
         else:
             length = dataset.packed_dataset.length_list
         _, stat_str = stat_array(length)
