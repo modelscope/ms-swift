@@ -554,6 +554,7 @@ register_model(
             ]),
             ModelGroup([
                 Model('Qwen/Qwen3-235B-A22B-Instruct-250718', 'Qwen/Qwen3-235B-A22B-Instruct-250718'),
+                Model('Qwen/Qwen3-235B-A22B-Instruct-2507-FP8', 'Qwen/Qwen3-235B-A22B-Instruct-2507-FP8'),
             ]),
         ],
         TemplateType.qwen3,
