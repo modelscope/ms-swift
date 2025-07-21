@@ -5,4 +5,5 @@ swift infer \
     --val_dataset liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT \
     --sglang_context_length 12000 \
     --sglang_tp_size 8 \
-    --write_batch_size 1000
+    --write_batch_size 10000 \
+    --result_path distill_qwen3_235b.jsonl
