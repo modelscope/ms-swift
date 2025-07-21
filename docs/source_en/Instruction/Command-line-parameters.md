@@ -498,7 +498,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - vllm_server_port: The service port of the vLLM server. Default is 8000.
   - vllm_server_timeout: The connection timeout for the vLLM server. Default is 240 seconds.
   - async_generate: Use async rollout to improve train speed. Note that rollout will use the model updated in the previous round when enabled. Multi-turn scenarios are not supported. Default is `false`.
-- vllm_mode colocate parameter (For more vLLM parameters, please refer to [vLLM Arguments](#vLLM-Arguments).)
+- vllm_mode colocate parameter (For more parameter support, refer to the [vLLM Arguments](#vLLM-Arguments).)
   - vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
   - vllm_max_model_len: vLLM passthrough parameter, the total length limit of model, default is None.
   - vllm_enforce_eager: vLLM passthrough parameter, default is False.
