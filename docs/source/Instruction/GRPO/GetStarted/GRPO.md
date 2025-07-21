@@ -217,9 +217,11 @@ swift rollout \
 - completions/clipped_ratio：被长度截断的 completion 占比。
 - reward/{reward_func_name}/mean：某个特定 reward function 的平均奖励值。
 - reward/{reward_func_name}/std：某个特定 reward function 的奖励标准差。
+> 注意, 上述两个指标是在所有 completions 范围内统计得到的。
 - reward：加权 reward_weights 后的整体平均奖励。
 - reward_std：加权 reward_weights 后，每个 batch 内整体奖励的标准差。
-- frac_reward_zero_std：在生成 batch 中，reward 标准差为零的样本比例，意味着该 prompt 上的答案几乎无多样性（所有回答都对或都错）。
+> 注意：上述两个指标是先在每个组内分别计算均值/std，然后再对各组的结果取平均。
+- frac_reward_zero_std：在生成 batch 中，reward 标准差为零的样本比例，意味着该 prompt 上的答案几乎无多样性（所有回答奖励一致）。
 - kl：生成的 completion 上，模型与参考模型之间的平均 KL 散度。仅当 beta 非零时记录。
 - clip_ratio/region_mean：不同句子中被 CLIP 的的 token 平均比例
 - clip_ratio/low_mean：不同句子中被 下CLIP 的的 token 平均比例

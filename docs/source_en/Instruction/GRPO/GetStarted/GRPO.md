@@ -214,9 +214,11 @@ To configure the external vLLM server during training, use the following paramet
 - completions/clipped_ratio: The proportion of completions that were truncated due to length limits.
 - reward/{reward_func_name}/mean: The average reward value for a specific reward function.
 - reward/{reward_func_name}/std: The standard deviation of the reward for a specific reward function.
+> Note: These two metrics are calculated across all completions.
 - reward: The overall average reward after applying reward_weights.
 - reward_std: The standard deviation of the overall reward within each batch after applying reward_weights.
-- frac_reward_zero_std: The proportion of samples in a generation batch where the reward standard deviation is zero, meaning there is almost no diversity in answers for that prompt (i.e., all completions were correct or all were incorrect).
+> Note: These two metrics are first computed within each group and then averaged (for mean/std) across groups.
+- frac_reward_zero_std: The proportion of samples in a generation batch where the reward standard deviation is zero, meaning there is almost no diversity in answers for that prompt (i.e., the rewards of all completions are same).
 - kl: The average KL divergence between the model and the reference model on completions. This is logged only if beta is nonzero.
 - clip_ratio/region_mean: The average proportion of tokens clipped by the CLIP operator across different sentences.
 - clip_ratio/low_mean: The average proportion of tokens clipped by the lower CLIP bound across different sentences.
