@@ -422,8 +422,12 @@ register_model(
         LLMModelType.glm4_5,
         [
             ModelGroup([
-                Model('ZhipuAI/GLM-4.5-MOE-106B-A12B-0715', 'THUDM/GLM-4.5-MOE-106B-A12B-0715'),
-                Model('ZhipuAI/GLM-4.5-MOE-355B-A32B-0715', 'THUDM/GLM-4.5-MOE-355B-A32B-0715'),
+                Model('ZhipuAI/GLM-4.5-Air-Base', 'THUDM/GLM-4.5-Air-Base'),
+                Model('ZhipuAI/GLM-4.5-Air', 'THUDM/GLM-4.5-Air'),
+                Model('ZhipuAI/GLM-4.5-Air-FP8', 'THUDM/GLM-4.5-Air-FP8'),
+                Model('ZhipuAI/GLM-4.5-Base', 'THUDM/GLM-4.5-Base'),
+                Model('ZhipuAI/GLM-4.5', 'THUDM/GLM-4.5'),
+                Model('ZhipuAI/GLM-4.5-FP8', 'THUDM/GLM-4.5-FP8'),
             ]),
         ],
         TemplateType.glm4_5,
