@@ -257,7 +257,7 @@ def get_model_tokenizer_glm4_1v(*args, **kwargs):
 
     kwargs['automodel_class'] = kwargs['automodel_class'] or Glm4vForConditionalGeneration
     model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
-    if model is not None:
+    if model is not None and hasattr(model, 'visual'):
         patch_get_input_embeddings(model.visual, 'patch_embed')
     return model, processor
 
