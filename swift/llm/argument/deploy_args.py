@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
 from swift.llm import safe_snapshot_download
 from swift.utils import find_free_port, get_logger
@@ -38,6 +38,7 @@ class DeployArguments(InferArguments):
     served_model_name: Optional[str] = None
     verbose: bool = True  # Whether to log request_info
     log_interval: int = 20  # Interval for printing global statistics
+    log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
 
     max_logprobs: int = 20
     use_async_engine: bool = True

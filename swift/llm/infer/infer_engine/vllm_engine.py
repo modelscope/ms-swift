@@ -451,7 +451,7 @@ class VllmEngine(InferEngine):
             if use_tqdm is None:
                 use_tqdm = len(infer_requests) > 1
             rank = get_dist_setting()[0]
-            if is_dist() and rank % self.engine_args.vllm_tensor_parallel_size != 0:
+            if is_dist() and rank % self.engine_args.tensor_parallel_size != 0:
                 use_tqdm = False
             if template is None:
                 template = self.default_template

@@ -162,7 +162,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
     def _start_data_parallel_workers(self):
         for data_parallel_rank in range(self.num_connections):
             parent_conn, child_conn = Pipe()
-            worker_func = llm_worker_entry if self.vllm_use_async_engine else llm_worker
+            worker_func = llm_worker_entry if self.use_async_engine else llm_worker
             process = Process(target=worker_func, args=(self.args, data_parallel_rank, self.master_port, child_conn))
             process.start()
             self.connections.append(parent_conn)

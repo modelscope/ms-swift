@@ -179,7 +179,6 @@ class VllmArguments:
     vllm_quantization: Optional[str] = None
     # rollout
     vllm_data_parallel_size: int = 1
-    vllm_log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
 
     def __post_init__(self):
         self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
