@@ -185,7 +185,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         max_model_len = self.max_model_len
         assert isinstance(inputs, dict)
         # The num_tokens takes the maximum value from inputs_list.
-        num_tokens = max(num_tokens, self._get_num_tokens(inputs))
+        num_tokens = self._get_num_tokens(inputs)
         max_tokens = request_config.max_tokens
         if max_model_len is None:
             max_model_len = 8192
