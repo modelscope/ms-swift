@@ -10,7 +10,7 @@ import torch
 from transformers.utils.versions import require_version
 
 from swift.llm.argument.base_args import to_abspath
-from swift.utils import get_logger
+from swift.utils import get_logger, json_parse_to_dict
 
 logger = get_logger()
 
@@ -353,7 +353,6 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.train_type == 'lora':
             require_version('peft>=0.12')
         MegatronTunerMixin.__post_init__(self)
-        from swift.llm.argument.base_args.model_args import ModelArguments
         if self.use_flash_attn or self.attention_backend == 'flash':
             require_version('flash-attn')
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
@@ -363,7 +362,7 @@ class MegatronArguments(ExtraMegatronArguments):
         self._patch_megatron_timeout(self.distributed_timeout_minutes)
         self.group_query_attention = self.num_query_groups > 1
         if self.rope_scaling is not None:
-            self.rope_scaling = ModelArguments.parse_to_dict(self.rope_scaling)
+            self.rope_scaling = json_parse_to_dict(self.rope_scaling)
             if 'type' in self.rope_scaling and 'rope_type' not in self.rope_scaling:
                 self.rope_scaling['rope_type'] = self.rope_scaling['type']
         if self.eval_interval is None:
@@ -376,7 +375,7 @@ class MegatronArguments(ExtraMegatronArguments):
         self._init_mixed_precision()
 
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
-        self.extra_megatron_kwargs = ModelArguments.parse_to_dict(self.extra_megatron_kwargs)
+        self.extra_megatron_kwargs = json_parse_to_dict(self.extra_megatron_kwargs)
         self._init_no_rope_fusion()
 
     def _init_no_rope_fusion(self):

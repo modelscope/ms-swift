@@ -11,8 +11,9 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
 
+import json
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -343,3 +344,22 @@ def import_external_file(file_path: str):
     assert os.path.isdir(py_dir), f'py_dir: {py_dir}'
     sys.path.insert(0, py_dir)
     return importlib.import_module(py_file.split('.', 1)[0])
+
+
+def json_parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Union[str, Dict]:
+    """Convert a JSON string or JSON file into a dict"""
+    # If the value could potentially be a string, it is generally advisable to set strict to False.
+    if value is None:
+        value = {}
+    elif isinstance(value, str):
+        if os.path.exists(value):  # local path
+            with open(value, 'r', encoding='utf-8') as f:
+                value = json.load(f)
+        else:  # json str
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                if strict:
+                    logger.error(f"Unable to parse string: '{value}'")
+                    raise
+    return value
