@@ -14,7 +14,7 @@ pip install pybind11
 # 若出现安装错误，可以参考该issue解决: https://github.com/modelscope/ms-swift/issues/3793
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.3
 # 若以上命令报错也可以使用以下方式安装
-# pip install transformer_engine[pytorch]
+# pip install --no-build-isolation transformer_engine[pytorch]
 
 # apex
 git clone https://github.com/NVIDIA/apex
@@ -27,6 +27,7 @@ pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation -
 pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
 
 # 若使用多机训练，请额外设置`MODELSCOPE_CACHE`环境变量为共享存储路径
+# 这将确保数据集缓存共享，而加速预处理速度
 expert MODELSCOPE_CACHE='/xxx/shared'
 ```
 

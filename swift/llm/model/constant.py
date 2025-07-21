@@ -43,6 +43,7 @@ class LLMModelType:
     chatglm3 = 'chatglm3'
     glm4 = 'glm4'
     glm4_0414 = 'glm4_0414'
+    glm4_5 = 'glm4_5'
     glm4_z1_rumination = 'glm4_z1_rumination'
 
     glm_edge = 'glm_edge'

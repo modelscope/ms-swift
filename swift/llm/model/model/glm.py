@@ -416,3 +416,18 @@ register_model(
         model_arch=ModelArch.glm_edge_v,
         tags=['vision'],
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.glm4_5,
+        [
+            ModelGroup([
+                Model('ZhipuAI/GLM-4.5-MOE-106B-A12B-0715', 'THUDM/GLM-4.5-MOE-106B-A12B-0715'),
+                Model('ZhipuAI/GLM-4.5-MOE-355B-A32B-0715', 'THUDM/GLM-4.5-MOE-355B-A32B-0715'),
+            ]),
+        ],
+        TemplateType.glm4_5,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Glm4MoeForCausalLM'],
+        requires=['transformers>=4.54'],
+    ))

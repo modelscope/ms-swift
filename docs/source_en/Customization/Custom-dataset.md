@@ -181,6 +181,7 @@ When using this type of data, please note:
 
 - Different models have different special characters and data format for the grounding task.
 - The handling of bounding box normalization varies across different models: for example, qwen2.5-vl uses absolute coordinates, while qwen2-vl and internvl2.5 require bounding box coordinates to be normalized to the thousandth scale.
+  - Note: Qwen2.5-VL uses absolute coordinates, so you need to be careful with image resizing each time. If you use the dataset format from Option 1, you need to resize the images in advance (height and width must be multiples of 28) and scale the coordinates accordingly. If you use the dataset format from Option 2, ms-swift will handle image resizing for you. You can still use `MAX_PIXELS` or `--max_pixels` for image resizing (training only; for inference, you still need to handle image resizing yourself).
 
 1. Use SWIFT's grounding data format:
 

@@ -26,22 +26,23 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
             res.pop('num_query_groups', None)  # https://github.com/NVIDIA/Megatron-LM/issues/1475
             if architectures == 'Dots1ForCausalLM':
                 res['moe_router_score_function'] = 'sigmoid'
-            if res.get('moe_router_score_function', 'softmax') == 'sigmoid':
-                res['moe_router_enable_expert_bias'] = True
-            res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res["num_layers"] - first_k_dense_replace}'
-    if architectures == 'HunYuanMoEV1ForCausalLM':
-        # Since HunYuan’s attention applies RoPE before using q/k_layernorm,
-        # which is incompatible with megatron-core, support is not provided here.
-        res['n_shared_experts'] = n_shared_experts
-        for key in ['moe_ffn_hidden_size', 'n_shared_experts', 'moe_router_topk']:
-            val = res.get(key)
-            if isinstance(val, list) and val and min(val) == max(val):
-                res[key] = val[0]
-        n_shared_experts = res.pop('n_shared_experts')
-    if architectures in {'Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM'}:
-        res['rotary_interleaved'] = True
-        if architectures == 'Ernie4_5_MoeForCausalLM':
-            res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res["num_layers"] - first_k_dense_replace}'
+        elif architectures == 'HunYuanMoEV1ForCausalLM':
+            # Since HunYuan’s attention applies RoPE before using q/k_layernorm,
+            # which is incompatible with megatron-core, support is not provided here.
+            res['n_shared_experts'] = n_shared_experts
+            for key in ['moe_ffn_hidden_size', 'n_shared_experts', 'moe_router_topk']:
+                val = res.get(key)
+                if isinstance(val, list) and val and min(val) == max(val):
+                    res[key] = val[0]
+            n_shared_experts = res.pop('n_shared_experts')
+        elif architectures in {'Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM'}:
+            res['rotary_interleaved'] = True
+        elif architectures == 'Glm4MoeForCausalLM':
+            res['moe_router_score_function'] = 'sigmoid'
+    if first_k_dense_replace is not None:
+        res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res["num_layers"] - first_k_dense_replace}'
+    if res.get('moe_router_score_function', 'softmax') == 'sigmoid':
+        res['moe_router_enable_expert_bias'] = True
     if n_shared_experts is not None and 'moe_shared_expert_intermediate_size' not in res:
         res['moe_shared_expert_intermediate_size'] = n_shared_experts * res['moe_ffn_hidden_size']
     return res

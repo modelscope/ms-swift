@@ -247,6 +247,7 @@ class SwiftInfer(SwiftPipeline):
                 result_list += self._batch_infer(shard_dataset, request_config)
                 idx += shard_size
                 prog_bar.update(shard_size)
+            prog_bar.close()
             metrics = self.infer_kwargs.pop('metrics')
             if result_list:
                 print(f'[rank{args.rank}] {metrics[0].compute()}')
