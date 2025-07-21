@@ -189,6 +189,7 @@ class VllmArguments:
     max_model_len: Optional[int] = None
     limit_mm_per_prompt: Optional[Union[dict, str]] = None
     data_parallel_size: Optional[int] = None
+    use_async_engine: Optional[bool] = None
 
     def _handle_compatibility(self):
         if self.gpu_memory_utilization is not None:
@@ -201,6 +202,8 @@ class VllmArguments:
             self.vllm_limit_mm_per_prompt = self.limit_mm_per_prompt
         if self.data_parallel_size is not None:
             self.vllm_data_parallel_size = self.data_parallel_size
+        if self.use_async_engine is not None:
+            self.vllm_use_async_engine = self.use_async_engine
 
     def __post_init__(self):
         self._handle_compatibility()
