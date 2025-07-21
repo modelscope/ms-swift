@@ -8,7 +8,7 @@ from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
 
-from swift.utils import get_logger, is_dist, is_dist_ta, is_master
+from swift.utils import get_logger, is_dist, is_master
 from ..template import MaxLengthError
 from .preprocessor import RowPreprocessor
 
@@ -152,7 +152,7 @@ class PackingDataset(Dataset):
         if template.model_meta.is_multimodal:
             self.dataset = LazyLLMDataset(self.dataset, encode_func=template.encode)
         self.packed_idx = self.create_packed_idx() if is_master() else None
-        if (dist.is_initialized() and is_dist()) or is_dist_ta():
+        if dist.is_initialized() and is_dist():
             obj_list = [self.packed_idx]
             dist.broadcast_object_list(obj_list)
             self.packed_idx = obj_list[0]
