@@ -63,10 +63,10 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
     args._import_external_plugins()
     os.environ['VLLM_DP_RANK'] = str(data_parallel_rank)
     os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
-    os.environ['VLLM_DP_SIZE'] = str(args.data_parallel_size)
+    os.environ['VLLM_DP_SIZE'] = str(args.vllm_data_parallel_size)
     os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
     kwargs = {}
-    if args.tensor_parallel_size == 1 and args.data_parallel_size > 1:
+    if args.vllm_tensor_parallel_size == 1 and args.vllm_data_parallel_size > 1:
         kwargs['device'] = get_device(str(data_parallel_rank))
     kwargs['template'] = args.get_template(None)
     engine = SwiftRolloutDeploy.get_infer_engine(args, **kwargs)
@@ -149,8 +149,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
     def __init__(self, args: Union[List[str], RolloutArguments, None] = None):
         super().__init__(args)
         self.use_gym_env = self.args.use_gym_env
-        self.use_async_engine = self.args.use_async_engine
-        self.num_connections = 1 if self.use_async_engine else self.args.data_parallel_size
+        self.use_async_engine = self.args.vllm_use_async_engine
+        self.num_connections = 1 if self.use_async_engine else self.args.vllm_data_parallel_size
         safe_set_start_method()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_rl_rollout_app()
@@ -162,7 +162,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
     def _start_data_parallel_workers(self):
         for data_parallel_rank in range(self.num_connections):
             parent_conn, child_conn = Pipe()
-            worker_func = llm_worker_entry if self.use_async_engine else llm_worker
+            worker_func = llm_worker_entry if self.vllm_use_async_engine else llm_worker
             process = Process(target=worker_func, args=(self.args, data_parallel_rank, self.master_port, child_conn))
             process.start()
             self.connections.append(parent_conn)
@@ -197,7 +197,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
             'revision': args.model_revision,
             'torch_dtype': args.torch_dtype,
             'template': template,
-            'use_async_engine': args.use_async_engine,
+            'use_async_engine': args.vllm_use_async_engine,
             'multi_turn_scheduler': args.multi_turn_scheduler,
             'max_turns': args.max_turns,
             'use_gym_env': args.use_gym_env,
@@ -213,8 +213,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
         engine_kwargs = kwargs.get('engine_kwargs', {})
         # for RL rollout model weight sync
         engine_kwargs.update({'worker_extension_cls': 'trl.scripts.vllm_serve.WeightSyncWorkerExtension'})
-        if args.use_async_engine and args.data_parallel_size > 1:
-            engine_kwargs['data_parallel_size'] = args.data_parallel_size
+        if args.vllm_use_async_engine and args.vllm_data_parallel_size > 1:
+            engine_kwargs['data_parallel_size'] = args.vllm_data_parallel_size
         kwargs['engine_kwargs'] = engine_kwargs
 
         return GRPOVllmEngine(**kwargs)
@@ -238,7 +238,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         {"world_size": 8}
         ```
         """
-        return {'world_size': self.args.tensor_parallel_size * self.args.data_parallel_size}
+        return {'world_size': self.args.vllm_tensor_parallel_size * self.args.vllm_data_parallel_size}
 
     async def init_communicator(self, request: InitCommunicatorRequest):
         """
@@ -251,7 +251,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
                 - `port` (`int`): Port number to be used for communication.
                 - `world_size` (`int`): Total number of participating processes in the group.
         """
-        world_size = self.args.tensor_parallel_size * self.args.data_parallel_size + 1
+        world_size = self.args.vllm_tensor_parallel_size * self.args.vllm_data_parallel_size + 1
 
         # The function init_communicator is called this way: init_communicator(host, port, world_size)
         # So with collective_rpc we need to call it this way:
