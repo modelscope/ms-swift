@@ -488,7 +488,7 @@ class VllmEngine(InferEngine):
                                                                            request_id, infer_streamers, token_idxs)
                         if res is None:
                             continue
-                        yield self._add_error_list(res, error_list)
+                        yield res
                         if result.finished:
                             break
 
