@@ -299,7 +299,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         """
         Health check endpoint to verify that the server is running.
         """
-        if self.use_async_engine:
+        if self.vllm_use_async_engine:
             if self.use_gym_env:
                 return {'engine_type': 'AsyncLLMEngine', 'gym_env': True}
             return {'engine_type': 'AsyncLLMEngine'}

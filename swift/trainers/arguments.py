@@ -163,6 +163,9 @@ class VllmArguments:
         vllm_limit_mm_per_prompt (Optional[str]): Limit multimedia per prompt. Default is None.
         vllm_max_lora_rank (int): Maximum LoRA rank. Default is 16.
         vllm_enable_prefix_caching (bool): Flag to enable automatic prefix caching. Default is False.
+        vllm_use_async_engine (bool): Whether to use async engine for vLLM. Default is False.
+        vllm_quantization (Optional[str]): The quantization method for vLLM. Default is None.
+        vllm_data_parallel_size (int): Data parallelism size for vLLM rollout. Default is 1.
     """
     # vllm
     vllm_gpu_memory_utilization: float = 0.9

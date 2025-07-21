@@ -20,11 +20,11 @@ class LmdeployArguments:
     LmdeployArguments is a dataclass that holds the configuration for lmdeploy.
 
     Args:
-        tp (int): Tensor parallelism size. Default is 1.
-        session_len(Optional[int]): The session length, default None.
-        cache_max_entry_count (float): Maximum entry count for cache. Default is 0.8.
-        quant_policy (int): Quantization policy, e.g., 4, 8. Default is 0.
-        vision_batch_size (int): Maximum batch size in VisionConfig. Default is 1.
+        lmdeploy_tp (int): Tensor parallelism size. Default is 1.
+        lmdeploy_session_len(Optional[int]): The session length, default None.
+        lmdeploy_cache_max_entry_count (float): Maximum entry count for cache. Default is 0.8.
+        lmdeploy_quant_policy (int): Quantization policy, e.g., 4, 8. Default is 0.
+        lmdeploy_vision_batch_size (int): Maximum batch size in VisionConfig. Default is 1.
     """
 
     # lmdeploy

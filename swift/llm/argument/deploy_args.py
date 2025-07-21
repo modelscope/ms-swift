@@ -41,7 +41,7 @@ class DeployArguments(InferArguments):
     log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
 
     max_logprobs: int = 20
-    use_async_engine: bool = True
+    vllm_use_async_engine: bool = True
 
     def __post_init__(self):
         super().__post_init__()
@@ -81,7 +81,7 @@ class DeployArguments(InferArguments):
 
 @dataclass
 class RolloutArguments(DeployArguments):
-    use_async_engine: Optional[bool] = None
+    vllm_use_async_engine: Optional[bool] = None
     use_gym_env: Optional[bool] = None
     # only for GRPO rollout with AsyncEngine, see details in swift/plugin/multi_turn
     multi_turn_scheduler: Optional[str] = None
@@ -94,8 +94,8 @@ class RolloutArguments(DeployArguments):
     def __post_init__(self):
         super().__post_init__()
 
-        if self.use_async_engine is None:
+        if self.vllm_use_async_engine is None:
             if self.multi_turn_scheduler or self.use_gym_env:
-                self.use_async_engine = True
+                self.vllm_use_async_engine = True
             else:
-                self.use_async_engine = False
+                self.vllm_use_async_engine = False
