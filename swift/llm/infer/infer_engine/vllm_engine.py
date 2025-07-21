@@ -460,16 +460,17 @@ class VllmEngine(InferEngine):
             template.set_mode('vllm')
             batched_inputs, error_list = self._batch_encode(
                 infer_requests, template=template, strict=getattr(self, 'strict', True))
-            self.set_default_max_tokens(request_config, batched_inputs)
             request_id_list = []
             for i, inputs in enumerate(batched_inputs):
                 request_id = str(self._request_count)
                 request_id_list.append(request_id)
                 self._request_count += 1
-                generation_config = self._prepare_generation_config(request_config)
+                _request_config = deepcopy(request_config)
+                self.set_default_max_tokens(_request_config, inputs)
+                generation_config = self._prepare_generation_config(_request_config)
                 if generation_config.seed is not None:
                     generation_config.seed += i
-                self._add_stop_words(generation_config, request_config, template.template_meta)
+                self._add_stop_words(generation_config, _request_config, template.template_meta)
                 self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
             prog_bar = tqdm(total=len(batched_inputs), dynamic_ncols=True, disable=not use_tqdm)
             outputs = {}
@@ -487,7 +488,7 @@ class VllmEngine(InferEngine):
                                                                            request_id, infer_streamers, token_idxs)
                         if res is None:
                             continue
-                        yield res
+                        yield self._add_error_list(res, error_list)
                         if result.finished:
                             break
 
@@ -508,7 +509,7 @@ class VllmEngine(InferEngine):
                     for request_id, result in zip(request_id_list, outputs)
                 ]
                 self._update_metrics(res, metrics)
-                return res
+                return self._add_error_list(res, error_list)
 
     async def infer_async(
         self,

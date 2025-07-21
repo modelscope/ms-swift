@@ -453,12 +453,6 @@ class PtEngine(InferEngine):
         else:
             return await queue.get()
 
-    @staticmethod
-    def _add_error_list(outputs, error_list):
-        for i, error in error_list:
-            outputs.insert(i, error)
-        return outputs
-
     # Ensure `template._post_encode` has no gradient.
     @torch.inference_mode()
     def _infer(
