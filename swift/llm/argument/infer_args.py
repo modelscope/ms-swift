@@ -65,24 +65,24 @@ class VllmArguments:
         enable_prefix_caching (bool): Flag to enable automatic prefix caching. Default is False.
     """
     # vllm
-    gpu_memory_utilization: float = 0.9
-    tensor_parallel_size: int = 1
-    pipeline_parallel_size: int = 1
-    max_num_seqs: int = 256
-    max_model_len: Optional[int] = None
-    disable_custom_all_reduce: bool = True
-    enforce_eager: bool = False
-    limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
+    vllm_gpu_memory_utilization: float = 0.9
+    vllm_tensor_parallel_size: int = 1
+    vllm_pipeline_parallel_size: int = 1
+    vllm_max_num_seqs: int = 256
+    vllm_max_model_len: Optional[int] = None
+    vllm_disable_custom_all_reduce: bool = True
+    vllm_enforce_eager: bool = False
+    vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_max_lora_rank: int = 16
-    enable_prefix_caching: bool = False
-    use_async_engine: bool = False
+    vllm_enable_prefix_caching: bool = False
+    vllm_use_async_engine: bool = False
     vllm_quantization: Optional[str] = None
     # rollout
-    data_parallel_size: int = 1
-    log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
+    vllm_data_parallel_size: int = 1
+    vllm_log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
 
     def __post_init__(self):
-        self.limit_mm_per_prompt = ModelArguments.parse_to_dict(self.limit_mm_per_prompt)
+        self.vllm_limit_mm_per_prompt = ModelArguments.parse_to_dict(self.vllm_limit_mm_per_prompt)
 
     def get_vllm_engine_kwargs(self):
         adapters = self.adapters
