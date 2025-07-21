@@ -14,7 +14,7 @@ from transformers.utils import is_torch_npu_available
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
-from swift.utils import get_dist_setting, is_dist
+from swift.utils import get_dist_setting, get_logger, is_dist
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
                         EmbeddingResponseData, RequestConfig, random_uuid)
@@ -22,6 +22,7 @@ from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .utils import AdapterRequest, InferStreamer, patch_npu_vllm, patch_vllm_memory_leak
 
+logger = get_logger()
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
@@ -191,8 +192,8 @@ class VllmEngine(InferEngine):
         self.engine_args = engine_args
         self.enable_lora = enable_lora
         if max_model_len is not None:
-            model_info.max_model_len = max_model_len
             self.max_model_len = max_model_len
+            logger.info(f'Setting max_model_len: {max_model_len}')
 
     def _fix_vllm_bug(self) -> None:
         # fix vllm==0.4 bug (very slow)
