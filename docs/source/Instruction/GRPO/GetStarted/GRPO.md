@@ -1,6 +1,7 @@
 # GRPO
 
 **更新日志**
+- **2025-07-18** - 支持 entropy mask 与 entropy 相关指标记录，参考[文档](../AdvancedResearch/entropy_mask.md)
 - **2025-07-17** - 支持多机rollout(vllm_server_host和vllm_server_port支持传入多个)，参考[脚本](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/multi_node/server_multi_node.sh)
 - **2025-07-16** - Rollout 支持 GYM 环境接口，参考[文档](../DeveloperGuide/GYM环境训练.md)
 - **2025-06-22** - 多轮训练重构并支持AsyncEngine，参考[文档](../DeveloperGuide/多轮训练.md)
@@ -209,6 +210,44 @@ swift rollout \
 --vllm_server_timeout <超时时间> \
 ```
 
+## logged metrics
+- completions/mean_length：生成的 completion 的平均长度。
+- completions/min_length：生成的 completion 的最小长度。
+- completions/max_length：生成的 completion 的最大长度。
+- completions/clipped_ratio：被长度截断的 completion 占比。
+- reward/{reward_func_name}/mean：某个特定 reward function 的平均奖励值。
+- reward/{reward_func_name}/std：某个特定 reward function 的奖励标准差。
+> 注意, 上述两个指标是在所有 completions 范围内统计得到的。
+- reward：加权 reward_weights 后的整体平均奖励。
+- reward_std：加权 reward_weights 后，每个 batch 内整体奖励的标准差。
+> 注意：上述两个指标是先在每个组内分别计算均值/std，然后再对各组的结果取平均。
+- frac_reward_zero_std：在生成 batch 中，reward 标准差为零的样本比例，意味着该 prompt 上的答案几乎无多样性（所有回答奖励一致）。
+- kl：生成的 completion 上，模型与参考模型之间的平均 KL 散度。仅当 beta 非零时记录。
+- clip_ratio/region_mean：不同句子中被 CLIP 的的 token 平均比例
+- clip_ratio/low_mean：不同句子中被 下CLIP 的的 token 平均比例
+- clip_ratio/low_min：不同句子中被 下CLIP 的的 token 最小比例
+- clip_ratio/high_mean：不同句子中被 上CLIP 的的 token 平均比例
+- clip_ratio/high_max：不同句子中被 上CLIP 的的 token 最大比例
+> 注意：如果开启`overlong_filter`, kl 和 clip_ratio 指标会过滤超长的样本
+
+如果设置了`log_entropy`参数，则会额外记录entropy相关指标，包括
+- entropy/mean: 不同句子中的 entropy 均值
+- entropy/max: 不同句子中的 entropy 最大值
+- entropy/min: 不同句子中的 entropy 最小值
+> 注意这里的 句子 entropy 指 completion 中的 token entropy 均值
+
+
+如果设置了`top_entropy_quantile`参数<1.0, 则会记录entropy threshold的值
+- entropy/threshold: 分位点处的 entropy 值，小于该值的 token 将不会被计算 loss
+
+如果设置了`log_completions`, 将保存训练动态在output对应文件夹中，包括
+- step：记录时的训练步数
+- prompt：模型输入
+- completion：模型采样回答
+- {reward_func_name}：特定奖励
+- entropy：entropy token 均值，在设置`log_entropy`时记录
+
+设置 `report_to wandb/swanlab` 将训练动态推送到对应的平台
 
 ## FAQ
 **1. 训练过程中 loss 等于0 / 接近0 / 小于0**
