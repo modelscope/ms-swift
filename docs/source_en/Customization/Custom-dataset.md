@@ -160,6 +160,10 @@ Supervised Fine-tuning:
 {"messages": [{"role": "user", "content": "<audio>What did the audio say?"}, {"role": "assistant", "content": "The weather is really nice today."}], "audios": ["/xxx/x.mp3"]}
 {"messages": [{"role": "system", "content": "You are a helpful and harmless assistant."}, {"role": "user", "content": "<image>What is in the image, <video>What is in the video?"}, {"role": "assistant", "content": "The image shows an elephant, and the video shows a puppy running on the grass."}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
 ```
+- Note: The following fields will be automatically converted to the corresponding images, videos, and audios fields.
+  - images: image, images.
+  - videos: video, videos.
+  - audios: audio, audios.
 
 The data format for RLHF and sequence classification of multimodal models can reference the format of pure text large models, with additional fields such as `images` added on top of that.
 
