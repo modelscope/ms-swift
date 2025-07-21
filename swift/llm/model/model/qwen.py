@@ -552,6 +552,9 @@ register_model(
                 Model('swift/Qwen3-30B-A3B-AWQ', 'cognitivecomputations/Qwen3-30B-A3B-AWQ'),
                 Model('swift/Qwen3-235B-A22B-AWQ', 'cognitivecomputations/Qwen3-235B-A22B-AWQ'),
             ]),
+            ModelGroup([
+                Model('Qwen/Qwen3-235B-A22B-Instruct-250718', 'Qwen/Qwen3-235B-A22B-Instruct-250718'),
+            ]),
         ],
         TemplateType.qwen3,
         get_model_tokenizer_with_flash_attn,
