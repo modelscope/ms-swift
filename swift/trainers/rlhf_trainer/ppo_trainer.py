@@ -89,3 +89,8 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
         # for model in models:
         #     SwiftMixin._prepare_gradient_checkpointing(self, model)
         pass
+
+    def generate_completions(self, *args, **kwargs):
+        if self.eval_dataset is None:
+            return
+        return super().generate_completions(*args, **kwargs)

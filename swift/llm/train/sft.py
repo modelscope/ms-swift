@@ -205,7 +205,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _stat_dataset(self, dataset: Union[HfDataset, PackingDataset]):
         if isinstance(dataset, HfDataset):
-            length = dataset['length']
+            # TODO: Temporary fix; awaiting template refactor.
+            try:
+                length = dataset['length']
+            except KeyError:
+                return
         else:
             length = dataset.dataset['length']
         _, stat_str = stat_array(length)
