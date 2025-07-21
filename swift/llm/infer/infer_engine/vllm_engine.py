@@ -192,6 +192,7 @@ class VllmEngine(InferEngine):
         self.enable_lora = enable_lora
         if max_model_len is not None:
             model_info.max_model_len = max_model_len
+            self.max_model_len = max_model_len
 
     def _fix_vllm_bug(self) -> None:
         # fix vllm==0.4 bug (very slow)

@@ -58,6 +58,9 @@ class SglangEngine(InferEngine):
             hub_token=hub_token,
             revision=revision)[1]
         self._post_init(template)
+        if context_length is not None:
+            self.model_info.max_model_len = context_length
+            self.max_model_len = context_length
         if self.max_model_len is not None:
             self.max_model_len -= 1
         parameters = inspect.signature(ServerArgs).parameters
