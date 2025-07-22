@@ -419,7 +419,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - eval_dataset_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
 - eval_limit: Number of samples from the evaluation dataset
 - eval_generation_config: Model inference configuration during evaluation, in JSON format, default is `{'max_tokens': 512}`
-- use_flash_ckpt: Whether use [DLRover Flash Checkpoint](https://github.com/intelligent-machine-learning/dlrover),default is false，if use,checkpoints will synchronously save to memory ,afterwards asynchronously save to storage。It’s recommended to use this with setting the environment variable:PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True" to avoid CUDA OOM.
+- use_flash_ckpt: Whether to use [DLRover Flash Checkpoint](https://github.com/intelligent-machine-learning/dlrover). Default is `false`. If enabled, checkpoints are saved to memory synchronously, then persisted to storage asynchronously. It's recommended to use this with the environment variable `PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` to avoid CUDA OOM.
 
 
 
