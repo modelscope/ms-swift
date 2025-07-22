@@ -37,8 +37,9 @@ def get_dataset_id(key):
 
 
 def run_dataset(key, template, cache_mapping):
-    ms_id, hf_id, _ = key
     dataset_meta = DATASET_MAPPING[key]
+    ms_id = dataset_meta.ms_dataset_id
+    hf_id = dataset_meta.hf_dataset_id
     tags = ', '.join(tag for tag in dataset_meta.tags) or '-'
     dataset_id = ms_id or hf_id
     use_hf = ms_id is None
@@ -63,7 +64,8 @@ def run_dataset(key, template, cache_mapping):
         dataset_size = len(dataset)
         random_state = np.random.RandomState(42)
         idx_list = random_state.choice(dataset_size, size=min(dataset_size, 100000), replace=False)
-        encoded_dataset = EncodePreprocessor(template)(dataset.select(idx_list), num_proc=num_proc)
+        encoded_dataset = EncodePreprocessor(template)(
+            dataset.select(idx_list), num_proc=num_proc, load_from_cache_file=False)
 
         input_ids = encoded_dataset['input_ids']
         token_len = [len(tokens) for tokens in input_ids]
