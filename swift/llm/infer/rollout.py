@@ -147,6 +147,11 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.post('/get_engine_type/')(self.get_engine_type)
 
     def __init__(self, args: Union[List[str], RolloutArguments, None] = None):
+        try:
+            from trl.scripts.vllm_serve import WeightSyncWorkerExtension
+        except ImportError as e:
+            raise ImportError("Could not import 'WeightSyncWorkerExtension' from 'trl.scripts.vllm_serve'. "
+                              "Please upgrade your 'trl' package.") from e
         super().__init__(args)
         self.use_gym_env = self.args.use_gym_env
         self.use_async_engine = self.args.use_async_engine
