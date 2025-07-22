@@ -1632,7 +1632,9 @@ class Template(ProcessorMixin):
         if self.use_megatron and not self._packing:
             padding_to = math.ceil(max(seq_lens) / 64) * 64
             res['attention_mask'] = torch.tril(torch.ones(
-                (len(seq_lens), padding_to, padding_to))).view(len(seq_lens), 1, padding_to, padding_to)
+                (len(seq_lens), padding_to, padding_to),
+                dtype=torch.bool)).view(len(seq_lens), 1, padding_to, padding_to)
+            assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res["attention_mask"].dtype}'
             for i, seq_len in enumerate(seq_lens):
                 res['attention_mask'][i, :, seq_len:] = 0
 
