@@ -53,16 +53,19 @@ class QuantizeArguments:
                 raise ValueError(f'bnb not support quant_bits: {self.quant_bits}')
 
             from transformers import BitsAndBytesConfig
+            llm_int8_skip_modules = self.get_modules_to_not_convert()
             quantization_config = BitsAndBytesConfig(
                 load_in_4bit=load_in_4bit,
                 load_in_8bit=load_in_8bit,
                 bnb_4bit_compute_dtype=self.bnb_4bit_compute_dtype,
                 bnb_4bit_quant_type=self.bnb_4bit_quant_type,
                 bnb_4bit_use_double_quant=self.bnb_4bit_use_double_quant,
-                bnb_4bit_quant_storage=self.bnb_4bit_quant_storage)
+                bnb_4bit_quant_storage=self.bnb_4bit_quant_storage,
+                llm_int8_skip_modules=llm_int8_skip_modules)
         elif self.quant_method == 'fp8':
             from transformers import FineGrainedFP8Config
-            quantization_config = FineGrainedFP8Config()
+            modules_to_not_convert = self.get_modules_to_not_convert()
+            quantization_config = FineGrainedFP8Config(modules_to_not_convert=modules_to_not_convert)
         elif self.quant_method == 'hqq':
             from transformers import HqqConfig
             quantization_config = HqqConfig(nbits=self.quant_bits, axis=self.hqq_axis)
@@ -84,6 +87,24 @@ class QuantizeArguments:
             quantization_config = EetqConfig(f'int{self.quant_bits}')
 
         return quantization_config
+
+    def get_modules_to_not_convert(self):
+        from swift.llm import get_model_arch
+        if not hasattr(self, 'model_meta') or not hasattr(self, 'model_info'):
+            return None
+        model_arch = get_model_arch(self.model_meta.model_arch)
+        res = []
+        if self.model_info.is_moe_model:
+            res += ['mlp.gate', 'mlp.shared_expert_gate']
+        if model_arch is not None:
+            for key in ['vision_tower', 'aligner']:
+                value = getattr(model_arch, key, None)
+                if value:
+                    res += value
+        if not res:
+            return None
+        res.append('lm_head')
+        return res
 
     def __post_init__(self):
         if self.bnb_4bit_compute_dtype is None:

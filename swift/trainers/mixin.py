@@ -119,6 +119,33 @@ class SwiftMixin:
         update_generation_config_eos_token(self.model.generation_config, self.template)
         if getattr(self.model, 'origin_generation_config', None):
             self.model.origin_generation_config.eos_token_id = self.model.generation_config.eos_token_id
+        if self.args.resume_only_model and self.args.ignore_data_skip:
+            # The weights have already been loaded outside the trainer,
+            # so reading train_state is skipped here.
+            self.args.resume_from_checkpoint = None
+
+    @contextmanager
+    def _patch_deepspeed_load_checkpoint(self):
+        from transformers import trainer
+        if not self.args.resume_from_checkpoint or not self.args.resume_only_model or not hasattr(
+                trainer, 'deepspeed_load_checkpoint'):
+            yield
+            return
+        origin_deepspeed_load_checkpoint = trainer.deepspeed_load_checkpoint
+
+        def deepspeed_load_checkpoint(*args, **kwargs):
+            try:
+                return origin_deepspeed_load_checkpoint(*args, **kwargs)
+            except Exception as e:
+                logger.warning('Failed to call deepspeed_load_checkpoint function. '
+                               f'If `--resume_only_model true` is set, this warning can be ignored. {e}.')
+
+        trainer.deepspeed_load_checkpoint = deepspeed_load_checkpoint
+
+        try:
+            yield
+        finally:
+            trainer.deepspeed_load_checkpoint = origin_deepspeed_load_checkpoint
 
     def get_use_logits_to_keep(self, default_value: bool = True):
         use_logits_to_keep = self.args.use_logits_to_keep
@@ -176,7 +203,14 @@ class SwiftMixin:
                     )
                     model.peft_config['default'] = config
 
+    def _load_rng_state(self, *args, **kwargs):
+        if self.args.resume_only_model:
+            return
+        return super()._load_rng_state(*args, **kwargs)
+
     def _load_optimizer_and_scheduler(self, *args, **kwargs):
+        if self.args.resume_only_model:
+            return
         super()._load_optimizer_and_scheduler(*args, **kwargs)
         if is_mp_ddp():
             # fix mp+ddp adamw
@@ -251,8 +285,10 @@ class SwiftMixin:
                     self.model.save_pretrained(output_dir, safe_serialization=save_safetensors)
                     # copy sentencetransformers files
                     from swift.utils import copy_files_by_pattern
-                    copy_files_by_pattern(self.model.model_dir, output_dir, '*.py')
-                    copy_files_by_pattern(self.model.model_dir, output_dir, '*.json')
+                    copy_files_by_pattern(
+                        self.model.model_dir, output_dir, '*.py', exclude_patterns=['model.safetensors.index.json'])
+                    copy_files_by_pattern(
+                        self.model.model_dir, output_dir, '*.json', exclude_patterns=['model.safetensors.index.json'])
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
@@ -415,7 +451,8 @@ class SwiftMixin:
         # gradient_checkpointing
         gradient_checkpointing = self.args.gradient_checkpointing
         self._prepare_gradient_checkpointing(self.accelerator.unwrap_model(self.model))
-        with self.hub.patch_hub(), self._fix_grad_norm_nan(), self._patch_skip_first_batches():
+        with self.hub.patch_hub(), self._fix_grad_norm_nan(), self._patch_skip_first_batches(
+        ), self._patch_deepspeed_load_checkpoint():
             res = super().train(*args, **kwargs)
         self.template.remove_post_encode_hook()
         self.args.gradient_checkpointing = gradient_checkpointing  # recover

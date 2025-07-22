@@ -2,13 +2,13 @@
 import datetime as dt
 import os
 from dataclasses import dataclass
-from typing import Literal, Optional, Union
+from typing import Literal, Optional
 
 import torch.distributed as dist
 
+from swift.trainers import VllmArguments
 from swift.utils import get_logger, init_process_group, is_dist
 from .base_args import BaseArguments, to_abspath
-from .base_args.model_args import ModelArguments
 from .merge_args import MergeArguments
 
 logger = get_logger()
@@ -20,90 +20,30 @@ class LmdeployArguments:
     LmdeployArguments is a dataclass that holds the configuration for lmdeploy.
 
     Args:
-        tp (int): Tensor parallelism size. Default is 1.
-        session_len(Optional[int]): The session length, default None.
-        cache_max_entry_count (float): Maximum entry count for cache. Default is 0.8.
-        quant_policy (int): Quantization policy, e.g., 4, 8. Default is 0.
-        vision_batch_size (int): Maximum batch size in VisionConfig. Default is 1.
+        lmdeploy_tp (int): Tensor parallelism size. Default is 1.
+        lmdeploy_session_len(Optional[int]): The session length, default None.
+        lmdeploy_cache_max_entry_count (float): Maximum entry count for cache. Default is 0.8.
+        lmdeploy_quant_policy (int): Quantization policy, e.g., 4, 8. Default is 0.
+        lmdeploy_vision_batch_size (int): Maximum batch size in VisionConfig. Default is 1.
     """
 
     # lmdeploy
-    tp: int = 1
-    session_len: Optional[int] = None
-    cache_max_entry_count: float = 0.8
-    quant_policy: int = 0  # e.g. 4, 8
-    vision_batch_size: int = 1  # max_batch_size in VisionConfig
+    lmdeploy_tp: int = 1
+    lmdeploy_session_len: Optional[int] = None
+    lmdeploy_cache_max_entry_count: float = 0.8
+    lmdeploy_quant_policy: int = 0  # e.g. 4, 8
+    lmdeploy_vision_batch_size: int = 1  # max_batch_size in VisionConfig
 
     def get_lmdeploy_engine_kwargs(self):
         kwargs = {
-            'tp': self.tp,
-            'session_len': self.session_len,
-            'cache_max_entry_count': self.cache_max_entry_count,
-            'quant_policy': self.quant_policy,
-            'vision_batch_size': self.vision_batch_size
+            'tp': self.lmdeploy_tp,
+            'session_len': self.lmdeploy_session_len,
+            'cache_max_entry_count': self.lmdeploy_cache_max_entry_count,
+            'quant_policy': self.lmdeploy_quant_policy,
+            'vision_batch_size': self.lmdeploy_vision_batch_size
         }
         if dist.is_initialized():
             kwargs.update({'devices': [dist.get_rank()]})
-        return kwargs
-
-
-@dataclass
-class VllmArguments:
-    """
-    VllmArguments is a dataclass that holds the configuration for vllm.
-
-    Args:
-        gpu_memory_utilization (float): GPU memory utilization. Default is 0.9.
-        tensor_parallel_size (int): Tensor parallelism size. Default is 1.
-        pipeline_parallel_size(int): Pipeline parallelism size. Default is 1.
-        max_num_seqs (int): Maximum number of sequences. Default is 256.
-        max_model_len (Optional[int]): Maximum model length. Default is None.
-        disable_custom_all_reduce (bool): Flag to disable custom all-reduce. Default is True.
-        enforce_eager (bool): Flag to enforce eager execution. Default is False.
-        limit_mm_per_prompt (Optional[str]): Limit multimedia per prompt. Default is None.
-        vllm_max_lora_rank (int): Maximum LoRA rank. Default is 16.
-        enable_prefix_caching (bool): Flag to enable automatic prefix caching. Default is False.
-    """
-    # vllm
-    gpu_memory_utilization: float = 0.9
-    tensor_parallel_size: int = 1
-    pipeline_parallel_size: int = 1
-    max_num_seqs: int = 256
-    max_model_len: Optional[int] = None
-    disable_custom_all_reduce: bool = True
-    enforce_eager: bool = False
-    limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
-    vllm_max_lora_rank: int = 16
-    enable_prefix_caching: bool = False
-    use_async_engine: bool = False
-    vllm_quantization: Optional[str] = None
-    # rollout
-    data_parallel_size: int = 1
-    log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
-
-    def __post_init__(self):
-        self.limit_mm_per_prompt = ModelArguments.parse_to_dict(self.limit_mm_per_prompt)
-
-    def get_vllm_engine_kwargs(self):
-        adapters = self.adapters
-        if hasattr(self, 'adapter_mapping'):
-            adapters = adapters + list(self.adapter_mapping.values())
-        kwargs = {
-            'gpu_memory_utilization': self.gpu_memory_utilization,
-            'tensor_parallel_size': self.tensor_parallel_size,
-            'pipeline_parallel_size': self.pipeline_parallel_size,
-            'max_num_seqs': self.max_num_seqs,
-            'max_model_len': self.max_model_len,
-            'disable_custom_all_reduce': self.disable_custom_all_reduce,
-            'enforce_eager': self.enforce_eager,
-            'limit_mm_per_prompt': self.limit_mm_per_prompt,
-            'max_lora_rank': self.vllm_max_lora_rank,
-            'enable_lora': len(adapters) > 0,
-            'max_loras': max(len(adapters), 1),
-            'enable_prefix_caching': self.enable_prefix_caching,
-            'use_async_engine': self.use_async_engine,
-            'quantization': self.vllm_quantization,
-        }
         return kwargs
 
 
@@ -135,6 +75,8 @@ class SglangArguments:
             'enable_dp_attention': self.sglang_enable_dp_attention,
             'disable_custom_all_reduce': self.sglang_disable_custom_all_reduce,
         }
+        if self.task_type == 'embedding':
+            kwargs['task_type'] = 'embedding'
         return kwargs
 
 
@@ -189,9 +131,10 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
     def _init_ddp(self):
         if not is_dist():
             return
-        assert not self.eval_human and not self.stream, (
+        eval_human = getattr(self, 'eval_human', False)
+        assert not eval_human and not self.stream, (
             'In DDP scenarios, interactive interfaces and streaming output are not supported.'
-            f'args.eval_human: {self.eval_human}, args.stream: {self.stream}')
+            f'args.eval_human: {eval_human}, args.stream: {self.stream}')
         self._init_device()
         init_process_group(backend=self.ddp_backend, timeout=self.ddp_timeout)
 

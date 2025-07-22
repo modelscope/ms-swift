@@ -12,7 +12,6 @@ def test_sft():
             loss_scale='hermes',
             split_dataset_ratio=0.01,
             tensor_model_parallel_size=2,
-            load_from_cache_file=False,
             train_type='lora',
             recompute_granularity='full',
             recompute_method='uniform',
@@ -20,6 +19,7 @@ def test_sft():
             # pipeline_model_parallel_size=2,
             # freeze_parameters_ratio=0.5,
             train_iters=100,
+            modules_to_save=['word_embeddings', 'output_layer'],
             eval_iters=5,
             save_interval=5,
             no_save_optim=True,
@@ -41,6 +41,7 @@ def test_moe():
             # expert_model_parallel_size=2,
             train_type='lora',
             recompute_granularity='full',
+            modules_to_save=['word_embeddings', 'output_layer'],
             recompute_method='uniform',
             recompute_num_layers=1,
             # pipeline_model_parallel_size=2,
@@ -67,15 +68,11 @@ def test_embedding():
     pass
 
 
-def test_modules_to_save():
-    pass
-
-
 def test_resume():
     pass
 
 
 if __name__ == '__main__':
-    # test_sft()
+    test_sft()
     # test_moe()
-    test_convert()
+    # test_convert()

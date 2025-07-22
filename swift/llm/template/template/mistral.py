@@ -26,6 +26,7 @@ class Mistral2503Template(Template):
         images = inputs.images
         input_ids = encoded['input_ids']
         labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
         idx_list = findall(input_ids, self.image_token)
         if idx_list:
             image_inputs = processor.image_processor(images, patch_size=processor.patch_size, return_tensors='pt')
@@ -45,6 +46,7 @@ class Mistral2503Template(Template):
                 return processor.encode(replace_str, add_special_tokens=False)
 
             encoded['input_ids'], encoded['labels'] = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
+            encoded['loss_scale'] = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
 
         return encoded
 

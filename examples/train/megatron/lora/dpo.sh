@@ -1,4 +1,4 @@
-# 2 * 55GiB; 4.50s/it
+# 2 * 60GiB; 4.50s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
@@ -10,11 +10,12 @@ megatron rlhf \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
+    --modules_to_save word_embeddings output_layer \
     --split_dataset_ratio 0.01 \
     --expert_model_parallel_size 2 \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
-    --moe_aux_loss_coeff 0.01 \
+    --moe_aux_loss_coeff 1e-3 \
     --micro_batch_size 8 \
     --global_batch_size 16 \
     --recompute_granularity full \
@@ -29,7 +30,7 @@ megatron rlhf \
     --save megatron_output/Qwen3-30B-A3B-Base \
     --eval_interval 100 \
     --save_interval 100 \
-    --max_length 8192 \
+    --max_length 2048 \
     --num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \

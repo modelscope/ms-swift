@@ -3,14 +3,13 @@ import ast
 import math
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
-import json
 import torch
 from transformers.utils import is_torch_mps_available
 
 from swift.llm import MODEL_MAPPING, HfConfigFactory, get_model_info_meta, get_model_name
-from swift.utils import get_dist_setting, get_logger
+from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
 logger = get_logger()
 
@@ -42,6 +41,7 @@ class ModelArguments:
     # flash_attn: It will automatically convert names based on the model.
     # None: It will be automatically selected between sdpa and eager.
     attn_impl: Literal['flash_attn', 'sdpa', 'eager', 'flex_attention', None] = None
+    new_special_tokens: List[str] = field(default_factory=list)
 
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
@@ -54,29 +54,10 @@ class ModelArguments:
     init_strategy: Literal['zero', 'uniform', 'normal', 'xavier_uniform', 'xavier_normal', 'kaiming_uniform',
                            'kaiming_normal', 'orthogonal'] = None
 
-    @staticmethod
-    def parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Union[str, Dict]:
-        """Convert a JSON string or JSON file into a dict"""
-        # If the value could potentially be a string, it is generally advisable to set strict to False.
-        if value is None:
-            value = {}
-        elif isinstance(value, str):
-            if os.path.exists(value):  # local path
-                with open(value, 'r', encoding='utf-8') as f:
-                    value = json.load(f)
-            else:  # json str
-                try:
-                    value = json.loads(value)
-                except json.JSONDecodeError:
-                    if strict:
-                        logger.error(f"Unable to parse string: '{value}'")
-                        raise
-        return value
-
     def _init_device_map(self):
         """Prepare device map args"""
         if self.device_map:
-            self.device_map: Union[str, Dict[str, Any], None] = self.parse_to_dict(self.device_map, strict=False)
+            self.device_map: Union[str, Dict[str, Any], None] = json_parse_to_dict(self.device_map, strict=False)
         # compat mp&ddp
         _, local_rank, _, local_world_size = get_dist_setting()
         if local_world_size > 1 and isinstance(self.device_map, dict) and local_rank > 0:
@@ -90,7 +71,7 @@ class ModelArguments:
                 self.max_memory = ast.literal_eval(self.max_memory)
             except Exception:
                 pass
-        self.max_memory = self.parse_to_dict(self.max_memory)
+        self.max_memory = json_parse_to_dict(self.max_memory)
         # compat mp&ddp
         _, local_rank, _, local_world_size = get_dist_setting()
         if local_world_size > 1 and isinstance(self.max_memory, dict) and local_rank > 0:
@@ -149,9 +130,24 @@ class ModelArguments:
             self._init_rope_scaling()
         return self.model_info.torch_dtype
 
+    def _init_new_special_tokens(self):
+        if isinstance(self.new_special_tokens, str):
+            self.new_special_tokens = [self.new_special_tokens]
+        new_special_tokens = []
+        for token in self.new_special_tokens:
+            if token.endswith('.txt'):
+                assert os.path.isfile(token), f'special_tokens_path: {token}'
+                with open(token, 'r') as f:
+                    text = f.read()
+                new_special_tokens += text.split()
+            else:
+                new_special_tokens.append(token)
+        self.new_special_tokens = new_special_tokens
+
     def __post_init__(self):
         if self.model is None:
             raise ValueError(f'Please set --model <model_id_or_path>`, model: {self.model}')
+        self._init_new_special_tokens()
         self.model_suffix = get_model_name(self.model)
         self._init_device_map()
         self._init_max_memory()
@@ -170,6 +166,7 @@ class ModelArguments:
             'max_memory': self.max_memory,
             'quantization_config': self.get_quantization_config(),
             'attn_impl': self.attn_impl,
+            'new_special_tokens': self.new_special_tokens,
             'rope_scaling': self.rope_scaling,
             'task_type': self.task_type,
             'num_labels': self.num_labels,

@@ -109,6 +109,7 @@ class StdTemplateInputs:
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
     objects: Dict[str, List[Any]] = field(default_factory=dict)
+    rejected_images: List[Union[str, Image.Image]] = field(default_factory=list)
 
     margin: Optional[float] = None  # for reward modeling
 
@@ -124,6 +125,8 @@ class StdTemplateInputs:
             self.videos = [self.videos]
         if self.audios and not isinstance(self.audios, (list, tuple)):
             self.audios = [self.audios]
+        if self.rejected_images and not isinstance(self.rejected_images, (list, tuple)):
+            self.rejected_images = [self.rejected_images]
 
     def to_history(self):
         if not self.messages:
@@ -176,7 +179,7 @@ class StdTemplateInputs:
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
-        res = {'images': [], 'audios': [], 'videos': []}
+        res = {'images': [], 'audios': [], 'videos': [], 'rejected_images': []}
         for message in messages:
             content = message['content']
             if isinstance(content, str):

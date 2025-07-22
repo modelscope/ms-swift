@@ -17,7 +17,7 @@ from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
 from ..vision_utils import load_audio, load_batch, load_video_ovis2
 from .llama import Llama3TemplateMeta
-from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
+from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta, ThinkingTemplate
 
 
 @dataclass
@@ -44,20 +44,6 @@ qwq_preview_system = ('You are a helpful and harmless assistant. You are Qwen de
 register_template(QwenTemplateMeta(LLMTemplateType.qwen))
 register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=qwq_preview_system))
-
-
-class ThinkingTemplate(Template):
-
-    def _swift_prepare_messages(self, messages):
-        super()._swift_prepare_messages(messages)
-        # Only during inference or training, and only if the loss_scale is set to 'last_round',
-        # will the previous 'think' entries be deleted.
-        if not self.is_training or self.loss_scale.name == 'last_round':
-            for i, message in enumerate(messages):
-                # Delete the content before '</think>' in all assistant turns except the last round.
-                if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:
-                    message['content'] = message['content'].split('</think>')[-1].strip()
-
 
 register_template(
     QwenTemplateMeta(
@@ -265,6 +251,7 @@ class Qwen2VLTemplate(Template):
         processor = self.processor
         input_ids = encoded['input_ids']
         labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
         images = inputs.images
         videos = inputs.videos
         for media_type in ['images', 'videos']:
@@ -295,10 +282,12 @@ class Qwen2VLTemplate(Template):
                     return [media_token] * token_len
 
                 input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
+                loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
                 encoded.update(media_inputs)
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
+        encoded['loss_scale'] = loss_scale
         return encoded
 
     def forward_context(self, model, inputs):
@@ -341,16 +330,35 @@ class Qwen2VLTemplate(Template):
                 image_embeds = model.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
                 inputs_embeds += image_embeds.mean() * 0.
         else:
-            if pixel_values is not None:
-                pixel_values = pixel_values.type(dtype)
-                image_embeds = model.visual(pixel_values, grid_thw=image_grid_thw)
+            if pixel_values is None:
+                pixel_values_mixed = pixel_values_videos
+                grid_thw = video_grid_thw
+            elif pixel_values_videos is None:
+                pixel_values_mixed = pixel_values
+                grid_thw = image_grid_thw
+            else:
+                pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
+                grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
+            pixel_values_mixed = pixel_values_mixed.type(dtype)
+            mixed_embeds = model.visual(pixel_values_mixed, grid_thw=grid_thw)
+            if pixel_values is None:
+                image_embeds = None
+                video_embeds = mixed_embeds
+            elif pixel_values_videos is None:
+                image_embeds = mixed_embeds
+                video_embeds = None
+            else:
+                merge_length = self.processor.image_processor.merge_size**2
+                image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
+                image_embeds = mixed_embeds[:image_tokens]
+                video_embeds = mixed_embeds[image_tokens:]
+
+            if image_embeds is not None:
                 image_mask = (input_ids == model.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
-            if pixel_values_videos is not None:
-                pixel_values_videos = pixel_values_videos.type(dtype)
-                video_embeds = model.visual(pixel_values_videos, grid_thw=video_grid_thw)
+            if video_embeds is not None:
                 video_mask = (input_ids == model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
@@ -492,6 +500,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         media_inputs = to_float_dtype(media_inputs, self.model_info.torch_dtype)
         input_ids = encoded['input_ids']
         labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
         # audio
         audio_token_id = self._tokenize('<|AUDIO|>')
         idx_list = findall(input_ids, audio_token_id)
@@ -510,6 +519,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 return audio_token_id * audio_lengths[i]
 
             input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_audio_tokens)
+            loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_audio_tokens)
 
         for media_type in ['image', 'video']:
             token = f'<|{media_type.upper()}|>'
@@ -548,6 +558,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
 
                     input_ids, labels = self._extend_tokens(input_ids, labels, idx_list,
                                                             _get_new_tokens_use_audio_in_video)
+                    loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens_use_audio_in_video)
 
                 else:
 
@@ -556,9 +567,11 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                         return token_id * token_len
 
                     input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
+                    loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
+        encoded['loss_scale'] = loss_scale
         encoded.update(media_inputs)
         return encoded
 
@@ -696,6 +709,8 @@ class Ovis2Template(Ovis1_6Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
+            if self.mode == 'vllm':
+                return ['<image>\n']
             return [[-200], '\n']
         elif media_type == 'video':
             nframes = get_env_args('nframes', int, self.nframes)

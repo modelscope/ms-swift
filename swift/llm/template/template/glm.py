@@ -10,6 +10,7 @@ from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, Word, findall
 from ..vision_utils import load_batch, load_video_cogvlm2
+from .utils import ThinkingTemplate
 
 
 @dataclass
@@ -33,13 +34,8 @@ class GLM4Template(Template):
         return response.lstrip('\n')
 
 
-class GLM4_0414Template(GLM4Template):
-
-    def _swift_prepare_messages(self, messages):
-        super()._swift_prepare_messages(messages)
-        for i, message in enumerate(messages):
-            if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:
-                message['content'] = message['content'].split('</think>')[-1].strip()
+class GLM4_0414Template(ThinkingTemplate, GLM4Template):
+    pass
 
 
 register_template(
@@ -78,6 +74,8 @@ class GLM4VTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
+        if self.mode == 'vllm':
+            return ['<|begin_of_image|><|endoftext|><|end_of_image|>']
         return [[-100]]
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -121,6 +119,11 @@ class GLM4_1VTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         # TODO: model video infer bug
+        if self.mode == 'vllm':
+            if media_type == 'image':
+                return ['<|begin_of_image|><|image|><|end_of_image|>']
+            elif media_type == 'video':
+                return ['<|begin_of_video|><|video|><|end_of_video|>']
         assert media_type in ['image']
         if media_type == 'image':
             return [[-100]]
@@ -233,6 +236,8 @@ register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTem
 register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template))
 
 register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4_0414Template))
+
+register_template(GLM4TemplateMeta(LLMTemplateType.glm4_5, template_cls=ThinkingTemplate))
 
 register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
 

@@ -11,8 +11,9 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
 
+import json
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -250,12 +251,26 @@ def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> int:
     return port
 
 
-def copy_files_by_pattern(source_dir, dest_dir, patterns):
+def copy_files_by_pattern(source_dir, dest_dir, patterns, exclude_patterns=None):
     if not os.path.exists(dest_dir):
         os.makedirs(dest_dir)
 
     if isinstance(patterns, str):
         patterns = [patterns]
+
+    if exclude_patterns is None:
+        exclude_patterns = []
+    elif isinstance(exclude_patterns, str):
+        exclude_patterns = [exclude_patterns]
+
+    def should_exclude_file(file_path, file_name):
+        for exclude_pattern in exclude_patterns:
+            if fnmatch.fnmatch(file_name, exclude_pattern):
+                return True
+            rel_file_path = os.path.relpath(file_path, source_dir)
+            if fnmatch.fnmatch(rel_file_path, exclude_pattern):
+                return True
+        return False
 
     for pattern in patterns:
         pattern_parts = pattern.split(os.path.sep)
@@ -271,6 +286,10 @@ def copy_files_by_pattern(source_dir, dest_dir, patterns):
                 for file in files:
                     if fnmatch.fnmatch(file, file_pattern):
                         file_path = os.path.join(root, file)
+
+                        if should_exclude_file(file_path, file):
+                            continue
+
                         target_dir = os.path.join(dest_dir, rel_path)
                         if not os.path.exists(target_dir):
                             os.makedirs(target_dir)
@@ -285,6 +304,10 @@ def copy_files_by_pattern(source_dir, dest_dir, patterns):
             for file_path in matched_files:
                 if os.path.isfile(file_path):
                     file_name = os.path.basename(file_path)
+
+                    if should_exclude_file(file_path, file_name):
+                        continue
+
                     destination = os.path.join(dest_dir, file_name)
                     if not os.path.exists(destination):
                         shutil.copy2(file_path, destination)
@@ -321,3 +344,22 @@ def import_external_file(file_path: str):
     assert os.path.isdir(py_dir), f'py_dir: {py_dir}'
     sys.path.insert(0, py_dir)
     return importlib.import_module(py_file.split('.', 1)[0])
+
+
+def json_parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Union[str, Dict]:
+    """Convert a JSON string or JSON file into a dict"""
+    # If the value could potentially be a string, it is generally advisable to set strict to False.
+    if value is None:
+        value = {}
+    elif isinstance(value, str):
+        if os.path.exists(value):  # local path
+            with open(value, 'r', encoding='utf-8') as f:
+                value = json.load(f)
+        else:  # json str
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                if strict:
+                    logger.error(f"Unable to parse string: '{value}'")
+                    raise
+    return value

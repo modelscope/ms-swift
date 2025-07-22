@@ -183,12 +183,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
     def set_default_max_tokens(self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
         max_model_len = self.max_model_len
-        if isinstance(inputs, dict):
-            inputs = [inputs]
+        assert isinstance(inputs, dict)
         # The num_tokens takes the maximum value from inputs_list.
-        num_tokens = 0
-        for inp in inputs:
-            num_tokens = max(num_tokens, self._get_num_tokens(inp))
+        num_tokens = self._get_num_tokens(inputs)
         max_tokens = request_config.max_tokens
         if max_model_len is None:
             max_model_len = 8192
@@ -227,9 +224,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         return {'content': res}
 
     @staticmethod
-    def _get_finish_reason(max_tokens: int, num_prompt_tokens: int, is_finished: bool):
+    def _get_finish_reason(max_tokens: int, completion_tokens: int, is_finished: bool):
         if is_finished:
-            if num_prompt_tokens >= max_tokens:
+            if completion_tokens >= max_tokens:
                 finish_reason = 'length'
             else:
                 finish_reason = 'stop'
@@ -285,3 +282,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                     error_list.append((i, e))
                     continue
         return batched_inputs, error_list
+
+    @staticmethod
+    def _add_error_list(outputs, error_list):
+        for i, error in error_list:
+            outputs.insert(i, error)
+        return outputs

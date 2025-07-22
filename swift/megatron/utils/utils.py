@@ -1,11 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
+from typing import Optional, Tuple
 
 import torch.distributed as dist
 from megatron.core import mpu
 from megatron.core.extensions.transformer_engine import TEGroupedLinear, TELayerNormColumnParallelLinear, TELinear
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
-from megatron.training import get_args
+from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint, sharded_state_dict_default
+from megatron.training import checkpointing, get_args
 
 from swift.utils import activate_parameters, find_layers, freeze_parameters, get_logger, get_model_parameter_info
 
@@ -96,7 +98,6 @@ def adapter_state_dict_context():
     if args.train_type == 'full':
         yield
         return
-    from megatron.training import checkpointing
     _origin_generate_state_dict = checkpointing.generate_state_dict
 
     def generate_state_dict(args, model, *_args, **kwargs):
@@ -121,3 +122,35 @@ def adapter_state_dict_context():
         yield
     finally:
         checkpointing.generate_state_dict = _origin_generate_state_dict
+
+
+def tuners_sharded_state_dict(
+        module,
+        prefix: str = '',
+        sharded_offsets: Tuple[Tuple[int, int, int]] = (),
+        metadata: Optional[dict] = None,
+):
+    sharded_state_dict = {}
+    # Save parameters
+    module._save_to_state_dict(sharded_state_dict, '', keep_vars=True)
+    sharded_state_dict = make_sharded_tensors_for_checkpoint(
+        sharded_state_dict, prefix, sharded_offsets=sharded_offsets)
+    # Recurse into submodules
+    for name, module in module.named_children():
+        if 'Dict' in module.__class__.__name__:
+            modules = module.named_children()
+        else:
+            modules = [(None, module)]
+        for n, m in modules:
+            _prefix = f'{prefix}{name}.' if n is None else f'{prefix}{name}.{n}.'
+            sharded_state_dict.update(sharded_state_dict_default(m, _prefix, sharded_offsets, metadata))
+    return sharded_state_dict
+
+
+def copy_original_module_weight(model):
+    for module in model.modules():
+        if 'ModulesToSaveWrapper' in module.__class__.__name__ and hasattr(module, 'original_module'):
+            original_module = module.original_module
+            modules_to_save = module.modules_to_save
+            if 'default' in modules_to_save:
+                original_module.load_state_dict(modules_to_save['default'].state_dict())

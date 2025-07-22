@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional, Union
 
-from swift.utils import get_logger
+from swift.utils import get_logger, json_parse_to_dict
 from .base_args import to_abspath
 from .deploy_args import DeployArguments
 
@@ -53,9 +53,9 @@ class EvalArguments(DeployArguments):
         super().__post_init__()
         self._init_eval_url()
         self._init_eval_dataset()
-        self.dataset_args = self.parse_to_dict(self.dataset_args)
-        self.eval_generation_config = self.parse_to_dict(self.eval_generation_config)
-        self.extra_eval_args = self.parse_to_dict(self.extra_eval_args)
+        self.dataset_args = json_parse_to_dict(self.dataset_args)
+        self.eval_generation_config = json_parse_to_dict(self.eval_generation_config)
+        self.extra_eval_args = json_parse_to_dict(self.extra_eval_args)
         self.eval_output_dir = to_abspath(self.eval_output_dir)
         logger.info(f'eval_output_dir: {self.eval_output_dir}')
 

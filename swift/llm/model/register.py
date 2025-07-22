@@ -450,6 +450,7 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     torch_dtype = HfConfigFactory.get_torch_dtype(config, quant_info)
     max_model_len = HfConfigFactory.get_max_model_len(config)
     rope_scaling = HfConfigFactory.get_config_attr(config, 'rope_scaling')
+    is_moe_model = HfConfigFactory.is_moe_model(config)
 
     if model_type is None:
         model_type = _read_args_json_model_type(model_dir)
@@ -471,7 +472,9 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
         max_model_len,
         quant_info.get('quant_method'),
         quant_info.get('quant_bits'),
-        rope_scaling=rope_scaling)
+        rope_scaling=rope_scaling,
+        is_moe_model=is_moe_model,
+    )
     return res
 
 
@@ -559,6 +562,7 @@ def get_model_tokenizer(
         quantization_config=None,
         max_memory: Union[str, Dict[str, Any]] = None,
         attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
+        new_special_tokens: Optional[List[str]] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
         automodel_class=None,
         task_type: Literal['causal_lm', 'seq_cls', 'reranker', 'generative_reranker'] = None,
@@ -617,6 +621,13 @@ def get_model_tokenizer(
         patch_getattr(processor.__class__, 'tokenizer')
     else:
         tokenizer = processor
+    if new_special_tokens:
+        num_new_tokens = tokenizer.add_special_tokens({'additional_special_tokens': new_special_tokens})
+        if num_new_tokens > 0:
+            logger.info(f'Added {num_new_tokens} new special tokens.')
+            if model is not None and model.config.vocab_size < len(tokenizer):
+                model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=128)
+
     problem_type = kwargs.get('problem_type')
     if problem_type is None and model_info.num_labels == 1:
         problem_type = 'regression'

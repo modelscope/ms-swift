@@ -69,7 +69,7 @@ class SwiftInfer(SwiftPipeline):
             seed = args.seed
             if is_dist():
                 # Ensure that different data-parallel processes have different seeds.
-                seed += get_dist_setting()[0] // args.tensor_parallel_size
+                seed += get_dist_setting()[0] // args.vllm_tensor_parallel_size
                 kwargs['distributed_executor_backend'] = 'external_launcher'
             kwargs['seed'] = seed
         elif infer_backend == 'sglang':
@@ -93,6 +93,18 @@ class SwiftInfer(SwiftPipeline):
             logger.info(f'The inference results have been saved to result_path: `{args.result_path}`.')
         return result
 
+    @staticmethod
+    def parse_data_from_response(response):
+        if hasattr(response, 'choices'):
+            return response.choices[0].message.content
+        elif hasattr(response, 'data'):
+            emb = response.data[0].embedding
+            shape = len(emb)
+            sample = str(emb)
+            if len(emb) > 6:
+                sample = str(emb[:3])[:-1] + ', ..., ' + str(emb[-3:])[1:]
+            return f'Embedding(shape: [1, {shape}]): {sample}'
+
     def infer_single(self, infer_request: Union[InferRequest, Dict[str, Any]], request_config: RequestConfig) -> str:
         res_or_gen = self.infer([infer_request],
                                 request_config,
@@ -107,7 +119,7 @@ class SwiftInfer(SwiftPipeline):
                 response += delta
             print()
         else:
-            response = res_or_gen.choices[0].message.content
+            response = self.parse_data_from_response(res_or_gen)
             print(response)
         print('-' * 50)
         return response
@@ -235,6 +247,7 @@ class SwiftInfer(SwiftPipeline):
                 result_list += self._batch_infer(shard_dataset, request_config)
                 idx += shard_size
                 prog_bar.update(shard_size)
+            prog_bar.close()
             metrics = self.infer_kwargs.pop('metrics')
             if result_list:
                 print(f'[rank{args.rank}] {metrics[0].compute()}')
@@ -246,8 +259,8 @@ class SwiftInfer(SwiftPipeline):
         args = self.args
         result_list = []
         if args.infer_backend == 'vllm':
-            rank = args.rank // args.tensor_parallel_size if args.rank >= 0 else -1
-            data_parallel_size = args.global_world_size // args.tensor_parallel_size
+            rank = args.rank // args.vllm_tensor_parallel_size if args.rank >= 0 else -1
+            data_parallel_size = args.global_world_size // args.vllm_tensor_parallel_size
         else:
             rank, data_parallel_size = args.rank, args.global_world_size
         if rank >= 0 and data_parallel_size > 1:
@@ -262,7 +275,7 @@ class SwiftInfer(SwiftPipeline):
             labels_list.append(labels)
 
         resp_list = self.infer(val_dataset, request_config, template=self.template, use_tqdm=True, **self.infer_kwargs)
-        if not (args.infer_backend == 'vllm' and rank >= 0 and args.rank % args.tensor_parallel_size != 0):
+        if not (args.infer_backend == 'vllm' and rank >= 0 and args.rank % args.vllm_tensor_parallel_size != 0):
             for data, resp, labels in zip(val_dataset, resp_list, labels_list):
                 response = resp.choices[0].message.content
                 data['messages'].append({'role': 'assistant', 'content': response})

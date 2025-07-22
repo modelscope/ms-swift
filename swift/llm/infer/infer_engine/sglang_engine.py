@@ -12,9 +12,13 @@ from transformers import GenerationConfig
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
+from swift.utils import get_logger
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
+                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
+                        EmbeddingResponseData, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
+
+logger = get_logger()
 
 
 class SglangEngine(InferEngine):
@@ -43,6 +47,7 @@ class SglangEngine(InferEngine):
         log_level='error',
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
+        task_type: Optional[str] = None,
     ):
         if engine_kwargs is None:
             engine_kwargs = {}
@@ -56,6 +61,9 @@ class SglangEngine(InferEngine):
             hub_token=hub_token,
             revision=revision)[1]
         self._post_init(template)
+        if context_length is not None:
+            self.max_model_len = context_length
+            logger.info(f'Setting max_model_len: {context_length}')
         if self.max_model_len is not None:
             self.max_model_len -= 1
         parameters = inspect.signature(ServerArgs).parameters
@@ -77,6 +85,9 @@ class SglangEngine(InferEngine):
             log_level=log_level,
             **engine_kwargs,
         )
+        self.task_type = task_type
+        if task_type == 'embedding':
+            self.server_args.is_embedding = True
         self.engine = sgl.Engine(server_args=self.server_args)
         self._load_generation_config()
 
@@ -151,10 +162,16 @@ class SglangEngine(InferEngine):
             template = self.default_template
 
         template.set_mode('pt')
+        if self.task_type == 'embedding':
+            # TODO Refactor me
+            template.infer_backend = 'sglang'
+            template.task_type = self.task_type
+            template.set_mode('embedding')
         loop = asyncio.get_running_loop()
         with torch.inference_mode():
             inputs = await loop.run_in_executor(None, template.encode, infer_request)
-
+        if self.task_type == 'embedding':
+            inputs.pop('length', None)
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)
@@ -163,8 +180,24 @@ class SglangEngine(InferEngine):
             kwargs = pre_infer_hook(kwargs)
         if request_config.stream:
             return self._infer_stream_async(**kwargs)
+        elif self.task_type == 'embedding':
+            kwargs.pop('generation_config', None)
+            return await self._infer_embedding_async(**kwargs)
         else:
             return await self._infer_full_async(**kwargs)
+
+    async def _infer_embedding_async(self, template: Template, inputs: Dict[str, Any]) -> EmbeddingResponse:
+        from sglang.srt.managers.io_struct import EmbeddingReqInput
+        obj = EmbeddingReqInput(
+            input_ids=inputs['input_ids'], image_data=inputs.get('images'), audio_data=inputs.get('audios'))
+        generator = self.engine.tokenizer_manager.generate_request(obj, None)
+        output = await generator.__anext__()
+        usage_info = self._get_usage_info(output['meta_info']['prompt_tokens'], 0)
+        return EmbeddingResponse(
+            model=self.model_name,
+            data=[EmbeddingResponseData(embedding=output['embedding'])],
+            usage=usage_info,
+            id=random_uuid())
 
     async def _infer_full_async(self, template: Template, inputs: Dict[str, Any],
                                 generation_config: Dict[str, Any]) -> ChatCompletionResponse:

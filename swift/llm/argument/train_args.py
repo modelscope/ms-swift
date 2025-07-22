@@ -10,7 +10,7 @@ from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
 from swift.trainers.arguments import TrainArgumentsMixin
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
-                         is_mp, is_pai_training_job, is_swanlab_available)
+                         is_mp, is_pai_training_job, is_swanlab_available, json_parse_to_dict)
 from .base_args import BaseArguments, to_abspath
 from .tuner_args import TunerArguments
 
@@ -108,7 +108,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
 
     Args:
         add_version (bool): Flag to add version information to output_dir. Default is True.
-        resume_only_model (bool): Flag to resume training only the model. Default is False.
         loss_type (Optional[str]): Type of loss function to use. Default is None.
         packing (bool): Flag to enable packing of datasets. Default is False.
         lazy_tokenize (Optional[bool]): Flag to enable lazy tokenization. Default is None.
@@ -118,7 +117,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
         metric (Optional[str]): Metric to use for evaluation, define it in the plugin package. Default is None.
     """
     add_version: bool = True
-    resume_only_model: bool = False
     create_checkpoint_symlink: bool = False
     lazy_tokenize: Optional[bool] = None
 
@@ -186,7 +184,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
         self.training_args = TrainerFactory.get_training_args(self)
         self.training_args.remove_unused_columns = False
         self._add_version()
-        self._check_packing()
 
         if 'swanlab' in self.report_to:
             self._init_swanlab()
@@ -209,7 +206,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                     self.deepspeed = os.path.join(ds_config_folder, ds_config)
                     break
 
-            self.deepspeed = self.parse_to_dict(self.deepspeed)
+            self.deepspeed = json_parse_to_dict(self.deepspeed)
             if self.zero_hpz_partition_size is not None:
                 assert 'zero_optimization' in self.deepspeed
                 self.deepspeed['zero_optimization']['zero_hpz_partition_size'] = self.zero_hpz_partition_size

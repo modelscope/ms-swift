@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, List, Optional
 
+import torch
+
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -18,11 +20,12 @@ class PixtralTemplate(Template):
         images = inputs.images
         input_ids = encoded['input_ids']
         labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
         idx_list = findall(input_ids, 10)
         if idx_list:
             image_inputs = processor.image_processor(images, patch_size=processor.patch_size, return_tensors='pt')
-            encoded['pixel_values'] = image_inputs['pixel_values'][0]
-            image_sizes = image_inputs['image_sizes'][0]
+            encoded['pixel_values'] = image_inputs['pixel_values'].to(dtype=self.model_info.torch_dtype)
+            encoded['image_sizes'] = image_sizes = image_inputs['image_sizes']
 
             def _get_new_tokens(i):
                 height, width = image_sizes[i]
@@ -37,14 +40,20 @@ class PixtralTemplate(Template):
                 return img_tokens
 
             encoded['input_ids'], encoded['labels'] = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
+            encoded['loss_scale'] = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
 
         return encoded
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         pixel_values = self.gather_list(batch, 'pixel_values')
+        image_sizes = self.gather_list(batch, 'image_sizes')
         res = super()._data_collator(batch, padding_to=padding_to)
         if pixel_values:
+            pixel_values = torch.stack(pixel_values)
             res['pixel_values'] = pixel_values
+        if image_sizes:
+            image_sizes = torch.stack(image_sizes)
+            res['image_sizes'] = image_sizes
         return res
 
 
