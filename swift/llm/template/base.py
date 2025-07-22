@@ -1262,7 +1262,7 @@ class Template(ProcessorMixin):
         padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
         input_ids += [self.tokenizer.pad_token_id] * padding_len
         encoded['labels'] += [-100] * padding_len
-        if 'loss_scale' in encoded:
+        if encoded.get('loss_scale') is not None:
             encoded['loss_scale'] += [0] * padding_len
 
     def debug_logger(self, inputs):
