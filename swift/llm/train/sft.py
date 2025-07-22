@@ -17,6 +17,7 @@ from ..infer import prepare_generation_config
 from .tuner import TunerMixin
 
 logger = get_logger()
+FLASH_CKPT_WAIT_TIMEOUT = 1800
 
 
 class SwiftSft(SwiftPipeline, TunerMixin):
@@ -239,8 +240,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             trainer.train(trainer.args.resume_from_checkpoint)
         finally:
             res = self._save_trainer_state(trainer)
-        if os.environ.get('FLASH_CKPT') == 'true':
-            trainer.wait_latest_checkpoint(1800)
+            if os.environ.get('FLASH_CKPT') == 'true':
+                trainer.wait_latest_checkpoint(flash_ckpt_timeout=FLASH_CKPT_WAIT_TIMEOUT)
+
         return res
 
     def _prepare_callbacks(self):

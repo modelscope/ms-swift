@@ -52,6 +52,7 @@ except (ImportError, RuntimeError):
     AutoModelForCausalLMWithValueHead = None
 
 logger = get_logger()
+FLASH_CKPT_WAIT_TIMEOUT = 1800
 
 
 class SwiftMixin:
@@ -461,7 +462,7 @@ class SwiftMixin:
             step = int(f.read())
         return step
 
-    def wait_latest_checkpoint(self, timeout=1800):
+    def wait_latest_checkpoint(self, timeout=FLASH_CKPT_WAIT_TIMEOUT):
         """
         Wait for the latest checkpoint.
         Args:
@@ -559,9 +560,6 @@ class SwiftMixin:
             self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
 
         torch.save = torch_native_save
-
-        if self.args.push_to_hub:
-            self._push_from_checkpoint(output_dir)
 
         success = self.flash_checkpointer.save_checkpoint_to_storage(self.state.global_step)
         if not success:
