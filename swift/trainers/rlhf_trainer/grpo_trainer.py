@@ -1213,7 +1213,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         truncated_mask = inputs['truncated_mask']
 
         per_token_logps, entropies = self._get_per_token_logps_and_entropies(
-            model, inputs, compute_entropy=self.top_entropy_quantile < 1.0)
+            model, inputs, compute_entropy=self.compute_entropy)
 
         if self.compute_entropy:
             # fill the padded token with NaN
