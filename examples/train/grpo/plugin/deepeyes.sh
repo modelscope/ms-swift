@@ -13,13 +13,12 @@
 # {"name": <function-name>, "arguments": <args-json-object>}
 # </tool_call>
 
-# **Example**:  
-# <tool_call>  
-# {"name": "image_zoom_in_tool", "arguments": {"bbox_2d": [10, 20, 100, 200], "label": "the apple on the desk"}}  
+# **Example**:
+# <tool_call>
+# {"name": "image_zoom_in_tool", "arguments": {"bbox_2d": [10, 20, 100, 200], "label": "the apple on the desk"}}
 # </tool_call>'
 
 
 swift rlhf \
     --model Qwen/Qwen2.5-7B-VL-Instruct \
     --external_plugins examples/train/grpo/plugin/deepeyes.py \
-

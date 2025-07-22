@@ -3,10 +3,10 @@
 import base64
 import io
 import os
+import random
 import re
 from math import ceil, floor
 from typing import Any, Dict, List
-import random
 
 import json
 from openai import OpenAI
@@ -18,12 +18,12 @@ from swift.plugin.orm import ORM
 try:
     from math_verify import parse, verify
 except ImportError as e:
-    raise ImportError("please install math_verify by `pip install math_verify`") from e
+    raise ImportError('please install math_verify by `pip install math_verify`') from e
 """
 3 dataset file
-
-    1. data_thinklite_reasoning_acc:  data_source == 'thinklite_eureka'
-    2. data_0.1.2_visual_toolbox_v2.parquet : data_source == 'thinklite_eureka'
+    1. data_v0.8_visual_toolbox_v2.parquet:  data_source == 'chart' (vl_agent.compute_score)
+    2. data_0.1.2_visual_toolbox_v2.parquet : data_source == 'vstar' (vl_agent.compute_score)
+    3. data_thinklite_reasoning_acc.parquet: data_source == 'thinklite_eureka' (vl_agent.compute_score_math)
 
 plugin:
     1. Tool to resize and rotate
@@ -31,7 +31,7 @@ plugin:
 """
 
 MATH_VERIFY_PROMPT = """# CONTEXT #
-I am a teacher, and I have some high-level math problems. I am tasked with evaluating the correctness of a student's answer. 
+I am a teacher, and I have some high-level math problems. I am tasked with evaluating the correctness of a student's answer.
 Below, I am provided with a problem and a reference answer. Additionally, a student's answer is provided. My job is to assess whether the student's answer captures the same meaning as the reference answer, even when expressed with different wording or format.
 
 # OBJECTIVE #
@@ -59,11 +59,95 @@ Professional, scientific.
 {gold_ans}
 
 ## Student Final Answer
-{pred_ans}"""
+{pred_ans}"""# noqa
 
-# Whether to use the model for verification
-# set the url to call the model in DeepEyesReward.__init__
-USE_GEN_VERIFY = True
+
+def extract_answer(action_string: str) -> Dict[str, any]:
+    answer = re.findall(r'<answer>(.*?)</answer>', action_string, re.DOTALL)
+    return answer[-1] if answer else None
+
+
+def extract_action(action_string: str) -> Dict[str, Any]:
+    tool_call_match = re.findall(r'<tool_call>(.*?)</tool_call>', action_string, re.DOTALL)
+    return tool_call_match[-1] if tool_call_match else None
+
+
+def get_chat_template():
+    chat_template = """
+Below are two answers to a question. Question is [Question], [Standard Answer] is the standard answer to the question, and [Model_answer] is the answer extracted from a model's output to this question.  Determine whether these two answers are consistent.
+Note that [Model Answer] is consistent with [Standard Answer] whenever they are essentially the same. If the meaning is expressed in the same way, it is considered consistent, for example, 'pink' and 'it is pink'.
+If they are consistent, Judement is 1; if they are different, Judement is 0. Just output Judement and don't output anything else.\n\n
+"""# noqa
+    return chat_template
+
+
+def get_gpt4_score_ICE():
+    example_1 = """
+[Question]: Is the countertop tan or blue?
+[Standard Answer]: The countertop is tan.
+[Model_answer] : tan
+Judgement: 1
+""" # noqa
+
+    example_2 = """
+[Question]: On which side of the picture is the barrier?
+[Standard Answer]: The barrier is on the left side of the picture.
+[Model_answer] : left
+Judgement: 1
+""" # noqa
+
+    example_3 = """
+[Question]: Is the kite brown and large?
+[Standard Answer]: Yes, the kite is brown and large.
+[Model_answer] : Yes
+Judgement: 1
+""" # noqa
+
+    example_4 = """
+[Question]: Are the spots on a giraffe?
+[Standard Answer]: No, the spots are on a banana.
+[Model_answer] : no
+Judgement: 1
+""" # noqa
+
+    example_5 = """
+[Question]: Who is wearing pants?
+[Standard Answer]: The boy is wearing pants.
+[Model_answer] : The person in the picture is wearing pants.
+Judgement: 1
+""" # noqa
+
+    example_6 = """
+[Question]: Is the man phone both blue and closed?
+[Standard Answer]: Yes, the man phone is both blue and closed.
+[Model_answer] : No.
+Judgement: 0
+""" # noqa
+
+    example_7 = """
+[Question]: What color is the towel in the center of the picture?
+[Standard Answer]: The towel in the center of the picture is blue.
+[Model_answer] : The towel in the center of the picture is pink.
+Judgement: 0
+""" # noqa
+
+    return [example_1, example_2, example_3, example_4, example_5, example_6, example_7]
+
+
+def get_prompt(predict_str, ground_truth, question):
+    examples = get_gpt4_score_ICE()
+    chat_template = get_chat_template()
+    demo_prompt = chat_template
+    for example in examples:
+        demo_prompt += example + '\n\n'
+    test_prompt = f"""
+[Question]: {question}
+[Standard Answer]: {ground_truth}
+[Model_answer] : {predict_str}
+Judgement:"""
+    full_prompt = f'{demo_prompt}{test_prompt}'
+
+    return full_prompt
 
 
 def load_pil_image(img):
@@ -101,50 +185,26 @@ class DeepEyesReward(ORM):
 
     def __init__(self):
         super().__init__()
-        if USE_GEN_VERIFY:
-            try:
-                self.client = OpenAI(
-                    api_key='EMPTY',
-                    base_url=f'http://127.0.0.1:8000/v1',
-                )
-                self.verify_model_name = self.client.models.list().data[0].id
+        try:
+            self.client = OpenAI(
+                api_key='EMPTY',
+                base_url=f'http://127.0.0.1:8000/v1',
+            )
+            self.verify_model_name = self.client.models.list().data[0].id
+        except Exception as e:
+            raise RuntimeError('Failed to connect to the model service. Please deploy the model '
+                               "using 'swift deploy' or 'vllm serve'.") from e
 
-    def __call__(self, completions, solution, extra_info, **kwargs) -> List[float]:
+    def __call__(self, completions, solution, extra_info, data_source, **kwargs) -> List[float]:
         # reference: https://github.com/Visual-Agent/DeepEyes/blob/main/verl/utils/reward_score/vl_agent.py
-        questions = extra_info['question']
         rewards = []
-        for completion, sol, question in zip(completions, solution, questions):
-            is_format_error = False
-            # completion = "<think>" + completion
-            count_think_1 = completion.count("<think>")
-            count_think_2 = completion.count("</think>")
-            if count_think_1 != count_think_2:
-                is_format_error = True
-
-            model_answer = ""
-            predict_no_think = completion.split('</think>')[-1].strip()
-            answer_pattern = r'\\boxed{([^}]+)}'
-            answer_list = re.findall(answer_pattern, predict_no_think, flags=re.DOTALL)
-            if len(answer_list) == 0:
-                acc_reward = 0.0
-                is_format_error = True
+        for completion, sol, info, source in zip(completions, solution, extra_info, data_source):
+            if source in ['vstar', 'chart']:
+                rewards.append(self.compute_score(completion, sol, info))
+            elif source in ['thinklite_eureka']:
+                rewards.append(self.compute_score_math(completion, sol, info))
             else:
-                if len(answer_list) > 1:
-                    is_format_error = True
-
-                model_answer = answer_list[-1]
-                if rule_math_verify(sol, model_answer):
-                    acc_reward = 1.0
-                else:
-                    model_verify_reward = 0
-                    if USE_GEN_VERIFY:
-                        model_verify_reward = float(self.generative_verify(question, sol, model_answer))
-                    
-                    acc_reward = max(acc_reward, model_verify_reward)
-
-            format_reward = -1.0 if is_format_error else 0.0
-            reward = 1.2 * acc_reward + 0.4 * format_reward
-            rewards.append(reward)
+                raise NotImplementedError
 
         return rewards
 
@@ -155,38 +215,171 @@ class DeepEyesReward(ORM):
             pred_ans=model_answer,
         )
 
-        chat_messages = [{"role": "user", "content": full_prompt}]
-        response = ""
+        chat_messages = [{'role': 'user', 'content': full_prompt}]
+        response = ''
         for _ in range(8):
             try:
                 chat_response = self.client.chat.completions.create(
                     model=self.verify_model_name,
                     messages=chat_messages,
-                    seed = random.randint(0, 1000000),
+                    seed=random.randint(0, 1000000),
                     temperature=0.0,
                 )
                 response = chat_response.choices[0].message.content.strip()
                 break
-            except Exception as e:
+            except Exception:
                 continue
 
         judgement = response.split('## Equivalence Judgement')[-1].lower()
         return 'true' in judgement and 'false' not in judgement
 
+    def compute_score(self, predict_str: str, ground_truth: str, extra_info=None) -> float:
+        is_format_error = False
+        # predict_str = "<think>" + predict_str
+        count_think_1 = predict_str.count('<think>')
+        count_think_2 = predict_str.count('</think>')
+        if count_think_1 != count_think_2:
+            is_format_error = True
+
+        count_vision_1 = predict_str.count('<|vision_start|><|image_pad|>')
+        count_vision_2 = predict_str.count('<|image_pad|><|vision_end|>')
+        if count_vision_1 != count_vision_2:
+            is_format_error = True
+
+        predict_no_think = predict_str.split('</think>')[-1].strip()
+        count_answer_1 = predict_no_think.count('<answer>')
+        count_answer_2 = predict_no_think.count('</answer>')
+        if count_answer_1 != count_answer_2:
+            is_format_error = True
+
+        answer_text = predict_str.split('<answer>')[-1].split('</answer>')[0].strip()
+
+        # pattern = re.compile(r'<\|im_start\|>assistant(.*?)$', re.DOTALL)  # 匹配最后一个 target 后的所有内容
+        # match = pattern.search(predict_str)
+        # if match:
+        #     answer_text = match.group(1).strip()
+        #     print(f'DEBUG{answer_text=}')
+        # else:
+        #     answer_text = ""
+
+        question_text = extra_info['question']
+        full_prompt = get_prompt(answer_text, ground_truth, question_text)
+
+        chat_response = self.client.chat.completions.create(
+            model=self.verify_model_name,
+            messages=[
+                {
+                    'role': 'system',
+                    'content': 'You are a helpful assistant.'
+                },
+                {
+                    'role': 'user',
+                    'content': full_prompt
+                },
+            ],
+            seed=random.randint(0, 1000000),
+            temperature=0.3,
+        )
+        response = chat_response.choices[0].message.content.strip()
+        # print(response)
+        if 'Judgement:' in response:
+            response = response.split('Judgement:')[-1].strip()
+            if '1' in response:
+                acc_reward = 1.0
+            elif '0' in response:
+                acc_reward = 0.0
+            else:
+                print(f' [WARNING] resp format error {response=}')
+                acc_reward = 0.0
+        else:
+            if response == '1':
+                acc_reward = 1.0
+            elif response == '0':
+                acc_reward = 0.0
+            else:
+                print(f' [WARNING] resp format error {response=}')
+                acc_reward = 0.0
+
+        # Penalize for model trying to predict longer answer to hack llm-as-judge
+        if len(answer_text) >= 1000:
+            acc_reward = 0.0
+            is_format_error = True
+
+        tool_reward = 1.0 if count_vision_1 > 0 and acc_reward > 0.5 else 0.0
+        format_reward = -1.0 if is_format_error else 0.0
+
+        return 0.8 * acc_reward + 0.2 * format_reward + 1.2 * tool_reward
+
+    def compute_score_math(self, predict_str: str, ground_truth: str, extra_info=None) -> float:
+        is_format_error = False
+        # predict_str = "<think>" + predict_str
+        count_think_1 = predict_str.count('<think>')
+        count_think_2 = predict_str.count('</think>')
+        if count_think_1 != count_think_2:
+            is_format_error = True
+
+        model_answer = ''
+        predict_no_think = predict_str.split('</think>')[-1].strip()
+        answer_pattern = r'\\boxed{([^}]+)}'
+        answer_list = re.findall(answer_pattern, predict_no_think, flags=re.DOTALL)
+        if len(answer_list) == 0:
+            acc_reward = 0.0
+            is_format_error = True
+        else:
+            if len(answer_list) > 1:
+                is_format_error = True
+
+            model_answer = answer_list[-1]
+            if rule_math_verify(ground_truth, model_answer):
+                acc_reward = 1.0
+            else:
+                acc_reward = 0
+                full_prompt = MATH_VERIFY_PROMPT.format(
+                    query=extra_info['question'],
+                    gold_ans=ground_truth,
+                    pred_ans=model_answer,
+                )
+                response = ''
+                for it in range(8):
+                    try:
+                        chat_response = self.client.chat.completions.create(
+                            model=model_name,
+                            messages=[
+                                {
+                                    'role': 'user',
+                                    'content': full_prompt
+                                },
+                            ],
+                            seed=random.randint(0, 1000000),
+                            temperature=0.0,
+                        )
+                        response = chat_response.choices[0].message.content.strip()
+                        break
+                    except Exception:
+                        continue
+                judgement = response.split('## Equivalence Judgement')[-1].lower()
+                if 'true' in judgement and 'false' not in judgement:
+                    acc_reward = 1.0
+
+        format_reward = -1.0 if is_format_error else 0.0
+        return 1.2 * acc_reward + 0.4 * format_reward
+
 
 class VisualToolBoxScheduler(MultiTurnScheduler):
     name = 'visual_toolbox_v2'
-    user_prompt = '\nThink first, call **image_zoom_in_tool** if needed, then answer. Format strictly as:  <think>...</think>  <tool_call>...</tool_call> (if tools needed)  <answer>...</answer> '
+    user_prompt = ('\nThink first, call **image_zoom_in_tool** if needed, then answer. '
+                   'Format strictly as:  <think>...</think>  <tool_call>...</tool_call> (if tools needed)'
+                   '  <answer>...</answer> ')
 
     def __init__(self, max_turns=None, *args, **kwargs):
         super().__init__(max_turns, *args, **kwargs)
 
     def check_finished(self, infer_request, result, current_turn):
         last_completion = infer_request.messages[-1]['content']
-        answer = self.extract_answer(last_completion)
+        answer = extract_answer(last_completion)
         if answer:
             return True
-        action = self.extract_action(last_completion)
+        action = extract_action(last_completion)
         if not action:
             return True
 
@@ -194,7 +387,7 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
 
     def step(self, infer_request, result, current_turn):
         completion = result.message.content
-        action = self.extract_action(completion)
+        action = extract_action(completion)
         cropped_img = None
         try:
             tool_call = json.loads(action.strip())
@@ -211,7 +404,7 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
             origin_width = img.width
             bbox = self.maybe_resize_bbox(*bbox, origin_width, origin_height)
             cropped_img = img.crop(bbox)
-            query = '<tool_response>' + '<image>' + self.user_prompt + '</tool_response>' + '<|im_end|>\n<|im_start|>assistant\n'
+            query = '<tool_response>' + '<image>' + self.user_prompt + '</tool_response>'
         except Exception as e:
             error_msg = f'Invalid tool call format: {action.strip()}. Error: {e}'
             query = f'Error: {str(error_msg)}'
@@ -221,14 +414,6 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
             infer_request.images.append(cropped_img)
 
         return infer_request
-
-    def extract_answer(self, action_string: str) -> Dict[str, any]:
-        answer = re.findall(r'<answer>(.*?)</answer>', action_string, re.DOTALL)
-        return answer[-1] if answer else None
-
-    def extract_action(self, action_string: str) -> Dict[str, Any]:
-        tool_call_match = re.findall(r'<tool_call>(.*?)</tool_call>', action_string, re.DOTALL)
-        return tool_call_match[-1] if tool_call_match else None
 
     def validate_bbox(self, left, top, right, bottom):
         try:

@@ -716,5 +716,23 @@
             "prompt": "messages"
         },
         "tags": ["docqa", "rl", "long-sequence"]
+    },
+    {
+        "ms_dataset_id": "../data/data_0.1.2_visual_toolbox_v2.parquet",
+        "columns": {
+            "prompt": "messages"
+        }
+    },
+    {
+        "ms_dataset_id": "../data/data_thinklite_reasoning_acc.parquet",
+        "columns": {
+            "prompt": "messages"
+        }
+    },
+    {
+        "ms_dataset_id": "../data/data_v0.8_visual_toolbox_v2.parquet",
+        "columns": {
+            "prompt": "messages"
+        }
     }
 ]
