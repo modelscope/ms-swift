@@ -3,7 +3,7 @@
 import inspect
 import logging
 import os
-# dlrover flash ckeckpoint
+# dlrover flash checkpoint
 import re
 import shutil
 import time
