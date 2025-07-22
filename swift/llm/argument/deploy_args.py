@@ -91,6 +91,11 @@ class RolloutArguments(DeployArguments):
     context_manager: Optional[str] = None
 
     def __post_init__(self):
+        try:
+            from trl.scripts.vllm_serve import WeightSyncWorkerExtension
+        except ImportError as e:
+            raise ImportError("Could not import 'WeightSyncWorkerExtension' from 'trl.scripts.vllm_serve'. "
+                              "Please upgrade your 'trl' package.") from e
         super().__post_init__()
 
         if self.use_async_engine is None:
