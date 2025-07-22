@@ -77,10 +77,10 @@ def get_batch_on_this_tp_rank(data_iterator):
         _broadcast(flags)
         seq_length, is_finished, has_loss_scale = flags.tolist()
         if args.padding_free:
-            micro_batch_size = args.micro_batch_size  # use qkv_format 'thd'
+            micro_batch_size = args.micro_batch_size
             attention_mask = None
         else:
-            micro_batch_size = 1
+            micro_batch_size = 1  # use qkv_format 'thd'
             attention_mask = torch.empty((micro_batch_size, 1, seq_length, seq_length),
                                          dtype=torch.bool,
                                          device=torch.cuda.current_device())
