@@ -19,7 +19,8 @@
         "overlap_comm": false,
         "reduce_scatter": true,
         "reduce_bucket_size": 2e8,
-        "contiguous_gradients": true
+        "contiguous_gradients": true,
+        "gather_16bit_weights_on_model_save": true
     },
 
     "tensor_parallel":{
