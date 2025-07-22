@@ -686,11 +686,39 @@ def _patch_peft_ModulesToSaveWrapper():
     peft_module.ModulesToSaveWrapper = NewModulesToSaveWrapper
 
 
+def _patch_TransformerLayer():
+    from megatron.core.transformer import TransformerLayer
+
+    def forward(self, *args, **kwargs):
+        """
+        Perform a forward pass through the transformer layer.
+
+        This method calls the core computation of a transformer layer, including
+        self-attention, cross-attention (if applicable), and feed-forward operations.
+        """
+        from megatron.training import get_args
+        hidden_states, context = self._forward_attention(*args, **kwargs)
+        args = get_args()
+        mlp_padding_free = args.mlp_padding_free and 'attention_mask' in kwargs
+        if mlp_padding_free:
+            mask = (kwargs['attention_mask'].sum(dim=(1, 3)) > 0).t()
+            hidden_states = hidden_states[mask][:, None]
+        output = self._forward_mlp(hidden_states, kwargs.get('inference_context', None))
+        if mlp_padding_free:
+            new_output = hidden_states.new_zeros((*mask.shape, output.shape[-1]))
+            new_output[mask] = output.squeeze(1)
+            output = new_output
+        return output, context
+
+    TransformerLayer.forward = forward
+
+
 def _patch_megatron():
     _patch_transformer_engine()
     _patch__batched_p2p_ops()
     _patch_mla_attention()
     _patch_TEGroupedLinear()
+    _patch_TransformerLayer()
     from swift.megatron import tuners  # patch lora
     try:
         _patch_peft_BaseTuner()
