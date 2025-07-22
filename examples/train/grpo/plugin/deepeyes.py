@@ -13,7 +13,7 @@ from openai import OpenAI
 from PIL import Image
 
 from swift.plugin.multi_turn import MultiTurnScheduler, multi_turns
-from swift.plugin.orm import ORM
+from swift.plugin.orm import ORM, orms
 
 try:
     from math_verify import parse, verify
@@ -363,6 +363,9 @@ class DeepEyesReward(ORM):
 
         format_reward = -1.0 if is_format_error else 0.0
         return 1.2 * acc_reward + 0.4 * format_reward
+
+
+orms['deepeyes_reward'] = DeepEyesReward
 
 
 class VisualToolBoxScheduler(MultiTurnScheduler):
