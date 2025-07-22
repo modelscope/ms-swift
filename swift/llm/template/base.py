@@ -1639,16 +1639,8 @@ class Template(ProcessorMixin):
         for key, pad_value in zip(keys, pad_values):
             if key not in res:
                 continue
-            if self.use_megatron and not self._packing:
-                cp_size = self.sequence_parallel_size
-                if key == 'attention_mask':
-                    continue
-                elif key == 'position_ids' and cp_size > 1:
-                    padding_len = padding_to - seq_lens[0]
-                    position_ids = res['position_ids'][0].tolist()
-                    position_ids += list(range(cp_size * 2)) * (padding_len // (cp_size * 2))
-                    res['position_ids'][0] = torch.tensor(position_ids)
-                    continue
+            if self.use_megatron and not self._packing and key == 'attention_mask':
+                continue
             if padding_to is not None:
                 padding_len = padding_to - seq_lens[0]
                 if padding_len > 0:
