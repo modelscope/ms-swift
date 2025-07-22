@@ -77,6 +77,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
     padding_free: bool = True
+    mlp_padding_free: Optional[bool] = None
     # streaming dataloader
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 10
@@ -268,6 +269,8 @@ class MegatronArguments(ExtraMegatronArguments):
     extra_megatron_kwargs: Optional[Union[dict, str]] = None
 
     def _set_default(self):
+        if self.mlp_padding_free is None:
+            self.mlp_padding_free = not self.padding_free
         if self.lr is None:
             if self.train_type == 'full':
                 self.lr = 1e-5
