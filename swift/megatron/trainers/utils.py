@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 import torch
 from megatron.core import mpu
 from megatron.core.packed_seq_params import PackedSeqParams
+from megatron.core.utils import get_batch_on_this_cp_rank as mcore_get_batch_on_this_cp_rank
 from megatron.training import get_args
 
 
@@ -75,18 +76,19 @@ def get_batch_on_this_tp_rank(data_iterator):
         flags = torch.empty((3), dtype=torch.int64, device=torch.cuda.current_device())
         _broadcast(flags)
         seq_length, is_finished, has_loss_scale = flags.tolist()
-        micro_batch_size = 1  # use qkv_format 'thd'
+        if args.padding_free:
+            micro_batch_size = 1  # use qkv_format 'thd'
+            attention_mask = None
+        else:
+            micro_batch_size = args.micro_batch_size
+            attention_mask = torch.empty((micro_batch_size, 1, seq_length, seq_length),
+                                         dtype=torch.bool,
+                                         device=torch.cuda.current_device())
         input_ids = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
         labels = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
         loss_scale = torch.empty(
             (micro_batch_size,
              seq_length), dtype=torch.float32, device=torch.cuda.current_device()) if has_loss_scale else None
-        if args.create_attention_mask_in_dataloader:
-            attention_mask = torch.empty((micro_batch_size, 1, seq_length, seq_length),
-                                         dtype=torch.bool,
-                                         device=torch.cuda.current_device())
-        else:
-            attention_mask = None
         position_ids = torch.empty((micro_batch_size, seq_length),
                                    dtype=torch.int64,
                                    device=torch.cuda.current_device())
@@ -177,7 +179,9 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
     # that we can get balanced workload among GPUs in a context parallel group.
     cp_size = mpu.get_context_parallel_world_size()
     if cp_size > 1:
-        packed_seq_params = batch['packed_seq_params']
+        packed_seq_params = batch.get('packed_seq_params')
+        if packed_seq_params is None:
+            return mcore_get_batch_on_this_cp_rank(batch)
         for key, val in batch.items():
             if key == 'packed_seq_params':
                 continue
@@ -196,7 +200,9 @@ def get_batch(data_iterator):
 
     # get batches based on the TP rank you are on
     batch = get_batch_on_this_tp_rank(data_iterator)
-    batch['packed_seq_params'] = get_packed_seq_params(batch['position_ids'])
+    args = get_args()
+    if args.padding_free:
+        batch['packed_seq_params'] = get_packed_seq_params(batch['position_ids'])
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch)
     return batch
