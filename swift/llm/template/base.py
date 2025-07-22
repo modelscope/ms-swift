@@ -1641,7 +1641,9 @@ class Template(ProcessorMixin):
                 continue
             if self.use_megatron and not self._packing:
                 cp_size = self.sequence_parallel_size
-                if key == 'position_ids' and cp_size > 1:
+                if key == 'attention_mask':
+                    contineu
+                elif key == 'position_ids' and cp_size > 1:
                     padding_len = padding_to - seq_lens[0]
                     position_ids = res['position_ids'][0].tolist()
                     position_ids += list(range(cp_size * 2)) * (padding_len // (cp_size * 2))
