@@ -1634,7 +1634,6 @@ class Template(ProcessorMixin):
                 if padding_to is not None:
                     padding_to = math.ceil(max(seq_lens) / padding_to) * padding_to
             else:
-                assert padding_to is None or padding_to <= 64, f'padding_to: {padding_to}'
                 padding_to = math.ceil(max(seq_lens) / 64) * 64
                 res['attention_mask'] = torch.tril(torch.ones(
                     (len(seq_lens), padding_to, padding_to),
