@@ -108,7 +108,6 @@ class DeepEyesReward(ORM):
                     base_url=f'http://127.0.0.1:8000/v1',
                 )
                 self.verify_model_name = self.client.models.list().data[0].id
-            
 
     def __call__(self, completions, solution, extra_info, **kwargs) -> List[float]:
         # reference: https://github.com/Visual-Agent/DeepEyes/blob/main/verl/utils/reward_score/vl_agent.py
@@ -137,7 +136,11 @@ class DeepEyesReward(ORM):
                 if rule_math_verify(sol, model_answer):
                     acc_reward = 1.0
                 else:
-                    acc_reward = 1.0 if self.generative_verify(question, sol, model_answer) else 0.0
+                    model_verify_reward = 0
+                    if USE_GEN_VERIFY:
+                        model_verify_reward = float(self.generative_verify(question, sol, model_answer))
+                    
+                    acc_reward = max(acc_reward, model_verify_reward)
 
             format_reward = -1.0 if is_format_error else 0.0
             reward = 1.2 * acc_reward + 0.4 * format_reward
