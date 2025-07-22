@@ -152,6 +152,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         except ImportError as e:
             raise ImportError("Could not import 'WeightSyncWorkerExtension' from 'trl.scripts.vllm_serve'. "
                               "Please upgrade your 'trl' package.") from e
+
         super().__init__(args)
         self.use_gym_env = self.args.use_gym_env
         self.use_async_engine = self.args.use_async_engine
