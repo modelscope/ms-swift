@@ -428,6 +428,7 @@ lora训练：
 Megatron训练参数继承自Megatron参数和基本参数。基本参数的内容可以参考[这里](./命令行参数.md#基本参数)。此外还包括以下参数：
 
 - add_version: 在`save`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
+- padding_free: 将一个batch中的数据进行展平而避免数据padding，从而降低显存占用并加快训练。默认为True。
 - 🔥packing: 是否使用序列packing，默认为False。当前支持`megatron pt/sft`。
 - packing_cache: 指定 packing 缓存目录。默认值为`None`，表示缓存将存储在环境变量 `$MODELSCOPE_CACHE`所指定的路径下。在跨节点使用 packing 功能时，需确保所有节点的 packing 缓存路径共享且一致。你可以通过设置`MODELSCOPE_CACHE`环境变量，或在命令行中添加 `--packing_cache <shared_path>`参数来实现这一要求。
   - 注意：该参数将在"ms-swift>=3.7"被移除。多机packing不再需要设置packing_cache。
