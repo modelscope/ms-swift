@@ -76,6 +76,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     initialize_embedding: bool = False
     rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[torch.dtype] = None
+    padding_free: bool = True
     # streaming dataloader
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 10
@@ -262,7 +263,6 @@ class MegatronArguments(ExtraMegatronArguments):
     seed: int = 42
     seq_length: Optional[int] = None
     num_workers: int = 4
-    no_create_attention_mask_in_dataloader: bool = True
 
     # extra_args for megatron
     extra_megatron_kwargs: Optional[Union[dict, str]] = None

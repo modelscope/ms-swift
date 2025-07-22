@@ -44,6 +44,8 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
 
     def __post_init__(self):
         self.sequence_parallel_size = self.context_parallel_size
+        if self.packing:
+            self.padding_free = True
         self.load = to_abspath(self.load, check_path_exist=True)
         BaseArguments.__post_init__(self)
         self._init_save()
