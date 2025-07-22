@@ -132,6 +132,9 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     # zero++
     zero_hpz_partition_size: Optional[int] = None
 
+    # auto_tp
+    deepspeed_autotp_size: Optional[int] = None
+
     def _init_lazy_tokenize(self):
         if self.streaming and self.lazy_tokenize:
             self.lazy_tokenize = False
@@ -199,7 +202,10 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
             ds_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ds_config'))
             deepspeed_mapping = {
                 name: f'{name}.json'
-                for name in ['zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload']
+                for name in [
+                    'zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload', 'zero0_autotp',
+                    'zero1_autotp', 'zero2_autotp'
+                ]
             }
             for ds_name, ds_config in deepspeed_mapping.items():
                 if self.deepspeed == ds_name:
@@ -212,6 +218,8 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                 self.deepspeed['zero_optimization']['zero_hpz_partition_size'] = self.zero_hpz_partition_size
                 logger.warn('If `zero_hpz_partition_size`(ZeRO++) causes grad_norm NaN, please'
                             ' try `--torch_dtype float16`')
+            if self.deepspeed_autotp_size and 'tensor_parallel' in self.deepspeed:
+                self.deepspeed['tensor_parallel']['autotp_size'] = self.deepspeed_autotp_size
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
     def _handle_pai_compat(self) -> None:

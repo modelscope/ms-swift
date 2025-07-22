@@ -9,13 +9,15 @@ from swift.llm import to_device
 
 class BatchSamplerShard:
 
-    def __init__(self, total_samples: int, batch_size: int, shuffle: bool, drop_last: bool, data_seed: Optional[int]):
-        self.total_samples = total_samples // self.world_size
+    def __init__(self, total_samples: int, batch_size: int, shuffle: bool, drop_last: bool, data_seed: Optional[int],
+                 ds_tensor_parallel_size: Optional[int]):
+        self.total_samples = total_samples // self.world_size * ds_tensor_parallel_size
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.drop_last = drop_last
         self.base_seed = data_seed or 0
         self.curr_seed = self.base_seed
+        self.ds_tensor_parallel_size = ds_tensor_parallel_size
 
     @property
     def rank(self):
@@ -26,7 +28,7 @@ class BatchSamplerShard:
         return dist.get_world_size() if dist.is_initialized() else 1
 
     def __iter__(self):
-        start_idx = self.rank * self.total_samples
+        start_idx = self.rank // self.ds_tensor_parallel_size * self.total_samples
         if self.shuffle:
             generator = torch.Generator()
             generator.manual_seed(self.curr_seed)
