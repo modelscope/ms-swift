@@ -81,11 +81,11 @@ def get_multimodal_target_regex(
         sub_module = deep_getattr(model, module)
         target_modules = find_all_linears(sub_module, model_arch, extra_layers)
         target_modules = [tm for tm in target_modules if tm]
-        target_pattern = rf'.*\.({"|".join(target_modules)})' if target_modules else ''
-        rejected_pattern = rf'(?!({"|".join(rejected_modules)}))' if rejected_modules else ''
+        target_pattern = rf'.*\.({' | '.join(target_modules)})' if target_modules else ''
+        rejected_pattern = rf'(?!({' | '.join(rejected_modules)}))' if rejected_modules else ''
         res.append(rf'{rejected_pattern}{module}{target_pattern}')
 
-    return rf'^({"|".join(res)})$'
+    return rf'^({' | '.join(res)})$'
 
 
 def get_target_modules(args, model) -> Union[str, List[str]]:

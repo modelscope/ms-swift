@@ -22,7 +22,7 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
     for device in range(device_count):
         sample_cmd = (f'{conda_prefix} USE_OPENCOMPASS_EVALUATOR=True CUDA_VISIBLE_DEVICES={device} swift sample '
                       f'--model {model} --model_type {model_type} '
-                      f'--dataset {" ".join(dataset)} '
+                      f'--dataset {' '.join(dataset)} '
                       f'--data_range {device} {device_count} '
                       f'--max_length 2048 '
                       f'--system "You are a math model, you should **think step by step** carefully, '
@@ -61,7 +61,7 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
         sample_cmd = (
             f'{conda_prefix} USE_OPENCOMPASS_EVALUATOR=True CUDA_VISIBLE_DEVICES={device} swift sample '
             f'--model {model} --model_type {model_type} '  # change to --resume_from_checkpoint to use the latest optimizer state # noqa
-            f'--dataset {" ".join(dataset)} '
+            f'--dataset {' '.join(dataset)} '
             f'--data_range {device} {device_count} '
             f'--max_length 2048 '
             f'--system "You are a math model, you should **think step by step** carefully, '
@@ -91,7 +91,7 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
     for proc, handler in enumerate(handlers):
         handler.wait()
         assert os.path.exists(os.path.join('sample_output', f'iter_{iter}_proc_{proc}_sampling.jsonl')), (
-            f'{os.path.join("sample_output", f"iter_{iter}_proc_{proc}_sampling.jsonl")} not exists, '
+            f'{os.path.join('sample_output', f"iter_{iter}_proc_{proc}_sampling.jsonl")} not exists, '
             'please check the sample logs to get the detail error.')
         datasets.append(os.path.join('sample_output', f'iter_{iter}_proc_{proc}_sampling.jsonl'))
     print(f'Sampling done, files:{datasets}', flush=True)
@@ -110,7 +110,7 @@ def do_train(model: str, model_type: str, datasets: List[str], iter, cmd='sft'):
     ga = 128 // get_device_count() // 2
     train_cmd = (f'{conda_prefix} {gpu_prefix} swift {cmd} '
                  f'--model {model} --model_type {model_type} '
-                 f'--dataset {" ".join(datasets)} '
+                 f'--dataset {' '.join(datasets)} '
                  f'--max_length 2048 '
                  f'--num_train_epochs 1 '
                  f'--load_args false '

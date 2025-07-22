@@ -3,6 +3,8 @@
 import inspect
 import logging
 import os
+#dlrover flash ckeckpoint
+import re
 import shutil
 import time
 from contextlib import contextmanager
@@ -27,8 +29,9 @@ from transformers import PreTrainedModel
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
-from transformers.trainer import TrainerCallback
-from transformers.trainer_utils import EvalPrediction, IntervalStrategy
+from transformers.trainer import (OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME, TrainerCallback, logger,
+                                  unwrap_model)
+from transformers.trainer_utils import EvalPrediction, IntervalStrategy, SaveStrategy
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
@@ -41,6 +44,9 @@ from swift.utils.torchacc_utils import ta_trim_graph
 from ..utils.torch_utils import get_device_count
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
+
+torch_native_save = torch.save
+torch_native_load = torch.load
 
 try:
     from trl import AutoModelForCausalLMWithValueHead
@@ -295,7 +301,10 @@ class SwiftMixin:
         # If we are executing this function, we are the process zero, so we don't check for that.
         output_dir = output_dir if output_dir is not None else self.args.output_dir
         os.makedirs(output_dir, exist_ok=True)
-        self._save_model(output_dir, state_dict)
+        if os.environ.get('FLASH_CKPT') == 'true':
+            self._save_model_flash_ckpt(output_dir, state_dict)
+        else:
+            self._save_model(output_dir, state_dict)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
         self._save_converted_model(output_dir)
@@ -322,6 +331,146 @@ class SwiftMixin:
             if getattr(self.model, 'origin_generation_config', None):
                 self.model.origin_generation_config.save_pretrained(output_dir)
 
+    def _save_model_flash_ckpt(self, output_dir: Optional[str] = None, state_dict=None):
+        # model
+        supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
+        supported_names = ('SentenceTransformer', )
+        if AutoModelForCausalLMWithValueHead is not None:
+            supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead, )
+        save_safetensors = self.args.save_safetensors
+        if not isinstance(self.model, supported_classes) and self.model.__class__.__name__ not in supported_names:
+            if state_dict is None:
+                state_dict = self.model.state_dict()
+
+            _unwrap_model = unwrap_model(self.model)
+            if isinstance(_unwrap_model, supported_classes):
+                _unwrap_model.save_pretrained(
+                    output_dir,
+                    state_dict=state_dict,
+                    safe_serialization=False,
+                    save_function=self.flash_checkpointer.ckpt_agent.save)
+            else:
+                logger.info('Trainer.model is not a `PreTrainedModel`, only saving its state dict.')
+                torch.save(state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
+        elif AutoModelForCausalLMWithValueHead and isinstance(self.model, AutoModelForCausalLMWithValueHead):
+            # save reward model
+            state_dict = self.model.state_dict()
+            decoder_state_dict, v_head_state_dict = {}, {}
+            for name, param in state_dict.items():
+                if name.startswith('v_head.'):
+                    v_head_state_dict[name] = param
+                else:
+                    decoder_state_dict[name.replace('pretrained_model.', '', 1)] = param
+            self.model.pretrained_model.save_pretrained(
+                output_dir,
+                state_dict=decoder_state_dict or None,
+                safe_serialization=False,
+                save_function=self.flash_checkpointer.ckpt_agent.save)
+
+            torch.save(v_head_state_dict, os.path.join(output_dir, 'value_head.bin'))
+        elif is_instance_of_ms_model(self.model):
+            PreTrainedModel.save_pretrained(
+                self.model,
+                output_dir,
+                state_dict=state_dict,
+                safe_serialization=False,
+                save_function=self.flash_checkpointer.ckpt_agent.save)
+        elif self.args.train_type in extra_tuners:
+            extra_tuners[self.args.train_type].save_pretrained(
+                self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+        else:
+            if self.model.__class__.__name__ != 'SentenceTransformer':
+                self.model.save_pretrained(
+                    output_dir,
+                    state_dict=state_dict,
+                    safe_serialization=False,
+                    save_function=self.flash_checkpointer.ckpt_agent.save)
+            else:
+
+                @contextmanager
+                def save_context():
+                    save_pretrained = self.model[0].auto_model.save_pretrained
+                    _state_dict = {
+                        key[len('0.auto_model.'):] if 'auto_model' in key else key: value
+                        for key, value in state_dict.items()
+                    }
+                    self.model[0].auto_model.save_pretrained = partial(
+                        self.model[0].auto_model.save_pretrained, state_dict=_state_dict)
+                    yield
+                    self.model[0].auto_model.save_pretrained = save_pretrained
+
+                with save_context():
+                    self.model.save_pretrained(output_dir, safe_serialization=save_safetensors)
+                    # copy sentencetransformers files
+                    from swift.utils import copy_files_by_pattern
+                    copy_files_by_pattern(self.model.model_dir, output_dir, '*.py')
+                    copy_files_by_pattern(self.model.model_dir, output_dir, '*.json')
+
+    def _rotate_checkpoints(self, use_mtime=False, output_dir=None) -> None:
+        if (self.args.save_total_limit is None or self.args.save_total_limit <= 0):
+            return
+
+        last_step = self._get_last_checkpoint_step()
+
+        # Check if we should delete older checkpoint(s)
+        checkpoints_sorted = self._sorted_checkpoints(use_mtime=use_mtime, output_dir=output_dir)
+
+        valid_checkpoints = []
+        for path in checkpoints_sorted:
+            regex_match = re.match(f'.*{PREFIX_CHECKPOINT_DIR}-([0-9]+)', path)
+            if regex_match is not None and regex_match.groups() is not None:
+                step = int(regex_match.groups()[0])
+                if step <= last_step:
+                    valid_checkpoints.append(path)
+
+        if len(valid_checkpoints) <= self.args.save_total_limit:
+            return
+
+        # If save_total_limit=1 with load_best_model_at_end=True,
+        # we could end up deleting the last checkpoint, which
+        # should be avoided and allow resuming
+        save_total_limit = self.args.save_total_limit
+        if (self.state.best_model_checkpoint is not None and self.args.save_total_limit == 1
+                and valid_checkpoints[-1] != self.state.best_model_checkpoint):
+            save_total_limit = 2
+
+        number_of_checkpoints_to_delete = max(0, len(valid_checkpoints) - save_total_limit)
+        checkpoints_to_be_deleted = valid_checkpoints[:number_of_checkpoints_to_delete]
+        for checkpoint in checkpoints_to_be_deleted:
+            logger.info(f'Deleting older checkpoint [{checkpoint}] '
+                        f'due to save_total_limit = {self.args.save_total_limit}.')
+            shutil.rmtree(checkpoint, ignore_errors=True)
+
+    def get_last_checkpoint(self):
+        """
+        Get the path of the last complete checkpoint. Some latter directories
+        may not have the complete checkpoint because the asynchronous
+        persistence may not finish. The step in the `dlrover_latest.txt` is
+        the last step of complete checkpoint. We can get the path by the step.
+        """
+        step = self._get_last_checkpoint_step()
+        if step == 0:
+            return False
+        checkpoint_folder = f'{PREFIX_CHECKPOINT_DIR}-{step}'
+        ckpt_dir = os.path.join(self.args.output_dir, checkpoint_folder)
+        return ckpt_dir
+
+    def _get_last_checkpoint_step(self):
+        tracer_file = os.path.join(self.args.output_dir, 'dlrover_latest.txt')
+        if not os.path.exists(tracer_file):
+            return 0
+        with open(tracer_file, 'r') as f:
+            step = int(f.read())
+        return step
+
+    def wait_latest_checkpoint(self, timeout=1800):
+        """
+        Wait for the latest checkpoint.
+        Args:
+            timeout (second): The timeout to wait.
+        """
+        self.flash_checkpointer.async_save_engine.wait_latest_checkpoint(timeout)
+
     def _fix_zero3_gather_all_parameters(self) -> None:
         if is_deepspeed_zero3_enabled() and not hasattr(self.deepspeed, '_zero3_consolidated_16bit_state_dict_origin'):
             parameters = inspect.signature(self.deepspeed._zero3_consolidated_16bit_state_dict).parameters
@@ -344,9 +493,92 @@ class SwiftMixin:
     def _save_checkpoint(self, *args, **kwargs):
         self.state.last_model_checkpoint = os.path.join(self.args.output_dir, f'checkpoint-{self.state.global_step}')
         self._fix_zero3_gather_all_parameters()
-        result = super()._save_checkpoint(*args, **kwargs)
+        # result = super()._save_checkpoint(*args, **kwargs)
+        if os.environ.get('FLASH_CKPT') == 'true':
+            result = self._save_flash_checkpoint(*args, **kwargs)
+        else:
+            result = super()._save_checkpoint(*args, **kwargs)
         logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         return result
+
+    def _save_flash_checkpoint(self, model, trial, metrics=None):
+
+        from dlrover.trainer.torch.flash_checkpoint.hf_trainer import HfDdpCheckpointer, HfDeepSpeedCheckpointer
+        run_dir = self._get_output_dir(trial=trial)
+        # Save model checkpoint
+        checkpoint_folder = f'{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}'
+        output_dir = os.path.join(run_dir, checkpoint_folder)
+
+        if not hasattr(self, 'flash_checkpointer'):
+            if self.is_deepspeed_enabled:
+                self.flash_checkpointer = HfDeepSpeedCheckpointer(self.model_wrapped, run_dir)
+            elif not self.is_deepspeed_enabled and not self.is_fsdp_enabled:
+                self.flash_checkpointer = HfDdpCheckpointer(run_dir)
+            else:
+                raise ValueError('Flash Checkpoint only supports DeepSpeed or DDP.')
+
+        if self.hp_search_backend is None and trial is None:
+            self.store_flos()
+
+        torch.save = self.flash_checkpointer.ckpt_agent.save
+        self.save_model(output_dir, _internal_call=True)
+        if self.is_deepspeed_enabled:
+            self.model_wrapped.save_checkpoint(output_dir)
+
+        elif (self.args.should_save and not self.is_deepspeed_enabled and not self.is_fsdp_enabled):
+            # deepspeed.save_checkpoint above saves model/optim/sched
+            torch.save(
+                self.optimizer.state_dict(),
+                os.path.join(output_dir, OPTIMIZER_NAME),
+            )
+        if self.args.save_strategy in [SaveStrategy.STEPS, SaveStrategy.EPOCH] and self.state.best_global_step:
+            best_checkpoint_folder = f'{PREFIX_CHECKPOINT_DIR}-{self.state.best_global_step}'
+            best_checkpoint_dir = os.path.join(run_dir, best_checkpoint_folder)
+
+            if os.path.exists(best_checkpoint_dir):
+                self.state.best_model_checkpoint = best_checkpoint_dir
+
+        if not self.args.save_only_model:
+            # Save optimizer and scheduler
+            super()._save_optimizer_and_scheduler(output_dir)
+            super()._save_scaler(output_dir)
+            # Save RNG state
+            super()._save_rng_state(output_dir)
+
+        # Save the Trainer state
+        if self.args.should_save:
+            # Update `ExportableState` callbacks and `TrainerControl` state to where we are currently
+            from transformers.trainer_callback import ExportableState
+            for cb in [
+                    cb for cb in self.callback_handler.callbacks + [self.control] if isinstance(cb, ExportableState)
+            ]:
+                cb_name = cb.__class__.__name__
+                cb_state = cb.state()
+                if isinstance(self.state.stateful_callbacks[cb_name], list):
+                    self.state.stateful_callbacks[cb_name].append(cb_state)
+                else:
+                    self.state.stateful_callbacks[cb_name] = cb_state
+            self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
+
+        torch.save = torch_native_save
+
+        if self.args.push_to_hub:
+            self._push_from_checkpoint(output_dir)
+
+        success = self.flash_checkpointer.save_checkpoint_to_storage(self.state.global_step)
+        if not success:
+            logger.info(f'Skip saving the checkpoint of step {self.state.global_step} '
+                        'because the latest checkpoint is not finished.')
+            shutil.rmtree(output_dir, ignore_errors=True)
+
+        self.flash_checkpointer.ckpt_agent.state_dict.clear()
+
+        if self.args.push_to_hub:
+            self._push_from_checkpoint(output_dir)
+
+        # Maybe delete some older checkpoints.
+        if self.args.should_save:
+            self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
 
     @staticmethod
     @contextmanager

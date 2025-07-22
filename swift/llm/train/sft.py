@@ -107,6 +107,12 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         model_parameter_info = get_model_parameter_info(self.model)
         self.train_msg['model_parameter_info'] = model_parameter_info
         logger.info(f'model_parameter_info: {model_parameter_info}')
+        if args.use_flash_ckpt:
+            try:
+                from dlrover.trainer.torch.flash_checkpoint.hf_trainer import HfDdpCheckpointer, HfDeepSpeedCheckpointer
+            except ImportError:
+                raise ValueError('Please install dlrover to use flash ckpt `pip install dlrover[k8s,torch]')
+            os.environ['FLASH_CKPT'] = 'true'
 
         trainer_cls = TrainerFactory.get_trainer_cls(args)
         trainer = trainer_cls(
@@ -183,6 +189,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             trainer.train(trainer.args.resume_from_checkpoint)
         finally:
             res = self._save_trainer_state(trainer)
+        if os.environ.get('FLASH_CKPT') == 'true':
+            trainer.wait_latest_checkpoint(1800)
         return res
 
     def _prepare_callbacks(self):

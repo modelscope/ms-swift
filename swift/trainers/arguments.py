@@ -64,6 +64,9 @@ class TrainArgumentsMixin:
     eval_limit: Optional[int] = None
     eval_generation_config: Optional[Union[str, dict]] = None
 
+    #dlrover flash_checkpoint
+    use_flash_ckpt: bool = False
+
     @staticmethod
     def _patch_liger_kernel():
         # fix logits_to_keep

@@ -97,8 +97,8 @@ class ReactCompatMixin:
         tool_calls = []
         for message in tool_call_messages:
             tool_call = self._parse_tool_call(message['content'])
-            tool_calls.append(f'{self.keyword.action} {tool_call["name"]}\n'
-                              f'{self.keyword.action_input} {tool_call["arguments"]}\n')
+            tool_calls.append(f'{self.keyword.action} {tool_call['name']}\n'
+                              f'{self.keyword.action_input} {tool_call['arguments']}\n')
         tool_calls.append(self.keyword.observation)
         return ''.join(tool_calls)
 
