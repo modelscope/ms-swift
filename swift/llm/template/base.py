@@ -1629,15 +1629,6 @@ class Template(ProcessorMixin):
             if self.is_training and self.padding_side == 'left':
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
 
-        if self.use_megatron:
-            padding_to = math.ceil(max(seq_lens) / 128) * 128
-            cp_size = self.sequence_parallel_size
-            if cp_size > 1:
-                padding_len = padding_to - seq_lens[0]
-                position_ids = res['position_ids'][0].tolist()
-                position_ids += list(range(cp_size * 2)) * (padding_len // (cp_size * 2))
-                res['position_ids'][0] = torch.tensor(position_ids)
-
         for key, pad_value in zip(keys, pad_values):
             if key not in res:
                 continue
