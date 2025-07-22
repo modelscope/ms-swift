@@ -84,7 +84,7 @@ class GPTModel(McoreGPTModel):
                     del self.decoder.layers[i].self_attention.rotary_pos_emb
         self.attention_scaling = 1.
         new_inv_freq, self.attention_scaling = get_rope_inv_freq()
-        self.rotary_pos_emb.inv_freq = new_inv_freq
+        self.rotary_pos_emb.inv_freq = new_inv_freq.to(self.rotary_pos_emb.inv_freq.device)
 
         if self.attention_scaling != 1 and config.apply_rope_fusion:
             config.apply_rope_fusion = False

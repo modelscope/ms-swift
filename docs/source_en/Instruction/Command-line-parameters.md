@@ -335,19 +335,19 @@ The following parameters are effective when `train_type` is set to `reft`.
 
 Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 
-- 🔥gpu_memory_utilization: GPU memory ratio, ranging from 0 to 1. Default is `0.9`.
-- 🔥tensor_parallel_size: Tensor parallelism size. Default is `1`.
-- pipeline_parallel_size: Pipeline parallelism size. Default is `1`.
-- data_parallel_size: Data parallelism size, default is 1, effective in the infer and rollout commands.
-- max_num_seqs: Maximum number of sequences to be processed in a single iteration. Default is `256`.
-- 🔥max_model_len: Default is `None`, meaning it will be read from `config.json`.
-- disable_custom_all_reduce: Disables the custom all-reduce kernel and falls back to NCCL. For stability, the default is `True`.
-- enforce_eager: Determines whether vllm uses PyTorch eager mode or constructs a CUDA graph, default is `False`. Setting it to True can save memory but may affect efficiency.
-- 🔥limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--limit_mm_per_prompt '{"image": 5, "video": 2}'`.
+- 🔥vllm_gpu_memory_utilization: GPU memory ratio, ranging from 0 to 1. Default is `0.9`.
+- 🔥vllm_tensor_parallel_size: Tensor parallelism size. Default is `1`.
+- vllm_pipeline_parallel_size: Pipeline parallelism size. Default is `1`.
+- vllm_data_parallel_size: Data parallelism size, default is 1, effective in the infer and rollout commands.
+- vllm_max_num_seqs: Maximum number of sequences to be processed in a single iteration. Default is `256`.
+- 🔥vllm_max_model_len: Default is `None`, meaning it will be read from `config.json`.
+- vllm_disable_custom_all_reduce: Disables the custom all-reduce kernel and falls back to NCCL. For stability, the default is `True`.
+- vllm_enforce_eager: Determines whether vllm uses PyTorch eager mode or constructs a CUDA graph, default is `False`. Setting it to True can save memory but may affect efficiency.
+- 🔥vllm_limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--vllm_limit_mm_per_prompt '{"image": 5, "video": 2}'`.
 - vllm_max_lora_rank: Default is `16`. This is the parameter supported by vllm for lora.
 - vllm_quantization: vllm is able to quantize model with this argument，supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
-- enable_prefix_caching: Enable the automatic prefix caching of vllm to save processing time for querying repeated prefixes. The default is `False`.
-- use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
+- vllm_enable_prefix_caching: Enable the automatic prefix caching of vllm to save processing time for querying repeated prefixes. The default is `False`.
+- vllm_use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
 
 ### SGLang Arguments
 Parameter meanings can be found in the [sglang documentation](https://docs.sglang.ai/backend/server_arguments.html).
@@ -368,11 +368,11 @@ Parameter meanings can be found in the [sglang documentation](https://docs.sglan
 
 Parameter meanings can be found in the [lmdeploy documentation](https://lmdeploy.readthedocs.io/en/latest/api/pipeline.html#turbomindengineconfig).
 
-- 🔥tp: tensor parallelism degree. Default is `1`.
-- session_len: Maximum session length. Default is `None`.
-- cache_max_entry_count: The percentage of GPU memory occupied by the k/v cache. Default is `0.8`.
-- quant_policy: Default is `0`. Set it to `4` or `8` when quantizing k/v to 4-bit or 8-bit, respectively.
-- vision_batch_size: The `max_batch_size` parameter passed to `VisionConfig`. Default is `1`.
+- 🔥lmdeploy_tp: tensor parallelism degree. Default is `1`.
+- lmdeploy_session_len: Maximum session length. Default is `None`.
+- lmdeploy_cache_max_entry_count: The percentage of GPU memory occupied by the k/v cache. Default is `0.8`.
+- lmdeploy_quant_policy: Default is `0`. Set it to `4` or `8` when quantizing k/v to 4-bit or 8-bit, respectively.
+- lmdeploy_vision_batch_size: The `max_batch_size` parameter passed to `VisionConfig`. Default is `1`.
 
 ### Merge Arguments
 
@@ -409,6 +409,16 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - eval_dataset_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
 - eval_limit: Number of samples from the evaluation dataset
 - eval_generation_config: Model inference configuration during evaluation, in JSON format, default is `{'max_tokens': 512}`
+
+#### SWANLAB
+
+- swanlab_token: SwanLab's API key
+- swanlab_project: SwanLab's project, which needs to be created in advance on the page: [https://swanlab.cn/space/~](https://swanlab.cn/space/~)
+- swanlab_workspace: Defaults to `None`, will use the username associated with the API key
+- swanlab_exp_name: Experiment name, can be left empty. If empty, the value of `--output_dir` will be used by default
+- swanlab_lark_webhook_url: Defaults to None. SwanLab's Lark webhook URL, used for pushing experiment results to Lark.
+- swanlab_lark_secret: Defaults to None. SwanLab's Lark secret, used for pushing experiment results to Lark.
+- swanlab_mode: Optional values are `cloud` and `local`, representing cloud mode or local mode
 
 ### RLHF Arguments
 
@@ -471,7 +481,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - steps_per_generation: Number of optimization steps per generation. It defaults to gradient_accumulation_steps. This parameter and generation_batch_size cannot be set simultaneously
 - num_generations: The number of samples for each prompt, referred to as the G value in the paper, needs to be divisible by per_device_batch_size * - gradient_accumulation_steps * num_processes, default is 8.
 - ds3_gather_for_generation: This parameter applies to DeepSpeed ZeRO-3. If enabled, the policy model weights are gathered for generation, improving generation speed. However, disabling this option allows training models that exceed the VRAM capacity of a single GPU, albeit at the cost of slower generation. Disabling this option is not compatible with vLLM generation. The default is True.
-- reward_funcs: Reward functions in the GRPO algorithm; options include `accuracy`,`format`,`cosine` and `repetition`, as seen in `swift/plugin/orm.py`. You can also customize your own reward functions in the plugin. Default is `[]`.
+- reward_funcs: Reward functions in the GRPO algorithm; options include `accuracy`,`format`,`cosine`,`repetition` and `soft_overlong`, as seen in `swift/plugin/orm.py`. You can also customize your own reward functions in the plugin. Default is `[]`.
 - reward_weights: Weights for each reward function. The number should be equal to the sum of the number of reward functions and reward models. If `None`, all rewards are weighted equally with weight `1.0`.
   - Note: If `--reward_model` is included in GRPO training, it is added to the end of the reward functions.
 - reward_model_plugin: The logic for the reward model, which defaults to ORM logic. For more information, please refer to [Customized Reward Models](./GRPO/DeveloperGuide/reward_model.md#custom-reward-model).
@@ -488,7 +498,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - vllm_server_port: The service port of the vLLM server. Default is 8000.
   - vllm_server_timeout: The connection timeout for the vLLM server. Default is 240 seconds.
   - async_generate: Use async rollout to improve train speed. Note that rollout will use the model updated in the previous round when enabled. Multi-turn scenarios are not supported. Default is `false`.
-- vllm_mode colocate parameter
+- vllm_mode colocate parameter (For more parameter support, refer to the [vLLM Arguments](#vLLM-Arguments).)
   - vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
   - vllm_max_model_len: vLLM passthrough parameter, the total length limit of model, default is None.
   - vllm_enforce_eager: vLLM passthrough parameter, default is False.
@@ -518,6 +528,9 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - max_resample_times: Under the dynamic_sample setting, limit the number of resampling attempts to a maximum of 3. Default is 3 times.
 - overlong_filter: Skip overlong truncated samples, which will not be included in loss calculation. Default is False.
 The hyperparameters for the reward function can be found in the [Built-in Reward Functions section](#built-in-reward-functions).
+- top_entropy_quantile: Only tokens whose entropy ranks within the specified top quantile are included in the loss calculation. The default is 1.0, which means low-entropy tokens are not filtered. For details, refer to the [documentation](./GRPO/AdvancedResearch/entropy_mask.md).
+- log_entropy: Logs the entropy values during training. The default is False. For more information, refer to the [documentation](./GRPO/GetStarted/GRPO.md#logged-metrics).
+
 
 cosine reward function arguments
 - cosine_min_len_value_wrong (default: -0.5): Reward value corresponding to the minimum length when the answer is incorrect.
@@ -535,17 +548,6 @@ Soft overlong reward parameters:
 
 - soft_max_length: L_max in the paper, the maximum generation length of the model, default is equal to max_completion_length.
 - soft_cache_length: L_cache in the paper, controls the length penalty interval, which is defined as [soft_max_length - soft_cache_length, soft_max_length].
-
-#### SWANLAB
-
-- **swanlab_token**: SwanLab's API key
-- **swanlab_project**: SwanLab's project, which needs to be created in advance on the page: [https://swanlab.cn/space/~](https://swanlab.cn/space/~)
-- **swanlab_workspace**: Defaults to `None`, will use the username associated with the API key
-- **swanlab_exp_name**: Experiment name, can be left empty. If empty, the value of `--output_dir` will be used by default
-- swanlab_lark_webhook_url: Defaults to None. SwanLab's Lark webhook URL, used for pushing experiment results to Lark.
-- swanlab_lark_secret: Defaults to None. SwanLab's Lark secret, used for pushing experiment results to Lark.
-- **swanlab_mode**: Optional values are `cloud` and `local`, representing cloud mode or local mode
-
 
 ### Inference Arguments
 

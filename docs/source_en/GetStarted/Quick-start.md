@@ -84,7 +84,7 @@ swift infer \
     --stream true \
     --merge_lora true \
     --infer_backend vllm \
-    --max_model_len 8192 \
+    --vllm_max_model_len 8192 \
     --temperature 0 \
     --max_new_tokens 2048
 ```
