@@ -1629,14 +1629,19 @@ class Template(ProcessorMixin):
             if self.is_training and self.padding_side == 'left':
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
 
-        if self.use_megatron and not self._packing:
-            padding_to = math.ceil(max(seq_lens) / 64) * 64
-            res['attention_mask'] = torch.tril(torch.ones(
-                (len(seq_lens), padding_to, padding_to),
-                dtype=torch.bool)).view(len(seq_lens), 1, padding_to, padding_to)
-            assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res["attention_mask"].dtype}'
-            for i, seq_len in enumerate(seq_lens):
-                res['attention_mask'][i, :, seq_len:] = 0
+        if self.use_megatron:
+            if self._packing:
+                if padding_to is not None:
+                    padding_to = math.ceil(max(seq_lens) / padding_to) * padding_to
+            else:
+                assert padding_to is None or padding_to <= 64, f'padding_to: {padding_to}'
+                padding_to = math.ceil(max(seq_lens) / 64) * 64
+                res['attention_mask'] = torch.tril(torch.ones(
+                    (len(seq_lens), padding_to, padding_to),
+                    dtype=torch.bool)).view(len(seq_lens), 1, padding_to, padding_to)
+                assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res["attention_mask"].dtype}'
+                for i, seq_len in enumerate(seq_lens):
+                    res['attention_mask'][i, :, seq_len:] = 0
 
         for key, pad_value in zip(keys, pad_values):
             if key not in res:

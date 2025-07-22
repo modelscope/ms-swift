@@ -4,6 +4,7 @@ from typing import List, Union
 
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
+from functools import partial
 from ..argument import MegatronTrainArguments
 from ..trainers import MegatronTrainer
 from ..utils import patch_megatron_tokenizer
@@ -37,6 +38,8 @@ class MegatronSft(SwiftSft):
         train_dataset, val_dataset = self._get_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
         data_collator = self.template.data_collator
+        if self.args.tensor_model_parallel_size and self.args.sequence_parallel:
+            data_collator = partial(data_collator, padding_to=self.args.tensor_model_parallel_size)
         if args.streaming:
             train_dataset = build_streaming_dataloader(args, train_dataset, data_collator)
             if val_dataset is not None:
