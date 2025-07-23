@@ -53,5 +53,3 @@ swift deploy \
 ```
 
 在plugin文件中，根据部署结果修改client的base_url（默认为http://127.0.0.1:8000/v1）
-
-

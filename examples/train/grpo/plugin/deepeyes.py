@@ -247,9 +247,9 @@ class DeepEyesReward(ORM):
         count_think_2 = predict_str.count('</think>')
         if count_think_1 != count_think_2:
             is_format_error = True
-        count_vision_1 = predict_str.count(' <tool_call>.')
-        count_vision_2 = predict_str.count('</tool_call>')
-        if count_vision_1 != count_vision_2:
+        count_tool_1 = predict_str.count(' <tool_call>.')
+        count_tool_2 = predict_str.count('</tool_call>')
+        if count_tool_1 != count_tool_2:
             is_format_error = True
 
         predict_no_think = predict_str.split('</think>')[-1].strip()
@@ -259,14 +259,6 @@ class DeepEyesReward(ORM):
             is_format_error = True
 
         answer_text = predict_str.split('<answer>')[-1].split('</answer>')[0].strip()
-
-        # pattern = re.compile(r'<\|im_start\|>assistant(.*?)$', re.DOTALL)  # 匹配最后一个 target 后的所有内容
-        # match = pattern.search(predict_str)
-        # if match:
-        #     answer_text = match.group(1).strip()
-        #     print(f'DEBUG{answer_text=}')
-        # else:
-        #     answer_text = ""
 
         question_text = extra_info['question']
         full_prompt = get_prompt(answer_text, ground_truth, question_text)
@@ -287,7 +279,6 @@ class DeepEyesReward(ORM):
             temperature=0.3,
         )
         response = chat_response.choices[0].message.content.strip()
-        # print(response)
         if 'Judgement:' in response:
             response = response.split('Judgement:')[-1].strip()
             if '1' in response:
@@ -295,7 +286,6 @@ class DeepEyesReward(ORM):
             elif '0' in response:
                 acc_reward = 0.0
             else:
-                print(f' [WARNING] resp format error {response=}')
                 acc_reward = 0.0
         else:
             if response == '1':
@@ -303,7 +293,6 @@ class DeepEyesReward(ORM):
             elif response == '0':
                 acc_reward = 0.0
             else:
-                print(f' [WARNING] resp format error {response=}')
                 acc_reward = 0.0
 
         # Penalize for model trying to predict longer answer to hack llm-as-judge
@@ -311,7 +300,7 @@ class DeepEyesReward(ORM):
             acc_reward = 0.0
             is_format_error = True
 
-        tool_reward = 1.0 if count_vision_1 > 0 and acc_reward > 0.5 else 0.0
+        tool_reward = 1.0 if count_tool_1 > 0 and acc_reward > 0.5 else 0.0
         format_reward = -1.0 if is_format_error else 0.0
 
         return 0.8 * acc_reward + 0.2 * format_reward + 1.2 * tool_reward
@@ -346,7 +335,7 @@ class DeepEyesReward(ORM):
                     pred_ans=model_answer,
                 )
                 response = ''
-                for it in range(8):
+                for _ in range(8):
                     try:
                         chat_response = self.client.chat.completions.create(
                             model=self.verify_model_name,
@@ -415,7 +404,7 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
             cropped_img = img.crop(bbox)
             query = '<tool_response>' + '<image>' + self.user_prompt + '</tool_response>'
         except ValueError:
-            raise # for debug
+            raise  # for debug
         except Exception as e:
             error_msg = f'Invalid tool call format: {action.strip()}. Error: {e}'
             query = f'Error: {str(error_msg)}'
@@ -435,8 +424,7 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
                                             width) <= 100, f'aspect ratio error: {left=}, {top=}, {right=}, {bottom=}'
             assert min(height, width) > 30, f'{height=}, {width=} is too small'
             return True
-        except Exception as err:
-            print(f' [ERROR vl_agent #2] {err=}')
+        except Exception:
             return False
 
     def maybe_resize_bbox(self, left, top, right, bottom, origin_width, origin_height):
