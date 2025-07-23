@@ -12,10 +12,13 @@ from transformers import GenerationConfig
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
+from swift.utils import get_logger
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
                         EmbeddingResponseData, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
+
+logger = get_logger()
 
 
 class SglangEngine(InferEngine):
@@ -58,6 +61,9 @@ class SglangEngine(InferEngine):
             hub_token=hub_token,
             revision=revision)[1]
         self._post_init(template)
+        if context_length is not None:
+            self.max_model_len = context_length
+            logger.info(f'Setting max_model_len: {context_length}')
         if self.max_model_len is not None:
             self.max_model_len -= 1
         parameters = inspect.signature(ServerArgs).parameters
