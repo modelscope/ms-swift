@@ -25,7 +25,7 @@ class Env(ABC):
 
         Returns:
             - observation: The first user message as the initial observation or environment information, which will be treated as a user message.
-            - info: Extra information for DEBUG and logging, which will be recorded in logging.jsonl.
+            - info: Extra information for DEBUG and logging, which will be recorded in completions.jsonl.
             - system_message: The system prompt sampled for the user's current environment.
         """
         pass
@@ -41,7 +41,7 @@ class Env(ABC):
             - next_observation: The environment's response, which will be returned as a user message.
             - reward: The reward.
             - done: Whether the episode has finished.
-            - info: Extra information for DEBUG and logging, which will be recorded in logging.jsonl.
+            - info: Extra information for DEBUG and logging, which will be recorded in completions.jsonl.
         """
         pass
     @abstractmethod

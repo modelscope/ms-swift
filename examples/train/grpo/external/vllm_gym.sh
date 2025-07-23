@@ -1,4 +1,4 @@
-# 实验: https://github.com/modelscope/ms-swift/pull/4890
+# exp: https://github.com/modelscope/ms-swift/pull/4890
 
 # CUDA_VISIBLE_DEVICES=7 \
 # swift rollout \
@@ -14,7 +14,6 @@ swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-3B-Instruct \
     --train_type full \
-    --reward_funcs accuracy \
     --use_vllm true \
     --vllm_mode server \
     --vllm_server_host 127.0.0.1 \
