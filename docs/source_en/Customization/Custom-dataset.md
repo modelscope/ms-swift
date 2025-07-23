@@ -143,15 +143,18 @@ Please refer to [Reranker training document](../BestPractices/Reranker.md#datase
 
 ### Multimodal
 
-For multimodal datasets, the format is the same as the aforementioned tasks. The difference lies in the addition of several keys: `images`, `videos`, and `audios`, which represent the URLs or paths (preferably absolute paths) of multimodal resources. The tags `<image>`, `<video>`, and `<audio>` indicate where to insert images, videos, or audio. MS-Swift supports multiple images, videos, and audio files. These special tokens will be replaced during preprocessing, as referenced [here](https://github.com/modelscope/ms-swift/blob/main/swift/llm/template/template/qwen.py#L198). The four examples below respectively demonstrate the data format for plain text, as well as formats containing image, video, and audio data.
+For multimodal datasets, the format is the same as the aforementioned tasks. The difference lies in the addition of several keys: `images`, `videos`, and `audios`, which represent the URLs or paths (preferably absolute paths) of multimodal resources. The tags `<image>`, `<video>`, and `<audio>` indicate where to insert images, videos, or audio. MS-Swift supports multiple images, videos, and audio files. These special tokens will be replaced during preprocessing, as referenced [here](https://github.com/modelscope/ms-swift/blob/main/swift/llm/template/template/qwen.py#L198). The examples below demonstrate the data format for plain text, as well as formats containing image, video, and audio data.
 
+SWIFT supports loading multimodal resources from LMDB databases using the format `lmdb://key@path_to_lmdb`. This is highly effective for storing and accessing large collections of images, videos, audio files, and other resources, especially when training and inferencing with large-scale multimodal datasets. Make sure to install LMDB first: `pip install lmdb`.
 
 Pre-training:
 ```jsonl
 {"messages": [{"role": "assistant", "content": "Pre-trained text goes here"}]}
 {"messages": [{"role": "assistant", "content": "<image>is a puppy, <image>is a kitten"}], "images": ["/xxx/x.jpg", "/xxx/x.png"]}
+{"messages": [{"role": "assistant", "content": "<image>is a rabbit loaded from LMDB"}], "images": ["lmdb://rabbit_img@/path/to/animals_lmdb"]}
 {"messages": [{"role": "assistant", "content": "<audio>describes how nice the weather is today"}], "audios": ["/xxx/x.wav"]}
 {"messages": [{"role": "assistant", "content": "<image>is an elephant, <video>is a lion running"}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
+{"messages": [{"role": "assistant", "content": "<video>shows galaxies in space"}], "videos": ["lmdb://space_video@/path/to/videos_lmdb"]}
 ```
 
 Supervised Fine-tuning:
@@ -159,6 +162,8 @@ Supervised Fine-tuning:
 ```jsonl
 {"messages": [{"role": "user", "content": "Where is the capital of Zhejiang?"}, {"role": "assistant", "content": "The capital of Zhejiang is Hangzhou."}]}
 {"messages": [{"role": "user", "content": "<image><image>What is the difference between the two images?"}, {"role": "assistant", "content": "The first one is a kitten, and the second one is a puppy."}], "images": ["/xxx/x.jpg", "/xxx/x.png"]}
+{"messages": [{"role": "user", "content": "<image>What is this animal?"}, {"role": "assistant", "content": "This is a brown panda, a very rare species."}], "images": ["lmdb://panda_img@/path/to/wildlife_lmdb"]}
+{"messages": [{"role": "user", "content": "<image>and<image>What's the difference between these two animals?"}, {"role": "assistant", "content": "The first image is a tiger, and the second image is a lion."}], "images": ["lmdb://tiger_img@/path/to/animals_lmdb", "lmdb://lion_img@/path/to/animals_lmdb"]}
 {"messages": [{"role": "user", "content": "<audio>What did the audio say?"}, {"role": "assistant", "content": "The weather is really nice today."}], "audios": ["/xxx/x.mp3"]}
 {"messages": [{"role": "system", "content": "You are a helpful and harmless assistant."}, {"role": "user", "content": "<image>What is in the image, <video>What is in the video?"}, {"role": "assistant", "content": "The image shows an elephant, and the video shows a puppy running on the grass."}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
 ```
