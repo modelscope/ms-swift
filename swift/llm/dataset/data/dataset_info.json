@@ -716,5 +716,9 @@
             "prompt": "messages"
         },
         "tags": ["docqa", "rl", "long-sequence"]
+    },
+    {
+        "ms_dataset_id": "swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT",
+        "tags": ["🔥", "distill", "sft"]
     }
 ]

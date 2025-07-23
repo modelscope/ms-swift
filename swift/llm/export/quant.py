@@ -173,8 +173,9 @@ class QuantEngine(ProcessorMixin):
         quantizer.get_calib_dataset = _origin_get_calib_dataset  # recover
         if self.model.quant_config.modules_to_not_convert:
             model_arch = get_model_arch(args.model_meta.model_arch)
-            lm_head_key = model_arch.lm_head or 'lm_head'
-            self.model.quant_config.modules_to_not_convert.append(lm_head_key)
+            lm_head_key = getattr(model_arch, 'lm_head', None) or 'lm_head'
+            if lm_head_key not in self.model.quant_config.modules_to_not_convert:
+                self.model.quant_config.modules_to_not_convert.append(lm_head_key)
 
     @contextmanager
     def _patch_gptq(self):
