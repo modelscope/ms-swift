@@ -112,6 +112,7 @@ class BaseMegatronTrainer(ABC):
 
     @staticmethod
     def _patch_merge_fn(state_dict_model):
+        # https://github.com/NVIDIA/Megatron-LM/issues/1380
 
         def sh_ten_merge_fn(sub_state_dict):
             with torch.no_grad():
@@ -134,15 +135,15 @@ class BaseMegatronTrainer(ABC):
 
     @contextmanager
     def _patch_load_state_dict(self):
-        if self.args.train_type == 'full':
-            yield
-            return
         from megatron.training import checkpointing
         origin__load_base_checkpoint = checkpointing._load_base_checkpoint
 
         def _load_base_checkpoint(*_args, **kwargs):
             sharded_state_dict = kwargs.get('sharded_state_dict')
             if sharded_state_dict is None:
+                return origin__load_base_checkpoint(*_args, **kwargs)
+            if self.args.train_type == 'full':
+                self._patch_merge_fn(sharded_state_dict['model'])
                 return origin__load_base_checkpoint(*_args, **kwargs)
             state_dict_model = {}
             mapping = {}
