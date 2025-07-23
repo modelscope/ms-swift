@@ -171,6 +171,7 @@ class VllmArguments:
     vllm_gpu_memory_utilization: float = 0.9
     vllm_tensor_parallel_size: int = 1
     vllm_pipeline_parallel_size: int = 1
+    vllm_enable_expert_parallel: bool = False
     vllm_max_num_seqs: int = 256
     vllm_max_model_len: Optional[int] = None
     vllm_disable_custom_all_reduce: bool = True
@@ -217,6 +218,7 @@ class VllmArguments:
             'gpu_memory_utilization': self.vllm_gpu_memory_utilization,
             'tensor_parallel_size': self.vllm_tensor_parallel_size,
             'pipeline_parallel_size': self.vllm_pipeline_parallel_size,
+            'enable_expert_parallel': self.vllm_enable_expert_parallel,
             'max_num_seqs': self.vllm_max_num_seqs,
             'max_model_len': self.vllm_max_model_len,
             'disable_custom_all_reduce': self.vllm_disable_custom_all_reduce,

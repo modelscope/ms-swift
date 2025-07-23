@@ -339,6 +339,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - 🔥vllm_tensor_parallel_size: Tensor parallelism size. Default is `1`.
 - vllm_pipeline_parallel_size: Pipeline parallelism size. Default is `1`.
 - vllm_data_parallel_size: Data parallelism size, default is 1, effective in the infer and rollout commands.
+- vllm_enable_expert_parallel: Enable expert parallelism. Default is False.
 - vllm_max_num_seqs: Maximum number of sequences to be processed in a single iteration. Default is `256`.
 - 🔥vllm_max_model_len: Default is `None`, meaning it will be read from `config.json`.
 - vllm_disable_custom_all_reduce: Disables the custom all-reduce kernel and falls back to NCCL. For stability, the default is `True`.
