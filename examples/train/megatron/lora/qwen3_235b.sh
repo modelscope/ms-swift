@@ -41,7 +41,7 @@ megatron sft \
 
 
 # If you need to run with 8 GPUs each with 80GiB of memory, you can use the following configuration:
-# 8 * 80GiB
+# 8 * 78GiB; 9.5s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
@@ -82,5 +82,7 @@ megatron sft \
     --no_save_rng true \
     --sequence_parallel true \
     --attention_backend flash \
+    --optimizer_cpu_offload true \
+    --use_precision_aware_optimizer true \
     --model_author swift \
     --model_name swift-robot
