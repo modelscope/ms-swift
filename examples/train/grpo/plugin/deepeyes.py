@@ -156,7 +156,7 @@ def load_pil_image(img):
             return img
 
         elif isinstance(img, Dict):
-            return Image.open(io.BytesIO(img[0]['bytes']))
+            return Image.open(io.BytesIO(img['bytes']))
 
         elif isinstance(img, str):
             if os.path.exists(img):
