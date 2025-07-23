@@ -247,9 +247,8 @@ class DeepEyesReward(ORM):
         count_think_2 = predict_str.count('</think>')
         if count_think_1 != count_think_2:
             is_format_error = True
-
-        count_vision_1 = predict_str.count('<|vision_start|><|image_pad|>')
-        count_vision_2 = predict_str.count('<|image_pad|><|vision_end|>')
+        count_vision_1 = predict_str.count(' <tool_call>.')
+        count_vision_2 = predict_str.count('</tool_call>')
         if count_vision_1 != count_vision_2:
             is_format_error = True
 
@@ -350,7 +349,7 @@ class DeepEyesReward(ORM):
                 for it in range(8):
                     try:
                         chat_response = self.client.chat.completions.create(
-                            model=model_name,
+                            model=self.verify_model_name,
                             messages=[
                                 {
                                     'role': 'user',
@@ -415,6 +414,8 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
             bbox = self.maybe_resize_bbox(*bbox, origin_width, origin_height)
             cropped_img = img.crop(bbox)
             query = '<tool_response>' + '<image>' + self.user_prompt + '</tool_response>'
+        except ValueError:
+            raise # for debug
         except Exception as e:
             error_msg = f'Invalid tool call format: {action.strip()}. Error: {e}'
             query = f'Error: {str(error_msg)}'

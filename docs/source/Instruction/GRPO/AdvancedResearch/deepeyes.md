@@ -39,3 +39,19 @@ huggingface-cli download ChenShawn/DeepEyes-Datasets-47k --repo-type=dataset
 
 ## 插件注册
 注册论文中所用到的奖励函数和工具调用逻辑，参考文件swift/examples/train/grpo/plugin/deepeyes.py
+
+
+Deepeyes 的奖励函数依赖生成式奖励模型对模型生成结果与标准答案进行对比评估，为了加速这一环节，推荐对模型进行部署。
+假设使用Qwen2.5-VL-72B-Instruct模型进行评估，参考以下部署命令
+```bash
+# 4*80G
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift deploy \
+    --model Qwen/Qwen2.5-VL-72B-Instruct \
+    --infer_backend vllm \
+    --vllm_tensor_parallel_size 4 \
+```
+
+在plugin文件中，根据部署结果修改client的base_url（默认为http://127.0.0.1:8000/v1）
+
+
