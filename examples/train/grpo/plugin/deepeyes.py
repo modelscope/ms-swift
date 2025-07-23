@@ -151,28 +151,34 @@ Judgement:"""
 
 
 def load_pil_image(img):
-    if isinstance(img, Image.Image):
-        return img
+    try:
+        if isinstance(img, Image.Image):
+            return img
 
-    if isinstance(img, str):
-        if os.path.exists(img):
-            return Image.open(img)
+        elif isinstance(img, Dict):
+            return Image.open(io.BytesIO(img[0]['bytes']))
 
-        try:
+        elif isinstance(img, str):
+            if os.path.exists(img):
+                return Image.open(img)
+
             if ',' in img:
                 img_data = img.split(',')[1]
             else:
                 img_data = img
             img_bytes = base64.b64decode(img_data)
             return Image.open(io.BytesIO(img_bytes))
-        except Exception as e:
-            raise e
 
-    if isinstance(img, bytes):
-        return Image.open(io.BytesIO(img))
+        elif isinstance(img, bytes):
+            return Image.open(io.BytesIO(img))
 
-    if hasattr(img, 'read'):
-        return Image.open(img)
+        elif hasattr(img, 'read'):
+            return Image.open(img)
+        else:
+            return img
+
+    except Exception:
+        return img
 
 
 def rule_math_verify(ground_truth, model_answer):
@@ -188,7 +194,7 @@ class DeepEyesReward(ORM):
         try:
             self.client = OpenAI(
                 api_key='EMPTY',
-                base_url=f'http://127.0.0.1:8000/v1',
+                base_url='http://127.0.0.1:8000/v1',
             )
             self.verify_model_name = self.client.models.list().data[0].id
         except Exception as e:
