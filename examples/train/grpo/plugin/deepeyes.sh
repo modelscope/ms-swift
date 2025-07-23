@@ -7,10 +7,13 @@
 
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NPROC_PER_NODE=4 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B-VL-Instruct \
-    --dataset "../data/data_0.1.2_visual_toolbox_v2.parquet","../data/data_v0.8_visual_toolbox_v2.parquet", "../data/data_thinklite_reasoning_acc.parquet" \
+    --model Qwen/Qwen2.5-VL-7B-Instruct \
+    --dataset "path/to/data/data_0.1.2_visual_toolbox_v2.parquet"\
+    "path/to/data/data_v0.8_visual_toolbox_v2.parquet"\
+    "path/to/data/data_thinklite_reasoning_acc.parquet" \
     --use_vllm true \
     --vllm_mode colocate \
     --vllm_gpu_memory_utilization 0.5 \

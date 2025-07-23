@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 import json
 from openai import OpenAI
 from PIL import Image
+from qwen_vl_utils import fetch_image
 
 from swift.plugin.multi_turn import MultiTurnScheduler, multi_turns
 from swift.plugin.orm import ORM, orms
@@ -394,10 +395,12 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
                 raise ValueError(f'Unknown tool name: {tool_name}')
             args = tool_call['arguments']
             bbox = args['bbox_2d']
-            img = infer_request.images[0]
-            if not isinstance(img, Image.Image):
-                img = load_pil_image(img)
-                infer_request.images[0] = img
+            # NOTE: this function is only compatible with the QwenVL series models
+            # If you use another MLLM, please adjust the fetch_image function accordingly
+            # ensure the returned img is of type PIL.Image.Image and
+            # has been processed to a maximum size of max_pixels
+            img = fetch_image(infer_request.images[0])
+
             origin_height = img.height
             origin_width = img.width
             bbox = self.maybe_resize_bbox(*bbox, origin_width, origin_height)
