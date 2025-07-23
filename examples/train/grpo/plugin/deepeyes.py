@@ -403,8 +403,6 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
             bbox = self.maybe_resize_bbox(*bbox, origin_width, origin_height)
             cropped_img = img.crop(bbox)
             query = '<tool_response>' + '<image>' + self.user_prompt + '</tool_response>'
-        except ValueError:
-            raise  # for debug
         except Exception as e:
             error_msg = f'Invalid tool call format: {action.strip()}. Error: {e}'
             query = f'Error: {str(error_msg)}'
