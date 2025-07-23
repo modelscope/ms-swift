@@ -559,7 +559,8 @@ register_model(
             ModelGroup([
                 Model('Qwen/Qwen3-Coder-480B-A35B-Instruct', 'Qwen/Qwen3-Coder-480B-A35B-Instruct'),
                 Model('Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8', 'Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8'),
-            ], tags=['coding']),
+            ],
+                       tags=['coding']),
         ],
         TemplateType.qwen3,
         get_model_tokenizer_with_flash_attn,
