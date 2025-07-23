@@ -201,10 +201,11 @@ class DeepEyesReward(ORM):
             raise RuntimeError('Failed to connect to the model service. Please deploy the model '
                                "using 'swift deploy' or 'vllm serve'.") from e
 
-    def __call__(self, completions, solution, extra_info, data_source, **kwargs) -> List[float]:
+    def __call__(self, completions, reward_model, extra_info, data_source, **kwargs) -> List[float]:
         # reference: https://github.com/Visual-Agent/DeepEyes/blob/main/verl/utils/reward_score/vl_agent.py
         rewards = []
-        for completion, sol, info, source in zip(completions, solution, extra_info, data_source):
+        for completion, solution, info, source in zip(completions, reward_model, extra_info, data_source):
+            sol = solution['ground_truth']
             if source in ['vstar', 'chart']:
                 rewards.append(self.compute_score(completion, sol, info))
             elif source in ['thinklite_eureka']:

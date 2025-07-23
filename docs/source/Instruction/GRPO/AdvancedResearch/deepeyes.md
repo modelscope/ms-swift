@@ -39,4 +39,3 @@ huggingface-cli download ChenShawn/DeepEyes-Datasets-47k --repo-type=dataset
 
 ## 插件注册
 注册论文中所用到的奖励函数和工具调用逻辑，参考文件swift/examples/train/grpo/plugin/deepeyes.py
-
