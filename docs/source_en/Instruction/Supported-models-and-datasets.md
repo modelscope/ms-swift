@@ -339,8 +339,12 @@ The table below introduces the models integrated with ms-swift:
 |[ZhipuAI/GLM-4-32B-Base-0414](https://modelscope.cn/models/ZhipuAI/GLM-4-32B-Base-0414)|glm4_0414|glm4_0414|transformers>=4.51|&#x2718;|-|[THUDM/GLM-4-32B-Base-0414](https://huggingface.co/THUDM/GLM-4-32B-Base-0414)|
 |[ZhipuAI/GLM-Z1-9B-0414](https://modelscope.cn/models/ZhipuAI/GLM-Z1-9B-0414)|glm4_0414|glm4_0414|transformers>=4.51|&#x2718;|-|[THUDM/GLM-Z1-9B-0414](https://huggingface.co/THUDM/GLM-Z1-9B-0414)|
 |[ZhipuAI/GLM-Z1-32B-0414](https://modelscope.cn/models/ZhipuAI/GLM-Z1-32B-0414)|glm4_0414|glm4_0414|transformers>=4.51|&#x2718;|-|[THUDM/GLM-Z1-32B-0414](https://huggingface.co/THUDM/GLM-Z1-32B-0414)|
-|[ZhipuAI/GLM-4.5-MOE-106B-A12B-0715](https://modelscope.cn/models/ZhipuAI/GLM-4.5-MOE-106B-A12B-0715)|glm4_5|glm4_5|transformers>=4.54|&#x2714;|-|[THUDM/GLM-4.5-MOE-106B-A12B-0715](https://huggingface.co/THUDM/GLM-4.5-MOE-106B-A12B-0715)|
-|[ZhipuAI/GLM-4.5-MOE-355B-A32B-0715](https://modelscope.cn/models/ZhipuAI/GLM-4.5-MOE-355B-A32B-0715)|glm4_5|glm4_5|transformers>=4.54|&#x2714;|-|[THUDM/GLM-4.5-MOE-355B-A32B-0715](https://huggingface.co/THUDM/GLM-4.5-MOE-355B-A32B-0715)|
+|[ZhipuAI/GLM-4.5-Air-Base](https://modelscope.cn/models/ZhipuAI/GLM-4.5-Air-Base)|glm4_5|glm4_5|transformers>=4.54|&#x2714;|-|[THUDM/GLM-4.5-Air-Base](https://huggingface.co/THUDM/GLM-4.5-Air-Base)|
+|[ZhipuAI/GLM-4.5-Air](https://modelscope.cn/models/ZhipuAI/GLM-4.5-Air)|glm4_5|glm4_5|transformers>=4.54|&#x2714;|-|[THUDM/GLM-4.5-Air](https://huggingface.co/THUDM/GLM-4.5-Air)|
+|[ZhipuAI/GLM-4.5-Air-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.5-Air-FP8)|glm4_5|glm4_5|transformers>=4.54|&#x2718;|-|[THUDM/GLM-4.5-Air-FP8](https://huggingface.co/THUDM/GLM-4.5-Air-FP8)|
+|[ZhipuAI/GLM-4.5-Base](https://modelscope.cn/models/ZhipuAI/GLM-4.5-Base)|glm4_5|glm4_5|transformers>=4.54|&#x2714;|-|[THUDM/GLM-4.5-Base](https://huggingface.co/THUDM/GLM-4.5-Base)|
+|[ZhipuAI/GLM-4.5](https://modelscope.cn/models/ZhipuAI/GLM-4.5)|glm4_5|glm4_5|transformers>=4.54|&#x2714;|-|[THUDM/GLM-4.5](https://huggingface.co/THUDM/GLM-4.5)|
+|[ZhipuAI/GLM-4.5-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.5-FP8)|glm4_5|glm4_5|transformers>=4.54|&#x2718;|-|[THUDM/GLM-4.5-FP8](https://huggingface.co/THUDM/GLM-4.5-FP8)|
 |[ZhipuAI/GLM-Z1-Rumination-32B-0414](https://modelscope.cn/models/ZhipuAI/GLM-Z1-Rumination-32B-0414)|glm4_z1_rumination|glm4_z1_rumination|transformers>4.51|&#x2718;|-|[THUDM/GLM-Z1-Rumination-32B-0414](https://huggingface.co/THUDM/GLM-Z1-Rumination-32B-0414)|
 |[ZhipuAI/glm-edge-1.5b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-1.5b-chat)|glm_edge|glm4|transformers>=4.46|&#x2718;|-|[THUDM/glm-edge-1.5b-chat](https://huggingface.co/THUDM/glm-edge-1.5b-chat)|
 |[ZhipuAI/glm-edge-4b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-4b-chat)|glm_edge|glm4|transformers>=4.46|&#x2718;|-|[THUDM/glm-edge-4b-chat](https://huggingface.co/THUDM/glm-edge-4b-chat)|
