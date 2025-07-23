@@ -448,7 +448,7 @@ def test_ernie():
 
 def test_glm4_5():
     messages = [{'role': 'user', 'content': '浙江的省会在哪?'}]
-    pt_engine = PtEngine('ZhipuAI/GLM-4.5-MOE-106B-A12B-0715')
+    pt_engine = PtEngine('ZhipuAI/GLM-4.5-Air')
     res = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine, messages=messages)
