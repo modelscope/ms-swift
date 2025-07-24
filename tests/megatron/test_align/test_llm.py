@@ -124,7 +124,7 @@ def test_ernie():
 
 
 def test_glm4_5():
-    _test_model('ZhipuAI/GLM-4.5-MOE-106B-A12B-0715')
+    _test_model('ZhipuAI/GLM-4.5-Air')
 
 
 if __name__ == '__main__':

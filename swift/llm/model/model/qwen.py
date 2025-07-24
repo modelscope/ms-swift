@@ -555,7 +555,14 @@ register_model(
             ModelGroup([
                 Model('Qwen/Qwen3-235B-A22B-Instruct-2507', 'Qwen/Qwen3-235B-A22B-Instruct-2507'),
                 Model('Qwen/Qwen3-235B-A22B-Instruct-2507-FP8', 'Qwen/Qwen3-235B-A22B-Instruct-2507-FP8'),
+                # awq
+                Model('swift/Qwen3-235B-A22B-Instruct-2507-AWQ'),
             ]),
+            ModelGroup([
+                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct', 'Qwen/Qwen3-Coder-480B-A35B-Instruct'),
+                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8', 'Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8'),
+            ],
+                       tags=['coding']),
         ],
         TemplateType.qwen3,
         get_model_tokenizer_with_flash_attn,

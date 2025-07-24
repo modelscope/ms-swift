@@ -51,6 +51,7 @@ class VllmEngine(InferEngine):
         gpu_memory_utilization: float = 0.9,
         tensor_parallel_size: int = 1,
         pipeline_parallel_size: int = 1,
+        enable_expert_parallel: bool = False,
         max_model_len: Optional[int] = None,
         max_num_seqs: int = 256,
         disable_custom_all_reduce: bool = True,
@@ -90,6 +91,7 @@ class VllmEngine(InferEngine):
             gpu_memory_utilization=gpu_memory_utilization,
             tensor_parallel_size=tensor_parallel_size,
             pipeline_parallel_size=pipeline_parallel_size,
+            enable_expert_parallel=enable_expert_parallel,
             max_model_len=max_model_len,
             max_num_seqs=max_num_seqs,
             disable_custom_all_reduce=disable_custom_all_reduce,
@@ -128,6 +130,7 @@ class VllmEngine(InferEngine):
         gpu_memory_utilization: float = 0.9,
         tensor_parallel_size: int = 1,
         pipeline_parallel_size: int = 1,
+        enable_expert_parallel: bool = False,
         max_model_len: Optional[int] = None,
         max_num_seqs: int = 256,
         disable_custom_all_reduce: bool = True,
@@ -162,8 +165,9 @@ class VllmEngine(InferEngine):
         else:
             assert not limit_mm_per_prompt, (
                 'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
-        if 'enable_sleep_mode' in parameters:
-            engine_kwargs['enable_sleep_mode'] = enable_sleep_mode
+        for key in ['enable_expert_parallel', 'enable_sleep_mode']:
+            if key in parameters:
+                engine_kwargs[key] = locals()[key]
         if task is not None:
             engine_kwargs['task'] = task
 

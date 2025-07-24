@@ -1262,7 +1262,7 @@ class Template(ProcessorMixin):
         padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
         input_ids += [self.tokenizer.pad_token_id] * padding_len
         encoded['labels'] += [-100] * padding_len
-        if 'loss_scale' in encoded:
+        if encoded.get('loss_scale') is not None:
             encoded['loss_scale'] += [0] * padding_len
 
     def debug_logger(self, inputs):
@@ -1575,13 +1575,12 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
-        packing_mode = self.use_megatron or self._packing
         if self.padding_free:
             batch[:] = self._data_flatten(batch)
         if self._packing:
             assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
         res = {}
-        if packing_mode:
+        if self._packing:
             # only support llm
             for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel']:
                 v = self.gather_list(batch, k)
@@ -1624,26 +1623,31 @@ class Template(ProcessorMixin):
                 res[key][i] = val
             if not seq_lens:
                 seq_lens = [seq.shape[0] for seq in res[key]]
-        if not packing_mode and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
-            res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
+        if not self._packing and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
+            if not self.use_megatron:
+                res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
             if self.is_training and self.padding_side == 'left':
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
 
         if self.use_megatron:
-            padding_to = math.ceil(max(seq_lens) / 128) * 128
-            cp_size = self.sequence_parallel_size
-            if cp_size > 1:
-                padding_len = padding_to - seq_lens[0]
-                position_ids = res['position_ids'][0].tolist()
-                position_ids += list(range(cp_size * 2)) * (padding_len // (cp_size * 2))
-                res['position_ids'][0] = torch.tensor(position_ids)
+            if self._packing:
+                if padding_to is not None:
+                    padding_to = math.ceil(max(seq_lens) / padding_to) * padding_to
+            else:
+                padding_to = math.ceil(max(seq_lens) / 64) * 64
+                res['attention_mask'] = torch.tril(
+                    torch.ones((len(seq_lens), padding_to, padding_to),
+                               dtype=torch.bool)).view(len(seq_lens), 1, padding_to, padding_to)
+                assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res["attention_mask"].dtype}'
+                for i, seq_len in enumerate(seq_lens):
+                    res['attention_mask'][i, :, seq_len:] = 0
 
         for key, pad_value in zip(keys, pad_values):
             if key not in res:
                 continue
-            if self.use_megatron and key == 'position_ids' and self.sequence_parallel_size > 1:
-                pass
-            elif padding_to is not None:
+            if self.use_megatron and not self._packing and key == 'attention_mask':
+                continue
+            if padding_to is not None:
                 padding_len = padding_to - seq_lens[0]
                 if padding_len > 0:
                     res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),

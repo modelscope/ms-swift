@@ -76,8 +76,8 @@ def create_muon_optimizer(args: 'TrainingArguments', model, dataset):
             optim_args[key] = value
 
     model_arch = get_model_arch(model.model_meta.model_arch)
-    embed_key = model_arch.embedding or 'embed_tokens'
-    lm_head_key = model_arch.lm_head or 'lm_head'
+    embed_key = getattr(model_arch, 'embedding', None) or 'embed_tokens'
+    lm_head_key = getattr(model_arch, 'lm_head', None) or 'lm_head'
     muon_params = [
         p for n, p in model.named_parameters()
         if p.requires_grad and p.ndim >= 2 and embed_key not in n and lm_head_key not in n
