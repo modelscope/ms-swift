@@ -331,7 +331,7 @@ class ChatCompletionResponse:
     def to_cmpl_response(self) -> 'CompletionResponse':
         self = deepcopy(self)
         choices = [choice.to_cmpl_choice() for choice in self.choices]
-        id_ = f'cmpl{self.id[len("chatcmpl"):]}'
+        id_ = f'cmpl{self.id[len('chatcmpl'):]}'
         return CompletionResponse(self.model, choices, self.usage, id_, created=self.created)
 
 
@@ -385,7 +385,7 @@ class ChatCompletionStreamResponse:
     def to_cmpl_response(self) -> 'CompletionStreamResponse':
         self = deepcopy(self)
         choices = [choice.to_cmpl_choice() for choice in self.choices]
-        id_ = f'cmpl{self.id[len("chatcmpl"):]}'
+        id_ = f'cmpl{self.id[len('chatcmpl'):]}'
         return CompletionStreamResponse(self.model, choices, self.usage, id_, created=self.created)
 
 
