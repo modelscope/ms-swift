@@ -233,19 +233,32 @@ class SwiftMixin:
         if AutoModelForCausalLMWithValueHead is not None:
             supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead, )
         save_safetensors = self.args.save_safetensors
+        use_flash_attn = os.environ.get('FLASH_CKPT') == 'true'
+
         if not isinstance(self.model, supported_classes) and self.model.__class__.__name__ not in supported_names:
             if state_dict is None:
                 state_dict = self.model.state_dict()
 
             _unwrap_model = unwrap_model(self.model)
             if isinstance(_unwrap_model, supported_classes):
-                _unwrap_model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+                if use_flash_attn:
+                    _unwrap_model.save_pretrained(
+                        output_dir,
+                        state_dict=state_dict,
+                        safe_serialization=False,
+                        save_function=self.flash_checkpointer.ckpt_agent.save)
+                else:
+                    _unwrap_model.save_pretrained(
+                        output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
             else:
                 logger.info('Trainer.model is not a `PreTrainedModel`, only saving its state dict.')
-                if save_safetensors:
-                    safetensors.torch.save_file(state_dict, os.path.join(output_dir, 'model.safetensors'))
+                if use_flash_attn:
+                    self.flash_checkpointer.ckpt_agent.save(state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
                 else:
-                    torch.save(state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
+                    if save_safetensors:
+                        safetensors.torch.save_file(state_dict, os.path.join(output_dir, 'model.safetensors'))
+                    else:
+                        torch.save(state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
         elif AutoModelForCausalLMWithValueHead and isinstance(self.model, AutoModelForCausalLMWithValueHead):
             # save reward model
             state_dict = self.model.state_dict()
@@ -255,23 +268,49 @@ class SwiftMixin:
                     v_head_state_dict[name] = param
                 else:
                     decoder_state_dict[name.replace('pretrained_model.', '', 1)] = param
-            self.model.pretrained_model.save_pretrained(
-                output_dir, state_dict=decoder_state_dict or None, safe_serialization=save_safetensors)
-            if save_safetensors:
-                from safetensors.torch import save_file
-                save_file(
-                    v_head_state_dict, os.path.join(output_dir, 'value_head.safetensors'), metadata={'format': 'pt'})
+            if use_flash_attn:
+
+                self.model.pretrained_model.save_pretrained(
+                    output_dir,
+                    state_dict=decoder_state_dict or None,
+                    safe_serialization=False,
+                    save_function=self.flash_checkpointer.ckpt_agent.save)
             else:
-                torch.save(v_head_state_dict, os.path.join(output_dir, 'value_head.bin'))
+                self.model.pretrained_model.save_pretrained(
+                    output_dir, state_dict=decoder_state_dict or None, safe_serialization=save_safetensors)
+                if save_safetensors:
+                    from safetensors.torch import save_file
+                    save_file(
+                        v_head_state_dict,
+                        os.path.join(output_dir, 'value_head.safetensors'),
+                        metadata={'format': 'pt'})
+                else:
+                    torch.save(v_head_state_dict, os.path.join(output_dir, 'value_head.bin'))
         elif is_instance_of_ms_model(self.model):
-            PreTrainedModel.save_pretrained(
-                self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+            if use_flash_attn:
+                PreTrainedModel.save_pretrained(
+                    self.model,
+                    output_dir,
+                    state_dict=state_dict,
+                    safe_serialization=False,
+                    save_function=self.flash_checkpointer.ckpt_agent.save)
+            else:
+                # modelscope save_pretrained does not support safe_serialization
+                PreTrainedModel.save_pretrained(
+                    self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         elif self.args.train_type in extra_tuners:
             extra_tuners[self.args.train_type].save_pretrained(
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         else:
             if self.model.__class__.__name__ != 'SentenceTransformer':
-                self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+                if use_flash_attn:
+                    self.model.save_pretrained(
+                        output_dir,
+                        state_dict=state_dict,
+                        safe_serialization=False,
+                        save_function=self.flash_checkpointer.ckpt_agent.save)
+                else:
+                    self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
             else:
 
                 @contextmanager
@@ -287,23 +326,30 @@ class SwiftMixin:
                     self.model[0].auto_model.save_pretrained = save_pretrained
 
                 with save_context():
-                    self.model.save_pretrained(output_dir, safe_serialization=save_safetensors)
-                    # copy sentencetransformers files
-                    from swift.utils import copy_files_by_pattern
-                    copy_files_by_pattern(
-                        self.model.model_dir, output_dir, '*.py', exclude_patterns=['model.safetensors.index.json'])
-                    copy_files_by_pattern(
-                        self.model.model_dir, output_dir, '*.json', exclude_patterns=['model.safetensors.index.json'])
+                    if use_flash_attn:
+                        self.model.save_pretrained(
+                            output_dir,
+                            state_dict=state_dict,
+                            safe_serialization=False,
+                            save_function=self.flash_checkpointer.ckpt_agent.save)
+                    else:
+                        self.model.save_pretrained(output_dir, safe_serialization=save_safetensors)
+                        # copy sentencetransformers files
+                        from swift.utils import copy_files_by_pattern
+                        copy_files_by_pattern(
+                            self.model.model_dir, output_dir, '*.py', exclude_patterns=['model.safetensors.index.json'])
+                        copy_files_by_pattern(
+                            self.model.model_dir,
+                            output_dir,
+                            '*.json',
+                            exclude_patterns=['model.safetensors.index.json'])
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
         # If we are executing this function, we are the process zero, so we don't check for that.
         output_dir = output_dir if output_dir is not None else self.args.output_dir
         os.makedirs(output_dir, exist_ok=True)
-        if os.environ.get('FLASH_CKPT') == 'true':
-            self._save_model_flash_ckpt(output_dir, state_dict)
-        else:
-            self._save_model(output_dir, state_dict)
+        self._save_model(output_dir, state_dict)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
         self._save_converted_model(output_dir)
@@ -330,82 +376,7 @@ class SwiftMixin:
             if getattr(self.model, 'origin_generation_config', None):
                 self.model.origin_generation_config.save_pretrained(output_dir)
 
-    def _save_model_flash_ckpt(self, output_dir: Optional[str] = None, state_dict=None):
-        # model
-        supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
-        supported_names = ('SentenceTransformer', )
-        if AutoModelForCausalLMWithValueHead is not None:
-            supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead, )
-        save_safetensors = self.args.save_safetensors
-        if not isinstance(self.model, supported_classes) and self.model.__class__.__name__ not in supported_names:
-            if state_dict is None:
-                state_dict = self.model.state_dict()
-
-            _unwrap_model = unwrap_model(self.model)
-            if isinstance(_unwrap_model, supported_classes):
-                _unwrap_model.save_pretrained(
-                    output_dir,
-                    state_dict=state_dict,
-                    safe_serialization=False,
-                    save_function=self.flash_checkpointer.ckpt_agent.save)
-            else:
-                logger.info('Trainer.model is not a `PreTrainedModel`, only saving its state dict.')
-                torch.save(state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
-        elif AutoModelForCausalLMWithValueHead and isinstance(self.model, AutoModelForCausalLMWithValueHead):
-            # save reward model
-            state_dict = self.model.state_dict()
-            decoder_state_dict, v_head_state_dict = {}, {}
-            for name, param in state_dict.items():
-                if name.startswith('v_head.'):
-                    v_head_state_dict[name] = param
-                else:
-                    decoder_state_dict[name.replace('pretrained_model.', '', 1)] = param
-            self.model.pretrained_model.save_pretrained(
-                output_dir,
-                state_dict=decoder_state_dict or None,
-                safe_serialization=False,
-                save_function=self.flash_checkpointer.ckpt_agent.save)
-
-            torch.save(v_head_state_dict, os.path.join(output_dir, 'value_head.bin'))
-        elif is_instance_of_ms_model(self.model):
-            PreTrainedModel.save_pretrained(
-                self.model,
-                output_dir,
-                state_dict=state_dict,
-                safe_serialization=False,
-                save_function=self.flash_checkpointer.ckpt_agent.save)
-        elif self.args.train_type in extra_tuners:
-            extra_tuners[self.args.train_type].save_pretrained(
-                self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
-        else:
-            if self.model.__class__.__name__ != 'SentenceTransformer':
-                self.model.save_pretrained(
-                    output_dir,
-                    state_dict=state_dict,
-                    safe_serialization=False,
-                    save_function=self.flash_checkpointer.ckpt_agent.save)
-            else:
-
-                @contextmanager
-                def save_context():
-                    save_pretrained = self.model[0].auto_model.save_pretrained
-                    _state_dict = {
-                        key[len('0.auto_model.'):] if 'auto_model' in key else key: value
-                        for key, value in state_dict.items()
-                    }
-                    self.model[0].auto_model.save_pretrained = partial(
-                        self.model[0].auto_model.save_pretrained, state_dict=_state_dict)
-                    yield
-                    self.model[0].auto_model.save_pretrained = save_pretrained
-
-                with save_context():
-                    self.model.save_pretrained(output_dir, safe_serialization=save_safetensors)
-                    # copy sentencetransformers files
-                    from swift.utils import copy_files_by_pattern
-                    copy_files_by_pattern(self.model.model_dir, output_dir, '*.py')
-                    copy_files_by_pattern(self.model.model_dir, output_dir, '*.json')
-
-    def _rotate_checkpoints(self, use_mtime=False, output_dir=None) -> None:
+    def _rotate_flash_checkpoints(self, use_mtime=False, output_dir=None) -> None:
         if (self.args.save_total_limit is None or self.args.save_total_limit <= 0):
             return
 
@@ -574,7 +545,7 @@ class SwiftMixin:
 
         # Maybe delete some older checkpoints.
         if self.args.should_save:
-            self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
+            self._rotate_flash_checkpoints(use_mtime=True, output_dir=run_dir)
 
     @staticmethod
     @contextmanager
