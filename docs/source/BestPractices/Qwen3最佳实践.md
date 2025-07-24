@@ -323,6 +323,8 @@ swift rlhf \
 
 ## Megatron-SWIFT
 
+- Qwen3-235B-A22B-Instruct-250718 单机8卡H20 LoRA训练的最佳实践参考：[https://github.com/modelscope/ms-swift/pull/5033](https://github.com/modelscope/ms-swift/pull/5033)。
+
 ms-swift 引入了 Megatron 并行技术以加速大模型的CPT/SFT/DPO。支持的模型可以在[支持的模型文档](../Instruction/支持的模型和数据集.md)中找到。
 
 关于环境准备以及 HF 和 MCore 模型权重的转换，可以参考[Megatron-SWIFT训练文档](../Instruction/Megatron-SWIFT训练.md)。
