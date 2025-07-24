@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 from typing import Any, Dict
+from transformers import AutoTokenizer
 
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
@@ -139,6 +140,36 @@ def get_model_tokenizer_mistral_2503(model_dir: str,
 
     return model, processor
 
+def get_model_tokenizer_devstral_2505(model_dir: str,
+                                     model_info: ModelInfo,
+                                     model_kwargs: Dict[str, Any],
+                                     load_model: bool = True,
+                                     **kwargs):
+    tokenizer = AutoTokenizer.from_pretrained('mistralai/Mistral-Small-3.1-24B-Instruct-2503') # src: sglang did the same (https://github.com/sgl-project/sglang/pull/6547)
+
+    kwargs['tokenizer'] = tokenizer
+    model, processor = get_model_tokenizer_with_flash_attn(
+        model_dir,
+        model_info,
+        model_kwargs,
+        load_model,
+        **kwargs
+    )
+    return model, processor
+
+register_model(
+    ModelMeta(
+        model_type='devstral',
+        model_groups=[
+            ModelGroup([
+                Model('mistralai/Devstral-Small-2505', 'mistralai/Devstral-Small-2505'),
+            ],
+                       requires=['transformers>=4.43','mistral-common>=1.5.5'])
+        ],
+        template='devstral',
+        get_function=get_model_tokenizer_devstral_2505,
+        architectures=['MistralForCausalLM'],
+        model_arch=ModelArch.llama))
 
 register_model(
     ModelMeta(
