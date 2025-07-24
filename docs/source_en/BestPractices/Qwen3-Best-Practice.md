@@ -327,6 +327,8 @@ swift rlhf \
 
 ## Megatron-SWIFT
 
+Best practice reference for single-node 8xH20 LoRA training with Qwen3-235B-A22B-Instruct-250718: https://github.com/modelscope/ms-swift/pull/5033.
+
 ms-swift introduces Megatron parallelism techniques to accelerate CPT/SFT/DPO for large models. Supported models can be found in the [Supported Models and Datasets Document](../Instruction/Supported-models-and-datasets.md).
 
 For environment setup and conversion between HF and MCore model weights, refer to the [Megatron-SWIFT Training Documentation](../Instruction/Megatron-SWIFT-Training.md).
@@ -345,6 +347,7 @@ megatron sft \
     --split_dataset_ratio 0.01 \
     --pipeline_model_parallel_size 2 \
     --expert_model_parallel_size 8 \
+    --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
     --moe_aux_loss_coeff 1e-3 \

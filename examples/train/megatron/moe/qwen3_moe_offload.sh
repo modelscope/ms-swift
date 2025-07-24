@@ -8,6 +8,7 @@ megatron sft \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
     --split_dataset_ratio 0.01 \
     --expert_model_parallel_size 4 \
+    --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
     --moe_aux_loss_coeff 1e-3 \
