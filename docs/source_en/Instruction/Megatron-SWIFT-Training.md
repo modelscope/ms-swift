@@ -132,7 +132,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 ## LoRA Training
 
-- Best practice reference for single-node 8xH20 LoRA training with Qwen3-235B-A22B-Instruct-250718: https://github.com/modelscope/ms-swift/pull/5033.
+Best practice reference for single-node 8xH20 LoRA training with Qwen3-235B-A22B-Instruct-250718: https://github.com/modelscope/ms-swift/pull/5033.
 
 Compared to full parameter tuning, LoRA training differs in both the training and MCore-to-HF conversion scripts:
 

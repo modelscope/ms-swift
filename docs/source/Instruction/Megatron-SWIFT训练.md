@@ -128,7 +128,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 ## LoRA训练
 
-- Qwen3-235B-A22B-Instruct-250718 单机8卡H20 LoRA训练的最佳实践参考：[https://github.com/modelscope/ms-swift/pull/5033](https://github.com/modelscope/ms-swift/pull/5033)。
+Qwen3-235B-A22B-Instruct-250718 单机8卡H20 LoRA训练的最佳实践参考：[https://github.com/modelscope/ms-swift/pull/5033](https://github.com/modelscope/ms-swift/pull/5033)。
 
 相比全参数训练，LoRA训练在训练和MCore转换HF脚本有所区别：
 
