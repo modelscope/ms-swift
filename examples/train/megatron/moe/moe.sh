@@ -9,13 +9,13 @@ megatron sft \
     --pipeline_model_parallel_size 2 \
     --decoder_last_pipeline_num_layers 11 \
     --expert_model_parallel_size 4 \
+    --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
     --moe_aux_loss_coeff 1e-3 \
     --micro_batch_size 1 \
     --global_batch_size 16 \
     --packing true \
-    --moe_permute_fusion true \
     --moe_router_dtype fp32 \
     --recompute_granularity full \
     --recompute_method uniform \

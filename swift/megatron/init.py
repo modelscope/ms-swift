@@ -688,8 +688,9 @@ def _patch_peft_ModulesToSaveWrapper():
 
 def _patch_TransformerLayer():
     from megatron.core.transformer import TransformerLayer
+    from megatron.core import mpu
 
-    def forward(self, *args, **kwargs):
+    def forward(self, *_args, **kwargs):
         """
         Perform a forward pass through the transformer layer.
 
@@ -697,11 +698,13 @@ def _patch_TransformerLayer():
         self-attention, cross-attention (if applicable), and feed-forward operations.
         """
         from megatron.training import get_args
-        hidden_states, context = self._forward_attention(*args, **kwargs)
+        hidden_states, context = self._forward_attention(*_args, **kwargs)
         args = get_args()
         mlp_padding_free = args.mlp_padding_free and 'attention_mask' in kwargs
         if mlp_padding_free:
             mask = (kwargs['attention_mask'].sum(dim=(1, 3)) > 0).t()
+            if args.sequence_parallel and args.tensor_model_parallel_size > 1:
+                mask = mask.chunk(args.tensor_model_parallel_size)[mpu.get_tensor_model_parallel_rank()]
             hidden_states = hidden_states[mask][:, None]
         output = self._forward_mlp(hidden_states, kwargs.get('inference_context', None))
         if mlp_padding_free:
