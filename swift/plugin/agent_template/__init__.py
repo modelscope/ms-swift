@@ -7,6 +7,7 @@ from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .qwen import QwenEnAgentTemplate, QwenEnParallelAgentTemplate, QwenZhAgentTemplate, QwenZhParallelAgentTemplate
 from .react import ReactEnAgentTemplate, ReactZnAgentTemplate
 from .toolbench import ToolBenchAgentTemplate
+from .mistral import MistralAgentTemplate
 
 agent_templates = {
     # ref: https://qwen.readthedocs.io/zh-cn/latest/framework/function_call.html#function-calling-templates
@@ -24,5 +25,6 @@ agent_templates = {
     'llama3': Llama3AgentTemplate,
     'llama4': Llama4AgentTemplate,
     # extra
-    'react_grpo': ReactGRPOAgentTemplate
+    'react_grpo': ReactGRPOAgentTemplate,
+    'mistral': MistralAgentTemplate
 }
