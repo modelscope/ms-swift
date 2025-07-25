@@ -33,14 +33,16 @@ class MegatronSft(SwiftSft):
         self.trainer = self.prepare_trainer()
 
     def _get_data_collator(self):
+        args = self.args
         data_collator = self.template.data_collator
         padding_to = None
-        if self.args.tensor_model_parallel_size and self.args.sequence_parallel:
-            padding_to = self.args.tensor_model_parallel_size
-        if self.args.fp8_format is not None:
-            padding_to = 8 if padding_to is None else padding_to * 8
-        if padding_to is not None:
-            data_collator = partial(data_collator, padding_to=padding_to)
+        if args.tensor_model_parallel_size > 1 and args.sequence_parallel:
+            padding_to = args.tensor_model_parallel_size
+        if args.context_parallel_size > 1:
+            padding_to = max(args.context_parallel_size, padding_to or 0)
+        if args.fp8_format:
+            padding_to = max((padding_to or 1) * 8, 16)
+        data_collator = partial(data_collator, padding_to=padding_to)
         return data_collator
 
     def run(self):

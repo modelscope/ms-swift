@@ -4,16 +4,17 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \
-    --load Qwen2.5-14B-mcore \
-    --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --load Qwen2.5-7B-mcore \
+    --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \
     --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 4 \
     --micro_batch_size 1 \
     --global_batch_size 16 \
     --packing true \
-    --recompute_granularity selective \
-    --train_iters 2000 \
-    --eval_iters 50 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
+    --max_epochs 3 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
