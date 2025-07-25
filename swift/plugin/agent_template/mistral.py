@@ -14,12 +14,19 @@ class MistralAgentTemplate(BaseAgentTemplate):
 
     def get_toolcall(self, response: str) -> List['Function']:
         from swift.llm.infer import Function
-        res_list = re.findall(r'\[TOOL_CALLS\]\[(.+?)\]', response, re.DOTALL)
+        res_list = re.findall(r'\[TOOL_CALLS\]\[(.*?)\]</s>', response, re.DOTALL)
+        if not res_list:
+            return []
+        res_list = res_list[0].strip().split('\n')
         functions = []
-        for res in res_list:
-            res = self._parse_json(res)
-            if isinstance(res, dict) and 'name' in res and 'arguments' in res:
-                functions.append(Function(name=res['name'], arguments=res['arguments']))
+        for res_str in res_list:
+            parsed_res = self._parse_json(res_str)
+            if isinstance(parsed_res, dict):
+                parsed_res = [parsed_res]  # Handle single tool call
+            if isinstance(parsed_res, list):
+                for tool_call in parsed_res:
+                    if isinstance(tool_call, dict) and 'name' in tool_call and 'arguments' in tool_call:
+                        functions.append(Function(name=tool_call['name'], arguments=tool_call['arguments']))
         if len(functions) == 0:
             # compat react_en
             return super().get_toolcall(response)
@@ -57,4 +64,4 @@ class MistralAgentTemplate(BaseAgentTemplate):
         for message in tool_call_messages:
             tool_call = self._parse_tool_call(message['content'])   # needs `{'name': name, 'arguments': arguments}`, which self._parse_tool_call satisfies
             tool_calls.append(json.dumps(tool_call, ensure_ascii=False))
-        return f"[TOOL_CALLS][\n{''.join(tool_calls)}]"  # check if need `</s>` at end
+        return f"[TOOL_CALLS][\n{'\n'.join(tool_calls)}\n]</s>"  # check if need `</s>` at end
