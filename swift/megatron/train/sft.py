@@ -42,6 +42,7 @@ class MegatronSft(SwiftSft):
             padding_to = max(args.context_parallel_size, padding_to or 0)
         if args.fp8_format:
             padding_to = max((padding_to or 1) * 8, 16)
+        logger.info(f'padding_to: {padding_to}')
         data_collator = partial(data_collator, padding_to=padding_to)
         return data_collator
 

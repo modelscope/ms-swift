@@ -1,13 +1,13 @@
-# bf16: 8 * 68GiB; 16.1s/it
-# fp8: 8 * 68GiB; 11.7s/it
+# bf16: 4 * 56GiB; 17.5s/it
+# fp8: 4 * 58GiB; 12.5s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-NPROC_PER_NODE=8 \
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
     --load Qwen2.5-7B-mcore \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \
     --split_dataset_ratio 0.01 \
-    --tensor_model_parallel_size 4 \
+    --tensor_model_parallel_size 2 \
     --micro_batch_size 1 \
     --global_batch_size 16 \
     --packing true \
@@ -20,7 +20,7 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --save megatron_output/Qwen2.5-14B \
+    --save megatron_output/Qwen2.5-7B \
     --eval_interval 200 \
     --save_interval 200 \
     --max_length 8192 \

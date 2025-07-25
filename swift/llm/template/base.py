@@ -1653,7 +1653,8 @@ class Template(ProcessorMixin):
                 continue
             if self.use_megatron and not self._packing and key == 'attention_mask':
                 continue
-            if padding_to is not None and not (self._packing and key == 'position_ids'):
+            if padding_to is not None and not (self._packing and key == 'position_ids'
+                                               and self.sequence_parallel_size > 1):
                 padding_len = padding_to - seq_lens[0]
                 if padding_len > 0:
                     res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
