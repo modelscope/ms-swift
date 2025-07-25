@@ -72,7 +72,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             else:
                 queue.put(None)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.new_event_loop()
         thread = Thread(target=lambda: loop.run_until_complete(_run_async_iter()))
         thread.start()
         pre_output = None
@@ -81,6 +81,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             if output is None or isinstance(output, Exception):
                 prog_bar.update()
                 self._update_metrics(pre_output, metrics)
+                loop.close()
                 return
             pre_output = output
             yield output
@@ -255,10 +256,13 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
     @staticmethod
     def safe_asyncio_run(coro):
-        loop = asyncio.get_event_loop()
+        loop = asyncio.new_event_loop()
 
         def asyncio_run(core):
-            return loop.run_until_complete(core)
+            try:
+                return loop.run_until_complete(core)
+            finally:
+                loop.close()
 
         return InferEngine.thread_run(asyncio_run, args=(coro, ))
 
