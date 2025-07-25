@@ -164,7 +164,7 @@ register_model(
             ModelGroup([
                 Model('mistralai/Devstral-Small-2505', 'mistralai/Devstral-Small-2505'),
             ],
-                       requires=['transformers>=4.43','mistral-common>=1.5.5'])
+                       requires=['transformers>=4.43', 'mistral-common>=1.5.5'])
         ],
         template='devstral',
         get_function=get_model_tokenizer_devstral_2505,
