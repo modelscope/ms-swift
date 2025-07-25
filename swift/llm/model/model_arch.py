@@ -41,6 +41,7 @@ class MLLMModelArch:
     llama3_2_vision = 'llama3_2_vision'
 
     llava_hf = 'llava_hf'
+    origin_llava_hf = 'origin_llava_hf'  # transformers<4.52
     llava_next_video_hf = 'llava_next_video_hf'
 
     llava_llama = 'llava_llama'
@@ -311,6 +312,14 @@ register_model_arch(
         kvb_proj='model.layers.{}.self_attn.kv_b_proj',
         embedding='model.embed_tokens',
         lm_head='lm_head',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.origin_llava_hf,
+        language_model='language_model',
+        aligner='multi_modal_projector',
+        vision_tower='vision_tower',
     ))
 
 if transformers_ge_4_52:
