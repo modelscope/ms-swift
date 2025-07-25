@@ -626,10 +626,9 @@ class DataLoaderMixin:
                 'drop_last': args.dataloader_drop_last,
                 'shuffle': args.train_dataloader_shuffle,
                 'data_seed': args.data_seed,
+                'tp_size': args.deepspeed_autotp_size,
             }
 
-            batch_sampler_params['ds_tensor_parallel_size'] = self.args.deepspeed['tensor_parallel'][
-                'autotp_size'] if 'tensor_parallel' in self.args.deepspeed else 1
             if hasattr(train_dataset, '__len__'):
                 batch_sampler = BatchSamplerShard(
                     len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
