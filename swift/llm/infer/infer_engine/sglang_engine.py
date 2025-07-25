@@ -95,18 +95,15 @@ class SglangEngine(InferEngine):
         generation_config_path = os.path.join(self.model_dir, 'generation_config.json')
         if os.path.isfile(generation_config_path):
             generation_config = GenerationConfig.from_pretrained(self.model_dir)
-            kwargs = generation_config.to_dict()
-            top_k = kwargs.get('top_k')
-            if top_k == 0:
-                kwargs['top_k'] = -1
-
-            parameters = inspect.signature(SamplingParams).parameters
-            for k, v in kwargs.copy().items():
-                if k not in parameters or v is None:
-                    kwargs.pop(k)
-            self.generation_config = kwargs
         else:
-            self.generation_config = {}
+            generation_config = GenerationConfig()
+        kwargs = generation_config.to_dict()
+        top_k = kwargs.get('top_k')
+        if top_k == 0:
+            kwargs['top_k'] = -1
+
+        parameters = inspect.signature(SamplingParams).parameters
+        self.generation_config = {k: v for k, v in kwargs.items() if k in parameters and v is not None}
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> Dict[str, Any]:
         kwargs = {'max_new_tokens': request_config.max_tokens}

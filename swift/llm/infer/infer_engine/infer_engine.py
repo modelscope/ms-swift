@@ -72,7 +72,11 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             else:
                 queue.put(None)
 
-        loop = asyncio.new_event_loop()
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
         thread = Thread(target=lambda: loop.run_until_complete(_run_async_iter()))
         thread.start()
         pre_output = None
@@ -81,7 +85,6 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             if output is None or isinstance(output, Exception):
                 prog_bar.update()
                 self._update_metrics(pre_output, metrics)
-                loop.close()
                 return
             pre_output = output
             yield output
