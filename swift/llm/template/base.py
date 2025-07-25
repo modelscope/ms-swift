@@ -1631,8 +1631,14 @@ class Template(ProcessorMixin):
 
         if self.use_megatron:
             if self._packing:
+                cp_size = self.sequence_parallel_size
                 if padding_to is not None:
                     padding_to = math.ceil(max(seq_lens) / padding_to) * padding_to
+                if cp_size > 1:
+                    padding_len = padding_to - seq_lens[0]
+                    position_ids = res['position_ids'][0].tolist()
+                    position_ids += list(range(cp_size * 2)) * (padding_len // (cp_size * 2))
+                    res['position_ids'] = [torch.tensor(position_ids)]
             else:
                 padding_to = math.ceil(max(seq_lens) / 64) * 64
                 res['attention_mask'] = torch.tril(
@@ -1647,7 +1653,8 @@ class Template(ProcessorMixin):
                 continue
             if self.use_megatron and not self._packing and key == 'attention_mask':
                 continue
-            if padding_to is not None:
+            if padding_to is not None and not (self._packing and key == 'position_ids'
+                                               and self.sequence_parallel_size > 1):
                 padding_len = padding_to - seq_lens[0]
                 if padding_len > 0:
                     res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
