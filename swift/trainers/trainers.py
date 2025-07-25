@@ -63,6 +63,22 @@ class Trainer(SwiftMixin, HfTrainer):
         return (loss, outputs) if return_outputs else loss
 
 
+def gather_for_unpadded_tensors(input_data, use_gather_object=False):
+    from accelerate.utils import gather_object
+    input_data = gather_object(input_data)
+    output = []
+    for _data in input_data:
+        if len(_data.shape) == 0:
+            _data = _data.unsqueeze(0)
+        _data = _data.cpu()
+        output.append(_data)
+    if len(output[0].shape) == 1 and output[0].shape[0] > 1:
+        data = torch.stack(output, dim=0)
+    else:
+        data = torch.concat(output, dim=0)
+    return data
+
+
 class EmbeddingTrainer(Trainer):
 
     def __init__(self, *args, **kwargs):
@@ -70,6 +86,12 @@ class EmbeddingTrainer(Trainer):
         self.compute_metrics = self.calculate_metric
         self.preprocess_logits_for_metrics = None
         self.label_names = ['labels']
+        self.gather_function = gather_for_unpadded_tensors
+
+    def evaluation_loop(self, *args, **kwargs):
+        output = super().evaluation_loop(*args, **kwargs)
+        self.gather_function = gather_for_unpadded_tensors
+        return output
 
     def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
         from swift.plugin.loss import infonce_loss, calculate_paired_metrics, calculate_infonce_metrics
@@ -95,6 +117,7 @@ class RerankerTrainer(Trainer):
             self.preprocess_logits_for_metrics = self._preprocess_generative_reranker_logits
         else:
             self.preprocess_logits_for_metrics = None
+        self.gather_function = gather_for_unpadded_tensors
 
     def _preprocess_generative_reranker_logits(self, logits, labels):
         """
@@ -132,6 +155,11 @@ class RerankerTrainer(Trainer):
         else:
             # Unexpected shape, return as-is
             return logits
+
+    def evaluation_loop(self, *args, **kwargs):
+        output = super().evaluation_loop(*args, **kwargs)
+        self.gather_function = gather_for_unpadded_tensors
+        return output
 
     def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
         from swift.plugin.loss import (get_loss_func, LossType, calculate_reranker_metrics)
