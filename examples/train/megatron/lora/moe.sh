@@ -13,6 +13,7 @@ megatron sft \
     --target_modules all-linear \
     --split_dataset_ratio 0.01 \
     --expert_model_parallel_size 2 \
+    --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
     --moe_aux_loss_coeff 1e-3 \

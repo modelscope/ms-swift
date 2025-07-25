@@ -127,6 +127,9 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 自定义数据集格式和ms-swift相同，参考[自定义数据集文档](../Customization/自定义数据集.md)。
 
 ## LoRA训练
+
+Qwen3-235B-A22B-Instruct-250718 单机8卡H20 LoRA训练的最佳实践参考：[https://github.com/modelscope/ms-swift/pull/5033](https://github.com/modelscope/ms-swift/pull/5033)。
+
 相比全参数训练，LoRA训练在训练和MCore转换HF脚本有所区别：
 
 训练脚本：
@@ -214,7 +217,7 @@ swift export \
 - 🔥recompute_granularity: 重新计算激活的粒度，可选项为'full', 'selective'。其中full代表重新计算整个transformer layer，selective代表只计算transformer layer中的核心注意力部分。通常'selective'是推荐的。默认为'selective'。
 - 🔥recompute_method: 该参数需将recompute_granularity设置为'full'才生效，可选项为'uniform', 'block'。默认为None。
 - 🔥recompute_num_layers: 该参数需将recompute_granularity设置为'full'才生效，默认为None。若`recompute_method`设置为uniform，该参数含义为每个均匀划分的重新计算单元的transformer layers数量。例如你可以指定为`--recompute_granularity full --recompute_method uniform --recompute_num_layers 4`。recompute_num_layers越大，显存占用越小，计算成本越大。默认为None。
-- recompute_modules: 选项包括"core_attn", "moe_act", "layernorm", "mla_up_proj", "mlp", "moe" ，默认值为，["core_attn"]。例如在MoE训练时，你可以通过指定`--recompute_granularity selective --recompute_modules core_attn moe`降低显存。其中"core_attn"、"mlp" 和 "moe" 使用常规检查点，"moe_act"、"layernorm" 和 "mla_up_proj" 使用输出丢弃检查点。
+- recompute_modules: 选项包括"core_attn", "moe_act", "layernorm", "mla_up_proj", "mlp", "moe"，默认值为`["core_attn"]`。该参数在`--recompute_granularity selective`时生效。例如在MoE训练时，你可以通过指定`--recompute_granularity selective --recompute_modules core_attn moe`降低显存。其中"core_attn"、"mlp" 和 "moe" 使用常规检查点，"moe_act"、"layernorm" 和 "mla_up_proj" 使用输出丢弃检查点。
   - "core_attn"：重新计算 Transformer 层中的核心注意力部分。
   - "mlp"：重新计算密集的 MLP 层。
   - "moe"：重新计算 MoE 层。
@@ -430,7 +433,7 @@ Megatron训练参数继承自Megatron参数和基本参数。基本参数的内�
 - add_version: 在`save`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
 - padding_free: 将一个batch中的数据进行展平而避免数据padding，从而降低显存占用并加快训练。默认为True。
   - 若要自定义attention_mask，你可以设置`--padding_free false`。
-- mlp_padding_free: 默认为None，若padding_free为True，则默认为False；否则，默认为True。用于padding_free设置为false时，对mlp进行padding_free优化。这可以在自定义attention_mask的同时，提升训练速度和减少显存占用。
+- mlp_padding_free: 默认为False。用于padding_free设置为false时，对mlp进行padding_free优化。这可以在自定义attention_mask的同时，提升训练速度和减少显存占用。
 - 🔥packing: 是否使用序列packing，默认为False。当前支持`megatron pt/sft`。
 - packing_cache: 指定 packing 缓存目录。默认值为`None`，表示缓存将存储在环境变量 `$MODELSCOPE_CACHE`所指定的路径下。在跨节点使用 packing 功能时，需确保所有节点的 packing 缓存路径共享且一致。你可以通过设置`MODELSCOPE_CACHE`环境变量，或在命令行中添加 `--packing_cache <shared_path>`参数来实现这一要求。
   - 注意：该参数将在"ms-swift>=3.7"被移除。多机packing不再需要设置packing_cache。

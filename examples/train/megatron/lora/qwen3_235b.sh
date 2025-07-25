@@ -11,6 +11,7 @@ megatron sft \
     --lora_alpha 32 \
     --target_modules all-linear \
     --split_dataset_ratio 0.01 \
+    --moe_permute_fusion true \
     --expert_model_parallel_size 8 \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
@@ -54,6 +55,7 @@ megatron sft \
     --lora_alpha 32 \
     --target_modules all-linear \
     --split_dataset_ratio 0.01 \
+    --moe_permute_fusion true \
     --expert_model_parallel_size 2 \
     --pipeline_model_parallel_size 4 \
     --decoder_first_pipeline_num_layers 23 \
