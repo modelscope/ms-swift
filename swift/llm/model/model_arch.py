@@ -41,7 +41,7 @@ class MLLMModelArch:
     llama3_2_vision = 'llama3_2_vision'
 
     llava_hf = 'llava_hf'
-    origin_llava_hf = 'origin_llava_hf'  # transformers<4.52
+    llava_hf_legacy = 'llava_hf_legacy'  # transformers<4.52
     llava_next_video_hf = 'llava_next_video_hf'
 
     llava_llama = 'llava_llama'
@@ -316,7 +316,7 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
-        MLLMModelArch.origin_llava_hf,
+        MLLMModelArch.llava_hf_legacy,
         language_model='language_model',
         aligner='multi_modal_projector',
         vision_tower='vision_tower',
