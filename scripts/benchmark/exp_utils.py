@@ -122,7 +122,7 @@ class ExpManager:
             exp.runtime = runtime
             envs = deepcopy(runtime.get('env', {}))
             envs.update(os.environ)
-            logger.info(f'Running cmd: {runtime['running_cmd']}, env: {runtime.get('env', {})}')
+            logger.info(f'Running cmd: {runtime["running_cmd"]}, env: {runtime.get("env", {})}')
             os.makedirs('exp', exist_ok=True)
             log_file = os.path.join('exp', f'{exp.name}.eval.log')
             exp.handler = subprocess.Popen(runtime['running_cmd'] + f' > {log_file} 2>&1', env=envs, shell=True)
@@ -140,7 +140,7 @@ class ExpManager:
             exp.runtime = runtime
             envs = deepcopy(runtime.get('env', {}))
             envs.update(os.environ)
-            logger.info(f'Running cmd: {runtime['running_cmd']}, env: {runtime.get('env', {})}')
+            logger.info(f'Running cmd: {runtime["running_cmd"]}, env: {runtime.get("env", {})}')
             os.makedirs('exp', exist_ok=True)
             log_file = os.path.join('exp', f'{exp.name}.{exp.cmd}.log')
             exp.handler = subprocess.Popen(runtime['running_cmd'] + f' > {log_file} 2>&1', env=envs, shell=True)
@@ -162,10 +162,10 @@ class ExpManager:
         if best_model_checkpoint is not None:
             if not os.path.exists(os.path.join(best_model_checkpoint, 'args.json')):
                 cmd = f'swift eval --ckpt_dir {best_model_checkpoint} ' \
-                      + f'--infer_backend pt --train_type full --eval_dataset {' '.join(eval_dataset)}'
+                      + f'--infer_backend pt --train_type full --eval_dataset {" ".join(eval_dataset)}'
         else:
-            cmd = f'swift eval --model {exp.args.get('model')} --infer_backend pt ' \
-                  f'--eval_dataset {' '.join(eval_dataset)}'
+            cmd = f'swift eval --model {exp.args.get("model")} --infer_backend pt ' \
+                  f'--eval_dataset {" ".join(eval_dataset)}'
 
         return {
             'running_cmd': cmd,
