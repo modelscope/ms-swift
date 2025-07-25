@@ -660,10 +660,15 @@ class DataLoaderMixin:
                 'prefetch_factor': args.dataloader_prefetch_factor
             }
             batch_sampler_params = {
-                'drop_last': args.dataloader_drop_last,
-                'shuffle': args.train_dataloader_shuffle,
-                'data_seed': args.data_seed,
-                'tp_size': args.deepspeed_autotp_size,
+                'drop_last':
+                args.dataloader_drop_last,
+                'shuffle':
+                args.train_dataloader_shuffle,
+                'data_seed':
+                args.data_seed,
+                'tp_size':
+                args.deepspeed['tensor_parallel']['autotp_size']
+                if args.deepspeed and 'tensor_parallel' in args.deepspeed else 1,
             }
 
             if hasattr(train_dataset, '__len__'):

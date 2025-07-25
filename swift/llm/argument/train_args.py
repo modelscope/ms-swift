@@ -216,7 +216,8 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                 logger.warn('If `zero_hpz_partition_size`(ZeRO++) causes grad_norm NaN, please'
                             ' try `--torch_dtype float16`')
             if self.deepspeed_autotp_size > 1:
-                self.deepspeed['tensor_parallel']['autotp_size'] = self.deepspeed_autotp_size
+                self.deepspeed.update({'tensor_parallel': {'autotp_size': self.deepspeed_autotp_size}})
+                self.deepspeed['zero_optimization']['gather_16bit_weights_on_model_save'] = True
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
     def _handle_pai_compat(self) -> None:
