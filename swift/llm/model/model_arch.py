@@ -39,6 +39,7 @@ class MLLMModelArch:
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'
+    llama4 = 'llama4'
 
     llava_hf = 'llava_hf'
     llava_hf_legacy = 'llava_hf_legacy'  # transformers<4.52
@@ -572,6 +573,14 @@ else:
             aligner='multi_modal_projector',
             vision_tower='vision_model',
         ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.llama4,
+        language_model='language_model',
+        aligner='multi_modal_projector',
+        vision_tower='vision_model',
+    ))
 
 register_model_arch(MultiModelKeys(
     MLLMModelArch.ovis1_6,
