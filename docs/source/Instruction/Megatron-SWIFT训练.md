@@ -13,8 +13,8 @@ pip install pybind11
 # transformer_engine
 # 若出现安装错误，可以参考该issue解决: https://github.com/modelscope/ms-swift/issues/3793
 pip install --no-build-isolation transformer_engine[pytorch]
-# 若以上命令报错也可以使用以下方式安装
-# pip install git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.3
+# 或使用以下方式安装
+# pip install --no-build-isolation git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.5#egg=transformer_engine[pytorch]
 
 # apex
 git clone https://github.com/NVIDIA/apex
@@ -99,7 +99,7 @@ megatron sft \
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
-    --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
+    --mcore_model /mnt/nas2/huangjintao.hjt/work/llmscope/megatron_output/Qwen2.5-7B/v27-20250726-193018 \
     --to_hf true \
     --torch_dtype bfloat16 \
     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
