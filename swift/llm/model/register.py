@@ -454,6 +454,10 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
 
     if model_type is None:
         model_type = _read_args_json_model_type(model_dir)
+    # check config first
+    if model_type is None:
+    if model_type is None:
+        model_type = HfConfigFactory.get_config_attr(config, 'model_type') or None
     if model_type is None:
         architectures = HfConfigFactory.get_config_attr(config, 'architectures')
         model_types = get_matched_model_types(architectures)
