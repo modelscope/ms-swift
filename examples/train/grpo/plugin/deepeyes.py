@@ -205,8 +205,12 @@ class DeepEyesReward(ORM):
     def __call__(self, completions, reward_model, extra_info, data_source, **kwargs) -> List[float]:
         # reference: https://github.com/Visual-Agent/DeepEyes/blob/main/verl/utils/reward_score/vl_agent.py
         rewards = []
-        for completion, solution, info, source in zip(completions, reward_model, extra_info, data_source):
+
+        num_images = [len(images) for images in kwargs['images']]
+        for completion, solution, info, source, num_image in zip(completions, reward_model, extra_info, data_source,
+                                                                 num_images):
             sol = solution['ground_truth']
+            info['num_image'] = num_image
             if source in ['vstar', 'chart']:
                 rewards.append(self.compute_score(completion, sol, info))
             elif source in ['thinklite_eureka']:
@@ -241,7 +245,7 @@ class DeepEyesReward(ORM):
         judgement = response.split('## Equivalence Judgement')[-1].lower()
         return 'true' in judgement and 'false' not in judgement
 
-    def compute_score(self, predict_str: str, ground_truth: str, extra_info=None) -> float:
+    def compute_score(self, predict_str: str, ground_truth: str, extra_info) -> float:
         is_format_error = False
         # predict_str = "<think>" + predict_str
         count_think_1 = predict_str.count('<think>')
@@ -301,7 +305,9 @@ class DeepEyesReward(ORM):
             acc_reward = 0.0
             is_format_error = True
 
-        tool_reward = 1.0 if count_tool_1 > 0 and acc_reward > 0.5 else 0.0
+        num_image = extra_info['num_image']
+        # we consider that more than 1 image means that tool call success
+        tool_reward = 1.0 if num_image > 1 and acc_reward > 0.5 else 0.0
         format_reward = -1.0 if is_format_error else 0.0
 
         return 0.8 * acc_reward + 0.2 * format_reward + 1.2 * tool_reward
