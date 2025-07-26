@@ -99,7 +99,7 @@ megatron sft \
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
-    --mcore_model /mnt/nas2/huangjintao.hjt/work/llmscope/megatron_output/Qwen2.5-7B/v27-20250726-193018 \
+    --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
