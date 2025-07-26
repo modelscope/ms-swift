@@ -405,8 +405,12 @@ class SwiftMixin:
         HfConfigFactory.set_model_config_attr(model, 'use_cache', False)
         if args.gradient_checkpointing or args.vit_gradient_checkpointing:
             dynamic_gradient_checkpointing(model, args.vit_gradient_checkpointing)
+        gc_kwargs = {}
+        parameters = inspect.signature(model.gradient_checkpointing_enable).parameters
+        if 'gradient_checkpointing_kwargs' in parameters:
+            gc_kwargs['gradient_checkpointing_kwargs'] = args.gradient_checkpointing_kwargs
         if args.gradient_checkpointing:
-            model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
+            model.gradient_checkpointing_enable(**gc_kwargs)
             model.enable_input_require_grads()
 
         model_meta = model.model_meta
@@ -417,8 +421,7 @@ class SwiftMixin:
                 if hasattr(vision_tower, 'enable_input_require_grads'):
                     try:
                         if args.vit_gradient_checkpointing:
-                            vision_tower.gradient_checkpointing_enable(
-                                gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
+                            vision_tower.gradient_checkpointing_enable(**gc_kwargs)
                             vision_tower.enable_input_require_grads()
                         else:
                             vision_tower.gradient_checkpointing_disable()
