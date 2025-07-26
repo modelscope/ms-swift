@@ -52,6 +52,11 @@ register_template(
 # '<think>\n\n</think>\n\n'
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3, default_system=None, template_cls=ThinkingTemplate))
 
+register_template(
+    QwenTemplateMeta(
+        LLMTemplateType.qwen3_thinking, default_system=None, response_prefix='<think>\n',
+        template_cls=ThinkingTemplate))
+
 
 class Qwen3RerankerTemplate(Template):
     instruction = 'Given a web search query, retrieve relevant passages that answer the query'
