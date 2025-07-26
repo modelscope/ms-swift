@@ -130,6 +130,7 @@ class VllmEngine(InferEngine):
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         device: str = 'auto',
+        seed: Optional[int] = None,
         enable_lora: bool = False,
         max_loras: int = 1,
         max_lora_rank: int = 16,
@@ -159,6 +160,10 @@ class VllmEngine(InferEngine):
                 'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
         if 'enable_sleep_mode' in parameters:
             engine_kwargs['enable_sleep_mode'] = enable_sleep_mode
+        for key in ['seed']:
+            val = locals()[key]
+            if val is not None:
+                engine_kwargs[key] = val
 
         model_info = self.model_info
         arch_mapping = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM'], 'glm4v': ['GLM4VForCausalLM']}
