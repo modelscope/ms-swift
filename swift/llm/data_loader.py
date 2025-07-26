@@ -9,7 +9,9 @@ from swift.llm import to_device
 
 class BatchSamplerShard:
 
-    def __init__(self, total_samples: int, batch_size: int, shuffle: bool, drop_last: bool, data_seed: Optional[int]):
+    def __init__(self, total_samples: int, batch_size: int, shuffle: bool, drop_last: bool, data_seed: Optional[int],
+                 tp_size: Optional[int]):
+        self.tp_size = tp_size
         self.total_samples = total_samples // self.world_size
         self.batch_size = batch_size
         self.shuffle = shuffle
@@ -19,11 +21,11 @@ class BatchSamplerShard:
 
     @property
     def rank(self):
-        return dist.get_rank() if dist.is_initialized() else 0
+        return (dist.get_rank() // self.tp_size) if dist.is_initialized() else 0
 
     @property
     def world_size(self):
-        return dist.get_world_size() if dist.is_initialized() else 1
+        return (dist.get_world_size() // self.tp_size) if dist.is_initialized() else 1
 
     def __iter__(self):
         start_idx = self.rank * self.total_samples
