@@ -153,6 +153,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                                  'Please specify `--attn_impl flash_attn`.')
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
+            # The non-resume_only_model will have its weights loaded in the trainer.
             if self.resume_only_model:
                 if self.train_type == 'full':
                     self.model = self.resume_from_checkpoint

@@ -241,6 +241,8 @@ class VllmEngine(InferEngine):
                         template_meta: TemplateMeta) -> None:
         stop_words = (request_config.stop or []) + (self.generation_config.stop or []) + template_meta.stop_words
         generation_config.stop = self._get_stop_words(stop_words)
+        # stop parameter is not effective in v1 engine (test version: vllm 0.8.5.post)
+        generation_config.stop_token_ids = self._get_stop_token_ids(stop_words)
 
     @staticmethod
     def _version_ge(base_version: str):
