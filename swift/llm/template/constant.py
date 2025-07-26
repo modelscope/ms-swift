@@ -13,6 +13,7 @@ class LLMTemplateType:
     qwen2_5_math = 'qwen2_5_math'
     qwen2_5_math_prm = 'qwen2_5_math_prm'
     qwen3 = 'qwen3'
+    qwen3_thinking = 'qwen3_thinking'
     qwen3_emb = 'qwen3_emb'
     qwen3_reranker = 'qwen3_reranker'
     qwq_preview = 'qwq_preview'
