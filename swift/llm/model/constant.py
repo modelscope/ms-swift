@@ -223,6 +223,7 @@ class MLLMModelType:
     step_audio = 'step_audio'
     kimi_vl = 'kimi_vl'
     keye_vl = 'keye_vl'
+    ernie_vl = 'ernie_vl'
 
     phi3_vision = 'phi3_vision'
     phi4_multimodal = 'phi4_multimodal'
