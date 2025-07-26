@@ -130,7 +130,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         reward_func_kwargs['tokenizer'] = self.processing_class
                     reward_funcs[i] = reward_func_class(**reward_func_kwargs)
                 elif not callable(reward_func):
-                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
+                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.plugin')
 
         self.reward_funcs = reward_funcs
         self.reward_func_names = []
