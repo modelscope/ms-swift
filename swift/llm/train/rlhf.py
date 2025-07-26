@@ -54,12 +54,18 @@ class SwiftRLHF(SwiftSft):
             else:
                 from transformers import AutoConfig
                 model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-                if hasattr(model_config, 'num_labels'):
-                    num_labels = model_config.num_labels
+                if hasattr(model_config, 'architectures'):
+                    for arch in model_config.architectures:
+                        if 'sequenceclassification' in arch.lower():
+                            task_type = 'seq_cls'
+                            break
 
-                # PretrainedConfig default num_labels = 2
-                if num_labels == 1:
-                    task_type = 'seq_cls'
+                if task_type is None:
+                    if hasattr(model_config, 'num_labels'):
+                        num_labels = model_config.num_labels
+                        # PretrainedConfig default num_labels = 2
+                        if num_labels == 1:
+                            task_type = 'seq_cls'
 
             model, processor = args.get_model_processor(
                 model=model_id_or_path,
