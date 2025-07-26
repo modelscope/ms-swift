@@ -577,6 +577,8 @@ register_model(
             ModelGroup([
                 Model('Qwen/Qwen3-235B-A22B-Thinking-2507', 'Qwen/Qwen3-235B-A22B-Thinking-2507'),
                 Model('Qwen/Qwen3-235B-A22B-Thinking-2507-FP8', 'Qwen/Qwen3-235B-A22B-Thinking-2507-FP8'),
+                # awq
+                Model('swift/Qwen3-235B-A22B-Thinking-2507-AWQ')
             ]),
         ],
         TemplateType.qwen3_thinking,

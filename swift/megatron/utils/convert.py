@@ -11,7 +11,7 @@ from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoin
 from megatron.training.initialize import initialize_megatron
 from megatron.training.utils import get_ltor_masks_and_position_ids
 
-from swift.llm import ExportArguments, HfConfigFactory, get_model_tokenizer, get_template, save_checkpoint
+from swift.llm import ExportArguments, HfConfigFactory, prepare_model_template, save_checkpoint, to_device
 from swift.utils import get_logger, get_n_params_grads
 from ..argument import MegatronArguments
 from ..model import get_megatron_model_meta
@@ -82,11 +82,10 @@ def _model_cpu_forward_context(modules, torch_dtype=None, device=None, share_emb
             hook.remove()
 
 
-def test_convert_precision(hf_model, mg_model, processor, torch_dtype=torch.float32):
+def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float32):
     _test_params_sum(hf_model)
     _test_params_sum(mg_model)
 
-    template = get_template(hf_model.model_meta.template, processor)
     input_ids = template.encode({'messages': [{'role': 'user', 'content': 'who are you?'}]})['input_ids']
     input_ids = torch.tensor(input_ids)[None].to('cuda')
 
@@ -145,8 +144,8 @@ def _check_megatron_kwargs(kwargs):
 
 
 def convert_hf2mcore(args: ExportArguments) -> None:
-    kwargs = args.get_model_kwargs()
-    hf_model, processor = get_model_tokenizer(**kwargs)
+    hf_model, template = prepare_model_template(args)
+    processor = template.processor
     if args.thread_count is None:
         checkpoint_size = sum(get_n_params_grads(hf_model)[0]) * torch.finfo(args.torch_dtype).bits // 8e9
         args.thread_count = max(math.ceil(checkpoint_size / 10), 2)  # 10GB
@@ -167,7 +166,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     logger.info('Megatron model created successfully.')
     megatron_model_meta.convert_hf2mcore(hf_model, mg_model)
     if args.test_convert_precision:
-        test_convert_precision(hf_model, mg_model, processor)
+        test_convert_precision(hf_model, mg_model, template)
     logger.info('Successfully transferred HF model weights to MG model.')
     mg_save_checkpoint(1, [mg_model], None, None, 0)
     args.save_args()
@@ -175,8 +174,8 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
 
 def convert_mcore2hf(args: ExportArguments) -> None:
-    kwargs = args.get_model_kwargs()
-    hf_model, processor = get_model_tokenizer(**kwargs)
+    hf_model, template = prepare_model_template(args)
+    processor = template.processor
     if args.thread_count is None:
         checkpoint_size = sum(get_n_params_grads(hf_model)[0]) * torch.finfo(args.torch_dtype).bits // 8e9
         args.thread_count = max(math.ceil(checkpoint_size / 10), 2)  # 10GB
@@ -198,7 +197,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     logger.info('Megatron model created successfully.')
     megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
     if args.test_convert_precision:
-        test_convert_precision(hf_model, mg_model, processor)
+        test_convert_precision(hf_model, mg_model, template)
     logger.info('Successfully transferred MG model weights to HF model.')
     save_checkpoint(
         hf_model,
