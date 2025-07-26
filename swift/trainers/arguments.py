@@ -36,6 +36,7 @@ class TrainArgumentsMixin:
     lr_scheduler_kwargs: Optional[Union[dict, str]] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     dataloader_num_workers: Optional[int] = None
+    dataloader_persistent_workers: bool = False
     dataloader_prefetch_factor: Optional[int] = None
     use_liger_kernel: bool = False
 

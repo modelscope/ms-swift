@@ -137,6 +137,7 @@ class VllmEngine(InferEngine):
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         device: str = 'auto',
+        seed: Optional[int] = None,
         enable_lora: bool = False,
         max_loras: int = 1,
         max_lora_rank: int = 16,
@@ -168,8 +169,10 @@ class VllmEngine(InferEngine):
         for key in ['enable_expert_parallel', 'enable_sleep_mode']:
             if key in parameters:
                 engine_kwargs[key] = locals()[key]
-        if task is not None:
-            engine_kwargs['task'] = task
+        for key in ['task', 'seed']:
+            val = locals()[key]
+            if val is not None:
+                engine_kwargs[key] = val
 
         model_info = self.model_info
         arch_mapping = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM'], 'glm4v': ['GLM4VForCausalLM']}
