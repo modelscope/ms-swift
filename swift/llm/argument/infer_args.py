@@ -53,6 +53,7 @@ class SglangArguments:
     sglang_pp_size: int = 1
     sglang_dp_size: int = 1
     sglang_ep_size: int = 1
+    sglang_enable_ep_moe: bool = False
     sglang_mem_fraction_static: Optional[float] = None
     sglang_context_length: Optional[int] = None
     sglang_disable_cuda_graph: bool = False
@@ -67,6 +68,7 @@ class SglangArguments:
             'pp_size': self.sglang_pp_size,
             'dp_size': self.sglang_dp_size,
             'ep_size': self.sglang_ep_size,
+            'enable_ep_moe': self.sglang_enable_ep_moe,
             'mem_fraction_static': self.sglang_mem_fraction_static,
             'context_length': self.sglang_context_length,
             'disable_cuda_graph': self.sglang_disable_cuda_graph,
