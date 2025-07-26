@@ -410,7 +410,6 @@ class SwiftMixin:
         if 'gradient_checkpointing_kwargs' in parameters:
             gc_kwargs['gradient_checkpointing_kwargs'] = args.gradient_checkpointing_kwargs
         if args.gradient_checkpointing:
-            parameters = inspect.signature(model.gradient_checkpointing_enable).parameters
             model.gradient_checkpointing_enable(**gc_kwargs)
             model.enable_input_require_grads()
 
