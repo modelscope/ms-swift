@@ -360,6 +360,7 @@ Parameter meanings can be found in the [sglang documentation](https://docs.sglan
 - sglang_pp_size: Pipeline parallelism size. Default is 1.
 - sglang_dp_size: Data parallelism size. Default is 1.
 - sglang_ep_size: Expert parallelism size. Default is 1.
+- sglang_enable_ep_moe: Whether to enable EP MoE. Default is False.
 - sglang_mem_fraction_static: The fraction of GPU memory used for static allocation (model weights and KV cache memory pool). If you encounter out-of-memory errors, try reducing this value. Default is None.
 - sglang_context_length: The maximum context length of the model. Default is None, which means it will use the value from the model's `config.json`.
 - sglang_disable_cuda_graph: Disables CUDA graph. Default is False.
