@@ -34,6 +34,7 @@ class SwiftRLHF(SwiftSft):
             if hasattr(model_config, 'architectures') and model_config.architectures:
                 if any('sequenceclassification' in arch.lower() for arch in model_config.architectures):
                     task_type = 'seq_cls'
+                    num_labels = getattr(model_config, 'num_labels', None) or 1
 
             if task_type is None:
                 if hasattr(model_config, 'num_labels'):
