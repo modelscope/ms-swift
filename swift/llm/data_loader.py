@@ -9,8 +9,13 @@ from swift.llm import to_device
 
 class BatchSamplerShard:
 
-    def __init__(self, total_samples: int, batch_size: int, shuffle: bool, drop_last: bool, data_seed: Optional[int],
-                 tp_size: Optional[int]):
+    def __init__(self,
+                 total_samples: int,
+                 batch_size: int,
+                 shuffle: bool,
+                 drop_last: bool,
+                 data_seed: Optional[int],
+                 tp_size: int = 1):
         self.tp_size = tp_size
         self.total_samples = total_samples // self.world_size
         self.batch_size = batch_size
