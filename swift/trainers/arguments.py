@@ -305,6 +305,9 @@ class GRPOArgumentsMixin(VllmArguments):
     # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
     top_entropy_quantile: float = 1.0
 
+    # GSPO https://www.arxiv.org/abs/2507.18071
+    importance_sampling_level: Literal['token', 'sequence'] = 'token'
+
     wandb_log_unique_prompts: Optional[bool] = None
     generation_batch_size: Optional[int] = None
     steps_per_generation: Optional[int] = None
