@@ -3,6 +3,7 @@ from typing import Optional
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from swift.llm import to_device
 
@@ -111,7 +112,7 @@ class DataLoaderDispatcher:
 
     def _skip_batches(self, base_iter):
         if self.rank == 0 and self.skip_batches > 0:
-            for _ in range(self.skip_batches):
+            for _ in tqdm(range(self.skip_batches), dynamic_ncols=True, desc='Skip Batches: '):
                 [next(base_iter) for _ in range(self.world_size)]
 
     def __iter__(self):
