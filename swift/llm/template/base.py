@@ -130,7 +130,7 @@ class Template(ProcessorMixin):
             self.init_processor(processor)
 
     def init_processor(self, processor: Processor) -> None:
-        if processor is None:
+        if processor is None or self._processor_inited:
             return
         self._processor_inited = True
         self.processor = processor
