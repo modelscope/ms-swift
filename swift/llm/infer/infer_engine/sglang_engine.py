@@ -130,6 +130,8 @@ class SglangEngine(InferEngine):
         meta_info = output['meta_info']
         usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
         response = output['text']
+        if template.template_meta.response_prefix:
+            response = template.template_meta.response_prefix + response
         toolcall = self._get_toolcall(response, template)
         choice = ChatCompletionResponseChoice(
             index=0,
@@ -217,6 +219,8 @@ class SglangEngine(InferEngine):
                                                 idx) -> Optional[ChatCompletionStreamResponse]:
         assert output is not None
         response = output['text']
+        if template.template_meta.response_prefix:
+            response = template.template_meta.response_prefix + response
         meta_info = output['meta_info']
         finish_reason = meta_info['finish_reason']
         delta_text = response[idx[0]:]

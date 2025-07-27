@@ -213,8 +213,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'bnb_4bit_quant_type',
             'bnb_4bit_use_double_quant',
         ]
-        if 'megatron' in self.__class__.__name__.lower():
-            force_load_keys = []
         # If the current value is None or an empty list and it is among the following keys
         load_keys = [
             'custom_register_path',
@@ -242,7 +240,9 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'use_chat_template',
             'response_prefix',
         ]
-
+        if 'megatron' in self.__class__.__name__.lower():
+            force_load_keys = []
+            load_keys.remove('use_chat_template')
         data_keys = list(f.name for f in fields(DataArguments))
         for key, old_value in old_args.items():
             if old_value is None:
