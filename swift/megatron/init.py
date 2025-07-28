@@ -720,7 +720,7 @@ def _patch_compile_helpers():
     def compile_helpers():
         command = ['make', '-C', os.path.abspath(os.path.dirname(utils.__file__))]
         if subprocess.run(command).returncode != 0:
-            pass
+            logger.warning('Failed to compile the C++ dataset helper functions')
 
     utils.compile_helpers = compile_helpers
 
