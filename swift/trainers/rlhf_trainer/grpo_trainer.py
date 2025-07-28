@@ -935,8 +935,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, output in enumerate(outputs):
             inputs[i]['messages'] = output[0]
             inputs[i]['is_truncated'] = output[1] == 'length'
-            inputs[i]['infos'] = output[2] if len(output) > 2 else {}
-
+            multi_turn_infos = output[2] if len(output) > 2 else {}
+            if 'images' in multi_turn_infos:
+                # override images
+                inputs[i]['images'] = multi_turn_infos['images']
+            inputs[i]['multi_turn_infos'] = infos
             if self.use_gym_env:
                 inputs[i]['total_reward'] = output[2]
                 inputs[i]['trajectory_info'] = output[3]

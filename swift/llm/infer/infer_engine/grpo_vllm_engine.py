@@ -297,9 +297,10 @@ class GRPOVllmEngine(VllmEngine):
                 info_dict['num_turns'] = current_turn
                 for key, value in info_dict.items():
                     if hasattr(result_choice, key):
+                        # override
                         setattr(result_choice, key, value)
                     else:
-                        result_choice.infos[key] = value
+                        result_choice.multi_turn_infos[key] = value
                 result_choice.process_images()
                 return result
 
