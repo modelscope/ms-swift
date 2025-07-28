@@ -1,4 +1,5 @@
 # thinking -> non-thinking
+# 4 * 95GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -8,7 +9,7 @@ megatron sft \
     --train_type lora \
     --lora_rank 32 \
     --lora_alpha 64 \
-    --target_modules all-linear \
+    --target_modules linear_qkv linear_proj \
     --split_dataset_ratio 0.01 \
     --moe_permute_fusion true \
     --expert_model_parallel_size 4 \
