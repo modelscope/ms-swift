@@ -801,9 +801,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             current_request = self.inputs_to_rolloutrequest([_input])[0]
                             ret = self.multi_turn_scheduler.step(current_request, result.choices[0], current_turn)
                             if isinstance(ret, tuple):
-                                current_request, info_dict = ret
+                                infer_request, info_dict = ret
                             else:
-                                current_request = ret
+                                infer_request = ret
                                 info_dict = {}
                             info_dict['num_turns'] = current_turn
                             pending_input = asdict(infer_request)
