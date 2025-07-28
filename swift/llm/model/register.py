@@ -3,6 +3,7 @@ import math
 import os
 import platform
 import re
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
@@ -134,10 +135,27 @@ def load_by_unsloth(args):
     os.environ['UNSLOTH_DISABLE_STATISTICS'] = '1'
     model_info = args.model_info
     model_meta = args.model_meta
-    if model_meta.is_multimodal:
-        from unsloth import FastVisionModel as UnslothModel
-    else:
-        from unsloth import FastLanguageModel as UnslothModel
+
+    os.environ['UNSLOTH_IS_PRESENT'] = '1'
+
+    @contextmanager
+    def _patch_distributed_function():
+        from unsloth_zoo import utils
+
+        def distributed_function(n=1, function=None, *args, **kwargs):
+            return function(*args, **kwargs)
+
+        _origin_distributed_function = utils.distributed_function
+        utils.distributed_function = distributed_function
+        yield
+        utils.distributed_function = _origin_distributed_function
+
+    with _patch_distributed_function():
+        if model_meta.is_multimodal:
+            from unsloth import FastVisionModel as UnslothModel
+        else:
+            from unsloth import FastLanguageModel as UnslothModel
+
     model, processor = UnslothModel.from_pretrained(
         model_name=args.adapters and args.adapters[0] or args.model_dir,
         dtype=args.torch_dtype,
