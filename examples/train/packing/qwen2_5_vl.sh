@@ -4,6 +4,7 @@
 # For local datasets, it is recommended to use streaming: `--streaming true` (save memory)
 # You can also use padding_free to avoid the space/time cost caused by multi-modal packing:
 # https://github.com/modelscope/ms-swift/blob/main/examples/train/padding_free/sft.sh
+pip install "transformers==4.51.*"
 
 NPROC_PER_NODE=4 \
 MAX_PIXELS=1003520 \

@@ -720,5 +720,9 @@
     {
         "ms_dataset_id": "swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT",
         "tags": ["🔥", "distill", "sft"]
+    },
+    {
+        "ms_dataset_id": "swift/Chinese-Qwen3-235B-Thinking-2507-Distill-data-110k-SFT",
+        "tags": ["🔥", "distill", "sft", "cot", "r1", "thinking"]
     }
 ]
