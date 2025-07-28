@@ -121,10 +121,8 @@ if __name__ == '__main__':
     all_requires = []
     extra_requires['eval'], _ = parse_requirements('requirements/eval.txt')
     extra_requires['swanlab'], _ = parse_requirements('requirements/swanlab.txt')
-    extra_requires['seq_parallel'], _ = parse_requirements('requirements/seq_parallel.txt')
     all_requires.extend(install_requires)
     all_requires.extend(extra_requires['eval'])
-    all_requires.extend(extra_requires['seq_parallel'])
     all_requires.extend(extra_requires['swanlab'])
     extra_requires['all'] = all_requires
 

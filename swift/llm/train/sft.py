@@ -7,8 +7,7 @@ from datasets import Dataset as HfDataset
 
 from swift.plugin import extra_callbacks, get_loss_func, get_metric
 from swift.trainers import TrainerFactory
-from swift.utils import (append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array,
-                         use_torchacc)
+from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
 from ..argument import TrainArguments
 from ..base import SwiftPipeline
 from ..dataset import EncodePreprocessor, IterablePackingDataset, LazyLLMDataset, PackingDataset, load_dataset
@@ -155,7 +154,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         logger.info(f'best_model_checkpoint: {state.best_model_checkpoint}')
 
         # Visualization
-        if is_master() and not use_torchacc():
+        if is_master():
             if 'tensorboard' in training_args.report_to:
                 images_dir = os.path.join(training_args.output_dir, 'images')
                 logger.info(f'images_dir: {images_dir}')
