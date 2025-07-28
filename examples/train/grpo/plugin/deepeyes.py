@@ -218,31 +218,6 @@ class DeepEyesReward(ORM):
 
         return rewards
 
-    def generative_verify(self, query, ground_truth, model_answer):
-        full_prompt = MATH_VERIFY_PROMPT.format(
-            query=query,
-            gold_ans=ground_truth,
-            pred_ans=model_answer,
-        )
-
-        chat_messages = [{'role': 'user', 'content': full_prompt}]
-        response = ''
-        for _ in range(8):
-            try:
-                chat_response = self.client.chat.completions.create(
-                    model=self.verify_model_name,
-                    messages=chat_messages,
-                    seed=random.randint(0, 1000000),
-                    temperature=0.0,
-                )
-                response = chat_response.choices[0].message.content.strip()
-                break
-            except Exception:
-                continue
-
-        judgement = response.split('## Equivalence Judgement')[-1].lower()
-        return 'true' in judgement and 'false' not in judgement
-
     def compute_score(self, predict_str: str, ground_truth: str, extra_info) -> float:
         is_format_error = False
         # predict_str = "<think>" + predict_str
@@ -398,6 +373,7 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
         completion = result.message.content
         action = extract_action(completion)
         cropped_img = None
+        extra_info = {}
         try:
             tool_call = json.loads(action.strip())
             tool_name = tool_call['name']
@@ -424,8 +400,8 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
         infer_request.messages.append({'role': 'user', 'content': query})
         if cropped_img:
             infer_request.images.append(cropped_img)
-
-        return infer_request
+            extra_info['images'] = infer_request.images
+        return infer_request, extra_info
 
     def validate_bbox(self, left, top, right, bottom):
         assert left < right and bottom > top, f'invalid shape for {left=}, {top=}, {right=}, {bottom=}'

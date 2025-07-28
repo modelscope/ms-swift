@@ -805,6 +805,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             else:
                                 current_request = ret
                                 info_dict = {}
+                            info_dict['num_turns'] = current_turn
                             pending_input = asdict(infer_request)
                             for key, value in info_dict.items():
                                 pending_input['info'][key] = value

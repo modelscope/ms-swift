@@ -39,21 +39,94 @@ The reward model is invoked via the plugin's `__call__` method, which takes `inp
 ]
 
 ```
+For generative reward models, there are two common invocation methods: one is to run the reward model directly within the Trainer using PTEngine, and the other is to call an externally deployed model service.
 
-For generative reward models, it is recommended to use PTEngine for model inference. After constructing the model's input messages, use the `infer` interface for inference.
+- When deploying the reward model with PTEngine, the model is embedded inside the Trainer and does not require additional computational resources. The advantage of this method is easy integration, but the generation speed is relatively slow, making it more suitable for reward models with a small number of parameters.
+
+- When deploying the reward model externally, you can use commands like swift deploy or vllm serve to deploy the model service on dedicated devices, which greatly improves inference speed and is more suitable for larger models with more parameters. However, this requires allocating additional hardware resources.
+
+**Example 1: Using PTEngine for model inference**
+
+Within a plugin, you can use PTEngine to directly run inference with the reward model. After constructing the messages as input, make a call via the infer interface:
 ```python
 class RMlugin(DefaultRMPlugin):
 
     def __init__(self, model, template):
 
         super().__init__(model, template)
-        # initilize PTEngine to infer
+        # Initialize PTEngine for inference
         self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)
 
-        ...
-        messages = [{'role': 'system', 'content': 'system prompt'}, {'role': 'query', 'content': 'query'}]
+    def __call__(self, inputs):
+        system_prompt = ...
+        query = ...
+        messages = [{'role': 'system', 'content': system_prompt}, {'role': 'query', 'content': query}]
         result = self.engine.infer([messages], self.request_config, use_tqdm=False)
-        print(result.message.content)
+        rewards = ...
+        return rewards
+
+```
+
+**Example 2: Deploying the reward model with swift deploy and making remote calls**
+
+With this method, you do not need to use the reward_model_plugin, and can simply make calls directly within the reward function.
+
+First, start the model service using the following command:
+```bash
+# Note: Do not use the same devices for deployment and training
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift deploy \
+    --model Qwen/Qwen2.5-72B-Instruct \
+    --vllm_tensor_parallel_size 4
+
+# [INFO:swift] model_list: ['Qwen2.5-72B-Instruct']
+# INFO:     Started server process [xxxxxx]
+# INFO:     Waiting for application startup.
+# INFO:     Application startup complete.
+# INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+```
+
+In the reward function, use the OpenAI library to initialize the client, specify the address and port of the model service, and call the model as shown below:
+
+```python
+from openai import OpenAI
+
+class RMReward(ORM):
+
+    def __init__(self):
+        super().__init__()
+        try:
+            self.client = OpenAI(
+                api_key='EMPTY',
+                base_url='http://127.0.0.1:8000/v1', # Use 127.0.0.1 if deployed locally
+            )
+            self.verify_model_name = self.client.models.list().data[0].id
+        except Exception as e:
+            raise RuntimeError('Failed to connect to the model service. Please deploy the model '
+                               "using 'swift deploy' or 'vllm serve'.") from e
+
+
+    def __call__(self, completions, messages, **kwargs) -> List[float]:
+        rewards = []
+        for completion, message in zip(completions, messages):
+            rm_prompt = ... # Construct the prompt for the reward model
+            chat_response = self.client.chat.completions.create(
+                model=self.verify_model_name,
+                messages=[
+                    {
+                        'role': 'system',
+                        'content': 'You are a helpful assistant.'
+                    },
+                    {
+                        'role': 'user',
+                        'content': rm_prompt
+                    },
+                ],
+            )
+            response = chat_response.choices[0].message.content.strip()
+            reward = ... # Extract the reward value from the reward model output
+            rewards.append(reward)
+        return rewards
 ```
 
 

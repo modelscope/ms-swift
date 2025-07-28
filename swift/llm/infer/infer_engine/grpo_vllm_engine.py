@@ -294,12 +294,12 @@ class GRPOVllmEngine(VllmEngine):
 
             if should_stop:
                 result_choice.messages = messages
-                if info_dict:
-                    for key, value in info_dict.items():
-                        if hasattr(result_choice, key):
-                            setattr(result_choice, key, value)
-                        else:
-                            result_choice.infos[key] = value
+                info_dict['num_turns'] = current_turn
+                for key, value in info_dict.items():
+                    if hasattr(result_choice, key):
+                        setattr(result_choice, key, value)
+                    else:
+                        result_choice.infos[key] = value
                 return result
 
             ret = self.multi_turn_scheduler.step(current_request, result_choice, current_turn)
