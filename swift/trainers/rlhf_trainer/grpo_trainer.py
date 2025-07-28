@@ -731,7 +731,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     _input: Dict = deepcopy(inputs[i])
                     InferRequest.remove_response(_input['messages'])
                     _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
-                    _choices.append((_input['messages'], choice.finish_reason))
+                    _choices.append((_input['messages'], choice.finish_reason, {}))
                 outputs.append(_choices)
             outputs = [item for sublist in outputs for item in sublist]
         else:
@@ -796,12 +796,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     for stop, _input, result in zip(should_stops, current_inputs, results):
                         index = _input['index']
                         if stop:
-                            outputs[index] = (_input['messages'], _input['finish_reason'])
+                            outputs[index] = (_input['messages'], _input['finish_reason'], _input.get('infos', {}))
                         else:
                             current_request = self.inputs_to_rolloutrequest([_input])[0]
-                            infer_request = self.multi_turn_scheduler.step(current_request, result.choices[0],
-                                                                           current_turn)
+                            ret = self.multi_turn_scheduler.step(current_request, result.choices[0], current_turn)
+                            if isinstance(ret, tuple):
+                                current_request, info_dict = ret
+                            else:
+                                current_request = ret
+                                info_dict = {}
                             pending_input = asdict(infer_request)
+                            for key, value in info_dict.items():
+                                pending_input['info'][key] = value
+
                             pending_input['index'] = index
                             pending_inputs.append(pending_input)
 
@@ -925,6 +932,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, output in enumerate(outputs):
             inputs[i]['messages'] = output[0]
             inputs[i]['is_truncated'] = output[1] == 'length'
+            inputs[i]['infos'] = output[2] if len(output) > 2 else {}
+
             if self.use_gym_env:
                 inputs[i]['total_reward'] = output[2]
                 inputs[i]['trajectory_info'] = output[3]

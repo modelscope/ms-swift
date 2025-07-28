@@ -13,7 +13,7 @@ class MultiTurnScheduler(ABC):
 
     @abstractmethod
     def step(self, infer_request: 'RolloutInferRequest', result: 'RolloutResponseChoice',
-             current_turn: int) -> 'RolloutInferRequest':
+             current_turn: int) -> Union['RolloutInferRequest', Tuple['RolloutInferRequest', dict]]:
         pass
 
     def check_finished(self, infer_request: 'RolloutInferRequest', result: 'RolloutResponseChoice',
@@ -48,7 +48,7 @@ class MathTipsScheduler(MultiTurnScheduler):
         return super().check_finished(infer_request, result, current_turn)
 
     def step(self, infer_request: 'RolloutInferRequest', result: 'RolloutResponseChoice',
-             current_turn: int) -> 'RolloutInferRequest':
+             current_turn: int) -> Union['RolloutInferRequest', Tuple['RolloutInferRequest', dict]]:
         completion = result.message.content
         if '<answer>' in completion:
             completion = completion[:completion.index('<answer>')]
@@ -92,7 +92,7 @@ class MathTipsMultiTurnScheduler(MultiTurnScheduler):
         infer_request: 'RolloutInferRequest',
         result: 'RolloutResponseChoice',
         current_turn: int,
-    ) -> 'RolloutInferRequest':
+    ) -> Union['RolloutInferRequest', Tuple['RolloutInferRequest', dict]]:
         infer_request.messages.append({'role': 'user', 'content': self.tips_prompt})
         return infer_request
 

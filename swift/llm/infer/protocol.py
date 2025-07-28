@@ -298,6 +298,8 @@ class EmbeddingResponse:
 @dataclass
 class RolloutResponseChoice(ChatCompletionResponseChoice):
     messages: Optional[Messages] = None
+    images: Optional[List[str]] = None
+    infos: Dict[str, Any] = None
 
 
 @dataclass
