@@ -8,7 +8,7 @@ from typing import List, Literal, Optional, Union
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
-from swift.utils import get_dist_setting, get_logger, is_liger_available, json_parse_to_dict, is_mp
+from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, json_parse_to_dict
 from .optimizers.galore import GaLoreConfig
 
 logger = get_logger()
@@ -52,8 +52,6 @@ class TrainArgumentsMixin:
     channels: List[str] = None
     ds3_gather_for_generation: bool = True
     resume_only_model: bool = False
-
-    acc_steps: int = 1
 
     # train-eval loop args
     eval_use_evalscope: bool = False

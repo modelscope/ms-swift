@@ -532,15 +532,13 @@ class SwiftMixin:
 
     def _compute_acc(self, outputs, labels) -> None:
         args = self.args
-        acc_steps = args.acc_steps
         preds = outputs.logits.argmax(dim=-1)
-        if self.state.global_step % acc_steps == 0:
-            metrics = compute_acc(
-                preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
-            for k, v in metrics.items():
-                if k not in self._custom_metrics:
-                    self._custom_metrics[k] = MeanMetric(nan_value=None)
-                self._custom_metrics[k].update(v)
+        metrics = compute_acc(
+            preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
+        for k, v in metrics.items():
+            if k not in self._custom_metrics:
+                self._custom_metrics[k] = MeanMetric(nan_value=None)
+            self._custom_metrics[k].update(v)
 
     @torch.no_grad()
     def _evalscope_eval(self):
