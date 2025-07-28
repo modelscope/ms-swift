@@ -23,6 +23,7 @@ class TrainArgumentsMixin:
     per_device_train_batch_size: int = 1
     per_device_eval_batch_size: int = 1
     gradient_accumulation_steps: Optional[int] = None
+    tuner_backend: Optional[str] = None
 
     gradient_checkpointing: bool = True
     vit_gradient_checkpointing: Optional[bool] = None
