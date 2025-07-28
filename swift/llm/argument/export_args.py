@@ -40,8 +40,8 @@ class ExportArguments(MergeArguments, BaseArguments):
     quant_batch_size: int = 1
     group_size: int = 128
 
-    # bin_dataset
-    to_bin_dataset: bool = False
+    # cached_dataset
+    to_cached_dataset: bool = False
 
     # ollama
     to_ollama: bool = False
@@ -82,6 +82,8 @@ class ExportArguments(MergeArguments, BaseArguments):
                 suffix = 'mcore'
             elif self.to_hf:
                 suffix = 'hf'
+            elif self.to_cached_dataset:
+                suffix = 'cached_dataset'
             else:
                 return
 

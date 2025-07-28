@@ -48,9 +48,8 @@ class MegatronSft(SwiftSft):
 
     def run(self):
         args = self.args
+        train_dataset, val_dataset = self._prepare_dataset()
         data_collator = self._get_data_collator()
-        train_dataset, val_dataset = self._get_dataset()
-        train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
 
         if args.streaming:
             train_dataset = build_streaming_dataloader(args, train_dataset, data_collator)
