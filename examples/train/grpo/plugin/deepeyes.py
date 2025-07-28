@@ -411,9 +411,7 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
             origin_height = img.height
             origin_width = img.width
             bbox = self.maybe_resize_bbox(bbox=bbox, origin_width=origin_width, origin_height=origin_height)
-            if not bbox:
-                raise ValueError(f'ZOOM IN ARGUMENTS ARE INVALID')
-
+            # for invalid bbox, the exception will be catched in except block
             cropped_img = img.crop(bbox)
             query = '<tool_response>' + '<image>' + self.user_prompt + '</tool_response>'
         except Exception as e:
@@ -427,16 +425,13 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
         return infer_request
 
     def validate_bbox(self, left, top, right, bottom):
-        try:
-            assert left < right and bottom > top, f'invalid shape for {left=}, {top=}, {right=}, {bottom=}'
-            height = bottom - top
-            width = right - left
-            assert max(height, width) / min(height,
-                                            width) <= 100, f'aspect ratio error: {left=}, {top=}, {right=}, {bottom=}'
-            assert min(height, width) > 30, f'{height=}, {width=} is too small'
-            return True
-        except Exception:
-            return False
+        assert left < right and bottom > top, f'invalid shape for {left=}, {top=}, {right=}, {bottom=}'
+        height = bottom - top
+        width = right - left
+        assert max(height, width) / min(height,
+                                        width) <= 100, f'aspect ratio error: {left=}, {top=}, {right=}, {bottom=}'
+        assert min(height, width) > 30, f'{height=}, {width=} is too small'
+        return True
 
     def maybe_resize_bbox(self, bbox, origin_width, origin_height):
         left, top, right, bottom = bbox
@@ -445,8 +440,7 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
         top = max(0, top)
         right = min(origin_width, right)
         bottom = min(origin_height, bottom)
-        if not self.validate_bbox(left, top, right, bottom):
-            return None
+        self.validate_bbox(left, top, right, bottom)
 
         height = bottom - top
         width = right - left
@@ -460,8 +454,7 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
             new_right = ceil(center_x + new_half_width)
             new_top = floor(center_y - new_half_height)
             new_bottom = ceil(center_y + new_half_height)
-            if not self.validate_bbox(new_left, new_top, new_right, new_bottom):
-                return None
+            self.validate_bbox(new_left, new_top, new_right, new_bottom)
             return [new_left, new_top, new_right, new_bottom]
         return [left, top, right, bottom]
 
