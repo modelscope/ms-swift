@@ -156,7 +156,6 @@ class PtEngine(InferEngine):
         generation_config.return_dict_in_generate = True
         if request_config.logprobs:
             generation_config.output_logits = True
-        generation_config.top_logprobs = request_config.top_logprobs
         generation_config.num_return_sequences = request_config.n
         return _GenerationConfig(**generation_config.to_dict())
 
@@ -203,7 +202,8 @@ class PtEngine(InferEngine):
                       inputs: Dict[str, Any],
                       *,
                       generation_config: GenerationConfig,
-                      adapter_request: Optional[AdapterRequest] = None,
+                      adapter_request: Optional[AdapterRequest],
+                      request_config: RequestConfig,
                       **kwargs) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
 
         if generation_config.num_beams != 1:
@@ -256,7 +256,7 @@ class PtEngine(InferEngine):
 
             batched_generate_ids = template.get_generate_ids(raw_batched_generate_ids, num_prompt_tokens)
             self._update_batched_logprobs(batched_logprobs, logits_streamer, batched_generate_ids,
-                                          generation_config.top_logprobs)
+                                          request_config.top_logprobs)
 
             res = []
             for i in range(batched_generate_ids.shape[0]):
@@ -280,7 +280,7 @@ class PtEngine(InferEngine):
                     res.append(None)
                     continue
                 logprobs = self._get_logprobs(logprobs_list, generate_ids[token_idxs[i]:],
-                                              generation_config.top_logprobs)
+                                              request_config.top_logprobs)
                 token_idxs[i] = len(generate_ids)
 
                 usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
@@ -369,8 +369,9 @@ class PtEngine(InferEngine):
                     inputs: Dict[str, Any],
                     *,
                     generation_config: GenerationConfig,
-                    adapter_request: Optional[AdapterRequest] = None,
-                    template_inputs=None) -> List[ChatCompletionResponse]:
+                    adapter_request: Optional[AdapterRequest],
+                    template_inputs,
+                    request_config: RequestConfig) -> List[ChatCompletionResponse]:
         # bos_token TODO: encoder-decoder
         generate_kwargs = {'generation_config': generation_config, **inputs}
         adapter_names = self._get_adapter_names(adapter_request)
@@ -384,7 +385,7 @@ class PtEngine(InferEngine):
         batched_generate_ids = template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
         template.debug_logger({'generate_ids': batched_generate_ids})  # debug
         batched_logprobs = self.preprocess_logits(
-            output.get('logits'), batched_generate_ids, generation_config.top_logprobs)
+            output.get('logits'), batched_generate_ids, request_config.top_logprobs)
 
         res = []
         num_return_sequences = generation_config.num_return_sequences
@@ -404,17 +405,19 @@ class PtEngine(InferEngine):
                         logprobs for m, logprobs in zip(masks, batched_logprobs[batched_index]) if m.item()
                     ]
 
-                logprobs = self._get_logprobs(logprobs_list, generate_ids, generation_config.top_logprobs)
+                logprobs = self._get_logprobs(logprobs_list, generate_ids, request_config.top_logprobs)
                 usage_info = self._update_usage_info(usage_info, len(generate_ids))
                 response = template.decode(generate_ids, template_inputs=template_inputs[i])
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, len(generate_ids), True)
                 toolcall = self._get_toolcall(response, template)
+                token_ids = generate_ids if request_config.return_detail else None
                 choices.append(
                     ChatCompletionResponseChoice(
                         index=j,
                         message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
                         finish_reason=finish_reason,
-                        logprobs=logprobs))
+                        logprobs=logprobs,
+                        token_ids=token_ids))
             res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
         return res
 
@@ -471,7 +474,6 @@ class PtEngine(InferEngine):
         if template.use_model:
             template.model = self.model
 
-        generation_config = None
         if self.model_info.task_type == 'causal_lm':
             template.set_mode('pt')
 
@@ -495,7 +497,8 @@ class PtEngine(InferEngine):
                 'inputs': inputs,
                 'generation_config': generation_config,
                 'adapter_request': adapter_request,
-                'template_inputs': template_inputs
+                'template_inputs': template_inputs,
+                'request_config': request_config,
             }
             if pre_infer_hook:
                 kwargs = pre_infer_hook(kwargs)
