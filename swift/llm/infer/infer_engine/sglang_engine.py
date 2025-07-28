@@ -135,7 +135,7 @@ class SglangEngine(InferEngine):
         if template.template_meta.response_prefix:
             response = template.template_meta.response_prefix + response
         toolcall = self._get_toolcall(response, template)
-        token_ids = output['output_ids']
+        token_ids = output['output_ids'] if return_details else None
         choice = ChatCompletionResponseChoice(
             index=0,
             message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
