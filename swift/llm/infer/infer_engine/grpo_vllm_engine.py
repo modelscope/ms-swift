@@ -300,6 +300,7 @@ class GRPOVllmEngine(VllmEngine):
                         setattr(result_choice, key, value)
                     else:
                         result_choice.infos[key] = value
+                result_choice.process_images()
                 return result
 
             ret = self.multi_turn_scheduler.step(current_request, result_choice, current_turn)
