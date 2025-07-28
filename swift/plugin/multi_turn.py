@@ -20,7 +20,7 @@ class MultiTurnScheduler(ABC):
                        current_turn: int) -> bool:
         if result.finish_reason == 'length':
             return True
-        if current_turn >= self.max_turns:
+        if self.max_turns and current_turn >= self.max_turns:
             return True
         return False
 

@@ -11,7 +11,6 @@ from typing import Any, Dict, List
 import json
 from openai import OpenAI
 from PIL import Image
-from qwen_vl_utils import fetch_image
 
 from swift.plugin.multi_turn import MultiTurnScheduler, multi_turns
 from swift.plugin.orm import ORM, orms
@@ -26,9 +25,8 @@ except ImportError as e:
     2. data_0.1.2_visual_toolbox_v2.parquet : data_source == 'vstar' (vl_agent.compute_score)
     3. data_thinklite_reasoning_acc.parquet: data_source == 'thinklite_eureka' (vl_agent.compute_score_math)
 
-plugin:
-    1. Tool to resize and rotate
-    2. construct interleaved image-conv
+tool:
+    image_zoom_in_tool: zoom in the image, return a cropped image
 """
 
 MATH_VERIFY_PROMPT = """# CONTEXT #
@@ -393,6 +391,7 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
         return True
 
     def step(self, infer_request, result, current_turn):
+        from qwen_vl_utils import fetch_image
         completion = result.message.content
         action = extract_action(completion)
         cropped_img = None
@@ -407,7 +406,7 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
             # If you use another MLLM, please adjust the fetch_image function accordingly
             # ensure the returned img is of type PIL.Image.Image and
             # has been processed to a maximum size of max_pixels
-            img = fetch_image(infer_request.images[0])
+            img = fetch_image({'image': infer_request.images[0]})
 
             origin_height = img.height
             origin_width = img.width
