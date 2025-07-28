@@ -35,20 +35,20 @@ swift rollout \
 CUDA_VISIBLE_DEVICES=0,1 \
 swift rollout \
   --model Qwen/Qwen3-8B \
-  --tensor_parallel_size 2
+  --vllm_tensor_parallel_size 2
 
 # dp
 CUDA_VISIBLE_DEVICES=0,1 \
 swift rollout \
   --model Qwen/Qwen3-8B \
-  --data_parallel_size 2
+  --vllm_data_parallel_size 2
 
 # tp + dp
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift rollout \
   --model Qwen/Qwen3-8B \
-  --tensor_parallel_size 2 \
-  --data_parallel_size 2
+  --vllm_tensor_parallel_size 2 \
+  --vllm_data_parallel_size 2
 ```
 
 ## Training with External vLLM Server

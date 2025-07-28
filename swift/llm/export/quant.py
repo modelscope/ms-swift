@@ -8,8 +8,8 @@ import torch.nn as nn
 from tqdm import tqdm
 
 from swift.llm import (ExportArguments, HfConfigFactory, MaxLengthError, ProcessorMixin, deep_getattr, get_model_arch,
-                       is_moe_model, load_dataset, prepare_model_template, save_checkpoint, to_device)
-from swift.utils import find_layers, get_logger, get_model_parameter_info
+                       load_dataset, prepare_model_template, save_checkpoint, to_device)
+from swift.utils import get_logger, get_model_parameter_info
 
 logger = get_logger()
 
@@ -106,6 +106,7 @@ class QuantEngine(ProcessorMixin):
             prog_bar.update()
             if i == n_samples:
                 break
+        prog_bar.close()
         if is_multimodal and args.quant_method == 'gptq':
             return samples
         # now concatenate all samples and split according to block size
@@ -136,19 +137,6 @@ class QuantEngine(ProcessorMixin):
         finally:
             awq_model.move_embed = _origin_move_embed
 
-    def get_awq_modules_to_not_convert(self):
-        block_name = self.get_block_name_to_quantize(self.model)
-        block = deep_getattr(self.model, block_name)[-1]
-        prefix, experts = self._get_experts(block)
-        num_experts = len(experts)
-
-        def cond(name, module):
-            if isinstance(module, nn.Linear) and module.out_features == num_experts:
-                return True
-            return False
-
-        return find_layers(self.model, cond, min_name_len=2)  # min_name_len: fix Qwen3-MoE
-
     def awq_model_quantize(self) -> None:
         from awq.quantize import quantizer
         from transformers import AwqConfig
@@ -163,8 +151,8 @@ class QuantEngine(ProcessorMixin):
             'w_bit': args.quant_bits,
             'version': 'GEMM'
         }
-        if is_moe_model(self.model):
-            quant_config['modules_to_not_convert'] = self.get_awq_modules_to_not_convert()
+        if self.model.model_info.is_moe_model:
+            quant_config['modules_to_not_convert'] = self.args.get_modules_to_not_convert()
         logger.info(f'quant_config: {quant_config}')
         logger.info('Start quantizing the model...')
         with self._patch_awq_move_embed(self.model):
@@ -173,8 +161,9 @@ class QuantEngine(ProcessorMixin):
         quantizer.get_calib_dataset = _origin_get_calib_dataset  # recover
         if self.model.quant_config.modules_to_not_convert:
             model_arch = get_model_arch(args.model_meta.model_arch)
-            lm_head_key = model_arch.lm_head or 'lm_head'
-            self.model.quant_config.modules_to_not_convert.append(lm_head_key)
+            lm_head_key = getattr(model_arch, 'lm_head', None) or 'lm_head'
+            if lm_head_key not in self.model.quant_config.modules_to_not_convert:
+                self.model.quant_config.modules_to_not_convert.append(lm_head_key)
 
     @contextmanager
     def _patch_gptq(self):
@@ -215,7 +204,7 @@ class QuantEngine(ProcessorMixin):
 
     @staticmethod
     def get_modules_in_block_to_quantize(model, block_name: str):
-        if not is_moe_model(model):
+        if not model.model_info.is_moe_model:
             return
         from optimum.gptq.utils import get_layers
         # Do not quantize the gate part.

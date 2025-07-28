@@ -67,7 +67,7 @@ class RowPreprocessor:
             assert content is not None, f'message: {message}'
 
     @staticmethod
-    def _cast_images(row: Dict[str, Any]) -> None:
+    def _cast_mm_data(row: Dict[str, Any]) -> None:
         for key in ['images', 'rejected_images']:
             images = row.get(key, None)
             if images is None:
@@ -81,6 +81,13 @@ class RowPreprocessor:
                 row[key] = images
             elif isinstance(images, dict):
                 row[key] = [images]
+
+        for key in ['videos', 'audios']:
+            mm_data = row.get(key)
+            if mm_data is None:
+                continue
+            elif isinstance(mm_data, str):
+                row[key] = [mm_data]
 
     @staticmethod
     def _check_rejected_response(row: Dict[str, Any]) -> None:
@@ -183,7 +190,7 @@ class RowPreprocessor:
                     self._check_objects(r)
                     self._check_messages(r)
                     self._check_rejected_response(r)
-                    self._cast_images(r)
+                    self._cast_mm_data(r)
             except Exception as e:
                 if strict:
                     logger.warning('To avoid errors, you can pass `strict=False`.')

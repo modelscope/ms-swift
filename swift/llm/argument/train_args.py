@@ -10,7 +10,7 @@ from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
 from swift.trainers.arguments import TrainArgumentsMixin
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
-                         is_mp, is_pai_training_job, is_swanlab_available)
+                         is_mp, is_pai_training_job, is_swanlab_available, json_parse_to_dict)
 from .base_args import BaseArguments, to_abspath
 from .tuner_args import TunerArguments
 
@@ -132,6 +132,9 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     # zero++
     zero_hpz_partition_size: Optional[int] = None
 
+    # auto_tp
+    deepspeed_autotp_size: Optional[int] = None
+
     def _init_lazy_tokenize(self):
         if self.streaming and self.lazy_tokenize:
             self.lazy_tokenize = False
@@ -153,6 +156,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                                  'Please specify `--attn_impl flash_attn`.')
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
+            # The non-resume_only_model will have its weights loaded in the trainer.
             if self.resume_only_model:
                 if self.train_type == 'full':
                     self.model = self.resume_from_checkpoint
@@ -206,12 +210,17 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                     self.deepspeed = os.path.join(ds_config_folder, ds_config)
                     break
 
-            self.deepspeed = self.parse_to_dict(self.deepspeed)
+            self.deepspeed = json_parse_to_dict(self.deepspeed)
             if self.zero_hpz_partition_size is not None:
                 assert 'zero_optimization' in self.deepspeed
                 self.deepspeed['zero_optimization']['zero_hpz_partition_size'] = self.zero_hpz_partition_size
                 logger.warn('If `zero_hpz_partition_size`(ZeRO++) causes grad_norm NaN, please'
                             ' try `--torch_dtype float16`')
+            if self.deepspeed_autotp_size is not None:
+                assert self.deepspeed is not None, (
+                    'To use `deepspeed_autotp_size`, you need to additionally set the `--deepspeed` argument.')
+                self.deepspeed['tensor_parallel'] = {'autotp_size': self.deepspeed_autotp_size}
+                self.deepspeed['zero_optimization']['gather_16bit_weights_on_model_save'] = True
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
     def _handle_pai_compat(self) -> None:

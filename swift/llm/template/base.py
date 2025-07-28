@@ -21,7 +21,7 @@ from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
-from swift.utils import get_dist_setting, get_env_args, get_logger, use_torchacc
+from swift.utils import get_dist_setting, get_env_args, get_logger
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
@@ -130,7 +130,7 @@ class Template(ProcessorMixin):
             self.init_processor(processor)
 
     def init_processor(self, processor: Processor) -> None:
-        if processor is None:
+        if processor is None or self._processor_inited:
             return
         self._processor_inited = True
         self.processor = processor
@@ -1262,7 +1262,7 @@ class Template(ProcessorMixin):
         padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
         input_ids += [self.tokenizer.pad_token_id] * padding_len
         encoded['labels'] += [-100] * padding_len
-        if 'loss_scale' in encoded:
+        if encoded.get('loss_scale') is not None:
             encoded['loss_scale'] += [0] * padding_len
 
     def debug_logger(self, inputs):
@@ -1575,13 +1575,12 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
-        packing_mode = self.use_megatron or self._packing
         if self.padding_free:
             batch[:] = self._data_flatten(batch)
         if self._packing:
             assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
         res = {}
-        if packing_mode:
+        if self._packing:
             # only support llm
             for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel']:
                 v = self.gather_list(batch, k)
@@ -1624,26 +1623,38 @@ class Template(ProcessorMixin):
                 res[key][i] = val
             if not seq_lens:
                 seq_lens = [seq.shape[0] for seq in res[key]]
-        if not packing_mode and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
-            res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
+        if not self._packing and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
+            if not self.use_megatron:
+                res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
             if self.is_training and self.padding_side == 'left':
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
 
         if self.use_megatron:
-            padding_to = math.ceil(max(seq_lens) / 128) * 128
-            cp_size = self.sequence_parallel_size
-            if cp_size > 1:
-                padding_len = padding_to - seq_lens[0]
-                position_ids = res['position_ids'][0].tolist()
-                position_ids += list(range(cp_size * 2)) * (padding_len // (cp_size * 2))
-                res['position_ids'][0] = torch.tensor(position_ids)
+            # For code simplicity, only the attention_backend 'flash' is supported here.
+            if padding_to is not None:
+                padding_to = math.ceil(max(seq_lens) / padding_to) * padding_to
+            if self._packing:
+                cp_size = self.sequence_parallel_size
+                if cp_size > 1:
+                    padding_len = padding_to - seq_lens[0]
+                    position_ids = res['position_ids'][0].tolist()
+                    position_ids += list(range(cp_size * 2)) * (padding_len // (cp_size * 2))
+                    res['position_ids'] = [torch.tensor(position_ids)]
+            else:
+                seq_len = max(seq_lens) if padding_to is None else padding_to
+                res['attention_mask'] = torch.tril(torch.ones(
+                    (len(seq_lens), seq_len, seq_len), dtype=torch.bool)).view(len(seq_lens), 1, seq_len, seq_len)
+                assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res["attention_mask"].dtype}'
+                for i, seq_len in enumerate(seq_lens):
+                    res['attention_mask'][i, :, seq_len:] = 0
 
         for key, pad_value in zip(keys, pad_values):
             if key not in res:
                 continue
-            if self.use_megatron and key == 'position_ids' and self.sequence_parallel_size > 1:
-                pass
-            elif padding_to is not None:
+            if self.use_megatron and not self._packing and key == 'attention_mask':
+                continue
+            if padding_to is not None and not (self._packing and key == 'position_ids'
+                                               and self.sequence_parallel_size > 1):
                 padding_len = padding_to - seq_lens[0]
                 if padding_len > 0:
                     res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
@@ -1652,8 +1663,8 @@ class Template(ProcessorMixin):
 
         # multimodal
         res.update(self._data_collator_mm_data(batch))
-        if not self.use_megatron and (use_torchacc() or self.sequence_parallel_size > 1):
-            res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
+        if not self.use_megatron and self.sequence_parallel_size > 1:
+            res = self._sp_data_collator(res, padding_to, self.tokenizer, padding_side)
 
         return res
 
@@ -1673,26 +1684,11 @@ class Template(ProcessorMixin):
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         return res
 
-    def _torchacc_xtuner_data_collator(self, res, padding_to, tokenizer, padding_side):
-        # torchacc & xtuner
+    def _sp_data_collator(self, res, padding_to, tokenizer, padding_side):
         input_ids = res.get('input_ids')
         attention_mask = res.get('attention_mask')
         labels = res.get('labels')
         loss_scale = res.get('loss_scale')
-        if use_torchacc():
-            from swift.utils.torchacc_utils import pad_and_split_batch
-            rank, _, world_size, _ = get_dist_setting()
-            input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(
-                padding_to,
-                input_ids,
-                attention_mask,
-                labels,
-                loss_scale,
-                self.max_length,
-                tokenizer,
-                rank,
-                world_size,
-                padding_right=padding_side == 'right')
         if self.sequence_parallel_size > 1 and input_ids is not None:
             bs, seq_len = input_ids.shape
             if 'position_ids' not in res:

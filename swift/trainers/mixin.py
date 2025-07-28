@@ -36,8 +36,7 @@ from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, 
 from swift.llm.utils import update_generation_config_eos_token
 from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
-from swift.utils import get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker, use_torchacc
-from swift.utils.torchacc_utils import ta_trim_graph
+from swift.utils import get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker
 from ..utils.torch_utils import get_device_count
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
@@ -405,8 +404,12 @@ class SwiftMixin:
         HfConfigFactory.set_model_config_attr(model, 'use_cache', False)
         if args.gradient_checkpointing or args.vit_gradient_checkpointing:
             dynamic_gradient_checkpointing(model, args.vit_gradient_checkpointing)
+        gc_kwargs = {}
+        parameters = inspect.signature(model.gradient_checkpointing_enable).parameters
+        if 'gradient_checkpointing_kwargs' in parameters:
+            gc_kwargs['gradient_checkpointing_kwargs'] = args.gradient_checkpointing_kwargs
         if args.gradient_checkpointing:
-            model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
+            model.gradient_checkpointing_enable(**gc_kwargs)
             model.enable_input_require_grads()
 
         model_meta = model.model_meta
@@ -417,8 +420,7 @@ class SwiftMixin:
                 if hasattr(vision_tower, 'enable_input_require_grads'):
                     try:
                         if args.vit_gradient_checkpointing:
-                            vision_tower.gradient_checkpointing_enable(
-                                gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
+                            vision_tower.gradient_checkpointing_enable(**gc_kwargs)
                             vision_tower.enable_input_require_grads()
                         else:
                             vision_tower.gradient_checkpointing_disable()
@@ -530,19 +532,13 @@ class SwiftMixin:
 
     def _compute_acc(self, outputs, labels) -> None:
         args = self.args
-        acc_steps = args.acc_steps
         preds = outputs.logits.argmax(dim=-1)
-        if self.state.global_step % acc_steps == 0:
-            if use_torchacc():
-                ta_trim_graph()
-                preds = preds.to('cpu')
-                labels = labels.to('cpu')
-            metrics = compute_acc(
-                preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
-            for k, v in metrics.items():
-                if k not in self._custom_metrics:
-                    self._custom_metrics[k] = MeanMetric(nan_value=None)
-                self._custom_metrics[k].update(v)
+        metrics = compute_acc(
+            preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
+        for k, v in metrics.items():
+            if k not in self._custom_metrics:
+                self._custom_metrics[k] = MeanMetric(nan_value=None)
+            self._custom_metrics[k].update(v)
 
     @torch.no_grad()
     def _evalscope_eval(self):
@@ -660,9 +656,15 @@ class DataLoaderMixin:
                 'prefetch_factor': args.dataloader_prefetch_factor
             }
             batch_sampler_params = {
-                'drop_last': args.dataloader_drop_last,
-                'shuffle': args.train_dataloader_shuffle,
-                'data_seed': args.data_seed,
+                'drop_last':
+                args.dataloader_drop_last,
+                'shuffle':
+                args.train_dataloader_shuffle,
+                'data_seed':
+                args.data_seed,
+                'tp_size':
+                args.deepspeed['tensor_parallel']['autotp_size']
+                if args.deepspeed and 'tensor_parallel' in args.deepspeed else 1,
             }
 
             if hasattr(train_dataset, '__len__'):

@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from functools import partial
 from typing import List, Union
 
 from swift.llm.train import SwiftSft
@@ -31,12 +32,26 @@ class MegatronSft(SwiftSft):
         args.save_args(args.save)
         self.trainer = self.prepare_trainer()
 
+    def _get_data_collator(self):
+        args = self.args
+        data_collator = self.template.data_collator
+        padding_to = None
+        if args.tensor_model_parallel_size > 1 and args.sequence_parallel:
+            padding_to = args.tensor_model_parallel_size
+        if args.context_parallel_size > 1:
+            padding_to = max(args.context_parallel_size, padding_to or 0)
+        if args.fp8_format:
+            padding_to = max((padding_to or 1) * 8, 16)
+        logger.info(f'padding_to: {padding_to}')
+        data_collator = partial(data_collator, padding_to=padding_to)
+        return data_collator
+
     def run(self):
         args = self.args
-
+        data_collator = self._get_data_collator()
         train_dataset, val_dataset = self._get_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
-        data_collator = self.template.data_collator
+
         if args.streaming:
             train_dataset = build_streaming_dataloader(args, train_dataset, data_collator)
             if val_dataset is not None:

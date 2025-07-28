@@ -1,9 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import subprocess
 import sys
 from datetime import datetime
 from typing import List, Optional, Tuple
 
+import peft
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -640,11 +642,14 @@ def _patch_TEGroupedLinear():
 
 
 def _patch_peft_ModulesToSaveWrapper():
-    from peft.tuners import tuners_utils
+    if version.parse(peft.__version__) >= version.parse('0.16'):
+        from peft.utils import other as peft_module
+    else:
+        from peft.tuners import tuners_utils as peft_module
     from megatron.core.dist_checkpointing.mapping import ShardedStateDict
     from .utils import tuners_sharded_state_dict
 
-    ModulesToSaveWrapper = tuners_utils.ModulesToSaveWrapper
+    ModulesToSaveWrapper = peft_module.ModulesToSaveWrapper
 
     class NewModulesToSaveWrapper(ModulesToSaveWrapper):
 
@@ -679,7 +684,50 @@ def _patch_peft_ModulesToSaveWrapper():
                         f'{prefix}modules_to_save.default.weight']
             return sharded_state_dict
 
-    tuners_utils.ModulesToSaveWrapper = NewModulesToSaveWrapper
+    peft_module.ModulesToSaveWrapper = NewModulesToSaveWrapper
+
+
+def _patch_TransformerLayer():
+    import megatron.core
+    from megatron.training import get_args
+    from megatron.core.transformer import TransformerLayer
+    _origin_forward = TransformerLayer.forward
+
+    def forward(self, *_args, **kwargs):
+        """
+        Perform a forward pass through the transformer layer.
+
+        This method calls the core computation of a transformer layer, including
+        self-attention, cross-attention (if applicable), and feed-forward operations.
+        """
+        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+        if not megatron_core_013:
+            return _origin_forward(*_args, **kwargs)
+        hidden_states, context = self._forward_attention(*_args, **kwargs)
+        args = get_args()
+        mlp_padding_free = args.mlp_padding_free and 'attention_mask' in kwargs
+        if mlp_padding_free:
+            mask = (kwargs['attention_mask'].sum(dim=(1, 3)) > 0).t()
+            hidden_states = hidden_states[mask][:, None]
+        output = self._forward_mlp(hidden_states, kwargs.get('inference_context', None))
+        if mlp_padding_free:
+            new_output = hidden_states.new_zeros((*mask.shape, output.shape[-1]))
+            new_output[mask] = output.squeeze(1)
+            output = new_output
+        return output, context
+
+    TransformerLayer.forward = forward
+
+
+def _patch_compile_helpers():
+    from megatron.core.datasets import utils
+
+    def compile_helpers():
+        command = ['make', '-C', os.path.abspath(os.path.dirname(utils.__file__))]
+        if subprocess.run(command).returncode != 0:
+            logger.warning('Failed to compile the C++ dataset helper functions')
+
+    utils.compile_helpers = compile_helpers
 
 
 def _patch_megatron():
@@ -687,6 +735,8 @@ def _patch_megatron():
     _patch__batched_p2p_ops()
     _patch_mla_attention()
     _patch_TEGroupedLinear()
+    _patch_TransformerLayer()
+    _patch_compile_helpers()
     from swift.megatron import tuners  # patch lora
     try:
         _patch_peft_BaseTuner()

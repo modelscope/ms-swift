@@ -9,16 +9,16 @@
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift rollout \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --tensor_parallel_size 2 \
-    --data_parallel_size 2 \
+    --vllm_tensor_parallel_size 2 \
+    --vllm_data_parallel_size 2 \
     --port <node1_port>
 
 # Start rollout server on node2:
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift rollout \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --tensor_parallel_size 2 \
-    --data_parallel_size 2 \
+    --vllm_tensor_parallel_size 2 \
+    --vllm_data_parallel_size 2 \
     --port <node2_port>
 
 # --- Training Section ---

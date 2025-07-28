@@ -50,8 +50,8 @@ class RLHFTrainerMixin:
 
         self.padding_value = self.tokenizer.pad_token_id
 
-    def get_train_dataloader(self):
-        train_dataloader = super().get_train_dataloader()
+    def get_train_dataloader(self, *args, **kwargs):
+        train_dataloader = super().get_train_dataloader(*args, **kwargs)
         base_dataloader = train_dataloader.base_dataloader if hasattr(
             train_dataloader, 'base_dataloader') and isinstance(train_dataloader.base_dataloader,
                                                                 DataLoader) else train_dataloader

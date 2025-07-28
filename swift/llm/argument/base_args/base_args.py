@@ -10,7 +10,7 @@ from swift.llm import Processor, Template, get_model_tokenizer, get_template, lo
 from swift.llm.utils import get_ckpt_dir
 from swift.plugin import extra_tuners
 from swift.utils import (check_json_format, get_dist_setting, get_logger, import_external_file, is_dist, is_master,
-                         set_device, use_hf_hub)
+                         json_parse_to_dict, set_device, use_hf_hub)
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments
@@ -161,7 +161,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
 
     def _init_model_kwargs(self):
         """Prepare model kwargs and set them to the env"""
-        self.model_kwargs: Dict[str, Any] = self.parse_to_dict(self.model_kwargs)
+        self.model_kwargs: Dict[str, Any] = json_parse_to_dict(self.model_kwargs)
         for k, v in self.model_kwargs.items():
             k = k.upper()
             os.environ[k] = str(v)
@@ -205,7 +205,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             old_args = json.load(f)
         force_load_keys = [
             # base_args
-            'tuner_backend',
             'train_type',
             # model_args
             'task_type',
@@ -213,8 +212,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'bnb_4bit_quant_type',
             'bnb_4bit_use_double_quant',
         ]
-        if 'megatron' in self.__class__.__name__.lower():
-            force_load_keys = []
         # If the current value is None or an empty list and it is among the following keys
         load_keys = [
             'custom_register_path',
@@ -242,7 +239,9 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'use_chat_template',
             'response_prefix',
         ]
-
+        if 'megatron' in self.__class__.__name__.lower():
+            force_load_keys = []
+            load_keys.remove('use_chat_template')
         data_keys = list(f.name for f in fields(DataArguments))
         for key, old_value in old_args.items():
             if old_value is None:

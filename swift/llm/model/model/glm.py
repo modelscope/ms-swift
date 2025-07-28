@@ -13,7 +13,7 @@ from swift.llm import TemplateType
 from swift.utils import get_device_count, get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_output_to_input_device
+from ..patcher import patch_get_input_embeddings, patch_output_to_input_device
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import AttnImpl, ModelInfo, safe_snapshot_download
@@ -256,7 +256,10 @@ def get_model_tokenizer_glm4_1v(*args, **kwargs):
         "\"disable_grouping\"', please install the source version of the transformers library.")
 
     kwargs['automodel_class'] = kwargs['automodel_class'] or Glm4vForConditionalGeneration
-    return get_model_tokenizer_multimodal(*args, **kwargs)
+    model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
+    if model is not None and hasattr(model, 'visual'):
+        patch_get_input_embeddings(model.visual, 'patch_embed')
+    return model, processor
 
 
 register_model(
@@ -420,12 +423,7 @@ register_model(
 register_model(
     ModelMeta(
         LLMModelType.glm4_5,
-        [
-            ModelGroup([
-                Model('ZhipuAI/GLM-4.5-MOE-106B-A12B-0715', 'THUDM/GLM-4.5-MOE-106B-A12B-0715'),
-                Model('ZhipuAI/GLM-4.5-MOE-355B-A32B-0715', 'THUDM/GLM-4.5-MOE-355B-A32B-0715'),
-            ]),
-        ],
+        [],
         TemplateType.glm4_5,
         get_model_tokenizer_with_flash_attn,
         architectures=['Glm4MoeForCausalLM'],

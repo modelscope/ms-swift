@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import math
 import os
 import platform
 import re
@@ -18,7 +19,7 @@ from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_avail
                                 is_torch_npu_available, strtobool)
 from transformers.utils.versions import require_version
 
-from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr
 from .constant import ModelType
 from .patcher import (patch_automodel, patch_automodel_for_sequence_classification, patch_get_dynamic_module,
                       patch_mp_ddp, patch_tp_plan)
@@ -141,9 +142,10 @@ def load_by_unsloth(args):
         model_name=args.adapters and args.adapters[0] or args.model_dir,
         dtype=args.torch_dtype,
         max_seq_length=args.max_length,
-        full_finetuning=args.quant_bits is None,
+        full_finetuning=args.train_type == 'full',
         load_in_4bit=args.quant_bits == 4,
         load_in_8bit=args.quant_bits == 8,
+        device_map=args.device_map,
     )
     if isinstance(model, PeftModel):
         base_model = model.model
@@ -450,6 +452,7 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     torch_dtype = HfConfigFactory.get_torch_dtype(config, quant_info)
     max_model_len = HfConfigFactory.get_max_model_len(config)
     rope_scaling = HfConfigFactory.get_config_attr(config, 'rope_scaling')
+    is_moe_model = HfConfigFactory.is_moe_model(config)
 
     if model_type is None:
         model_type = _read_args_json_model_type(model_dir)
@@ -471,7 +474,9 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
         max_model_len,
         quant_info.get('quant_method'),
         quant_info.get('quant_bits'),
-        rope_scaling=rope_scaling)
+        rope_scaling=rope_scaling,
+        is_moe_model=is_moe_model,
+    )
     return res
 
 
@@ -597,7 +602,7 @@ def get_model_tokenizer(
         task_type=task_type,
         num_labels=num_labels)
 
-    if not use_torchacc() and device_map is None:
+    if device_map is None:
         device_map = get_default_device_map()
     model_kwargs['device_map'] = device_map
     if quantization_config:
@@ -623,7 +628,10 @@ def get_model_tokenizer(
         if num_new_tokens > 0:
             logger.info(f'Added {num_new_tokens} new special tokens.')
             if model is not None and model.config.vocab_size < len(tokenizer):
-                model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=128)
+                vocab_size = math.ceil(len(tokenizer) / 128) * 128
+                model.resize_token_embeddings(vocab_size)
+                # fix transformers==4.52.4 qwen2.5-vl
+                model.config.vocab_size = vocab_size
 
     problem_type = kwargs.get('problem_type')
     if problem_type is None and model_info.num_labels == 1:

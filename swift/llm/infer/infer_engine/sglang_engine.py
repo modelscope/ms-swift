@@ -12,10 +12,14 @@ from transformers import GenerationConfig
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
+from swift.utils import get_logger
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
                         EmbeddingResponseData, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
+from .utils import InferStreamer
+
+logger = get_logger()
 
 
 class SglangEngine(InferEngine):
@@ -34,6 +38,7 @@ class SglangEngine(InferEngine):
         pp_size: int = 1,
         dp_size: int = 1,
         ep_size: int = 1,
+        enable_ep_moe: bool = False,
         mem_fraction_static: Optional[float] = None,
         context_length: Optional[int] = None,
         disable_cuda_graph: bool = False,
@@ -58,6 +63,9 @@ class SglangEngine(InferEngine):
             hub_token=hub_token,
             revision=revision)[1]
         self._post_init(template)
+        if context_length is not None:
+            self.max_model_len = context_length
+            logger.info(f'Setting max_model_len: {context_length}')
         if self.max_model_len is not None:
             self.max_model_len -= 1
         parameters = inspect.signature(ServerArgs).parameters
@@ -69,6 +77,7 @@ class SglangEngine(InferEngine):
             tp_size=tp_size,
             dp_size=dp_size,
             ep_size=ep_size,
+            enable_ep_moe=enable_ep_moe,
             mem_fraction_static=mem_fraction_static,
             context_length=context_length,
             disable_cuda_graph=disable_cuda_graph,
@@ -77,6 +86,7 @@ class SglangEngine(InferEngine):
             enable_dp_attention=enable_dp_attention,
             disable_custom_all_reduce=disable_custom_all_reduce,
             log_level=log_level,
+            skip_tokenizer_init=True,
             **engine_kwargs,
         )
         self.task_type = task_type
@@ -89,18 +99,15 @@ class SglangEngine(InferEngine):
         generation_config_path = os.path.join(self.model_dir, 'generation_config.json')
         if os.path.isfile(generation_config_path):
             generation_config = GenerationConfig.from_pretrained(self.model_dir)
-            kwargs = generation_config.to_dict()
-            top_k = kwargs.get('top_k')
-            if top_k == 0:
-                kwargs['top_k'] = -1
-
-            parameters = inspect.signature(SamplingParams).parameters
-            for k, v in kwargs.copy().items():
-                if k not in parameters or v is None:
-                    kwargs.pop(k)
-            self.generation_config = kwargs
         else:
-            self.generation_config = {}
+            generation_config = GenerationConfig()
+        kwargs = generation_config.to_dict()
+        top_k = kwargs.get('top_k')
+        if top_k == 0:
+            kwargs['top_k'] = -1
+
+        parameters = inspect.signature(SamplingParams).parameters
+        self.generation_config = {k: v for k, v in kwargs.items() if k in parameters and v is not None}
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> Dict[str, Any]:
         kwargs = {'max_new_tokens': request_config.max_tokens}
@@ -118,19 +125,23 @@ class SglangEngine(InferEngine):
     def _add_stop_words(self, generation_config: Dict[str, Any], request_config: RequestConfig,
                         template_meta: TemplateMeta) -> None:
         stop_words = (request_config.stop or []) + (self.generation_config.get('stop') or []) + template_meta.stop_words
-        generation_config['stop'] = self._get_stop_words(stop_words)
+        generation_config['stop_token_ids'] = self._get_stop_token_ids(stop_words)
 
-    def _create_chat_completion_response(self, output, template):
+    def _create_chat_completion_response(self, output, template, return_details: bool = False):
         assert output is not None
         meta_info = output['meta_info']
         usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
-        response = output['text']
+        response = template.decode(output['output_ids'])
+        if template.template_meta.response_prefix:
+            response = template.template_meta.response_prefix + response
         toolcall = self._get_toolcall(response, template)
+        token_ids = output['output_ids'] if return_details else None
         choice = ChatCompletionResponseChoice(
             index=0,
             message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
             finish_reason=meta_info['finish_reason']['type'],
-            logprobs=None)
+            logprobs=None,
+            token_ids=token_ids)
         return ChatCompletionResponse(model=self.model_name, choices=[choice], usage=usage_info, id=random_uuid())
 
     def infer(
@@ -169,7 +180,12 @@ class SglangEngine(InferEngine):
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)
-        kwargs.update({'template': template, 'inputs': inputs, 'generation_config': generation_config})
+        kwargs.update({
+            'template': template,
+            'inputs': inputs,
+            'generation_config': generation_config,
+            'request_config': request_config
+        })
         if pre_infer_hook:
             kwargs = pre_infer_hook(kwargs)
         if request_config.stream:
@@ -193,36 +209,34 @@ class SglangEngine(InferEngine):
             usage=usage_info,
             id=random_uuid())
 
-    async def _infer_full_async(self, template: Template, inputs: Dict[str, Any],
-                                generation_config: Dict[str, Any]) -> ChatCompletionResponse:
+    async def _infer_full_async(self, template: Template, inputs: Dict[str, Any], generation_config: Dict[str, Any],
+                                request_config: RequestConfig) -> ChatCompletionResponse:
         output = await self.engine.async_generate(**inputs, sampling_params=generation_config)
-        return self._create_chat_completion_response(output, template)
+        return self._create_chat_completion_response(output, template, request_config.return_details)
 
-    async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any],
-                                  generation_config: Dict[str, Any]) -> AsyncIterator[ChatCompletionStreamResponse]:
+    async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any], generation_config: Dict[str, Any],
+                                  **kwargs) -> AsyncIterator[ChatCompletionStreamResponse]:
         result_generator = await self.engine.async_generate(**inputs, sampling_params=generation_config, stream=True)
-        idx = [0]
+        infer_streamer = InferStreamer(template)
         async for output in result_generator:
-            res = self._create_chat_completion_stream_response(output, template, generation_config, idx)
+            res = self._create_chat_completion_stream_response(output, template, infer_streamer)
             if res is None:
                 continue
             yield res
 
-    def _create_chat_completion_stream_response(self, output, template, generation_config,
-                                                idx) -> Optional[ChatCompletionStreamResponse]:
+    def _create_chat_completion_stream_response(self, output, template,
+                                                infer_streamer) -> Optional[ChatCompletionStreamResponse]:
         assert output is not None
-        response = output['text']
         meta_info = output['meta_info']
         finish_reason = meta_info['finish_reason']
-        delta_text = response[idx[0]:]
-        idx[0] = len(response)
-        if not delta_text:
+        is_finished = finish_reason is not None
+        delta_text = infer_streamer.get_printable_text(output['output_ids'], is_finished)
+        if not delta_text and not is_finished:
             return
-        if finish_reason:
+        toolcall = None
+        if is_finished:
             finish_reason = finish_reason['type']
-            toolcall = self._get_toolcall(response, template)
-        else:
-            toolcall = None
+            toolcall = self._get_toolcall(template.decode(output['output_ids']), template)
         meta_info = output['meta_info']
         usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
         # TODO: logprobs

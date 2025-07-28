@@ -25,7 +25,7 @@ class Env(ABC):
 
         Returns:
             - observation: 第一个user消息作为初始观察或者环境信息，会作为user message
-            - info: 用于DEBUG和日志的额外信息，会在logging.jsonl中记录
+            - info: 用于DEBUG和日志的额外信息，会在completions.jsonl中记录
             - system_message: 用户当前环境采样的系统提示词
         """
         pass
@@ -41,7 +41,7 @@ class Env(ABC):
             - next_observation: 环境响应，将作为user message返回
             - reward: 奖励
             - done: 是否结束
-            - info: 用于DEBUG和日志的额外信息，会在logging.jsonl中记录
+            - info: 用于DEBUG和日志的额外信息，会在completions.jsonl中记录
         """
         pass
     @abstractmethod

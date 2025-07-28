@@ -2,7 +2,7 @@
 # CUDA_VISIBLE_DEVICES=0,1 \
 # swift rollout \
 #     --model Qwen/Qwen2.5-32B-Instruct \
-#     --tensor_parallel_size 2
+#     --vllm_tensor_parallel_size 2
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
