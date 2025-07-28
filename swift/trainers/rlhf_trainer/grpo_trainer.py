@@ -796,7 +796,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     for stop, _input, result in zip(should_stops, current_inputs, results):
                         index = _input['index']
                         if stop:
-                            outputs[index] = (_input['messages'], _input['finish_reason'], _input.get('infos', {}))
+                            outputs[index] = (_input['messages'], _input['finish_reason'],
+                                              _input.get('multi_turn_infos', {}))
                         else:
                             current_request = self.inputs_to_rolloutrequest([_input])[0]
                             ret = self.multi_turn_scheduler.step(current_request, result.choices[0], current_turn)
@@ -808,9 +809,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             info_dict['num_turns'] = current_turn + 1
                             pending_input = asdict(infer_request)
                             if 'info' not in pending_input:
-                                pending_input['info'] = {}
+                                pending_input['multi_turn_infos'] = {}
                             for key, value in info_dict.items():
-                                pending_input['info'][key] = value
+                                pending_input['multi_turn_infos'][key] = value
 
                             pending_input['index'] = index
                             pending_inputs.append(pending_input)
@@ -939,7 +940,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if 'images' in multi_turn_infos:
                 # override images
                 inputs[i]['images'] = multi_turn_infos['images']
-            inputs[i]['multi_turn_infos'] = infos
+            inputs[i]['multi_turn_infos'] = multi_turn_infos
             if self.use_gym_env:
                 inputs[i]['total_reward'] = output[2]
                 inputs[i]['trajectory_info'] = output[3]
