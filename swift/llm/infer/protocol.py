@@ -64,7 +64,7 @@ class RequestConfig:
     frequency_penalty: float = 0.
     length_penalty: float = 1.
     # Return token_ids additionally (non-stream)
-    return_detail: bool = False
+    return_details: bool = False
 
     def __post_init__(self):
         if self.stop is None:

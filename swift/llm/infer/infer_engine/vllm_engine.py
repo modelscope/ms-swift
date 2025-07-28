@@ -401,7 +401,7 @@ class VllmEngine(InferEngine):
                                          template,
                                          generation_config,
                                          request_id,
-                                         return_detail=False) -> ChatCompletionResponse:
+                                         return_details=False) -> ChatCompletionResponse:
         assert result is not None
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
@@ -411,7 +411,7 @@ class VllmEngine(InferEngine):
             response = template.decode(output.token_ids)
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
             toolcall = self._get_toolcall(response, template)
-            token_ids = output.token_ids if return_detail else None
+            token_ids = output.token_ids if return_details else None
             choice = ChatCompletionResponseChoice(
                 index=output.index,
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
@@ -419,8 +419,7 @@ class VllmEngine(InferEngine):
                 logprobs=logprobs,
                 token_ids=token_ids)
             choices.append(choice)
-        res = ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
-        return res
+        return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
     async def _infer_full_async(
         self,
@@ -439,7 +438,7 @@ class VllmEngine(InferEngine):
             return self._create_embedding_response(result, template, generation_config, request_id)
         else:
             return self._create_chat_completion_response(result, template, generation_config, request_id,
-                                                         request_config.return_detail)
+                                                         request_config.return_details)
 
     def _batch_infer_stream(self, *args, **kwargs):
         if hasattr(self.engine, 'engine'):
@@ -525,7 +524,7 @@ class VllmEngine(InferEngine):
                 outputs = [outputs[request_id] for request_id in request_id_list]
                 res = [
                     self._create_chat_completion_response(result, template, generation_config, request_id,
-                                                          request_config.return_detail)
+                                                          request_config.return_details)
                     for request_id, result in zip(request_id_list, outputs)
                 ]
                 self._update_metrics(res, metrics)

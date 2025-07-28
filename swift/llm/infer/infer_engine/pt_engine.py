@@ -197,13 +197,8 @@ class PtEngine(InferEngine):
         for logprobs, new_logprobs in zip(batched_logprobs, new_batched_logprobs):
             logprobs += new_logprobs
 
-    def _infer_stream(self,
-                      template: Template,
-                      inputs: Dict[str, Any],
-                      *,
-                      generation_config: GenerationConfig,
-                      adapter_request: Optional[AdapterRequest],
-                      request_config: RequestConfig,
+    def _infer_stream(self, template: Template, inputs: Dict[str, Any], *, generation_config: GenerationConfig,
+                      adapter_request: Optional[AdapterRequest], request_config: RequestConfig,
                       **kwargs) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
 
         if generation_config.num_beams != 1:
@@ -279,8 +274,7 @@ class PtEngine(InferEngine):
                 if not delta_text and not is_finished[i]:
                     res.append(None)
                     continue
-                logprobs = self._get_logprobs(logprobs_list, generate_ids[token_idxs[i]:],
-                                              request_config.top_logprobs)
+                logprobs = self._get_logprobs(logprobs_list, generate_ids[token_idxs[i]:], request_config.top_logprobs)
                 token_idxs[i] = len(generate_ids)
 
                 usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
@@ -364,13 +358,8 @@ class PtEngine(InferEngine):
 
         return res
 
-    def _infer_full(self,
-                    template: Template,
-                    inputs: Dict[str, Any],
-                    *,
-                    generation_config: GenerationConfig,
-                    adapter_request: Optional[AdapterRequest],
-                    template_inputs,
+    def _infer_full(self, template: Template, inputs: Dict[str, Any], *, generation_config: GenerationConfig,
+                    adapter_request: Optional[AdapterRequest], template_inputs,
                     request_config: RequestConfig) -> List[ChatCompletionResponse]:
         # bos_token TODO: encoder-decoder
         generate_kwargs = {'generation_config': generation_config, **inputs}
@@ -410,7 +399,7 @@ class PtEngine(InferEngine):
                 response = template.decode(generate_ids, template_inputs=template_inputs[i])
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, len(generate_ids), True)
                 toolcall = self._get_toolcall(response, template)
-                token_ids = generate_ids if request_config.return_detail else None
+                token_ids = generate_ids if request_config.return_details else None
                 choices.append(
                     ChatCompletionResponseChoice(
                         index=j,
