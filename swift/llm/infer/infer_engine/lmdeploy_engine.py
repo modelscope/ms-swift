@@ -139,25 +139,6 @@ class LmdeployEngine(InferEngine):
         else:
             self.generation_config = LmdeployGenerationConfig()
 
-    def _get_stop_token_ids(self, stop_words: List[Union[str, List[int], None]]) -> List[int]:
-        stop_token_ids: List[int] = []
-        for stop_word in stop_words:
-            if stop_word is None:
-                continue
-            if isinstance(stop_word, str):
-                stop_word = self.tokenizer.encode(stop_word, add_special_tokens=False)
-            if isinstance(stop_word, list):
-                if len(stop_word) != 1:
-                    continue
-                else:
-                    stop_token = stop_word[0]
-            elif isinstance(stop_word, int):
-                stop_token = stop_word
-            assert isinstance(stop_token, int)
-            if stop_token not in stop_token_ids:
-                stop_token_ids.append(stop_token)
-        return stop_token_ids
-
     def _add_stop_words(self, generation_config: LmdeployGenerationConfig, request_config: RequestConfig,
                         template_meta: TemplateMeta) -> None:
         stop_words = (request_config.stop or []) + (self.generation_config.stop_words or []) + template_meta.stop_words

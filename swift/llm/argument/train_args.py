@@ -132,6 +132,9 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     # zero++
     zero_hpz_partition_size: Optional[int] = None
 
+    # auto_tp
+    deepspeed_autotp_size: Optional[int] = None
+
     def _init_lazy_tokenize(self):
         if self.streaming and self.lazy_tokenize:
             self.lazy_tokenize = False
@@ -153,6 +156,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                                  'Please specify `--attn_impl flash_attn`.')
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
+            # The non-resume_only_model will have its weights loaded in the trainer.
             if self.resume_only_model:
                 if self.train_type == 'full':
                     self.model = self.resume_from_checkpoint
@@ -212,6 +216,11 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                 self.deepspeed['zero_optimization']['zero_hpz_partition_size'] = self.zero_hpz_partition_size
                 logger.warn('If `zero_hpz_partition_size`(ZeRO++) causes grad_norm NaN, please'
                             ' try `--torch_dtype float16`')
+            if self.deepspeed_autotp_size is not None:
+                assert self.deepspeed is not None, (
+                    'To use `deepspeed_autotp_size`, you need to additionally set the `--deepspeed` argument.')
+                self.deepspeed['tensor_parallel'] = {'autotp_size': self.deepspeed_autotp_size}
+                self.deepspeed['zero_optimization']['gather_16bit_weights_on_model_save'] = True
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
     def _handle_pai_compat(self) -> None:

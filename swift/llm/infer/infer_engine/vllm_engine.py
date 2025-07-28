@@ -51,6 +51,7 @@ class VllmEngine(InferEngine):
         gpu_memory_utilization: float = 0.9,
         tensor_parallel_size: int = 1,
         pipeline_parallel_size: int = 1,
+        enable_expert_parallel: bool = False,
         max_model_len: Optional[int] = None,
         max_num_seqs: int = 256,
         disable_custom_all_reduce: bool = True,
@@ -90,6 +91,7 @@ class VllmEngine(InferEngine):
             gpu_memory_utilization=gpu_memory_utilization,
             tensor_parallel_size=tensor_parallel_size,
             pipeline_parallel_size=pipeline_parallel_size,
+            enable_expert_parallel=enable_expert_parallel,
             max_model_len=max_model_len,
             max_num_seqs=max_num_seqs,
             disable_custom_all_reduce=disable_custom_all_reduce,
@@ -128,12 +130,14 @@ class VllmEngine(InferEngine):
         gpu_memory_utilization: float = 0.9,
         tensor_parallel_size: int = 1,
         pipeline_parallel_size: int = 1,
+        enable_expert_parallel: bool = False,
         max_model_len: Optional[int] = None,
         max_num_seqs: int = 256,
         disable_custom_all_reduce: bool = True,
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         device: str = 'auto',
+        seed: Optional[int] = None,
         enable_lora: bool = False,
         max_loras: int = 1,
         max_lora_rank: int = 16,
@@ -162,10 +166,13 @@ class VllmEngine(InferEngine):
         else:
             assert not limit_mm_per_prompt, (
                 'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
-        if 'enable_sleep_mode' in parameters:
-            engine_kwargs['enable_sleep_mode'] = enable_sleep_mode
-        if task is not None:
-            engine_kwargs['task'] = task
+        for key in ['enable_expert_parallel', 'enable_sleep_mode']:
+            if key in parameters:
+                engine_kwargs[key] = locals()[key]
+        for key in ['task', 'seed']:
+            val = locals()[key]
+            if val is not None:
+                engine_kwargs[key] = val
 
         model_info = self.model_info
         arch_mapping = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM'], 'glm4v': ['GLM4VForCausalLM']}
@@ -234,6 +241,8 @@ class VllmEngine(InferEngine):
                         template_meta: TemplateMeta) -> None:
         stop_words = (request_config.stop or []) + (self.generation_config.stop or []) + template_meta.stop_words
         generation_config.stop = self._get_stop_words(stop_words)
+        # stop parameter is not effective in v1 engine (test version: vllm 0.8.5.post)
+        generation_config.stop_token_ids = self._get_stop_token_ids(stop_words)
 
     @staticmethod
     def _version_ge(base_version: str):

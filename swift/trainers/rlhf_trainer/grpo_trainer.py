@@ -130,7 +130,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         reward_func_kwargs['tokenizer'] = self.processing_class
                     reward_funcs[i] = reward_func_class(**reward_func_kwargs)
                 elif not callable(reward_func):
-                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
+                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.plugin')
 
         self.reward_funcs = reward_funcs
         self.reward_func_names = []
@@ -205,6 +205,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
 
         self.top_entropy_quantile = args.top_entropy_quantile
+        self.importance_sampling_level = args.importance_sampling_level
 
         self.use_liger_loss = self.args.use_liger_kernel
         if self.use_liger_loss:
@@ -1215,6 +1216,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         per_token_logps, entropies = self._get_per_token_logps_and_entropies(
             model, inputs, compute_entropy=self.compute_entropy)
 
+        entropy_mask = None
         if self.compute_entropy:
             # fill the padded token with NaN
             entropies = entropies.masked_fill(completion_mask == 0, float('nan'))
@@ -1231,8 +1233,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 entropy_threshold = torch.nanquantile(entropies.flatten().float(), 1 - self.top_entropy_quantile)
                 self._metrics[mode]['entropy/threshold'].append(entropy_threshold.item())
                 entropy_mask = entropies >= entropy_threshold
-        else:
-            entropy_mask = None
 
         # apply the completion_mask to exclude loss and metrics for overlong completions
         if self.args.overlong_filter and any(truncated_mask):
@@ -1261,7 +1261,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         old_per_token_logps = (
             per_token_logps.detach() if inputs['old_per_token_logps'] is None else inputs['old_per_token_logps'])
 
-        coef_1 = torch.exp(per_token_logps - old_per_token_logps)
+        log_ratio = per_token_logps - old_per_token_logps
+        if self.importance_sampling_level == 'token':
+            log_importance_weights = log_ratio
+        elif self.importance_sampling_level == 'sequence':
+            log_importance_weights = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+            log_importance_weights = log_importance_weights.unsqueeze(-1)
+        else:
+            raise ValueError(
+                f"Unknown importance sampling level: {self.importance_sampling_level}. Possible values are 'token' "
+                "and 'sequence'.")
+        # From here, log_importance_weights (and all subsequent tensors, coef_1, coef_2, etc.) shape depends on
+        # importance_sampling_level: "token" level: (B, T); "sequence" level: (B, 1)
+
+        coef_1 = torch.exp(log_importance_weights)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
         if self.args.delta is not None:
             coef_1 = torch.clamp(coef_1, max=self.args.delta)
@@ -1283,8 +1296,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
+        completion_token_count = completion_mask.sum().clamp(min=1.0)
+
+        def masked_batch_mean(x):
+            if x.shape[1] == 1:  # when importance_sampling_level == "sequence"
+                return x.mean()
+            else:
+                return (x * completion_mask).sum() / completion_token_count
+
         if self.beta != 0.0:
-            mean_kl = (per_token_kl * completion_mask).sum() / completion_mask.sum()
+            mean_kl = masked_batch_mean(per_token_kl)
             self._metrics[mode]['kl'].append(self.accelerator.gather_for_metrics(mean_kl).nanmean().item())
 
         # Compute the clipped probability ratios
@@ -1292,9 +1313,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         is_high_clipped = (coef_1 > 1 + self.epsilon_high) & (advantages.unsqueeze(1) > 0)
         is_region_clipped = is_low_clipped | is_high_clipped
 
-        low_clip = (is_low_clipped * completion_mask).sum(1) / completion_mask.sum(1)
-        high_clip = (is_high_clipped * completion_mask).sum(1) / completion_mask.sum(1)
-        clip_ratio = (is_region_clipped * completion_mask).sum(1) / completion_mask.sum(1)
+        low_clip = masked_batch_mean(is_low_clipped.float())
+        high_clip = masked_batch_mean(is_high_clipped.float())
+        clip_ratio = masked_batch_mean(is_region_clipped.float())
 
         gathered_low_clip = self.accelerator.gather_for_metrics(low_clip)
         self._metrics[mode]['clip_ratio/low_mean'].append(gathered_low_clip.nanmean().item())

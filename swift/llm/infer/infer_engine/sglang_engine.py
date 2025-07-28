@@ -37,6 +37,7 @@ class SglangEngine(InferEngine):
         pp_size: int = 1,
         dp_size: int = 1,
         ep_size: int = 1,
+        enable_ep_moe: bool = False,
         mem_fraction_static: Optional[float] = None,
         context_length: Optional[int] = None,
         disable_cuda_graph: bool = False,
@@ -75,6 +76,7 @@ class SglangEngine(InferEngine):
             tp_size=tp_size,
             dp_size=dp_size,
             ep_size=ep_size,
+            enable_ep_moe=enable_ep_moe,
             mem_fraction_static=mem_fraction_static,
             context_length=context_length,
             disable_cuda_graph=disable_cuda_graph,
@@ -95,18 +97,15 @@ class SglangEngine(InferEngine):
         generation_config_path = os.path.join(self.model_dir, 'generation_config.json')
         if os.path.isfile(generation_config_path):
             generation_config = GenerationConfig.from_pretrained(self.model_dir)
-            kwargs = generation_config.to_dict()
-            top_k = kwargs.get('top_k')
-            if top_k == 0:
-                kwargs['top_k'] = -1
-
-            parameters = inspect.signature(SamplingParams).parameters
-            for k, v in kwargs.copy().items():
-                if k not in parameters or v is None:
-                    kwargs.pop(k)
-            self.generation_config = kwargs
         else:
-            self.generation_config = {}
+            generation_config = GenerationConfig()
+        kwargs = generation_config.to_dict()
+        top_k = kwargs.get('top_k')
+        if top_k == 0:
+            kwargs['top_k'] = -1
+
+        parameters = inspect.signature(SamplingParams).parameters
+        self.generation_config = {k: v for k, v in kwargs.items() if k in parameters and v is not None}
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> Dict[str, Any]:
         kwargs = {'max_new_tokens': request_config.max_tokens}
@@ -131,6 +130,8 @@ class SglangEngine(InferEngine):
         meta_info = output['meta_info']
         usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
         response = output['text']
+        if template.template_meta.response_prefix:
+            response = template.template_meta.response_prefix + response
         toolcall = self._get_toolcall(response, template)
         choice = ChatCompletionResponseChoice(
             index=0,
@@ -218,6 +219,8 @@ class SglangEngine(InferEngine):
                                                 idx) -> Optional[ChatCompletionStreamResponse]:
         assert output is not None
         response = output['text']
+        if template.template_meta.response_prefix:
+            response = template.template_meta.response_prefix + response
         meta_info = output['meta_info']
         finish_reason = meta_info['finish_reason']
         delta_text = response[idx[0]:]

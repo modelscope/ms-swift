@@ -232,7 +232,7 @@ register_model(
         get_model_tokenizer_llama4,
         requires=['transformers>=4.51'],
         architectures=['Llama4ForConditionalGeneration'],
-        model_arch=ModelArch.llama3_2_vision,
+        model_arch=ModelArch.llama4,
         tags=['vision'],
     ))
 

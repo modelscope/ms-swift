@@ -270,6 +270,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 raise ValueError('Liger loss does not support entropy mask yet.')
             if self.log_entropy:
                 raise ValueError('Liger loss does not support log entropy yet.')
+            if self.importance_sampling_level != 'token':
+                raise ValueError('Liger loss currently only support token-level importance sampling'
+                                 'Please set `importance_sampling_level` to `token`')
             from trl.import_utils import is_liger_kernel_available
             assert is_liger_kernel_available(), (
                 'Please install/update liger-kernel by running: pip install -U liger-kernel')

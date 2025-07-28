@@ -36,6 +36,7 @@ class TrainArgumentsMixin:
     lr_scheduler_kwargs: Optional[Union[dict, str]] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     dataloader_num_workers: Optional[int] = None
+    dataloader_persistent_workers: bool = False
     dataloader_prefetch_factor: Optional[int] = None
     use_liger_kernel: bool = False
 
@@ -171,6 +172,7 @@ class VllmArguments:
     vllm_gpu_memory_utilization: float = 0.9
     vllm_tensor_parallel_size: int = 1
     vllm_pipeline_parallel_size: int = 1
+    vllm_enable_expert_parallel: bool = False
     vllm_max_num_seqs: int = 256
     vllm_max_model_len: Optional[int] = None
     vllm_disable_custom_all_reduce: bool = True
@@ -217,6 +219,7 @@ class VllmArguments:
             'gpu_memory_utilization': self.vllm_gpu_memory_utilization,
             'tensor_parallel_size': self.vllm_tensor_parallel_size,
             'pipeline_parallel_size': self.vllm_pipeline_parallel_size,
+            'enable_expert_parallel': self.vllm_enable_expert_parallel,
             'max_num_seqs': self.vllm_max_num_seqs,
             'max_model_len': self.vllm_max_model_len,
             'disable_custom_all_reduce': self.vllm_disable_custom_all_reduce,
@@ -301,6 +304,9 @@ class GRPOArgumentsMixin(VllmArguments):
     log_entropy: bool = False
     # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
     top_entropy_quantile: float = 1.0
+
+    # GSPO https://www.arxiv.org/abs/2507.18071
+    importance_sampling_level: Literal['token', 'sequence'] = 'token'
 
     wandb_log_unique_prompts: Optional[bool] = None
     generation_batch_size: Optional[int] = None
