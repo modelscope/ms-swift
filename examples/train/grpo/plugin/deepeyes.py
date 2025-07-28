@@ -204,11 +204,11 @@ class DeepEyesReward(ORM):
         # reference: https://github.com/Visual-Agent/DeepEyes/blob/main/verl/utils/reward_score/vl_agent.py
         rewards = []
 
-        num_images = [len(images) for images in kwargs['images']]
-        for completion, solution, info, source, num_image in zip(completions, reward_model, extra_info, data_source,
-                                                                 num_images):
+        messages = kwargs.get('messages')
+        for completion, solution, info, source, message in zip(completions, reward_model, extra_info, data_source,
+                                                               messages):
             sol = solution['ground_truth']
-            info['num_image'] = num_image
+            info['messages'] = message
             if source in ['vstar', 'chart']:
                 rewards.append(self.compute_score(completion, sol, info))
             elif source in ['thinklite_eureka']:
@@ -303,8 +303,11 @@ class DeepEyesReward(ORM):
             acc_reward = 0.0
             is_format_error = True
 
-        num_image = extra_info['num_image']
-        # we consider that more than 1 image means that tool call success
+        num_image = 0
+        for message in extra_info['messages']:
+            if message['role'] == 'user' and '<image>' in message['content']:
+                num_image += 1
+        # More than one image indicates a successful tool call.
         tool_reward = 1.0 if num_image > 1 and acc_reward > 0.5 else 0.0
         format_reward = -1.0 if is_format_error else 0.0
 
