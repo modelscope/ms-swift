@@ -396,7 +396,7 @@ class VllmEngine(InferEngine):
             model=self.model_name, data=[EmbeddingResponseData(embedding=embedding)], usage=usage_info, id=request_id)
 
     def _create_chat_completion_response(self, result, template, generation_config,
-                                         request_id) -> ChatCompletionResponse:
+                                         request_id, return_detail=False) -> ChatCompletionResponse:
         assert result is not None
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
@@ -411,8 +411,13 @@ class VllmEngine(InferEngine):
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
                 finish_reason=output.finish_reason,
                 logprobs=logprobs)
+            if return_detail:
+                choice.token_ids = output.token_ids
             choices.append(choice)
-        return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
+        res = ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
+        if return_detail:
+            res.prompt_token_ids = result.prompt_token_ids
+        return res
 
     async def _infer_full_async(
         self,
@@ -514,7 +519,7 @@ class VllmEngine(InferEngine):
                 prog_bar.close()
                 outputs = [outputs[request_id] for request_id in request_id_list]
                 res = [
-                    self._create_chat_completion_response(result, template, generation_config, request_id)
+                    self._create_chat_completion_response(result, template, generation_config, request_id, request_config.return_detail)
                     for request_id, result in zip(request_id_list, outputs)
                 ]
                 self._update_metrics(res, metrics)
@@ -552,6 +557,7 @@ class VllmEngine(InferEngine):
             'inputs': inputs,
             'generation_config': generation_config,
             'adapter_request': adapter_request,
+            'request_config': request_config,
         }
         if pre_infer_hook:
             kwargs = pre_infer_hook(kwargs)
