@@ -123,6 +123,10 @@ def test_ernie():
     _test_model('PaddlePaddle/ERNIE-4.5-21B-A3B-PT')
 
 
+def test_glm4_5():
+    _test_model('ZhipuAI/GLM-4.5-Air')
+
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -137,7 +141,7 @@ if __name__ == '__main__':
     # test_llama3_2()
     # test_qwen3()
     # test_qwen2_moe()
-    test_qwen3_moe()
+    # test_qwen3_moe()
     # test_internlm3()
     # test_mimo()
     # test_moonlight()
@@ -147,3 +151,4 @@ if __name__ == '__main__':
     # test_kimi_dev()
     # test_hunyuan()
     # test_ernie()
+    test_glm4_5()

@@ -423,7 +423,16 @@ register_model(
 register_model(
     ModelMeta(
         LLMModelType.glm4_5,
-        [],
+        [
+            ModelGroup([
+                Model('ZhipuAI/GLM-4.5-Air-Base', 'THUDM/GLM-4.5-Air-Base'),
+                Model('ZhipuAI/GLM-4.5-Air', 'THUDM/GLM-4.5-Air'),
+                Model('ZhipuAI/GLM-4.5-Air-FP8', 'THUDM/GLM-4.5-Air-FP8'),
+                Model('ZhipuAI/GLM-4.5-Base', 'THUDM/GLM-4.5-Base'),
+                Model('ZhipuAI/GLM-4.5', 'THUDM/GLM-4.5'),
+                Model('ZhipuAI/GLM-4.5-FP8', 'THUDM/GLM-4.5-FP8'),
+            ]),
+        ],
         TemplateType.glm4_5,
         get_model_tokenizer_with_flash_attn,
         architectures=['Glm4MoeForCausalLM'],
