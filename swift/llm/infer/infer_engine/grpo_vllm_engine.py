@@ -336,7 +336,7 @@ class GRPOVllmEngine(VllmEngine):
         except Exception:
             pass
 
-    def _create_chat_completion_response(self, result, template: Template, generation_config,
+    def _create_chat_completion_response(self, result, template: Template, request_config,
                                          request_id) -> ChatCompletionResponse:
         assert result is not None
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
@@ -345,7 +345,7 @@ class GRPOVllmEngine(VllmEngine):
         for output in result.outputs:
             output.token_ids = list(output.token_ids)
             response = template.decode(output.token_ids)
-            logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
+            logprobs = self._get_logprobs(output.logprobs, output.token_ids, request_config.top_logprobs)
             toolcall = self._get_toolcall(response, template)
 
             if self.use_gym_env:
@@ -355,11 +355,13 @@ class GRPOVllmEngine(VllmEngine):
             else:
                 choice_cls = ChatCompletionResponseChoice
 
+            token_ids = output.token_ids if request_config.return_details else None
             choice = choice_cls(
                 index=output.index,
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
                 finish_reason=output.finish_reason,
                 logprobs=logprobs,
+                token_ids=token_ids,
             )
 
             choices.append(choice)
