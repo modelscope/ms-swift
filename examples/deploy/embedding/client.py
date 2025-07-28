@@ -15,7 +15,7 @@ def infer(client, model: str, messages):
     sample = str(emb)
     if len(emb) > 6:
         sample = str(emb[:3])[:-1] + ', ..., ' + str(emb[-3:])[1:]
-    print(f'query: {input}')
+    print(f'messages: {messages}')
     print(f'Embedding(shape: [1, {shape}]): {sample}')
     return emb
 
