@@ -63,6 +63,8 @@ class RequestConfig:
     presence_penalty: float = 0.
     frequency_penalty: float = 0.
     length_penalty: float = 1.
+    # Return prompt_token_ids and token_ids additionally (non-stream)
+    return_detail: bool = False
 
     def __post_init__(self):
         if self.stop is None:
@@ -271,6 +273,7 @@ class ChatCompletionResponseChoice:
     message: ChatMessage
     finish_reason: Literal['stop', 'length', None]
     logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    token_ids: Optional[List[int]] = None
 
     def to_cmpl_choice(self) -> 'CompletionResponseChoice':
         self = deepcopy(self)
@@ -324,6 +327,7 @@ class ChatCompletionResponse:
     id: str = field(default_factory=lambda: f'chatcmpl-{random_uuid()}')
     object: str = 'chat.completion'
     created: int = field(default_factory=lambda: int(time.time()))
+    prompt_token_ids: Optional[List[int]] = None
 
     def to_cmpl_response(self) -> 'CompletionResponse':
         self = deepcopy(self)
