@@ -62,6 +62,8 @@ class MistralAgentTemplate(BaseAgentTemplate):
     def _format_tool_calls(self, tool_call_messages):
         tool_calls = []
         for message in tool_call_messages:
-            tool_call = self._parse_tool_call(message['content'])   # needs `{'name': name, 'arguments': arguments}`, which self._parse_tool_call satisfies
+            # needs `{'name': name, 'arguments': arguments}`, which self._parse_tool_call
+            # satisfies
+            tool_call = self._parse_tool_call(message['content'])
             tool_calls.append(json.dumps(tool_call, ensure_ascii=False))
-        return f"[TOOL_CALLS][\n{'\n'.join(tool_calls)}\n]</s>"  # check if need `</s>` at end
+        return f'[TOOL_CALLS][\n{chr(10).join(tool_calls)}\n]</s>'  # check if need `</s>` at end

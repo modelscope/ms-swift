@@ -120,8 +120,7 @@ devstral_small_2505_system = (  # from https://huggingface.co/mistralai/Devstral
     'likelihood of each possible cause\n  3. Methodically address the most likely causes, starting with the '
     'highest probability\n  4. Document your reasoning process\n* When you run into any major issue while '
     'executing a plan from the user, please don\'t try to directly work around it. Instead, propose a new '
-    'plan and confirm with the user before proceeding.\n</TROUBLESHOOTING>'
-)
+    'plan and confirm with the user before proceeding.\n</TROUBLESHOOTING>')
 
 register_template(
     TemplateMeta(
@@ -131,6 +130,4 @@ register_template(
         chat_sep=['</s>'],
         suffix=['</s>'],
         system_prefix=['<s>[SYSTEM_PROMPT]{{SYSTEM}}[/SYSTEM_PROMPT]'],  # the system prompt
-        default_system=devstral_small_2505_system
-    )
-)
+        default_system=devstral_small_2505_system))

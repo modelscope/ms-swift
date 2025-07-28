@@ -4,10 +4,10 @@ from .extra import ReactGRPOAgentTemplate
 from .glm4 import GLM4_0414AgentTemplate, GLM4AgentTemplate
 from .hermes import HermesAgentTemplate
 from .llama import Llama3AgentTemplate, Llama4AgentTemplate
+from .mistral import MistralAgentTemplate
 from .qwen import QwenEnAgentTemplate, QwenEnParallelAgentTemplate, QwenZhAgentTemplate, QwenZhParallelAgentTemplate
 from .react import ReactEnAgentTemplate, ReactZnAgentTemplate
 from .toolbench import ToolBenchAgentTemplate
-from .mistral import MistralAgentTemplate
 
 agent_templates = {
     # ref: https://qwen.readthedocs.io/zh-cn/latest/framework/function_call.html#function-calling-templates
