@@ -205,7 +205,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             old_args = json.load(f)
         force_load_keys = [
             # base_args
-            'tuner_backend',
             'train_type',
             # model_args
             'task_type',
