@@ -1630,20 +1630,20 @@ class Template(ProcessorMixin):
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
 
         if self.use_megatron:
+            # For code simplicity, only the attention_backend 'flash' is supported here.
+            if padding_to is not None:
+                padding_to = math.ceil(max(seq_lens) / padding_to) * padding_to
             if self._packing:
                 cp_size = self.sequence_parallel_size
-                if padding_to is not None:
-                    padding_to = math.ceil(max(seq_lens) / padding_to) * padding_to
                 if cp_size > 1:
                     padding_len = padding_to - seq_lens[0]
                     position_ids = res['position_ids'][0].tolist()
                     position_ids += list(range(cp_size * 2)) * (padding_len // (cp_size * 2))
                     res['position_ids'] = [torch.tensor(position_ids)]
             else:
-                padding_to = math.ceil(max(seq_lens) / 64) * 64
-                res['attention_mask'] = torch.tril(
-                    torch.ones((len(seq_lens), padding_to, padding_to),
-                               dtype=torch.bool)).view(len(seq_lens), 1, padding_to, padding_to)
+                seq_len = max(seq_lens) if padding_to is None else padding_to
+                res['attention_mask'] = torch.tril(torch.ones(
+                    (len(seq_lens), seq_len, seq_len), dtype=torch.bool)).view(len(seq_lens), 1, seq_len, seq_len)
                 assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res["attention_mask"].dtype}'
                 for i, seq_len in enumerate(seq_lens):
                     res['attention_mask'][i, :, seq_len:] = 0

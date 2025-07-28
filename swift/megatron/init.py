@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import subprocess
 import sys
 from datetime import datetime
 from typing import List, Optional, Tuple
@@ -713,12 +714,24 @@ def _patch_TransformerLayer():
     TransformerLayer.forward = forward
 
 
+def _patch_compile_helpers():
+    from megatron.core.datasets import utils
+
+    def compile_helpers():
+        command = ['make', '-C', os.path.abspath(os.path.dirname(utils.__file__))]
+        if subprocess.run(command).returncode != 0:
+            logger.warning('Failed to compile the C++ dataset helper functions')
+
+    utils.compile_helpers = compile_helpers
+
+
 def _patch_megatron():
     _patch_transformer_engine()
     _patch__batched_p2p_ops()
     _patch_mla_attention()
     _patch_TEGroupedLinear()
     _patch_TransformerLayer()
+    _patch_compile_helpers()
     from swift.megatron import tuners  # patch lora
     try:
         _patch_peft_BaseTuner()
