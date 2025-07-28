@@ -246,7 +246,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         template = self.template
         args = self.args
         self._save_val_dataset(val_dataset)
-        
+
         predict_with_generate = getattr(args, 'predict_with_generate', False)
         datasets = [train_dataset, val_dataset]
         if not self.is_grpo:
