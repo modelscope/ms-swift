@@ -406,11 +406,11 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
             # If you use another MLLM, please adjust the fetch_image function accordingly
             # ensure the returned img is of type PIL.Image.Image and
             # has been processed to a maximum size of max_pixels
-            img = fetch_image({'image': infer_request.images[0]})
+            img = fetch_image({'image': load_pil_image(infer_request.images[0])})
 
             origin_height = img.height
             origin_width = img.width
-            bbox = self.maybe_resize_bbox(*bbox, origin_width, origin_height)
+            bbox = self.maybe_resize_bbox(bbox=bbox, origin_width=origin_width, origin_height=origin_height)
             if not bbox:
                 raise ValueError(f'ZOOM IN ARGUMENTS ARE INVALID')
 
@@ -438,7 +438,9 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
         except Exception:
             return False
 
-    def maybe_resize_bbox(self, left, top, right, bottom, origin_width, origin_height):
+    def maybe_resize_bbox(self, bbox, origin_width, origin_height):
+        left, top, right, bottom = bbox
+
         left = max(0, left)
         top = max(0, top)
         right = min(origin_width, right)
