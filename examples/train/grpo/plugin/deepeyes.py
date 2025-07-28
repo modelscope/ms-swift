@@ -371,7 +371,6 @@ orms['deepeyes_reward'] = DeepEyesReward
 
 
 class VisualToolBoxScheduler(MultiTurnScheduler):
-    name = 'visual_toolbox_v2'
     user_prompt = ('\nThink first, call **image_zoom_in_tool** if needed, then answer. '
                    'Format strictly as:  <think>...</think>  <tool_call>...</tool_call> (if tools needed)'
                    '  <answer>...</answer> ')
@@ -380,15 +379,18 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
         super().__init__(max_turns, *args, **kwargs)
 
     def check_finished(self, infer_request, result, current_turn):
-        last_completion = infer_request.messages[-1]['content']
-        answer = extract_answer(last_completion)
-        if answer:
-            return True
-        action = extract_action(last_completion)
-        if not action:
+        should_stop = super().check_finished(infer_request, result, current_turn)
+        if should_stop:
             return True
 
-        return super().check_finished(infer_request, result, current_turn)
+        last_completion = infer_request.messages[-1]['content']
+
+        action = extract_action(last_completion)
+        # if the last completion is a tool call, do not finished yet
+        if action:
+            return False
+
+        return True
 
     def step(self, infer_request, result, current_turn):
         completion = result.message.content
@@ -410,6 +412,9 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
             origin_height = img.height
             origin_width = img.width
             bbox = self.maybe_resize_bbox(*bbox, origin_width, origin_height)
+            if not bbox:
+                raise ValueError(f'ZOOM IN ARGUMENTS ARE INVALID')
+
             cropped_img = img.crop(bbox)
             query = '<tool_response>' + '<image>' + self.user_prompt + '</tool_response>'
         except Exception as e:
