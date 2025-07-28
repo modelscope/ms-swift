@@ -3,7 +3,6 @@ import os
 import sys
 from datetime import datetime
 
-import megatron.core
 import torch
 import torch.nn.functional as F
 from packaging import version
