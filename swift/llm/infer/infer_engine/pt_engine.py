@@ -359,8 +359,8 @@ class PtEngine(InferEngine):
         return res
 
     def _infer_full(self, template: Template, inputs: Dict[str, Any], *, generation_config: GenerationConfig,
-                    adapter_request: Optional[AdapterRequest], template_inputs,
-                    request_config: RequestConfig) -> List[ChatCompletionResponse]:
+                    adapter_request: Optional[AdapterRequest], request_config: RequestConfig,
+                    template_inputs) -> List[ChatCompletionResponse]:
         # bos_token TODO: encoder-decoder
         generate_kwargs = {'generation_config': generation_config, **inputs}
         adapter_names = self._get_adapter_names(adapter_request)
@@ -486,8 +486,8 @@ class PtEngine(InferEngine):
                 'inputs': inputs,
                 'generation_config': generation_config,
                 'adapter_request': adapter_request,
-                'template_inputs': template_inputs,
                 'request_config': request_config,
+                'template_inputs': template_inputs,
             }
             if pre_infer_hook:
                 kwargs = pre_infer_hook(kwargs)
