@@ -308,12 +308,8 @@ class PtEngine(InferEngine):
             self._add_adapter(adapter_request.path, adapter_name)
         return [adapter_name]
 
-    def _infer_forward(self,
-                       template: Template,
-                       inputs: Dict[str, Any],
-                       adapter_request: Optional[AdapterRequest],
-                       request_config: RequestConfig,
-                       **kwargs):
+    def _infer_forward(self, template: Template, inputs: Dict[str, Any], adapter_request: Optional[AdapterRequest],
+                       request_config: RequestConfig, **kwargs):
         call_kwargs = {}
         top_logprobs = request_config.top_logprobs or 20
         adapter_names = self._get_adapter_names(adapter_request)
