@@ -107,7 +107,9 @@ SWIFT提供了两个脚手架训练脚本：
 
 ## 推理
 
-SWIFT当前没有支持Embedding的模型推理和部署（时间问题），可以使用原模型的代码进行推理：
+SWIFT已经支持GME、GTE、Qwen3-Embedding模型的部署，请查看[这里](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/embedding/client.py).
+
+也可以使用原模型的代码进行推理：
 
 https://www.modelscope.cn/models/iic/gte_Qwen2-7B-instruct
 

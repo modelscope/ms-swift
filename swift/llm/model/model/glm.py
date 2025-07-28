@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 from typing import Any, Dict, Type
 
 import torch
@@ -12,8 +13,9 @@ from swift.llm import TemplateType
 from swift.utils import get_device_count, get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_output_to_input_device
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..patcher import patch_get_input_embeddings, patch_output_to_input_device
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
+                        get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import AttnImpl, ModelInfo, safe_snapshot_download
 
 logger = get_logger()
@@ -23,6 +25,21 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     for k, v in tokenizer_cls.__dict__.items():
         if k.endswith('_token') and isinstance(v, property) and k in tokenizer_config:
             setattr(tokenizer_cls, k, tokenizer_config[k])
+
+
+def _patch_tokenizer(tokenizer):
+    tokenizer_cls = tokenizer.__class__
+    if hasattr(tokenizer_cls, '_origin_pad'):
+        return
+    tokenizer_cls._origin_pad = tokenizer_cls._pad
+    parameters = inspect.signature(tokenizer_cls._origin_pad).parameters
+
+    def _pad(self, *args, **kwargs):
+        if 'padding_side' in kwargs and kwargs['padding_side'] is None and 'padding_side' not in parameters:
+            kwargs.pop('padding_side')
+        return tokenizer_cls._origin_pad(self, *args, **kwargs)
+
+    tokenizer_cls._pad = _pad
 
 
 def get_model_tokenizer_chatglm(model_dir: str,
@@ -41,6 +58,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
         remove_property(tokenizer_cls, tokenizer_config)
         kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    _patch_tokenizer(tokenizer)
     if model is not None:
         from torch.nn import CrossEntropyLoss
         __old_forward = CrossEntropyLoss.forward
@@ -231,6 +249,38 @@ register_model(
     ))
 
 
+def get_model_tokenizer_glm4_1v(*args, **kwargs):
+    from transformers import Glm4vForConditionalGeneration
+    logger.info(
+        "If you encounter the error 'TypeError: group_images_by_shape() missing 1 required positional argument: "
+        "\"disable_grouping\"', please install the source version of the transformers library.")
+
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Glm4vForConditionalGeneration
+    model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
+    if model is not None and hasattr(model, 'visual'):
+        patch_get_input_embeddings(model.visual, 'patch_embed')
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.glm4_1v,
+        [
+            ModelGroup(
+                [
+                    Model('ZhipuAI/GLM-4.1V-9B-Base', 'THUDM/GLM-4.1V-9B-Base'),
+                    Model('ZhipuAI/GLM-4.1V-9B-Thinking', 'THUDM/GLM-4.1V-9B-Thinking'),
+                ],
+                requires=['transformers>=4.53'],
+            ),
+        ],
+        TemplateType.glm4_1v,
+        get_model_tokenizer_glm4_1v,
+        architectures=['Glm4vForConditionalGeneration'],
+        model_arch=ModelArch.glm4_1v,
+    ))
+
+
 def get_model_tokenizer_cogvlm(model_dir: str,
                                model_info: ModelInfo,
                                model_kwargs: Dict[str, Any],
@@ -368,4 +418,14 @@ register_model(
         requires=['transformers>=4.46'],
         model_arch=ModelArch.glm_edge_v,
         tags=['vision'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.glm4_5,
+        [],
+        TemplateType.glm4_5,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Glm4MoeForCausalLM'],
+        requires=['transformers>=4.54'],
     ))

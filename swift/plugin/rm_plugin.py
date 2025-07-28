@@ -1,13 +1,15 @@
 import re
 import textwrap
 from copy import deepcopy
-from typing import Dict, List
+from typing import TYPE_CHECKING, Dict, List
 
 import torch
 
 from swift.llm import PtEngine, RequestConfig, Template, to_device
-from swift.llm.infer.protocol import ChatCompletionResponse
 from swift.utils import get_logger
+
+if TYPE_CHECKING:
+    from swift.llm.infer.protocol import ChatCompletionResponse
 
 logger = get_logger()
 
@@ -191,12 +193,12 @@ class GenRMPlugin(DefaultRMPlugin):
 
         return query
 
-    def compute_rewards(self, results: List[ChatCompletionResponse]) -> List[float]:
+    def compute_rewards(self, results: List['ChatCompletionResponse']) -> List[float]:
         """
         Compute average reward scores from the reward model's outputs.
 
         Args:
-            results (List[ChatCompletionResponse]): A list of results from the reward model.
+            results (List['ChatCompletionResponse']): A list of results from the reward model.
 
         Returns:
             List[float]: A list of average reward scores.

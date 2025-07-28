@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
-from swift.trainers.arguments import GRPOArgumentsMixin, RLHFArgumentsMixin
-from swift.utils import get_logger, is_master, set_default_ddp_config
+from swift.trainers import GRPOArgumentsMixin, RLHFArgumentsMixin
+from swift.utils import get_logger, is_master, is_mp, set_default_ddp_config
 from .train_args import TrainArguments
 
 logger = get_logger()
@@ -125,7 +125,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         self._init_padding_side()
         self._set_default()
         self._init_external_vllm()
-        super().__post_init__()
+        GRPOArguments.__post_init__(self)
+        TrainArguments.__post_init__(self)
+        self._check_padding_free()
         self._check_grpo()
         self._external_vllm_warning()
 
@@ -154,7 +156,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
             if self.use_vllm:
-                os.environ['USE_FAST_INFERENCE'] = '1'
                 set_default_ddp_config()
             if self.async_generate or not self.use_vllm:
                 self.sleep_level = 0
@@ -162,9 +163,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
             if self.truncation_strategy is None:
                 self.truncation_strategy = 'left'
-            assert self.truncation_strategy == 'left', \
-                "GRPO requires `truncation_strategy='left'`," \
-                f"Current value: `truncation_strategy='{self.truncation_strategy}'`."
+            assert self.truncation_strategy in ['left', 'delete'], (
+                "GRPO requires `truncation_strategy 'left' or 'delete'`, "
+                f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")  # noqa
             if self.beta is None:
                 self.beta = 0.04  # https://arxiv.org/abs/2402.03300
             if self.async_generate:
@@ -225,9 +226,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
         if is_master():
             self.vllm_client = VLLMClient(
-                base_url=self.vllm_server_base_url,
-                host=self.vllm_server_host,
-                server_port=self.vllm_server_port,
+                base_urls=self.vllm_server_base_url,
+                hosts=self.vllm_server_host,
+                server_ports=self.vllm_server_port,
                 connection_timeout=self.vllm_server_timeout)
             self.vllm_client.init_communicator()
 
@@ -254,17 +255,27 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         trl_version = version.parse(trl.__version__)
         assert trl_version >= version.parse('0.17'), ('Your current version of `trl` is outdated. '
                                                       'Please update it by running: pip install -U trl')
-
+        if is_mp() and self.use_vllm:
+            raise ValueError('GRPO with vLLM is not compatible with `device_map`. '
+                             'Please set NPROC_PER_NODE equal to num_processes.')
         if self.use_liger_kernel:
             assert trl_version >= version.parse('0.18')
             if self.delta is not None:
                 raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
             if self.sequence_parallel_size > 1:
                 raise ValueError('Liger loss does not support sequence parallel yet.')
+            if self.padding_free:
+                raise ValueError('Liger loss does not support padding free yet.')
+            if self.top_entropy_quantile < 1.0:
+                raise ValueError('Liger loss does not support entropy mask yet.')
+            if self.log_entropy:
+                raise ValueError('Liger loss does not support log entropy yet.')
+            if self.importance_sampling_level != 'token':
+                raise ValueError('Liger loss currently only support token-level importance sampling'
+                                 'Please set `importance_sampling_level` to `token`')
             from trl.import_utils import is_liger_kernel_available
             assert is_liger_kernel_available(), (
                 'Please install/update liger-kernel by running: pip install -U liger-kernel')
-
         if self.vllm_mode == 'server':
             assert not self.use_vllm or self.vllm_server_host is not None
 
@@ -291,38 +302,15 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if self.rlhf_type != 'grpo' or not self.vllm_server_host:
             return
 
-        if self.vllm_device is not None:
-            logger.warning("Configuration conflict: External vLLM engine detected, but 'vllm_device' is set to '%s'. ",
-                           self.vllm_device)
-
         if self.vllm_max_model_len is not None:
             logger.warning(
                 "Configuration conflict: 'vllm_max_model_len=%s' is ignored for external vLLM. "
                 'Please specify it when launching the inference service: '
-                '`swift rollout --max_model_len <value>`', self.vllm_max_model_len)
+                '`swift rollout --vllm_max_model_len <value>`', self.vllm_max_model_len)
 
     def _deprecated_warning(self):
         if self.rlhf_type != 'grpo':
             return
-
-        if self.tensor_parallel_size is not None:
-            logger.warning(
-                "The parameter 'tensor_parallel_size' has been deprecated and will be removed in version 3.6. "
-                "It is recommended to use 'vllm_tensor_parallel_size' instead.")
-            self.vllm_tensor_parallel_size = self.tensor_parallel_size
-
-        if self.vllm_device is not None:
-            logger.warning("The parameter 'vllm_device' has been deprecated and will be removed in version 3.6. ")
-
-        if self.vllm_max_num_seqs is not None:
-            logger.warning("The parameter 'vllm_max_num_seqs' is automatically set, "
-                           'and has been deprecated and will be removed in version 3.6. ')
-
-        if self.num_infer_workers is not None:
-            logger.warning(
-                "The parameter 'num_infer_workers' has been deprecated and will be removed in version 3.6. "
-                'If you wish to use colocate mode, please use `vllm_mode colocate` instead. '
-                'If you wish to use async mode, please use `vllm_mode server` and external vLLM server instead.')
 
         if self.multi_turn_func:
             logger.warning("The parameter 'multi_turn_func' has been deprecated and will be removed in version 3.7. "
@@ -333,3 +321,10 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if self.gc_collect_after_offload:
             logger.warning(
                 "The parameter 'gc_collect_after_offload' has been deprecated and will be removed in version 3.7. ")
+
+    def _check_padding_free(self):
+        if self.padding_free:
+            supported_types = ['grpo', 'dpo', 'gkd']
+            if self.rlhf_type not in supported_types:
+                raise NotImplementedError(f"The current rlhf_type '{self.rlhf_type}' does not support padding_free. "
+                                          'Please set --padding_free to false.')

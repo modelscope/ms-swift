@@ -7,8 +7,8 @@ swift infer \
     --model $teacher_model \
     --infer_backend vllm \
     --val_dataset 'AI-ModelScope/alpaca-gpt4-data-en#5000' 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
-    --gpu_memory_utilization 0.9 \
-    --max_model_len 8192 \
+    --vllm_gpu_memory_utilization 0.9 \
+    --vllm_max_model_len 8192 \
     --max_new_tokens 2048 \
     --write_batch_size 10000 \
     --result_path new_dataset.jsonl
@@ -25,6 +25,7 @@ swift rlhf \
     --teacher_model $teacher_model \
     --train_type full \
     --dataset 'new_dataset.jsonl' \
+    --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --learning_rate 1e-5 \

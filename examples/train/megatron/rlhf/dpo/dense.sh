@@ -6,6 +6,7 @@ megatron rlhf \
     --rlhf_type dpo \
     --load Qwen3-8B-Base-mcore \
     --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji#20000' \
+    --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 4 \
     --micro_batch_size 8 \
     --global_batch_size 16 \

@@ -93,11 +93,10 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
         if self.args.sft_alpha > 0:
             model_inputs['labels'] = inputs['labels']
         # compute student output
-        with self.template.compute_loss_context(self.model, model_inputs):
-            outputs_student = model(**model_inputs)
+        outputs_student = model(**model_inputs)
 
         model_inputs.pop('labels', None)
-        with torch.no_grad(), self.template.compute_loss_context(self.model, model_inputs):
+        with torch.no_grad():
             outputs_teacher = self.teacher_model(**model_inputs)
 
         shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
@@ -149,5 +148,10 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
             inputs['attention_mask'] = new_attention_mask
             inputs['labels'] = new_labels
 
-        loss = HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
+        with self.template.forward_context(self.model, inputs):
+            loss = HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
         return loss
+
+    def prediction_step(self, model, inputs, *args, **kwargs):
+        with self.template.forward_context(self.model, inputs):
+            return super().prediction_step(model, inputs, *args, **kwargs)

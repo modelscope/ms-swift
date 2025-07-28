@@ -489,4 +489,4 @@ if __name__ == '__main__':
     # test_minimax()
     # test_kimi_dev()
     # test_hunyuan()
-    test_ernie()
+    # test_ernie()

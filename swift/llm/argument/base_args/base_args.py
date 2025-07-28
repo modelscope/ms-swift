@@ -9,8 +9,8 @@ from swift.hub import get_hub
 from swift.llm import Processor, Template, get_model_tokenizer, get_template, load_by_unsloth, safe_snapshot_download
 from swift.llm.utils import get_ckpt_dir
 from swift.plugin import extra_tuners
-from swift.utils import (check_json_format, check_shared_disk, get_dist_setting, get_logger, import_external_file,
-                         is_dist, is_master, set_device, use_hf_hub)
+from swift.utils import (check_json_format, get_dist_setting, get_logger, import_external_file, is_dist, is_master,
+                         json_parse_to_dict, set_device, use_hf_hub)
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments
@@ -80,7 +80,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     load_data_args: bool = False
     # dataset
     packing: bool = False
-    packing_cache: Optional[str] = None
     custom_register_path: List[str] = field(default_factory=list)  # .py
     # hub
     use_hf: bool = False
@@ -132,17 +131,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token) for adapter in self.adapters
         ]
 
-    def _check_packing(self):
-        if not self.packing:
-            return
-        error = ValueError('When using the packing feature across multiple nodes, ensure that all nodes share '
-                           'the same packing cache directory. You can achieve this by setting the '
-                           '`MODELSCOPE_CACHE` environment variable or by adding the `--packing_cache '
-                           '<shared_path>` argument in the command line.')
-        check_shared_disk(error, self.packing_cache)
-        if self.packing_cache:
-            os.environ['PACKING_CACHE'] = self.packing_cache
-
     def __post_init__(self):
         if self.use_hf or use_hf_hub():
             self.use_hf = True
@@ -153,6 +141,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self._init_custom_register()
         self._import_external_plugins()
         self._init_model_kwargs()
+        self._init_stream()
         # The Seq2SeqTrainingArguments has a property called world_size, which cannot be assigned a value.
         self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
         logger.info(f'rank: {self.rank}, local_rank: {self.local_rank}, '
@@ -172,7 +161,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
 
     def _init_model_kwargs(self):
         """Prepare model kwargs and set them to the env"""
-        self.model_kwargs: Dict[str, Any] = self.parse_to_dict(self.model_kwargs)
+        self.model_kwargs: Dict[str, Any] = json_parse_to_dict(self.model_kwargs)
         for k, v in self.model_kwargs.items():
             k = k.upper()
             os.environ[k] = str(v)
@@ -204,7 +193,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     def _init_ckpt_dir(self, adapters=None):
         # compat megatron
         model = self.model or getattr(self, 'mcore_model', None) or getattr(self, 'load', None)
-        self.ckpt_dir = get_ckpt_dir(model, adapters or self.adapters)
+        adapters = adapters or self.adapters or getattr(self, 'mcore_adapters', None)
+        self.ckpt_dir = get_ckpt_dir(model, adapters)
         if self.ckpt_dir and self.load_args:
             self.load_args_from_ckpt()
 
@@ -233,6 +223,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'model_revision',
             'torch_dtype',
             'attn_impl',
+            'new_special_tokens',
             'num_labels',
             'problem_type',
             # quant_args
@@ -249,7 +240,9 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'use_chat_template',
             'response_prefix',
         ]
-
+        if 'megatron' in self.__class__.__name__.lower():
+            force_load_keys = []
+            load_keys.remove('use_chat_template')
         data_keys = list(f.name for f in fields(DataArguments))
         for key, old_value in old_args.items():
             if old_value is None:

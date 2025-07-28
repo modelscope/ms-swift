@@ -14,8 +14,8 @@ if TYPE_CHECKING:
     from .train import sft_main, pt_main, rlhf_main, get_multimodal_target_regex
     from .sampling import sampling_main
     from .argument import (EvalArguments, InferArguments, TrainArguments, ExportArguments, DeployArguments,
-                           RolloutArguments, RLHFArguments, WebUIArguments, BaseArguments, AppArguments,
-                           SamplingArguments)
+                           RolloutArguments, GymRolloutArguments, RLHFArguments, WebUIArguments, BaseArguments,
+                           AppArguments, SamplingArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
                            TemplateInputs, TemplateMeta, get_template_meta, InferRequest, load_image, MaxLengthError,
                            load_file, draw_bbox, RolloutInferRequest)
@@ -30,8 +30,7 @@ if TYPE_CHECKING:
                           HfDataset, SubsetDataset)
     from .utils import (deep_getattr, to_float_dtype, to_device, History, Messages, history_to_messages,
                         messages_to_history, Processor, save_checkpoint, ProcessorMixin,
-                        get_temporary_cache_files_directory, get_cache_dir, is_moe_model,
-                        dynamic_gradient_checkpointing)
+                        get_temporary_cache_files_directory, get_cache_dir, dynamic_gradient_checkpointing)
     from .base import SwiftPipeline
     from .data_loader import DataLoaderDispatcher, DataLoaderShard, BatchSamplerShard
 else:
@@ -72,7 +71,7 @@ else:
         'utils': [
             'deep_getattr', 'to_device', 'to_float_dtype', 'History', 'Messages', 'history_to_messages',
             'messages_to_history', 'Processor', 'save_checkpoint', 'ProcessorMixin',
-            'get_temporary_cache_files_directory', 'get_cache_dir', 'is_moe_model', 'dynamic_gradient_checkpointing'
+            'get_temporary_cache_files_directory', 'get_cache_dir', 'dynamic_gradient_checkpointing'
         ],
         'base': ['SwiftPipeline'],
         'data_loader': ['DataLoaderDispatcher', 'DataLoaderShard', 'BatchSamplerShard'],

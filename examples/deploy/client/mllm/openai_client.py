@@ -21,6 +21,8 @@ def infer_stream(client, model: str, messages):
     gen = client.chat.completions.create(model=model, messages=messages, stream=True, temperature=0)
     print(f'messages: {messages}\nresponse: ', end='')
     for chunk in gen:
+        if chunk is None:
+            continue
         print(chunk.choices[0].delta.content, end='', flush=True)
     print()
 

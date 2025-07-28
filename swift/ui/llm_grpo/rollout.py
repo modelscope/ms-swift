@@ -30,46 +30,6 @@ class Rollout(BaseUI):
                 'en': 'Maximum generation length in GRPO algorithm'
             }
         },
-        'dynamic_sample': {
-            'label': {
-                'zh': '动态采样',
-                'en': 'Dynamic Sampling'
-            },
-            'info': {
-                'zh': '筛除group内奖励标准差为0的数据，额外采样新数据',
-                'en': 'Filter out data with a reward standard deviation of 0 within the group and sample new data'
-            }
-        },
-        'max_resample_times': {
-            'label': {
-                'zh': '最大重采样次数',
-                'en': 'Maximum number of resampling times'
-            },
-            'info': {
-                'zh': 'dynamic_sample设置下限制重采样次数',
-                'en': 'Limit the number of resampling times when dynamic_sample is set'
-            }
-        },
-        'overlong_filter': {
-            'label': {
-                'zh': '跳过超长样本',
-                'en': 'Skip overlong samples'
-            },
-            'info': {
-                'zh': '跳过超长截断的样本，不参与loss计算',
-                'en': 'Skip overlong truncated samples and exclude them from loss calculation'
-            }
-        },
-        'log_completions': {
-            'label': {
-                'zh': '记录生成内容',
-                'en': 'Record generated content'
-            },
-            'info': {
-                'zh': '是否记录训练中的模型生成内容',
-                'en': 'Whether to record the model generation content during training'
-            }
-        },
         'async_generate': {
             'label': {
                 'zh': '异步生成',
@@ -82,26 +42,26 @@ class Rollout(BaseUI):
         },
         'temperature': {
             'label': {
-                'zh': 'temperature',
-                'en': 'temperature'
+                'zh': '采样温度',
+                'en': 'Temperature'
             },
         },
         'top_k': {
             'label': {
-                'zh': 'top_k',
-                'en': 'top_k'
+                'zh': 'Top-k',
+                'en': 'Top-k'
             },
         },
         'top_p': {
             'label': {
-                'zh': 'top_p',
-                'en': 'top_p'
+                'zh': 'Top-p',
+                'en': 'Top-p'
             },
         },
         'repetition_penalty': {
             'label': {
-                'zh': '重复惩罚项',
-                'en': 'repetition penalty'
+                'zh': '重复惩罚',
+                'en': 'Repetition Penalty'
             },
         },
         'use_vllm': {
@@ -110,7 +70,7 @@ class Rollout(BaseUI):
                 'en': 'Using vLLM'
             },
             'info': {
-                'zh': '是否使用vLLM作为GRPO生成的infer_backend',
+                'zh': '是否使用vLLM作为GRPO生成的推理后端',
                 'en': 'Whether to use vLLM as the infer_backend of generation by GRPO'
             }
         },
@@ -121,30 +81,20 @@ class Rollout(BaseUI):
             },
             'info': {
                 'zh':
-                'server模式使用`swift rollout`拉起的vLLM服务进行采样;colocate模式使用程序内部署的vllm',
+                'Server模式使用`swift rollout`拉起的vLLM服务进行采样;Colocate模式使用程序内部署的vLLM',
                 'en':
                 'Server mode uses the vLLM server deployed by swift rollout for sampling,'
-                ' colocate mode uses vllm deployed in the program'
-            }
-        },
-        'vllm_enable_prefix_caching': {
-            'label': {
-                'zh': '开启前缀缓存',
-                'en': 'Enable prefix cache'
-            },
-            'info': {
-                'zh': 'vllm透传参数',
-                'en': 'vllm transparent transmission parameters'
+                ' colocate mode uses vLLM deployed in the program'
             }
         },
         'vllm_gpu_memory_utilization': {
             'label': {
                 'zh': 'GPU显存利用率',
-                'en': 'Gpu memory utilization'
+                'en': 'GPU memory utilization'
             },
             'info': {
-                'zh': 'vllm透传参数',
-                'en': 'vllm transparent transmission parameters'
+                'zh': 'vLLM透传参数',
+                'en': 'vLLM transparent transmission parameters'
             }
         },
         'vllm_tensor_parallel_size': {
@@ -153,24 +103,24 @@ class Rollout(BaseUI):
                 'en': 'Tensor parallel size'
             },
             'info': {
-                'zh': 'vllm透传参数',
-                'en': 'vllm transparent transmission parameters'
+                'zh': 'vLLM透传参数',
+                'en': 'vLLM transparent transmission parameters'
             }
         },
         'vllm_max_model_len': {
             'label': {
                 'zh': '模型支持的最大长度',
-                'en': 'max model len'
+                'en': 'Max model len'
             },
             'info': {
-                'zh': 'vllm透传参数',
-                'en': 'vllm transparent transmission parameters'
+                'zh': 'vLLM透传参数',
+                'en': 'vLLM transparent transmission parameters'
             }
         },
         'sleep_level': {
             'label': {
-                'zh': 'sleep level',
-                'en': 'sleep level'
+                'zh': 'Sleep level',
+                'en': 'Sleep level'
             },
             'info': {
                 'zh': '训练时释放vLLM显存',
@@ -179,23 +129,15 @@ class Rollout(BaseUI):
         },
         'vllm_server_host': {
             'label': {
-                'zh': '服务主机',
-                'en': 'vllm server host'
+                'zh': 'vLLM服务主机',
+                'en': 'vLLM server host'
             },
-            'info': {
-                'zh': 'vllm服务host',
-                'en': 'The actual model id or model path'
-            }
         },
         'vllm_server_port': {
             'label': {
-                'zh': '服务端口号',
-                'en': 'vllm server port'
+                'zh': 'vLLM服务端口',
+                'en': 'vLLM server port'
             },
-            'info': {
-                'zh': 'vllm服务端口号',
-                'en': 'The actual model id or model path'
-            }
         },
         'vllm_server_timeout': {
             'label': {
@@ -203,94 +145,90 @@ class Rollout(BaseUI):
                 'en': 'Server timeout'
             },
             'info': {
-                'zh': '连接vLLM server的超时时间',
+                'zh': '连接vLLM服务的超时时间',
                 'en': 'Timeout for connecting to vLLM server'
             }
         },
         'offload_model': {
             'label': {
                 'zh': '卸载模型',
-                'en': 'offload model'
+                'en': 'Offload model'
             },
             'info': {
-                'zh': '是否在vLLM/LMDeploy推理时offload模型',
-                'en': 'Whether to offload the model during vLLM/LMDeploy inference'
+                'zh': '是否在vLLM推理时卸载模型',
+                'en': 'Whether to offload the model during vLLM inference'
             }
         },
         'offload_optimizer': {
             'label': {
                 'zh': '卸载优化器',
-                'en': 'offload optimizer'
+                'en': 'Offload optimizer'
             },
             'info': {
-                'zh': '是否在vLLM/LMDeploy推理时offload optimizer参数',
-                'en': 'Whether to offload optimizer parameters during vLLM/LMDeploy inference'
-            }
-        },
-        'gc_collect_after_offload': {
-            'label': {
-                'zh': 'offload结束时gc',
-                'en': 'gc collect after offload'
-            },
-            'info': {
-                'zh': '是否在offload结束时进行gc',
-                'en': 'Whether to perform GC at the end of offload'
+                'zh': '是否在vLLM推理时卸载优化器参数',
+                'en': 'Whether to offload optimizer parameters during vLLM inference'
             }
         },
         'colocate_param': {
             'label': {
-                'zh': 'colocate模式参数',
-                'en': 'colocate mode parameters'
+                'zh': 'Colocate模式参数',
+                'en': 'Colocate mode parameters'
             }
         },
         'server_param': {
             'label': {
-                'zh': 'server模式参数',
-                'en': 'server mode parameters'
+                'zh': 'Server模式参数',
+                'en': 'Server mode parameters'
             }
         },
         'rollout_param': {
             'label': {
-                'zh': 'rollout设置',
-                'en': 'Rollout settings'
+                'zh': 'Rollout设置(更多参数->GRPO高级参数设置)',
+                'en': 'Rollout settings(more params->GRPO advanced settings)'
             }
         }
     }
 
+    tabs_to_filter = {
+        'colocate': [
+            'vllm_enable_prefix_caching', 'vllm_gpu_memory_utilization', 'vllm_tensor_parallel_size',
+            'vllm_max_model_len', 'sleep_level', 'offload_model', 'offload_optimizer'
+        ],
+        'server': ['async_generate', 'vllm_server_host', 'vllm_server_port', 'vllm_server_timeout'],
+        'llm_rollout':
+        ['tensor_parallel_size', 'data_parallel_size', 'max_model_len', 'gpu_memory_utilization', 'port']
+    }
+
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Accordion(elem_id='rollout_param', open=True):
-            with gr.Row():
-                gr.Slider(elem_id='num_generations', minimum=1, maximum=64, step=1, value=8, scale=4)
-                gr.Textbox(elem_id='max_completion_length', lines=1, value='512', scale=4)
-                gr.Checkbox(elem_id='dynamic_sample', scale=4)
-                gr.Slider(elem_id='max_resample_times', minimum=1, maximum=16, step=1, value=3, scale=4)
-                gr.Checkbox(elem_id='overlong_filter', scale=4)
-                gr.Checkbox(elem_id='log_completions', scale=4)
-
+        with gr.Accordion(elem_id='rollout_param', open=False):
             with gr.Row():
                 gr.Slider(elem_id='temperature', minimum=0.0, maximum=10, step=0.1, value=1.0)
-                gr.Slider(elem_id='top_k', minimum=1, maximum=100, step=5, value=20)
+                gr.Slider(elem_id='top_k', minimum=1, maximum=100, step=5, value=80)
                 gr.Slider(elem_id='top_p', minimum=0.0, maximum=1.0, step=0.05, value=1.0)
                 gr.Slider(elem_id='repetition_penalty', minimum=0.0, maximum=10, step=0.05, value=1.05)
 
             with gr.Row():
-                gr.Checkbox(elem_id='use_vllm', scale=4)
+                gr.Checkbox(elem_id='use_vllm', value=True, scale=4)
                 gr.Dropdown(elem_id='vllm_mode', choices=['colocate', 'server'], scale=4)
-                gr.Checkbox(elem_id='offload_model', scale=4)
-                gr.Checkbox(elem_id='offload_optimizer', scale=4)
-                gr.Checkbox(elem_id='gc_collect_after_offload', scale=4)
+                gr.Slider(elem_id='num_generations', minimum=1, maximum=64, step=1, scale=4)
+                gr.Textbox(elem_id='max_completion_length', lines=1, value='512', scale=4)
 
             with gr.Accordion(elem_id='colocate_param', open=True):
                 with gr.Row():
-                    gr.Checkbox(elem_id='vllm_enable_prefix_caching', scale=4)
-                    gr.Dropdown(elem_id='sleep_level', choices=[0, 1], value=0, scale=4)
                     gr.Textbox(elem_id='vllm_gpu_memory_utilization', lines=1, value='0.5', scale=4)
                     gr.Textbox(elem_id='vllm_tensor_parallel_size', lines=1, value='1', scale=4)
                     gr.Textbox(elem_id='vllm_max_model_len', lines=1, value='', scale=4)
+                    gr.Dropdown(elem_id='sleep_level', choices=['0', '1'], value='0', scale=4, allow_custom_value=True)
+                    gr.Checkbox(elem_id='offload_model', value=True, scale=4)
+                    gr.Checkbox(elem_id='offload_optimizer', value=True, scale=4)
             with gr.Accordion(elem_id='server_param', open=True):
                 with gr.Row():
-                    gr.Checkbox(elem_id='async_generate', scale=1)
-                    gr.Textbox(elem_id='vllm_server_host', scale=4)
+                    gr.Checkbox(elem_id='async_generate', scale=4)
+                    gr.Textbox(elem_id='vllm_server_host', value='127.0.0.1', scale=4)
                     gr.Textbox(elem_id='vllm_server_port', lines=1, scale=4)
                     gr.Textbox(elem_id='vllm_server_timeout', lines=1, scale=4, value=120)
+
+    @staticmethod
+    def update_num_gen(per_device_batch_size, steps_per_generation, num_processes):
+        return int(per_device_batch_size) * int(steps_per_generation) * int(num_processes)

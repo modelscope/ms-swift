@@ -19,6 +19,7 @@ def test_reg_llm():
             train_type='lora',
             num_labels=1,
             dataset=['sentence-transformers/stsb:reg#200'],
+            split_dataset_ratio=0.01,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, metric='acc'))
@@ -33,6 +34,7 @@ def test_reg_mllm():
             train_type='lora',
             num_labels=1,
             dataset=['sentence-transformers/stsb:reg#200'],
+            split_dataset_ratio=0.01,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, metric='acc'))

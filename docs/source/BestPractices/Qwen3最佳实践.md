@@ -14,7 +14,7 @@ swift infer \
     --infer_backend vllm \
     --stream true \
     --max_new_tokens 2048 \
-    --max_model_len 8192
+    --vllm_max_model_len 8192
 ```
 
 ```text
@@ -42,7 +42,7 @@ swift infer \
     --infer_backend vllm \
     --stream true \
     --max_new_tokens 2048 \
-    --max_model_len 8192 \
+    --vllm_max_model_len 8192 \
     --response_prefix '<think>\n\n</think>\n\n'
 ```
 
@@ -61,7 +61,7 @@ I am Qwen, a large-scale language model developed by Alibaba Cloud. I am designe
 
 ```bash
 pip install ms-swift -U
-pip install transformers -U
+pip install transformers
 
 pip install deepspeed # 多GPU训练
 pip install liger-kernel # 节约显存资源
@@ -119,9 +119,9 @@ swift infer \
     --model Qwen/Qwen3-32B \
     --infer_backend vllm \
     --val_dataset 'AI-ModelScope/alpaca-gpt4-data-en#5000' 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
-    --gpu_memory_utilization 0.9 \
-    --tensor_parallel_size 2 \
-    --max_model_len 8192 \
+    --vllm_gpu_memory_utilization 0.9 \
+    --vllm_tensor_parallel_size 2 \
+    --vllm_max_model_len 8192 \
     --max_new_tokens 4096 \
     --write_batch_size 1000 \
     --result_path distill_dataset.jsonl
@@ -222,6 +222,7 @@ swift sft \
     --model Qwen/Qwen3-8B \
     --train_type full \
     --dataset '<your-dataset>' \
+    --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
@@ -280,7 +281,7 @@ pip install vllm==0.8.5.post1
 
 我们使用使 AI-MO/NuminaMath-TIR 作为数据集，并使用accuracy函数计算模型回答的准确率奖励。
 
-在训练过程中，使用 vLLM 加速采样过程。通过设置 `num_infer_workers=8` ，我们为每个设备部署一个 vLLM 引擎以加快采样速度。
+在训练过程中，使用 vLLM 加速采样过程。
 
 ```bash
 # 70G*8
@@ -313,8 +314,7 @@ swift rlhf \
     --offload_model true \
     --offload_optimizer true \
     --deepspeed zero3 \
-    --num_infer_workers 8 \
-    --tensor_parallel_size 1 \
+    --vllm_tensor_parallel_size 1 \
     --temperature 1.0 \
     --top_p 0.85 \
     --log_completions true \
@@ -322,6 +322,8 @@ swift rlhf \
 ```
 
 ## Megatron-SWIFT
+
+Qwen3-235B-A22B-Instruct-250718 单机8卡H20 LoRA训练的最佳实践参考：[https://github.com/modelscope/ms-swift/pull/5033](https://github.com/modelscope/ms-swift/pull/5033)。
 
 ms-swift 引入了 Megatron 并行技术以加速大模型的CPT/SFT/DPO。支持的模型可以在[支持的模型文档](../Instruction/支持的模型和数据集.md)中找到。
 
@@ -332,16 +334,19 @@ ms-swift 引入了 Megatron 并行技术以加速大模型的CPT/SFT/DPO。支�
 ```bash
 # https://help.aliyun.com/zh/pai/user-guide/general-environment-variables
 # 请确保两个节点上的权重保存路径`--save`和packing缓存路径`--packing_cache`相同且共享。
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
 megatron sft \
     --load Qwen3-30B-A3B-Base-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
-    --tensor_model_parallel_size 2 \
+    --split_dataset_ratio 0.01 \
+    --pipeline_model_parallel_size 2 \
     --expert_model_parallel_size 8 \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
-    --moe_aux_loss_coeff 0.01 \
+    --moe_permute_fusion true \
+    --moe_aux_loss_coeff 1e-3 \
     --micro_batch_size 1 \
     --global_batch_size 16 \
     --packing true \
@@ -364,7 +369,7 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --use_flash_attn true
+    --attention_backend flash
 ```
 
 训练loss图（部分）：

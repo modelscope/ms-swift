@@ -18,6 +18,7 @@ def test_llm():
             model='Qwen/Qwen2.5-0.5B',
             teacher_model='Qwen/Qwen2.5-1.5B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-en#2000'],
+            split_dataset_ratio=0.01,
             load_from_cache_file=False,
             seq_kd=True,
             **kwargs,
@@ -34,6 +35,7 @@ def test_mllm():
             model='OpenGVLab/InternVL3-2B-Pretrained',
             teacher_model='OpenGVLab/InternVL3-8B',
             dataset=['AI-ModelScope/LaTeX_OCR#2000', 'AI-ModelScope/alpaca-gpt4-data-en#2000'],
+            split_dataset_ratio=0.01,
             load_from_cache_file=False,
             **kwargs,
         ))

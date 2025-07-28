@@ -14,6 +14,7 @@ from ..patcher import patch_output_clone, patch_output_normalizer
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo, use_submodel_func
+from .qwen import patch_qwen_vl_utils
 
 logger = get_logger()
 
@@ -178,3 +179,27 @@ register_model(
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2VLForConditionalGeneration'],
         tags=['vision']))
+
+
+def get_model_tokenizer_keye_vl(model_dir: str, *args, **kwargs):
+    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
+    from keye_vl_utils import vision_process
+    patch_qwen_vl_utils(vision_process)
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.keye_vl,
+        [
+            ModelGroup([
+                Model('Kwai-Keye/Keye-VL-8B-Preview', 'Kwai-Keye/Keye-VL-8B-Preview'),
+            ]),
+        ],
+        TemplateType.keye_vl,
+        get_model_tokenizer_keye_vl,
+        model_arch=ModelArch.keye_vl,
+        architectures=['KeyeVLForConditionalGeneration'],
+        tags=['vision'],
+        requires=['keye_vl_utils'],
+    ))

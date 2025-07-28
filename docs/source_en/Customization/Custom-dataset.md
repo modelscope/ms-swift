@@ -26,15 +26,21 @@ ShareGPT format:
 {"system": "<system>", "conversation": [{"human": "<query1>", "assistant": "<response1>"}, {"human": "<query2>", "assistant": "<response2>"}]}
 ```
 
-Alpaca format:
-```jsonl
-{"system": "<system>", "instruction": "<query-inst>", "input": "<query-input>", "output": "<response>"}
-```
-
 Query-Response format:
 ```jsonl
 {"system": "<system>", "query": "<query2>", "response": "<response2>", "history": [["<query1>", "<response1>"]]}
 ```
+Note: The following fields will be automatically converted to the corresponding system, query, and response fields.
+- system: 'system', 'system_prompt'.
+- query: 'query', 'prompt', 'input', 'instruction', 'question', 'problem'.
+- response: 'response', 'answer', 'output', 'targets', 'target', 'answer_key', 'answers', 'solution', 'text', 'completion', 'content'.
+
+Alpaca format:
+```jsonl
+{"system": "<system>", "instruction": "<query-inst>", "input": "<query-input>", "output": "<response>"}
+```
+- Note: The instruction and input fields will be combined into the query field. If instruction and input are not empty strings, then `query = f'{instruction}\n{input}'`.
+
 
 ## Standard Dataset Format
 
@@ -63,6 +69,10 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 {"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}, {"role": "assistant", "content": "Tomorrow's weather will be sunny"}], "rejected_response": "I don't know"}
 {"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}], "rejected_response": "I don't know"}
 ```
+
+The format of multimodal data should follow the specifications in [Multimodal Dataset](#multimodal), with additional columns such as `images` to represent other modality inputs. When it is necessary to associate different image information with preference data, the `rejected_images` field can be used to indicate the images related to the rejected responses. In the alignment dataset, at least one of `rejected_images` or `rejected_response` must be provided for each entry.
+
+> Note: RM additionally supports the margin column. For details, refer to the [RM documentation](../Instruction/RLHF.md#rm).
 
 #### KTO
 
@@ -152,6 +162,10 @@ Supervised Fine-tuning:
 {"messages": [{"role": "user", "content": "<audio>What did the audio say?"}, {"role": "assistant", "content": "The weather is really nice today."}], "audios": ["/xxx/x.mp3"]}
 {"messages": [{"role": "system", "content": "You are a helpful and harmless assistant."}, {"role": "user", "content": "<image>What is in the image, <video>What is in the video?"}, {"role": "assistant", "content": "The image shows an elephant, and the video shows a puppy running on the grass."}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
 ```
+- Note: The following fields will be automatically converted to the corresponding images, videos, and audios fields.
+  - images: image, images.
+  - videos: video, videos.
+  - audios: audio, audios.
 
 The data format for RLHF and sequence classification of multimodal models can reference the format of pure text large models, with additional fields such as `images` added on top of that.
 
@@ -171,6 +185,7 @@ When using this type of data, please note:
 
 - Different models have different special characters and data format for the grounding task.
 - The handling of bounding box normalization varies across different models: for example, qwen2.5-vl uses absolute coordinates, while qwen2-vl and internvl2.5 require bounding box coordinates to be normalized to the thousandth scale.
+  - Note: Qwen2.5-VL uses absolute coordinates, so you need to be careful with image resizing each time. If you use the dataset format from Option 1, you need to resize the images in advance (height and width must be multiples of 28) and scale the coordinates accordingly. If you use the dataset format from Option 2, ms-swift will handle image resizing for you. You can still use `MAX_PIXELS` or `--max_pixels` for image resizing (training only; for inference, you still need to handle image resizing yourself).
 
 1. Use SWIFT's grounding data format:
 

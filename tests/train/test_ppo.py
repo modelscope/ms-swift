@@ -17,6 +17,7 @@ def test_rm():
             rlhf_type='rm',
             model='Shanghai_AI_Laboratory/internlm2-1_8b-reward',
             dataset=['hjh0119/shareAI-Llama3-DPO-zh-en-emoji#100'],
+            split_dataset_ratio=0.01,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))

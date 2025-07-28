@@ -46,8 +46,8 @@ class ExportRuntime(Runtime):
                 'en': 'Logging content'
             },
             'info': {
-                'zh': '如果日志无更新请再次点击"展示日志内容"',
-                'en': 'Please press "Show log" if the log content is not updating'
+                'zh': '如果日志无更新请再次点击"展示导出状态"',
+                'en': 'Please press "Show export status" if the log content is not updating'
             }
         },
         'running_tasks': {

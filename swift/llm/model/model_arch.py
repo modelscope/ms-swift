@@ -34,12 +34,15 @@ class MLLMModelArch:
 
     cogvlm = 'cogvlm'
     glm4v = 'glm4v'
+    glm4_1v = 'glm4_1v'
     glm_edge_v = 'glm_edge_v'
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'
+    llama4 = 'llama4'
 
     llava_hf = 'llava_hf'
+    llava_hf_legacy = 'llava_hf_legacy'  # transformers<4.52
     llava_next_video_hf = 'llava_next_video_hf'
 
     llava_llama = 'llava_llama'
@@ -69,7 +72,9 @@ class MLLMModelArch:
     emu3_chat = 'emu3_chat'
     megrez_omni = 'megrez_omni'
     valley = 'valley'
+    gemma3n = 'gemma3n'
     mistral_2503 = 'mistral_2503'
+    keye_vl = 'keye_vl'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -310,6 +315,14 @@ register_model_arch(
         lm_head='lm_head',
     ))
 
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.llava_hf_legacy,
+        language_model='language_model',
+        aligner='multi_modal_projector',
+        vision_tower='vision_tower',
+    ))
+
 if transformers_ge_4_52:
     register_model_arch(
         MultiModelKeys(
@@ -513,6 +526,14 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
+        MLLMModelArch.glm4_1v,
+        language_model='model.language_model',
+        aligner='model.visual.merger',
+        vision_tower='model.visual',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
         MLLMModelArch.idefics3,
         language_model='model.text_model',
         aligner='model.connector',
@@ -553,6 +574,14 @@ else:
             vision_tower='vision_model',
         ))
 
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.llama4,
+        language_model='language_model',
+        aligner='multi_modal_projector',
+        vision_tower='vision_model',
+    ))
+
 register_model_arch(MultiModelKeys(
     MLLMModelArch.ovis1_6,
     language_model='llm',
@@ -583,6 +612,22 @@ register_model_arch(
         MLLMModelArch.valley,
         language_model='model',
         vision_tower=['model.vision_tower', 'model.qwen2vl_vision_tower'],
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.gemma3n,
+        language_model='model.language_model',
+        aligner=['model.embed_vision', 'model.embed_audio'],
+        vision_tower=['model.vision_tower', 'model.audio_tower'],
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.keye_vl,
+        language_model='model',
+        aligner='mlp_AR',
+        vision_tower='visual',
     ))
 
 

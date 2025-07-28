@@ -10,6 +10,7 @@ def test_vit_lr():
         TrainArguments(
             model='Qwen/Qwen2.5-VL-7B-Instruct',
             dataset=['AI-ModelScope/LaTeX_OCR#20000'],
+            split_dataset_ratio=0.01,
             vit_lr=2e-5,
             learning_rate=1e-5,
             aligner_lr=1e-4,

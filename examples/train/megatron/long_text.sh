@@ -2,11 +2,13 @@
 # https://github.com/modelscope/ms-swift/blob/main/examples/train/long_text/zero3.sh
 # Max Length: 32K
 # GPU Memory: 4 * 50GB, Training Speed 23s/it
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
     --load Qwen2.5-7B-mcore \
     --dataset 'ZhipuAI/LongWriter-6k' \
+    --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 4 \
     --micro_batch_size 1 \
     --global_batch_size 8 \
@@ -30,4 +32,4 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --use_flash_attn true
+    --attention_backend flash

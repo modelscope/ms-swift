@@ -354,13 +354,11 @@ class TunerMixin:
             model.requires_grad_(True)
 
             freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
-            if len(args.trainable_parameters) > 0 or args.trainable_parameters_regex is not None:
+            if args.trainable_parameters or args.trainable_parameters_regex:
                 activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
         else:
             raise ValueError(f'args.train_type: {args.train_type}')
 
-        if args.resume_only_model:
-            args.training_args.resume_from_checkpoint = None
         if args.use_galore:
             from swift.trainers.optimizers.galore import GaLoreConfig
             if args.galore_target_modules is None:

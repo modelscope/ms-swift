@@ -14,6 +14,10 @@ register_model(
                 Model('moonshotai/Moonlight-16B-A3B', 'moonshotai/Moonlight-16B-A3B'),
                 Model('moonshotai/Moonlight-16B-A3B-Instruct', 'moonshotai/Moonlight-16B-A3B-Instruct'),
             ]),
+            ModelGroup([
+                Model('moonshotai/Kimi-K2-Base', 'moonshotai/Kimi-K2-Base'),
+                Model('moonshotai/Kimi-K2-Instruct', 'moonshotai/Kimi-K2-Instruct'),
+            ]),
         ],
         TemplateType.moonlight,
         get_model_tokenizer_with_flash_attn,
@@ -43,6 +47,6 @@ register_model(
         TemplateType.kimi_vl,
         get_model_tokenizer_kimi_vl,
         architectures=['KimiVLForConditionalGeneration'],
-        model_arch=ModelArch.llava_hf,
+        model_arch=ModelArch.llava_hf_legacy,
         requires=['transformers<4.49'],
     ))

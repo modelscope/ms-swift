@@ -4,6 +4,7 @@ swift sft \
     --model Qwen/Qwen2.5-3B \
     --train_type lora \
     --dataset AI-ModelScope/function-calling-chatml#10000 \
+    --split_dataset_ratio 0.01 \
     --loss_scale hermes \
     --agent_template hermes \
     --torch_dtype bfloat16 \

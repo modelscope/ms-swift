@@ -68,8 +68,9 @@ class FlorenceTemplate(Template):
         image_size = None
         if images:
             image_size = (images[0].width, images[0].height)
-        return json.dumps(
-            self.processor.post_process_generation(response, task=template_inputs.query, image_size=image_size))
+        query_before, query_sep, query_after = template_inputs.query.partition('>')
+        task = query_before + query_sep if query_sep else ''
+        return json.dumps(self.processor.post_process_generation(response, task=task, image_size=image_size))
 
 
 register_template(
@@ -158,6 +159,8 @@ class Phi4MMTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
+            if self.mode == 'vllm':
+                return [f'<|image_{index + 1}|>']  # <|image_1|>
             return [[-100]]
         elif media_type == 'audio':
             import soundfile as sf
@@ -168,6 +171,7 @@ class Phi4MMTemplate(Template):
         encoded = super()._encode(inputs)
         input_ids = encoded['input_ids']
         labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
         images_idx = findall(input_ids, -100)
         audios_idx = findall(input_ids, -200)
         text = '\n'.join(['<|image_1|>'] * len(inputs.images) + ['<|audio_1|>'] * len(inputs.audios))
@@ -180,6 +184,7 @@ class Phi4MMTemplate(Template):
 
         encoded['input_ids'], encoded['labels'] = self._extend_tokens(input_ids, labels, images_idx + audios_idx,
                                                                       _get_new_tokens)
+        encoded['loss_scale'] = self._extend_loss_scale(loss_scale, images_idx + audios_idx, _get_new_tokens)
         new_encoded.pop('attention_mask')
         encoded.update(new_encoded)
         return encoded

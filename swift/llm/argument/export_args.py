@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from dataclasses import dataclass
-from typing import Literal, Optional
+from dataclasses import dataclass, field
+from typing import List, Literal, Optional
 
 import torch
 import torch.distributed as dist
@@ -47,6 +47,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     to_mcore: bool = False
     to_hf: bool = False
     mcore_model: Optional[str] = None
+    mcore_adapters: List[str] = field(default_factory=list)
     thread_count: Optional[int] = None
     test_convert_precision: bool = False
 
@@ -91,6 +92,8 @@ class ExportArguments(MergeArguments, BaseArguments):
     def __post_init__(self):
         if self.quant_batch_size == -1:
             self.quant_batch_size = None
+        if isinstance(self.mcore_adapters, str):
+            self.mcore_adapters = [self.mcore_adapters]
         if self.quant_bits and self.quant_method is None:
             raise ValueError('Please specify the quantization method using `--quant_method awq/gptq/bnb`.')
         if self.quant_method and self.quant_bits is None and self.quant_method != 'fp8':

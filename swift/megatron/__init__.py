@@ -13,15 +13,17 @@ from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
     from .train import megatron_sft_main, megatron_pt_main, megatron_rlhf_main
-    from .utils import convert_hf2mcore, convert_mcore2hf
+    from .utils import convert_hf2mcore, convert_mcore2hf, prepare_mcore_model, adapter_state_dict_context
     from .argument import MegatronTrainArguments, MegatronRLHFArguments
     from .model import MegatronModelType, MegatronModelMeta, get_megatron_model_meta, register_megatron_model
+    from .trainers import MegatronTrainer, MegatronDPOTrainer
 else:
     _import_structure = {
         'train': ['megatron_sft_main', 'megatron_pt_main', 'megatron_rlhf_main'],
-        'utils': ['convert_hf2mcore', 'convert_mcore2hf'],
+        'utils': ['convert_hf2mcore', 'convert_mcore2hf', 'prepare_mcore_model', 'adapter_state_dict_context'],
         'argument': ['MegatronTrainArguments', 'MegatronRLHFArguments'],
-        'model': ['MegatronModelType', 'MegatronModelMeta', 'get_megatron_model_meta', 'register_megatron_model']
+        'model': ['MegatronModelType', 'MegatronModelMeta', 'get_megatron_model_meta', 'register_megatron_model'],
+        'trainers': ['MegatronTrainer', 'MegatronDPOTrainer'],
     }
 
     import sys

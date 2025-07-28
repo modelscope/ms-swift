@@ -19,6 +19,7 @@ def test_full_vit():
         TrainArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
+            split_dataset_ratio=0.01,
             train_type='full',
             freeze_llm=True,
             freeze_vit=False,
@@ -35,6 +36,7 @@ def test_full_aligner():
         TrainArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
+            split_dataset_ratio=0.01,
             train_type='full',
             freeze_llm=True,
             freeze_vit=True,
@@ -51,6 +53,7 @@ def test_lora_vit():
         TrainArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
+            split_dataset_ratio=0.01,
             train_type='lora',
             freeze_llm=True,
             freeze_vit=False,
@@ -67,6 +70,7 @@ def test_lora_aligner():
         TrainArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
+            split_dataset_ratio=0.01,
             train_type='lora',
             freeze_llm=True,
             freeze_vit=True,

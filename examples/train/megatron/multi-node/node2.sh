@@ -1,3 +1,4 @@
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NNODES=2 \
 NODE_RANK=1 \
@@ -7,6 +8,7 @@ NPROC_PER_NODE=4 \
 megatron sft \
     --load Qwen2.5-14B-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
+    --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 4 \
     --micro_batch_size 1 \
     --global_batch_size 16 \
@@ -28,4 +30,4 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --use_flash_attn true
+    --attention_backend flash

@@ -4,6 +4,7 @@ swift sft \
     --model Qwen/Qwen2.5-0.5B \
     --train_type lora \
     --dataset 'sentence-transformers/stsb:reg#20000' \
+    --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 16 \

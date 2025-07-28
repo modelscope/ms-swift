@@ -32,7 +32,7 @@ class LLMEval(BaseUI):
         'llm_eval': {
             'label': {
                 'zh': 'LLM评测',
-                'en': 'LLM evaluation',
+                'en': 'LLM Evaluation',
             }
         },
         'more_params': {
@@ -78,7 +78,7 @@ class LLMEval(BaseUI):
                 Model.build_ui(base_tab)
                 Eval.build_ui(base_tab)
                 EvalRuntime.build_ui(base_tab)
-                with gr.Row():
+                with gr.Row(equal_height=True):
                     gr.Textbox(elem_id='more_params', lines=4, scale=20)
                     gr.Button(elem_id='evaluate', scale=2, variant='primary')
                 gr.Dropdown(

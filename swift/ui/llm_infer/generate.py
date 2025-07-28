@@ -19,36 +19,36 @@ class Generate(BaseUI):
         },
         'temperature': {
             'label': {
-                'zh': 'temperature',
-                'en': 'temperature'
+                'zh': '采样温度',
+                'en': 'Temperature'
             },
         },
         'top_k': {
             'label': {
-                'zh': 'top_k',
-                'en': 'top_k'
+                'zh': 'Top-k',
+                'en': 'Top-k'
             },
         },
         'top_p': {
             'label': {
-                'zh': 'top_p',
-                'en': 'top_p'
+                'zh': 'Top-p',
+                'en': 'Top-p'
             },
         },
         'repetition_penalty': {
             'label': {
-                'zh': 'repetition_penalty',
-                'en': 'repetition_penalty'
+                'zh': '重复惩罚',
+                'en': 'Repetition Penalty'
             },
         },
         'system': {
             'label': {
-                'zh': 'system字段',
-                'en': 'system'
+                'zh': 'System字段',
+                'en': 'System'
             },
             'info': {
-                'zh': 'system字段支持在加载模型后修改',
-                'en': 'system can be modified after the model weights loaded'
+                'zh': 'System字段支持在加载模型后修改',
+                'en': 'System can be modified after the model weights loaded'
             }
         },
     }

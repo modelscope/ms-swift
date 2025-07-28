@@ -32,10 +32,14 @@ class GenerationArguments:
     repetition_penalty: Optional[float] = None
     num_beams: int = 1
 
-    stream: bool = False
+    stream: Optional[bool] = None
     stop_words: List[str] = field(default_factory=list)
     logprobs: bool = False
     top_logprobs: Optional[int] = None
+
+    def _init_stream(self):
+        if self.stream is None:
+            self.stream = False
 
     def get_request_config(self):
         if getattr(self, 'task_type') != 'causal_lm':

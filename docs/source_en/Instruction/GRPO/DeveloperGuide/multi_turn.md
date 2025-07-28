@@ -1,11 +1,6 @@
 # Multi-Turn Rollout
 
-Note: This feature requires the ms-swift source code (3.6.dev)
-```bash
-git clone https://github.com/modelscope/ms-swift.git
-cd ms-swift
-pip install -e .
-```
+Note: This feature requires ms-swift>=3.6
 
 In reinforcement learning training scenarios, model sampling may require multiple rounds of interaction with the environment (e.g., tool calls, external API access, etc.). This interactive training requires the model to perform continuous reasoning based on environmental feedback. This document details how to customize multi-round training workflows in GRPO training.
 

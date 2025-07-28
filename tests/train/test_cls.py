@@ -19,6 +19,7 @@ def test_llm():
             train_type='lora',
             num_labels=2,
             dataset=['DAMO_NLP/jd:cls#2000'],
+            split_dataset_ratio=0.01,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
@@ -34,6 +35,7 @@ def test_bert():
             train_type='full',
             num_labels=2,
             dataset=['DAMO_NLP/jd:cls#2000'],
+            split_dataset_ratio=0.01,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(model=last_model_checkpoint, load_data_args=True))
@@ -43,7 +45,12 @@ def test_mllm():
     from swift.llm import TrainArguments, sft_main, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
-            model='OpenGVLab/InternVL2-1B', train_type='lora', num_labels=2, dataset=['DAMO_NLP/jd:cls#500'], **kwargs))
+            model='OpenGVLab/InternVL2-1B',
+            train_type='lora',
+            num_labels=2,
+            dataset=['DAMO_NLP/jd:cls#500'],
+            split_dataset_ratio=0.01,
+            **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
 

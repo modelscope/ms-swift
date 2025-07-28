@@ -3,13 +3,21 @@ from typing import Optional
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from swift.llm import to_device
 
 
 class BatchSamplerShard:
 
-    def __init__(self, total_samples: int, batch_size: int, shuffle: bool, drop_last: bool, data_seed: Optional[int]):
+    def __init__(self,
+                 total_samples: int,
+                 batch_size: int,
+                 shuffle: bool,
+                 drop_last: bool,
+                 data_seed: Optional[int],
+                 tp_size: int = 1):
+        self.tp_size = tp_size
         self.total_samples = total_samples // self.world_size
         self.batch_size = batch_size
         self.shuffle = shuffle
@@ -19,11 +27,11 @@ class BatchSamplerShard:
 
     @property
     def rank(self):
-        return dist.get_rank() if dist.is_initialized() else 0
+        return (dist.get_rank() // self.tp_size) if dist.is_initialized() else 0
 
     @property
     def world_size(self):
-        return dist.get_world_size() if dist.is_initialized() else 1
+        return (dist.get_world_size() // self.tp_size) if dist.is_initialized() else 1
 
     def __iter__(self):
         start_idx = self.rank * self.total_samples
@@ -77,9 +85,10 @@ class DataLoaderShard(DataLoader):
 
 class DataLoaderDispatcher:
 
-    def __init__(self, base_dataloader, device=None):
+    def __init__(self, base_dataloader, device=None, skip_batches: int = 0):
         self.base_dataloader = base_dataloader
         self.device = device
+        self.skip_batches = skip_batches
 
     @property
     def rank(self):
@@ -101,8 +110,14 @@ class DataLoaderDispatcher:
         dist.scatter_object_list(outputs, inputs, global_src_rank, group=self.group)
         return outputs[0]
 
+    def _skip_batches(self, base_iter):
+        if self.rank == 0 and self.skip_batches > 0:
+            for _ in tqdm(range(self.skip_batches), dynamic_ncols=True, desc='Skip Batches: '):
+                [next(base_iter) for _ in range(self.world_size)]
+
     def __iter__(self):
         base_iter = iter(self.base_dataloader)
+        self._skip_batches(base_iter)
         while True:
             if self.rank == 0:
                 try:

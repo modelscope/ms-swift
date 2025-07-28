@@ -1,12 +1,10 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
-
-# Code partially sourced from Hugging Face TRL
-
 import atexit
 import logging
 import socket
+import threading
 import time
-from typing import List, Optional
+from concurrent.futures import ThreadPoolExecutor
+from typing import List, Optional, Union
 from urllib.parse import urlparse
 
 import requests
@@ -16,7 +14,8 @@ from requests import ConnectionError
 from torch import nn
 
 from swift.llm import AdapterRequest, RolloutInferRequest, Template
-from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig, RolloutResponseChoice
+from swift.llm.infer.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, GymRolloutResponseChoice,
+                                      RequestConfig, RolloutResponseChoice)
 from swift.plugin import Metric
 from swift.utils import is_vllm_ascend_available, is_vllm_available
 
@@ -31,85 +30,80 @@ logger = logging.getLogger(__name__)
 
 
 class VLLMClient:
-    """
-    A client class to interact with a vLLM server.
-
-    This class provides methods to infer completions, initialize and manage weight update groups, and update model
-    weights in a distributed setting. Before using it, start the vLLM server with `trl vllm-serve`.
-
-    Args:
-        base_url (`str` or `None`, *optional*, defaults to `None`):
-            Base URL for the vLLM server (e.g., `"http://localhost:8000"`). If provided, `host` and `server_port` are
-            ignored.
-        host (`str`, *optional*, defaults to `"0.0.0.0"`):
-            IP address of the vLLM server. Ignored if `base_url` is provided.
-        server_port (`int`, *optional*, defaults to `8000`):
-            Port number of the vLLM server. Ignored if `base_url` is provided.
-        group_port (`int`, *optional*, defaults to `51216`):
-            Port number for the weight update group.
-        connection_timeout (`float`, *optional*, defaults to `0.0`):
-            Total timeout duration in seconds to wait for the server to be up. If the server is not up after the
-            timeout, a `ConnectionError` is raised.
-    """
 
     def __init__(self,
-                 base_url: Optional[str] = None,
-                 host: str = '0.0.0.0',
-                 server_port: int = 8000,
-                 group_port: int = 51216,
-                 connection_timeout: float = 0.0):
+                 base_urls: Optional[List[str]] = None,
+                 hosts: List[str] = ['0.0.0.0'],
+                 server_ports: List[int] = [8000],
+                 group_ports: Union[int, List[int]] = 51216,
+                 connection_timeout: float = 240.0):
         if not is_vllm_available():
             raise ImportError('vLLM is not installed. Please install it with `pip install vllm`.')
 
-        self.session = requests.Session()
-        if base_url is not None:
-            # Parse the base_url to extract host and port
-            parsed_url = urlparse(base_url)
-            self.host = socket.gethostbyname(parsed_url.hostname)
-            scheme = parsed_url.scheme or 'http'
-            self.base_url = f'{scheme}://{parsed_url.netloc}{parsed_url.path}'
+        if base_urls is not None:
+            self.base_urls = []
+            self.hosts = []
+            for url in base_urls:
+                parsed_url = urlparse(url)
+                host = socket.gethostbyname(parsed_url.hostname)
+                scheme = parsed_url.scheme or 'http'
+                base_url_i = f'{scheme}://{parsed_url.netloc}{parsed_url.path}'
+                self.base_urls.append(base_url_i)
+                self.hosts.append(host)
         else:
-            self.host = host
-            self.server_port = server_port
-            self.base_url = f'http://{self.host}:{self.server_port}'
+            if len(hosts) != len(server_ports):
+                raise ValueError('host and server_port must have same length when lists are provided')
+            self.base_urls = [f'http://{h}:{p}' for h, p in zip(hosts, server_ports)]
+            self.hosts = hosts
 
-        self.group_port = group_port
-        self.check_server(connection_timeout)  # check server and fail after timeout
+        self.num_servers = len(self.base_urls)
+
+        self.sessions = [requests.Session() for _ in range(self.num_servers)]
+
+        if isinstance(group_ports, int):
+            self.group_ports = [group_ports + i for i in range(self.num_servers)]
+        elif isinstance(group_ports, list) and len(group_ports) == self.num_servers:
+            self.group_ports = group_ports
+        else:
+            raise ValueError('group_port must be int or list of length num_servers')
+
+        self.pynccl_comms = []
+        self.check_server(connection_timeout)
 
     def check_server(self, total_timeout: float = 0.0, retry_interval: float = 2.0):
-        """
-        Check server availability with retries on failure, within a total timeout duration. If the server is not up
-        after the total timeout duration, raise a `ConnectionError`.
+        server_status = [False] * self.num_servers
 
-        Args:
-            retry_interval (`float`, *optional*, defaults to `2.0`):
-                Interval in seconds between retries.
-            total_timeout (`float`, *optional*, defaults to `0.0`):
-                Total timeout duration in seconds.
-        """
-        url = f'{self.base_url}/health/'
-        start_time = time.time()  # Record the start time
+        def check_single_server(i):
+            start_time = time.time()
+            url = f'{self.base_urls[i]}/health/'
+            while True:
+                try:
+                    response = requests.get(url, timeout=retry_interval)
+                    if response.status_code == 200:
+                        server_status[i] = True
+                        return
+                except Exception:
+                    pass
 
-        while True:
-            try:
-                response = requests.get(url)
-            except requests.exceptions.RequestException as exc:
-                # Check if the total timeout duration has passed
-                elapsed_time = time.time() - start_time
-                if elapsed_time >= total_timeout:
-                    raise ConnectionError(
-                        f"The vLLM server can't be reached at {self.base_url} after {total_timeout} seconds. Make "
-                        'sure the server is running by running `trl vllm-serve`.') from exc
-            else:
-                if response.status_code == 200:
-                    if 'X-Forwarded-For' in response.headers:
-                        self.host = response.headers['X-Forwarded-For']
-                    logger.info('Server is up!')
-                    return None
+                elapsed = time.time() - start_time
+                if elapsed >= total_timeout:
+                    return
 
-            # Retry logic: wait before trying again
-            logger.info(f'Server is not up yet. Retrying in {retry_interval} seconds...')
-            time.sleep(retry_interval)
+                time.sleep(retry_interval)
+
+        threads = []
+        for i in range(self.num_servers):
+            t = threading.Thread(target=check_single_server, args=(i, ))
+            t.daemon = True
+            t.start()
+            threads.append(t)
+
+        for t in threads:
+            t.join(total_timeout)
+
+        if not all(server_status):
+            failed_servers = [self.base_urls[i] for i, status in enumerate(server_status) if not status]
+            raise ConnectionError(f'Servers not reachable after {total_timeout}s: {failed_servers}')
 
     def infer(
         self,
@@ -121,127 +115,170 @@ class VLLMClient:
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
     ):
-        url = f'{self.base_url}/infer/'
-        response = self.session.post(
-            url,
-            json={
-                'infer_requests': infer_requests,
-                'request_config': request_config,
-                'metrics': metrics,
-                'template': template,
-                'use_tqdm': use_tqdm,
-                'adapter_request': adapter_request,
-            },
-        )
-        if response.status_code == 200:
-            if not getattr(self, 'use_async_engine', False):
-                return [from_dict(data_class=ChatCompletionResponse, data=resp) for resp in response.json()]
-            else:
-                return [
-                    ChatCompletionResponse(
-                        choices=[RolloutResponseChoice(**choice) for choice in resp['choices']],
-                        **{k: v
-                           for k, v in resp.items() if k != 'choices'}) for resp in response.json()
-                ]
-        else:
-            raise Exception(f'Request failed: {response.status_code}, {response.text}')
+        if not hasattr(self, 'use_async_engine') or not hasattr(self, 'use_gym_env'):
+            self.get_engine_type()
+
+        n = len(infer_requests)
+        chunk_size = (n + self.num_servers - 1) // self.num_servers
+        chunks = [infer_requests[i:i + chunk_size] for i in range(0, n, chunk_size)]
+        chunks += [[]] * (self.num_servers - len(chunks))
+
+        results = [None] * self.num_servers
+        errors = [None] * self.num_servers
+
+        def process_chunk(i, chunk):
+            try:
+                response = self.sessions[i].post(
+                    f'{self.base_urls[i]}/infer/',
+                    json={
+                        'infer_requests': chunk,
+                        'request_config': request_config,
+                        'metrics': metrics,
+                        'template': template,
+                        'use_tqdm': use_tqdm,
+                        'adapter_request': adapter_request,
+                    },
+                )
+
+                if response.status_code != 200:
+                    errors[i] = Exception(f'Server {i} failed: {response.status_code}, {response.text}')
+                    return
+
+                resp_data = response.json()
+                results[i] = self.parse_resp_data(resp_data)
+            except Exception as e:
+                errors[i] = e
+
+        with ThreadPoolExecutor(max_workers=self.num_servers) as executor:
+            futures = [executor.submit(process_chunk, i, chunk) for i, chunk in enumerate(chunks)]
+            for future in futures:
+                future.result()
+
+        all_errors = [e for e in errors if e is not None]
+        if all_errors:
+            raise RuntimeError(f'Multiple errors: {all_errors}')
+
+        return [res for server_results in results for res in server_results]
 
     def init_communicator(self):
-        """
-        Initializes the weight update group in a distributed setup for model synchronization.
-        """
-        # Get the tensor parallel size from the server
-        url = f'{self.base_url}/get_world_size/'
-        response = requests.get(url)
-        if response.status_code == 200:
+        self.pynccl_comms = []
+
+        for i in range(self.num_servers):
+            response = self.sessions[i].get(f'{self.base_urls[i]}/get_world_size/')
+            if response.status_code != 200:
+                raise Exception(f'Server {i} failed: {response.text}')
             vllm_world_size = response.json()['world_size']
-        else:
-            raise Exception(f'Request failed: {response.status_code}, {response.text}')
 
-        world_size = vllm_world_size + 1  # add the client to the world
-        self.rank = vllm_world_size  # the client's rank is the last process
+            world_size = vllm_world_size + 1
+            rank = vllm_world_size
 
-        # Initialize weight update group
-        url = f'{self.base_url}/init_communicator/'
-        # In the server side, the host is set to 0.0.0.0
-        response = self.session.post(url, json={'host': '0.0.0.0', 'port': self.group_port, 'world_size': world_size})
-        if response.status_code != 200:
-            raise Exception(f'Request failed: {response.status_code}, {response.text}')
+            response = self.sessions[i].post(
+                f'{self.base_urls[i]}/init_communicator/',
+                json={
+                    'host': '0.0.0.0',
+                    'port': self.group_ports[i],
+                    'world_size': world_size
+                })
+            if response.status_code != 200:
+                raise Exception(f'Server {i} init failed: {response.text}')
 
-        # Brief delay to allow server initialization. While not strictly required (client socket will retry on
-        # connection failure), this prevents log warnings like:
-        # [W416 23:24:57.460001114 socket.cpp:204] [c10d] The hostname of the client socket cannot be retrieved. err=-3
-        time.sleep(0.1)
+            time.sleep(0.1)
 
-        # Set up the communication group for weight broadcasting
-        pg = StatelessProcessGroup.create(host=self.host, port=self.group_port, rank=self.rank, world_size=world_size)
-        self.pynccl_comm = PyNcclCommunicator(pg, device=0)
+            pg = StatelessProcessGroup.create(
+                host=self.hosts[i], port=self.group_ports[i], rank=rank, world_size=world_size)
+            comm = PyNcclCommunicator(pg, device=0)
+            self.pynccl_comms.append(comm)
 
-        # When the client object is deleted, close the weight update group
         atexit.register(self.close_communicator)
 
     def update_named_param(self, name: str, weights: torch.Tensor):
-        """
-        Updates a specific named parameter in the model and broadcasts it to other processes.
+        dtype = str(weights.dtype)
+        shape = tuple(weights.shape)
 
-        Args:
-            name (`str`):
-                Name of the layer whose weights are being updated.
-            weights (`torch.Tensor`):
-                Tensor containing the updated weights.
-        """
-        dtype, shape = str(weights.dtype), tuple(weights.shape)
-        url = f'{self.base_url}/update_named_param/'
-        response = self.session.post(url, json={'name': name, 'dtype': dtype, 'shape': shape})
-        if response.status_code != 200:
-            raise Exception(f'Request failed: {response.status_code}, {response.text}')
+        errors = [None] * self.num_servers
 
-        # Broadcast the weights to the other processes
-        self.pynccl_comm.broadcast(weights, src=self.rank)
-        self.pynccl_comm.group.barrier()
+        def _update_single_server(i):
+            try:
+                response = self.sessions[i].post(
+                    f'{self.base_urls[i]}/update_named_param/',
+                    json={
+                        'name': name,
+                        'dtype': dtype,
+                        'shape': shape
+                    },
+                )
+                if response.status_code != 200:
+                    raise Exception(f'Server {i} update failed: {response.text}')
+
+                self.pynccl_comms[i].broadcast(weights, src=self.pynccl_comms[i].rank)
+                self.pynccl_comms[i].group.barrier()
+            except Exception as e:
+                errors[i] = e
+
+        with ThreadPoolExecutor(max_workers=self.num_servers) as executor:
+            futures = [executor.submit(_update_single_server, i) for i in range(self.num_servers)]
+            for future in futures:
+                future.result()
+
+        all_errors = [e for e in errors if e is not None]
+        if all_errors:
+            raise RuntimeError(f'Multiple errors: {all_errors}')
 
     def update_model_params(self, model: nn.Module):
-        """
-        Updates all parameters of the given model by calling `update_named_param` for each parameter in the model.
-
-        Args:
-            model (`nn.Module`):
-                Model whose parameters (weights/biases) are to be updated.
-        """
         for name, param in model.named_parameters():
-            # Update each parameter individually
             self.update_named_param(name, param.data)
 
     def reset_prefix_cache(self):
-        """
-        Resets the prefix cache for the model.
-        """
-        url = f'{self.base_url}/reset_prefix_cache/'
-        response = self.session.post(url)
-        if response.status_code != 200:
-            raise Exception(f'Request failed: {response.status_code}, {response.text}')
+        errors = [None] * self.num_servers
+
+        def _reset_single_server(i):
+            try:
+                response = self.sessions[i].post(f'{self.base_urls[i]}/reset_prefix_cache/')
+                if response.status_code != 200:
+                    raise Exception(f'Server {i} reset failed: {response.text}')
+            except Exception as e:
+                errors[i] = e
+
+        with ThreadPoolExecutor(max_workers=self.num_servers) as executor:
+            futures = [executor.submit(_reset_single_server, i) for i in range(self.num_servers)]
+            for future in futures:
+                future.result()
+        all_errors = [e for e in errors if e is not None]
+        if all_errors:
+            raise RuntimeError(f'Multiple errors on reset_prefix_cache: {all_errors}')
 
     def get_engine_type(self):
-        url = f'{self.base_url}/get_engine_type/'
-        response = self.session.post(url)
-        if response.status_code == 200:
-            result = response.json()['engine_type']
-            self.use_async_engine = result == 'AsyncLLMEngine'
-            return result
-        else:
-            raise Exception(f'Request failed: {response.status_code}, {response.text}')
+        # assume that all server has same engine type
+        response = self.sessions[0].post(f'{self.base_urls[0]}/get_engine_type/')
+        if response.status_code != 200:
+            raise Exception(f'Engine type request failed: {response.text}')
+
+        result = response.json()
+        self.use_async_engine = result['engine_type'] == 'AsyncLLMEngine'
+        self.use_gym_env = result.get('gym_env', False)
+        return result['engine_type']
 
     def close_communicator(self):
-        """
-        Closes the weight update group and cleans up the communication group.
-        """
-        url = f'{self.base_url}/close_communicator/'
+        for i in range(self.num_servers):
+            try:
+                response = self.sessions[i].post(f'{self.base_urls[i]}/close_communicator/')
+                if response.status_code != 200:
+                    logger.warning(f'Server {i} close failed: {response.text}')
+            except Exception as e:
+                logger.warning(f'Error closing server {i} communicator: {str(e)}')
 
-        try:
-            response = self.session.post(url)
-        except ConnectionError:
-            # The server might be already down, so we don't need to close the communicator
-            pass
+    def parse_resp_data(self, resp_data):
+        if self.use_gym_env:
+            choice_cls = GymRolloutResponseChoice
+        elif self.use_async_engine:
+            choice_cls = RolloutResponseChoice
         else:
-            if response.status_code != 200:
-                raise Exception(f'Request failed: {response.status_code}, {response.text}')
+            choice_cls = ChatCompletionResponseChoice
+        result = [
+            ChatCompletionResponse(
+                choices=[from_dict(data_class=choice_cls, data=c) for c in resp['choices']],
+                **{k: v
+                   for k, v in resp.items() if k != 'choices'}) for resp in resp_data
+        ]
+
+        return result

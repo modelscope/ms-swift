@@ -6,6 +6,7 @@ swift sft \
     --model Qwen/Qwen2-VL-2B \
     --train_type lora \
     --dataset 'tany0699/garbage265#20000' \
+    --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \

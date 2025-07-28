@@ -13,8 +13,8 @@ class Hyper(BaseUI):
     locale_dict = {
         'hyper_param': {
             'label': {
-                'zh': '超参数设置(更多参数->高级参数设置)',
-                'en': 'Hyper settings(more params->Advanced settings)',
+                'zh': '超参数设置(更多参数->其他参数设置)',
+                'en': 'Hyper settings(more params->Extra settings)',
             },
         },
         'per_device_train_batch_size': {
@@ -25,6 +25,16 @@ class Hyper(BaseUI):
             'info': {
                 'zh': '训练的batch size',
                 'en': 'Set the train batch size',
+            }
+        },
+        'per_device_eval_batch_size': {
+            'label': {
+                'zh': '验证batch size',
+                'en': 'Val batch size',
+            },
+            'info': {
+                'zh': '验证的batch size',
+                'en': 'Set the val batch size',
             }
         },
         'learning_rate': {
@@ -75,18 +85,18 @@ class Hyper(BaseUI):
         },
         'neftune_noise_alpha': {
             'label': {
-                'zh': 'neftune_noise_alpha',
-                'en': 'neftune_noise_alpha'
+                'zh': 'NEFTune噪声系数',
+                'en': 'NEFTune noise coefficient'
             },
             'info': {
-                'zh': '使用neftune提升训练效果, 一般设置为5或者10',
-                'en': 'Use neftune to improve performance, normally the value should be 5 or 10'
+                'zh': '使用NEFTune提升训练效果, 一般设置为5或者10',
+                'en': 'Use NEFTune to improve performance, normally the value should be 5 or 10'
             }
         },
         'save_steps': {
             'label': {
                 'zh': '存储步数',
-                'en': 'save steps',
+                'en': 'Save steps',
             },
             'info': {
                 'zh': '设置每个多少步数进行存储',
@@ -111,14 +121,21 @@ class Hyper(BaseUI):
             with gr.Blocks():
                 with gr.Row():
                     gr.Slider(elem_id='per_device_train_batch_size', minimum=1, maximum=256, step=2, scale=20)
+                    gr.Slider(elem_id='per_device_eval_batch_size', minimum=1, maximum=256, step=2, scale=20)
                     gr.Textbox(elem_id='learning_rate', value='1e-4', lines=1, scale=20)
                     gr.Textbox(elem_id='num_train_epochs', lines=1, scale=20)
-                    gr.Dropdown(elem_id='attn_impl', scale=20, value='flash_attn')
-                    gr.Slider(elem_id='gradient_accumulation_steps', minimum=1, maximum=256, step=2, value=16, scale=20)
+                    gr.Slider(
+                        elem_id='gradient_accumulation_steps',
+                        minimum=1,
+                        maximum=256,
+                        step=2,
+                        value=1 if cls.group == 'llm_grpo' else 16,
+                        scale=20)
                 with gr.Row():
                     gr.Textbox(elem_id='eval_steps', lines=1, value='500', scale=20)
                     gr.Textbox(elem_id='save_steps', value='500', lines=1, scale=20)
                     gr.Textbox(elem_id='output_dir', scale=20)
+                    gr.Dropdown(elem_id='attn_impl', scale=20, value='flash_attn')
                     gr.Slider(elem_id='neftune_noise_alpha', minimum=0.0, maximum=20.0, step=0.5, scale=20)
 
     @staticmethod

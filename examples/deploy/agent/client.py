@@ -55,6 +55,8 @@ def infer_stream(client, model: str, messages, tools):
     response = ''
     print(f'query: {query}\nresponse: ', end='')
     for chunk in gen:
+        if chunk is None:
+            continue
         delta = chunk.choices[0].delta.content
         response += delta
         print(delta, end='', flush=True)
@@ -68,6 +70,8 @@ def infer_stream(client, model: str, messages, tools):
         model=model, messages=messages, tools=tools, max_tokens=512, temperature=0, stream=True)
     print(f'query: {query}\nresponse2: ', end='')
     for chunk in gen:
+        if chunk is None:
+            continue
         print(chunk.choices[0].delta.content, end='', flush=True)
     print()
 

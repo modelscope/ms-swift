@@ -12,6 +12,9 @@ import torch
 from swift.llm import PtEngine, RequestConfig, Template, to_device
 from swift.llm.infer.protocol import ChatCompletionResponse
 from swift.plugin import ORM, orms, rm_plugins
+# register context manager(used in gym training)
+from swift.plugin.context_manager import ContextManager, context_managers
+from swift.plugin.env import Env, envs
 from swift.plugin.multi_turn import MultiTurnScheduler, multi_turns
 from swift.plugin.rm_plugin import DefaultRMPlugin
 from swift.utils import get_logger
@@ -28,7 +31,7 @@ TO CUSTOMIZE REWARD FUNCTION:
 
     Step 3: Configure the Arguments
         Run the script with:
-        --plugin /path/to/plugin.py \
+        --external_plugins /path/to/plugin.py \
         --reward_funcs my_reward_function
 """
 
@@ -491,17 +494,17 @@ class ToolUseFormatReward(ORM):
         for response, ans in zip(responses, solution):
             reward = min_possible_reward
             if '<response>' in ans and '<tool_call>' not in ans:
-                pattern = r'^<think>.*?</think>\n<response>.*?</response>$'
+                pattern = r'^<think>.*?</think>\s*<response>.*?</response>$'
                 if re.search(pattern, response,
                              re.DOTALL) and response.count('<response>') == 1 and response.count('</response>') == 1:
                     reward = max_possible_reward
             elif '<response>' not in ans and '<tool_call>' in ans:
-                pattern = r'^<think>.*?</think>\n<tool_call>\n.*?\n</tool_call>$'
+                pattern = r'^<think>.*?</think>\s*<tool_call>.*?</tool_call>$'
                 if re.search(pattern, response,
                              re.DOTALL) and response.count('<tool_call>') == 1 and response.count('</tool_call>') == 1:
                     reward = max_possible_reward
             elif '<response>' in ans and '<tool_call>' in ans:
-                pattern = r'^<think>.*?</think>\n<tool_call>\n.*?\n</tool_call>\n<response>.*?</response>$'
+                pattern = r'^<think>.*?</think>\s*<tool_call>.*?</tool_call>\s*<response>.*?</response>$'
                 if (re.search(pattern, response, re.DOTALL) and response.count('<tool_call>') == 1
                         and response.count('</tool_call>') == 1 and response.count('<response>') == 1
                         and response.count('</response>') == 1):
@@ -721,7 +724,7 @@ TO CUSTOMIZE REWARD MODEL:
 
     Step 3: Configure the Arguments
         Run the script with:
-        --plugin /path/to/plugin.py \
+        --external_plugins /path/to/plugin.py \
         --reward_model_plugin my_rm_plugin
 
 For GenRM you can refer to swift/llm/plugin/rm_plugin/GenRMPlugin
@@ -883,7 +886,7 @@ TO CUSTOMIZE MULTITURN SCHEDULER:
 
     Step 3: Configure the Arguments
         Run the script with:
-        --plugin /path/to/plugin.py \
+        --external_plugins /path/to/plugin.py \
         --multi_turn_scheduler my_scheduler
 """
 
@@ -893,3 +896,18 @@ class ReToolScheduler(MultiTurnScheduler):
 
 
 multi_turns['retool'] = ReToolScheduler
+
+
+# register GYM env
+class CustomEnv(Env):
+    pass
+
+
+envs['custom_env'] = CustomEnv
+
+
+class CustomCtxManager(ContextManager):
+    pass
+
+
+context_managers['custom_ctx'] = CustomCtxManager

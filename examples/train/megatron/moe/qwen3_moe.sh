@@ -1,17 +1,21 @@
 # ZeRO3: 91.2s/it; 16 * 80GiB
 # Megatron-LM: 9.6s/it; 16 * 60GiB
 # Launch using Alibaba Cloud DLC
+# https://help.aliyun.com/zh/pai/user-guide/general-environment-variables
 # ref: https://github.com/modelscope/ms-swift/blob/main/examples/train/multi-node/dlc/train.sh
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
 megatron sft \
     --load Qwen3-30B-A3B-Base-mcore \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
-    --tensor_model_parallel_size 2 \
+    --split_dataset_ratio 0.01 \
+    --pipeline_model_parallel_size 2 \
     --expert_model_parallel_size 8 \
+    --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
-    --moe_aux_loss_coeff 0.01 \
+    --moe_aux_loss_coeff 1e-3 \
     --micro_batch_size 1 \
     --global_batch_size 16 \
     --packing true \
@@ -33,4 +37,4 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --use_flash_attn true
+    --attention_backend flash

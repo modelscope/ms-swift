@@ -3,8 +3,8 @@ from typing import List, Union
 
 from swift.utils import get_logger
 from ..argument import MegatronRLHFArguments
+from ..trainers import MegatronDPOTrainer
 from .sft import MegatronSft
-from .trainers import MegatronDPOTrainer
 
 logger = get_logger()
 
@@ -12,7 +12,6 @@ logger = get_logger()
 class MegatronRLHF(MegatronSft):
     args_class = MegatronRLHFArguments
     args: args_class
-    trainer_cls = MegatronDPOTrainer
 
     def prepare_trainer(self):
         args = self.args

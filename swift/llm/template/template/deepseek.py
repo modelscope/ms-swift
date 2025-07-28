@@ -13,6 +13,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Prompt, findall
+from .utils import ThinkingTemplate
 
 
 @dataclass
@@ -243,18 +244,8 @@ class DeepseekV2_5TemplateMeta(TemplateMeta):
 
 register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))
 
-
-class DeepseekR1Template(Template):
-
-    def _swift_prepare_messages(self, messages):
-        super()._swift_prepare_messages(messages)
-        for i, message in enumerate(messages):
-            if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:
-                message['content'] = message['content'].split('</think>')[-1].strip()
-
-
 register_template(
-    DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, template_cls=DeepseekR1Template, response_prefix='<think>\n'))
+    DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, template_cls=ThinkingTemplate, response_prefix='<think>\n'))
 
 
 class DeepseekVL2Template(DeepseekVLTemplate):

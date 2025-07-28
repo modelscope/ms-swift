@@ -9,7 +9,7 @@ kwargs = {
 
 
 def test_train_eval_loop():
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0,2'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
     from swift.llm import sft_main, TrainArguments
     sft_main(
         TrainArguments(
@@ -21,8 +21,8 @@ def test_train_eval_loop():
             eval_steps=5,
             per_device_eval_batch_size=5,
             eval_use_evalscope=True,
-            eval_datasets=['gsm8k'],
-            eval_datasets_args={'gsm8k': {
+            eval_dataset=['gsm8k'],
+            eval_dataset_args={'gsm8k': {
                 'few_shot_num': 0
             }},
             eval_limit=10,

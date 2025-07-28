@@ -196,6 +196,8 @@ def run_command(cmd):
 
 
 def install_packages(pkgs):
+    if pkgs is None:
+        return
     cmd = [sys.executable, '-m', 'pip', 'install']
     for pkg in pkgs:
         cmd.append(pkg)

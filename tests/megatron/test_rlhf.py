@@ -9,6 +9,7 @@ def test_dpo():
         MegatronRLHFArguments(
             load='Qwen2.5-3B-Instruct-mcore',
             dataset=['hjh0119/shareAI-Llama3-DPO-zh-en-emoji#10000'],
+            split_dataset_ratio=0.01,
             micro_batch_size=16,
             tensor_model_parallel_size=2,
             eval_interval=5,
@@ -24,6 +25,7 @@ def test_hf():
         RLHFArguments(
             model='Qwen/Qwen2.5-3B-Instruct',
             dataset=['hjh0119/shareAI-Llama3-DPO-zh-en-emoji#1000'],
+            split_dataset_ratio=0.01,
             max_steps=100,
             padding_free=True,
             attn_impl='flash_attn',
