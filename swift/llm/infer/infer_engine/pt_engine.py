@@ -311,10 +311,11 @@ class PtEngine(InferEngine):
     def _infer_forward(self,
                        template: Template,
                        inputs: Dict[str, Any],
-                       adapter_request: Optional[AdapterRequest] = None,
+                       adapter_request: Optional[AdapterRequest],
+                       request_config: RequestConfig,
                        **kwargs):
         call_kwargs = {}
-        top_logprobs = getattr(kwargs.get('generation_config'), 'top_logprobs', None) or 20
+        top_logprobs = request_config.top_logprobs or 20
         adapter_names = self._get_adapter_names(adapter_request)
         if adapter_names is not None:
             call_kwargs['adapter_names'] = adapter_names

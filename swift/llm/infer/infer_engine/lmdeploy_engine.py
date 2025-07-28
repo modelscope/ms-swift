@@ -167,7 +167,6 @@ class LmdeployEngine(InferEngine):
                 kwargs['logprobs'] = max(1, request_config.top_logprobs)
 
         res = LmdeployGenerationConfig(**kwargs)
-        res.top_logprobs = request_config.top_logprobs
         return res
 
     async def _infer_stream_async(
@@ -175,7 +174,7 @@ class LmdeployEngine(InferEngine):
         template: Template,
         inputs: Dict[str, Any],
         generation_config: LmdeployGenerationConfig,
-        **kwargs,
+        request_config: RequestConfig,
     ) -> AsyncIterator[ChatCompletionStreamResponse]:
         session_id = time.time_ns()
         kwargs = {'stream_output': True, 'gen_config': generation_config, 'sequence_start': True, 'sequence_end': True}
@@ -202,7 +201,7 @@ class LmdeployEngine(InferEngine):
                     continue
 
                 logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idx:],
-                                              generation_config.top_logprobs)
+                                              request_config.top_logprobs)
                 token_idx = len(output.token_ids)
 
                 usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
@@ -245,7 +244,7 @@ class LmdeployEngine(InferEngine):
                     pass
 
         response = template.decode(output.token_ids)
-        logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
+        logprobs = self._get_logprobs(output.logprobs, output.token_ids, request_config.top_logprobs)
 
         usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
         toolcall = self._get_toolcall(response, template)
