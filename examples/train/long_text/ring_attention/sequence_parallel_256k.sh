@@ -15,6 +15,7 @@ swift sft \
     --gradient_accumulation_steps 2 \
     --packing true \
     --rope_scaling yarn \
+    --max_model_len 256000 \
     --max_length 256000 \
     --eval_steps 200 \
     --save_steps 200 \

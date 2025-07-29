@@ -404,7 +404,15 @@ class PtEngine(InferEngine):
                         finish_reason=finish_reason,
                         logprobs=logprobs,
                         token_ids=token_ids))
-            res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
+            prompt_token_ids = None
+            if request_config.return_details and 'input_ids' in inputs:
+                non_pad_indices = (inputs['input_ids'][i] != self.tokenizer.pad_token_id).nonzero()
+                if non_pad_indices.numel() > 0:
+                    idx = non_pad_indices.min().item()
+                    prompt_token_ids = inputs['input_ids'][i][idx:].tolist()
+            res.append(
+                ChatCompletionResponse(
+                    model=self.model_name, choices=choices, usage=usage_info, prompt_token_ids=prompt_token_ids))
         return res
 
     async def infer_async(
