@@ -9,7 +9,7 @@ from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import ModelInfo
+from ..utils import ModelInfo, safe_snapshot_download
 
 register_model(
     ModelMeta(
@@ -148,7 +148,8 @@ def get_model_tokenizer_devstral_2505(model_dir: str,
                                       load_model: bool = True,
                                       **kwargs):
     # src: sglang did the same (https://github.com/sgl-project/sglang/pull/6547)
-    tokenizer = AutoTokenizer.from_pretrained('mistralai/Mistral-Small-3.1-24B-Instruct-2503')
+    tokenizer_dir = safe_snapshot_download('mistralai/Mistral-Small-3.1-24B-Instruct-2503', download_model=False)
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
 
     kwargs['tokenizer'] = tokenizer
     model, processor = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
