@@ -894,6 +894,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
 
             if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
+                # Reset prefix cache before sleeping to prevent using stale cache upon waking up
+                # https://github.com/modelscope/ms-swift/pull/5143
+                self.engine.engine.reset_prefix_cache()
                 self.engine.engine.sleep(level=self.args.sleep_level)
                 empty_cache()
 
