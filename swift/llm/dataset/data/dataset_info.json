@@ -722,6 +722,10 @@
         "tags": ["🔥", "distill", "sft"]
     },
     {
+        "ms_dataset_id": "swift/Chinese-Qwen3-235B-Thinking-2507-Distill-data-110k-SFT",
+        "tags": ["🔥", "distill", "sft", "cot", "r1", "thinking"]
+    },
+    {
         "ms_dataset_id": "../data/data_0.1.2_visual_toolbox_v2.parquet",
         "columns": {
             "prompt": "messages"

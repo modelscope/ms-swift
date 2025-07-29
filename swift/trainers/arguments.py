@@ -8,7 +8,7 @@ from typing import List, Literal, Optional, Union
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
-from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, json_parse_to_dict, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, json_parse_to_dict
 from .optimizers.galore import GaLoreConfig
 
 logger = get_logger()
@@ -23,6 +23,7 @@ class TrainArgumentsMixin:
     per_device_train_batch_size: int = 1
     per_device_eval_batch_size: int = 1
     gradient_accumulation_steps: Optional[int] = None
+    tuner_backend: Optional[str] = None
 
     gradient_checkpointing: bool = True
     vit_gradient_checkpointing: Optional[bool] = None
@@ -52,11 +53,6 @@ class TrainArgumentsMixin:
     channels: List[str] = None
     ds3_gather_for_generation: bool = True
     resume_only_model: bool = False
-
-    # torchacc
-    metric_warmup_step: Optional[float] = 0
-    fsdp_num: int = 1
-    acc_steps: int = 1
 
     # train-eval loop args
     eval_use_evalscope: bool = False
@@ -93,8 +89,6 @@ class TrainArgumentsMixin:
 
         if self.optimizer is None and (self.vit_lr is not None or self.aligner_lr is not None):
             self.optimizer = 'multimodal'
-        if use_torchacc():
-            self.dataloader_drop_last = True
         if self.gradient_accumulation_steps is None:
             world_size = get_dist_setting()[2]
             self.gradient_accumulation_steps = max(1, math.ceil(16 / self.per_device_train_batch_size / world_size))
@@ -142,10 +136,6 @@ class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
         if hasattr(self, 'output_dir'):
             self.output_dir = os.path.abspath(os.path.expanduser(self.output_dir))
         super().__post_init__()
-
-    @property
-    def place_model_on_device(self):
-        return False if use_torchacc() else super().place_model_on_device
 
 
 @dataclass

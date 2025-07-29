@@ -186,8 +186,8 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     if args.test_convert_precision:
         test_convert_precision(hf_model, mg_model, template)
     logger.info('Successfully transferred HF model weights to MG model.')
-    mg_save_checkpoint(1, [mg_model], None, None, 0)
     args.save_args()
+    mg_save_checkpoint(1, [mg_model], None, None, 0)
     logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
 
 

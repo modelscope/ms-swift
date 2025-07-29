@@ -17,7 +17,7 @@ from transformers import PreTrainedModel, dynamic_module_utils, trainer
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
 from swift.llm import deep_getattr, to_device, to_float_dtype
-from swift.utils import get_dist_setting, get_logger, is_mp, is_mp_ddp, safe_ddp_context, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_mp, is_mp_ddp, safe_ddp_context
 from swift.utils.torch_utils import _get_max_memory, _sync_max_memory, get_device_count
 from .utils import HfConfigFactory, get_llm_model
 
@@ -325,7 +325,7 @@ def patch_mp_ddp():
         transformers.modeling_utils.get_balanced_memory = lambda *args, **kwargs: {}
         transformers.modeling_utils.infer_auto_device_map = _infer_auto_device_map_patch
 
-    if is_mp_ddp() or use_torchacc():
+    if is_mp_ddp():
         _old_accelerator_init = trainer.Accelerator.__init__
         trainer.Accelerator.__init__ = (lambda self, device_placement=False, *args, **kwargs: _old_accelerator_init(
             self, device_placement=device_placement, *args, **kwargs))
