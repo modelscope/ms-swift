@@ -302,7 +302,7 @@ class EmbeddingResponse:
 class RolloutResponseChoice(ChatCompletionResponseChoice):
     messages: Optional[Messages] = None
     images: Optional[List[str]] = None
-    multi_turn_infos: Dict[str, Any] = None
+    multi_turn_infos: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
