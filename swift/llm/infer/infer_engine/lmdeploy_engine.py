@@ -259,7 +259,9 @@ class LmdeployEngine(InferEngine):
                 logprobs=logprobs,
                 token_ids=token_ids)
         ]
-        return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info)
+        prompt_token_ids = inputs['input_ids'] if request_config.return_details else None
+        return ChatCompletionResponse(
+            model=self.model_name, choices=choices, usage=usage_info, prompt_token_ids=prompt_token_ids)
 
     async def infer_async(self,
                           infer_request: InferRequest,

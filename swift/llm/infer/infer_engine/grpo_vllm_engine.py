@@ -375,6 +375,7 @@ class GRPOVllmEngine(VllmEngine):
                 logprobs=logprobs,
                 token_ids=token_ids,
             )
-
             choices.append(choice)
-        return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
+        prompt_token_ids = result.prompt_token_ids if request_config.return_details else None
+        return ChatCompletionResponse(
+            model=self.model_name, choices=choices, usage=usage_info, id=request_id, prompt_token_ids=prompt_token_ids)

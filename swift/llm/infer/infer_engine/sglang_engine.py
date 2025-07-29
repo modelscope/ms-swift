@@ -142,7 +142,13 @@ class SglangEngine(InferEngine):
             finish_reason=meta_info['finish_reason']['type'],
             logprobs=None,
             token_ids=token_ids)
-        return ChatCompletionResponse(model=self.model_name, choices=[choice], usage=usage_info, id=random_uuid())
+        prompt_token_ids = output.get('prompt_token_ids') if return_details else None
+        return ChatCompletionResponse(
+            model=self.model_name,
+            choices=[choice],
+            usage=usage_info,
+            id=random_uuid(),
+            prompt_token_ids=prompt_token_ids)
 
     def infer(
         self,
@@ -212,6 +218,7 @@ class SglangEngine(InferEngine):
     async def _infer_full_async(self, template: Template, inputs: Dict[str, Any], generation_config: Dict[str, Any],
                                 request_config: RequestConfig) -> ChatCompletionResponse:
         output = await self.engine.async_generate(**inputs, sampling_params=generation_config)
+        output['prompt_token_ids'] = inputs['input_ids']
         return self._create_chat_completion_response(output, template, request_config.return_details)
 
     async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any], generation_config: Dict[str, Any],

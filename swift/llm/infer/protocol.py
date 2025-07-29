@@ -329,6 +329,7 @@ class ChatCompletionResponse:
     id: str = field(default_factory=lambda: f'chatcmpl-{random_uuid()}')
     object: str = 'chat.completion'
     created: int = field(default_factory=lambda: int(time.time()))
+    prompt_token_ids: Optional[List[int]] = None
 
     def to_cmpl_response(self) -> 'CompletionResponse':
         self = deepcopy(self)

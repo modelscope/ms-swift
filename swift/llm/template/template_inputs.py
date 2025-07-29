@@ -190,6 +190,8 @@ class StdTemplateInputs:
             content = message['content']
             if isinstance(content, str):
                 continue
+            elif isinstance(content, list) and content and isinstance(content[0], int):
+                continue
             # List[Dict[str, Any]]
             new_content = ''
             for item in content:
