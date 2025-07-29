@@ -400,7 +400,7 @@ class VisualToolBoxScheduler(MultiTurnScheduler):
         infer_request.messages.append({'role': 'user', 'content': query})
         if cropped_img:
             infer_request.images.append(cropped_img)
-            extra_info['images'] = infer_request.images
+        extra_info['images'] = infer_request.images
         return infer_request, extra_info
 
     def validate_bbox(self, left, top, right, bottom):

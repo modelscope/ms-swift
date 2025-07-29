@@ -797,7 +797,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         index = _input['index']
                         if stop:
                             outputs[index] = (_input['messages'], _input['finish_reason'],
-                                              _input.get('multi_turn_infos', {}))
+                                              _input.get('multi_turn_infos', {'num_turns': 1}))
                         else:
                             current_request = self.inputs_to_rolloutrequest([_input])[0]
                             ret = self.multi_turn_scheduler.step(current_request, result.choices[0], current_turn)

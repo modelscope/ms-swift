@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     from swift.llm.infer.protocol import RolloutResponseChoice
@@ -13,7 +13,7 @@ class MultiTurnScheduler(ABC):
 
     @abstractmethod
     def step(self, infer_request: 'RolloutInferRequest', result: 'RolloutResponseChoice',
-             current_turn: int) -> Union['RolloutInferRequest', Tuple['RolloutInferRequest', dict]]:
+             current_turn: int) -> Union['RolloutInferRequest', Tuple['RolloutInferRequest', Dict]]:
         pass
 
     def check_finished(self, infer_request: 'RolloutInferRequest', result: 'RolloutResponseChoice',
