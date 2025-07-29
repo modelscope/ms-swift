@@ -526,7 +526,7 @@ class SwiftModel(nn.Module):
 
     def save_pretrained(self,
                         save_directory: str,
-                        safe_serialization: bool = False,
+                        safe_serialization: bool = True,
                         adapter_name: Union[str, List[str]] = None,
                         **kwargs):
         """Save the adapters to a local directory.
