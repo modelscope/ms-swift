@@ -894,6 +894,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
 
             if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
+                self.engine.engine.reset_prefix_cache()
                 self.engine.engine.sleep(level=self.args.sleep_level)
                 empty_cache()
 
