@@ -80,7 +80,7 @@ The [DeepEyes implementation example](https://github.com/modelscope/ms-swift/tre
 ```python
 from qwen_vl_utils import fetch_image
 # At this point, images have not yet been preprocessed
-infer_request.images 
+infer_request.images
 # Load as PIL.Image and apply cropping (same as using the MAX_PIXELS environment variable)
 img = fetch_image({'image': load_pil_image(infer_request.images[0])})
 ```
