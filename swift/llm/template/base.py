@@ -86,7 +86,7 @@ class Template(ProcessorMixin):
         from .template_meta import TemplateMeta
         from swift.plugin import agent_templates, loss_scale_map
         self._processor_inited = False
-        self._version = 'v1'  # Avoid compatibility issues caused by load_from_cache_file caching.
+        self._version = 'v2'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
         self.model = None
 
@@ -488,7 +488,8 @@ class Template(ProcessorMixin):
     @torch.inference_mode()
     def encode(self,
                inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
-               return_template_inputs: bool = False) -> Dict[str, Any]:
+               return_template_inputs: bool = False,
+               return_length: bool = False) -> Dict[str, Any]:
         """The entrance method of Template!
 
         Returns:
@@ -537,7 +538,7 @@ class Template(ProcessorMixin):
                     lengths.append(value)
                 elif isinstance(value, (tuple, list)):
                     lengths += value
-        if self.is_training:
+        if return_length:
             encoded['length'] = max(lengths)
         else:
             encoded.pop('length', None)

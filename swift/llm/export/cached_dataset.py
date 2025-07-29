@@ -1,8 +1,12 @@
+import os
+from typing import List, Union
 
-from ..dataset import EncodePreprocessor, IterablePackingDataset, LazyLLMDataset, PackingDataset, load_dataset
 from swift.llm import ExportArguments
 from swift.llm.train import SwiftSft
-from typing import Union, List
+from swift.utils import get_logger
+from ..dataset import EncodePreprocessor, IterablePackingDataset, LazyLLMDataset, PackingDataset, load_dataset
+
+logger = get_logger()
 
 
 class ExportCachedDataset(SwiftSft):
@@ -17,14 +21,15 @@ class ExportCachedDataset(SwiftSft):
         self._prepare_model_tokenizer(load_model=self.template.use_model)
         self.template.init_processor(self.processor)
 
-    def _save_val_dataset(self, val_dataset):
-        pass
-
     def run(self):
         self.args.lazy_tokenize = False
         train_dataset, val_dataset = self._get_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
-        return 
+        self._show_dataset(train_dataset, val_dataset)
+        train_dataset.save_to_disk(os.path.join(self.args.output_dir, 'train'))
+        if val_dataset is not None:
+            val_dataset.save_to_disk(os.path.join(self.args.output_dir, 'val'))
+        logger.info(f'Dataset saved to `{self.args.output_dir}`')
 
 
 def export_cached_dataset(args: Union[List[str], ExportArguments, None] = None):

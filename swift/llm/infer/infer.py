@@ -250,7 +250,8 @@ class SwiftInfer(SwiftPipeline):
             prog_bar.close()
             metrics = self.infer_kwargs.pop('metrics')
             if result_list:
-                print(f'[rank{args.rank}] {metrics[0].compute()}')
+                metric = metrics[0].compute()
+                print(f'[rank{args.rank}] {metric}' if args.rank >= 0 else str(metric))
         if args.metric is not None:
             self._calc_metric()
         return result_list

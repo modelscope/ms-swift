@@ -15,8 +15,6 @@ logger = get_logger()
 @dataclass
 class MegatronTrainArguments(MegatronArguments, BaseArguments):
     add_version: bool = True
-    # dataset
-    lazy_tokenize: bool = False
 
     def init_model_args(self, tokenizer, config):
         self.megatron_model_meta = get_megatron_model_meta(self.model_type)

@@ -4,7 +4,9 @@ from functools import partial
 from typing import List, Union
 
 from datasets import Dataset as HfDataset
+from datasets import load_from_disk
 
+from swift.llm.dataset.loader import DatasetLoader
 from swift.plugin import extra_callbacks, get_loss_func, get_metric
 from swift.trainers import TrainerFactory
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
@@ -25,7 +27,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         super().__init__(args)
         self.train_msg = {}
         args = self.args
-        self.is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
@@ -91,15 +92,55 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             append_to_jsonl(val_dataset_path, val_dataset.to_list())
             logger.info(f'The split dataset from the training set will be saved at: {val_dataset_path}.')
 
+    def _get_cached_dataset(self):
+        args = self.args
+        train_datasets, val_datasets = [], []
+        for cached_dataset in args.cached_dataset:
+            train_path = os.path.join(cached_dataset, 'train')
+            val_path = os.path.join(cached_dataset, 'val')
+            train_datasets.append(load_from_disk(train_path))
+            if os.path.exists(val_path):
+                val_datasets.append(load_from_disk(val_path))
+        return train_datasets, val_datasets
+
     def _prepare_dataset(self):
+        args = self.args
         if args.cached_dataset:
-            train_dataset, val_dataset = self._get_cached_dataset()
+            train_datasets, val_datasets = self._get_cached_dataset()
         else:
+            train_datasets, val_datasets = [], []
+        if args.dataset:
             train_dataset, val_dataset = self._get_dataset()
             train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
-        if not self.is_grpo:
-            self._show_dataset(train_dataset, val_dataset)
-        return train_dataset, val_dataset
+            train_datasets.append(train_dataset)
+            val_datasets.append(val_dataset)
+        train_dataset = DatasetLoader._concat_datasets(train_datasets)
+        val_dataset = DatasetLoader._concat_datasets(val_datasets)
+        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
+        datasets = [train_dataset, val_dataset]
+        if is_grpo:
+            return datasets
+        for i, dataset in enumerate(datasets):
+            if dataset is None:
+                continue
+            if i == 1 and predict_with_generate:
+                # val_dataset
+                continue
+            if lazy_tokenize:
+                dataset = LazyLLMDataset(dataset, template.encode, strict=args.strict, random_state=args.data_seed)
+            elif args.packing:
+                packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
+                dataset = packing_dataset_cls(
+                    template,
+                    dataset,
+                    num_proc=args.dataset_num_proc,
+                    strict=args.strict,
+                    load_from_cache_file=args.load_from_cache_file)
+            elif args.model_meta.is_multimodal:
+                dataset = LazyLLMDataset(dataset, template.encode)
+            datasets[i] = dataset
+        self._show_dataset(*datasets)
+        return datasets
 
     def run(self):
         args = self.args
@@ -215,12 +256,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _stat_dataset(self, dataset: Union[HfDataset, PackingDataset]):
         if isinstance(dataset, HfDataset):
-            # TODO: Temporary fix; awaiting template refactor.
-            try:
-                length = dataset['length']
-            except KeyError:
-                logger.warning_once("The HfDataset is missing the 'length' column, skipping statistics.")
-                return
+            length = dataset['length']
         else:
             length = dataset.dataset['length']
         _, stat_str = stat_array(length)
@@ -249,37 +285,27 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         predict_with_generate = getattr(args, 'predict_with_generate', False)
         datasets = [train_dataset, val_dataset]
-        if not self.is_grpo:
-            origin_template_model = template.model
-            template.model = None  # Avoid serializing the model.
-            lazy_tokenize = args.lazy_tokenize and not args.packing
-            for i, dataset in enumerate(datasets):
-                if dataset is None:
-                    continue
-                if i == 1 and predict_with_generate:
-                    # val_dataset
-                    continue
-                if lazy_tokenize:
-                    dataset = LazyLLMDataset(dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-                elif args.packing:
-                    packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
-                    dataset = packing_dataset_cls(
-                        template,
-                        dataset,
-                        num_proc=args.dataset_num_proc,
-                        strict=args.strict,
-                        load_from_cache_file=args.load_from_cache_file)
-                else:
-                    preprocessor = EncodePreprocessor(template=template)
-                    dataset = preprocessor(
-                        dataset,
-                        num_proc=args.dataset_num_proc,
-                        load_from_cache_file=args.load_from_cache_file,
-                        strict=args.strict)
-                    if args.model_meta.is_multimodal:
-                        dataset = LazyLLMDataset(dataset, template.encode)
-                datasets[i] = dataset
-            template.model = origin_template_model
+        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
+        if is_grpo:
+            return datasets
+
+        origin_template_model = template.model
+        template.model = None  # Avoid serializing the model.
+        for i, dataset in enumerate(datasets):
+            if dataset is None:
+                continue
+            if i == 1 and predict_with_generate:
+                # val_dataset
+                continue
+            if not lazy_tokenize and not args.streaming:
+                preprocessor = EncodePreprocessor(template=template)
+                dataset = preprocessor(
+                    dataset,
+                    num_proc=args.dataset_num_proc,
+                    load_from_cache_file=args.load_from_cache_file,
+                    strict=args.strict)
+            datasets[i] = dataset
+        template.model = origin_template_model
 
         return datasets
 

@@ -146,11 +146,6 @@ class PackingDataset(Dataset):
         self.strict = strict
         self.load_from_cache_file = load_from_cache_file
         self.workers = []
-        preprocessor = EncodePreprocessor(template=template)
-        self.dataset = preprocessor(
-            dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)
-        if template.model_meta.is_multimodal:
-            self.dataset = LazyLLMDataset(self.dataset, encode_func=template.encode)
         self.packed_idx = self.create_packed_idx() if is_master() else None
         if dist.is_initialized() and is_dist():
             obj_list = [self.packed_idx]
@@ -286,7 +281,7 @@ class EncodePreprocessor(RowPreprocessor):
         self.is_multimodal = template.model_meta.is_multimodal
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        encoded = self.template.encode(row)
+        encoded = self.template.encode(row, return_length=True)
         if self.is_multimodal:
             row['length'] = encoded['length']
             encoded = row
