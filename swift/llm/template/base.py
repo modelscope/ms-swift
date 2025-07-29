@@ -548,22 +548,24 @@ class Template(ProcessorMixin):
             encoded['_extra_kwargs'] = extra_kwargs
         return encoded
 
-    def packing_row(self, row: List[Tuple[Dict[str, Any], int]]) -> Dict[str, Any]:
+    def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
         packed = {}
         keys = set()
+        length = []
         for r in row:
-            keys.update(r[0].keys())
+            keys.update(r.keys())
+            length.append(r['length'])
         for key in keys:
             if key in {'input_ids', 'labels', 'loss_scale'}:
-                packed[key] = sum((x[0][key] for x in row), start=[])
+                packed[key] = sum((x[key] for x in row), start=[])
             elif key == 'length':
-                packed[key] = sum((x[0][key] for x in row))
+                packed[key] = sum((x[key] for x in row))
             elif key == 'channel':
-                packed[key] = [x[0][key] for x in row]
+                packed[key] = [x[key] for x in row]
         if 'position_ids' not in packed:
-            packed['position_ids'] = sum((list(range(x[1])) for x in row), start=[])
+            packed['position_ids'] = sum((list(range(x)) for x in length), start=[])
 
-        packed.update(self._data_collator_mm_data([r[0] for r in row]))
+        packed.update(self._data_collator_mm_data(row))
         return packed
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:

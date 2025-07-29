@@ -21,8 +21,7 @@ class ExportCachedDataset(SwiftSft):
         self._prepare_model_tokenizer(load_model=self.template.use_model)
         self.template.init_processor(self.processor)
 
-    def run(self):
-        self.args.lazy_tokenize = False
+    def main(self):
         train_dataset, val_dataset = self._get_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
         self._show_dataset(train_dataset, val_dataset)

@@ -381,10 +381,10 @@ class Qwen2VLTemplate(Template):
                 res[f'{media_type}_grid_thw'] = grid_thw
         return res
 
-    def packing_row(self, row: List[Tuple[Dict[str, Any], int]]) -> Dict[str, Any]:
+    def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
         position_ids = []
         for r in row:
-            r = r[0].copy()
+            r = r.copy()
             r['input_ids'] = torch.tensor(r['input_ids'])[None]
             position_ids.append(self._get_position_ids(r))
         packed = super().packing_row(row)
