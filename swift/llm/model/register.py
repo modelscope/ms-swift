@@ -225,8 +225,11 @@ def get_model_tokenizer_from_local(model_dir: str,
     model_config.torch_dtype = torch_dtype
     HfConfigFactory.compat_zero3(model_config)
     rope_scaling = kwargs.get('rope_scaling')
+    max_model_len = kwargs.get('max_model_len')
     if rope_scaling:
         HfConfigFactory.set_config_attr(model_config, 'rope_scaling', rope_scaling)
+    if max_model_len:
+        HfConfigFactory.set_max_model_len(model_config, max_model_len)
 
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
@@ -588,6 +591,7 @@ def get_model_tokenizer(
         attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
         new_special_tokens: Optional[List[str]] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
+        max_model_len: Optional[int] = None,
         automodel_class=None,
         task_type: Literal['causal_lm', 'seq_cls', 'reranker', 'generative_reranker'] = None,
         num_labels: Optional[int] = None,
@@ -637,6 +641,7 @@ def get_model_tokenizer(
     kwargs['attn_impl'] = attn_impl
     kwargs['rope_scaling'] = rope_scaling
     kwargs['model_meta'] = model_meta
+    kwargs['max_model_len'] = max_model_len
     with patch_get_dynamic_module(), patch_tp_plan(load_model):
         model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 

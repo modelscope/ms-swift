@@ -180,6 +180,26 @@ class HfConfigFactory:
         return max_model_len
 
     @staticmethod
+    def set_max_model_len(config: Union[PretrainedConfig, Dict[str, Any]], value: int):
+        """Set the max length supported by the model"""
+
+        possible_keys = [
+            'seq_length',  # qwen, chatglm
+            'max_position_embeddings',  # qwen1.5, llama2
+            'n_positions',  # polylm, phi-2
+            'model_max_length',  # baichuan2
+            # others
+            'seq_len',
+            'max_seq_len',
+            'max_sequence_length',
+            'max_seq_length',
+        ]
+        for key in possible_keys:
+            max_len_value = HfConfigFactory.get_config_attr(config, key)
+            if max_len_value is not None:
+                HfConfigFactory.set_config_attr(config, key, value)
+
+    @staticmethod
     def compat_zero3(config: PretrainedConfig) -> None:
         value = HfConfigFactory.get_config_attr(config, 'hidden_size')
         try:

@@ -225,6 +225,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'new_special_tokens',
             'num_labels',
             'problem_type',
+            'rope_scaling',
+            'max_model_len',
             # quant_args
             'quant_method',
             'quant_bits',
