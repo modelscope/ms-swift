@@ -62,7 +62,7 @@ if is_swanlab_available():
 
 InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
 # tuple: (messages, finish_reason)
-OutputsType = List[Tuple[List[Dict], str]]
+OutputsType = List[Dict[List[Dict], str]] # TODO: Check
 if not hasattr(RepeatSampler, 'old_len_func'):
     origin_len_func = RepeatSampler.__len__
 
@@ -72,7 +72,16 @@ if not hasattr(RepeatSampler, 'old_len_func'):
     RepeatSampler.__len__ = patched_len
     RepeatSampler.old_len_func = origin_len_func
 
+"""
+Refactor：
+    Rollout 返回结果 message.content -> completion_ids
+        设置 request_config.return_details
+        获取 completion_ids
+        修改template.encode 逻辑：只encode prompt 部分
+        多轮和 loss_scale 可能会比较麻烦
 
+
+"""
 class GRPOCallback(TrainerCallback):
 
     def __init__(self, trainer):
@@ -309,6 +318,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             top_k=args.top_k,
             repetition_penalty=args.repetition_penalty,
             stop=args.stop_words,
+            return_details=True
         )
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
@@ -719,6 +729,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             - List of responses per prompt
             - Each response is a tuple of (message_history, finish_reason)
         """
+        # for external server, pass the system args which may define in trainer
         self._set_inputs_system(inputs)
         # infer first turn
         results: List[ChatCompletionResponse] = self._infer(inputs, request_config, is_global_inputs)
@@ -729,9 +740,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 _choices = []
                 for choice in output.choices:
                     _input: Dict = deepcopy(inputs[i])
+                    # origin messages may contain response, we should remove it
                     InferRequest.remove_response(_input['messages'])
                     _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
-                    _choices.append((_input['messages'], choice.finish_reason))
+                    output_dict = {
+                        'messages': _input['messages'], 
+                        'finish_reason': choice.finish_reason,
+                        'completion_ids': choice.token_ids }
+                    _choices.append(output_dict)
                 outputs.append(_choices)
             outputs = [item for sublist in outputs for item in sublist]
         else:
@@ -742,11 +758,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     _choices = []
                     for choice in output.choices:
                         # concated in Engine
+                        _choice = {
+                            'messages': choice.messages,
+                            'finish_reason': choice.finish_reason,
+                            'completion_ids': choice.token_ids
+                        }
                         if self.use_gym_env:
-                            _choices.append(
-                                (choice.messages, choice.finish_reason, choice.total_reward, choice.trajectory_info))
-                        else:
-                            _choices.append((choice.messages, choice.finish_reason))
+                            _choice.update(
+                                {
+                                    'total_reward': choice.total_reward,
+                                    'trajectory_info': choice.trajectory_info
+                                })
                     outputs.append(_choices)
                 outputs = [item for sublist in outputs for item in sublist]
             else:
@@ -796,7 +818,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     for stop, _input, result in zip(should_stops, current_inputs, results):
                         index = _input['index']
                         if stop:
-                            outputs[index] = (_input['messages'], _input['finish_reason'])
+                            outputs[index] = {
+                                'messages': _input['messages'],
+                                'finish_reason': result.choices[0].finish_reason,
+                                'completion_ids': result.choices[0].token_ids
+                            }
                         else:
                             current_request = self.inputs_to_rolloutrequest([_input])[0]
                             infer_request = self.multi_turn_scheduler.step(current_request, result.choices[0],
@@ -926,15 +952,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     self.model.train()
 
         for i, output in enumerate(outputs):
-            inputs[i]['messages'] = output[0]
-            inputs[i]['is_truncated'] = output[1] == 'length'
+            inputs[i]['messages'] = output['messages']
+            inputs[i]['is_truncated'] = output['finish_reason'] == 'length'
+            inputs[i]['completion_ids'] = output['completion_ids']
             if self.use_gym_env:
-                inputs[i]['total_reward'] = output[2]
-                inputs[i]['trajectory_info'] = output[3]
+                inputs[i]['total_reward'] = output['total_reward']
+                inputs[i]['trajectory_info'] = output['trajectory_info'] if 'trajectory_info' in output else None
 
         return inputs
 
     def _generate_and_score_completions(self, inputs: InputsType) -> InputsType:
+        # resample for overlong(> max_length) prompt data
         if self.template.truncation_strategy == 'raise':
             inputs = self.resample_truncated_inputs(inputs)
 
@@ -1059,7 +1087,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return inputs, rewards, rewards_per_func, completions
 
     def split_by_mini_batches(self, inputs, advantages):
-        # Slice to keep only the local part of the data
         # Slice to keep only the local part of the data
         process_slice = slice(
             self.accelerator.process_index * len(inputs),
