@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     from swift.llm.infer.protocol import RolloutResponseChoice
@@ -13,14 +13,15 @@ class MultiTurnScheduler(ABC):
 
     @abstractmethod
     def step(self, infer_request: 'RolloutInferRequest', result: 'RolloutResponseChoice',
-             current_turn: int) -> 'RolloutInferRequest':
+             current_turn: int) -> Union['RolloutInferRequest', Tuple['RolloutInferRequest', Dict]]:
         pass
 
     def check_finished(self, infer_request: 'RolloutInferRequest', result: 'RolloutResponseChoice',
                        current_turn: int) -> bool:
         if result.finish_reason == 'length':
             return True
-
+        if self.max_turns and current_turn >= self.max_turns:
+            return True
         return False
 
 
@@ -47,7 +48,7 @@ class MathTipsScheduler(MultiTurnScheduler):
         return super().check_finished(infer_request, result, current_turn)
 
     def step(self, infer_request: 'RolloutInferRequest', result: 'RolloutResponseChoice',
-             current_turn: int) -> 'RolloutInferRequest':
+             current_turn: int) -> Union['RolloutInferRequest', Tuple['RolloutInferRequest', dict]]:
         completion = result.message.content
         if '<answer>' in completion:
             completion = completion[:completion.index('<answer>')]
@@ -91,7 +92,7 @@ class MathTipsMultiTurnScheduler(MultiTurnScheduler):
         infer_request: 'RolloutInferRequest',
         result: 'RolloutResponseChoice',
         current_turn: int,
-    ) -> 'RolloutInferRequest':
+    ) -> Union['RolloutInferRequest', Tuple['RolloutInferRequest', dict]]:
         infer_request.messages.append({'role': 'user', 'content': self.tips_prompt})
         return infer_request
 

@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Union
 
+import json
 import torch
 from transformers.utils import is_torch_mps_available
 
@@ -45,9 +46,10 @@ class ModelArguments:
 
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
-    rope_scaling: Literal['linear', 'dynamic', 'yarn'] = None
+    rope_scaling: Optional[str] = None
     device_map: Optional[Union[dict, str]] = None
     max_memory: Optional[Union[dict, str]] = None
+    max_model_len: Optional[int] = None
     # When some model code needs to be downloaded from GitHub,
     # this parameter specifies the path to the locally downloaded repository.
     local_repo_path: Optional[str] = None
@@ -104,19 +106,27 @@ class ModelArguments:
             self.bf16 = bf16
 
     def _init_rope_scaling(self):
-        assert self.max_length is not None, 'Use max_model_len together with rope_scaling'
-        rope_scaling = self.model_info.rope_scaling or {}
         max_model_len = self.model_info.max_model_len
-        rope_scaling_factor = 1.0
-        if max_model_len:
-            rope_scaling_factor = max(float(math.ceil(self.max_length / max_model_len)), 1.0)
-        if rope_scaling:
-            rope_scaling_factor = max(rope_scaling.get('factor', -1), rope_scaling_factor)
-            rope_scaling['type'] = self.rope_scaling
-            rope_scaling['factor'] = rope_scaling_factor
-        else:
-            rope_scaling = {'type': self.rope_scaling, 'factor': rope_scaling_factor}
-        self.rope_scaling = rope_scaling
+        try:
+            if isinstance(self.rope_scaling, str):
+                self.rope_scaling = json.loads(self.rope_scaling)
+                if 'factor' in self.rope_scaling and max_model_len:
+                    self.max_model_len = int(self.rope_scaling['factor'] * max_model_len)
+        except Exception:
+            assert self.max_model_len is not None, 'Use max_model_len together with rope_scaling'
+            assert self.rope_scaling in ['linear', 'dynamic', 'yarn']
+            rope_scaling = self.model_info.rope_scaling or {}
+            rope_scaling_factor = 1.0
+            if max_model_len:
+                rope_scaling_factor = max(float(math.ceil(self.max_model_len / max_model_len)), 1.0)
+            if rope_scaling:
+                rope_scaling_factor = max(rope_scaling.get('factor', -1), rope_scaling_factor)
+                rope_scaling['type'] = self.rope_scaling
+                rope_scaling['factor'] = rope_scaling_factor
+            else:
+                rope_scaling = {'type': self.rope_scaling, 'factor': rope_scaling_factor}
+            self.rope_scaling = rope_scaling
+            self.max_model_len = int(max_model_len * rope_scaling_factor)
         logger.info(f'rope_scaling is set to type: {self.rope_scaling}')
 
     def _init_model_info(self) -> torch.dtype:
@@ -126,7 +136,7 @@ class ModelArguments:
 
         self.model_dir = self.model_info.model_dir
         self.model_type = self.model_info.model_type
-        if isinstance(self.rope_scaling, str):
+        if self.rope_scaling is not None:
             self._init_rope_scaling()
         return self.model_info.torch_dtype
 
@@ -168,6 +178,7 @@ class ModelArguments:
             'attn_impl': self.attn_impl,
             'new_special_tokens': self.new_special_tokens,
             'rope_scaling': self.rope_scaling,
+            'max_model_len': self.max_model_len,
             'task_type': self.task_type,
             'num_labels': self.num_labels,
             'problem_type': self.problem_type,

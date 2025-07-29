@@ -16,6 +16,7 @@ swift sft \
     --packing true \
     --rope_scaling yarn \
     --max_length 512000 \
+    --max_model_len 512000 \
     --eval_steps 200 \
     --save_steps 200 \
     --logging_steps 5 \
