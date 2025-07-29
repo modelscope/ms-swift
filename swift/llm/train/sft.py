@@ -26,7 +26,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def __init__(self, args: Union[List[str], TrainArguments, None] = None) -> None:
         super().__init__(args)
         self.train_msg = {}
-        args = self.args
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
@@ -117,16 +116,18 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         train_dataset = DatasetLoader._concat_datasets(train_datasets)
         val_dataset = DatasetLoader._concat_datasets(val_datasets)
         is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
+        predict_with_generate = getattr(args, 'predict_with_generate', False)
         datasets = [train_dataset, val_dataset]
         if is_grpo:
             return datasets
+        template = self.template
         for i, dataset in enumerate(datasets):
             if dataset is None:
                 continue
             if i == 1 and predict_with_generate:
                 # val_dataset
                 continue
-            if lazy_tokenize:
+            if args.lazy_tokenize:
                 dataset = LazyLLMDataset(dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             elif args.packing:
                 packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
@@ -254,7 +255,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         callbacks += extra_callbacks
         self.callbacks = callbacks
 
-    def _stat_dataset(self, dataset: Union[HfDataset, PackingDataset]):
+    @staticmethod
+    def _stat_dataset(dataset: Union[HfDataset, PackingDataset]):
         if isinstance(dataset, HfDataset):
             length = dataset['length']
         else:
@@ -265,6 +267,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _show_dataset(self, train_dataset, val_dataset):
         args = self.args
+        predict_with_generate = getattr(args, 'predict_with_generate', False)
         if is_master():
             inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
             self.template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
@@ -283,9 +286,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
         self._save_val_dataset(val_dataset)
 
+        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
         predict_with_generate = getattr(args, 'predict_with_generate', False)
         datasets = [train_dataset, val_dataset]
-        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
         if is_grpo:
             return datasets
 
@@ -297,7 +300,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             if i == 1 and predict_with_generate:
                 # val_dataset
                 continue
-            if not lazy_tokenize and not args.streaming:
+            if not args.lazy_tokenize and not args.streaming:
                 preprocessor = EncodePreprocessor(template=template)
                 dataset = preprocessor(
                     dataset,

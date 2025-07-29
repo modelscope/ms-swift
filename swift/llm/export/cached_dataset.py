@@ -1,10 +1,10 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from typing import List, Union
 
 from swift.llm import ExportArguments
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger
-from ..dataset import EncodePreprocessor, IterablePackingDataset, LazyLLMDataset, PackingDataset, load_dataset
 
 logger = get_logger()
 
