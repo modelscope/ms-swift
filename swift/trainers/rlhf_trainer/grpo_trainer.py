@@ -1647,7 +1647,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Calculate required context window
             original_max_len = _self.max_model_len or 8192
             assert isinstance(inputs, dict)
-            prompt_tokens = self._get_num_tokens(inputs)
+            prompt_tokens = _self._get_num_tokens(inputs)
 
             if not hasattr(_self, 'set_grpo_max_model_len'):
                 # set max model len in first round
