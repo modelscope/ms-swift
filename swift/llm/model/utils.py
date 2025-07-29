@@ -195,8 +195,8 @@ class HfConfigFactory:
             'max_seq_length',
         ]
         for key in possible_keys:
-            max_len_key = HfConfigFactory.get_config_attr(config, key)
-            if max_len_key is not None:
+            max_len_value = HfConfigFactory.get_config_attr(config, key)
+            if max_len_value is not None:
                 HfConfigFactory.set_config_attr(config, key, value)
 
     @staticmethod
