@@ -133,10 +133,8 @@ def get_model_tokenizer_mistral_2503(model_dir: str,
     try:
         from transformers import Mistral3ForConditionalGeneration
     except ImportError:
-        raise ImportError(
-            'Please install Mistral3ForConditionalGeneration by running '
-            '`pip install git+https://github.com/huggingface/transformers@v4.49.0-Mistral-3`'
-        )
+        raise ImportError('Please install Mistral3ForConditionalGeneration by running '
+                          '`pip install git+https://github.com/huggingface/transformers@v4.49.0-Mistral-3`')
 
     kwargs['automodel_class'] = kwargs['automodel_class'] or Mistral3ForConditionalGeneration
     model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)

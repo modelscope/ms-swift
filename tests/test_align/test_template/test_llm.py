@@ -593,8 +593,7 @@ def test_devstral():
         '        {{- raise_exception("Only user and assistant roles are supported, with the '
         'exception of an initial optional system message!") }}\n'
         '    {%- endif %}\n'
-        '{%- endfor %}'
-    )
+        '{%- endfor %}')
     # manually set chat_template, as we're using mistral-3.1-24b-instruct-2503 tokenizer which
     # doesn't have the chat_template.json file
     pt_engine.processor.chat_template = chat_template
