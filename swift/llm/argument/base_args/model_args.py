@@ -48,6 +48,7 @@ class ModelArguments:
     rope_scaling: Literal['linear', 'dynamic', 'yarn'] = None
     device_map: Optional[Union[dict, str]] = None
     max_memory: Optional[Union[dict, str]] = None
+    max_model_len: Optional[int] = None
     # When some model code needs to be downloaded from GitHub,
     # this parameter specifies the path to the locally downloaded repository.
     local_repo_path: Optional[str] = None
@@ -104,12 +105,12 @@ class ModelArguments:
             self.bf16 = bf16
 
     def _init_rope_scaling(self):
-        assert self.max_length is not None, 'Use max_model_len together with rope_scaling'
+        assert self.max_model_len is not None, 'Use max_model_len together with rope_scaling'
         rope_scaling = self.model_info.rope_scaling or {}
         max_model_len = self.model_info.max_model_len
         rope_scaling_factor = 1.0
         if max_model_len:
-            rope_scaling_factor = max(float(math.ceil(self.max_length / max_model_len)), 1.0)
+            rope_scaling_factor = max(float(math.ceil(self.max_model_len / max_model_len)), 1.0)
         if rope_scaling:
             rope_scaling_factor = max(rope_scaling.get('factor', -1), rope_scaling_factor)
             rope_scaling['type'] = self.rope_scaling
@@ -168,6 +169,7 @@ class ModelArguments:
             'attn_impl': self.attn_impl,
             'new_special_tokens': self.new_special_tokens,
             'rope_scaling': self.rope_scaling,
+            'max_model_len': self.max_model_len,
             'task_type': self.task_type,
             'num_labels': self.num_labels,
             'problem_type': self.problem_type,
