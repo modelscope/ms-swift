@@ -19,7 +19,6 @@ from .tuner import TunerMixin
 logger = get_logger()
 
 
-
 class SwiftSft(SwiftPipeline, TunerMixin):
     args_class = TrainArguments
     args: args_class

@@ -43,7 +43,6 @@ from ..utils.torch_utils import get_device_count
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
-
 try:
     from trl import AutoModelForCausalLMWithValueHead
 except (ImportError, RuntimeError):
@@ -52,9 +51,9 @@ except (ImportError, RuntimeError):
 logger = get_logger()
 
 
-
 class SwiftMixin:
-    FLASH_CKPT_WAIT_TIMEOUT = 1800  
+    FLASH_CKPT_WAIT_TIMEOUT = 1800
+
     def __init__(self,
                  model: Union[PreTrainedModel, Module] = None,
                  args: TrainingArguments = None,
@@ -473,7 +472,7 @@ class SwiftMixin:
 
         from dlrover.trainer.torch.flash_checkpoint.hf_trainer import HfDdpCheckpointer, HfDeepSpeedCheckpointer
         run_dir = self._get_output_dir(trial=trial)
-        
+
         torch_native_save = torch.save
 
         # Save model checkpoint
