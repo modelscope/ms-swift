@@ -142,7 +142,7 @@ class SglangEngine(InferEngine):
             finish_reason=meta_info['finish_reason']['type'],
             logprobs=None,
             token_ids=token_ids)
-        prompt_token_ids = output['prompt_token_ids']
+        prompt_token_ids = output.get('prompt_token_ids') if return_details else None
         return ChatCompletionResponse(
             model=self.model_name,
             choices=[choice],
