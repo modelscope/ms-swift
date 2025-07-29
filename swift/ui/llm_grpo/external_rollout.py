@@ -3,8 +3,10 @@ import os
 import re
 import sys
 import time
+from copy import deepcopy
 from datetime import datetime
 from functools import partial
+from subprocess import DEVNULL, PIPE, STDOUT, Popen
 from typing import Type
 
 import gradio as gr
@@ -16,6 +18,7 @@ from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 from swift.llm import DeployArguments, RLHFArguments, RolloutArguments
 from swift.ui.base import BaseUI
 from swift.ui.llm_grpo.external_runtime import RolloutRuntime
+from swift.ui.llm_train.llm_train import run_command_in_background_with_popen
 from swift.utils import get_device_count, get_logger
 
 logger = get_logger()
@@ -203,11 +206,14 @@ class LLMRollout(BaseUI):
         assert (len(devices) == 1 or 'cpu' not in devices)
         gpus = ','.join(devices)
         cuda_param = ''
+        all_envs = {}
         if gpus != 'cpu':
             if is_torch_npu_available():
                 cuda_param = f'ASCEND_RT_VISIBLE_DEVICES={gpus}'
+                all_envs['ASCEND_RT_VISIBLE_DEVICES'] = gpus
             elif is_torch_cuda_available():
                 cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
+                all_envs['CUDA_VISIBLE_DEVICES'] = gpus
             else:
                 cuda_param = ''
         output_dir = 'rollout_output'
@@ -226,13 +232,14 @@ class LLMRollout(BaseUI):
             run_command = f'{cuda_param}start /b swift rollout {params} > {log_file} 2>&1'
         else:
             run_command = f'{cuda_param} nohup swift rollout {params} > {log_file} 2>&1 &'
-        return run_command, rollout_args, log_file
+        command = ['swift', 'rollout'] + params.split(' ')
+        return command, all_envs, run_command, rollout_args, log_file
 
     @classmethod
     def rollout_model(cls, *args):
-        run_command, rollout_args, log_file = cls.rollout(*args)
+        command, all_envs, run_command, rollout_args, log_file = cls.rollout(*args)
         logger.info(f'Running rollout command: {run_command}')
-        os.system(run_command)
+        run_command_in_background_with_popen(command, all_envs, log_file)
         gr.Info(cls.locale('load_alert', cls.lang)['value'])
         time.sleep(2)
         running_task = RolloutRuntime.refresh_tasks(log_file)

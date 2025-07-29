@@ -3,8 +3,10 @@ import os
 import re
 import sys
 import time
+from copy import deepcopy
 from datetime import datetime
 from functools import partial
+from subprocess import DEVNULL, PIPE, STDOUT, Popen
 from typing import Type
 
 import gradio as gr
@@ -18,6 +20,7 @@ from swift.ui.base import BaseUI
 from swift.ui.llm_sample.model import Model
 from swift.ui.llm_sample.runtime import SampleRuntime
 from swift.ui.llm_sample.sample import Sample
+from swift.ui.llm_train.utils import run_command_in_background_with_popen
 from swift.utils import get_device_count, get_logger
 
 logger = get_logger()
@@ -219,6 +222,7 @@ class LLMSample(BaseUI):
                 params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
 
         params += more_params_cmd + ' '
+        all_envs = {}
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]
         assert (len(devices) == 1 or 'cpu' not in devices)
@@ -227,8 +231,10 @@ class LLMSample(BaseUI):
         if gpus != 'cpu':
             if is_torch_npu_available():
                 cuda_param = f'ASCEND_RT_VISIBLE_DEVICES={gpus}'
+                all_envs['ASCEND_RT_VISIBLE_DEVICES'] = gpus
             elif is_torch_cuda_available():
                 cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
+                all_envs['CUDA_VISIBLE_DEVICES'] = gpus
             else:
                 cuda_param = ''
         now = datetime.now()
@@ -246,13 +252,14 @@ class LLMSample(BaseUI):
             run_command = f'{cuda_param}start /b swift sample {params} > {log_file} 2>&1'
         else:
             run_command = f'{cuda_param} nohup swift sample {params} > {log_file} 2>&1 &'
-        return run_command, sample_args, log_file
+        command = ['swift', 'sample'] + params.split(' ')
+        return command, all_envs, run_command, sample_args, log_file
 
     @classmethod
     def sample_model(cls, *args):
-        run_command, sample_args, log_file = cls.sample(*args)
+        command, all_envs, run_command, sample_args, log_file = cls.sample(*args)
         logger.info(f'Running sample command: {run_command}')
-        os.system(run_command)
+        run_command_in_background_with_popen(command, all_envs, log_file)
         gr.Info(cls.locale('load_alert', cls.lang)['value'])
         time.sleep(2)
         running_task = SampleRuntime.refresh_tasks(log_file)

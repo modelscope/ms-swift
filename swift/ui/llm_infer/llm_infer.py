@@ -19,6 +19,7 @@ from swift.llm import DeployArguments, InferArguments, InferClient, InferRequest
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
 from swift.ui.llm_infer.runtime import Runtime
+from swift.ui.llm_train.llm_train import run_command_in_background_with_popen
 from swift.utils import get_device_count, get_logger
 
 logger = get_logger()
@@ -244,6 +245,7 @@ class LLMInfer(BaseUI):
         if 'port' not in kwargs:
             params += f'--port "{deploy_args.port}" '
         params += more_params_cmd + ' '
+        all_envs = {}
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]
         assert (len(devices) == 1 or 'cpu' not in devices)
@@ -252,8 +254,10 @@ class LLMInfer(BaseUI):
         if gpus != 'cpu':
             if is_torch_npu_available():
                 cuda_param = f'ASCEND_RT_VISIBLE_DEVICES={gpus}'
+                all_envs['ASCEND_RT_VISIBLE_DEVICES'] = gpus
             elif is_torch_cuda_available():
                 cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
+                all_envs['CUDA_VISIBLE_DEVICES'] = gpus
             else:
                 cuda_param = ''
         now = datetime.now()
@@ -271,15 +275,15 @@ class LLMInfer(BaseUI):
             run_command = f'{cuda_param}start /b swift deploy {params} > {log_file} 2>&1'
         else:
             run_command = f'{cuda_param} nohup swift deploy {params} > {log_file} 2>&1 &'
-        return run_command, deploy_args, log_file
+        command = ['swift', 'deploy'] + params.split(' ')
+        return command, all_envs, run_command, deploy_args, log_file
 
     @classmethod
     def deploy_model(cls, *args):
-        run_command, deploy_args, log_file = cls.deploy(*args)
+        command, all_envs, run_command, deploy_args, log_file = cls.deploy(*args)
         logger.info(f'Running deployment command: {run_command}')
-        os.system(run_command)
+        run_command_in_background_with_popen(command, all_envs, log_file)
         gr.Info(cls.locale('load_alert', cls.lang)['value'])
-        time.sleep(2)
         running_task = Runtime.refresh_tasks(log_file)
         return gr.update(open=True), running_task
 

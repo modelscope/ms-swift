@@ -18,6 +18,7 @@ from swift.ui.base import BaseUI
 from swift.ui.llm_eval.eval import Eval
 from swift.ui.llm_eval.model import Model
 from swift.ui.llm_eval.runtime import EvalRuntime
+from swift.ui.llm_train.llm_train import run_command_in_background_with_popen
 from swift.utils import get_device_count
 
 
@@ -152,6 +153,7 @@ class LLMEval(BaseUI):
             else:
                 params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
         params += more_params_cmd + ' '
+        all_envs = {}
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]
         assert (len(devices) == 1 or 'cpu' not in devices)
@@ -160,8 +162,10 @@ class LLMEval(BaseUI):
         if gpus != 'cpu':
             if is_torch_npu_available():
                 cuda_param = f'ASCEND_RT_VISIBLE_DEVICES={gpus}'
+                all_envs['ASCEND_RT_VISIBLE_DEVICES'] = gpus
             elif is_torch_cuda_available():
                 cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
+                all_envs['CUDA_VISIBLE_DEVICES'] = gpus
             else:
                 cuda_param = ''
         now = datetime.now()
@@ -179,11 +183,11 @@ class LLMEval(BaseUI):
             run_command = f'{cuda_param}start /b swift eval {params} > {log_file} 2>&1'
         else:
             run_command = f'{cuda_param} nohup swift eval {params} > {log_file} 2>&1 &'
-        return run_command, eval_args, log_file
+        command = ['swift', 'deploy'] + params.split(' ')
+        return command, all_envs, run_command, eval_args, log_file
 
     @classmethod
     def eval_model(cls, *args):
-        run_command, eval_args, log_file = cls.eval(*args)
-        os.system(run_command)
-        time.sleep(2)
+        command, all_envs, run_command, eval_args, log_file = cls.eval(*args)
+        run_command_in_background_with_popen(command, all_envs, log_file)
         return gr.update(open=True), EvalRuntime.refresh_tasks(log_file)

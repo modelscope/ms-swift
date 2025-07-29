@@ -2,6 +2,7 @@
 import collections
 import os
 import re
+import subprocess
 import sys
 import time
 import webbrowser
@@ -581,10 +582,14 @@ class Runtime(BaseUI):
             pid, all_args = Runtime.parse_info_from_cmdline(task)
             output_dir = all_args['output_dir']
             if sys.platform == 'win32':
-                os.system(f'taskkill /f /t /pid "{pid}"')
+                command = ['taskkill', '/f', '/t', '/pid', pid]
             else:
-                os.system(f'pkill -9 -f {output_dir}')
-            time.sleep(1)
+                command = ['pkill', '-9', '-f', output_dir]
+            try:
+                result = subprocess.run(command, capture_output=True, text=True)
+                assert result.returncode == 0
+            except Exception as e:
+                raise e
             Runtime.break_log_event(task)
         return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (len(Runtime.get_plot(task)) + 1)
 
