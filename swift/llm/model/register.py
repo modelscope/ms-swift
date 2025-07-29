@@ -140,31 +140,35 @@ def load_by_unsloth(args):
 
     @contextmanager
     def _patch_distributed_function():
-        from unsloth_zoo import utils
+        from unsloth_zoo import utils, compiler
 
         def distributed_function(n=1, function=None, *args, **kwargs):
             return function(*args, **kwargs)
 
         _origin_distributed_function = utils.distributed_function
         utils.distributed_function = distributed_function
+        compiler.distributed_function = distributed_function
         yield
         utils.distributed_function = _origin_distributed_function
+        compiler.distributed_function = _origin_distributed_function
 
     with _patch_distributed_function():
         if model_meta.is_multimodal:
             from unsloth import FastVisionModel as UnslothModel
+        elif model_info.is_moe_model:
+            from unsloth import FastModel as UnslothModel
         else:
             from unsloth import FastLanguageModel as UnslothModel
 
-    model, processor = UnslothModel.from_pretrained(
-        model_name=args.adapters and args.adapters[0] or args.model_dir,
-        dtype=args.torch_dtype,
-        max_seq_length=args.max_length,
-        full_finetuning=args.train_type == 'full',
-        load_in_4bit=args.quant_bits == 4,
-        load_in_8bit=args.quant_bits == 8,
-        device_map=args.device_map,
-    )
+        model, processor = UnslothModel.from_pretrained(
+            model_name=args.adapters and args.adapters[0] or args.model_dir,
+            dtype=args.torch_dtype,
+            max_seq_length=args.max_length,
+            full_finetuning=args.train_type == 'full',
+            load_in_4bit=args.quant_bits == 4,
+            load_in_8bit=args.quant_bits == 8,
+            device_map=args.device_map,
+        )
     if isinstance(model, PeftModel):
         base_model = model.model
     else:
