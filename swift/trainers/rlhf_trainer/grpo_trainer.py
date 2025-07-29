@@ -1643,12 +1643,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         original_fn = self.engine.set_default_max_tokens
         original_max_len = self.engine.max_model_len
 
-        def set_default_max_tokens(_self, request_config: RequestConfig, inputs: InputsType) -> None:
+        def set_default_max_tokens(_self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
             # Calculate required context window
             original_max_len = _self.max_model_len or 8192
-            if isinstance(inputs, dict):
-                inputs = [inputs]
-            prompt_tokens = max(_self._get_num_tokens(inp) for inp in inputs)
+            assert isinstance(inputs, dict)
+            prompt_tokens = _self._get_num_tokens(inputs)
 
             if not hasattr(_self, 'set_grpo_max_model_len'):
                 # set max model len in first round
