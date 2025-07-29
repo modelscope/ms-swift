@@ -1,13 +1,17 @@
-
+# DeepEyes: Incentivizing "Thinking with Images" via Reinforcement Learning
 
 ## 原理介绍
 
+[DeepEyes论文](https://arxiv.org/abs/2505.14362) 提出了一种方法使用强化学习模型学会“think with images”能力，
+论文通过端到端强化学习自发涌现模型能力，无需单独的SFT过程。模型内建图像定位能力，体现在“图像放大工具”的主动调用上：模型在推理过程中自动选取图片具体区域并进行放大、裁剪，将处理后的区域信息与推理过程串联融合，实现视觉与文本的链式思考
+
+![DeepEyes Overview](../../../../resources/deepeyes.png)
 
 ## 最佳实践
 
 **数据集下载与注册**
 
-首先下载训练数据集到本地
+下载 DeepEyes 官方训练数据集到本地
 ```bash
 # modelscope
 modelscope download --dataset Lixiang/ChenShawn-DeepEyes-Datasets-47k
