@@ -202,8 +202,8 @@ class DeepEyesReward(ORM):
 
     def __call__(self, completions, reward_model, extra_info, data_source, **kwargs) -> List[float]:
         # reference: https://github.com/Visual-Agent/DeepEyes/blob/main/verl/utils/reward_score/vl_agent.py
+        # NOTE: reward_model is a column name from the dataset, which contains the ground truth answer
         rewards = []
-
         messages = kwargs.get('messages')
         for completion, solution, info, source, message in zip(completions, reward_model, extra_info, data_source,
                                                                messages):
@@ -225,7 +225,7 @@ class DeepEyesReward(ORM):
         count_think_2 = predict_str.count('</think>')
         if count_think_1 != count_think_2:
             is_format_error = True
-        count_tool_1 = predict_str.count(' <tool_call>.')
+        count_tool_1 = predict_str.count('<tool_call>')
         count_tool_2 = predict_str.count('</tool_call>')
         if count_tool_1 != count_tool_2:
             is_format_error = True

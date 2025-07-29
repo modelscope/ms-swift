@@ -51,7 +51,7 @@ The reward model is called via the plugin's `__call__` method, which takes `inpu
 When using PTEngine in the plugin for reward model inference, you only need to construct messages and call the infer interface:
 
 ```python
-class RMlugin(DefaultRMPlugin):
+class RMPlugin(DefaultRMPlugin):
 
     def __init__(self, model, template):
 

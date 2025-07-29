@@ -85,8 +85,7 @@ class RolloutInferRequest(InferRequest):
     def process_images(self):
         """Convert PIL images to base64 strings."""
         self.images = [
-            Image.Image.convert(image, 'RGB').tobytes() if isinstance(image, Image.Image) else image
-            for image in self.images
+            image.convert('RGB').tobytes() if isinstance(image, Image.Image) else image for image in self.images
         ]
 
 

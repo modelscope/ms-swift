@@ -1,7 +1,7 @@
 # 8 * 80G
 
 # docs: https://swift.readthedocs.io/en/latest/Instruction/GRPO/AdvancedResearch/deepeyes.html
-# Fist: Deploy Qwen2.5-7B-VL-Instruct for verify
+# First: Deploy Qwen2.5-7B-VL-Instruct for verify
 # CUDA_VISIBLE_DEVICES=4,5,6,7 \
 # swift deploy \
 #     --model Qwen/Qwen2.5-7B-VL-Instruct \
