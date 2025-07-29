@@ -158,14 +158,14 @@ def get_model_tokenizer_devstral_2505(model_dir: str,
 
 register_model(
     ModelMeta(
-        model_type='devstral',
+        model_type=LLMModelType.devstral,
         model_groups=[
             ModelGroup([
                 Model('mistralai/Devstral-Small-2505', 'mistralai/Devstral-Small-2505'),
             ],
                        requires=['transformers>=4.43', 'mistral-common>=1.5.5'])
         ],
-        template='devstral',
+        template=TemplateType.devstral,
         get_function=get_model_tokenizer_devstral_2505,
         architectures=['MistralForCausalLM'],
         model_arch=ModelArch.llama))
