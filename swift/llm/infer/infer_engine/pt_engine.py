@@ -410,8 +410,6 @@ class PtEngine(InferEngine):
                 if non_pad_indices.numel() > 0:
                     idx = non_pad_indices.min().item()
                     prompt_token_ids = inputs['input_ids'][i][idx:].tolist()
-                else:
-                    prompt_token_ids = None
             res.append(
                 ChatCompletionResponse(
                     model=self.model_name, choices=choices, usage=usage_info, prompt_token_ids=prompt_token_ids))
