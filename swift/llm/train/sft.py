@@ -17,7 +17,7 @@ from ..infer import prepare_generation_config
 from .tuner import TunerMixin
 
 logger = get_logger()
-FLASH_CKPT_WAIT_TIMEOUT = 1800
+
 
 
 class SwiftSft(SwiftPipeline, TunerMixin):
@@ -160,10 +160,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         logger.info(f'model_parameter_info: {model_parameter_info}')
         if args.use_flash_ckpt:
             try:
-                from dlrover.trainer.torch.flash_checkpoint.hf_trainer import HfDdpCheckpointer, HfDeepSpeedCheckpointer
+                import dlrover.trainer.torch.flash_checkpoint.hf_trainer
             except ImportError:
                 raise ValueError('Please install dlrover to use flash ckpt `pip install dlrover[k8s,torch]')
-            os.environ['FLASH_CKPT'] = 'true'
 
         trainer_cls = TrainerFactory.get_trainer_cls(args)
         trainer = trainer_cls(
@@ -240,8 +239,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             trainer.train(trainer.args.resume_from_checkpoint)
         finally:
             res = self._save_trainer_state(trainer)
-            if os.environ.get('FLASH_CKPT') == 'true':
-                trainer.wait_latest_checkpoint(FLASH_CKPT_WAIT_TIMEOUT)
+            if self.args.use_flash_ckpt:
+                trainer.wait_latest_checkpoint(trainer.FLASH_CKPT_WAIT_TIMEOUT)
 
         return res
 

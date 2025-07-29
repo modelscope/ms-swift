@@ -43,8 +43,6 @@ from ..utils.torch_utils import get_device_count
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
-torch_native_save = torch.save
-torch_native_load = torch.load
 
 try:
     from trl import AutoModelForCausalLMWithValueHead
@@ -52,11 +50,11 @@ except (ImportError, RuntimeError):
     AutoModelForCausalLMWithValueHead = None
 
 logger = get_logger()
-FLASH_CKPT_WAIT_TIMEOUT = 1800
+
 
 
 class SwiftMixin:
-
+    FLASH_CKPT_WAIT_TIMEOUT = 1800  
     def __init__(self,
                  model: Union[PreTrainedModel, Module] = None,
                  args: TrainingArguments = None,
@@ -233,7 +231,7 @@ class SwiftMixin:
         if AutoModelForCausalLMWithValueHead is not None:
             supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead, )
         save_safetensors = self.args.save_safetensors
-        use_flash_attn = os.environ.get('FLASH_CKPT') == 'true'
+        use_flash_attn = self.args.use_flash_ckpt
 
         if not isinstance(self.model, supported_classes) and self.model.__class__.__name__ not in supported_names:
             if state_dict is None:
@@ -463,8 +461,8 @@ class SwiftMixin:
     def _save_checkpoint(self, *args, **kwargs):
         self.state.last_model_checkpoint = os.path.join(self.args.output_dir, f'checkpoint-{self.state.global_step}')
         self._fix_zero3_gather_all_parameters()
-        # result = super()._save_checkpoint(*args, **kwargs)
-        if os.environ.get('FLASH_CKPT') == 'true':
+
+        if self.args.use_flash_ckpt:
             result = self._save_flash_checkpoint(*args, **kwargs)
         else:
             result = super()._save_checkpoint(*args, **kwargs)
@@ -475,6 +473,9 @@ class SwiftMixin:
 
         from dlrover.trainer.torch.flash_checkpoint.hf_trainer import HfDdpCheckpointer, HfDeepSpeedCheckpointer
         run_dir = self._get_output_dir(trial=trial)
+        
+        torch_native_save = torch.save
+
         # Save model checkpoint
         checkpoint_folder = f'{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}'
         output_dir = os.path.join(run_dir, checkpoint_folder)
