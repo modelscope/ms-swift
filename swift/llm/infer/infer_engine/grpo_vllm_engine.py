@@ -268,7 +268,7 @@ class GRPOVllmEngine(VllmEngine):
         """Multi-turn scheduler-based sampling controller."""
         current_request = infer_request
         current_turn = 1
-
+        info_dict = {}
         while True:
             messages = current_request.messages
             if current_turn == 1 or not messages[-1]['content']:
@@ -294,9 +294,21 @@ class GRPOVllmEngine(VllmEngine):
 
             if should_stop:
                 result_choice.messages = messages
+                info_dict['num_turns'] = current_turn
+                for key, value in info_dict.items():
+                    if hasattr(result_choice, key):
+                        setattr(result_choice, key, value)
+                    else:
+                        result_choice.multi_turn_infos[key] = value
+                result_choice.process_images()
                 return result
 
-            current_request = self.multi_turn_scheduler.step(current_request, result_choice, current_turn)
+            ret = self.multi_turn_scheduler.step(current_request, result_choice, current_turn)
+            if isinstance(ret, tuple):
+                current_request, info_dict = ret
+            else:
+                current_request = ret
+                info_dict = {}
             assert isinstance(current_request, RolloutInferRequest)
             if current_request.messages[-1]['role'] == 'assistant':
                 # Add a dummy response to allow engine to continue generating
