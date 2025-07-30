@@ -1,7 +1,7 @@
 # Manually select `target_modules` to avoid 'all-linear' selecting 'gate'
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
-    --model Qwen/Qwen2-57B-A14B-Instruct \
+    --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --train_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
