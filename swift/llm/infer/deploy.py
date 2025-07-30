@@ -36,7 +36,7 @@ class SwiftDeploy(SwiftInfer):
         self.app.post('/v1/completions')(self.create_completion)
         self.app.post('/v1/embeddings')(self.create_embedding)
 
-    def __init__(self, args: Union[List[str], DeployArguments, None] = None) -> None:
+    def __init__(self, args: Optional[Union[List[str], DeployArguments]] = None) -> None:
         super().__init__(args)
 
         self.infer_engine.strict = True
@@ -211,7 +211,7 @@ class SwiftDeploy(SwiftInfer):
             log_level=args.log_level)
 
 
-def deploy_main(args: Union[List[str], DeployArguments, None] = None) -> None:
+def deploy_main(args: Optional[Union[List[str], DeployArguments]] = None) -> None:
     SwiftDeploy(args).main()
 
 

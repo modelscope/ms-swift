@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import List, Union
+from typing import List, Optional, Union
 
 from swift.utils import get_logger
 from ..argument import MegatronRLHFArguments
@@ -26,5 +26,5 @@ class MegatronRLHF(MegatronSft):
         self.template.set_mode('rlhf')
 
 
-def megatron_rlhf_main(args: Union[List[str], MegatronRLHFArguments, None] = None):
+def megatron_rlhf_main(args: Optional[Union[List[str], MegatronRLHFArguments]] = None):
     return MegatronRLHF(args).main()

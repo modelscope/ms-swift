@@ -161,7 +161,8 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                 self.optimizer = 'galore'
 
         if len(self.dataset) == 0 and len(self.cached_dataset) == 0:
-            raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
+            raise ValueError(f'self.dataset: {self.dataset}, self.cached_dataset: {self.cached_dataset}. '
+                             'Please input the training dataset.')
 
         self._handle_pai_compat()
 

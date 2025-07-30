@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from functools import partial
-from typing import List, Union
+from typing import List, Optional, Union
 
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
@@ -20,7 +20,7 @@ class MegatronSft(SwiftSft):
     def prepare_trainer(self):
         return MegatronTrainer(self.args)
 
-    def __init__(self, args: Union[List[str], MegatronTrainArguments, None] = None) -> None:
+    def __init__(self, args: Optional[Union[List[str], MegatronTrainArguments]] = None) -> None:
         self.train_msg = {}
         super(SwiftSft, self).__init__(args)
         args = self.args
@@ -68,5 +68,5 @@ class MegatronSft(SwiftSft):
                 plot_images(images_dir, args.tensorboard_dir)
 
 
-def megatron_sft_main(args: Union[List[str], MegatronTrainArguments, None] = None):
+def megatron_sft_main(args: Optional[Union[List[str], MegatronTrainArguments]] = None):
     return MegatronSft(args).main()

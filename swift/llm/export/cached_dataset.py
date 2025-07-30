@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import List, Union
+from typing import List, Optional, Union
 
 from swift.llm import ExportArguments
 from swift.llm.train import SwiftSft
@@ -13,7 +13,7 @@ class ExportCachedDataset(SwiftSft):
     args_class = ExportArguments
     args: args_class
 
-    def __init__(self, args: Union[List[str], ExportArguments, None] = None) -> None:
+    def __init__(self, args: Optional[Union[List[str], ExportArguments]] = None) -> None:
         super(SwiftSft, self).__init__(args)
         self.train_msg = {}  # dummy
         self.processor = None
@@ -31,5 +31,5 @@ class ExportCachedDataset(SwiftSft):
         logger.info(f'Dataset saved to `{self.args.output_dir}`')
 
 
-def export_cached_dataset(args: Union[List[str], ExportArguments, None] = None):
+def export_cached_dataset(args: Optional[Union[List[str], ExportArguments]] = None):
     return ExportCachedDataset(args).main()

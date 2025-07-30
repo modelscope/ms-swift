@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import List, Union
+from typing import List, Optional, Union
 
 from swift.llm import safe_snapshot_download
 from swift.utils import get_logger, get_model_parameter_info
@@ -179,5 +179,5 @@ class SwiftRLHF(SwiftSft):
         return trainer_kwargs
 
 
-def rlhf_main(args: Union[List[str], RLHFArguments, None] = None):
+def rlhf_main(args: Optional[Union[List[str], RLHFArguments]] = None):
     return SwiftRLHF(args).main()

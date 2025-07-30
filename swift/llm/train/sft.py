@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from functools import partial
-from typing import List, Union
+from typing import List, Optional, Union
 
 from datasets import Dataset as HfDataset
 from datasets import load_from_disk
@@ -23,7 +23,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     args_class = TrainArguments
     args: args_class
 
-    def __init__(self, args: Union[List[str], TrainArguments, None] = None) -> None:
+    def __init__(self, args: Optional[Union[List[str], TrainArguments]] = None) -> None:
         super().__init__(args)
         self.train_msg = {}
         self._prepare_model_tokenizer()
@@ -311,5 +311,5 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         return datasets
 
 
-def sft_main(args: Union[List[str], TrainArguments, None] = None):
+def sft_main(args: Optional[Union[List[str], TrainArguments]] = None):
     return SwiftSft(args).main()

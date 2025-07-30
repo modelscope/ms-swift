@@ -63,7 +63,7 @@ class LazyLLMDataset(Dataset):
                  *,
                  n_try_fetch: int = 10,
                  strict: bool = False,
-                 random_state: Union[np.random.RandomState, int, None] = None,
+                 random_state: Optional[Union[np.random.RandomState, int]] = None,
                  traceback_limit: int = 10) -> None:
         self.dataset = dataset
         self.encode_func = encode_func

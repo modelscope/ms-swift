@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import List, Union
+from typing import List, Optional, Union
 
 from swift.llm import ExportArguments, SwiftPipeline
 from swift.tuners import swift_to_peft_format
@@ -49,5 +49,5 @@ class SwiftExport(SwiftPipeline):
                 commit_message=args.commit_message)
 
 
-def export_main(args: Union[List[str], ExportArguments, None] = None):
+def export_main(args: Optional[Union[List[str], ExportArguments]] = None):
     return SwiftExport(args).main()
