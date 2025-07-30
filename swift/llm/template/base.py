@@ -118,7 +118,7 @@ class Template(ProcessorMixin):
         self.norm_bbox = norm_bbox or self.norm_bbox
         if self.is_encoder_decoder:
             self.skip_prompt = False
-        self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
+        self.mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang',  # infer
                            'train', 'rlhf', 'kto', 'gkd'] = 'pt'  # train
         self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
                                 'generative_reranker'] = 'causal_lm'
@@ -495,7 +495,7 @@ class Template(ProcessorMixin):
         extra_kwargs = {}
         if isinstance(inputs, dict):
             inputs = deepcopy(inputs)
-            if not self.is_training:
+            if self.task_type == 'causal_lm' and not self.is_training:
                 InferRequest.remove_response(inputs['messages'])
             inputs, extra_kwargs = StdTemplateInputs.from_dict(inputs)
         elif isinstance(inputs, StdTemplateInputs):
@@ -504,7 +504,7 @@ class Template(ProcessorMixin):
         self._preprocess_inputs(inputs)
 
         if self.task_type == 'causal_lm':
-            if self.mode in {'pt', 'train', 'vllm', 'lmdeploy'}:
+            if self.mode in {'train', 'pt', 'vllm', 'lmdeploy', 'sglang'}:
                 encoded = self._encode_truncated(inputs)
             elif self.mode == 'rlhf':
                 encoded = self._rlhf_encode(inputs)
@@ -1119,7 +1119,6 @@ class Template(ProcessorMixin):
                 context_list.append('{{RESPONSE}}')
                 # self.is_training needed because we may want to continue generation from
                 # the current response
-                # TODO Refactor me
                 if self.is_training and not sep_token or self.task_type == 'embedding':
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
@@ -1331,9 +1330,9 @@ class Template(ProcessorMixin):
 
     @property
     def is_training(self):
-        return self.mode not in {'vllm', 'lmdeploy', 'sglang', 'pt'}
+        return self.mode not in {'pt', 'vllm', 'lmdeploy', 'sglang'}
 
-    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train', 'rlhf', 'kto', 'gkd']) -> None:
+    def set_mode(self, mode: Literal['pt', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto', 'gkd']) -> None:
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
