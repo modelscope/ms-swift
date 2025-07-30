@@ -54,6 +54,7 @@ class PtEngine(InferEngine):
             # model kwargs
             attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
+            task_type: Optional[str] = None,
             quantization_config=None,
             model_kwargs: Optional[Dict[str, Any]] = None,
             template: Optional[Template] = None,
@@ -70,6 +71,7 @@ class PtEngine(InferEngine):
             device_map=device_map,
             quantization_config=quantization_config,
             attn_impl=attn_impl,
+            task_type=task_type,
             model_kwargs=model_kwargs,
             **kwargs)
         self.max_batch_size = max_batch_size
@@ -509,8 +511,8 @@ class PtEngine(InferEngine):
             return _gen_wrapper()
         else:
             if len(kwargs) > 0:
-                infer_func = self._infer_forward if template.task_type in {'seq_cls', 'prm',
-                                                                           'embedding'} else self._infer_full
+                infer_func = self._infer_forward if template.task_type in {'seq_cls', 'prm', 'embedding'
+                                                                           } else self._infer_full
                 res = infer_func(**kwargs)
             else:
                 res = []

@@ -59,6 +59,7 @@ class VllmEngine(InferEngine):
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         device: str = 'auto',
         seed: Optional[int] = None,
+        task_type: Optional[str] = None,  # embedding
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -69,12 +70,10 @@ class VllmEngine(InferEngine):
         quantization: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
-        task_type: Optional[str] = None,
     ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
         patch_vllm_memory_leak()
-        self.task_type = task_type
         self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -84,7 +83,8 @@ class VllmEngine(InferEngine):
             model_type=model_type,
             use_hf=use_hf,
             hub_token=hub_token,
-            revision=revision)[1]
+            revision=revision,
+            task_type=task_type)[1]
         self._post_init(template)
 
         self._prepare_engine_kwargs(
@@ -147,6 +147,8 @@ class VllmEngine(InferEngine):
         task: Optional[str] = None,
         **engine_kwargs,
     ) -> None:
+        if task == 'embedding':
+            task = 'embed'
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
         if self.use_async_engine:
             engine_cls = AsyncEngineArgs
@@ -282,7 +284,7 @@ class VllmEngine(InferEngine):
                         mm_data = {key.rstrip('s'): media_data[0]}
             if mm_data:
                 llm_inputs['multi_modal_data'] = mm_data
-            if self.task_type == 'embed':
+            if self.task_type == 'embedding':
                 from vllm.pooling_params import PoolingParams
                 return self.engine.encode(llm_inputs, PoolingParams(), request_id)
             elif self.use_async_engine:
@@ -440,7 +442,7 @@ class VllmEngine(InferEngine):
         result = None
         async for result in result_generator:
             pass
-        if self.task_type == 'embed':
+        if self.task_type == 'embedding':
             return self._create_embedding_response(result, template, generation_config, request_id)
         else:
             return self._create_chat_completion_response(result, template, request_config, request_id)

@@ -43,13 +43,13 @@ class SglangEngine(InferEngine):
         context_length: Optional[int] = None,
         disable_cuda_graph: bool = False,
         quantization: Optional[str] = None,
+        task_type: Optional[str] = None,
         kv_cache_dtype: str = 'auto',
         enable_dp_attention: bool = False,
         disable_custom_all_reduce: bool = True,
         log_level='error',
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
-        task_type: Optional[str] = None,
     ):
         if engine_kwargs is None:
             engine_kwargs = {}
@@ -61,7 +61,8 @@ class SglangEngine(InferEngine):
             model_type=model_type,
             use_hf=use_hf,
             hub_token=hub_token,
-            revision=revision)[1]
+            revision=revision,
+            task_type=task_type)[1]
         self._post_init(template)
         if context_length is not None:
             self.max_model_len = context_length

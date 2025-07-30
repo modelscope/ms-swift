@@ -47,6 +47,7 @@ class GRPOVllmEngine(VllmEngine):
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         device: str = 'auto',
         seed: Optional[int] = None,
+        task_type: Optional[str] = None,
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -78,6 +79,7 @@ class GRPOVllmEngine(VllmEngine):
             limit_mm_per_prompt=limit_mm_per_prompt,
             device=device,
             seed=seed,
+            task_type=task_type,
             enable_lora=enable_lora,
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,
