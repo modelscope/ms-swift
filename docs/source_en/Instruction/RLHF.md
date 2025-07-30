@@ -22,12 +22,20 @@ Reference the training script [here](https://github.com/modelscope/ms-swift/tree
 
 Hyperparameters:
 
-- beta: KL regularization coefficient. A larger value imposes a stronger penalty for deviation from the reference model. Default is 0.1.
+- beta: KL regularization coefficient. A larger value imposes a stronger penalty for deviating from the reference model. Default is 0.1.
+- loss_type: Variant of the DPO algorithm. You can find the available options in the [documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer#loss-functions). Default is 'sigmoid'.
+- (Optional) loss_weights: Weights for mixing multiple loss functions.
 
-It is recommended to perform SFT training on the preferred answers from the preference dataset before starting DPO training to ensure the data meets the distribution requirements of the DPO algorithm.
-We also mixed SFT loss into the DPO loss for stable training. You can adjust the coefficient of SFT loss with the hyperparameter `rpo_alpha`, which defaults to `1.`.
+It is recommended to perform SFT training on the preferred responses in your preference dataset before starting DPO training. This helps ensure that the data distribution better matches the requirements of the DPO algorithm.
 
-Reference the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/dpo).
+If you want to mix multiple losses (such as for [MPO](https://arxiv.org/abs/2411.10442) training), you can specify multiple loss_type values and set their weights via loss_weights.
+
+By setting the hyperparameter `rpo_alpha`, you can blend a certain proportion of SFT loss into the total loss to stabilize training. The default value is `1.`, which is equivalent to adding the 'sft' loss_type.
+
+Training script references:
+
+- [DPO script](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/dpo)
+- [MPO script](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/mpo.sh)
 
 ## RM
 [Paper on arXiv](https://arxiv.org/abs/2203.02155)
