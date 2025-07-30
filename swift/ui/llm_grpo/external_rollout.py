@@ -189,18 +189,28 @@ class LLMRollout(BaseUI):
         if rollout_args.port in RolloutRuntime.get_all_ports():
             raise gr.Error(cls.locale('port_alert', cls.lang)['value'])
         params = ''
+        command = ['swift', 'rollout']
         sep = f'{cls.quote} {cls.quote}'
         for e in kwargs:
             if isinstance(kwargs[e], list):
                 params += f'--{e} {cls.quote}{sep.join(kwargs[e])}{cls.quote} '
+                command.extend([f'--{e}', f'{" ".join(kwargs[e])}'])
             elif e in kwargs_is_list and kwargs_is_list[e]:
                 all_args = [arg for arg in kwargs[e].split(' ') if arg.strip()]
                 params += f'--{e} {cls.quote}{sep.join(all_args)}{cls.quote} '
+                command.extend([f'--{e}', f'{" ".join(all_args)}'])
             else:
                 params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
+                command.extend([f'--{e}', f'{kwargs[e]}'])
         if 'port' not in kwargs:
             params += f'--port "{rollout_args.port}" '
-        params += more_params_cmd + ' '
+            command.extend(['--port', f'{rollout_args.port}'])
+        if more_params_cmd != '':
+            params += f'{more_params_cmd.strip()} '
+            more_params_cmd = more_params_cmd.split('--')
+            more_params_cmd = [param.split(' ') for param in more_params_cmd if param]
+            for param in more_params_cmd:
+                command.extend([f'--{param[0]}', ' '.join(param[1:])])
         devices = other_kwargs['rollout_gpu_id']
         devices = [d for d in devices if d]
         assert (len(devices) == 1 or 'cpu' not in devices)
@@ -225,14 +235,15 @@ class LLMRollout(BaseUI):
         log_file = os.path.join(os.getcwd(), f'{file_path}/run_rollout.log')
         rollout_args.log_file = log_file
         params += f'--log_file "{log_file}" '
+        command.extend(['--log_file', f'{log_file}'])
         params += '--ignore_args_error true '
+        command.extend(['--ignore_args_error', 'true'])
         if sys.platform == 'win32':
             if cuda_param:
                 cuda_param = f'set {cuda_param} && '
             run_command = f'{cuda_param}start /b swift rollout {params} > {log_file} 2>&1'
         else:
             run_command = f'{cuda_param} nohup swift rollout {params} > {log_file} 2>&1 &'
-        command = ['swift', 'rollout'] + params.split(' ')
         return command, all_envs, run_command, rollout_args, log_file
 
     @classmethod
