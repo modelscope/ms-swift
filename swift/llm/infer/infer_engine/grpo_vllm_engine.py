@@ -45,7 +45,6 @@ class GRPOVllmEngine(VllmEngine):
         disable_custom_all_reduce: bool = True,
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
-        device: str = 'auto',
         seed: Optional[int] = None,
         # lora
         enable_lora: bool = False,
@@ -76,7 +75,6 @@ class GRPOVllmEngine(VllmEngine):
             disable_custom_all_reduce=disable_custom_all_reduce,
             enforce_eager=enforce_eager,
             limit_mm_per_prompt=limit_mm_per_prompt,
-            device=device,
             seed=seed,
             enable_lora=enable_lora,
             max_loras=max_loras,

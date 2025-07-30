@@ -14,7 +14,7 @@ from transformers.utils import is_torch_npu_available
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
-from swift.utils import get_dist_setting, get_logger, is_dist
+from swift.utils import get_device, get_dist_setting, get_logger, is_dist
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
                         EmbeddingResponseData, RequestConfig, random_uuid)
@@ -57,7 +57,6 @@ class VllmEngine(InferEngine):
         disable_custom_all_reduce: bool = True,
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
-        device: str = 'auto',
         seed: Optional[int] = None,
         # lora
         enable_lora: bool = False,
@@ -101,7 +100,6 @@ class VllmEngine(InferEngine):
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,
             enable_prefix_caching=enable_prefix_caching,
-            device=device,
             seed=seed,
             distributed_executor_backend=distributed_executor_backend,
             enable_sleep_mode=enable_sleep_mode,
@@ -111,7 +109,7 @@ class VllmEngine(InferEngine):
         )
         context = nullcontext()
         if is_torch_npu_available() and (tensor_parallel_size == 1 or pipeline_parallel_size == 1):
-            context = patch_npu_vllm(self.engine_args.device)
+            context = patch_npu_vllm(get_device())
         with context:
             self._prepare_engine()
         self._load_generation_config()
@@ -136,7 +134,6 @@ class VllmEngine(InferEngine):
         disable_custom_all_reduce: bool = True,
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
-        device: str = 'auto',
         seed: Optional[int] = None,
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -193,7 +190,6 @@ class VllmEngine(InferEngine):
             trust_remote_code=True,
             enable_prefix_caching=enable_prefix_caching,
             distributed_executor_backend=distributed_executor_backend,
-            device=device,
             **engine_kwargs,
         )
         self.engine_args = engine_args
