@@ -15,6 +15,7 @@ swift sft \
     --per_device_train_batch_size 64 \
     --per_device_eval_batch_size 64 \
     --gradient_accumulation_steps 1 \
+    --dataset_num_proc 8 \
     --learning_rate 6e-6 \
     --label_names labels \
     --dataloader_drop_last true \

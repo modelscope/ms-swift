@@ -102,16 +102,17 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         pass
 
     def _init_lazy_tokenize(self):
-        if self.streaming and self.lazy_tokenize:
-            self.lazy_tokenize = False
-            logger.warning('Streaming and lazy_tokenize are incompatible. '
-                           f'Setting args.lazy_tokenize: {self.lazy_tokenize}.')
         if self.lazy_tokenize is None:
             if self.model_meta.is_multimodal and not self.streaming and not self.packing:
                 self.lazy_tokenize = True
             else:
                 self.lazy_tokenize = False
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
+        if self.lazy_tokenize:
+            if self.packing:
+                raise ValueError('Packing and lazy_tokenize are incompatible.')
+            if self.streaming:
+                raise ValueError('Streaming and lazy_tokenize are incompatible.')
 
     def _init_custom_register(self) -> None:
         """Register custom .py file to datasets"""
