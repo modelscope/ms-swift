@@ -217,7 +217,10 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
 
     mg_model = megatron_model_meta.model_provider()
-    load_checkpoint([mg_model], None, None, strict=True)
+    if megatron_args.load is None:
+        megatron_model_meta.convert_hf2mcore(hf_model, mg_model)
+    else:
+        load_checkpoint([mg_model], None, None, strict=True)
     if megatron_args.adapter_load is not None:
         peft_model = prepare_mcore_model(mg_model)
         with adapter_state_dict_context():
