@@ -509,8 +509,8 @@ class PtEngine(InferEngine):
             return _gen_wrapper()
         else:
             if len(kwargs) > 0:
-                infer_func = self._infer_forward if template.task_type in ('seq_cls', 'prm',
-                                                                           'embedding') else self._infer_full
+                infer_func = self._infer_forward if template.task_type in {'seq_cls', 'prm',
+                                                                           'embedding'} else self._infer_full
                 res = infer_func(**kwargs)
             else:
                 res = []
