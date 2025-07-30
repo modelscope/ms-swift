@@ -576,6 +576,7 @@ def _get_per_token_logps_and_entropies_grpo(
 
     if padding_size > 0:
         per_token_logps = per_token_logps[:, :-padding_size]
+        entropies = entropies[:, :-padding_size] if entropies is not None else None
     if self.padding_free:
         llm_model = get_llm_model(model)
         output.logits = per_token_logps
@@ -588,8 +589,8 @@ def _get_per_token_logps_and_entropies_grpo(
         delattr(llm_model, '_unpack_output')
         delattr(llm_model, '_pack_input')
         logits_to_keep = _origin_logits_to_keep
-        per_token_logps = per_token_logps[:, -logits_to_keep - 1:-1]
-        if compute_entropy:
-            entropies = entropies[:, -logits_to_keep - 1:-1]
+    per_token_logps = per_token_logps[:, -logits_to_keep - 1:-1]
+    if compute_entropy:
+        entropies = entropies[:, -logits_to_keep - 1:-1]
     # ignore the last token
     return per_token_logps, entropies
