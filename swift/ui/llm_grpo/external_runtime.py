@@ -126,11 +126,11 @@ class RolloutRuntime(Runtime):
             if sys.platform == 'win32':
                 commands.append(['taskkill', '/f', '/t', '/pid', pid])
                 for child in children:
-                    commands.append(['taskkill', '/f', '/t', '/pid', child.pid])
+                    commands.append(['taskkill', '/f', '/t', '/pid', f'{str(child.pid)}'])
             else:
                 commands.append(['pkill', '-9', '-f', log_file])
                 for child in children:
-                    commands.append(['kill', '-9', child.pid])
+                    commands.append(['kill', '-9', f'{str(child.pid)}'])
             for cmd in commands:
                 try:
                     result = subprocess.run(cmd, capture_output=True, text=True)

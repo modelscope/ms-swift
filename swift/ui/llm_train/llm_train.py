@@ -431,8 +431,9 @@ class LLMTrain(BaseUI):
         if use_muon:
             params += f'--optimizer {cls.quote}muon{cls.quote} '
             command.extend(['--optimizer', 'muon'])
+        more_params_cmd = more_params_cmd.strip()
         if more_params_cmd != '':
-            params += f'{more_params_cmd.strip()} '
+            params += f'{more_params_cmd} '
             more_params_cmd = more_params_cmd.split('--')
             more_params_cmd = [param.split(' ') for param in more_params_cmd if param]
             for param in more_params_cmd:
@@ -452,7 +453,7 @@ class LLMTrain(BaseUI):
         if other_kwargs['use_ddp']:
             assert int(other_kwargs['ddp_num']) > 0
             ddp_param = f'NPROC_PER_NODE={int(other_kwargs["ddp_num"])}'
-            all_envs['NPROC_PER_NODE'] = int(other_kwargs['ddp_num'])
+            all_envs['NPROC_PER_NODE'] = str(other_kwargs['ddp_num'])
         assert (len(devices) == 1 or 'cpu' not in devices)
         gpus = ','.join(devices)
         cuda_param = ''
