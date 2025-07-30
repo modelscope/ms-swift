@@ -439,7 +439,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - 🔥rpo_alpha: The weight of sft_loss added to DPO, default is `1`. The final loss is `KL_loss + rpo_alpha * sft_loss`.
 - loss_type: Loss type
   - DPO: Available options can be found in the [documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer#loss-functions). Multiple values can be provided to enable mixed training ([MPO](https://arxiv.org/abs/2411.10442)); when multiple values are given, the loss_weights parameter must also be set. Default is `sigmoid`.
-  - GRPO: See [GRPO parameters](#grpo参数) for reference.
+  - GRPO: See [GRPO parameters](#grpo-arguments) for reference.
 - loss_weights: When setting multiple loss_type values in DPO training, this parameter specifies the weight for each loss component.
 - cpo_alpha: Coefficient for nll loss in CPO/SimPO loss, default is `1.`.
 - simpo_gamma: Reward margin term in the SimPO algorithm, with a paper-suggested setting of 0.5-1.5, default is `1.`.
