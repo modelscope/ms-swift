@@ -57,7 +57,6 @@ class VllmEngine(InferEngine):
         disable_custom_all_reduce: bool = True,
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
-        device: str = 'auto',
         seed: Optional[int] = None,
         # lora
         enable_lora: bool = False,
@@ -101,7 +100,6 @@ class VllmEngine(InferEngine):
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,
             enable_prefix_caching=enable_prefix_caching,
-            device=device,
             seed=seed,
             distributed_executor_backend=distributed_executor_backend,
             enable_sleep_mode=enable_sleep_mode,

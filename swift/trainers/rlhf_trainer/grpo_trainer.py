@@ -500,7 +500,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         max_num_seqs = (
             self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size * self.args.steps_per_generation)
-        current_device = get_device()
         with Swift.grpo_context(model, self.template.processor):
             engine = GRPOVllmEngine(
                 model.model_dir,
@@ -514,7 +513,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 enforce_eager=self.args.vllm_enforce_eager,
                 limit_mm_per_prompt=self.args.vllm_limit_mm_per_prompt,
                 enable_sleep_mode=self.args.sleep_level > 0,
-                device=current_device,
                 max_model_len=self.args.vllm_max_model_len,
                 seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
                 template=self.template,
