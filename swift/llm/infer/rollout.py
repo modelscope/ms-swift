@@ -22,7 +22,7 @@ from trl.scripts.vllm_serve import WeightSyncWorkerExtension
 
 from swift.llm import RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
-from swift.utils import get_device, get_logger
+from swift.utils import get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
 
@@ -65,12 +65,7 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
     os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
     os.environ['VLLM_DP_SIZE'] = str(args.vllm_data_parallel_size)
     os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
-    kwargs = {}
-    if args.vllm_tensor_parallel_size == 1 and args.vllm_data_parallel_size > 1:
-        kwargs['device'] = get_device(str(data_parallel_rank))
-    kwargs['template'] = args.get_template(None)
-    engine = SwiftRolloutDeploy.get_infer_engine(args, **kwargs)
-
+    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(None))
     # Send ready signal to parent process
     connection.send({'status': 'ready'})
 

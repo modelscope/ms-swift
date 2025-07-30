@@ -95,6 +95,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     loss_scale: Optional[str] = None  # 'last_round'
     # DPO
     rpo_alpha: float = 1.
+    loss_type: Optional[List[str]] = None
+    loss_weights: Optional[List[float]] = None
     # CPO
     cpo_alpha: float = 1.
     # SimPO
@@ -117,6 +119,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             training_args['world_size'] = self.global_world_size
 
     def __post_init__(self):
+        self._process_loss_type()
         self._deprecated_warning()
         self._init_grpo()
         self._init_rm()
@@ -152,6 +155,30 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             self.ref_model_revision = self.ref_model_revision or self.model_revision
         elif self.ref_model is not None:
             raise ValueError('CPO/ORPO or LoRA training does not require a ref_model to be passed in.')
+
+    def _process_loss_type(self):
+        if self.loss_type is None:
+            return
+
+        if isinstance(self.loss_type, list):
+            num_loss_types = len(self.loss_type)
+            if num_loss_types > 1:
+                assert self.rlhf_type == 'dpo', (f'Multiple loss types ({self.loss_type}) are only supported for DPO. '
+                                                 f'Current rlhf_type: {self.rlhf_type}.')
+                from trl.trainer.dpo_config import DPOConfig
+                assert 'loss_weights' in DPOConfig.__dict__, (
+                    'Multiple loss types requires trl >= 0.20, please install trl `pip install -U trl`')
+
+        if hasattr(self.loss_type, '__len__') and len(self.loss_type) == 1:
+            self.loss_type = self.loss_type[0]
+
+        # Validate loss_type
+        if self.loss_weights is not None:
+            assert self.rlhf_type == 'dpo'
+            loss_types = self.loss_type if isinstance(self.loss_type, list) else [self.loss_type]
+            if len(self.loss_weights) != len(loss_types):
+                raise ValueError(f'Length of loss_weights list ({self.loss_weights}) must match number of loss types '
+                                 f'({loss_types}).')
 
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
