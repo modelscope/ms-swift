@@ -323,21 +323,27 @@ class PtEngine(InferEngine):
         elif 'last_hidden_state' in output:
             # embeddings
             logits = output['last_hidden_state']
-        if template.mode == 'seq_cls':
+        if template.task_type == 'seq_cls':
             preds, logprobs = template.decode_seq_cls(logits, top_logprobs)
-        elif template.mode == 'prm':
+        elif template.task_type == 'prm':
             preds = template.decode_prm(inputs['input_ids'], logits)
             logprobs = [None] * len(preds)
-        elif template.mode == 'embedding':
+        elif template.task_type == 'embedding':
             preds = logits
             logprobs = [None] * len(preds)
         else:
-            raise ValueError(f'Unsupported mode: {template.mode}')
+            raise ValueError(f'Unsupported task_type: {template.task_type}')
 
         res = []
         for i, pred in enumerate(preds):
             usage_info = self._get_usage_info(num_prompt_tokens, 1)
-            if template.mode != 'embedding':
+            if template.task_type == 'embedding':
+                res.append(
+                    EmbeddingResponse(
+                        model=self.model_name,
+                        usage=usage_info,
+                        data=[EmbeddingResponseData(embedding=pred.to(torch.float32).cpu().numpy().tolist())]))
+            else:
                 choices = [
                     ChatCompletionResponseChoice(
                         index=0,
@@ -346,13 +352,6 @@ class PtEngine(InferEngine):
                         logprobs=logprobs[i])
                 ]
                 res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
-            else:
-                res.append(
-                    EmbeddingResponse(
-                        model=self.model_name,
-                        usage=usage_info,
-                        data=[EmbeddingResponseData(embedding=pred.to(torch.float32).cpu().numpy().tolist())]))
-
         return res
 
     def _infer_full(self, template: Template, inputs: Dict[str, Any], *, generation_config: GenerationConfig,
@@ -510,8 +509,8 @@ class PtEngine(InferEngine):
             return _gen_wrapper()
         else:
             if len(kwargs) > 0:
-                infer_func = self._infer_forward if template.mode in ('seq_cls', 'prm',
-                                                                      'embedding') else self._infer_full
+                infer_func = self._infer_forward if template.task_type in ('seq_cls', 'prm',
+                                                                           'embedding') else self._infer_full
                 res = infer_func(**kwargs)
             else:
                 res = []

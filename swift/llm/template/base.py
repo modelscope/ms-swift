@@ -119,8 +119,9 @@ class Template(ProcessorMixin):
         if self.is_encoder_decoder:
             self.skip_prompt = False
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
-                           'train', 'rlhf', 'kto', 'gkd',  # train
-                           'seq_cls', 'embedding', 'prm'] = 'pt'
+                           'train', 'rlhf', 'kto', 'gkd'] = 'pt'  # train
+        self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
+                                'generative_reranker'] = 'causal_lm'
         self._packing = self.padding_free
         self.use_megatron = False
         self._handles = []
@@ -136,8 +137,7 @@ class Template(ProcessorMixin):
         self.processor = processor
         self.model_info = processor.model_info
         self.config = self.model_info.config
-        if self.model_info.task_type != 'causal_lm':
-            self.mode = self.model_info.task_type
+        self.task_type = self.model_info.task_type
 
         self.model_meta = processor.model_meta
         if self.max_length is None:
@@ -428,15 +428,7 @@ class Template(ProcessorMixin):
             anchor.messages[-1]['content'] = ''
             anchor.rejected_response = []
             split_multi_medias(anchor)
-            infer_backend = getattr(self, 'infer_backend', 'pt')
-            mode = self.mode
-            # infer_backend comes from vllm-engine, sglang-engine, etc.
-            # TODO Refactor me
-            if infer_backend in ('vllm', 'sglang'):
-                self.mode = infer_backend
             _encoded = self._encode_truncated(anchor)
-            if infer_backend in ('vllm', 'sglang'):
-                self.mode = mode
             _encoded.pop('labels', None)
         return _encoded
 
@@ -511,20 +503,24 @@ class Template(ProcessorMixin):
         assert isinstance(inputs, StdTemplateInputs)
         self._preprocess_inputs(inputs)
 
-        if self.mode in {'pt', 'train', 'prm', 'vllm', 'lmdeploy'}:
-            encoded = self._encode_truncated(inputs)
-        elif self.mode == 'seq_cls':
+        if self.task_type == 'causal_lm':
+            if self.mode in {'pt', 'train', 'vllm', 'lmdeploy'}:
+                encoded = self._encode_truncated(inputs)
+            elif self.mode == 'rlhf':
+                encoded = self._rlhf_encode(inputs)
+            elif self.mode == 'kto':
+                encoded = self._kto_encode(inputs)
+            elif self.mode == 'gkd':
+                encoded = self._gkd_encode(inputs)
+        elif self.task_type == 'seq_cls':
             encoded = self._seq_cls_encode(inputs)
-        elif self.mode == 'rlhf':
-            encoded = self._rlhf_encode(inputs)
-        elif self.mode == 'kto':
-            encoded = self._kto_encode(inputs)
-        elif self.mode == 'gkd':
-            encoded = self._gkd_encode(inputs)
-        elif self.mode == 'embedding':
+        elif self.task_type == 'prm':
+            encoded = self._encode_truncated(inputs)
+        elif self.task_type == 'embedding':
             encoded = self._embedding_encode(inputs)
-        elif self.mode in ['reranker', 'generative_reranker']:
+        elif self.task_type in {'reranker', 'generative_reranker'}:
             encoded = self._reranker_encode(inputs)
+
         if inputs.channel is not None:
             encoded['channel'] = inputs.channel
 
@@ -922,7 +918,7 @@ class Template(ProcessorMixin):
                     idx = inputs.bbox_idx
                     c_list = self.replace_bbox(bbox[idx], idx, inputs)
                     inputs.bbox_idx += 1
-                elif context == '<cot-process>' and self.mode == 'prm':
+                elif context == '<cot-process>' and self.task_type == 'prm':
                     c_list = self.replace_cot_process(inputs)
                 else:
                     c_list = [context]
@@ -1124,7 +1120,7 @@ class Template(ProcessorMixin):
                 # self.is_training needed because we may want to continue generation from
                 # the current response
                 # TODO Refactor me
-                if self.is_training and not sep_token or (getattr(self, 'task_type', None) == 'embedding'):
+                if self.is_training and not sep_token or self.task_type == 'embedding':
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
             elif template_meta.response_prefix:
@@ -1210,7 +1206,7 @@ class Template(ProcessorMixin):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         template_backend = self.template_backend
         if (self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training
-                and self.mode != 'seq_cls'):
+                and self.task_type != 'seq_cls'):
             template_backend = 'jinja'
             logger.info_once(f'Setting template_backend: {template_backend}')
         res_context_list, loss_scale_list, answer_len = (
@@ -1337,10 +1333,7 @@ class Template(ProcessorMixin):
     def is_training(self):
         return self.mode not in {'vllm', 'lmdeploy', 'sglang', 'pt'}
 
-    def set_mode(
-        self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto', 'gkd', 'embedding', 'reranker',
-                            'generative_reranker']
-    ) -> None:
+    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train', 'rlhf', 'kto', 'gkd']) -> None:
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -1383,19 +1376,22 @@ class Template(ProcessorMixin):
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         from swift.llm import RowPreprocessor
-        if self.mode == 'rlhf':
-            res = self._rlhf_data_collator(batch, padding_to=padding_to)
-        elif self.mode == 'kto':
-            res = self._kto_data_collator(batch, padding_to=padding_to)
-        elif self.mode == 'gkd':
-            res = self._gkd_data_collator(batch, padding_to=padding_to)
-        elif self.mode in {'pt', 'train', 'prm'}:
+        if self.task_type == 'causal_lm':
+            if self.mode in {'pt', 'train'}:
+                res = self._data_collator(batch, padding_to=padding_to)
+            elif self.mode == 'rlhf':
+                res = self._rlhf_data_collator(batch, padding_to=padding_to)
+            elif self.mode == 'kto':
+                res = self._kto_data_collator(batch, padding_to=padding_to)
+            elif self.mode == 'gkd':
+                res = self._gkd_data_collator(batch, padding_to=padding_to)
+        elif self.task_type == 'prm':
             res = self._data_collator(batch, padding_to=padding_to)
-        elif self.mode == 'seq_cls':
+        elif self.task_type == 'seq_cls':
             res = self._seq_cls_data_collator(batch, padding_to=padding_to)
-        elif self.mode == 'embedding':
+        elif self.task_type == 'embedding':
             res = self._embedding_data_collator(batch, padding_to=padding_to)
-        elif self.mode in ['reranker', 'generative_reranker']:
+        elif self.task_type in {'reranker', 'generative_reranker'}:
             res = self._reranker_data_collator(batch, padding_to=padding_to)
         if not self.remove_unused_columns:
             extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]
@@ -1714,11 +1710,11 @@ class Template(ProcessorMixin):
         ]
 
         # For reranker/embedding modes, also check prefixed keys
-        if self.mode in {'reranker', 'generative_reranker', 'embedding'}:
+        if self.task_type in {'reranker', 'generative_reranker', 'embedding'}:
             prefixes = []
-            if self.mode in {'reranker', 'generative_reranker'}:
+            if self.task_type in {'reranker', 'generative_reranker'}:
                 prefixes = ['positive_', 'negative_']
-            elif self.mode == 'embedding':
+            elif self.task_type == 'embedding':
                 prefixes = ['anchor_', 'positive_', 'negative_']
 
             # Add prefixed keys for reranker/embedding modes
@@ -1746,7 +1742,7 @@ class Template(ProcessorMixin):
 
         for key in keys_to_check:
             # Skip labels completely for certain modes
-            if key.endswith('labels') and self.mode in {'reranker', 'generative_reranker'}:
+            if key.endswith('labels') and self.task_type in {'reranker', 'generative_reranker'}:
                 continue
 
             val = inputs.get(key)  # fix val is a tensor
@@ -1755,7 +1751,7 @@ class Template(ProcessorMixin):
             if val is not None:
                 key_upper = key.upper()
                 logger.info(f'[{key_upper}_IDS] {val}')
-                if key.endswith('labels') and self.mode in {'seq_cls', 'embedding'}:
+                if key.endswith('labels') and self.task_type in {'seq_cls', 'embedding'}:
                     continue
                 if isinstance(val, (list, tuple, torch.Tensor)):
                     # Handle nested lists (e.g., for reranker negative samples)

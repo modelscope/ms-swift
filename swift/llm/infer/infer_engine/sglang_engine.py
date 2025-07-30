@@ -173,11 +173,6 @@ class SglangEngine(InferEngine):
             template = self.default_template
 
         template.set_mode('pt')
-        if self.task_type == 'embedding':
-            # TODO Refactor me
-            template.infer_backend = 'sglang'
-            template.task_type = self.task_type
-            template.set_mode('embedding')
         loop = asyncio.get_running_loop()
         with torch.inference_mode():
             inputs = await loop.run_in_executor(None, template.encode, infer_request)
