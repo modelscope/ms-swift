@@ -7,16 +7,15 @@ import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 
-import peft
 import torch
 from modelscope import Model, Preprocessor
 from modelscope.models.nlp.structbert import SbertConfig, SbertForSequenceClassification
 from peft import PeftModel
-from peft.utils import WEIGHTS_NAME
+from peft.utils import SAFETENSORS_WEIGHTS_NAME
 from torch import nn
 
 from swift import AdapterConfig, LoRAConfig, PromptConfig, ResTuningConfig, SideConfig, Swift, SwiftModel
-from swift.tuners.part import Part, PartConfig
+from swift.tuners.part import PartConfig
 
 
 class TestSwift(unittest.TestCase):
@@ -166,7 +165,7 @@ class TestSwift(unittest.TestCase):
         output1 = model(**input)
         model.save_pretrained(self.tmp_dir)
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'default')))
-        self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'default', WEIGHTS_NAME)))
+        self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'default', SAFETENSORS_WEIGHTS_NAME)))
 
         model2 = Swift.from_pretrained(model2, self.tmp_dir, adapter_name={'default': 'test'})
         self.assertTrue('test' in model2.adapters)
@@ -271,9 +270,9 @@ class TestSwift(unittest.TestCase):
         with open(os.path.join(self.tmp_dir, 'configuration.json'), 'w') as f:
             f.write('{}')
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'lora')))
-        self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'lora', WEIGHTS_NAME)))
+        self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'lora', SAFETENSORS_WEIGHTS_NAME)))
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'adapter')))
-        self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'adapter', WEIGHTS_NAME)))
+        self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'adapter', SAFETENSORS_WEIGHTS_NAME)))
         model2 = Swift.from_pretrained(model2, self.tmp_dir, adapter_name=['lora', 'adapter'])
         state_dict = model.state_dict()
         state_dict2 = model2.state_dict()
@@ -304,7 +303,7 @@ class TestSwift(unittest.TestCase):
         with open(os.path.join(self.tmp_dir, 'configuration.json'), 'w') as f:
             f.write('{}')
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'part')))
-        self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'part', WEIGHTS_NAME)))
+        self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'part', SAFETENSORS_WEIGHTS_NAME)))
         model2 = Swift.from_pretrained(model2, self.tmp_dir, adapter_name=['part'])
         self.assertTrue(
             all(
@@ -538,7 +537,7 @@ class TestSwift(unittest.TestCase):
         self.assertTrue(isinstance(model, SwiftModel))
         model.save_pretrained(self.tmp_dir)
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'default')))
-        self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'default', WEIGHTS_NAME)))
+        self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'default', SAFETENSORS_WEIGHTS_NAME)))
 
         model2 = Swift.from_pretrained(model2, self.tmp_dir)
 

@@ -5,7 +5,7 @@ import unittest
 
 import torch
 from modelscope import AutoModel, Preprocessor
-from peft.utils import WEIGHTS_NAME
+from peft.utils import SAFETENSORS_WEIGHTS_NAME
 from transformers import PreTrainedModel
 
 from swift import LoRAConfig, Swift
@@ -39,7 +39,7 @@ class TestNEFT(unittest.TestCase):
         self.assertTrue(torch.allclose(t1, t3))
         self.assertFalse(torch.allclose(t1, t2))
         model.save_pretrained(self.tmp_dir)
-        bin_file = os.path.join(self.tmp_dir, 'pytorch_model.bin')
+        bin_file = os.path.join(self.tmp_dir, 'model.safetensors')
         self.assertTrue(os.path.isfile(bin_file))
         model2 = AutoModel.from_pretrained(self.tmp_dir)
 
@@ -54,7 +54,7 @@ class TestNEFT(unittest.TestCase):
         PreTrainedModel.origin_save_pretrained = PreTrainedModel.save_pretrained
         delattr(PreTrainedModel, 'save_pretrained')
         model.save_pretrained(self.tmp_dir)
-        bin_file = os.path.join(self.tmp_dir, WEIGHTS_NAME)
+        bin_file = os.path.join(self.tmp_dir, SAFETENSORS_WEIGHTS_NAME)
         self.assertTrue(os.path.isfile(bin_file))
         model_new = AutoModel.from_pretrained('AI-ModelScope/bert-base-uncased')
         model_new_2 = Swift.from_pretrained(model_new, self.tmp_dir)
@@ -83,9 +83,9 @@ class TestNEFT(unittest.TestCase):
         self.assertTrue(torch.allclose(t1, t3))
         self.assertFalse(torch.allclose(t1, t2))
         model.save_pretrained(self.tmp_dir)
-        bin_file = os.path.join(self.tmp_dir, 'c2', WEIGHTS_NAME)
+        bin_file = os.path.join(self.tmp_dir, 'c2', SAFETENSORS_WEIGHTS_NAME)
         self.assertTrue(os.path.isfile(bin_file))
-        bin_file = os.path.join(self.tmp_dir, 'c1', WEIGHTS_NAME)
+        bin_file = os.path.join(self.tmp_dir, 'c1', SAFETENSORS_WEIGHTS_NAME)
         self.assertTrue(not os.path.isfile(bin_file))
         model_new = AutoModel.from_pretrained('AI-ModelScope/bert-base-uncased')
         t1 = model_new.embeddings.word_embeddings(inputs['input_ids'])
