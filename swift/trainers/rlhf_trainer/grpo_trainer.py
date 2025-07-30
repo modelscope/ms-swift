@@ -1494,11 +1494,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if 'logits_to_keep' in self.model_kwarg_keys:
                 inputs['logits_to_keep'] = logits_to_keep + 1
 
-            try:
-                last_hidden_state = unwrapped_model.model(**inputs).last_hidden_state
-            except Exception:
-                outputs = unwrapped_model(**inputs, output_hidden_states=True)
-                last_hidden_state = outputs.hidden_states[-1]
+            last_hidden_state = unwrapped_model.model(**inputs).last_hidden_state
 
         last_hidden_state = last_hidden_state[:, :-1, :]  # (B, L-1, H)
         if logits_to_keep is not None:
