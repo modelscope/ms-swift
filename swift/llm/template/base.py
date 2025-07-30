@@ -572,17 +572,6 @@ class Template(ProcessorMixin):
         return inputs
 
     @staticmethod
-    def _skip_stop_tokens(generate_ids: List[int], stop_tokens: List[int], is_finished: bool) -> List[int]:
-        len_tokens = len(stop_tokens)
-        if is_finished and generate_ids[-len_tokens:] == stop_tokens:
-            return generate_ids[:-len_tokens]
-        if not is_finished:
-            for i in range(len_tokens, 0, -1):
-                if generate_ids[-i:] == stop_tokens[:i]:
-                    return generate_ids[:-i]
-        return generate_ids
-
-    @staticmethod
     def _get_seq_cls_logprobs(pred: int, logprobs: torch.Tensor, top_logprobs: int):
         idxs = logprobs.argsort(descending=True, dim=-1)[:top_logprobs].tolist()
         logprobs = logprobs.tolist()
@@ -644,7 +633,10 @@ class Template(ProcessorMixin):
                first_token=True,
                **kwargs) -> Any:
         tokenizer_kwargs = tokenizer_kwargs or {}
-        response = self._skip_stop_decode(generate_ids, is_finished, **tokenizer_kwargs)
+        if 'spaces_between_special_tokens' not in tokenizer_kwargs:
+            tokenizer_kwargs['spaces_between_special_tokens'] = False
+        generate_ids = self.skip_stop_tokens(generate_ids, is_finished)
+        response = self.tokenizer.decode(generate_ids)
         if first_token and self.template_meta.response_prefix:
             response = self.template_meta.response_prefix + response
         return response
@@ -674,7 +666,7 @@ class Template(ProcessorMixin):
             kwargs['use_model_defaults'] = False
         return model.generate(*args, **kwargs)
 
-    def _skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
+    def skip_stop_tokens(self, generate_ids: List[int], is_finished: bool = True) -> List[int]:
         # Do not print template_meta.suffix[-1] and eos_token.
         # However, other stop_words will be printed.
         tokenizer = self.tokenizer
@@ -686,10 +678,16 @@ class Template(ProcessorMixin):
         if isinstance(template_suffix, str):
             # [-1:]: fix OpenGVLab/Mini-InternVL-Chat-4B-V1-5
             template_suffix = tokenizer.encode(template_suffix, add_special_tokens=False)[-1:]
-        generate_ids = self._skip_stop_tokens(generate_ids, template_suffix, is_finished)
-        if 'spaces_between_special_tokens' not in decode_kwargs:
-            decode_kwargs['spaces_between_special_tokens'] = False
-        return tokenizer.decode(generate_ids, **decode_kwargs)
+
+        len_tokens = len(template_suffix)
+        if is_finished and generate_ids[-len_tokens:] == template_suffix:
+            generate_ids = generate_ids[:-len_tokens]
+        elif not is_finished:
+            for i in range(len_tokens, 0, -1):
+                if generate_ids[-i:] == template_suffix[:i]:
+                    generate_ids = generate_ids[:-i]
+                    break
+        return generate_ids
 
     def prepare_generate_kwargs(self, generate_kwargs: Dict[str, Any], *, model=None) -> Dict[str, Any]:
         generation_config = generate_kwargs['generation_config']
@@ -1567,10 +1565,6 @@ class Template(ProcessorMixin):
             res['labels'] = labels
         return res
 
-    def _data_flatten(self, batch: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        new_batch = [(row, len(row['input_ids'])) for row in batch]
-        return [self.packing_row(new_batch)]
-
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
@@ -1582,7 +1576,7 @@ class Template(ProcessorMixin):
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
         if self.padding_free:
-            batch[:] = self._data_flatten(batch)
+            batch[:] = [self.packing_row(batch)]
         if self._packing:
             assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
         res = {}

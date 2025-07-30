@@ -367,7 +367,7 @@ class GRPOVllmEngine(VllmEngine):
             else:
                 choice_cls = ChatCompletionResponseChoice
 
-            token_ids = output.token_ids if request_config.return_details else None
+            token_ids = template.skip_stop_tokens(output.token_ids) if request_config.return_details else None
             choice = choice_cls(
                 index=output.index,
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
