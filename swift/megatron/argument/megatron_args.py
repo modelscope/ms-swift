@@ -65,6 +65,7 @@ class MegatronTunerMixin:
                     if old_value is not None:
                         setattr(self, key, old_value)
 
+
 @dataclass
 class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     padded_vocab_size: Optional[int] = None
