@@ -408,27 +408,41 @@ class LLMTrain(BaseUI):
         except Exception as e:
             raise e
         params = ''
-
+        command = ['swift', cmd]
         if cls.group == 'llm_grpo' and sys.platform != 'win32':
             params += f'--rlhf_type {cls.quote}grpo{cls.quote} '
+            command.extend(['--rlhf_type', 'grpo'])
 
         sep = f'{cls.quote} {cls.quote}'
         for e in kwargs:
             if isinstance(kwargs[e], list):
                 params += f'--{e} {cls.quote}{sep.join(kwargs[e])}{cls.quote} '
+                command.extend([f'--{e}', f'{" ".join(kwargs[e])}'])
             elif e in kwargs_is_list and kwargs_is_list[e]:
                 all_args = [arg for arg in kwargs[e].split(' ') if arg.strip()]
                 params += f'--{e} {cls.quote}{sep.join(all_args)}{cls.quote} '
+                command.extend([f'--{e}', f'{" ".join(all_args)}'])
             else:
                 params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
+                command.extend([f'--{e}', f'{kwargs[e]}'])
         if use_liger_kernel:
             params += f'--use_liger_kernel {cls.quote}{use_liger_kernel}{cls.quote} '
+            command.extend(['--use_liger_kernel', f'{use_liger_kernel}'])
         if use_muon:
             params += f'--optimizer {cls.quote}muon{cls.quote} '
+            command.extend(['--optimizer', 'muon'])
         if more_params_cmd != '':
             params += f'{more_params_cmd.strip()} '
+            more_params_cmd = more_params_cmd.split('--')
+            more_params_cmd = [param.split(' ') for param in more_params_cmd if param]
+            for param in more_params_cmd:
+                command.extend([f'--{param[0]}', ' '.join(param[1:])])
         params += f'--add_version False --output_dir {sft_args.output_dir} ' \
                   f'--logging_dir {sft_args.logging_dir} --ignore_args_error True'
+        command.extend([
+            '--add_version', 'False', '--output_dir', f'{sft_args.output_dir}', '--logging_dir',
+            f'{sft_args.logging_dir}', '--ignore_args_error', 'True'
+        ])
         all_envs = {}
         ddp_param = ''
         devices = other_kwargs['gpu_id']
@@ -478,7 +492,6 @@ class LLMTrain(BaseUI):
                 if key in default_args or key in ('more_params', 'train_stage', 'use_ddp', 'ddp_num', 'gpu_id', 'envs'):
                     record[key] = value or None
             cls.save_cache(model, record)
-        command = ['swift', cmd] + params.split(' ')
         return command, all_envs, log_file, run_command, sft_args, other_kwargs
 
     @classmethod
