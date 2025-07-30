@@ -13,7 +13,7 @@ from dacite import from_dict
 from packaging import version
 from requests import ConnectionError
 from torch import nn
-from transformers.utils import is_torch_npu_available
+from transformers.utils import is_torch_cuda_available
 
 from swift.llm import AdapterRequest, RolloutInferRequest, Template
 from swift.llm.infer.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, GymRolloutResponseChoice,
@@ -30,7 +30,7 @@ if is_vllm_available():
 
 if is_trl_available():
     import trl
-    trl_verison = trl.__version__
+    trl_verison = version.parse(trl.__version__)
 
 logger = logging.getLogger(__name__)
 
@@ -178,8 +178,8 @@ class VLLMClient:
             rank = vllm_world_size
             kwargs = {}
             if trl_verison >= version.parse('0.20.0'):
-                if is_torch_npu_available():
-                    raise NotImplementedError('NPU is not supported for trl >= 0.20.0' 'Please use trl < 0.20.0')
+                if not is_torch_cuda_available():
+                    raise NotImplementedError('trl >= 0.20.0 only support CUDA deivce. Please use trl < 0.20.0')
                 client_device_uuid = str(torch.cuda.get_device_properties(device).uuid)
                 kwargs['client_device_uuid'] = client_device_uuid
 
