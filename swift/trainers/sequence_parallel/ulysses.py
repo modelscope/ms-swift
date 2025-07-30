@@ -277,11 +277,13 @@ class Ulysses(CommonSequenceParallel):
                 query_states.transpose(1, 2), key_states.transpose(1, 2), value_states.transpose(1, 2), attention_mask,
                 *args, **kwargs), None
 
-        ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'] = ALL_ATTENTION_FUNCTIONS['flash_attention_2']
-        ALL_ATTENTION_FUNCTIONS['sdpa_origin'] = ALL_ATTENTION_FUNCTIONS['sdpa']
-        ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = partial(
-            local_flash_attn, dist_attn=DistributedAttention(None, self.sp_group))
-        ALL_ATTENTION_FUNCTIONS['sdpa'] = partial(local_sdpa_attn, dist_attn=DistributedAttention(None, self.sp_group))
+        if 'flash_attention_2_origin' not in ALL_ATTENTION_FUNCTIONS:
+            ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'] = ALL_ATTENTION_FUNCTIONS['flash_attention_2']
+            ALL_ATTENTION_FUNCTIONS['sdpa_origin'] = ALL_ATTENTION_FUNCTIONS['sdpa']
+            ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = partial(
+                local_flash_attn, dist_attn=DistributedAttention(None, self.sp_group))
+            ALL_ATTENTION_FUNCTIONS['sdpa'] = partial(
+                local_sdpa_attn, dist_attn=DistributedAttention(None, self.sp_group))
 
     def get_dataloader(self, trainer, dataset, batch_size, skip_batches: int = 0):
         return get_common_dataloader(
