@@ -242,7 +242,8 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
 - cross_entropy_fusion_impl: Implementation of cross-entropy loss fusion. Options include 'native' and 'te'. Defaults to 'native'.
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padded tokens in the global batch. Default is True.
   - Note: The default is False in RLHF.
-- 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Defaults to auto.
+- 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Defaults to flash.
+  - Note: Currently, only `--attention_backend flash` is supported (the default is `padding_free`), and this is also the fastest option.
 - optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
 - 🔥optimizer_cpu_offload: Offloads the optimizer state to CPU. Default is `False`.
 - optimizer_offload_fraction: The fraction of the optimizer state to offload to CPU. Default is `1.0`.

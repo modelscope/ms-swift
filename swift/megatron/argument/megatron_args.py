@@ -109,7 +109,7 @@ class MegatronArguments(ExtraMegatronArguments):
     cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
     calculate_per_token_loss: bool = True
     use_flash_attn: bool = False
-    attention_backend: str = 'auto'  # flash, fused, unfused, local, auto
+    attention_backend: str = 'flash'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
     optimizer_cpu_offload: bool = False
     optimizer_offload_fraction: float = 1.
