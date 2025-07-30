@@ -39,7 +39,7 @@ class TestNEFT(unittest.TestCase):
         self.assertTrue(torch.allclose(t1, t3))
         self.assertFalse(torch.allclose(t1, t2))
         model.save_pretrained(self.tmp_dir)
-        bin_file = os.path.join(self.tmp_dir, 'pytorch_model.bin')
+        bin_file = os.path.join(self.tmp_dir, 'model.safetensors')
         self.assertTrue(os.path.isfile(bin_file))
         model2 = AutoModel.from_pretrained(self.tmp_dir)
 
