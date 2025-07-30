@@ -47,9 +47,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             if loss_type == 'kto_pair':
                 raise ValueError('Support for kto_pair has been removed in DPOTrainer. Please use KTOTrainer.')
 
-        if 'bco_pair' in loss_types:
-            self.running = RunningMoments(self.accelerator)
-
         self.precompute_ref_log_probs = args.precompute_ref_log_probs
         self.f_divergence_type = args.f_divergence_type
         self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: args.f_alpha_divergence_coef}
@@ -60,6 +57,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         self.use_weighting = False
 
         super().__init__(model, ref_model, *_args, **kwargs)
+
+        if 'bco_pair' in loss_types:
+            self.running = RunningMoments(self.accelerator)
 
     def concatenated_forward(
         self,
