@@ -38,7 +38,7 @@ from swift.llm.template.base import MaxLengthError
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import multi_turns, orms, rm_plugins
 from swift.plugin.multi_turn import MultiTurnScheduler
-from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_device, get_logger, is_swanlab_available,
+from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_logger, is_swanlab_available,
                          is_vllm_available, is_wandb_available, seed_worker, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
