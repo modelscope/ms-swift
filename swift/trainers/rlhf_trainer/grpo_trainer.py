@@ -746,8 +746,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     output_dict = {
                         'messages': _input['messages'], 
                         'finish_reason': choice.finish_reason,
-                        'completion_ids': choice.token_ids,
-                        'prompt_ids': choice.prompt_ids,}
+                        'completion_ids': choice.token_ids}
                     _choices.append(output_dict)
                 outputs.append(_choices)
             outputs = [item for sublist in outputs for item in sublist]
@@ -763,7 +762,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             'messages': choice.messages,
                             'finish_reason': choice.finish_reason,
                             'completion_ids': choice.token_ids,
-                            'prompt_ids': choice.prompt_ids,
                         }
                         if self.use_gym_env:
                             _choice.update(
@@ -824,7 +822,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                 'messages': _input['messages'],
                                 'finish_reason': result.choices[0].finish_reason,
                                 'completion_ids': result.choices[0].token_ids,
-                                'prompt_ids': result.choices[0].prompt_ids,
                             }
                         else:
                             current_request = self.inputs_to_rolloutrequest([_input])[0]
@@ -953,32 +950,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     # In training mode, ensure the model is returned to train() mode after inference
                     # This is necessary as pt engines set the model to eval mode during generation
                     self.model.train()
-        device = self.accelerator.device
-
-        prompt_ids_list = [input['prompt_ids'] for input in inputs]
-        prompt_ids = [torch.tensor(ids, device=device) for ids in prompt_ids_list]
-        completion_ids_list = [output['completion_ids'] for output in outputs]
-        completion_ids = [torch.tensor(ids, device=device) for ids in completion_ids]
-        prompt_completion_ids = torch.cat([prompt_ids, completion_ids], dim=1)
-        prompt_completion_ids = pad(prompt_completion_ids, padding_value=self.pad_token_id, padding_side="right")
-        for i, _input in enumerate(inputs):
-            _input['prompt_ids'] = prompt_ids[i]
-            _input['completion_ids'] = completion_ids[i]
-            _input['prompt_completion_ids'] = prompt_completion_ids[i]
-
-        if completion_mask not in inputs[0]:
-            is_eos = completion_ids == self.eos_token_id
-            eos_idx = torch.full((is_eos.size(0),), is_eos.size(1), dtype=torch.long, device=device)
-            eos_idx[is_eos.any(dim=1)] = is_eos.int().argmax(dim=1)[is_eos.any(dim=1)]
-            sequence_indices = torch.arange(is_eos.size(1), device=device).expand(is_eos.size(0), -1)
-            completion_mask = (sequence_indices <= eos_idx.unsqueeze(1)).int()
 
         for i, output in enumerate(outputs):
             inputs[i]['messages'] = output['messages']
             inputs[i]['is_truncated'] = output['finish_reason'] == 'length'
             inputs[i]['completion_ids'] = output['completion_ids']
-            inputs[i]['prompt_ids'] = output['prompt_ids']
-            inputs[i]['prompt_completion_ids'] = output['prompt_completion_ids']
             if self.use_gym_env:
                 inputs[i]['total_reward'] = output['total_reward']
                 inputs[i]['trajectory_info'] = output['trajectory_info'] if 'trajectory_info' in output else None
