@@ -98,6 +98,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             size_completion = loss_mask.sum(dim=-1)
             per_token_logps = per_token_logps / size_completion
 
+        if 'bco_pair' in loss_types:
+            self.running = RunningMoments(self.accelerator)
+
         output = {}
         if self.template.padding_free:
             cu_seqlens = self.get_cu_seqlens(position_ids, batch.get('logits_to_keep'))
