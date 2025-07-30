@@ -562,18 +562,19 @@ class Runtime(BaseUI):
         for i in range(len(args)):
             space = args[i].find(' ')
             splits = args[i][:space], args[i][space + 1:]
-            all_args[splits[0]] = splits[1]
+            all_args[splits[0]] = str(splits[1]) if isinstance(splits[1], int) else splits[1]
 
         output_dir = all_args['output_dir']
         if os.path.exists(os.path.join(output_dir, 'args.json')):
             with open(os.path.join(output_dir, 'args.json'), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
             for key in all_args.keys():
-                all_args[key] = _json.get(key)
+                all_args[key] = str(_json.get(key)) if isinstance(_json.get(key), int) else _json.get(key)
                 if isinstance(all_args[key], list):
-                    if any([' ' in value for value in all_args[key]]):
+                    if any([' ' in value for value in all_args[key] if isinstance(value, str)]):
                         all_args[key] = [f'"{value}"' for value in all_args[key]]
-                    all_args[key] = ' '.join(all_args[key])
+                    if len(all_args[key]) > 0 and isinstance(all_args[key][0], str):
+                        all_args[key] = ' '.join(all_args[key])
         return pid, all_args
 
     @staticmethod
