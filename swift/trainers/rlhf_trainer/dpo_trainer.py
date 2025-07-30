@@ -7,7 +7,7 @@ from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.dpo_config import DPOConfig
-from trl.trainer.utils import selective_log_softmax
+from trl.trainer.utils import RunningMoments, selective_log_softmax
 
 from swift.utils import get_logger
 from ..mixin import DataLoaderMixin, SwiftMixin
@@ -40,11 +40,15 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                     and args.label_smoothing > 0):
                 warnings.warn(
                     f'You are using the {loss_type} loss type that does not support label smoothing. The '
-                    '`label_smoothing` parameter will be ignored. Set `label_smoothing` to `0.0` to remove this warning.',
+                    '`label_smoothing` parameter will be ignored. '
+                    'Set `label_smoothing` to `0.0` to remove this warning.',
                     UserWarning,
                 )
             if loss_type == 'kto_pair':
                 raise ValueError('Support for kto_pair has been removed in DPOTrainer. Please use KTOTrainer.')
+
+        if 'bco_pair' in loss_types:
+            self.running = RunningMoments(self.accelerator)
 
         self.precompute_ref_log_probs = args.precompute_ref_log_probs
         self.f_divergence_type = args.f_divergence_type
@@ -97,9 +101,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         if 'ipo' in loss_types:
             size_completion = loss_mask.sum(dim=-1)
             per_token_logps = per_token_logps / size_completion
-
-        if 'bco_pair' in loss_types:
-            self.running = RunningMoments(self.accelerator)
 
         output = {}
         if self.template.padding_free:
