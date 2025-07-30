@@ -94,7 +94,7 @@ class LazyLLMDataset(Dataset):
                 self._idx = (self._idx + 1) % len(self.dataset)
             data = self.dataset[i]
             try:
-                return self.encode_func(data)
+                return self.encode_func(data, return_length=True)
             except Exception:
                 if n_try == self.n_try_fetch - 1 or self.strict:
                     if self.strict:
@@ -146,7 +146,7 @@ class PackingDataset(Dataset):
         self.strict = strict
         self.load_from_cache_file = load_from_cache_file
         self.workers = []
-        self.packed_idx, self.packed_length = self.create_packed_idx() if is_master() else None
+        self.packed_idx, self.packed_length = self.create_packed_idx() if is_master() else (None, None)
         if dist.is_initialized() and is_dist():
             obj_list = [(self.packed_idx, self.packed_length)]
             dist.broadcast_object_list(obj_list)

@@ -1153,6 +1153,26 @@ class Template(ProcessorMixin):
             answer_len = 0
         return res_context_list, loss_scale_list, answer_len
 
+    def _truncate(self, input_ids: List[int], labels: Optional[List[int]], loss_mask: Optional[List[float]],
+                  truncation_strategy: Literal['left', 'right']):
+        placeholder_tokens = torch.tensor(self.placeholder_tokens)
+        input_ids_tensor = torch.tensor(input_ids)
+        protected = (input_ids_tensor[:, None] == placeholder_tokens).any(dim=-1)
+        n_protected = protected.sum().item()
+        if n_protected < self.max_length:
+            non_protected = (~protected).nonzero(as_tuple=True)[0]
+            if truncation_strategy == 'left':
+                idx = non_protected[-(self.max_length - n_protected):]
+            else:
+                idx = non_protected[:self.max_length - n_protected]
+            protected[idx] = True
+        input_ids = input_ids_tensor[protected].tolist()
+        if labels is not None:
+            labels = torch.tensor(labels)[protected].tolist()
+        if loss_mask is not None:
+            loss_mask = torch.tensor(loss_mask)[protected].tolist()
+        return input_ids, labels, loss_mask
+
     def _encode_truncated(self, inputs: StdTemplateInputs):
         if inputs.is_multimodal:
             self._add_default_tags(inputs)
@@ -1177,30 +1197,13 @@ class Template(ProcessorMixin):
         length = max(lengths)
         encoded['length'] = length
 
-        if self.max_length is not None:
-            if self.truncation_strategy == 'right':
-                input_ids = input_ids[:self.max_length]
-                if labels is not None:
-                    labels = labels[:self.max_length]
-                if loss_scale is not None:
-                    loss_scale = loss_scale[:self.max_length]
-            elif self.truncation_strategy == 'left':
-                if len(input_ids) > self.max_length:
-                    logger.warning_once(
-                        'Input data was left-truncated because its length exceeds `max_length` (input length: '
-                        f'{len(input_ids)}, max_length: {self.max_length}). '
-                        'This may cause loss of important tokens (e.g., image tokens) and lead to errors. '
-                        'To avoid this, consider increasing `max_length` or pre-filtering long sequences.',
-                        hash_id='max_length_check')
-                input_ids = input_ids[-self.max_length:]
-                if labels is not None:
-                    labels = labels[-self.max_length:]
-                if loss_scale is not None:
-                    loss_scale = loss_scale[-self.max_length:]
+        if self.max_length is not None and length > self.max_length:
+            if self.truncation_strategy in {'right', 'left'}:
+                input_ids, labels, loss_scale = self._truncate(
+                    input_ids, labels, loss_scale, truncation_strategy=self.truncation_strategy)
             elif self.truncation_strategy == 'raise':
-                if length > self.max_length:
-                    raise MaxLengthError(f'Current length of row({length}) is larger'
-                                         f' than the max_length({self.max_length}).')
+                raise MaxLengthError(f'Current length of row({length}) is larger'
+                                     f' than the max_length({self.max_length}).')
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
