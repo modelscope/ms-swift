@@ -13,6 +13,11 @@ swift rlhf \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset AI-MO/NuminaMath-TIR#10000 \
     --torch_dtype bfloat16 \
+    --beta 0.0 \
+    --epsilon 3e-4 \
+    --epsilon_high 4e-4 \
+    --steps_per_generation 4 \
+    --importance_sampling_level sequence \
     --num_train_epochs 1 \
     --per_device_train_batch_size 2 \
     --gradient_accumulation_steps 8 \
@@ -34,4 +39,4 @@ swift rlhf \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --deepspeed zero3 \
-    --log_completions true \
+    --log_completions true
