@@ -864,23 +864,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _fast_infer(self, inputs: InputsType) -> Tuple[InputsType, OutputsType]:
         # Skip the first wake_up to avoid the warning "Executor is not sleeping"
 
-        if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
-            if self.engine.inner_model_executor.is_sleeping:
-                # First, load weights only, https://github.com/vllm-project/vllm/pull/15500
-                if 'tags' in inspect.signature(self.engine.engine.wake_up).parameters:
-                    self.engine.engine.wake_up(tags=['weights'])
-                else:
-                    logger.info('We recommend installing vLLM >= 0.8.3, (ideally 0.8.5.post1)'
-                                'to help reduce memory peaks during engine wake-up.')
-                    self.engine.engine.wake_up()
-
-        # First, have main process load weights if needed
-        if self.state.global_step != self._last_loaded_step:
-            self._move_model_to_vllm()
-            self._last_loaded_step = self.state.global_step
-
         context = self.offload_context(non_blocking=False) if self.enable_offload else nullcontext()
         with context:
+            if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
+                if self.engine.inner_model_executor.is_sleeping:
+                    # First, load weights only, https://github.com/vllm-project/vllm/pull/15500
+                    if 'tags' in inspect.signature(self.engine.engine.wake_up).parameters:
+                        self.engine.engine.wake_up(tags=['weights'])
+                    else:
+                        self.engine.engine.wake_up()
+
+            # First, have main process load weights if needed
+            if self.state.global_step != self._last_loaded_step:
+                self._move_model_to_vllm()
+                self._last_loaded_step = self.state.global_step
+
             if self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping and \
                     'tags' in inspect.signature(self.engine.engine.wake_up).parameters:
                 # Load the kv_cache only after updating and offload the weights.
