@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import subprocess
 import sys
 import time
 from typing import Dict, List, Tuple, Type
@@ -121,14 +122,20 @@ class RolloutRuntime(Runtime):
             log_file = all_args['log_file']
             parent_process = psutil.Process(int(pid))
             children = parent_process.children(recursive=True)
+            commands = []
             if sys.platform == 'win32':
-                os.system(f'taskkill /f /t /pid "{pid}"')
+                commands.append(['taskkill', '/f', '/t', '/pid', pid])
                 for child in children:
-                    os.system(f'taskkill /f /t /pid "{child.pid}"')
+                    commands.append(['taskkill', '/f', '/t', '/pid', f'{str(child.pid)}'])
             else:
-                os.system(f'pkill -9 -f {log_file}')
+                commands.append(['pkill', '-9', '-f', log_file])
                 for child in children:
-                    os.system(f'kill -9 {child.pid}')
-            time.sleep(1)
+                    commands.append(['kill', '-9', f'{str(child.pid)}'])
+            for cmd in commands:
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    assert result.returncode == 0
+                except Exception as e:
+                    raise e
             cls.break_log_event(task)
         return [cls.refresh_tasks()] + [gr.update(value=None)]
