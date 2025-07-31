@@ -879,8 +879,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self._move_model_to_vllm()
             self._last_loaded_step = self.state.global_step
 
-        context = self.offload_context if self.enable_offload else nullcontext
-        with context():
+        context = self.offload_context(non_blocking=False) if self.enable_offload else nullcontext()
+        with context:
             if self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping and \
                     'tags' in inspect.signature(self.engine.engine.wake_up).parameters:
                 # Load the kv_cache only after updating and offload the weights.
@@ -1607,18 +1607,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return self.train_queue
 
     @torch.no_grad()
-    def offload_model(self, model):
+    def offload_model(self, model, non_blocking=True):
         for param in model.parameters():
-            param.data = param.data.to(torch.device('cpu'), non_blocking=True)
+            param.data = param.data.to(torch.device('cpu'), non_blocking=non_blocking)
 
     @torch.no_grad()
-    def load_model(self, model):
+    def load_model(self, model, non_blocking=True):
         device = get_current_device()
         for param in model.parameters():
-            param.data = param.data.to(device, non_blocking=True)
+            param.data = param.data.to(device, non_blocking=non_blocking)
 
     @torch.no_grad()
-    def offload_optimizer(self):
+    def offload_optimizer(self, non_blocking=True):
         if not self.optimizer.state:
             return
         for param_group in self.optimizer.param_groups:
@@ -1626,10 +1626,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 state = self.optimizer.state[param]
                 for key, value in state.items():
                     if isinstance(value, torch.Tensor):
-                        state[key] = value.to('cpu', non_blocking=True)
+                        state[key] = value.to('cpu', non_blocking=non_blocking)
 
     @torch.no_grad()
-    def load_optimizer(self):
+    def load_optimizer(self, non_blocking=True):
         device = get_current_device()
         if not self.optimizer.state:
             return
@@ -1638,7 +1638,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 state = self.optimizer.state[param]
                 for key, value in state.items():
                     if isinstance(value, torch.Tensor):
-                        state[key] = value.to(device, non_blocking=True)
+                        state[key] = value.to(device, non_blocking=non_blocking)
 
     @contextmanager
     def multi_turn_completion_length_context(self):
@@ -1799,23 +1799,30 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return infer_requests
 
     @contextmanager
-    def offload_context(self):
+    def offload_context(self, non_blocking: bool = False):
+        offload_start = time.perf_counter()
         if self.args.offload_model:
-            self.offload_model(self.accelerator.unwrap_model(self.model))
+            self.offload_model(self.accelerator.unwrap_model(self.model), non_blocking=non_blocking)
             if self.ref_model:
-                self.offload_model(self.ref_model)
+                self.offload_model(self.ref_model, non_blocking=non_blocking)
         if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
-            self.offload_optimizer()
+            self.offload_optimizer(non_blocking=non_blocking)
         empty_cache()
-
+        offload_elapsed = time.perf_counter() - offload_start
+        if self.accelerator.is_main_process:
+            logger.info(f'Offloaded model/optimizer in {offload_elapsed:.6f} seconds.')
         try:
             yield
         finally:
+            load_start = time.perf_counter()
             # reload (load back) model when exiting context
             if self.args.offload_model:
-                self.load_model(self.accelerator.unwrap_model(self.model))
+                self.load_model(self.accelerator.unwrap_model(self.model), non_blocking=non_blocking)
                 if self.ref_model:
-                    self.load_model(self.ref_model)
+                    self.load_model(self.ref_model, non_blocking=non_blocking)
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
-                self.load_optimizer()
+                self.load_optimizer(non_blocking=non_blocking)
             empty_cache()
+            load_elapsed = time.perf_counter() - load_start
+            if self.accelerator.is_main_process:
+                logger.info(f'Loaded model/optimizer in {load_elapsed:.6f} seconds.')
