@@ -69,6 +69,7 @@ class MegatronTunerMixin:
                     if self.load is None and old_value is not None:
                         self.load = old_value
 
+
 @dataclass
 class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     padded_vocab_size: Optional[int] = None
