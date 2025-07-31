@@ -64,7 +64,10 @@ class MegatronTunerMixin:
                     old_value = old_args.get(key)
                     if old_value is not None:
                         setattr(self, key, old_value)
-
+                if self.adapter_load is not None and hasattr(self, 'load'):
+                    old_value = old_args.get('load')
+                    if self.load is None and old_value is not None:
+                        self.load = old_value
 
 @dataclass
 class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
@@ -109,7 +112,7 @@ class MegatronArguments(ExtraMegatronArguments):
     cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
     calculate_per_token_loss: bool = True
     use_flash_attn: bool = False
-    attention_backend: str = 'flash'  # flash, fused, unfused, local, auto
+    attention_backend: str = 'auto'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
     optimizer_cpu_offload: bool = False
     optimizer_offload_fraction: float = 1.
