@@ -1,9 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import List, Union
+from typing import List, Optional, Union
 
 from swift.llm import ExportArguments, SwiftPipeline
 from swift.tuners import swift_to_peft_format
 from swift.utils import get_logger
+from .cached_dataset import export_cached_dataset
 from .merge_lora import merge_lora
 from .ollama import export_to_ollama
 from .quant import quantize_model
@@ -29,6 +30,8 @@ class SwiftExport(SwiftPipeline):
             quantize_model(args)
         elif args.to_ollama:
             export_to_ollama(args)
+        elif args.to_cached_dataset:
+            export_cached_dataset(args)
         elif args.to_mcore:
             from swift.megatron import convert_hf2mcore
             convert_hf2mcore(args)
@@ -46,5 +49,5 @@ class SwiftExport(SwiftPipeline):
                 commit_message=args.commit_message)
 
 
-def export_main(args: Union[List[str], ExportArguments, None] = None):
+def export_main(args: Optional[Union[List[str], ExportArguments]] = None):
     return SwiftExport(args).main()

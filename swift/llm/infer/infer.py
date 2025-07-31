@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from datasets import Dataset as HfDataset
@@ -19,7 +19,7 @@ class SwiftInfer(SwiftPipeline):
     args_class = InferArguments
     args: args_class
 
-    def __init__(self, args: Union[List[str], InferArguments, None] = None) -> None:
+    def __init__(self, args: Optional[Union[List[str], InferArguments]] = None) -> None:
         from swift.llm import merge_lora
         super().__init__(args)
         args = self.args
@@ -250,7 +250,8 @@ class SwiftInfer(SwiftPipeline):
             prog_bar.close()
             metrics = self.infer_kwargs.pop('metrics')
             if result_list:
-                print(f'[rank{args.rank}] {metrics[0].compute()}')
+                metric = metrics[0].compute()
+                print(f'[rank{args.rank}] {metric}' if args.rank >= 0 else str(metric))
         if args.metric is not None:
             self._calc_metric()
         return result_list
@@ -286,5 +287,5 @@ class SwiftInfer(SwiftPipeline):
         return result_list
 
 
-def infer_main(args: Union[List[str], InferArguments, None] = None):
+def infer_main(args: Optional[Union[List[str], InferArguments]] = None):
     return SwiftInfer(args).main()

@@ -2,7 +2,7 @@
 import os
 import shutil
 import time
-from typing import List, Union
+from typing import List, Optional, Union
 
 import json
 
@@ -16,7 +16,7 @@ class SwiftSampling(SwiftPipeline):
     args_class = SamplingArguments
     args: args_class
 
-    def __init__(self, args: Union[List[str], SamplingArguments, None] = None) -> None:
+    def __init__(self, args: Optional[Union[List[str], SamplingArguments]] = None) -> None:
         super().__init__(args)
         self.args.save_args()
         os.makedirs(self.args.output_dir, exist_ok=True)
@@ -102,5 +102,5 @@ class SwiftSampling(SwiftPipeline):
         logger.info(f'Sample file {iter_file} generated.')
 
 
-def sampling_main(args: Union[List[str], SamplingArguments, None] = None):
+def sampling_main(args: Optional[Union[List[str], SamplingArguments]] = None):
     return SwiftSampling(args).main()

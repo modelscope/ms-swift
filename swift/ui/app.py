@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from functools import partial
-from typing import List, Union
+from typing import List, Optional, Union
 
 import gradio as gr
 from packaging import version
@@ -110,5 +110,5 @@ class SwiftWebUI(SwiftPipeline):
         app.queue(**concurrent).launch(server_name=server, inbrowser=True, server_port=port, height=800, share=share)
 
 
-def webui_main(args: Union[List[str], WebUIArguments, None] = None):
+def webui_main(args: Optional[Union[List[str], WebUIArguments]] = None):
     return SwiftWebUI(args).main()

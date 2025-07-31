@@ -109,8 +109,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     Args:
         add_version (bool): Flag to add version information to output_dir. Default is True.
         loss_type (Optional[str]): Type of loss function to use. Default is None.
-        packing (bool): Flag to enable packing of datasets. Default is False.
-        lazy_tokenize (Optional[bool]): Flag to enable lazy tokenization. Default is None.
         max_new_tokens (int): Maximum number of new tokens to generate. Default is 64.
         temperature (float): Temperature for sampling. Default is 0.
         optimizer (Optional[str]): Optimizer type to use, define it in the plugin package. Default is None.
@@ -118,7 +116,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     """
     add_version: bool = True
     create_checkpoint_symlink: bool = False
-    lazy_tokenize: Optional[bool] = None
 
     # plugin
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
@@ -134,15 +131,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
 
     # auto_tp
     deepspeed_autotp_size: Optional[int] = None
-
-    def _init_lazy_tokenize(self):
-        if self.streaming and self.lazy_tokenize:
-            self.lazy_tokenize = False
-            logger.warning('Streaming and lazy_tokenize are incompatible. '
-                           f'Setting args.lazy_tokenize: {self.lazy_tokenize}.')
-        if self.lazy_tokenize is None:
-            self.lazy_tokenize = self.model_meta.is_multimodal and not self.streaming
-            logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
 
     def __post_init__(self) -> None:
         if self.padding_free or self.packing:
@@ -172,14 +160,14 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
             elif self.use_galore:
                 self.optimizer = 'galore'
 
-        if len(self.dataset) == 0:
-            raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
+        if len(self.dataset) == 0 and len(self.cached_dataset) == 0:
+            raise ValueError(f'self.dataset: {self.dataset}, self.cached_dataset: {self.cached_dataset}. '
+                             'Please input the training dataset.')
 
         self._handle_pai_compat()
 
         self._init_deepspeed()
         self._init_device()
-        self._init_lazy_tokenize()
 
         if getattr(self, 'accelerator_config', None) is None:
             self.accelerator_config = {'dispatch_batches': False}

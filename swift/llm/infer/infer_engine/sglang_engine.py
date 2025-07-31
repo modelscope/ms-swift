@@ -43,13 +43,13 @@ class SglangEngine(InferEngine):
         context_length: Optional[int] = None,
         disable_cuda_graph: bool = False,
         quantization: Optional[str] = None,
+        task_type: Optional[str] = None,
         kv_cache_dtype: str = 'auto',
         enable_dp_attention: bool = False,
         disable_custom_all_reduce: bool = True,
         log_level='error',
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
-        task_type: Optional[str] = None,
     ):
         if engine_kwargs is None:
             engine_kwargs = {}
@@ -61,7 +61,8 @@ class SglangEngine(InferEngine):
             model_type=model_type,
             use_hf=use_hf,
             hub_token=hub_token,
-            revision=revision)[1]
+            revision=revision,
+            task_type=task_type)[1]
         self._post_init(template)
         if context_length is not None:
             self.max_model_len = context_length
@@ -135,7 +136,7 @@ class SglangEngine(InferEngine):
         if template.template_meta.response_prefix:
             response = template.template_meta.response_prefix + response
         toolcall = self._get_toolcall(response, template)
-        token_ids = output['output_ids'] if return_details else None
+        token_ids = template.skip_stop_tokens(output['output_ids']) if return_details else None
         choice = ChatCompletionResponseChoice(
             index=0,
             message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
@@ -172,12 +173,7 @@ class SglangEngine(InferEngine):
         if template is None:
             template = self.default_template
 
-        template.set_mode('pt')
-        if self.task_type == 'embedding':
-            # TODO Refactor me
-            template.infer_backend = 'sglang'
-            template.task_type = self.task_type
-            template.set_mode('embedding')
+        template.set_mode('sglang')
         loop = asyncio.get_running_loop()
         with torch.inference_mode():
             inputs = await loop.run_in_executor(None, template.encode, infer_request)

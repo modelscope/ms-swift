@@ -1,5 +1,7 @@
 # bf16: 4 * 56GiB; 17.5s/it
 # fp8: 4 * 58GiB; 12.5s/it
+# If you encounter a cuBLAS error, please install transformer_engine using the method below.
+# pip install --no-build-isolation git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.5#egg=transformer_engine[pytorch]
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \

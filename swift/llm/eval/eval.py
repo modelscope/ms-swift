@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from contextlib import nullcontext
-from typing import List, Union
+from typing import List, Optional, Union
 
 from evalscope.constants import EvalBackend, EvalType
 from evalscope.run import TaskConfig, run_task
@@ -152,5 +152,5 @@ class SwiftEval(SwiftPipeline):
             work_dir=work_dir)
 
 
-def eval_main(args: Union[List[str], EvalArguments, None] = None):
+def eval_main(args: Optional[Union[List[str], EvalArguments]] = None):
     return SwiftEval(args).main()

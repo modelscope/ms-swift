@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import nullcontext
-from typing import List, Union
+from typing import List, Optional, Union
 
 import gradio
 from packaging import version
@@ -40,5 +40,5 @@ class SwiftApp(SwiftPipeline):
                 server_name=args.server_name, server_port=args.server_port, share=args.share)
 
 
-def app_main(args: Union[List[str], AppArguments, None] = None):
+def app_main(args: Optional[Union[List[str], AppArguments]] = None):
     return SwiftApp(args).main()
