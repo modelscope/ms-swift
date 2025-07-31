@@ -250,10 +250,8 @@ def _patch_training_log():
             if args.skipped_train_samples > 0:
                 log_string += ' skipped samples: {:12d} |'.format(args.skipped_train_samples)
             log_string += ' elapsed time per iteration (ms): {:.1f} |'.format(elapsed_time_per_iteration * 1000.0)
-            log_string += (
-                f' memory(GiB): {memory_GiB} |'
-                f' elapsed time: {total_elapsed_time} | remaining time: {remaining_time} |'
-            )
+            log_string += (f' memory(GiB): {memory_GiB} |'
+                           f' elapsed time: {total_elapsed_time} | remaining time: {remaining_time} |')
             if args.log_throughput:
                 log_string += f' throughput per GPU (TFLOP/s/GPU): {throughput:.1f} |'
                 if args.log_timers_to_tensorboard:
