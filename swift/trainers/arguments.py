@@ -30,6 +30,7 @@ class TrainArgumentsMixin:
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
     logging_first_step: bool = True
     logging_steps: int = 5
+    router_aux_loss_coef: Optional[float] = None
 
     weight_decay: float = 0.1
     adam_beta2: float = 0.95
