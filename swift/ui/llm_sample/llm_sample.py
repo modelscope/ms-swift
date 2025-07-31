@@ -3,8 +3,10 @@ import os
 import re
 import sys
 import time
+from copy import deepcopy
 from datetime import datetime
 from functools import partial
+from subprocess import DEVNULL, PIPE, STDOUT, Popen
 from typing import Type
 
 import gradio as gr
@@ -18,6 +20,7 @@ from swift.ui.base import BaseUI
 from swift.ui.llm_sample.model import Model
 from swift.ui.llm_sample.runtime import SampleRuntime
 from swift.ui.llm_sample.sample import Sample
+from swift.ui.llm_train.utils import run_command_in_background_with_popen
 from swift.utils import get_device_count, get_logger
 
 logger = get_logger()
@@ -208,17 +211,26 @@ class LLMSample(BaseUI):
             })
 
         params = ''
+        command = ['swift', 'sample']
         sep = f'{cls.quote} {cls.quote}'
         for e in kwargs:
             if isinstance(kwargs[e], list):
                 params += f'--{e} {cls.quote}{sep.join(kwargs[e])}{cls.quote} '
+                command.extend([f'--{e}', f'{" ".join(kwargs[e])}'])
             elif e in kwargs_is_list and kwargs_is_list[e]:
                 all_args = [arg for arg in kwargs[e].split(' ') if arg.strip()]
                 params += f'--{e} {cls.quote}{sep.join(all_args)}{cls.quote} '
+                command.extend([f'--{e}', f'{" ".join(all_args)}'])
             else:
                 params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
-
-        params += more_params_cmd + ' '
+                command.extend([f'--{e}', f'{kwargs[e]}'])
+        if more_params_cmd != '':
+            params += more_params_cmd + ' '
+            more_params_cmd = more_params_cmd.split('--')
+            more_params_cmd = [param.split(' ') for param in more_params_cmd if param]
+            for param in more_params_cmd:
+                command.extend([f'--{param[0]}', ' '.join(param[1:])])
+        all_envs = {}
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]
         assert (len(devices) == 1 or 'cpu' not in devices)
@@ -227,8 +239,10 @@ class LLMSample(BaseUI):
         if gpus != 'cpu':
             if is_torch_npu_available():
                 cuda_param = f'ASCEND_RT_VISIBLE_DEVICES={gpus}'
+                all_envs['ASCEND_RT_VISIBLE_DEVICES'] = gpus
             elif is_torch_cuda_available():
                 cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
+                all_envs['CUDA_VISIBLE_DEVICES'] = gpus
             else:
                 cuda_param = ''
         now = datetime.now()
@@ -239,20 +253,22 @@ class LLMSample(BaseUI):
         log_file = os.path.join(os.getcwd(), f'{file_path}/run_sample.log')
         sample_args.log_file = log_file
         params += f'--log_file "{log_file}" '
+        command.extend(['--log_file', f'{log_file}'])
         params += '--ignore_args_error true '
+        command.extend(['--ignore_args_error', 'true'])
         if sys.platform == 'win32':
             if cuda_param:
                 cuda_param = f'set {cuda_param} && '
             run_command = f'{cuda_param}start /b swift sample {params} > {log_file} 2>&1'
         else:
             run_command = f'{cuda_param} nohup swift sample {params} > {log_file} 2>&1 &'
-        return run_command, sample_args, log_file
+        return command, all_envs, run_command, sample_args, log_file
 
     @classmethod
     def sample_model(cls, *args):
-        run_command, sample_args, log_file = cls.sample(*args)
+        command, all_envs, run_command, sample_args, log_file = cls.sample(*args)
         logger.info(f'Running sample command: {run_command}')
-        os.system(run_command)
+        run_command_in_background_with_popen(command, all_envs, log_file)
         gr.Info(cls.locale('load_alert', cls.lang)['value'])
         time.sleep(2)
         running_task = SampleRuntime.refresh_tasks(log_file)
