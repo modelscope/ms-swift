@@ -91,7 +91,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | transformers | >=4.33       | 4.53.3 ||
 | modelscope | >=1.23       |  ||
 | peft | >=0.11,<0.17 | ||
-| trl | >=0.15,<0.21 | 0.18 |RLHF|
+| trl | >=0.15,<0.21 | 0.19.1 |RLHF|
 | deepspeed | >=0.14       | 0.16.9 |训练|
 | vllm | >=0.5.1      | 0.10 |推理/部署/评测|
 | sglang |  >=0.4.6   | 0.4.9.post6 |推理/部署/评测|
