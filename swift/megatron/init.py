@@ -714,7 +714,7 @@ def _patch_TransformerLayer():
         """
         megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
         if not megatron_core_013:
-            return _origin_forward(*_args, **kwargs)
+            return _origin_forward(self, *_args, **kwargs)
         hidden_states, context = self._forward_attention(*_args, **kwargs)
         args = get_args()
         mlp_padding_free = args.mlp_padding_free and 'attention_mask' in kwargs
