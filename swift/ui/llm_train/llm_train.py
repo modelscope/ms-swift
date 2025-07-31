@@ -4,8 +4,9 @@ import os
 import re
 import sys
 import time
+from copy import deepcopy
 from functools import partial
-from subprocess import PIPE, STDOUT, Popen
+from subprocess import DEVNULL, PIPE, STDOUT, Popen
 from typing import Dict, Type
 
 import gradio as gr
@@ -28,6 +29,7 @@ from swift.ui.llm_train.save import Save
 from swift.ui.llm_train.self_cog import SelfCog
 from swift.ui.llm_train.task import Task
 from swift.ui.llm_train.tuner import Tuner
+from swift.ui.llm_train.utils import run_command_in_background_with_popen
 from swift.utils import get_device_count, get_logger
 
 logger = get_logger()
@@ -406,27 +408,43 @@ class LLMTrain(BaseUI):
         except Exception as e:
             raise e
         params = ''
-
+        command = ['swift', cmd]
         if cls.group == 'llm_grpo' and sys.platform != 'win32':
             params += f'--rlhf_type {cls.quote}grpo{cls.quote} '
+            command.extend(['--rlhf_type', 'grpo'])
 
         sep = f'{cls.quote} {cls.quote}'
         for e in kwargs:
             if isinstance(kwargs[e], list):
                 params += f'--{e} {cls.quote}{sep.join(kwargs[e])}{cls.quote} '
+                command.extend([f'--{e}', f'{" ".join(kwargs[e])}'])
             elif e in kwargs_is_list and kwargs_is_list[e]:
                 all_args = [arg for arg in kwargs[e].split(' ') if arg.strip()]
                 params += f'--{e} {cls.quote}{sep.join(all_args)}{cls.quote} '
+                command.extend([f'--{e}', f'{" ".join(all_args)}'])
             else:
                 params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
+                command.extend([f'--{e}', f'{kwargs[e]}'])
         if use_liger_kernel:
             params += f'--use_liger_kernel {cls.quote}{use_liger_kernel}{cls.quote} '
+            command.extend(['--use_liger_kernel', f'{use_liger_kernel}'])
         if use_muon:
             params += f'--optimizer {cls.quote}muon{cls.quote} '
+            command.extend(['--optimizer', 'muon'])
+        more_params_cmd = more_params_cmd.strip()
         if more_params_cmd != '':
-            params += f'{more_params_cmd.strip()} '
+            params += f'{more_params_cmd} '
+            more_params_cmd = more_params_cmd.split('--')
+            more_params_cmd = [param.split(' ') for param in more_params_cmd if param]
+            for param in more_params_cmd:
+                command.extend([f'--{param[0]}', ' '.join(param[1:])])
         params += f'--add_version False --output_dir {sft_args.output_dir} ' \
                   f'--logging_dir {sft_args.logging_dir} --ignore_args_error True'
+        command.extend([
+            '--add_version', 'False', '--output_dir', f'{sft_args.output_dir}', '--logging_dir',
+            f'{sft_args.logging_dir}', '--ignore_args_error', 'True'
+        ])
+        all_envs = {}
         ddp_param = ''
         devices = other_kwargs['gpu_id']
         envs = other_kwargs['envs'] or ''
@@ -435,17 +453,24 @@ class LLMTrain(BaseUI):
         if other_kwargs['use_ddp']:
             assert int(other_kwargs['ddp_num']) > 0
             ddp_param = f'NPROC_PER_NODE={int(other_kwargs["ddp_num"])}'
+            all_envs['NPROC_PER_NODE'] = str(other_kwargs['ddp_num'])
         assert (len(devices) == 1 or 'cpu' not in devices)
         gpus = ','.join(devices)
         cuda_param = ''
         if gpus != 'cpu':
             if is_torch_npu_available():
                 cuda_param = f'ASCEND_RT_VISIBLE_DEVICES={gpus}'
+                all_envs['ASCEND_RT_VISIBLE_DEVICES'] = gpus
             elif is_torch_cuda_available():
                 cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
+                all_envs['CUDA_VISIBLE_DEVICES'] = gpus
             else:
                 cuda_param = ''
-
+        if envs:
+            envs = envs.split(' ')
+            for env in envs:
+                k, v = env.split('=')
+                all_envs[k] = v
         log_file = os.path.join(sft_args.logging_dir, 'run.log')
         if sys.platform == 'win32':
             if cuda_param:
@@ -468,14 +493,18 @@ class LLMTrain(BaseUI):
                 if key in default_args or key in ('more_params', 'train_stage', 'use_ddp', 'ddp_num', 'gpu_id', 'envs'):
                     record[key] = value or None
             cls.save_cache(model, record)
-        return run_command, sft_args, other_kwargs
+        return command, all_envs, log_file, run_command, sft_args, other_kwargs
 
     @classmethod
     def train_studio(cls, *args):
-        run_command, sft_args, other_kwargs = cls.train(*args)
+        command, all_envs, log_file, run_command, sft_args, other_kwargs = cls.train(*args)
         if not other_kwargs['dry_run']:
             lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
-            process = Popen(run_command, shell=True, stdout=PIPE, stderr=STDOUT)
+            env = deepcopy(os.environ)
+            if len(all_envs) > 0:
+                for k, v in all_envs.items():
+                    env[k] = v
+            process = Popen(command, env=env, stdout=PIPE, stderr=STDOUT)
             with process.stdout:
                 for line in iter(process.stdout.readline, b''):
                     line = line.decode('utf-8')
@@ -489,7 +518,7 @@ class LLMTrain(BaseUI):
 
     @classmethod
     def train_local(cls, *args):
-        run_command, sft_args, other_kwargs = cls.train(*args)
+        command, all_envs, log_file, run_command, sft_args, other_kwargs = cls.train(*args)
         if cls.group == 'llm_grpo' and sft_args.vllm_mode == 'server':
             host = sft_args.vllm_server_host if sft_args.vllm_server_host else '127.0.0.1'
             port = sft_args.vllm_server_port if sft_args.vllm_server_port else '8000'
@@ -505,7 +534,7 @@ class LLMTrain(BaseUI):
                 return [None] * 2 + [gr.update(open=False)] + [None] * 2
         if not other_kwargs['dry_run']:
             os.makedirs(sft_args.logging_dir, exist_ok=True)
-            os.system(run_command)
+            run_command_in_background_with_popen(command, all_envs, log_file)
             time.sleep(1)  # to make sure the log file has been created.
             gr.Info(cls.locale('submit_alert', cls.lang)['value'])
         return run_command, sft_args.logging_dir, gr.update(open=True), Runtime.refresh_tasks(

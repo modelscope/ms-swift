@@ -38,7 +38,7 @@ from swift.llm.template.base import MaxLengthError
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import multi_turns, orms, rm_plugins
 from swift.plugin.multi_turn import MultiTurnScheduler
-from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_device, get_logger, is_swanlab_available,
+from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_logger, is_swanlab_available,
                          is_vllm_available, is_wandb_available, seed_worker, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
@@ -62,7 +62,7 @@ if is_swanlab_available():
 
 InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
 # tuple: (messages, finish_reason)
-OutputsType = List[Dict[List[Dict], str]] # TODO: Check
+OutputsType = List[Dict[List[Dict], str]]  # TODO: Check
 if not hasattr(RepeatSampler, 'old_len_func'):
     origin_len_func = RepeatSampler.__len__
 
@@ -71,7 +71,6 @@ if not hasattr(RepeatSampler, 'old_len_func'):
 
     RepeatSampler.__len__ = patched_len
     RepeatSampler.old_len_func = origin_len_func
-
 """
 Refactor：
     Rollout 返回结果 message.content -> completion_ids
@@ -82,6 +81,8 @@ Refactor：
 
 
 """
+
+
 class GRPOCallback(TrainerCallback):
 
     def __init__(self, trainer):
@@ -198,6 +199,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.use_vllm = args.use_vllm
         self.async_generate = args.async_generate
         vllm_client = kwargs.pop('vllm_client')  # for external vllm
+
+        self.model_kwarg_keys = (
+            inspect.signature(model.forward).parameters.keys() if not hasattr(model, 'get_base_model') else
+            inspect.signature(model.get_base_model().forward).parameters.keys())
 
         super().__init__(model, ref_model, *_args, **kwargs)
         if self.args.eval_strategy != 'no':
@@ -318,8 +323,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             top_k=args.top_k,
             repetition_penalty=args.repetition_penalty,
             stop=args.stop_words,
-            return_details=True
-        )
+            return_details=True)
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
@@ -510,7 +514,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         max_num_seqs = (
             self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size * self.args.steps_per_generation)
-        current_device = get_device()
         with Swift.grpo_context(model, self.template.processor):
             engine = GRPOVllmEngine(
                 model.model_dir,
@@ -524,7 +527,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 enforce_eager=self.args.vllm_enforce_eager,
                 limit_mm_per_prompt=self.args.vllm_limit_mm_per_prompt,
                 enable_sleep_mode=self.args.sleep_level > 0,
-                device=current_device,
                 max_model_len=self.args.vllm_max_model_len,
                 seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
                 template=self.template,
@@ -744,9 +746,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     InferRequest.remove_response(_input['messages'])
                     _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
                     output_dict = {
-                        'messages': _input['messages'], 
+                        'messages': _input['messages'],
                         'finish_reason': choice.finish_reason,
-                        'completion_ids': choice.token_ids}
+                        'completion_ids': choice.token_ids
+                    }
                     _choices.append(output_dict)
                 outputs.append(_choices)
             outputs = [item for sublist in outputs for item in sublist]
@@ -764,11 +767,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             'completion_ids': choice.token_ids,
                         }
                         if self.use_gym_env:
-                            _choice.update(
-                                {
-                                    'total_reward': choice.total_reward,
-                                    'trajectory_info': choice.trajectory_info
-                                })
+                            _choice.update({
+                                'total_reward': choice.total_reward,
+                                'trajectory_info': choice.trajectory_info
+                            })
                     outputs.append(_choices)
                 outputs = [item for sublist in outputs for item in sublist]
             else:
@@ -822,12 +824,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                 'messages': _input['messages'],
                                 'finish_reason': result.choices[0].finish_reason,
                                 'completion_ids': result.choices[0].token_ids,
+                                'multi_turn_infos': _input.get('multi_turn_infos', {'num_turns': 1})
                             }
                         else:
                             current_request = self.inputs_to_rolloutrequest([_input])[0]
-                            infer_request = self.multi_turn_scheduler.step(current_request, result.choices[0],
-                                                                           current_turn)
+                            ret = self.multi_turn_scheduler.step(current_request, result.choices[0], current_turn)
+                            if isinstance(ret, tuple):
+                                infer_request, info_dict = ret
+                            else:
+                                infer_request = ret
+                                info_dict = {}
+                            info_dict['num_turns'] = current_turn + 1
                             pending_input = asdict(infer_request)
+                            if 'multi_turn_infos' not in pending_input:
+                                pending_input['multi_turn_infos'] = {}
+                            for key, value in info_dict.items():
+                                pending_input['multi_turn_infos'][key] = value
+
                             pending_input['index'] = index
                             pending_inputs.append(pending_input)
 
@@ -955,6 +968,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs[i]['messages'] = output['messages']
             inputs[i]['is_truncated'] = output['finish_reason'] == 'length'
             inputs[i]['completion_ids'] = output['completion_ids']
+            if 'multi_turn_infos' in output:
+                multi_turn_infos = output['multi_turn_infos']
+
+                if 'images' in output['multi_turn_infos']:
+                    # override images for 'think with images' scenario
+                    inputs[i]['images'] = multi_turn_infos['images']
+                inputs[i]['multi_turn_infos'] = multi_turn_infos
             if self.use_gym_env:
                 inputs[i]['total_reward'] = output['total_reward']
                 inputs[i]['trajectory_info'] = output['trajectory_info'] if 'trajectory_info' in output else None
@@ -1154,6 +1174,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 batch_encoded_inputs['old_per_token_logps'] = (
                     self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0]
                     if self.old_policy() else None)
+                if self.beta == 0.0:
+                    ref_per_token_logps = None
+                elif self.ref_model is not None:
+                    ref_per_token_logps = \
+                        self._get_per_token_logps_and_entropies(self.ref_model, batch_encoded_inputs)[0]
+                else:
+                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                        ref_per_token_logps = \
+                            self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0]
+                batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
 
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
@@ -1274,13 +1304,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Compute the KL divergence between the model and the reference model
         if self.beta != 0.0:
-            with torch.no_grad():
-                if self.ref_model is not None:
-                    ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(self.ref_model, inputs)
-                else:
-                    with self.accelerator.unwrap_model(self.model).disable_adapter():
-                        ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(self.model, inputs)
-
+            ref_per_token_logps = inputs['ref_per_token_logps']
             per_token_kl = (
                 torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
@@ -1465,7 +1489,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     'truncated_mask'
                 ]
             }
-
+            if 'logits_to_keep' in self.model_kwarg_keys:
+                inputs['logits_to_keep'] = logits_to_keep + 1
             with self._template_context(self.template), self.padding_free_context(model):
                 logits = model(**inputs).logits
             # exclude the last logit: it corresponds to the next token pred
@@ -1495,9 +1520,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     'truncated_mask'
                 ]
             }
-            with self._template_context(self.template):
-                outputs = unwrapped_model(**inputs, output_hidden_states=True)
-                last_hidden_state = outputs.hidden_states[-1]
+            if 'logits_to_keep' in self.model_kwarg_keys:
+                inputs['logits_to_keep'] = logits_to_keep + 1
+
+            last_hidden_state = unwrapped_model.model(**inputs).last_hidden_state
 
         last_hidden_state = last_hidden_state[:, :-1, :]  # (B, L-1, H)
         if logits_to_keep is not None:
@@ -1511,16 +1537,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completion_ids = input_ids[:, -logits_to_keep:]
         completion_mask = inputs['completion_mask']
 
-        # Compute the KL divergence between the model and the reference model
-        ref_per_token_logps = None
-        if self.beta != 0.0:
-            with torch.no_grad():
-                if self.ref_model is not None:
-                    ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(self.ref_model, inputs)
-                else:
-                    with self.accelerator.unwrap_model(self.model).disable_adapter():
-                        ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(self.model, inputs)
-
         # get the last hidden state of the model
         last_hidden_state = self._get_last_hidden_state(unwrapped_model, inputs, logits_to_keep)
         # compute loss and metrics using liger grpo loss
@@ -1531,8 +1547,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             attention_mask=completion_mask,
             advantages=inputs['advantages'],
             bias=unwrapped_model.lm_head.bias,
-            old_per_token_logps=inputs['old_per_token_logps'],
-            ref_per_token_logps=ref_per_token_logps,
+            old_per_token_logps=inputs.get('old_per_token_logps'),
+            ref_per_token_logps=inputs.get('ref_per_token_logps'),
         )
         # Extract metrics from the liger_grpo_loss output
         # KL divergence is the first metric when beta is non-zero
@@ -1670,12 +1686,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         original_fn = self.engine.set_default_max_tokens
         original_max_len = self.engine.max_model_len
 
-        def set_default_max_tokens(_self, request_config: RequestConfig, inputs: InputsType) -> None:
+        def set_default_max_tokens(_self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
             # Calculate required context window
             original_max_len = _self.max_model_len or 8192
-            if isinstance(inputs, dict):
-                inputs = [inputs]
-            prompt_tokens = max(_self._get_num_tokens(inp) for inp in inputs)
+            assert isinstance(inputs, dict)
+            prompt_tokens = _self._get_num_tokens(inputs)
 
             if not hasattr(_self, 'set_grpo_max_model_len'):
                 # set max model len in first round

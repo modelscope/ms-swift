@@ -1,11 +1,10 @@
 # Manually select `target_modules` to avoid 'all-linear' selecting 'gate'
-CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2-57B-A14B-Instruct \
+    --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --train_type lora \
-    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
-              'AI-ModelScope/alpaca-gpt4-data-en#500' \
-              'swift/self-cognition#500' \
+    --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
+              'swift/self-cognition#1000' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \

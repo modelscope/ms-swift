@@ -250,7 +250,7 @@ class LmdeployEngine(InferEngine):
         toolcall = self._get_toolcall(response, template)
         finish_reason = self._get_finish_reason(generation_config.max_new_tokens, output.num_token,
                                                 output.status.name == 'FINISH')
-        token_ids = output.token_ids if request_config.return_details else None
+        token_ids = template.skip_stop_tokens(output.token_ids) if request_config.return_details else None
         choices = [
             ChatCompletionResponseChoice(
                 index=0,
@@ -259,7 +259,9 @@ class LmdeployEngine(InferEngine):
                 logprobs=logprobs,
                 token_ids=token_ids)
         ]
-        return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info)
+        prompt_token_ids = inputs['input_ids'] if request_config.return_details else None
+        return ChatCompletionResponse(
+            model=self.model_name, choices=choices, usage=usage_info, prompt_token_ids=prompt_token_ids)
 
     async def infer_async(self,
                           infer_request: InferRequest,

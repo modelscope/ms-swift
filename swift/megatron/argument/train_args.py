@@ -15,8 +15,6 @@ logger = get_logger()
 @dataclass
 class MegatronTrainArguments(MegatronArguments, BaseArguments):
     add_version: bool = True
-    # dataset
-    lazy_tokenize: bool = False
 
     def init_model_args(self, tokenizer, config):
         self.megatron_model_meta = get_megatron_model_meta(self.model_type)
@@ -48,6 +46,9 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
             self.padding_free = True
         self.load = to_abspath(self.load, check_path_exist=True)
         BaseArguments.__post_init__(self)
+        if len(self.dataset) == 0 and len(self.cached_dataset) == 0:
+            raise ValueError(f'self.dataset: {self.dataset}, self.cached_dataset: {self.cached_dataset}. '
+                             'Please input the training dataset.')
         self._init_save()
         self.seq_length = self.seq_length or self.max_length
         if self.streaming:

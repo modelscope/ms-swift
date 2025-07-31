@@ -10,14 +10,16 @@ from urllib.parse import urlparse
 import requests
 import torch
 from dacite import from_dict
+from packaging import version
 from requests import ConnectionError
 from torch import nn
+from transformers.utils import is_torch_cuda_available
 
 from swift.llm import AdapterRequest, RolloutInferRequest, Template
 from swift.llm.infer.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, GymRolloutResponseChoice,
                                       RequestConfig, RolloutResponseChoice)
 from swift.plugin import Metric
-from swift.utils import is_vllm_ascend_available, is_vllm_available
+from swift.utils import is_trl_available, is_vllm_ascend_available, is_vllm_available
 
 if is_vllm_available():
     from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
@@ -25,6 +27,10 @@ if is_vllm_available():
 
     if is_vllm_ascend_available():
         from vllm_ascend.distributed.device_communicators.pyhccl import PyHcclCommunicator as PyNcclCommunicator  # noqa
+
+if is_trl_available():
+    import trl
+    trl_verison = version.parse(trl.__version__)
 
 logger = logging.getLogger(__name__)
 
@@ -160,9 +166,8 @@ class VLLMClient:
 
         return [res for server_results in results for res in server_results]
 
-    def init_communicator(self):
+    def init_communicator(self, device: Union[int, str] = 0):
         self.pynccl_comms = []
-
         for i in range(self.num_servers):
             response = self.sessions[i].get(f'{self.base_urls[i]}/get_world_size/')
             if response.status_code != 200:
@@ -171,13 +176,20 @@ class VLLMClient:
 
             world_size = vllm_world_size + 1
             rank = vllm_world_size
+            kwargs = {}
+            if trl_verison >= version.parse('0.20.0'):
+                if not is_torch_cuda_available():
+                    raise NotImplementedError('trl >= 0.20.0 only support CUDA deivce. Please use trl < 0.20.0')
+                client_device_uuid = str(torch.cuda.get_device_properties(device).uuid)
+                kwargs['client_device_uuid'] = client_device_uuid
 
             response = self.sessions[i].post(
                 f'{self.base_urls[i]}/init_communicator/',
                 json={
                     'host': '0.0.0.0',
                     'port': self.group_ports[i],
-                    'world_size': world_size
+                    'world_size': world_size,
+                    **kwargs
                 })
             if response.status_code != 200:
                 raise Exception(f'Server {i} init failed: {response.text}')

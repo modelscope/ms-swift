@@ -2,7 +2,7 @@
 import datetime as dt
 import os
 from abc import ABC, abstractmethod
-from typing import List, Union
+from typing import List, Optional, Union
 
 import swift
 from swift.utils import get_logger, parse_args, seed_everything
@@ -15,7 +15,7 @@ logger = get_logger()
 class SwiftPipeline(ABC, ProcessorMixin):
     args_class = BaseArguments
 
-    def __init__(self, args: Union[List[str], args_class, None] = None):
+    def __init__(self, args: Optional[Union[List[str], args_class]] = None):
         self.args = self._parse_args(args)
         args = self.args
         if hasattr(args, 'seed'):
@@ -24,7 +24,7 @@ class SwiftPipeline(ABC, ProcessorMixin):
         logger.info(f'args: {args}')
         self._compat_dsw_gradio(args)
 
-    def _parse_args(self, args: Union[List[str], args_class, None] = None) -> args_class:
+    def _parse_args(self, args: Optional[Union[List[str], args_class]] = None) -> args_class:
         if isinstance(args, self.args_class):
             return args
         assert self.args_class is not None

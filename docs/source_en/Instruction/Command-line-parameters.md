@@ -37,7 +37,8 @@ Hints:
   - Note: You can also pass a file path ending with `.txt`, where each line represents a special token.
 - num_labels: This parameter is required for classification models (i.e., `--task_type seq_cls`). It represents the number of labels, with a default value of None.
 - problem_type: This parameter is required for classification models (i.e., `--task_type seq_cls`). The options are 'regression', 'single_label_classification', and 'multi_label_classification'. The default value is None, and it will be automatically set based on the number of labels and the dataset type.
-- rope_scaling: Type of rope, supports `linear` and `dynamic` and `yarn`, should be used in conjunction with `max_length`. Default is None.
+- rope_scaling: RoPE type, supports `linear`, `dynamic`, and `yarn`, or you can directly pass in a JSON string: `"{\"factor\":2.0,\"type\":\"yarn\"}"`. Please use in conjunction with `max_model_len`. Default is None.
+- max_model_len: If using `rope_scaling`, you can set `max_model_len`. This parameter can be used to calculate the RoPE `factor` multiplier. The final `max_position_embeddings` will be set to the original value multiplied by the `factor`. If `rope_scaling` is a JSON string, this value will not take effect.
 - device_map: Device map configuration used by the model, such as 'auto', 'cpu', JSON string, or the path of a JSON file. The default is None, automatically set based on the device and distributed training conditions.
 - max_memory: When device_map is set to 'auto' or 'sequential', the model weights will be allocated to devices based on max_memory, for example: `--max_memory '{0: "20GB", 1: "20GB"}'`. The default value is None.
 - local_repo_path: Some models depend on a GitHub repo when loading. To avoid network issues during `git clone`, a local repo can be used directly. This parameter needs to be passed with the path to the local repo, with the default being `None`.
@@ -57,7 +58,7 @@ Hints:
 - dataset_shuffle: Whether to shuffle the dataset. Defaults to True.
   - Note: The shuffling in CPT/SFT consists of two parts: dataset shuffling, controlled by `dataset_shuffle`; and shuffling in the train_dataloader, controlled by `train_dataloader_shuffle`.
 - val_dataset_shuffle: Whether to perform shuffling on the val_dataset. Default is False.
-- 🔥streaming: Stream reading and processing of the dataset, default is False.
+- streaming: Stream reading and processing of the dataset, default is False.
   - Note: You need to set `--max_steps` explicitly, as the streaming dataset does not have a defined length. You can achieve training equivalent to `--num_train_epochs` by setting `--save_strategy epoch` and specifying a sufficiently large `max_steps`. Alternatively, you can set `max_epochs` to ensure training exits after the corresponding number of epochs, at which point the model weights will be validated and saved.
   - Note: Streaming datasets can skip preprocessing wait time by overlapping preprocessing with training. Preprocessing for streaming datasets is performed only on rank 0 and then synchronized to other processes via data distribution. This approach is generally less efficient than the data sharding and reading method used by non-streaming datasets. When the world size is large, preprocessing and data distribution can become a training bottleneck.
 - interleave_prob: Defaults to None. When combining multiple datasets, the `concatenate_datasets` function is used by default. If this parameter is set, the `interleave_datasets` function will be used instead. This parameter is typically used when combining streaming datasets and is passed to the `interleave_datasets` function.
@@ -98,7 +99,7 @@ Hints:
   - 'all': Calculate the loss for all tokens.
   - 'ignore_empty_think': On top of 'default', ignore the loss calculation for empty `'<think>\n\n</think>\n\n'`. See [this issue](https://github.com/modelscope/ms-swift/issues/4030) for more details.
   - `'react'`, `'hermes'`, `'qwen'`: On top of `'default'`, set the loss weight of the `tool_call` part to 2.
-- sequence_parallel_size: Sequence parallelism size, default is 1. Currently supported in CPT/SFT/DPO/GRPO. The training script refers to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/long_text/ulysses/sequence_parallel.sh).
+- sequence_parallel_size: Sequence parallelism size, default is 1. Currently supported in CPT/SFT/DPO/GRPO. The training script refers to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel/ulysses/sequence_parallel.sh).
 - response_prefix: The prefix character for the response, for example, setting the response_prefix to `'<think>\n'` for QwQ-32B. The default is None, and it is automatically set according to the model.
   - Note: If you are training the deepseek-r1/qwq model with a dataset that does not include `<think>...</think>`, please pass `--response_prefix ''` additionally when inferring after training.
 - template_backend: Selection of the template backend. Options are 'swift' and 'jinja', with 'swift' as the default. If using jinja, it applies transformer's `apply_chat_template`.
@@ -401,7 +402,9 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
   - Supported multimodal models reference: https://github.com/modelscope/ms-swift/blob/main/examples/train/packing/qwen2_5_vl.sh. Note: Please use "ms-swift>=3.6" and follow [this PR](https://github.com/modelscope/ms-swift/pull/4838).
 - packing_cache: Specifies the directory for packing cache. The default value is `None`, which means the cache will be stored in the path defined by the environment variable `$MODELSCOPE_CACHE`. When using the packing feature across multiple nodes, ensure that all nodes share the same packing cache directory. You can achieve this by setting the `MODELSCOPE_CACHE` environment variable or by adding the `--packing_cache <shared_path>` argument in the command line.
   - Note: This parameter will be removed in "ms-swift>=3.7". The `packing_cache` setting will no longer be required for multi-node packing.
-- 🔥lazy_tokenize: Whether to use lazy tokenization. If set to False, all dataset samples are tokenized before training (for multimodal models, this includes reading images from disk). This parameter defaults to False for LLM training, and True for MLLM training, to save memory.
+- lazy_tokenize: Whether to use lazy tokenization. If set to False, all dataset samples are tokenized before training (for multimodal models, this includes reading images from disk). This parameter defaults to False for LLM training, and True for MLLM training, to save memory.
+- 🔥cached_dataset: Use a cached dataset (generated with `swift export --to_cached_dataset true ...`) during training to avoid GPU time spent on tokenizing large datasets. Default: `[]`.
+  - Note: cached_dataset supports `--packing` but does not support `--lazy_tokenize` or `--streaming`.
 - use_logits_to_keep: Pass `logits_to_keep` in the `forward` method based on labels to reduce the computation and storage of unnecessary logits, thereby reducing memory usage and accelerating training. The default is `None`, which enables automatic selection.
   - Note: For stability, this value is set to False by default for multimodal models and needs to be manually enabled.
 - acc_strategy: Strategy for calculating accuracy during training and validation. Options are `seq`-level and `token`-level accuracy, with `token` as the default.
@@ -437,6 +440,10 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - label_smoothing: Whether to use DPO smoothing, default value is `0`.
 - max_completion_length: The maximum generation length in the GRPO/PPO/GKD algorithms. Default is 512.
 - 🔥rpo_alpha: The weight of sft_loss added to DPO, default is `1`. The final loss is `KL_loss + rpo_alpha * sft_loss`.
+- loss_type: Loss type
+  - DPO: Available options can be found in the [documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer#loss-functions). Multiple values can be provided to enable mixed training ([MPO](https://arxiv.org/abs/2411.10442)); when multiple values are given, the loss_weights parameter must also be set. Default is `sigmoid`.
+  - GRPO: See [GRPO parameters](#grpo-arguments) for reference.
+- loss_weights: When setting multiple loss_type values in DPO training, this parameter specifies the weight for each loss component.
 - cpo_alpha: Coefficient for nll loss in CPO/SimPO loss, default is `1.`.
 - simpo_gamma: Reward margin term in the SimPO algorithm, with a paper-suggested setting of 0.5-1.5, default is `1.`.
 - desirable_weight: Loss weight $\lambda_D$ for desirable response in the KTO algorithm, default is `1.`.
@@ -632,6 +639,8 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - max_length: Max length for the calibration set, default value is 2048.
 - quant_batch_size: Quantization batch size, default is 1.
 - group_size: Group size for quantization, default is 128.
+- to_cached_dataset: pre-tokenize the dataset and export it in advance, default is False. See the example [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset).
+  - Note: data packing is performed during training, not in this step.
 - to_ollama: Generate the Modelfile required by Ollama. Default is False.
 - 🔥to_mcore: Convert weights from HF format to Megatron format. Default is False.
 - to_hf: Convert weights from Megatron format to HF format. Default is False.

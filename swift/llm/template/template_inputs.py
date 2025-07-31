@@ -82,6 +82,12 @@ class RolloutInferRequest(InferRequest):
     images: List[str] = field(default_factory=list)
     data_dict: Dict = field(default_factory=dict)
 
+    def process_images(self):
+        """Convert PIL images to base64 strings."""
+        self.images = [
+            image.convert('RGB').tobytes() if isinstance(image, Image.Image) else image for image in self.images
+        ]
+
 
 @dataclass
 class TemplateInputs(InferRequest):
@@ -183,6 +189,8 @@ class StdTemplateInputs:
         for message in messages:
             content = message['content']
             if isinstance(content, str):
+                continue
+            elif isinstance(content, list) and content and isinstance(content[0], int):
                 continue
             # List[Dict[str, Any]]
             new_content = ''

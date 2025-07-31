@@ -301,6 +301,8 @@ class EmbeddingResponse:
 @dataclass
 class RolloutResponseChoice(ChatCompletionResponseChoice):
     messages: Optional[Messages] = None
+    images: Optional[List[str]] = None
+    multi_turn_infos: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -327,6 +329,7 @@ class ChatCompletionResponse:
     id: str = field(default_factory=lambda: f'chatcmpl-{random_uuid()}')
     object: str = 'chat.completion'
     created: int = field(default_factory=lambda: int(time.time()))
+    prompt_token_ids: Optional[List[int]] = None
 
     def to_cmpl_response(self) -> 'CompletionResponse':
         self = deepcopy(self)
@@ -403,6 +406,7 @@ class InitCommunicatorRequest(BaseModel):
     host: str
     port: int
     world_size: int
+    client_device_uuid: Optional[str] = None
 
 
 class UpdateWeightsRequest(BaseModel):

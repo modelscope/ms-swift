@@ -223,7 +223,7 @@ class VllmArguments:
             'quantization': self.vllm_quantization,
         }
         if self.task_type == 'embedding':
-            kwargs['task_type'] = 'embed'
+            kwargs['task_type'] = 'embedding'
         return kwargs
 
 

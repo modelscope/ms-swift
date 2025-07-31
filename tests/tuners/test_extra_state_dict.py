@@ -5,6 +5,8 @@ import unittest
 
 import torch
 from modelscope import Model
+from safetensors.torch import load_file as safe_load_file
+from safetensors.torch import save_file as safe_save_file
 
 from swift import LoRAConfig, Swift
 from swift.tuners.utils import ModulesToSaveWrapper
@@ -27,12 +29,11 @@ class TestExtraStateDict(unittest.TestCase):
         lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
         model = Swift.prepare_model(model, lora_config, extra_state_keys=['classifier.*'])
         model.save_pretrained(self.tmp_dir)
-        self.assertTrue(os.path.isfile(os.path.join(self.tmp_dir, 'extra_states', 'adapter_model.bin')))
-        state_dict = torch.load(os.path.join(self.tmp_dir, 'extra_states', 'adapter_model.bin'))
+        self.assertTrue(os.path.isfile(os.path.join(self.tmp_dir, 'extra_states', 'adapter_model.safetensors')))
+        state_dict = safe_load_file(os.path.join(self.tmp_dir, 'extra_states', 'adapter_model.safetensors'))
         self.assertTrue(any('classifier' in key for key in state_dict))
         state_dict['classifier.weight'] = torch.ones_like(state_dict['classifier.weight']) * 2.0
-        with open(os.path.join(self.tmp_dir, 'extra_states', 'adapter_model.bin'), 'wb') as f:
-            torch.save(state_dict, f)
+        safe_save_file(state_dict, os.path.join(self.tmp_dir, 'extra_states', 'adapter_model.safetensors'))
         model = Model.from_pretrained('damo/nlp_structbert_sentence-similarity_chinese-base')
         model = Swift.from_pretrained(model, self.tmp_dir, inference_mode=False)
         names = [name for name, value in model.named_parameters() if value.requires_grad]
@@ -49,11 +50,10 @@ class TestExtraStateDict(unittest.TestCase):
         self.assertTrue(isinstance(model.classifier, ModulesToSaveWrapper))
         self.assertTrue(model.classifier.active_adapter == 'lora2')
         model.save_pretrained(self.tmp_dir)
-        state_dict = torch.load(os.path.join(self.tmp_dir, 'lora2', 'adapter_model.bin'))
+        state_dict = safe_load_file(os.path.join(self.tmp_dir, 'lora2', 'adapter_model.safetensors'))
         self.assertTrue(any('classifier' in key for key in state_dict))
         state_dict['classifier.weight'] = torch.ones_like(state_dict['classifier.weight']) * 2.0
-        with open(os.path.join(self.tmp_dir, 'lora2', 'adapter_model.bin'), 'wb') as f:
-            torch.save(state_dict, f)
+        safe_save_file(state_dict, os.path.join(self.tmp_dir, 'lora2', 'adapter_model.safetensors'))
         model = Model.from_pretrained('damo/nlp_structbert_sentence-similarity_chinese-base')
         model = Swift.from_pretrained(model, self.tmp_dir, adapter_name='lora2')
         names = [name for name, value in model.named_parameters() if value.requires_grad]

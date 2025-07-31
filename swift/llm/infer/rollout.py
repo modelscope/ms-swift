@@ -22,7 +22,7 @@ from trl.scripts.vllm_serve import WeightSyncWorkerExtension
 
 from swift.llm import RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
-from swift.utils import get_device, get_logger
+from swift.utils import get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
 
@@ -65,12 +65,7 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
     os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
     os.environ['VLLM_DP_SIZE'] = str(args.vllm_data_parallel_size)
     os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
-    kwargs = {}
-    if args.vllm_tensor_parallel_size == 1 and args.vllm_data_parallel_size > 1:
-        kwargs['device'] = get_device(str(data_parallel_rank))
-    kwargs['template'] = args.get_template(None)
-    engine = SwiftRolloutDeploy.get_infer_engine(args, **kwargs)
-
+    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(None))
     # Send ready signal to parent process
     connection.send({'status': 'ready'})
 
@@ -146,7 +141,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.post('/infer/', response_model=None)(self.infer)
         self.app.post('/get_engine_type/')(self.get_engine_type)
 
-    def __init__(self, args: Union[List[str], RolloutArguments, None] = None):
+    def __init__(self, args: Optional[Union[List[str], RolloutArguments]] = None):
         super().__init__(args)
         self.use_gym_env = self.args.use_gym_env
         self.use_async_engine = self.args.vllm_use_async_engine
@@ -256,7 +251,12 @@ class SwiftRolloutDeploy(SwiftPipeline):
         # The function init_communicator is called this way: init_communicator(host, port, world_size)
         # So with collective_rpc we need to call it this way:
         # llm.collective_rpc(method="init_communicator", args=(host, port, world_size))
-        kwargs = {'method': 'init_communicator', 'args': (request.host, request.port, world_size)}
+        kwargs = {
+            'method':
+            'init_communicator',
+            'args': (request.host, request.port, world_size, *(() if request.client_device_uuid is None else
+                                                               (request.client_device_uuid, )))
+        }
         for connection in self.connections:
             connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 
@@ -350,7 +350,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         uvicorn.run(self.app, host=args.host, port=args.port, log_level=args.log_level)
 
 
-def rollout_main(args: Union[List[str], RolloutArguments, None] = None) -> None:
+def rollout_main(args: Optional[Union[List[str], RolloutArguments]] = None) -> None:
     SwiftRolloutDeploy(args).main()
 
 

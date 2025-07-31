@@ -45,8 +45,8 @@ class GRPOVllmEngine(VllmEngine):
         disable_custom_all_reduce: bool = True,
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
-        device: str = 'auto',
         seed: Optional[int] = None,
+        task_type: Optional[str] = None,
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -76,8 +76,8 @@ class GRPOVllmEngine(VllmEngine):
             disable_custom_all_reduce=disable_custom_all_reduce,
             enforce_eager=enforce_eager,
             limit_mm_per_prompt=limit_mm_per_prompt,
-            device=device,
             seed=seed,
+            task_type=task_type,
             enable_lora=enable_lora,
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,
@@ -268,7 +268,7 @@ class GRPOVllmEngine(VllmEngine):
         """Multi-turn scheduler-based sampling controller."""
         current_request = infer_request
         current_turn = 1
-
+        info_dict = {}
         while True:
             messages = current_request.messages
             if current_turn == 1 or not messages[-1]['content']:
@@ -294,9 +294,21 @@ class GRPOVllmEngine(VllmEngine):
 
             if should_stop:
                 result_choice.messages = messages
+                info_dict['num_turns'] = current_turn
+                for key, value in info_dict.items():
+                    if hasattr(result_choice, key):
+                        setattr(result_choice, key, value)
+                    else:
+                        result_choice.multi_turn_infos[key] = value
+                result_choice.process_images()
                 return result
 
-            current_request = self.multi_turn_scheduler.step(current_request, result_choice, current_turn)
+            ret = self.multi_turn_scheduler.step(current_request, result_choice, current_turn)
+            if isinstance(ret, tuple):
+                current_request, info_dict = ret
+            else:
+                current_request = ret
+                info_dict = {}
             assert isinstance(current_request, RolloutInferRequest)
             if current_request.messages[-1]['role'] == 'assistant':
                 # Add a dummy response to allow engine to continue generating
@@ -355,7 +367,7 @@ class GRPOVllmEngine(VllmEngine):
             else:
                 choice_cls = ChatCompletionResponseChoice
 
-            token_ids = output.token_ids if request_config.return_details else None
+            token_ids = template.skip_stop_tokens(output.token_ids) if request_config.return_details else None
             choice = choice_cls(
                 index=output.index,
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
@@ -363,6 +375,7 @@ class GRPOVllmEngine(VllmEngine):
                 logprobs=logprobs,
                 token_ids=token_ids,
             )
-
             choices.append(choice)
-        return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
+        prompt_token_ids = result.prompt_token_ids if request_config.return_details else None
+        return ChatCompletionResponse(
+            model=self.model_name, choices=choices, usage=usage_info, id=request_id, prompt_token_ids=prompt_token_ids)

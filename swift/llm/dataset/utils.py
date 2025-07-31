@@ -63,7 +63,7 @@ class LazyLLMDataset(Dataset):
                  *,
                  n_try_fetch: int = 10,
                  strict: bool = False,
-                 random_state: Union[np.random.RandomState, int, None] = None,
+                 random_state: Optional[Union[np.random.RandomState, int]] = None,
                  traceback_limit: int = 10) -> None:
         self.dataset = dataset
         self.encode_func = encode_func
@@ -94,7 +94,7 @@ class LazyLLMDataset(Dataset):
                 self._idx = (self._idx + 1) % len(self.dataset)
             data = self.dataset[i]
             try:
-                return self.encode_func(data)
+                return self.encode_func(data, return_length=True)
             except Exception:
                 if n_try == self.n_try_fetch - 1 or self.strict:
                     if self.strict:
@@ -146,23 +146,18 @@ class PackingDataset(Dataset):
         self.strict = strict
         self.load_from_cache_file = load_from_cache_file
         self.workers = []
-        preprocessor = EncodePreprocessor(template=template)
-        self.dataset = preprocessor(
-            dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)
-        if template.model_meta.is_multimodal:
-            self.dataset = LazyLLMDataset(self.dataset, encode_func=template.encode)
-        self.packed_idx = self.create_packed_idx() if is_master() else None
+        self.packed_idx, self.packed_length = self.create_packed_idx() if is_master() else (None, None)
         if dist.is_initialized() and is_dist():
-            obj_list = [self.packed_idx]
+            obj_list = [(self.packed_idx, self.packed_length)]
             dist.broadcast_object_list(obj_list)
-            self.packed_idx = obj_list[0]
+            self.packed_idx, self.packed_length = obj_list[0]
 
     def create_packed_idx(self):
         lengths = self.dataset['length']
         data = [(i, length) for i, length in enumerate(lengths)]
         i = 0
         PACKING_BATCH_SIZE = 1000
-        input_data, res = [], []
+        input_data, packed_idx, packed_length = [], [], []
         with tqdm(total=len(data), dynamic_ncols=True, desc='Packing: ') as prog_bar:
             while True:
                 new_data = data[i:i + PACKING_BATCH_SIZE]
@@ -173,14 +168,13 @@ class PackingDataset(Dataset):
                 i += PACKING_BATCH_SIZE
                 is_finished = i >= len(data)
                 sequences, input_data = calculate_matched_group(self.template, input_data, is_finished=is_finished)
-                res += sequences
-        return res
+                packed_idx += [[x[0] for x in seq] for seq in sequences]
+                packed_length += [sum(x[1] for x in seq) for seq in sequences]
+        return packed_idx, packed_length
 
     def __getitem__(self, index):
         sequence = self.packed_idx[index]
-        row = []
-        for i, length in sequence:
-            row.append((self.dataset[i], length))
+        row = [self.dataset[i] for i in sequence]
         return self.template.packing_row(row)
 
     def __len__(self):
@@ -221,7 +215,7 @@ class IterablePackingDataset(IterableDataset):
             i, data = self._in_queue.get()
             encoded_data = {}
             try:
-                encoded_data = self.template.encode(data)
+                encoded_data = self.template.encode(data, return_length=True)
             except Exception as e:
                 if self.strict and not isinstance(e, MaxLengthError):
                     raise
@@ -271,7 +265,7 @@ class IterablePackingDataset(IterableDataset):
             sequences, data = calculate_matched_group(self.template, data, is_finished=finished)
             res = []
             for row in sequences:
-                packed = self.template.packing_row(row)
+                packed = self.template.packing_row([r[0] for r in row])
                 res.append(packed)
             yield from res
             if finished:
@@ -286,7 +280,7 @@ class EncodePreprocessor(RowPreprocessor):
         self.is_multimodal = template.model_meta.is_multimodal
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        encoded = self.template.encode(row)
+        encoded = self.template.encode(row, return_length=True)
         if self.is_multimodal:
             row['length'] = encoded['length']
             encoded = row

@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from functools import partial
-from typing import List, Union
+from typing import List, Optional, Union
 
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
@@ -20,7 +20,7 @@ class MegatronSft(SwiftSft):
     def prepare_trainer(self):
         return MegatronTrainer(self.args)
 
-    def __init__(self, args: Union[List[str], MegatronTrainArguments, None] = None) -> None:
+    def __init__(self, args: Optional[Union[List[str], MegatronTrainArguments]] = None) -> None:
         self.train_msg = {}
         super(SwiftSft, self).__init__(args)
         args = self.args
@@ -39,7 +39,7 @@ class MegatronSft(SwiftSft):
         if args.tensor_model_parallel_size > 1 and args.sequence_parallel:
             padding_to = args.tensor_model_parallel_size
         if args.context_parallel_size > 1:
-            padding_to = max(args.context_parallel_size, padding_to or 0)
+            padding_to = (padding_to or 1) * args.context_parallel_size
         if args.fp8_format:
             padding_to = max((padding_to or 1) * 8, 16)
         logger.info(f'padding_to: {padding_to}')
@@ -48,9 +48,8 @@ class MegatronSft(SwiftSft):
 
     def run(self):
         args = self.args
+        train_dataset, val_dataset = self._prepare_dataset()
         data_collator = self._get_data_collator()
-        train_dataset, val_dataset = self._get_dataset()
-        train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
 
         if args.streaming:
             train_dataset = build_streaming_dataloader(args, train_dataset, data_collator)
@@ -69,5 +68,5 @@ class MegatronSft(SwiftSft):
                 plot_images(images_dir, args.tensorboard_dir)
 
 
-def megatron_sft_main(args: Union[List[str], MegatronTrainArguments, None] = None):
+def megatron_sft_main(args: Optional[Union[List[str], MegatronTrainArguments]] = None):
     return MegatronSft(args).main()

@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import List, Union
+from typing import List, Optional, Union
 
 from swift.utils import get_logger
 from ..argument import MegatronTrainArguments
@@ -20,5 +20,5 @@ class MegatronPt(MegatronSft):
         super()._prepare_template()
 
 
-def megatron_pt_main(args: Union[List[str], MegatronTrainArguments, None] = None):
+def megatron_pt_main(args: Optional[Union[List[str], MegatronTrainArguments]] = None):
     return MegatronPt(args).main()
