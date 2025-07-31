@@ -1,10 +1,10 @@
 # please use python=3.10, cuda12.*
 # sh requirements/install_all.sh
-pip install "sglang[all]<0.4.7" -U
-pip install "vllm>=0.5.1,<0.9" "transformers<4.52" -U
+pip install "sglang[all]" -U
+pip install "vllm>=0.5.1" "transformers<4.54" -U
 pip install "lmdeploy>=0.5,<0.9" -U --no-deps
 pip install autoawq -U --no-deps
-pip install auto_gptq optimum bitsandbytes -U
+pip install auto_gptq optimum bitsandbytes "gradio<5.33" -U
 pip install git+https://github.com/modelscope/ms-swift.git
 pip install timm -U
 pip install "deepspeed<0.17" -U
