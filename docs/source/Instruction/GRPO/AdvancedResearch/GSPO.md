@@ -27,7 +27,7 @@ $$
 
 其中，$(\mathrm{sg}[\cdot])$ 表示梯度截断（detach()）。
 
-> 注意：根据梯度推导（即论文中的公式(11)和(18)），当各 token 的 advantage 相同时，GSPO-token 与 GSPO 等价。当前的 GRPO 实现中，所有 token 的 advantage 实际上都是基于句子级 reward 并在 group 内进行归一化，因此在这种设置下，GSPO-token 和 GSPO 在理论上是等价的。
+> 注意：根据梯度推导（即论文中的公式(11)和(18)），当各 token 的 advantage 相同时，GSPO-token 与 GSPO 等价。当前的 GRPO 实现中，所有 token 的 advantage 实际上都是基于句子级 reward 并在 group 内进行归一化，因此在这种设置下，GSPO-token 和 GSPO 在理论上是等价的。不过，GSPO-token 为未来更细粒度（token 级别）的 advantage 提供了支持。
 
 伪代码实现
 ```python
