@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
 from swift.trainers import GRPOArgumentsMixin, RLHFArgumentsMixin
-from swift.utils import get_logger, is_master, is_mp, set_default_ddp_config
+from swift.utils import get_current_device, get_logger, is_master, is_mp, set_default_ddp_config
 from .train_args import TrainArguments
 
 logger = get_logger()
@@ -257,7 +257,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 hosts=self.vllm_server_host,
                 server_ports=self.vllm_server_port,
                 connection_timeout=self.vllm_server_timeout)
-            self.vllm_client.init_communicator()
+            self.vllm_client.init_communicator(device=get_current_device())
 
     def _set_default(self):
         if self.beta is None:

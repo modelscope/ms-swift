@@ -251,7 +251,12 @@ class SwiftRolloutDeploy(SwiftPipeline):
         # The function init_communicator is called this way: init_communicator(host, port, world_size)
         # So with collective_rpc we need to call it this way:
         # llm.collective_rpc(method="init_communicator", args=(host, port, world_size))
-        kwargs = {'method': 'init_communicator', 'args': (request.host, request.port, world_size)}
+        kwargs = {
+            'method':
+            'init_communicator',
+            'args': (request.host, request.port, world_size, *(() if request.client_device_uuid is None else
+                                                               (request.client_device_uuid, )))
+        }
         for connection in self.connections:
             connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 
