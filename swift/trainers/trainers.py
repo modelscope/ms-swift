@@ -361,7 +361,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         if hasattr(outputs, 'aux_loss'):
             if 'aux_loss' not in self._custom_metrics:
                 self._custom_metrics['aux_loss'] = MeanMetric(nan_value=None)
-            self._custom_metrics['aux_loss'].update(v)
+            self._custom_metrics['aux_loss'].update(outputs.aux_loss)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
         if self.args.past_index >= 0:
