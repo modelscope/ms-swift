@@ -342,9 +342,10 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             router_aux_loss_coef = self.args.router_aux_loss_coef
             if router_aux_loss_coef is None:
                 router_aux_loss_coef = getattr(base_model.config, 'router_aux_loss_coef', None)
-            if router_aux_loss_coef:
+            if router_aux_loss_coef is not None:
                 base_model.config.router_aux_loss_coef = router_aux_loss_coef
-                if 'output_router_logits' in inspect.signature(base_model.forward).parameters:
+                if router_aux_loss_coef > 0 and 'output_router_logits' in inspect.signature(
+                        base_model.forward).parameters:
                     inputs['output_router_logits'] = True
         inputs['compute_loss_func'] = compute_loss_func
         inputs['loss_kwargs'] = loss_kwargs
@@ -358,7 +359,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         if (self.label_smoother is not None or compute_loss_func is not None) and 'labels' in inputs:
             labels = inputs.pop('labels')
         outputs = model(**inputs)
-        if hasattr(outputs, 'aux_loss'):
+        if getattr(outputs, 'aux_loss', None) is not None:
             if 'aux_loss' not in self._custom_metrics:
                 self._custom_metrics['aux_loss'] = MeanMetric(nan_value=None)
             self._custom_metrics['aux_loss'].update(outputs.aux_loss)
