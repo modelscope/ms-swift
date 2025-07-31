@@ -1,5 +1,5 @@
 # 10GB
-CUDA_VISIBLE_DEVICES=1 \
+CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct-AWQ \
     --train_type lora \
