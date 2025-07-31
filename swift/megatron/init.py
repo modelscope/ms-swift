@@ -12,7 +12,8 @@ import torch.nn.functional as F
 from packaging import version
 
 from swift.llm import git_clone_github
-from swift.utils import JsonlWriter, get_logger, is_master, is_megatron_available, safe_ddp_context, subprocess_run
+from swift.utils import (JsonlWriter, format_time, get_logger, is_master, is_megatron_available, safe_ddp_context,
+                         subprocess_run)
 
 logger = get_logger()
 
@@ -226,6 +227,12 @@ def _patch_training_log():
 
             elapsed_time = timers('interval-time').elapsed(barrier=True)
             elapsed_time_per_iteration = elapsed_time / total_iterations
+            train_percentage = iteration / args.train_iters
+            total_elapsed_time = timers('interval-time').active_time()
+            memory_GiB = round(torch.cuda.max_memory_reserved() / 1024**3, 2)
+            remaining_time = total_elapsed_time / train_percentage - total_elapsed_time
+            total_elapsed_time = format_time(total_elapsed_time)
+            remaining_time = format_time(remaining_time)
 
             throughput = num_floating_point_operations(args, batch_size) / (
                 elapsed_time_per_iteration * 10**12 * args.world_size)
@@ -243,6 +250,8 @@ def _patch_training_log():
             if args.skipped_train_samples > 0:
                 log_string += ' skipped samples: {:12d} |'.format(args.skipped_train_samples)
             log_string += ' elapsed time per iteration (ms): {:.1f} |'.format(elapsed_time_per_iteration * 1000.0)
+            log_string += (f' memory(GiB): {memory_GiB} |'
+                           f' elapsed time: {total_elapsed_time} | remaining time: {remaining_time} |')
             if args.log_throughput:
                 log_string += f' throughput per GPU (TFLOP/s/GPU): {throughput:.1f} |'
                 if args.log_timers_to_tensorboard:
@@ -299,6 +308,9 @@ def _patch_training_log():
                     logs['params_norm'] = round(params_norm, 8)
                 logs['learning_rate'] = round(learning_rate, 8)
                 logs['elapsed_time_per_iteration'] = round(elapsed_time_per_iteration, 8)
+                logs['memory(GiB)'] = memory_GiB
+                logs['elapsed_time'] = total_elapsed_time
+                logs['remaining_time'] = remaining_time
                 if args.log_throughput:
                     logs['throughput'] = round(throughput, 8)
                 logs['loss_scale'] = round(loss_scale, 8)

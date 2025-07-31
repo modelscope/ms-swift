@@ -12,8 +12,7 @@ import psutil
 from packaging import version
 
 from swift.ui.base import BaseUI
-from swift.utils import get_logger
-from swift.utils.utils import format_time
+from swift.utils import format_time, get_logger
 
 logger = get_logger()
 
