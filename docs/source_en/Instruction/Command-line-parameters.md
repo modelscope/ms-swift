@@ -31,8 +31,9 @@ Hints:
 - model_revision: Model revision, default is None.
 - task_type: The default value is 'causal_lm'. Optional values are 'causal_lm', 'seq_cls', and 'embedding'. Examples for seq_cls can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls), and examples for embedding can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/embedding).
 - 🔥torch_dtype: Data type of model weights, supports `float16`, `bfloat16`, `float32`. The default is None, and it is read from the 'config.json' file.
-- attn_impl: The type of attention, with options including `flash_attn`, `sdpa`, and `eager`. The default is None, which reads from `config.json`.
-  - Note: These three implementations may not all be supported, depending on the support of the corresponding model.
+- attn_impl: specifies the attention implementation. Available options include 'sdpa', 'eager', 'flash_attention_2', 'flash_attention_3', etc. If left as None (default), the value is taken from `config.json`.
+  - Note: Not all implementations are guaranteed to be supported; support depends on the particular model.
+  - If you set it to 'flash_attn' (for backward compatibility), 'flash_attention_2' will be used.
 - new_special_tokens: The special tokens to be added. Default is `[]`. See the example [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/new_special_tokens).
   - Note: You can also pass a file path ending with `.txt`, where each line represents a special token.
 - num_labels: This parameter is required for classification models (i.e., `--task_type seq_cls`). It represents the number of labels, with a default value of None.
@@ -165,6 +166,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - 🔥report_to: Default value is `tensorboard`. You can also specify `--report_to tensorboard wandb swanlab` or `--report_to all`.
 - logging_first_step: Whether to log the first step, defaults to True.
 - logging_steps: Interval for logging, defaults to 5.
+- router_aux_loss_coef: Weight for aux_loss when training MoE models. Defaults to None, meaning the value from the config is used. If set to 0, aux_loss is not computed.
 - logging_dir: The path for TensorBoard logs. Defaults to None, which means it is set to `f'{self.output_dir}/runs'`.
 - predict_with_generate: Whether to use generative method during validation, default is False.
 - metric_for_best_model: Default is None, which means that when predict_with_generate is set to False, it is set to 'loss'; otherwise, it is set to 'rouge-l' (during PPO training, the default value is not set; in GRPO training, it is set to 'reward').
