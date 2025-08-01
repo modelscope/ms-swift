@@ -216,6 +216,9 @@ def read_multi_line(addi_prompt: str = '') -> str:
 
 def subprocess_run(command: List[str], env: Optional[Dict[str, str]] = None, stdout=None, stderr=None):
     # stdoutm stderr: e.g. subprocess.PIPE.
+    import shlex
+    command_str = ' '.join(shlex.quote(a) for a in command)
+    logger.info(f'Run the command: `{command_str}`')
     resp = subprocess.run(command, env=env, stdout=stdout, stderr=stderr)
     resp.check_returncode()
     return resp
