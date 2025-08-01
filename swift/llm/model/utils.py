@@ -311,6 +311,7 @@ def safe_snapshot_download(model_id_or_path: str,
 
 
 def git_clone_github(github_url: str,
+                     *,
                      local_repo_name: Optional[str] = None,
                      branch: Optional[str] = None,
                      commit_hash: Optional[str] = None) -> str:
