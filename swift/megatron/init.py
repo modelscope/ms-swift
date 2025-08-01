@@ -10,11 +10,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from packaging import version
-from packaging.version import Version as PkgVersion
 
 from swift.llm import git_clone_github
-from swift.utils import (JsonlWriter, format_time, get_logger, is_flash_attn_2_available, is_flash_attn_3_available,
-                         is_master, is_megatron_available, safe_ddp_context, subprocess_run)
+from swift.utils import (JsonlWriter, format_time, get_logger, is_flash_attn_3_available, is_master,
+                         is_megatron_available, safe_ddp_context, subprocess_run)
 
 logger = get_logger()
 
@@ -747,7 +746,6 @@ def _patch_flash_attn():
     # flash_attention_3
     if is_flash_attn_3_available():
         import flash_attn_interface
-        import flash_attn_3
         sys.modules['flash_attn_3.flash_attn_interface'] = flash_attn_interface
 
 
