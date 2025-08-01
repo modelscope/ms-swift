@@ -29,6 +29,10 @@ pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
 # 若使用多机训练，请额外设置`MODELSCOPE_CACHE`环境变量为共享存储路径
 # 这将确保数据集缓存共享，而加速预处理速度
 expert MODELSCOPE_CACHE='/xxx/shared'
+
+# Megatron-LM
+# 依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.13.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)）。
+export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 ```
 
 或者你也可以使用镜像：
@@ -38,7 +42,21 @@ modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu
 modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
 ```
 
-依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.13.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)）。
+推荐运行环境：
+|              | 范围           | 推荐          | 备注                 |
+|--------------|--------------|-------------|--------------------|
+| python       | >=3.9        | 3.10        |                    |
+| cuda         |              | cuda12      |                    |
+| torch        | >=2.0        | 2.6.0       |                    |
+| transformer_engine    | >=2.3       | 2.5      |                  |
+| apex |   |  0.1 | |
+| megatron_core    | >=0.12       | 0.13      |                  |
+| flash_attn    |        | 2.7.4.post1/3.0.0b1   |                  |
+| transformers | >=4.33       | 4.51.3      |                    |
+| modelscope   | >=1.23       |             |                    |
+| peft         | >=0.11,<0.17 |             |      LoRA          |
+| trl          | >=0.15,<0.21 | 0.19.1      |      RLHF        |
+| deepspeed    | >=0.14       | 0.16.9      |                  |
 
 
 ## 快速入门案例
@@ -239,6 +257,7 @@ swift export \
   - 注意：rlhf中默认为False。
 - 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 auto。
   - 注意：建议设置为`--attention_backend flash`，推荐flash_attn版本：2.7.4.post1。
+  - 如果安装'flash_attention_3'，则优先使用fa3。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。
 - optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
 - 🔥optimizer_cpu_offload: 将优化器状态卸载到 CPU。默认为False。
 - optimizer_offload_fraction: 卸载到 CPU 的优化器状态所占比例。默认为1.。
