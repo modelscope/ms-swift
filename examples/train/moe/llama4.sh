@@ -15,6 +15,7 @@ swift sft \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_regex '^(language_model).*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$' \
+    --router_aux_loss_coef 1e-3 \
     --freeze_vit true \
     --gradient_accumulation_steps 4 \
     --gradient_checkpointing true \

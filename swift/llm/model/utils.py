@@ -101,9 +101,8 @@ class HfConfigFactory:
         else:
             return []
 
-        value = deep_getattr(config, attr_name, None)
-        if value is not None and parent_key in [None, 'language_config', 'llm_config', 'text_config']:
-            res.append((config, value))
+        if attr_name in keys and parent_key in [None, 'language_config', 'llm_config', 'text_config']:
+            res.append((config, deep_getattr(config, attr_name)))
 
         for k in keys:
             if k.endswith('_config'):
