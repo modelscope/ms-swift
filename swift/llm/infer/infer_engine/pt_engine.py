@@ -52,7 +52,7 @@ class PtEngine(InferEngine):
             hub_token: Optional[str] = None,
             load_model: bool = True,
             # model kwargs
-            attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
+            attn_impl: Optional[str] = None,
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
             task_type: Optional[str] = None,
             quantization_config=None,

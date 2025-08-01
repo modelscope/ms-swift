@@ -31,8 +31,9 @@ Hints:
 - model_revision: Model revision, default is None.
 - task_type: The default value is 'causal_lm'. Optional values are 'causal_lm', 'seq_cls', and 'embedding'. Examples for seq_cls can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls), and examples for embedding can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/embedding).
 - 🔥torch_dtype: Data type of model weights, supports `float16`, `bfloat16`, `float32`. The default is None, and it is read from the 'config.json' file.
-- attn_impl: The type of attention, with options including `flash_attn`, `sdpa`, and `eager`. The default is None, which reads from `config.json`.
-  - Note: These three implementations may not all be supported, depending on the support of the corresponding model.
+- attn_impl: specifies the attention implementation. Available options include 'sdpa', 'eager', 'flash_attention_2', 'flash_attention_3', etc. If left as None (default), the value is taken from `config.json`.
+  - Note: Not all implementations are guaranteed to be supported; support depends on the particular model.
+  - If you set it to 'flash_attn' (for backward compatibility), 'flash_attention_2' will be used.
 - new_special_tokens: The special tokens to be added. Default is `[]`. See the example [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/new_special_tokens).
   - Note: You can also pass a file path ending with `.txt`, where each line represents a special token.
 - num_labels: This parameter is required for classification models (i.e., `--task_type seq_cls`). It represents the number of labels, with a default value of None.

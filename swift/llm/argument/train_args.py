@@ -139,9 +139,9 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                 self.padding_free = False
             else:
                 feature = 'padding_free'
-            if self.attn_impl != 'flash_attn':
-                raise ValueError(f'The "{feature}" feature needs to be used in conjunction with "flash_attn". '
-                                 'Please specify `--attn_impl flash_attn`.')
+            if self.attn_impl not in {'flash_attn', 'flash_attention_2', 'flash_attention_3'}:
+                raise ValueError(f'The "{feature}" feature requires a flash attention implementation. '
+                                 'Please use one of: "flash_attn", "flash_attention_2", "flash_attention_3".')
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
             # The non-resume_only_model will have its weights loaded in the trainer.

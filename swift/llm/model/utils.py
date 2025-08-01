@@ -21,10 +21,6 @@ _T = TypeVar('_T')
 
 
 class AttnImpl:
-    flash_attn = 'flash_attn'
-    sdpa = 'sdpa'
-    eager = 'eager'
-
     attn_impl_keys = ['_attn_implementation', 'attn_implementation', 'llm_attn_implementation']
     use_flash_attn_keys = ['_flash_attn_2_enabled', 'use_flash_attn', '_use_flash_attention_2']
 
@@ -32,7 +28,7 @@ class AttnImpl:
     def to_use_flash_attn(attn_impl: Optional[str], auto_value: _T = None) -> Union[bool, _T]:
         if attn_impl is None:
             return auto_value
-        return attn_impl == AttnImpl.flash_attn
+        return attn_impl in {'flash_attn', 'flash_attention_2'}
 
     @staticmethod
     def update_attn_impl(config: PretrainedConfig,
@@ -101,9 +97,8 @@ class HfConfigFactory:
         else:
             return []
 
-        value = deep_getattr(config, attr_name, None)
-        if value is not None and parent_key in [None, 'language_config', 'llm_config', 'text_config']:
-            res.append((config, value))
+        if attr_name in keys and parent_key in [None, 'language_config', 'llm_config', 'text_config']:
+            res.append((config, deep_getattr(config, attr_name)))
 
         for k in keys:
             if k.endswith('_config'):
