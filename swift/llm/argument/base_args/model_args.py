@@ -109,10 +109,20 @@ class ModelArguments:
     def _init_rope_scaling(self):
         max_model_len = self.model_info.max_model_len
         try:
-            if isinstance(self.rope_scaling, str):
-                self.rope_scaling = json.loads(self.rope_scaling)
-                if 'factor' in self.rope_scaling and max_model_len:
+            if isinstance(self.model_info.rope_scaling, dict):
+                self.rope_scaling = self.model_info.rope_scaling 
+            elif isinstance(self.model_info.rope_scaling, str):
+                self.rope_scaling = json.loads(self.model_info.rope_scaling)
+            else:
+                raise ValueError(f'Model config has an invalid / empty rope_scaling')
+            if 'factor' in self.rope_scaling:
+                if 'original_max_position_embeddings' in self.rope_scaling:
+                    self.max_model_len = int(self.rope_scaling['original_max_position_embeddings'] * self.rope_scaling['factor'])
+                elif max_model_len:
                     self.max_model_len = int(self.rope_scaling['factor'] * max_model_len)
+                else:
+                    self.max_model_len = max_model_len
+            logger.info(f'max_model_len is set to {self.max_model_len} from the RoPE setting of model config')
         except Exception:
             assert self.max_model_len is not None, 'Use max_model_len together with rope_scaling'
             assert self.rope_scaling in ['linear', 'dynamic', 'yarn']
@@ -129,6 +139,7 @@ class ModelArguments:
             self.rope_scaling = rope_scaling
             self.max_model_len = int(max_model_len * rope_scaling_factor)
         logger.info(f'rope_scaling is set to type: {self.rope_scaling}')
+        
 
     def _init_model_info(self) -> torch.dtype:
         self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
