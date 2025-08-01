@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
+import inspect
 import os
 from contextlib import contextmanager, nullcontext
 from functools import wraps
@@ -15,6 +16,7 @@ from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
+from swift.plugin import MeanMetric
 from swift.utils import JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
@@ -335,6 +337,16 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 if self.args.tuner_backend == 'unsloth':
                     inputs['logits_to_keep'] = int(logits_to_keep.sum())
 
+        if self.model.model_info.is_moe_model:
+            base_model = self.template.get_base_model(self.model)
+            router_aux_loss_coef = self.args.router_aux_loss_coef
+            if router_aux_loss_coef is None:
+                router_aux_loss_coef = getattr(base_model.config, 'router_aux_loss_coef', None)
+            if router_aux_loss_coef is not None:
+                base_model.config.router_aux_loss_coef = router_aux_loss_coef
+                if router_aux_loss_coef > 0 and 'output_router_logits' in inspect.signature(
+                        base_model.forward).parameters:
+                    inputs['output_router_logits'] = True
         inputs['compute_loss_func'] = compute_loss_func
         inputs['loss_kwargs'] = loss_kwargs
         return inputs
@@ -346,8 +358,11 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
 
         if (self.label_smoother is not None or compute_loss_func is not None) and 'labels' in inputs:
             labels = inputs.pop('labels')
-
         outputs = model(**inputs)
+        if getattr(outputs, 'aux_loss', None) is not None:
+            if 'aux_loss' not in self._custom_metrics:
+                self._custom_metrics['aux_loss'] = MeanMetric(nan_value=None)
+            self._custom_metrics['aux_loss'].update(outputs.aux_loss)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
         if self.args.past_index >= 0:

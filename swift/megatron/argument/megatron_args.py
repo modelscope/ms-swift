@@ -67,6 +67,7 @@ class MegatronTunerMixin:
                 if self.adapter_load is not None and hasattr(self, 'load'):
                     old_value = old_args.get('load')
                     if self.load is None and old_value is not None:
+                        logger.info(f'Setting args.load: {old_value}')
                         self.load = old_value
 
 

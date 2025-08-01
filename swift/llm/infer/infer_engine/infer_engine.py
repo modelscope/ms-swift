@@ -30,6 +30,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.model_dir = self.model_info.model_dir
         self.model_name = self.model_info.model_name
         self.max_model_len = self.model_info.max_model_len
+        self.task_type = self.model_info.task_type
         self.config = self.model_info.config
         if template is None:
             ckpt_dir = get_ckpt_dir(self.model_dir, getattr(self, 'adapters', None))

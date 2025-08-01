@@ -588,7 +588,7 @@ def get_model_tokenizer(
         model_type: Optional[str] = None,
         quantization_config=None,
         max_memory: Union[str, Dict[str, Any]] = None,
-        attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
+        attn_impl: Optional[str] = None,
         new_special_tokens: Optional[List[str]] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
         max_model_len: Optional[int] = None,

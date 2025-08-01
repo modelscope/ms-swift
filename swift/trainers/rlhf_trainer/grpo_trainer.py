@@ -190,6 +190,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.async_generate = args.async_generate
         vllm_client = kwargs.pop('vllm_client')  # for external vllm
 
+        self.model_kwarg_keys = (
+            inspect.signature(model.forward).parameters.keys() if not hasattr(model, 'get_base_model') else
+            inspect.signature(model.get_base_model().forward).parameters.keys())
+
         super().__init__(model, ref_model, *_args, **kwargs)
         if self.args.eval_strategy != 'no':
             total_eval_batch_size = self.args.per_device_eval_batch_size * \
@@ -1141,6 +1145,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 batch_encoded_inputs['old_per_token_logps'] = (
                     self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0]
                     if self.old_policy() else None)
+                if self.beta == 0.0:
+                    ref_per_token_logps = None
+                elif self.ref_model is not None:
+                    ref_per_token_logps = \
+                        self._get_per_token_logps_and_entropies(self.ref_model, batch_encoded_inputs)[0]
+                else:
+                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                        ref_per_token_logps = \
+                            self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0]
+                batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
 
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
@@ -1261,13 +1275,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Compute the KL divergence between the model and the reference model
         if self.beta != 0.0:
-            with torch.no_grad():
-                if self.ref_model is not None:
-                    ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(self.ref_model, inputs)
-                else:
-                    with self.accelerator.unwrap_model(self.model).disable_adapter():
-                        ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(self.model, inputs)
-
+            ref_per_token_logps = inputs['ref_per_token_logps']
             per_token_kl = (
                 torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
@@ -1452,7 +1460,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     'truncated_mask'
                 ]
             }
-
+            if 'logits_to_keep' in self.model_kwarg_keys:
+                inputs['logits_to_keep'] = logits_to_keep + 1
             with self._template_context(self.template), self.padding_free_context(model):
                 logits = model(**inputs).logits
             # exclude the last logit: it corresponds to the next token pred
@@ -1482,9 +1491,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     'truncated_mask'
                 ]
             }
-            with self._template_context(self.template):
-                outputs = unwrapped_model(**inputs, output_hidden_states=True)
-                last_hidden_state = outputs.hidden_states[-1]
+            if 'logits_to_keep' in self.model_kwarg_keys:
+                inputs['logits_to_keep'] = logits_to_keep + 1
+
+            last_hidden_state = unwrapped_model.model(**inputs).last_hidden_state
 
         last_hidden_state = last_hidden_state[:, :-1, :]  # (B, L-1, H)
         if logits_to_keep is not None:
@@ -1498,16 +1508,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completion_ids = input_ids[:, -logits_to_keep:]
         completion_mask = inputs['completion_mask']
 
-        # Compute the KL divergence between the model and the reference model
-        ref_per_token_logps = None
-        if self.beta != 0.0:
-            with torch.no_grad():
-                if self.ref_model is not None:
-                    ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(self.ref_model, inputs)
-                else:
-                    with self.accelerator.unwrap_model(self.model).disable_adapter():
-                        ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(self.model, inputs)
-
         # get the last hidden state of the model
         last_hidden_state = self._get_last_hidden_state(unwrapped_model, inputs, logits_to_keep)
         # compute loss and metrics using liger grpo loss
@@ -1518,8 +1518,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             attention_mask=completion_mask,
             advantages=inputs['advantages'],
             bias=unwrapped_model.lm_head.bias,
-            old_per_token_logps=inputs['old_per_token_logps'],
-            ref_per_token_logps=ref_per_token_logps,
+            old_per_token_logps=inputs.get('old_per_token_logps'),
+            ref_per_token_logps=inputs.get('ref_per_token_logps'),
         )
         # Extract metrics from the liger_grpo_loss output
         # KL divergence is the first metric when beta is non-zero

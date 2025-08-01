@@ -63,6 +63,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         seed (int): Random seed for reproducibility. Default is 42.
         model_kwargs (Optional[str]): Additional keyword arguments for the model. Default is None.
         load_data_args (bool): Flag to determine if dataset configuration should be loaded. Default is False.
+        packing (bool): Flag to enable packing of datasets. Default is False.
+        lazy_tokenize (Optional[bool]): Flag to enable lazy tokenization. Default is None.
         use_hf (bool): Flag to determine if Hugging Face should be used. Default is False.
         hub_token (Optional[str]): SDK token for authentication. Default is None.
         custom_register_path (List[str]): Path to custom .py file for dataset registration. Default is None.
@@ -80,6 +82,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     load_data_args: bool = False
     # dataset
     packing: bool = False
+    lazy_tokenize: Optional[bool] = None
+    cached_dataset: List[str] = field(default_factory=list)
     custom_register_path: List[str] = field(default_factory=list)  # .py
     # hub
     use_hf: bool = False
@@ -96,6 +100,19 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
 
     def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
         pass
+
+    def _init_lazy_tokenize(self):
+        if self.lazy_tokenize is None:
+            if self.model_meta.is_multimodal and not self.streaming and not self.packing:
+                self.lazy_tokenize = True
+            else:
+                self.lazy_tokenize = False
+            logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
+        if self.lazy_tokenize:
+            if self.packing:
+                raise ValueError('Packing and lazy_tokenize are incompatible.')
+            if self.streaming:
+                raise ValueError('Streaming and lazy_tokenize are incompatible.')
 
     def _init_custom_register(self) -> None:
         """Register custom .py file to datasets"""
@@ -154,7 +171,9 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
-
+        if isinstance(self.cached_dataset, str):
+            self.cached_dataset = [self.cached_dataset]
+        self._init_lazy_tokenize()
         self.hub = get_hub(self.use_hf)
         if self.hub.try_login(self.hub_token):
             logger.info('hub login successful!')

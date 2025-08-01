@@ -21,6 +21,7 @@ oss2
 pandas
 peft>=0.11,<0.17
 pillow
+PyYAML>=5.4
 requests
 rouge
 safetensors

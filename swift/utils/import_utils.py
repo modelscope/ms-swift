@@ -48,6 +48,10 @@ def is_wandb_available() -> bool:
     return importlib.util.find_spec('wandb') is not None
 
 
+def is_trl_available() -> bool:
+    return importlib.util.find_spec('trl') is not None
+
+
 class _LazyModule(ModuleType):
     """
     Module class that surfaces all objects but only performs associated imports when the objects are requested.

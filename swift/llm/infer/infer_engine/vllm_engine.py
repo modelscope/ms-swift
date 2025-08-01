@@ -58,6 +58,7 @@ class VllmEngine(InferEngine):
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         seed: Optional[int] = None,
+        task_type: Optional[str] = None,  # embedding
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -68,12 +69,10 @@ class VllmEngine(InferEngine):
         quantization: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
-        task_type: Optional[str] = None,
     ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
         patch_vllm_memory_leak()
-        self.task_type = task_type
         self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -83,7 +82,8 @@ class VllmEngine(InferEngine):
             model_type=model_type,
             use_hf=use_hf,
             hub_token=hub_token,
-            revision=revision)[1]
+            revision=revision,
+            task_type=task_type)[1]
         self._post_init(template)
 
         self._prepare_engine_kwargs(
@@ -144,6 +144,8 @@ class VllmEngine(InferEngine):
         task: Optional[str] = None,
         **engine_kwargs,
     ) -> None:
+        if task == 'embedding':
+            task = 'embed'
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
         if self.use_async_engine:
             engine_cls = AsyncEngineArgs
@@ -278,7 +280,7 @@ class VllmEngine(InferEngine):
                         mm_data = {key.rstrip('s'): media_data[0]}
             if mm_data:
                 llm_inputs['multi_modal_data'] = mm_data
-            if self.task_type == 'embed':
+            if self.task_type == 'embedding':
                 from vllm.pooling_params import PoolingParams
                 return self.engine.encode(llm_inputs, PoolingParams(), request_id)
             elif self.use_async_engine:
@@ -411,7 +413,7 @@ class VllmEngine(InferEngine):
             response = template.decode(output.token_ids)
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, request_config.top_logprobs)
             toolcall = self._get_toolcall(response, template)
-            token_ids = output.token_ids if request_config.return_details else None
+            token_ids = template.skip_stop_tokens(output.token_ids) if request_config.return_details else None
             choice = ChatCompletionResponseChoice(
                 index=output.index,
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
@@ -436,7 +438,7 @@ class VllmEngine(InferEngine):
         result = None
         async for result in result_generator:
             pass
-        if self.task_type == 'embed':
+        if self.task_type == 'embedding':
             return self._create_embedding_response(result, template, generation_config, request_id)
         else:
             return self._create_chat_completion_response(result, template, request_config, request_id)
@@ -546,11 +548,6 @@ class VllmEngine(InferEngine):
             template = self.default_template
 
         template.set_mode('vllm')
-        if self.task_type == 'embed':
-            # TODO Refactor me
-            template.infer_backend = 'vllm'
-            template.task_type = 'embedding'
-            template.set_mode('embedding')
         loop = asyncio.get_running_loop()
         with torch.inference_mode():
             inputs = await loop.run_in_executor(None, template.encode, infer_request)
