@@ -3,7 +3,6 @@
 import inspect
 import logging
 import os
-# dlrover flash checkpoint
 import re
 import shutil
 import time
@@ -230,7 +229,7 @@ class SwiftMixin:
         if AutoModelForCausalLMWithValueHead is not None:
             supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead, )
         save_safetensors = self.args.save_safetensors
-        use_flash_attn = self.args.use_flash_ckpt
+        use_flash_ckpt = self.args.use_flash_ckpt
 
         if not isinstance(self.model, supported_classes) and self.model.__class__.__name__ not in supported_names:
             if state_dict is None:
@@ -238,7 +237,7 @@ class SwiftMixin:
 
             _unwrap_model = unwrap_model(self.model)
             if isinstance(_unwrap_model, supported_classes):
-                if use_flash_attn:
+                if use_flash_ckpt:
                     _unwrap_model.save_pretrained(
                         output_dir,
                         state_dict=state_dict,
@@ -249,7 +248,7 @@ class SwiftMixin:
                         output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
             else:
                 logger.info('Trainer.model is not a `PreTrainedModel`, only saving its state dict.')
-                if use_flash_attn:
+                if use_flash_ckpt:
                     self.flash_checkpointer.ckpt_agent.save(state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
                 else:
                     if save_safetensors:
@@ -265,26 +264,16 @@ class SwiftMixin:
                     v_head_state_dict[name] = param
                 else:
                     decoder_state_dict[name.replace('pretrained_model.', '', 1)] = param
-            if use_flash_attn:
-
-                self.model.pretrained_model.save_pretrained(
-                    output_dir,
-                    state_dict=decoder_state_dict or None,
-                    safe_serialization=False,
-                    save_function=self.flash_checkpointer.ckpt_agent.save)
+            self.model.pretrained_model.save_pretrained(
+                output_dir, state_dict=decoder_state_dict or None, safe_serialization=save_safetensors)
+            if save_safetensors:
+                from safetensors.torch import save_file
+                save_file(
+                    v_head_state_dict, os.path.join(output_dir, 'value_head.safetensors'), metadata={'format': 'pt'})
             else:
-                self.model.pretrained_model.save_pretrained(
-                    output_dir, state_dict=decoder_state_dict or None, safe_serialization=save_safetensors)
-                if save_safetensors:
-                    from safetensors.torch import save_file
-                    save_file(
-                        v_head_state_dict,
-                        os.path.join(output_dir, 'value_head.safetensors'),
-                        metadata={'format': 'pt'})
-                else:
-                    torch.save(v_head_state_dict, os.path.join(output_dir, 'value_head.bin'))
+                torch.save(v_head_state_dict, os.path.join(output_dir, 'value_head.bin'))
         elif is_instance_of_ms_model(self.model):
-            if use_flash_attn:
+            if use_flash_ckpt:
                 PreTrainedModel.save_pretrained(
                     self.model,
                     output_dir,
@@ -300,7 +289,7 @@ class SwiftMixin:
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         else:
             if self.model.__class__.__name__ != 'SentenceTransformer':
-                if use_flash_attn:
+                if use_flash_ckpt:
                     self.model.save_pretrained(
                         output_dir,
                         state_dict=state_dict,
@@ -323,7 +312,7 @@ class SwiftMixin:
                     self.model[0].auto_model.save_pretrained = save_pretrained
 
                 with save_context():
-                    if use_flash_attn:
+                    if use_flash_ckpt:
                         self.model.save_pretrained(
                             output_dir,
                             state_dict=state_dict,
@@ -537,8 +526,6 @@ class SwiftMixin:
             logger.info(f'Skip saving the checkpoint of step {self.state.global_step} '
                         'because the latest checkpoint is not finished.')
             shutil.rmtree(output_dir, ignore_errors=True)
-
-        self.flash_checkpointer.ckpt_agent.state_dict.clear()
 
         if self.args.push_to_hub:
             self._push_from_checkpoint(output_dir)

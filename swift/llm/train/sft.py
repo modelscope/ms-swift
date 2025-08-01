@@ -29,6 +29,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
+        if args.use_flash_ckpt:
+            try:
+                import dlrover.trainer.torch.flash_checkpoint.hf_trainer
+            except ImportError:
+                raise ValueError('Please install dlrover to use flash ckpt `pip install dlrover[k8s,torch]')
 
     def _prepare_generation_config(self):
         args = self.args
@@ -157,12 +162,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         model_parameter_info = get_model_parameter_info(self.model)
         self.train_msg['model_parameter_info'] = model_parameter_info
         logger.info(f'model_parameter_info: {model_parameter_info}')
-        if args.use_flash_ckpt:
-            try:
-                import dlrover.trainer.torch.flash_checkpoint.hf_trainer
-            except ImportError:
-                raise ValueError('Please install dlrover to use flash ckpt `pip install dlrover[k8s,torch]')
-
         trainer_cls = TrainerFactory.get_trainer_cls(args)
         trainer = trainer_cls(
             model=self.model,
