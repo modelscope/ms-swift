@@ -1153,7 +1153,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, (batch, batch_advantages) in enumerate(zip(gas_chunks, advantage_chunks)):
             # Encode and process each batch (size=bs)
             with self._template_context(template):
-                batch_encoded_inputs = [template.encode(infer_request) for infer_request in batch]
+                processed_assistant_batch = []
+                for data in batch:
+                    InferRequest.remove_response(data['messages'])
+                    data['messages'].append({'role': 'assistant', 'content': data['completion_ids']})
+                    processed_assistant_batch.append(data)
+                batch_encoded_inputs = [template.encode(infer_request) for infer_request in processed_assistant_batch]
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
 
             # Process labels and masks
