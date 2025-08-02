@@ -515,6 +515,9 @@ class Template(ProcessorMixin):
         elif self.task_type == 'seq_cls':
             if self.mode == 'rlhf':
                 encoded = self._rlhf_encode(inputs)
+                for prefix in ['chosen', 'rejected']:
+                    encoded.pop(f'{prefix}_labels', None)
+                    encoded.pop(f'{prefix}_loss_scale', None)
             else:
                 encoded = self._seq_cls_encode(inputs)
         elif self.task_type == 'prm':
@@ -532,15 +535,13 @@ class Template(ProcessorMixin):
             if encoded[key] is None:
                 encoded.pop(key)
             elif key.endswith('length'):
-                value = encoded[key]
+                value = encoded.pop(key)
                 if isinstance(value, int):
                     lengths.append(value)
                 elif isinstance(value, (tuple, list)):
                     lengths += value
         if return_length:
             encoded['length'] = max(lengths)
-        else:
-            encoded.pop('length', None)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         if not self.remove_unused_columns:
