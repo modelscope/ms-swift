@@ -44,9 +44,9 @@
 
 请扫描下面的二维码来加入我们的交流群：
 
-[Discord Group](https://discord.com/invite/D27yfEFVz5)              |  微信群
-:-------------------------:|:-------------------------:
-<img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
+[Discord Group](https://discord.com/invite/D27yfEFVz5) | 微信群 | GRPO群 | Megatron群 | 钉钉群
+:-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:
+<img src="asset/discord_qr.jpg" width="200" height="200">|<img src="asset/wechat.png" width="200" height="200">|<img src="asset/wechat_grpo.png" width="200" height="200">|<img src="asset/wechat_megatron.png" width="200" height="200">|<img src="asset/ding.png" width="200" height="200">
 
 ## 📝 简介
 🍲 ms-swift是魔搭社区提供的大模型与多模态大模型微调部署框架，现已支持500+大模型与200+多模态大模型的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中大模型包括：Qwen3、Qwen3-MoE、Qwen2.5、InternLM3、GLM4、Mistral、DeepSeek-R1、Yi1.5、TeleChat2、Baichuan2、Gemma2等模型，多模态大模型包括：Qwen2.5-VL、Qwen2-Audio、Llama4、Llava、InternVL3、MiniCPM-V-2.6、GLM4v、Xcomposer2.5、Yi-VL、DeepSeek-VL2、Phi3.5-Vision、GOT-OCR2等模型。
