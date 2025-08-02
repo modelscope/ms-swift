@@ -513,7 +513,13 @@ class Template(ProcessorMixin):
             elif self.mode == 'gkd':
                 encoded = self._gkd_encode(inputs)
         elif self.task_type == 'seq_cls':
-            encoded = self._seq_cls_encode(inputs)
+            if self.mode == 'rlhf':
+                encoded = self._rlhf_encode(inputs)
+                for prefix in ['chosen', 'rejected']:
+                    encoded.pop(f'{prefix}_labels', None)
+                    encoded.pop(f'{prefix}_loss_scale', None)
+            else:
+                encoded = self._seq_cls_encode(inputs)
         elif self.task_type == 'prm':
             encoded = self._encode_truncated(inputs)
         elif self.task_type == 'embedding':
@@ -529,15 +535,13 @@ class Template(ProcessorMixin):
             if encoded[key] is None:
                 encoded.pop(key)
             elif key.endswith('length'):
-                value = encoded[key]
+                value = encoded.pop(key)
                 if isinstance(value, int):
                     lengths.append(value)
                 elif isinstance(value, (tuple, list)):
                     lengths += value
         if return_length:
             encoded['length'] = max(lengths)
-        else:
-            encoded.pop('length', None)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         if not self.remove_unused_columns:
@@ -1389,7 +1393,10 @@ class Template(ProcessorMixin):
         elif self.task_type == 'prm':
             res = self._data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'seq_cls':
-            res = self._seq_cls_data_collator(batch, padding_to=padding_to)
+            if self.mode == 'rlhf':
+                res = self._rlhf_data_collator(batch, padding_to=padding_to)
+            else:
+                res = self._seq_cls_data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'embedding':
             res = self._embedding_data_collator(batch, padding_to=padding_to)
         elif self.task_type in {'reranker', 'generative_reranker'}:
