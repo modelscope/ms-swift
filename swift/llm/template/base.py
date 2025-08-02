@@ -1173,7 +1173,9 @@ class Template(ProcessorMixin):
         if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
             encoded = Template._encode(self, inputs)
             for key in ['images', 'audios', 'videos']:
-                encoded[key] = getattr(inputs, key)
+                value = getattr(inputs, key)
+                if value:
+                    encoded[key] = value
         else:
             encoded = self._encode(inputs)
 
