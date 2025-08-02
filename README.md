@@ -45,9 +45,9 @@
 You can contact us and communicate with us by adding our group:
 
 
-[Discord Group](https://discord.com/invite/D27yfEFVz5) | WeChat Group | GRPO Group | Megatron Group | DingTalk Group
-:-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:
-<img src="asset/discord_qr.jpg" width="200" height="200">|<img src="asset/wechat.png" width="200" height="200">|<img src="asset/wechat_grpo.png" width="200" height="200">|<img src="asset/wechat_megatron.png" width="200" height="200">|<img src="asset/ding.png" width="200" height="200">
+[Discord Group](https://discord.com/invite/D27yfEFVz5)              |  WeChat Group
+:-------------------------:|:-------------------------:
+<img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 
 ## 📝 Introduction
