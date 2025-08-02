@@ -513,7 +513,10 @@ class Template(ProcessorMixin):
             elif self.mode == 'gkd':
                 encoded = self._gkd_encode(inputs)
         elif self.task_type == 'seq_cls':
-            encoded = self._seq_cls_encode(inputs)
+            if self.mode == 'rlhf':
+                encoded = self._rlhf_encode(inputs)
+            else:
+                encoded = self._seq_cls_encode(inputs)
         elif self.task_type == 'prm':
             encoded = self._encode_truncated(inputs)
         elif self.task_type == 'embedding':
@@ -1389,7 +1392,10 @@ class Template(ProcessorMixin):
         elif self.task_type == 'prm':
             res = self._data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'seq_cls':
-            res = self._seq_cls_data_collator(batch, padding_to=padding_to)
+            if self.mode == 'rlhf':
+                res = self._rlhf_data_collator(batch, padding_to=padding_to)
+            else:
+                res = self._seq_cls_data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'embedding':
             res = self._embedding_data_collator(batch, padding_to=padding_to)
         elif self.task_type in {'reranker', 'generative_reranker'}:
