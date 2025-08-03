@@ -114,22 +114,22 @@ pip install -e .
 
 运行环境：
 
-|        | 范围           | 推荐 | 备注 |
-| ------ |--------------| ---- | --|
-| python | >=3.9        | 3.10 ||
-| cuda |              | cuda12 |使用cpu、npu、mps则无需安装|
-| torch | >=2.0        | 2.7.1 ||
-| transformers | >=4.33       | 4.53.3 ||
-| modelscope | >=1.23       |  ||
-| peft | >=0.11,<0.17 | ||
-| trl | >=0.15,<0.21 | 0.19.1 |RLHF|
-| deepspeed | >=0.14       | 0.16.9 |训练|
-| flash_attn  |     | 2.7.4.post1/3.0.0b1   |    训练     |
-| vllm | >=0.5.1      | 0.10 |推理/部署/评测|
-| sglang |  >=0.4.6   | 0.4.9.post6 |推理/部署/评测|
-| lmdeploy | >=0.5,<0.9      | 0.8 |推理/部署/评测|
-| evalscope | >=0.11       | |评测|
-| gradio |        | 5.32.1 | Web-UI/App |
+|              | 范围           | 推荐                  | 备注                 |
+|--------------|--------------|---------------------|--------------------|
+| python       | >=3.9        | 3.10                |                    |
+| cuda         |              | cuda12              | 使用cpu、npu、mps则无需安装 |
+| torch        | >=2.0        | 2.7.1               |                    |
+| transformers | >=4.33       | 4.53.3              |                    |
+| modelscope   | >=1.23       |                     |                    |
+| peft         | >=0.11,<0.17 |                     |                    |
+| trl          | >=0.15,<0.21 | 0.19.1              | RLHF               |
+| deepspeed    | >=0.14       | 0.16.9              | 训练                 |
+| flash_attn   |              | 2.7.4.post1/3.0.0b1 | 训练                 |
+| vllm         | >=0.5.1      | 0.10                | 推理/部署/评测           |
+| sglang       | >=0.4.6      | 0.4.9.post6         | 推理/部署/评测           |
+| lmdeploy     | >=0.5,<0.9   | 0.8                 | 推理/部署/评测           |
+| evalscope    | >=0.11       |                     | 评测                 |
+| gradio       |              | 5.32.1              | Web-UI/App         |
 
 更多可选依赖可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh)。
 
