@@ -535,13 +535,15 @@ class Template(ProcessorMixin):
             if encoded[key] is None:
                 encoded.pop(key)
             elif key.endswith('length'):
-                value = encoded.pop(key)
+                value = encoded[key]
                 if isinstance(value, int):
                     lengths.append(value)
                 elif isinstance(value, (tuple, list)):
                     lengths += value
         if return_length:
             encoded['length'] = max(lengths)
+        else:
+            encoded.pop('length', None)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         if not self.remove_unused_columns:
