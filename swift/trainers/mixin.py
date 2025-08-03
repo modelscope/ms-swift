@@ -584,7 +584,7 @@ class SwiftMixin:
 
     def get_cu_seqlens(self, position_ids, logits_to_keep) -> torch.Tensor:
         from swift.llm import get_packed_seq_params
-        cu_seqlens = get_packed_seq_params(position_ids)
+        cu_seqlens = get_packed_seq_params(position_ids)['cumulative_seqlens_q']
         res_cu_seqlens = cu_seqlens.clone()
         if isinstance(logits_to_keep, torch.Tensor):
             for i in range(cu_seqlens.shape[0] - 1):

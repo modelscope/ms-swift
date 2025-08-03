@@ -132,10 +132,13 @@ def get_batch_on_this_tp_rank(data_iterator):
 
 
 def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
-    packed_seq_params = _get_packed_seq_params(position_ids)
-    packed_seq_params['cu_seqlens_q'] = packed_seq_params.pop('cumulative_seqlens_q')
-    packed_seq_params['cu_seqlens_kv'] = packed_seq_params.pop('cumulative_seqlens_kv')
-    return PackedSeqParams(**packed_seq_params, qkv_format='thd')
+    params = _get_packed_seq_params(position_ids)
+    return PackedSeqParams(
+        cu_seqlens_q=params['cumulative_seqlens_q'],
+        cu_seqlens_kv=params['cumulative_seqlens_k'],
+        max_seqlen_q=params['max_length_q'],
+        max_seqlen_kv=params['max_length_k'],
+        qkv_format='thd')
 
 
 def _split_tokens(tokens, cu_seqlens):
