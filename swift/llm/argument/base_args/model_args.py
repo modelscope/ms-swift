@@ -129,7 +129,6 @@ class ModelArguments:
                 max_model_len = rope_scaling['original_max_position_embeddings']
         else:
             raise ValueError(f'RoPE config has an invalid value: {self.rope_scaling}')
-        if 'factor' in rope_scaling:
             rope_scaling_factor = rope_scaling['factor']
         else:
             rope_scaling_factor = max(float(math.ceil(self.max_model_len / max_model_len)), 1.0)
@@ -138,8 +137,9 @@ class ModelArguments:
         rope_model_len = int(max_model_len * rope_scaling_factor)
         logger.info(f'rope_scaling is set to type: {self.rope_scaling}')
         if self.max_model_len:
+            assert self.max_model_len <= rope_model_len, f'rope config ({rope_model_len} = {rope_scaling_factor} * {max_model_len}) should be bigger than max_model_len from command line ({self.max_model_len})'
+        else:
             self.max_model_len = rope_model_len
-            assert self.max_model_len <= rope_model_len, f'rope config ({rope_model_len}) should be bigger than max_model_len from command line ({self.max_model_len})'
         logger.info(f'max_model_len is set to {rope_model_len} from the RoPE config')
         
         
