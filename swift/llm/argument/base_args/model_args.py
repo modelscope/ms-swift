@@ -10,7 +10,7 @@ import torch
 from transformers.utils import is_torch_mps_available
 
 from swift.llm import MODEL_MAPPING, HfConfigFactory, get_model_info_meta, get_model_name
-from swift.utils import get_dist_setting, get_logger
+from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
 logger = get_logger()
 
@@ -41,43 +41,26 @@ class ModelArguments:
     torch_dtype: Literal['bfloat16', 'float16', 'float32', None] = None
     # flash_attn: It will automatically convert names based on the model.
     # None: It will be automatically selected between sdpa and eager.
-    attn_impl: Literal['flash_attn', 'sdpa', 'eager', 'flex_attention', None] = None
+    # 'flash_attn', 'sdpa', 'eager', 'flex_attention', 'flash_attention_2', 'flash_attention_3'
+    attn_impl: Optional[str] = None
     new_special_tokens: List[str] = field(default_factory=list)
 
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
-    rope_scaling: Literal['linear', 'dynamic', 'yarn'] = None
+    rope_scaling: Optional[str] = None
     device_map: Optional[Union[dict, str]] = None
     max_memory: Optional[Union[dict, str]] = None
+    max_model_len: Optional[int] = None
     # When some model code needs to be downloaded from GitHub,
     # this parameter specifies the path to the locally downloaded repository.
     local_repo_path: Optional[str] = None
     init_strategy: Literal['zero', 'uniform', 'normal', 'xavier_uniform', 'xavier_normal', 'kaiming_uniform',
                            'kaiming_normal', 'orthogonal'] = None
 
-    @staticmethod
-    def parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Union[str, Dict]:
-        """Convert a JSON string or JSON file into a dict"""
-        # If the value could potentially be a string, it is generally advisable to set strict to False.
-        if value is None:
-            value = {}
-        elif isinstance(value, str):
-            if os.path.exists(value):  # local path
-                with open(value, 'r', encoding='utf-8') as f:
-                    value = json.load(f)
-            else:  # json str
-                try:
-                    value = json.loads(value)
-                except json.JSONDecodeError:
-                    if strict:
-                        logger.error(f"Unable to parse string: '{value}'")
-                        raise
-        return value
-
     def _init_device_map(self):
         """Prepare device map args"""
         if self.device_map:
-            self.device_map: Union[str, Dict[str, Any], None] = self.parse_to_dict(self.device_map, strict=False)
+            self.device_map: Union[str, Dict[str, Any], None] = json_parse_to_dict(self.device_map, strict=False)
         # compat mp&ddp
         _, local_rank, _, local_world_size = get_dist_setting()
         if local_world_size > 1 and isinstance(self.device_map, dict) and local_rank > 0:
@@ -91,7 +74,7 @@ class ModelArguments:
                 self.max_memory = ast.literal_eval(self.max_memory)
             except Exception:
                 pass
-        self.max_memory = self.parse_to_dict(self.max_memory)
+        self.max_memory = json_parse_to_dict(self.max_memory)
         # compat mp&ddp
         _, local_rank, _, local_world_size = get_dist_setting()
         if local_world_size > 1 and isinstance(self.max_memory, dict) and local_rank > 0:
@@ -124,19 +107,27 @@ class ModelArguments:
             self.bf16 = bf16
 
     def _init_rope_scaling(self):
-        assert self.max_length is not None, 'Use max_model_len together with rope_scaling'
-        rope_scaling = self.model_info.rope_scaling or {}
         max_model_len = self.model_info.max_model_len
-        rope_scaling_factor = 1.0
-        if max_model_len:
-            rope_scaling_factor = max(float(math.ceil(self.max_length / max_model_len)), 1.0)
-        if rope_scaling:
-            rope_scaling_factor = max(rope_scaling.get('factor', -1), rope_scaling_factor)
-            rope_scaling['type'] = self.rope_scaling
-            rope_scaling['factor'] = rope_scaling_factor
-        else:
-            rope_scaling = {'type': self.rope_scaling, 'factor': rope_scaling_factor}
-        self.rope_scaling = rope_scaling
+        try:
+            if isinstance(self.rope_scaling, str):
+                self.rope_scaling = json.loads(self.rope_scaling)
+                if 'factor' in self.rope_scaling and max_model_len:
+                    self.max_model_len = int(self.rope_scaling['factor'] * max_model_len)
+        except Exception:
+            assert self.max_model_len is not None, 'Use max_model_len together with rope_scaling'
+            assert self.rope_scaling in ['linear', 'dynamic', 'yarn']
+            rope_scaling = self.model_info.rope_scaling or {}
+            rope_scaling_factor = 1.0
+            if max_model_len:
+                rope_scaling_factor = max(float(math.ceil(self.max_model_len / max_model_len)), 1.0)
+            if rope_scaling:
+                rope_scaling_factor = max(rope_scaling.get('factor', -1), rope_scaling_factor)
+                rope_scaling['type'] = self.rope_scaling
+                rope_scaling['factor'] = rope_scaling_factor
+            else:
+                rope_scaling = {'type': self.rope_scaling, 'factor': rope_scaling_factor}
+            self.rope_scaling = rope_scaling
+            self.max_model_len = int(max_model_len * rope_scaling_factor)
         logger.info(f'rope_scaling is set to type: {self.rope_scaling}')
 
     def _init_model_info(self) -> torch.dtype:
@@ -146,7 +137,7 @@ class ModelArguments:
 
         self.model_dir = self.model_info.model_dir
         self.model_type = self.model_info.model_type
-        if isinstance(self.rope_scaling, str):
+        if self.rope_scaling is not None:
             self._init_rope_scaling()
         return self.model_info.torch_dtype
 
@@ -188,6 +179,7 @@ class ModelArguments:
             'attn_impl': self.attn_impl,
             'new_special_tokens': self.new_special_tokens,
             'rope_scaling': self.rope_scaling,
+            'max_model_len': self.max_model_len,
             'task_type': self.task_type,
             'num_labels': self.num_labels,
             'problem_type': self.problem_type,

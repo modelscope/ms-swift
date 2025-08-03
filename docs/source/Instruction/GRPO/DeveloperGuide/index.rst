@@ -7,3 +7,4 @@ Developer Guide
    多任务.md
    奖励函数.md
    奖励模型.md
+   GYM环境训练.md

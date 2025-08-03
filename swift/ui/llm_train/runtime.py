@@ -2,6 +2,7 @@
 import collections
 import os
 import re
+import subprocess
 import sys
 import time
 import webbrowser
@@ -18,8 +19,7 @@ from transformers import is_tensorboard_available
 
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.utils import close_loop, run_command_in_subprocess
-from swift.utils import TB_COLOR, TB_COLOR_SMOOTH, get_logger, read_tensorboard_file, tensorboard_smoothing
-from swift.utils.utils import format_time
+from swift.utils import TB_COLOR, TB_COLOR_SMOOTH, format_time, get_logger, read_tensorboard_file, tensorboard_smoothing
 
 logger = get_logger()
 
@@ -561,18 +561,19 @@ class Runtime(BaseUI):
         for i in range(len(args)):
             space = args[i].find(' ')
             splits = args[i][:space], args[i][space + 1:]
-            all_args[splits[0]] = splits[1]
+            all_args[splits[0]] = str(splits[1]) if isinstance(splits[1], int) else splits[1]
 
         output_dir = all_args['output_dir']
         if os.path.exists(os.path.join(output_dir, 'args.json')):
             with open(os.path.join(output_dir, 'args.json'), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
             for key in all_args.keys():
-                all_args[key] = _json.get(key)
+                all_args[key] = str(_json.get(key)) if isinstance(_json.get(key), int) else _json.get(key)
                 if isinstance(all_args[key], list):
-                    if any([' ' in value for value in all_args[key]]):
+                    if any([' ' in value for value in all_args[key] if isinstance(value, str)]):
                         all_args[key] = [f'"{value}"' for value in all_args[key]]
-                    all_args[key] = ' '.join(all_args[key])
+                    if len(all_args[key]) > 0 and isinstance(all_args[key][0], str):
+                        all_args[key] = ' '.join(all_args[key])
         return pid, all_args
 
     @staticmethod
@@ -581,10 +582,14 @@ class Runtime(BaseUI):
             pid, all_args = Runtime.parse_info_from_cmdline(task)
             output_dir = all_args['output_dir']
             if sys.platform == 'win32':
-                os.system(f'taskkill /f /t /pid "{pid}"')
+                command = ['taskkill', '/f', '/t', '/pid', pid]
             else:
-                os.system(f'pkill -9 -f {output_dir}')
-            time.sleep(1)
+                command = ['pkill', '-9', '-f', output_dir]
+            try:
+                result = subprocess.run(command, capture_output=True, text=True)
+                assert result.returncode == 0
+            except Exception as e:
+                raise e
             Runtime.break_log_event(task)
         return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (len(Runtime.get_plot(task)) + 1)
 

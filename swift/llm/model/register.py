@@ -1,7 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import math
 import os
 import platform
 import re
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
@@ -18,7 +20,7 @@ from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_avail
                                 is_torch_npu_available, strtobool)
 from transformers.utils.versions import require_version
 
-from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr
 from .constant import ModelType
 from .patcher import (patch_automodel, patch_automodel_for_sequence_classification, patch_get_dynamic_module,
                       patch_mp_ddp, patch_tp_plan)
@@ -133,18 +135,40 @@ def load_by_unsloth(args):
     os.environ['UNSLOTH_DISABLE_STATISTICS'] = '1'
     model_info = args.model_info
     model_meta = args.model_meta
-    if model_meta.is_multimodal:
-        from unsloth import FastVisionModel as UnslothModel
-    else:
-        from unsloth import FastLanguageModel as UnslothModel
-    model, processor = UnslothModel.from_pretrained(
-        model_name=args.adapters and args.adapters[0] or args.model_dir,
-        dtype=args.torch_dtype,
-        max_seq_length=args.max_length,
-        full_finetuning=args.quant_bits is None,
-        load_in_4bit=args.quant_bits == 4,
-        load_in_8bit=args.quant_bits == 8,
-    )
+
+    os.environ['UNSLOTH_IS_PRESENT'] = '1'
+
+    @contextmanager
+    def _patch_distributed_function():
+        from unsloth_zoo import utils, compiler
+
+        def distributed_function(n=1, function=None, *args, **kwargs):
+            return function(*args, **kwargs)
+
+        _origin_distributed_function = utils.distributed_function
+        utils.distributed_function = distributed_function
+        compiler.distributed_function = distributed_function
+        yield
+        utils.distributed_function = _origin_distributed_function
+        compiler.distributed_function = _origin_distributed_function
+
+    with _patch_distributed_function():
+        if model_meta.is_multimodal:
+            from unsloth import FastVisionModel as UnslothModel
+        elif model_info.is_moe_model:
+            from unsloth import FastModel as UnslothModel
+        else:
+            from unsloth import FastLanguageModel as UnslothModel
+
+        model, processor = UnslothModel.from_pretrained(
+            model_name=args.adapters and args.adapters[0] or args.model_dir,
+            dtype=args.torch_dtype,
+            max_seq_length=args.max_length,
+            full_finetuning=args.train_type == 'full',
+            load_in_4bit=args.quant_bits == 4,
+            load_in_8bit=args.quant_bits == 8,
+            device_map=args.device_map,
+        )
     if isinstance(model, PeftModel):
         base_model = model.model
     else:
@@ -201,8 +225,11 @@ def get_model_tokenizer_from_local(model_dir: str,
     model_config.torch_dtype = torch_dtype
     HfConfigFactory.compat_zero3(model_config)
     rope_scaling = kwargs.get('rope_scaling')
+    max_model_len = kwargs.get('max_model_len')
     if rope_scaling:
         HfConfigFactory.set_config_attr(model_config, 'rope_scaling', rope_scaling)
+    if max_model_len:
+        HfConfigFactory.set_max_model_len(model_config, max_model_len)
 
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
@@ -450,6 +477,7 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     torch_dtype = HfConfigFactory.get_torch_dtype(config, quant_info)
     max_model_len = HfConfigFactory.get_max_model_len(config)
     rope_scaling = HfConfigFactory.get_config_attr(config, 'rope_scaling')
+    is_moe_model = HfConfigFactory.is_moe_model(config)
 
     if model_type is None:
         model_type = _read_args_json_model_type(model_dir)
@@ -471,7 +499,9 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
         max_model_len,
         quant_info.get('quant_method'),
         quant_info.get('quant_bits'),
-        rope_scaling=rope_scaling)
+        rope_scaling=rope_scaling,
+        is_moe_model=is_moe_model,
+    )
     return res
 
 
@@ -558,9 +588,10 @@ def get_model_tokenizer(
         model_type: Optional[str] = None,
         quantization_config=None,
         max_memory: Union[str, Dict[str, Any]] = None,
-        attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
+        attn_impl: Optional[str] = None,
         new_special_tokens: Optional[List[str]] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
+        max_model_len: Optional[int] = None,
         automodel_class=None,
         task_type: Literal['causal_lm', 'seq_cls', 'reranker', 'generative_reranker'] = None,
         num_labels: Optional[int] = None,
@@ -597,7 +628,7 @@ def get_model_tokenizer(
         task_type=task_type,
         num_labels=num_labels)
 
-    if not use_torchacc() and device_map is None:
+    if device_map is None:
         device_map = get_default_device_map()
     model_kwargs['device_map'] = device_map
     if quantization_config:
@@ -610,6 +641,7 @@ def get_model_tokenizer(
     kwargs['attn_impl'] = attn_impl
     kwargs['rope_scaling'] = rope_scaling
     kwargs['model_meta'] = model_meta
+    kwargs['max_model_len'] = max_model_len
     with patch_get_dynamic_module(), patch_tp_plan(load_model):
         model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
@@ -623,7 +655,10 @@ def get_model_tokenizer(
         if num_new_tokens > 0:
             logger.info(f'Added {num_new_tokens} new special tokens.')
             if model is not None and model.config.vocab_size < len(tokenizer):
-                model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=128)
+                vocab_size = math.ceil(len(tokenizer) / 128) * 128
+                model.resize_token_embeddings(vocab_size)
+                # fix transformers==4.52.4 qwen2.5-vl
+                model.config.vocab_size = vocab_size
 
     problem_type = kwargs.get('problem_type')
     if problem_type is None and model_info.num_labels == 1:

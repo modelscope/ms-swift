@@ -56,7 +56,7 @@ class HubOperation:
                     path_in_repo: Optional[str] = None,
                     commit_message: Optional[str] = None,
                     commit_description: Optional[str] = None,
-                    token: Union[str, bool, None] = None,
+                    token: Optional[Union[str, bool]] = None,
                     private: bool = False,
                     revision: Optional[str] = 'master',
                     ignore_patterns: Optional[Union[List[str], str]] = None,
@@ -124,7 +124,11 @@ class MSHub(HubOperation):
     ms_token = None
 
     @staticmethod
-    def create_repo(repo_id: str, *, token: Union[str, bool, None] = None, private: bool = False, **kwargs) -> RepoUrl:
+    def create_repo(repo_id: str,
+                    *,
+                    token: Optional[Union[str, bool]] = None,
+                    private: bool = False,
+                    **kwargs) -> RepoUrl:
         """
         Create a new repository on the hub.
 
@@ -150,7 +154,7 @@ class MSHub(HubOperation):
         path_in_repo: Optional[str] = None,
         commit_message: Optional[str] = None,
         commit_description: Optional[str] = None,
-        token: Union[str, bool, None] = None,
+        token: Optional[Union[str, bool]] = None,
         revision: Optional[str] = 'master',
         ignore_patterns: Optional[Union[List[str], str]] = None,
         **kwargs,
@@ -242,7 +246,7 @@ class MSHub(HubOperation):
                     path_in_repo: Optional[str] = None,
                     commit_message: Optional[str] = None,
                     commit_description: Optional[str] = None,
-                    token: Union[str, bool, None] = None,
+                    token: Optional[Union[str, bool]] = None,
                     private: bool = False,
                     revision: Optional[str] = 'master',
                     ignore_patterns: Optional[Union[List[str], str]] = None,
@@ -387,7 +391,7 @@ class HFHub(HubOperation):
                     path_in_repo: Optional[str] = None,
                     commit_message: Optional[str] = None,
                     commit_description: Optional[str] = None,
-                    token: Union[str, bool, None] = None,
+                    token: Optional[Union[str, bool]] = None,
                     private: bool = False,
                     revision: Optional[str] = 'master',
                     ignore_patterns: Optional[Union[List[str], str]] = None,

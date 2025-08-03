@@ -1,9 +1,10 @@
 import os
-from typing import Any, Dict, List, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 import json
 
-from swift.llm import InferRequest
+if TYPE_CHECKING:
+    from swift.llm import InferRequest
 
 
 class PRM:
@@ -41,7 +42,7 @@ Given the upper information, give your reward(-1.0~1.0) of the following answer:
 
 class QwenMaxPRM(PRM):
 
-    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], ground_truths: List[str],
+    def __call__(self, infer_requests: List[Union['InferRequest', Dict]], ground_truths: List[str],
                  **kwargs) -> List[float]:
         # TODO: check request_config
         rewards = []
@@ -107,7 +108,7 @@ class ClientPRM(PRM):
             'model': model,
         }
 
-    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], ground_truths: List[str],
+    def __call__(self, infer_requests: List[Union['InferRequest', Dict]], ground_truths: List[str],
                  **kwargs) -> List[float]:
         prm_infer_requests = []
         request_config = kwargs.get('request_config')

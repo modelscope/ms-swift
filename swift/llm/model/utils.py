@@ -21,10 +21,6 @@ _T = TypeVar('_T')
 
 
 class AttnImpl:
-    flash_attn = 'flash_attn'
-    sdpa = 'sdpa'
-    eager = 'eager'
-
     attn_impl_keys = ['_attn_implementation', 'attn_implementation', 'llm_attn_implementation']
     use_flash_attn_keys = ['_flash_attn_2_enabled', 'use_flash_attn', '_use_flash_attention_2']
 
@@ -32,7 +28,7 @@ class AttnImpl:
     def to_use_flash_attn(attn_impl: Optional[str], auto_value: _T = None) -> Union[bool, _T]:
         if attn_impl is None:
             return auto_value
-        return attn_impl == AttnImpl.flash_attn
+        return attn_impl in {'flash_attn', 'flash_attention_2'}
 
     @staticmethod
     def update_attn_impl(config: PretrainedConfig,
@@ -64,6 +60,7 @@ class ModelInfo:
 
     # extra
     rope_scaling: Optional[Dict[str, Any]] = None
+    is_moe_model: bool = False
     config: Optional[PretrainedConfig] = None
     task_type: Literal['causal_lm', 'seq_cls', 'embedding', None] = None
     num_labels: Optional[int] = None
@@ -100,9 +97,8 @@ class HfConfigFactory:
         else:
             return []
 
-        value = deep_getattr(config, attr_name, None)
-        if value is not None and parent_key in [None, 'language_config', 'llm_config', 'text_config']:
-            res.append((config, value))
+        if attr_name in keys and parent_key in [None, 'language_config', 'llm_config', 'text_config']:
+            res.append((config, deep_getattr(config, attr_name)))
 
         for k in keys:
             if k.endswith('_config'):
@@ -112,6 +108,15 @@ class HfConfigFactory:
                     v = getattr(config, k)
                 res += HfConfigFactory._get_config_attrs(v, attr_name, k)
         return res
+
+    @staticmethod
+    def is_moe_model(config) -> bool:
+        if 'Moe' in config.__class__.__name__:
+            return True
+        for key in ['num_experts', 'num_experts_per_tok', 'moe_intermediate_size']:
+            if HfConfigFactory.get_config_attr(config, key):
+                return True
+        return False
 
     @staticmethod
     def get_config_attr(config: Union[PretrainedConfig, Dict[str, Any]], attr_name: str) -> Optional[Any]:
@@ -168,6 +173,26 @@ class HfConfigFactory:
         if max_model_len == INF:
             max_model_len = None
         return max_model_len
+
+    @staticmethod
+    def set_max_model_len(config: Union[PretrainedConfig, Dict[str, Any]], value: int):
+        """Set the max length supported by the model"""
+
+        possible_keys = [
+            'seq_length',  # qwen, chatglm
+            'max_position_embeddings',  # qwen1.5, llama2
+            'n_positions',  # polylm, phi-2
+            'model_max_length',  # baichuan2
+            # others
+            'seq_len',
+            'max_seq_len',
+            'max_sequence_length',
+            'max_seq_length',
+        ]
+        for key in possible_keys:
+            max_len_value = HfConfigFactory.get_config_attr(config, key)
+            if max_len_value is not None:
+                HfConfigFactory.set_config_attr(config, key, value)
 
     @staticmethod
     def compat_zero3(config: PretrainedConfig) -> None:
@@ -286,6 +311,7 @@ def safe_snapshot_download(model_id_or_path: str,
 
 
 def git_clone_github(github_url: str,
+                     *,
                      local_repo_name: Optional[str] = None,
                      branch: Optional[str] = None,
                      commit_hash: Optional[str] = None) -> str:
@@ -296,26 +322,29 @@ def git_clone_github(github_url: str,
     if local_repo_name is None:
         github_url = github_url.rstrip('/')
         local_repo_name = github_url.rsplit('/', 1)[1]
+    github_url = f'{github_url}.git'
     local_repo_path = os.path.join(git_cache_dir, local_repo_name)
     with safe_ddp_context(hash_id=local_repo_path):
-        if not os.path.exists(local_repo_path):
-            github_url = f'{github_url}.git'
+        repo_existed = os.path.exists(local_repo_path)
+        if repo_existed:
+            command = ['git', '-C', local_repo_path, 'fetch']
+            subprocess_run(command)
+            if branch is not None:
+                command = ['git', '-C', local_repo_path, 'checkout', branch]
+                subprocess_run(command)
+        else:
             command = ['git', '-C', git_cache_dir, 'clone', github_url, local_repo_name]
-            command_str = f"git -C '{git_cache_dir}' clone '{github_url}' {local_repo_name}"
             if branch is not None:
                 command += ['--branch', branch]
-                command_str += f' --branch {branch}'
-            logger.info(f'Run the command: `{command_str}`')
             subprocess_run(command)
 
-            if commit_hash is not None:
-                git_cache_path = os.path.join(git_cache_dir, local_repo_name)
-                command = ['git', '-C', git_cache_path, 'reset', '--hard', commit_hash]
-                command_str = f"git -C '{git_cache_path}' reset '--hard' {commit_hash}"
-                logger.info(f'Run the command: `{command_str}`')
-                subprocess_run(command)
-
-        logger.info(f'local_repo_path: {local_repo_path}')
+        if commit_hash is not None:
+            command = ['git', '-C', local_repo_path, 'reset', '--hard', commit_hash]
+            subprocess_run(command)
+        elif repo_existed:
+            command = ['git', '-C', local_repo_path, 'pull']
+            subprocess_run(command)
+    logger.info(f'local_repo_path: {local_repo_path}')
     return local_repo_path
 
 

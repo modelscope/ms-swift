@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from datasets import Dataset as HfDataset
@@ -19,7 +19,7 @@ class SwiftInfer(SwiftPipeline):
     args_class = InferArguments
     args: args_class
 
-    def __init__(self, args: Union[List[str], InferArguments, None] = None) -> None:
+    def __init__(self, args: Optional[Union[List[str], InferArguments]] = None) -> None:
         from swift.llm import merge_lora
         super().__init__(args)
         args = self.args
@@ -69,7 +69,7 @@ class SwiftInfer(SwiftPipeline):
             seed = args.seed
             if is_dist():
                 # Ensure that different data-parallel processes have different seeds.
-                seed += get_dist_setting()[0] // args.tensor_parallel_size
+                seed += get_dist_setting()[0] // args.vllm_tensor_parallel_size
                 kwargs['distributed_executor_backend'] = 'external_launcher'
             kwargs['seed'] = seed
         elif infer_backend == 'sglang':
@@ -247,9 +247,11 @@ class SwiftInfer(SwiftPipeline):
                 result_list += self._batch_infer(shard_dataset, request_config)
                 idx += shard_size
                 prog_bar.update(shard_size)
+            prog_bar.close()
             metrics = self.infer_kwargs.pop('metrics')
             if result_list:
-                print(f'[rank{args.rank}] {metrics[0].compute()}')
+                metric = metrics[0].compute()
+                print(f'[rank{args.rank}] {metric}' if args.rank >= 0 else str(metric))
         if args.metric is not None:
             self._calc_metric()
         return result_list
@@ -258,8 +260,8 @@ class SwiftInfer(SwiftPipeline):
         args = self.args
         result_list = []
         if args.infer_backend == 'vllm':
-            rank = args.rank // args.tensor_parallel_size if args.rank >= 0 else -1
-            data_parallel_size = args.global_world_size // args.tensor_parallel_size
+            rank = args.rank // args.vllm_tensor_parallel_size if args.rank >= 0 else -1
+            data_parallel_size = args.global_world_size // args.vllm_tensor_parallel_size
         else:
             rank, data_parallel_size = args.rank, args.global_world_size
         if rank >= 0 and data_parallel_size > 1:
@@ -274,7 +276,7 @@ class SwiftInfer(SwiftPipeline):
             labels_list.append(labels)
 
         resp_list = self.infer(val_dataset, request_config, template=self.template, use_tqdm=True, **self.infer_kwargs)
-        if not (args.infer_backend == 'vllm' and rank >= 0 and args.rank % args.tensor_parallel_size != 0):
+        if not (args.infer_backend == 'vllm' and rank >= 0 and args.rank % args.vllm_tensor_parallel_size != 0):
             for data, resp, labels in zip(val_dataset, resp_list, labels_list):
                 response = resp.choices[0].message.content
                 data['messages'].append({'role': 'assistant', 'content': response})
@@ -285,5 +287,5 @@ class SwiftInfer(SwiftPipeline):
         return result_list
 
 
-def infer_main(args: Union[List[str], InferArguments, None] = None):
+def infer_main(args: Optional[Union[List[str], InferArguments]] = None):
     return SwiftInfer(args).main()

@@ -6,7 +6,8 @@ import torch.nn as nn
 from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
-from trl.trainer.utils import selective_log_softmax
+from trl.trainer.dpo_config import DPOConfig
+from trl.trainer.utils import RunningMoments, selective_log_softmax
 
 from swift.utils import get_logger
 from ..mixin import DataLoaderMixin, SwiftMixin
@@ -26,7 +27,26 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         from trl.trainer import FDivergenceConstants
         args = kwargs['args']
         self.label_smoothing = args.label_smoothing
-        self.loss_type = args.loss_type
+        if 'loss_weights' in DPOConfig.__dict__:
+            # trl >= 0.20
+            self.loss_type = args.loss_type if isinstance(args.loss_type, list) else [args.loss_type]
+            self.loss_weights = args.loss_weights
+        else:
+            self.loss_type = args.loss_type
+
+        loss_types = self.loss_type if isinstance(self.loss_type, list) else [self.loss_type]
+        for loss_type in loss_types:
+            if (loss_type in ['hinge', 'ipo', 'bco_pair', 'sppo_hard', 'nca_pair', 'apo_zero', 'apo_down']
+                    and args.label_smoothing > 0):
+                warnings.warn(
+                    f'You are using the {loss_type} loss type that does not support label smoothing. The '
+                    '`label_smoothing` parameter will be ignored. '
+                    'Set `label_smoothing` to `0.0` to remove this warning.',
+                    UserWarning,
+                )
+            if loss_type == 'kto_pair':
+                raise ValueError('Support for kto_pair has been removed in DPOTrainer. Please use KTOTrainer.')
+
         self.precompute_ref_log_probs = args.precompute_ref_log_probs
         self.f_divergence_type = args.f_divergence_type
         self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: args.f_alpha_divergence_coef}
@@ -37,6 +57,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         self.use_weighting = False
 
         super().__init__(model, ref_model, *_args, **kwargs)
+
+        if 'bco_pair' in loss_types:
+            self.running = RunningMoments(self.accelerator)
 
     def concatenated_forward(
         self,
@@ -73,7 +96,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         per_token_logps, mean_all_logits, loss_mask = self.get_per_token_logps(
             all_logits, labels, label_pad_token_id=self.label_pad_token_id)
         origin_per_token_logps = per_token_logps
-        if self.loss_type == 'ipo':
+
+        loss_types = self.loss_type if isinstance(self.loss_type, list) else [self.loss_type]
+        if 'ipo' in loss_types:
             size_completion = loss_mask.sum(dim=-1)
             per_token_logps = per_token_logps / size_completion
 

@@ -12,7 +12,6 @@ megatron pt \
     --global_batch_size 16 \
     --recompute_granularity selective \
     --train_iters 10000 \
-    --eval_iters 100 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \

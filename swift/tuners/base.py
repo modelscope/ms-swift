@@ -255,8 +255,8 @@ class SwiftModel(nn.Module):
             from safetensors.torch import load_file as safe_load_file
             return safe_load_file(filename, device=device)
         elif os.path.exists(os.path.join(path, WEIGHTS_NAME)):
-            filename = os.path.join(path, WEIGHTS_NAME)
-            return torch.load(filename, map_location=device)
+            raise NotImplementedError(f'SWIFT does not support {WEIGHTS_NAME} to prevent malicious code. '
+                                      f'Using safetensors instead.')
         return None
 
     def create_optimizer_param_groups(self, **defaults):
@@ -526,7 +526,7 @@ class SwiftModel(nn.Module):
 
     def save_pretrained(self,
                         save_directory: str,
-                        safe_serialization: bool = False,
+                        safe_serialization: bool = True,
                         adapter_name: Union[str, List[str]] = None,
                         **kwargs):
         """Save the adapters to a local directory.

@@ -36,8 +36,7 @@ from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, 
 from swift.llm.utils import update_generation_config_eos_token
 from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
-from swift.utils import get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker, use_torchacc
-from swift.utils.torchacc_utils import ta_trim_graph
+from swift.utils import get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker
 from ..utils.torch_utils import get_device_count
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
@@ -119,6 +118,33 @@ class SwiftMixin:
         update_generation_config_eos_token(self.model.generation_config, self.template)
         if getattr(self.model, 'origin_generation_config', None):
             self.model.origin_generation_config.eos_token_id = self.model.generation_config.eos_token_id
+        if self.args.resume_only_model and self.args.ignore_data_skip:
+            # The weights have already been loaded outside the trainer,
+            # so reading train_state is skipped here.
+            self.args.resume_from_checkpoint = None
+
+    @contextmanager
+    def _patch_deepspeed_load_checkpoint(self):
+        from transformers import trainer
+        if not self.args.resume_from_checkpoint or not self.args.resume_only_model or not hasattr(
+                trainer, 'deepspeed_load_checkpoint'):
+            yield
+            return
+        origin_deepspeed_load_checkpoint = trainer.deepspeed_load_checkpoint
+
+        def deepspeed_load_checkpoint(*args, **kwargs):
+            try:
+                return origin_deepspeed_load_checkpoint(*args, **kwargs)
+            except Exception as e:
+                logger.warning('Failed to call deepspeed_load_checkpoint function. '
+                               f'If `--resume_only_model true` is set, this warning can be ignored. {e}.')
+
+        trainer.deepspeed_load_checkpoint = deepspeed_load_checkpoint
+
+        try:
+            yield
+        finally:
+            trainer.deepspeed_load_checkpoint = origin_deepspeed_load_checkpoint
 
     def get_use_logits_to_keep(self, default_value: bool = True):
         use_logits_to_keep = self.args.use_logits_to_keep
@@ -176,7 +202,14 @@ class SwiftMixin:
                     )
                     model.peft_config['default'] = config
 
+    def _load_rng_state(self, *args, **kwargs):
+        if self.args.resume_only_model:
+            return
+        return super()._load_rng_state(*args, **kwargs)
+
     def _load_optimizer_and_scheduler(self, *args, **kwargs):
+        if self.args.resume_only_model:
+            return
         super()._load_optimizer_and_scheduler(*args, **kwargs)
         if is_mp_ddp():
             # fix mp+ddp adamw
@@ -371,8 +404,12 @@ class SwiftMixin:
         HfConfigFactory.set_model_config_attr(model, 'use_cache', False)
         if args.gradient_checkpointing or args.vit_gradient_checkpointing:
             dynamic_gradient_checkpointing(model, args.vit_gradient_checkpointing)
+        gc_kwargs = {}
+        parameters = inspect.signature(model.gradient_checkpointing_enable).parameters
+        if 'gradient_checkpointing_kwargs' in parameters:
+            gc_kwargs['gradient_checkpointing_kwargs'] = args.gradient_checkpointing_kwargs
         if args.gradient_checkpointing:
-            model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
+            model.gradient_checkpointing_enable(**gc_kwargs)
             model.enable_input_require_grads()
 
         model_meta = model.model_meta
@@ -383,8 +420,7 @@ class SwiftMixin:
                 if hasattr(vision_tower, 'enable_input_require_grads'):
                     try:
                         if args.vit_gradient_checkpointing:
-                            vision_tower.gradient_checkpointing_enable(
-                                gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
+                            vision_tower.gradient_checkpointing_enable(**gc_kwargs)
                             vision_tower.enable_input_require_grads()
                         else:
                             vision_tower.gradient_checkpointing_disable()
@@ -417,7 +453,8 @@ class SwiftMixin:
         # gradient_checkpointing
         gradient_checkpointing = self.args.gradient_checkpointing
         self._prepare_gradient_checkpointing(self.accelerator.unwrap_model(self.model))
-        with self.hub.patch_hub(), self._fix_grad_norm_nan(), self._patch_skip_first_batches():
+        with self.hub.patch_hub(), self._fix_grad_norm_nan(), self._patch_skip_first_batches(
+        ), self._patch_deepspeed_load_checkpoint():
             res = super().train(*args, **kwargs)
         self.template.remove_post_encode_hook()
         self.args.gradient_checkpointing = gradient_checkpointing  # recover
@@ -495,19 +532,13 @@ class SwiftMixin:
 
     def _compute_acc(self, outputs, labels) -> None:
         args = self.args
-        acc_steps = args.acc_steps
         preds = outputs.logits.argmax(dim=-1)
-        if self.state.global_step % acc_steps == 0:
-            if use_torchacc():
-                ta_trim_graph()
-                preds = preds.to('cpu')
-                labels = labels.to('cpu')
-            metrics = compute_acc(
-                preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
-            for k, v in metrics.items():
-                if k not in self._custom_metrics:
-                    self._custom_metrics[k] = MeanMetric(nan_value=None)
-                self._custom_metrics[k].update(v)
+        metrics = compute_acc(
+            preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
+        for k, v in metrics.items():
+            if k not in self._custom_metrics:
+                self._custom_metrics[k] = MeanMetric(nan_value=None)
+            self._custom_metrics[k].update(v)
 
     @torch.no_grad()
     def _evalscope_eval(self):
@@ -620,9 +651,15 @@ class DataLoaderMixin:
                 'prefetch_factor': args.dataloader_prefetch_factor
             }
             batch_sampler_params = {
-                'drop_last': args.dataloader_drop_last,
-                'shuffle': args.train_dataloader_shuffle,
-                'data_seed': args.data_seed,
+                'drop_last':
+                args.dataloader_drop_last,
+                'shuffle':
+                args.train_dataloader_shuffle,
+                'data_seed':
+                args.data_seed,
+                'tp_size':
+                args.deepspeed['tensor_parallel']['autotp_size']
+                if args.deepspeed and 'tensor_parallel' in args.deepspeed else 1,
             }
 
             if hasattr(train_dataset, '__len__'):

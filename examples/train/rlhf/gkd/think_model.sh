@@ -7,8 +7,8 @@ swift infer \
     --model $teacher_model \
     --infer_backend vllm \
     --val_dataset 'AI-ModelScope/alpaca-gpt4-data-en#5000' 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
-    --gpu_memory_utilization 0.9 \
-    --max_model_len 8192 \
+    --vllm_gpu_memory_utilization 0.9 \
+    --vllm_max_model_len 8192 \
     --max_new_tokens 2048 \
     --write_batch_size 10000 \
     --result_path new_dataset.jsonl

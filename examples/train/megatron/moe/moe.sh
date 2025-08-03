@@ -1,5 +1,4 @@
-# pp2ep4: 7 * 73GiB, 2.5s/it
-# tp2ep4: 8 * 65GiB, 3s/it
+# 8 * 57GiB, 2.95s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
@@ -8,16 +7,19 @@ megatron sft \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
     --split_dataset_ratio 0.01 \
     --pipeline_model_parallel_size 2 \
+    --decoder_last_pipeline_num_layers 11 \
     --expert_model_parallel_size 4 \
+    --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
-    --moe_aux_loss_coeff 0.01 \
+    --moe_aux_loss_coeff 1e-3 \
     --micro_batch_size 1 \
     --global_batch_size 16 \
     --packing true \
-    --moe_permute_fusion true \
     --moe_router_dtype fp32 \
-    --recompute_granularity selective \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
     --max_epochs 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
@@ -33,4 +35,6 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --attention_backend flash
+    --attention_backend flash \
+    --overlap_param_gather true \
+    --overlap_grad_reduce true

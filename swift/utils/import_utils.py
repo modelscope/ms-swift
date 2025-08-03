@@ -32,12 +32,17 @@ def is_swanlab_available():
     return importlib.util.find_spec('swanlab') is not None
 
 
-def is_xtuner_available():
-    return importlib.util.find_spec('xtuner') is not None
-
-
 def is_megatron_available():
     return importlib.util.find_spec('megatron') is not None
+
+
+def is_flash_attn_3_available():
+    return (importlib.util.find_spec('flash_attn_3') is not None
+            and importlib.util.find_spec('flash_attn_interface') is not None)
+
+
+def is_flash_attn_2_available():
+    return importlib.util.find_spec('flash_attn') is not None
 
 
 def is_unsloth_available() -> bool:
@@ -50,6 +55,10 @@ def is_pyreft_available() -> bool:
 
 def is_wandb_available() -> bool:
     return importlib.util.find_spec('wandb') is not None
+
+
+def is_trl_available() -> bool:
+    return importlib.util.find_spec('trl') is not None
 
 
 class _LazyModule(ModuleType):

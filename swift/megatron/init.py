@@ -1,17 +1,19 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import subprocess
 import sys
 from datetime import datetime
 from typing import List, Optional, Tuple
 
-import megatron.core
+import peft
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from packaging import version
 
 from swift.llm import git_clone_github
-from swift.utils import JsonlWriter, get_logger, is_master, is_megatron_available, safe_ddp_context, subprocess_run
+from swift.utils import (JsonlWriter, format_time, get_logger, is_flash_attn_3_available, is_master,
+                         is_megatron_available, safe_ddp_context, subprocess_run)
 
 logger = get_logger()
 
@@ -225,6 +227,12 @@ def _patch_training_log():
 
             elapsed_time = timers('interval-time').elapsed(barrier=True)
             elapsed_time_per_iteration = elapsed_time / total_iterations
+            train_percentage = iteration / args.train_iters
+            total_elapsed_time = timers('interval-time').active_time()
+            memory_GiB = round(torch.cuda.max_memory_reserved() / 1024**3, 2)
+            remaining_time = total_elapsed_time / train_percentage - total_elapsed_time
+            total_elapsed_time = format_time(total_elapsed_time)
+            remaining_time = format_time(remaining_time)
 
             throughput = num_floating_point_operations(args, batch_size) / (
                 elapsed_time_per_iteration * 10**12 * args.world_size)
@@ -242,6 +250,8 @@ def _patch_training_log():
             if args.skipped_train_samples > 0:
                 log_string += ' skipped samples: {:12d} |'.format(args.skipped_train_samples)
             log_string += ' elapsed time per iteration (ms): {:.1f} |'.format(elapsed_time_per_iteration * 1000.0)
+            log_string += (f' memory(GiB): {memory_GiB} |'
+                           f' elapsed time: {total_elapsed_time} | remaining time: {remaining_time} |')
             if args.log_throughput:
                 log_string += f' throughput per GPU (TFLOP/s/GPU): {throughput:.1f} |'
                 if args.log_timers_to_tensorboard:
@@ -298,6 +308,9 @@ def _patch_training_log():
                     logs['params_norm'] = round(params_norm, 8)
                 logs['learning_rate'] = round(learning_rate, 8)
                 logs['elapsed_time_per_iteration'] = round(elapsed_time_per_iteration, 8)
+                logs['memory(GiB)'] = memory_GiB
+                logs['elapsed_time'] = total_elapsed_time
+                logs['remaining_time'] = remaining_time
                 if args.log_throughput:
                     logs['throughput'] = round(throughput, 8)
                 logs['loss_scale'] = round(loss_scale, 8)
@@ -312,6 +325,7 @@ def _patch_training_log():
 
 def _patch_mla_attention():
     # support thd
+    import megatron.core
     from megatron.core.utils import deprecate_inference_params
     from megatron.core import parallel_state, tensor_parallel
     from megatron.core.transformer.multi_latent_attention import MultiLatentAttention, MLASelfAttention
@@ -640,11 +654,14 @@ def _patch_TEGroupedLinear():
 
 
 def _patch_peft_ModulesToSaveWrapper():
-    from peft.tuners import tuners_utils
+    if version.parse(peft.__version__) >= version.parse('0.16'):
+        from peft.utils import other as peft_module
+    else:
+        from peft.tuners import tuners_utils as peft_module
     from megatron.core.dist_checkpointing.mapping import ShardedStateDict
     from .utils import tuners_sharded_state_dict
 
-    ModulesToSaveWrapper = tuners_utils.ModulesToSaveWrapper
+    ModulesToSaveWrapper = peft_module.ModulesToSaveWrapper
 
     class NewModulesToSaveWrapper(ModulesToSaveWrapper):
 
@@ -679,14 +696,67 @@ def _patch_peft_ModulesToSaveWrapper():
                         f'{prefix}modules_to_save.default.weight']
             return sharded_state_dict
 
-    tuners_utils.ModulesToSaveWrapper = NewModulesToSaveWrapper
+    peft_module.ModulesToSaveWrapper = NewModulesToSaveWrapper
+
+
+def _patch_TransformerLayer():
+    import megatron.core
+    from megatron.training import get_args
+    from megatron.core.transformer import TransformerLayer
+    _origin_forward = TransformerLayer.forward
+
+    def forward(self, *_args, **kwargs):
+        """
+        Perform a forward pass through the transformer layer.
+
+        This method calls the core computation of a transformer layer, including
+        self-attention, cross-attention (if applicable), and feed-forward operations.
+        """
+        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+        if not megatron_core_013:
+            return _origin_forward(self, *_args, **kwargs)
+        hidden_states, context = self._forward_attention(*_args, **kwargs)
+        args = get_args()
+        mlp_padding_free = args.mlp_padding_free and 'attention_mask' in kwargs
+        if mlp_padding_free:
+            mask = (kwargs['attention_mask'].sum(dim=(1, 3)) > 0).t()
+            hidden_states = hidden_states[mask][:, None]
+        output = self._forward_mlp(hidden_states, kwargs.get('inference_context', None))
+        if mlp_padding_free:
+            new_output = hidden_states.new_zeros((*mask.shape, output.shape[-1]))
+            new_output[mask] = output.squeeze(1)
+            output = new_output
+        return output, context
+
+    TransformerLayer.forward = forward
+
+
+def _patch_compile_helpers():
+    from megatron.core.datasets import utils
+
+    def compile_helpers():
+        command = ['make', '-C', os.path.abspath(os.path.dirname(utils.__file__))]
+        if subprocess.run(command).returncode != 0:
+            logger.warning('Failed to compile the C++ dataset helper functions')
+
+    utils.compile_helpers = compile_helpers
+
+
+def _patch_flash_attn():
+    # flash_attention_3
+    if is_flash_attn_3_available():
+        import flash_attn_interface
+        sys.modules['flash_attn_3.flash_attn_interface'] = flash_attn_interface
 
 
 def _patch_megatron():
+    _patch_flash_attn()
     _patch_transformer_engine()
     _patch__batched_p2p_ops()
     _patch_mla_attention()
     _patch_TEGroupedLinear()
+    _patch_TransformerLayer()
+    _patch_compile_helpers()
     from swift.megatron import tuners  # patch lora
     try:
         _patch_peft_BaseTuner()

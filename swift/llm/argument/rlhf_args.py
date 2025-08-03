@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
-from swift.trainers.arguments import GRPOArgumentsMixin, RLHFArgumentsMixin
-from swift.utils import get_logger, is_master, is_mp, set_default_ddp_config
+from swift.trainers import GRPOArgumentsMixin, RLHFArgumentsMixin
+from swift.utils import get_current_device, get_logger, is_master, is_mp, set_default_ddp_config
 from .train_args import TrainArguments
 
 logger = get_logger()
@@ -95,6 +95,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     loss_scale: Optional[str] = None  # 'last_round'
     # DPO
     rpo_alpha: float = 1.
+    loss_type: Optional[List[str]] = None
+    loss_weights: Optional[List[float]] = None
     # CPO
     cpo_alpha: float = 1.
     # SimPO
@@ -117,6 +119,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             training_args['world_size'] = self.global_world_size
 
     def __post_init__(self):
+        self._process_loss_type()
         self._deprecated_warning()
         self._init_grpo()
         self._init_rm()
@@ -125,7 +128,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         self._init_padding_side()
         self._set_default()
         self._init_external_vllm()
-        super().__post_init__()
+        GRPOArguments.__post_init__(self)
+        TrainArguments.__post_init__(self)
         self._check_padding_free()
         self._check_grpo()
         self._external_vllm_warning()
@@ -152,8 +156,34 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         elif self.ref_model is not None:
             raise ValueError('CPO/ORPO or LoRA training does not require a ref_model to be passed in.')
 
+    def _process_loss_type(self):
+        if self.loss_type is None:
+            return
+
+        if isinstance(self.loss_type, list):
+            num_loss_types = len(self.loss_type)
+            if num_loss_types > 1:
+                assert self.rlhf_type == 'dpo', (f'Multiple loss types ({self.loss_type}) are only supported for DPO. '
+                                                 f'Current rlhf_type: {self.rlhf_type}.')
+                from trl.trainer.dpo_config import DPOConfig
+                assert 'loss_weights' in DPOConfig.__dict__, (
+                    'Multiple loss types requires trl >= 0.20, please install trl `pip install -U trl`')
+
+        if hasattr(self.loss_type, '__len__') and len(self.loss_type) == 1:
+            self.loss_type = self.loss_type[0]
+
+        # Validate loss_type
+        if self.loss_weights is not None:
+            assert self.rlhf_type == 'dpo'
+            loss_types = self.loss_type if isinstance(self.loss_type, list) else [self.loss_type]
+            if len(self.loss_weights) != len(loss_types):
+                raise ValueError(f'Length of loss_weights list ({self.loss_weights}) must match number of loss types '
+                                 f'({loss_types}).')
+
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
+            if self.cached_dataset:
+                raise ValueError('cached_dataset is not supported for GRPO.')
             if self.use_vllm:
                 set_default_ddp_config()
             if self.async_generate or not self.use_vllm:
@@ -162,9 +192,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
             if self.truncation_strategy is None:
                 self.truncation_strategy = 'left'
-            assert self.truncation_strategy == 'left', \
-                "GRPO requires `truncation_strategy='left'`," \
-                f"Current value: `truncation_strategy='{self.truncation_strategy}'`."
+            assert self.truncation_strategy in ['left', 'delete'], (
+                "GRPO requires `truncation_strategy 'left' or 'delete'`, "
+                f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")  # noqa
             if self.beta is None:
                 self.beta = 0.04  # https://arxiv.org/abs/2402.03300
             if self.async_generate:
@@ -225,11 +255,11 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
         if is_master():
             self.vllm_client = VLLMClient(
-                base_url=self.vllm_server_base_url,
-                host=self.vllm_server_host,
-                server_port=self.vllm_server_port,
+                base_urls=self.vllm_server_base_url,
+                hosts=self.vllm_server_host,
+                server_ports=self.vllm_server_port,
                 connection_timeout=self.vllm_server_timeout)
-            self.vllm_client.init_communicator()
+            self.vllm_client.init_communicator(device=get_current_device())
 
     def _set_default(self):
         if self.beta is None:
@@ -265,7 +295,13 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 raise ValueError('Liger loss does not support sequence parallel yet.')
             if self.padding_free:
                 raise ValueError('Liger loss does not support padding free yet.')
-
+            if self.top_entropy_quantile < 1.0:
+                raise ValueError('Liger loss does not support entropy mask yet.')
+            if self.log_entropy:
+                raise ValueError('Liger loss does not support log entropy yet.')
+            if self.importance_sampling_level != 'token':
+                raise ValueError('Liger loss currently only support token-level importance sampling'
+                                 'Please set `importance_sampling_level` to `token`')
             from trl.import_utils import is_liger_kernel_available
             assert is_liger_kernel_available(), (
                 'Please install/update liger-kernel by running: pip install -U liger-kernel')
@@ -299,7 +335,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             logger.warning(
                 "Configuration conflict: 'vllm_max_model_len=%s' is ignored for external vLLM. "
                 'Please specify it when launching the inference service: '
-                '`swift rollout --max_model_len <value>`', self.vllm_max_model_len)
+                '`swift rollout --vllm_max_model_len <value>`', self.vllm_max_model_len)
 
     def _deprecated_warning(self):
         if self.rlhf_type != 'grpo':

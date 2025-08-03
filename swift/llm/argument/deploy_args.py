@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
 from swift.llm import safe_snapshot_download
 from swift.utils import find_free_port, get_logger
@@ -38,9 +38,10 @@ class DeployArguments(InferArguments):
     served_model_name: Optional[str] = None
     verbose: bool = True  # Whether to log request_info
     log_interval: int = 20  # Interval for printing global statistics
+    log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
 
     max_logprobs: int = 20
-    use_async_engine: bool = True
+    vllm_use_async_engine: bool = True
 
     def __post_init__(self):
         super().__post_init__()
@@ -80,16 +81,26 @@ class DeployArguments(InferArguments):
 
 @dataclass
 class RolloutArguments(DeployArguments):
-    use_async_engine: Optional[bool] = None
+    vllm_use_async_engine: Optional[bool] = None
+    use_gym_env: Optional[bool] = None
     # only for GRPO rollout with AsyncEngine, see details in swift/plugin/multi_turn
     multi_turn_scheduler: Optional[str] = None
     max_turns: Optional[int] = None
 
+    # GYM env
+    gym_env: Optional[str] = None
+    context_manager: Optional[str] = None
+
     def __post_init__(self):
+        try:
+            from trl.scripts.vllm_serve import WeightSyncWorkerExtension
+        except ImportError as e:
+            raise ImportError("Could not import 'WeightSyncWorkerExtension' from 'trl.scripts.vllm_serve'. "
+                              "Please upgrade your 'trl' package by 'pip install -U trl'") from e
         super().__post_init__()
 
-        if self.use_async_engine is None:
-            if self.multi_turn_scheduler:
-                self.use_async_engine = True
+        if self.vllm_use_async_engine is None:
+            if self.multi_turn_scheduler or self.use_gym_env:
+                self.vllm_use_async_engine = True
             else:
-                self.use_async_engine = False
+                self.vllm_use_async_engine = False

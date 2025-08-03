@@ -1,5 +1,4 @@
 # Env: 4 * A100
-# https://github.com/modelscope/ms-swift/blob/main/examples/train/long_text/zero3.sh
 # Max Length: 32K
 # GPU Memory: 4 * 50GB, Training Speed 23s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \

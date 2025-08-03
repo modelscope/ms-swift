@@ -1,14 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from functools import partial
-from typing import List, Union
+from typing import List, Optional, Union
 
 from datasets import Dataset as HfDataset
+from datasets import load_from_disk
 
+from swift.llm.dataset.loader import DatasetLoader
 from swift.plugin import extra_callbacks, get_loss_func, get_metric
 from swift.trainers import TrainerFactory
-from swift.utils import (append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array,
-                         use_torchacc)
+from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
 from ..argument import TrainArguments
 from ..base import SwiftPipeline
 from ..dataset import EncodePreprocessor, IterablePackingDataset, LazyLLMDataset, PackingDataset, load_dataset
@@ -22,7 +23,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     args_class = TrainArguments
     args: args_class
 
-    def __init__(self, args: Union[List[str], TrainArguments, None] = None) -> None:
+    def __init__(self, args: Optional[Union[List[str], TrainArguments]] = None) -> None:
         super().__init__(args)
         self.train_msg = {}
         self._prepare_model_tokenizer()
@@ -36,13 +37,14 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                                                                  args.get_request_config(), self.tokenizer)
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
-    def _prepare_model_tokenizer(self):
+    def _prepare_model_tokenizer(self, load_model=True):
         args = self.args
         if args.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
             sequence_parallel.init_sequence_parallel(args.sequence_parallel_size)
-        self.model, self.processor = args.get_model_processor()
-
+        self.model, self.processor = args.get_model_processor(load_model=load_model)
+        if self.model is None:
+            return
         if hasattr(self.model, 'hf_device_map'):
             logger.info(f'model.hf_device_map: {self.model.hf_device_map}')
 
@@ -52,8 +54,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_template(self) -> None:
         template = self.args.get_template(self.processor)
-        if self.args.task_type == 'causal_lm':
-            template.set_mode('train')
+        template.set_mode('train')
         if template.use_model:
             template.model = self.model
         self.template = template
@@ -89,11 +90,60 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             append_to_jsonl(val_dataset_path, val_dataset.to_list())
             logger.info(f'The split dataset from the training set will be saved at: {val_dataset_path}.')
 
+    def _get_cached_dataset(self):
+        args = self.args
+        assert not args.streaming and not args.lazy_tokenize
+        train_datasets, val_datasets = [], []
+        for cached_dataset in args.cached_dataset:
+            train_path = os.path.join(cached_dataset, 'train')
+            val_path = os.path.join(cached_dataset, 'val')
+            train_datasets.append(load_from_disk(train_path))
+            if os.path.exists(val_path):
+                val_datasets.append(load_from_disk(val_path))
+        return train_datasets, val_datasets
+
+    def _prepare_dataset(self):
+        args = self.args
+        if args.cached_dataset:
+            train_datasets, val_datasets = self._get_cached_dataset()
+        else:
+            train_datasets, val_datasets = [], []
+        if args.dataset:
+            train_dataset, val_dataset = self._get_dataset()
+            train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
+            train_datasets.append(train_dataset)
+            val_datasets.append(val_dataset)
+        train_dataset = DatasetLoader._concat_datasets(train_datasets)
+        val_dataset = DatasetLoader._concat_datasets(val_datasets)
+        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
+        predict_with_generate = getattr(args, 'predict_with_generate', False)
+        datasets = [train_dataset, val_dataset]
+        if is_grpo:
+            return datasets
+        template = self.template
+        for i, dataset in enumerate(datasets):
+            if dataset is None:
+                continue
+            if i == 1 and predict_with_generate:
+                # val_dataset
+                continue
+            if (args.model_meta.is_multimodal or args.lazy_tokenize) and not args.streaming:
+                dataset = LazyLLMDataset(dataset, template.encode, strict=args.strict, random_state=args.data_seed)
+            if args.packing:
+                packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
+                dataset = packing_dataset_cls(
+                    template,
+                    dataset,
+                    num_proc=args.dataset_num_proc,
+                    strict=args.strict,
+                    load_from_cache_file=args.load_from_cache_file)
+            datasets[i] = dataset
+        self._show_dataset(*datasets)
+        return datasets
+
     def run(self):
         args = self.args
-
-        train_dataset, val_dataset = self._get_dataset()
-        train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
+        train_dataset, val_dataset = self._prepare_dataset()
 
         if args.task_type == 'seq_cls':
             args.problem_type = args.problem_type or getattr(self.model.config, 'problem_type', None)
@@ -155,7 +205,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         logger.info(f'best_model_checkpoint: {state.best_model_checkpoint}')
 
         # Visualization
-        if is_master() and not use_torchacc():
+        if is_master():
             if 'tensorboard' in training_args.report_to:
                 images_dir = os.path.join(training_args.output_dir, 'images')
                 logger.info(f'images_dir: {images_dir}')
@@ -173,7 +223,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         })
         if is_master():
             jsonl_path = os.path.join(training_args.output_dir, 'logging.jsonl')
-            append_to_jsonl(jsonl_path, self.train_msg)
+            append_to_jsonl(jsonl_path, self.train_msg, strict=False)
         return self.train_msg
 
     def train(self, trainer):
@@ -203,72 +253,63 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         callbacks += extra_callbacks
         self.callbacks = callbacks
 
-    def _stat_dataset(self, dataset: Union[HfDataset, PackingDataset]):
+    @staticmethod
+    def _stat_dataset(dataset: Union[HfDataset, PackingDataset]):
         if isinstance(dataset, HfDataset):
             length = dataset['length']
         else:
-            length = dataset.packed_dataset.length_list
+            length = dataset.packed_length
         _, stat_str = stat_array(length)
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
+
+    def _show_dataset(self, train_dataset, val_dataset):
+        args = self.args
+        predict_with_generate = getattr(args, 'predict_with_generate', False)
+        if is_master():
+            inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
+            self.template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
+        elif hasattr(train_dataset, '__len__'):
+            # Avoid the random mismatch issue in LazyLLMDataset.
+            inputs = train_dataset[0]
+        if val_dataset is not None and hasattr(val_dataset, '__len__') and len(val_dataset) == 0:
+            val_dataset = None
+        if not args.lazy_tokenize and not args.streaming:
+            self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
+            if val_dataset is not None and not predict_with_generate:
+                self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
 
     def _encode_dataset(self, train_dataset, val_dataset):
         template = self.template
         args = self.args
         self._save_val_dataset(val_dataset)
+
         is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
         predict_with_generate = getattr(args, 'predict_with_generate', False)
-        if not is_grpo:
-            if args.packing:
-                packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
-                train_dataset = packing_dataset_cls(
-                    self.template,
-                    train_dataset,
-                    num_proc=args.dataset_num_proc,
-                    strict=args.strict,
-                    load_from_cache_file=args.load_from_cache_file)
-                if val_dataset is not None and not predict_with_generate:
-                    val_dataset = packing_dataset_cls(
-                        self.template,
-                        val_dataset,
-                        num_proc=args.dataset_num_proc,
-                        strict=args.strict,
-                        load_from_cache_file=args.load_from_cache_file)
-            elif args.lazy_tokenize:
-                train_dataset = LazyLLMDataset(
-                    train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-                if val_dataset is not None and not predict_with_generate:
-                    val_dataset = LazyLLMDataset(
-                        val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-            else:
+        datasets = [train_dataset, val_dataset]
+        if is_grpo:
+            return datasets
+
+        origin_template_model = template.model
+        template.model = None  # Avoid serializing the model.
+        for i, dataset in enumerate(datasets):
+            if dataset is None:
+                continue
+            if i == 1 and predict_with_generate:
+                # val_dataset
+                continue
+            if not args.lazy_tokenize and not args.streaming:
                 preprocessor = EncodePreprocessor(template=template)
-                train_dataset = preprocessor(
-                    train_dataset,
+                dataset = preprocessor(
+                    dataset,
                     num_proc=args.dataset_num_proc,
                     load_from_cache_file=args.load_from_cache_file,
                     strict=args.strict)
-                if val_dataset is not None and not predict_with_generate:
-                    val_dataset = preprocessor(
-                        val_dataset,
-                        num_proc=args.dataset_num_proc,
-                        load_from_cache_file=args.load_from_cache_file,
-                        strict=args.strict)
+            datasets[i] = dataset
+        template.model = origin_template_model
 
-            if is_master():
-                inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
-                template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
-            elif hasattr(train_dataset, '__len__'):
-                # Avoid the random mismatch issue in LazyLLMDataset.
-                inputs = train_dataset[0]
-            if val_dataset is not None and hasattr(val_dataset, '__len__') and len(val_dataset) == 0:
-                val_dataset = None
-            if isinstance(train_dataset, (HfDataset, PackingDataset)):
-                self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
-                if val_dataset is not None and not predict_with_generate:
-                    self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
-
-        return train_dataset, val_dataset
+        return datasets
 
 
-def sft_main(args: Union[List[str], TrainArguments, None] = None):
+def sft_main(args: Optional[Union[List[str], TrainArguments]] = None):
     return SwiftSft(args).main()

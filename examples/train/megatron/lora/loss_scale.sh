@@ -14,9 +14,10 @@ megatron sft \
     --modules_to_save word_embeddings output_layer \
     --split_dataset_ratio 0.01 \
     --expert_model_parallel_size 2 \
+    --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
-    --moe_aux_loss_coeff 0.01 \
+    --moe_aux_loss_coeff 1e-3 \
     --micro_batch_size 8 \
     --global_batch_size 16 \
     --recompute_granularity full \

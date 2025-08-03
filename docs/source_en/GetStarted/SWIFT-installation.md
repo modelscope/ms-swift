@@ -40,6 +40,10 @@ pip install ms-swift==2.*
 ## Mirror
 
 ```
+# swift3.6.4
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
+
 # swift3.5.3
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.27.1-swift3.5.3
 modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.27.1-swift3.5.3
@@ -89,6 +93,7 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 | peft         | >=0.11,<0.16 |             |                                           |
 | trl          | >=0.13,<0.19 | 0.18      | RLHF                                      |
 | deepspeed    | >=0.14       | 0.16.9 | Training                                  |
+| flash_attn  |     | 2.7.4.post1/3.0.0b1   |    Training     |
 | vllm         | >=0.5.1      | 0.8.5.post1       | Inference/Deployment/Evaluation           |
 | sglang |     | 0.4.6.post5 | Inference/Deployment/Evaluation |
 | lmdeploy     | >=0.5,<0.9        | 0.8       | Inference/Deployment/Evaluation           |

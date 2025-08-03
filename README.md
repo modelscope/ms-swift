@@ -128,6 +128,7 @@ Running Environment:
 | peft | >=0.11,<0.16 | ||
 | trl | >=0.13,<0.19 | 0.18 |RLHF|
 | deepspeed    | >=0.14       | 0.16.9 | Training                                  |
+| flash_attn  |     | 2.7.4.post1/3.0.0b1   |    Training     |
 | vllm         | >=0.5.1      | 0.8.5.post1       | Inference/Deployment/Evaluation           |
 | sglang |     | 0.4.6.post5 | Inference/Deployment/Evaluation |
 | lmdeploy     | >=0.5,<0.9        | 0.8       | Inference/Deployment/Evaluation           |
@@ -200,7 +201,7 @@ swift infer \
     --stream true \
     --merge_lora true \
     --infer_backend vllm \
-    --max_model_len 8192 \
+    --vllm_max_model_len 8192 \
     --temperature 0 \
     --max_new_tokens 2048
 ```

@@ -196,6 +196,8 @@ def run_command(cmd):
 
 
 def install_packages(pkgs):
+    if pkgs is None:
+        return
     cmd = [sys.executable, '-m', 'pip', 'install']
     for pkg in pkgs:
         cmd.append(pkg)
@@ -417,7 +419,7 @@ def run_in_subprocess(args):
 
     if args.run_config is not None and Path(args.run_config).exists():
         with open(args.run_config, encoding='utf-8') as f:
-            run_config = yaml.load(f, Loader=yaml.FullLoader)
+            run_config = yaml.safe_load(f)
         if 'isolated' in run_config:
             isolated_cases = run_config['isolated']
 
