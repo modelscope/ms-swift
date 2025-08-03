@@ -231,14 +231,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
         self.num_completions_to_print = args.num_completions_to_print
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
-        self._textual_logs = {
+        self._logs = {
             'prompt': deque(maxlen=args.generation_batch_size),
             'completion': deque(maxlen=args.generation_batch_size),
             'rewards': defaultdict(lambda: deque(maxlen=args.generation_batch_size)),
+            'advantages': deque(maxlen=args.generation_batch_size),
         }
         self.compute_entropy = self.args.log_entropy or self.top_entropy_quantile < 1.0
         if self.args.log_entropy:
-            self._textual_logs.update({'entropy': deque(maxlen=args.generation_batch_size)})
+            self._logs.update({'entropy': deque(maxlen=args.generation_batch_size)})
         # Ensure each process receives a unique seed to prevent duplicate completions when generating with
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
@@ -265,7 +266,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
                 self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
                 if self.use_gym_env:
-                    self._textual_logs['trajactory_info'] = deque(maxlen=args.generation_batch_size)
+                    self._logs['trajactory_info'] = deque(maxlen=args.generation_batch_size)
                     self.reward_func_names = ['gym_reward']
 
             elif self.vllm_mode == 'colocate':
@@ -1117,6 +1118,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         advantages = (rewards - mean_grouped_rewards)
         if self.args.scale_rewards:
             advantages /= (std_grouped_rewards + 1e-4)
+        self.logs['advantages'].extend(gather(advantages).tolist())
         template = self.template
 
         gas_chunks, advantage_chunks = self.split_by_mini_batches(inputs, advantages)
@@ -1195,14 +1197,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
 
         # Log prompt and completion texts
-        self._textual_logs['prompt'].extend(self._apply_chat_template_to_messages_list(gather_object(messages)))
-        self._textual_logs['completion'].extend(gather_object(completions))
+        self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(gather_object(messages)))
+        self._logs['completion'].extend(gather_object(completions))
+        if 'images' in inputs[0] and inputs[0]['images'] is not None:
+            self._logs['images'].extend(gather_object([inp['images'] for inp in inputs]))
 
         if self.use_gym_env:
-            self._textual_logs['trajactory_info'].extend(gather_object(trajactory_infos))
+            self._logs['trajactory_info'].extend(gather_object(trajactory_infos))
 
         for i, name in enumerate(self.reward_func_names):
-            self._textual_logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
+            self._logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
 
     def _apply_chat_template_to_messages_list(self, messages_list: InputsType):
         prompts_text = []
@@ -1254,7 +1258,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.args.log_entropy:
                 per_completion_entropies_mean = torch.nanmean(entropies, dim=1)
                 global_per_completion_entropies_mean = gather(per_completion_entropies_mean)
-                self._textual_logs['entropy'].extend(global_per_completion_entropies_mean.tolist())
+                self._logs['entropy'].extend(global_per_completion_entropies_mean.tolist())
                 self._metrics[mode]['entropy/mean'].append(global_per_completion_entropies_mean.mean().item())
                 self._metrics[mode]['entropy/max'].append(global_per_completion_entropies_mean.max().item())
                 self._metrics[mode]['entropy/min'].append(global_per_completion_entropies_mean.min().item())
@@ -1723,29 +1727,45 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # - Other fields (e.g., prompt/completion/reward) are collected from rollout (in _prepare_inputs)
         # Therefore, if entropy exists, to ensure length consistency across fields,
         # we align all data based on the number of samples in entropy.
-        seen_nums = len(self._textual_logs['entropy']) \
-            if 'entropy' in self._textual_logs else len(self._textual_logs['prompt'])
+        seen_nums = len(self._logs['entropy']) \
+            if 'entropy' in self._logs else len(self._logs['prompt'])
         if self.accelerator.is_main_process and self.log_completions:
             table = {
                 'step': [str(self.state.global_step)] * seen_nums,
-                'prompt': list(self._textual_logs['prompt'])[:seen_nums],
-                'completion': list(self._textual_logs['completion'])[:seen_nums],
+                'prompt': list(self._logs['prompt'])[:seen_nums],
+                'completion': list(self._logs['completion'])[:seen_nums],
                 **{k: list(v)[:seen_nums]
-                   for k, v in self._textual_logs['rewards'].items()},
+                   for k, v in self._logs['rewards'].items()},
+                'advantage': self._logs['advantages'],
             }
             if self.use_gym_env:
-                table['trajactory_info'] = self._textual_logs['trajactory_info']
+                table['trajactory_info'] = self._logs['trajactory_info']
             if self.args.log_entropy:
-                table.update({'entropy': self._textual_logs['entropy']})
+                table.update({'entropy': self._logs['entropy']})
+
+            report_to_wandb = self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None
+            report_to_swanlab = self.args.report_to and 'swanlab' in self.args.report_to and swanlab.get_run(
+            ) is not None
+            if self._logs['image']:
+                table['image'] = []
+                for img in self._logs['image']:
+                    if img is not None:
+                        if report_to_wandb:
+                            table['image'].append(wandb.Image(img))
+                        elif report_to_swanlab:
+                            table['image'].append(swanlab.Image(img))
+                    else:
+                        table['image'].append(None)
+
             self.jsonl_writer.append(table)
-            if self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None:
+            if report_to_wandb is not None:
                 import pandas as pd
                 df = pd.DataFrame(table)
                 if self.wandb_log_unique_prompts:
                     df = df.drop_duplicates(subset=['prompt'])
                 wandb.log({'completions': wandb.Table(dataframe=df)})
 
-            if self.args.report_to and 'swanlab' in self.args.report_to and swanlab.get_run() is not None:
+            if report_to_swanlab:
                 headers = list(table.keys())
                 rows = []
                 for i in range(len(table['step'])):
