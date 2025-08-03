@@ -535,13 +535,15 @@ class Template(ProcessorMixin):
             if encoded[key] is None:
                 encoded.pop(key)
             elif key.endswith('length'):
-                value = encoded.pop(key)
+                value = encoded[key]
                 if isinstance(value, int):
                     lengths.append(value)
                 elif isinstance(value, (tuple, list)):
                     lengths += value
         if return_length:
             encoded['length'] = max(lengths)
+        else:
+            encoded.pop('length', None)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         if not self.remove_unused_columns:
@@ -1322,8 +1324,10 @@ class Template(ProcessorMixin):
         old_kwargs = to_device(kwargs, model.device)
         kwargs = to_device(self._post_encode(model, old_kwargs), model.device)
         for k, v in old_kwargs.items():
-            if k in {'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep'
-                     } and k not in kwargs:
+            if k in {
+                    'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep',
+                    'cumulative_seqlens_q', 'cumulative_seqlens_k', 'max_length_q', 'max_length_k'
+            } and k not in kwargs:
                 kwargs[k] = v
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)
