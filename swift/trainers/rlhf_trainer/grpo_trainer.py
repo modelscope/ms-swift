@@ -232,6 +232,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.num_completions_to_print = args.num_completions_to_print
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
         self._logs = {
+            'image': deque(maxlen=args.generation_batch_size),
             'prompt': deque(maxlen=args.generation_batch_size),
             'completion': deque(maxlen=args.generation_batch_size),
             'rewards': defaultdict(lambda: deque(maxlen=args.generation_batch_size)),
@@ -1119,6 +1120,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.args.scale_rewards:
             advantages /= (std_grouped_rewards + 1e-4)
         self._logs['advantages'].extend(gather(advantages).tolist())
+        if 'images' in inputs[0] and any(data['images'] is not None for data in inputs):
+            self._logs['image'].extend(gather_object([inp['images'] for inp in inputs]))
+
         template = self.template
 
         gas_chunks, advantage_chunks = self.split_by_mini_batches(inputs, advantages)
@@ -1199,8 +1203,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Log prompt and completion texts
         self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(gather_object(messages)))
         self._logs['completion'].extend(gather_object(completions))
-        if 'images' in inputs[0] and inputs[0]['images'] is not None:
-            self._logs['images'].extend(gather_object([inp['images'] for inp in inputs]))
 
         if self.use_gym_env:
             self._logs['trajactory_info'].extend(gather_object(trajactory_infos))
