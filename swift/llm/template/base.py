@@ -928,7 +928,9 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs):
-        total_content = '\n'.join([message['content'] or '' for message in inputs.messages])
+        total_content = '\n'.join(
+            (message['content'] if isinstance(message['content'], str) else str(message['content']) or '')
+            for message in inputs.messages)
         if inputs.rejected_response:
             if isinstance(inputs.rejected_response, str):
                 total_content += inputs.rejected_response

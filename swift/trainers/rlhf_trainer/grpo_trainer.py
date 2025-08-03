@@ -43,7 +43,7 @@ from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_logge
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (_ForwardRedirection, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
-                    patch_profiling_decorator)
+                    patch_profiling_decorator, replace_assistant_response_with_ids)
 from .vllm_client import VLLMClient
 
 try:
@@ -748,6 +748,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     output_dict = {
                         'messages': _input['messages'],
                         'finish_reason': choice.finish_reason,
+                        # NOTE: for training, we use rollout token_ids to calculate loss
+                        # because the tokenizer encode/decode may change the token ids
                         'completion_ids': choice.token_ids
                     }
                     _choices.append(output_dict)
@@ -774,7 +776,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     outputs.append(_choices)
                 outputs = [item for sublist in outputs for item in sublist]
             else:
-                # PTEngine or vLLMLLMEngine
+                # multi turn for PTEngine or vLLMLLMEngine
                 orig_size = len(inputs)
                 outputs = [None] * orig_size
                 # we remove origin response in first turn
@@ -806,6 +808,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             if 'index' not in current_input:
                                 current_input['index'] = cnt
                             current_input['finish_reason'] = choice.finish_reason
+                            if 'completion_ids' not in current_input:
+                                current_input['completion_ids'] = []
+                            current_input['completion_ids'].append(choice.token_ids)
                             cnt += 1
                             current_inputs.append(current_input)
 
@@ -1153,12 +1158,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, (batch, batch_advantages) in enumerate(zip(gas_chunks, advantage_chunks)):
             # Encode and process each batch (size=bs)
             with self._template_context(template):
-                processed_assistant_batch = []
-                for data in batch:
-                    InferRequest.remove_response(data['messages'])
-                    data['messages'].append({'role': 'assistant', 'content': data['completion_ids']})
-                    processed_assistant_batch.append(data)
-                batch_encoded_inputs = [template.encode(infer_request) for infer_request in processed_assistant_batch]
+                processed_batch = [
+                    replace_assistant_response_with_ids(data['messages'], data['completion_ids'])
+                    if 'completion_ids' in data else data for data in batch
+                ]
+                batch_encoded_inputs = [template.encode(data) for data in processed_batch]
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
 
             # Process labels and masks

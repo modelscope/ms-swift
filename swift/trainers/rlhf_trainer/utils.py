@@ -3,7 +3,7 @@ import functools
 import time
 from contextlib import contextmanager
 from types import MethodType
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -17,6 +17,9 @@ if is_wandb_available():
     import wandb
 if is_swanlab_available():
     import swanlab
+
+if TYPE_CHECKING:
+    from swift.llm.utils import Messages
 
 
 def round_robin(num_reqs, num_workers):
@@ -228,3 +231,49 @@ def entropy_from_logits(logits, chunk_size: int = 1) -> torch.Tensor:
         chunk_entropy = -(torch.exp(logps) * logps).sum(-1)
         per_token_entropies.append(chunk_entropy)
     return torch.cat(per_token_entropies, dim=0)
+
+
+def replace_assistant_response_with_ids(messages: 'Messages', completion_ids: List[Union[int,
+                                                                                         List[int]]]) -> 'Messages':
+    """
+    Replaces the content of assistant messages with the provided completion IDs.
+
+    This function processes messages in reverse order and replaces the content of
+    assistant messages with the given completion IDs. If completion_ids is a flat
+    list of integers, it will be treated as a single completion sequence.
+
+    Args:
+        messages: List of message dictionaries containing conversation history.
+        completion_ids: Either:
+            - A single list of token IDs (e.g., [1, 2, 3])
+            - A list of completion sequences (e.g., [[1, 2], [3, 4]])
+
+    Returns:
+        The modified messages list with assistant responses replaced by token IDs.
+
+    Example:
+        >>> messages = [{'role': 'user', 'content': 'Hello'},
+        ...            {'role': 'assistant', 'content': 'Hi there'}]
+        >>> replace_assistant_response_with_ids(messages, [1, 2, 3])
+        [{'role': 'user', 'content': 'Hello'},
+         {'role': 'assistant', 'content': [1, 2, 3]}]
+    """
+    # Normalize input to always be list of lists
+    if isinstance(completion_ids[0], int):
+        completion_ids = [completion_ids]
+
+    remaining_completions = len(completion_ids)
+    completion_index = 0
+
+    for message in reversed(messages):
+        if message['role'] != 'assistant':
+            continue
+
+        if completion_index >= remaining_completions:
+            break
+
+        # Assign completion IDs (starting from last)
+        message['content'] = completion_ids[-1 - completion_index]
+        completion_index += 1
+
+    return messages
