@@ -128,6 +128,7 @@ Running Environment:
 | peft         | >=0.11,<0.17 |             |                                           |
 | trl          | >=0.15,<0.21 | 0.19      | RLHF                                      |
 | deepspeed    | >=0.14       | 0.16.9 | Training                                  |
+| flash_attn  |     | 2.7.4.post1/3.0.0b1   |    Training     |
 | vllm         | >=0.5.1      | 0.10       | Inference/Deployment/Evaluation           |
 | sglang |  >=0.4.6   | 0.4.9.post6 | Inference/Deployment/Evaluation |
 | lmdeploy     | >=0.5,<0.9   | 0.8       | Inference/Deployment/Evaluation           |

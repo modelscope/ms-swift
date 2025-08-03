@@ -13,6 +13,7 @@ swift sft \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules q_proj k_proj v_proj o_proj gate_proj up_proj down_proj \
+    --router_aux_loss_coef 1e-3 \
     --gradient_accumulation_steps 16 \
     --eval_steps 50 \
     --save_steps 50 \
