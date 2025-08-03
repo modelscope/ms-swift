@@ -84,10 +84,10 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 ## Running Environment
 
 |              | Range        | Recommended | Notes                                     |
-| ------------ |--------------| ----------- | ----------------------------------------- |
+|--------------|--------------|-------------|-------------------------------------------|
 | python       | >=3.9        | 3.10        |                                           |
 | cuda         |              | cuda12      | No need to install if using CPU, NPU, MPS |
-| torch        | >=2.0        |   2.7.1      |                                           |
+| torch        | >=2.0        | 2.7.1       |                                           |
 | transformers | >=4.33       | 4.53.3      |                                           |
 | modelscope   | >=1.23       |             |                                           |
 | peft         | >=0.11,<0.17 |             |                                           |
