@@ -1118,7 +1118,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         advantages = (rewards - mean_grouped_rewards)
         if self.args.scale_rewards:
             advantages /= (std_grouped_rewards + 1e-4)
-        self.logs['advantages'].extend(gather(advantages).tolist())
+        self._logs['advantages'].extend(gather(advantages).tolist())
         template = self.template
 
         gas_chunks, advantage_chunks = self.split_by_mini_batches(inputs, advantages)
