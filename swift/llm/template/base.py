@@ -934,7 +934,16 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs):
-        total_content = '\n'.join([message['content'] or '' for message in inputs.messages])
+        total_content = []
+        for message in inputs.messages:
+            content = message['content'] or ''
+            if message['role'] == 'user' and not isinstance(content, str):
+                # Give up adding the default tag
+                return
+            elif message['role'] == 'assistant' and not isinstance(content, str):
+                continue
+            total_content.append(content)
+        total_content = '\n'.join(total_content)
         if inputs.rejected_response:
             if isinstance(inputs.rejected_response, str):
                 total_content += inputs.rejected_response

@@ -68,7 +68,13 @@ class LossScale:
                 assert context == messages[2 * i + 1]['content']
                 kwargs = {'query': query}
                 i += 1
-            new_context, loss_scale = self.get_loss_scale(context, context_type, is_last_round, **kwargs)
+            if isinstance(context, dict) and 'loss_scale' in context:
+                new_context = [[token] for token in context['token_ids']]
+                loss_scale = context['loss_scale']
+            else:
+                if isinstance(context, dict) and 'token_ids' in context:
+                    context = context['token_ids']
+                new_context, loss_scale = self.get_loss_scale(context, context_type, is_last_round, **kwargs)
             res_context_list += new_context
             res_loss_scale += loss_scale
         return res_context_list, res_loss_scale
