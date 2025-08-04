@@ -107,42 +107,39 @@ class ModelArguments:
             self.bf16 = bf16
 
     def _init_rope_scaling(self):
-        max_model_len = self.model_info.max_model_len
-        assert max_model_len is not None, 'max_model_len from model config is not set'
         if self.rope_scaling:
-            try:
-                # when user defined rope_scaling in command line is a json format string
-                rope_scaling = json.loads(self.rope_scaling)
-                if 'original_max_position_embeddings' in rope_scaling:
-                    max_model_len = rope_scaling['original_max_position_embeddings']
-            except Exception:  # noqa
-                # rope_scaling is supposed to be one of ['linear', 'dynamic', 'yarn']
-                assert self.max_model_len is not None, 'Use max_model_len together with rope_scaling'
-                assert self.rope_scaling in ['linear', 'dynamic', 'yarn']
-                rope_scaling = {'type': self.rope_scaling}
-        elif self.model_info.rope_scaling:
-            # when model config has rope_scaling and user does not specify rope_scaling in command line
+            rope_scaling: dict = json_parse_to_dict(self.rope_scaling, strict=False)
+            if isinstance(rope_scaling, str):
+                assert rope_scaling in ['linear', 'dynamic', 'yarn']
+                rope_scaling = {'type': rope_scaling}
+        else:
             rope_scaling = self.model_info.rope_scaling
-            rope_scaling['type'] = rope_scaling['rope_type']
-            if 'original_max_position_embeddings' in rope_scaling:
-                max_model_len = rope_scaling['original_max_position_embeddings']
+            # reset the factor
+            rope_scaling.pop('factor', None)
+
+        # get origin_max_model_len
+        if rope_scaling and 'original_max_position_embeddings' in rope_scaling:
+            origin_max_model_len = rope_scaling['original_max_position_embeddings']
+        elif self.model_info.rope_scaling and 'original_max_position_embeddings' in self.model_info.rope_scaling:
+            origin_max_model_len = self.model_info.rope_scaling['original_max_position_embeddings']
         else:
-            raise ValueError(f'RoPE config has an invalid value: {self.rope_scaling}')
-        if 'factor' in rope_scaling:
-            rope_scaling_factor = rope_scaling['factor']
-        else:
-            rope_scaling_factor = max(float(math.ceil(self.max_model_len / max_model_len)), 1.0)
-        rope_scaling['factor'] = rope_scaling_factor
-        self.rope_scaling = rope_scaling
-        rope_model_len = int(max_model_len * rope_scaling_factor)
-        logger.info(f'rope_scaling is set to type: {self.rope_scaling}')
-        if self.max_model_len:
-            assert self.max_model_len <= rope_model_len, (f'rope config ({rope_model_len} = {rope_scaling_factor} * '
-                                                          f'{max_model_len}) should be bigger than max_model_len '
-                                                          f'from command line ({self.max_model_len})')
-        else:
+            origin_max_model_len = self.model_info.max_model_len
+        assert origin_max_model_len is not None, '`origin_max_model_len` from model config is not set'
+
+        if 'factor' not in rope_scaling:
+            assert self.max_model_len is not None, '`max_model_len` or `rope_scaling_factor` is not set'
+            rope_scaling['factor'] = max(float(math.ceil(self.max_model_len / origin_max_model_len)), 1.0)
+        rope_model_len = int(origin_max_model_len * rope_scaling['factor'])
+        if self.max_model_len is None:
             self.max_model_len = rope_model_len
-        logger.info(f'max_model_len is set to {rope_model_len} from the RoPE config')
+        else:
+            assert self.max_model_len <= rope_model_len, (
+                f'rope config ({rope_model_len} = {rope_scaling["factor"]} * '
+                f'{origin_max_model_len}) should be bigger than max_model_len '
+                f'from command line ({self.max_model_len})')
+        self.rope_scaling = rope_scaling
+        logger.info(f'Setting args.rope_scaling: {rope_scaling}')
+        logger.info(f'Setting args.max_model_len: {self.max_model_len}')
 
     def _init_model_info(self) -> torch.dtype:
         self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
@@ -151,7 +148,7 @@ class ModelArguments:
 
         self.model_dir = self.model_info.model_dir
         self.model_type = self.model_info.model_type
-        if self.rope_scaling or self.model_info.rope_scaling:
+        if self.rope_scaling or self.model_info.rope_scaling and self.max_model_len is not None:
             self._init_rope_scaling()
         return self.model_info.torch_dtype
 
