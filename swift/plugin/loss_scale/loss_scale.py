@@ -97,7 +97,7 @@ class AgentFlanLossScale(LossScale):
                        is_last_round: bool,
                        *,
                        query: Optional[str] = None):
-        if context_type == ContextType.RESPONSE:
+        if context_type == ContextType.RESPONSE and isinstance(context, str):
             return calculate_loss_scale(query, context, self.loss_scale_map['response'], self.loss_scale_map['query'])
         return super().get_loss_scale(context, context_type, is_last_round)
 
@@ -111,7 +111,7 @@ class REACTLossScale(LossScale):
                        is_last_round: bool,
                        *,
                        query: Optional[str] = None):
-        if context_type == ContextType.RESPONSE:
+        if context_type == ContextType.RESPONSE and isinstance(context, str):
             return calculate_loss_scale(query, context, self.loss_scale_map)
         return super().get_loss_scale(context, context_type, is_last_round)
 
@@ -149,8 +149,8 @@ class LastRoundWithIgnoreEmptyThink(LossScale):
                        query: Optional[str] = None):
         if context_type == ContextType.RESPONSE:
             if not is_last_round:
-                return [context], [float(is_last_round)]
-            else:
+                return [context], [0.]
+            elif isinstance(context, str):
                 return calculate_loss_scale(query, context, self.loss_scale_map)
 
         return super().get_loss_scale(context, context_type, is_last_round)
