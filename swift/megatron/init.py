@@ -1,15 +1,20 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import concurrent.futures
 import os
 import subprocess
 import sys
+from contextlib import contextmanager
+from copy import copy
 from datetime import datetime
 from typing import List, Optional, Tuple
 
+import numpy as np
 import peft
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from packaging import version
+from tqdm import tqdm
 
 from swift.llm import git_clone_github
 from swift.utils import (JsonlWriter, format_time, get_logger, is_flash_attn_3_available, is_master,
@@ -749,6 +754,49 @@ def _patch_flash_attn():
         sys.modules['flash_attn_3.flash_attn_interface'] = flash_attn_interface
 
 
+def _patch_torch_FileSystemReader():
+    from torch.distributed.checkpoint.filesystem import FileSystemReader
+    from torch.futures import Future
+    _origin_read_data = FileSystemReader.read_data
+    _origin__slice_file = FileSystemReader._slice_file
+
+    @contextmanager
+    def _patch__slice_file(prog_bar):
+
+        def _slice_file(self, *args, **kwargs):
+            prog_bar.update()
+            return _origin__slice_file(self, *args, **kwargs)
+
+        FileSystemReader._slice_file = _slice_file
+        try:
+            yield
+        finally:
+            FileSystemReader._slice_file = _origin__slice_file
+
+    def read_data(self, plan, planner):
+
+        def _worker(plan_shard):
+            _origin_read_data(self, plan_shard, planner)
+
+        max_workers = 16
+        prog_bar = tqdm(total=len(plan.items), dynamic_ncols=True, desc='Load Weights: ')
+        with _patch__slice_file(prog_bar):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+                idx_list = np.linspace(0, len(plan.items), max_workers + 1)
+                futures = []
+                for i in range(max_workers):
+                    plan_shard = copy(plan)
+                    plan_shard.items = plan.items[int(idx_list[i]):int(idx_list[i + 1])]
+                    futures.append(pool.submit(_worker, plan_shard))
+                concurrent.futures.wait(futures)
+        prog_bar.close()
+        fut: Future = Future()
+        fut.set_result(None)
+        return fut
+
+    FileSystemReader.read_data = read_data
+
+
 def _patch_megatron():
     _patch_flash_attn()
     _patch_transformer_engine()
@@ -757,16 +805,17 @@ def _patch_megatron():
     _patch_TEGroupedLinear()
     _patch_TransformerLayer()
     _patch_compile_helpers()
+    _patch_training_log()
     from swift.megatron import tuners  # patch lora
+    try:
+        _patch_torch_FileSystemReader()
+        logger.info('Patch FileSystemReader successfully applied.')
+    except Exception:
+        pass
     try:
         _patch_peft_BaseTuner()
         _patch_peft_ModulesToSaveWrapper()
         logger.info('Patch peft successfully applied.')
-    except Exception:
-        pass
-    try:
-        _patch_training_log()
-        logger.info('Patch training_log successfully applied.')
     except Exception:
         pass
 

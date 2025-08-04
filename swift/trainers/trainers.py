@@ -334,7 +334,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             inputs['labels'], logits_to_keep = self.get_logits_to_keep(inputs['labels'])
             if logits_to_keep is not None:
                 inputs['logits_to_keep'] = logits_to_keep
-                if self.args.tuner_backend == 'unsloth':
+                if self.args.tuner_backend == 'unsloth' and isinstance(logits_to_keep, torch.Tensor):
                     inputs['logits_to_keep'] = int(logits_to_keep.sum())
 
         if self.model.model_info.is_moe_model:
