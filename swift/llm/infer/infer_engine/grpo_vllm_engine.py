@@ -296,6 +296,8 @@ class GRPOVllmEngine(VllmEngine):
                 result_choice.messages = messages
                 info_dict['num_turns'] = current_turn
                 for key, value in info_dict.items():
+                    if key in ['images', 'audios', 'videos']:
+                        value = MultiModalRequestMixin.to_base64(value)
                     if hasattr(result_choice, key):
                         setattr(result_choice, key, value)
                     else:

@@ -304,12 +304,6 @@ class RolloutResponseChoice(ChatCompletionResponseChoice):
     images: Optional[List[str]] = None
     multi_turn_infos: Dict[str, Any] = field(default_factory=dict)
 
-    def process_images(self):
-        """Convert PIL images to base64 strings."""
-        self.images = [
-            image.convert('RGB').tobytes() if isinstance(image, Image.Image) else image for image in self.images
-        ]
-
 
 @dataclass
 class GymRolloutResponseChoice(RolloutResponseChoice):
