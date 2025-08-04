@@ -119,7 +119,7 @@ class ModelArguments:
         else:
             origin_max_model_len = self.model_info.max_model_len
 
-        assert origin_max_model_len is not None, 'origin_max_model_len from model config is not set'
+        assert origin_max_model_len is not None, '`origin_max_model_len` from model config is not set'
         if 'factor' not in self.rope_scaling:
             assert self.max_model_len is not None, '`max_model_len` is not set'
             self.rope_scaling['factor'] = max(float(math.ceil(self.max_model_len / origin_max_model_len)), 1.0)
@@ -131,8 +131,8 @@ class ModelArguments:
                 f'rope config ({rope_model_len} = {self.rope_scaling["factor"]} * '
                 f'{origin_max_model_len}) should be bigger than max_model_len '
                 f'from command line ({self.max_model_len})')
-        logger.info(f'args.rope_scaling is set to type: {self.rope_scaling}')
-        logger.info(f'args.max_model_len is set to type: {self.max_model_len}')
+        logger.info(f'Setting args.rope_scaling: {self.rope_scaling}')
+        logger.info(f'Setting args.max_model_len: {self.max_model_len}')
 
     def _init_model_info(self) -> torch.dtype:
         self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
