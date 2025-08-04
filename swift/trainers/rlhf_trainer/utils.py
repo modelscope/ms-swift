@@ -248,11 +248,11 @@ def load_pil_img(img) -> Image:
         return Image.open(img)
 
     if not isinstance(img, dict):
-        raise ValueError("Image must be a PIL Image, a file path, or a dictionary with 'byte' or 'path' key.")
+        raise ValueError("Image must be a PIL Image, a file path, or a dictionary with 'bytes' or 'path' key.")
 
     if 'bytes' in img and img['bytes'] is not None:
         return Image.open(BytesIO(img['bytes']))
     elif 'path' in img and img['path'] is not None:
         return Image.open(img['path'])
     else:
-        raise ValueError("Image dictionary must contain either 'byte' or 'path' key.")
+        raise ValueError("Image dictionary must contain either 'bytes' or 'path' key.")

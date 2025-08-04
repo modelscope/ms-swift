@@ -1738,10 +1738,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'completion': list(self._logs['completion'])[:seen_nums],
                 **{k: list(v)[:seen_nums]
                    for k, v in self._logs['rewards'].items()},
-                'advantage': self._logs['advantages'],
+                'advantage': list(self._logs['advantages'])[:seen_nums],
             }
             if self.use_gym_env:
-                table['trajectory_infos'] = self._logs['trajectory_infos']
+                table['trajectory_infos'] = list(self._logs['trajectory_infos'])[:seen_nums]
             if self.args.log_entropy:
                 table.update({'entropy': self._logs['entropy']})
 
