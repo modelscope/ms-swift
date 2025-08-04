@@ -111,7 +111,6 @@ class ModelArguments:
         assert max_model_len is not None, 'max_model_len from model config is not set'
         rope_scaling_factor=1.0
         if self.rope_scaling:
-            assert self.max_model_len is not None, 'Use max_model_len together with rope_scaling'
             try:
                 ## when user defined rope_scaling in command line is a json format string
                 rope_scaling = json.loads(self.rope_scaling)
@@ -119,6 +118,7 @@ class ModelArguments:
                     max_model_len = rope_scaling['original_max_position_embeddings']
             except Exception: 
                 ## rope_scaling is supposed to be one of ['linear', 'dynamic', 'yarn']
+                assert self.max_model_len is not None, 'Use max_model_len together with rope_scaling'
                 assert self.rope_scaling in ['linear', 'dynamic', 'yarn']
                 rope_scaling = {'type': self.rope_scaling}
         elif self.model_info.rope_scaling:
@@ -129,6 +129,7 @@ class ModelArguments:
                 max_model_len = rope_scaling['original_max_position_embeddings']
         else:
             raise ValueError(f'RoPE config has an invalid value: {self.rope_scaling}')
+        if 'factor' in rope_scaling:    
             rope_scaling_factor = rope_scaling['factor']
         else:
             rope_scaling_factor = max(float(math.ceil(self.max_model_len / max_model_len)), 1.0)
