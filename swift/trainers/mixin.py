@@ -3,15 +3,18 @@
 import inspect
 import logging
 import os
+import random
 import re
 import shutil
 import time
+import warnings
 from contextlib import contextmanager
 from copy import copy
 from functools import partial, wraps
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import safetensors
 import torch
 import torch.distributed as dist
@@ -28,7 +31,8 @@ from transformers import PreTrainedModel
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
-from transformers.trainer import OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME, TrainerCallback
+from transformers.trainer import (OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, SCHEDULER_NAME, TRAINER_STATE_NAME,
+                                  DeepSpeedSchedulerWrapper, ParallelMode, TrainerCallback, reissue_pt_warnings)
 from transformers.trainer_utils import EvalPrediction, IntervalStrategy, SaveStrategy
 from transformers.utils import is_torch_npu_available
 
@@ -490,19 +494,23 @@ class SwiftMixin:
                 self.optimizer.state_dict(),
                 os.path.join(output_dir, OPTIMIZER_NAME),
             )
+
+        # Save SCHEDULER & SCALER
+        is_deepspeed_custom_scheduler = (
+            self.is_deepspeed_enabled and not isinstance(self.lr_scheduler, DeepSpeedSchedulerWrapper))
+        if self.args.should_save and (not self.is_deepspeed_enabled or is_deepspeed_custom_scheduler):
+            with warnings.catch_warnings(record=True) as caught_warnings:
+                torch.save(
+                    self.lr_scheduler.state_dict(),
+                    os.path.join(output_dir, SCHEDULER_NAME),
+                )
+            reissue_pt_warnings(caught_warnings)
         if self.args.save_strategy in [SaveStrategy.STEPS, SaveStrategy.EPOCH] and self.state.best_global_step:
             best_checkpoint_folder = f'{PREFIX_CHECKPOINT_DIR}-{self.state.best_global_step}'
             best_checkpoint_dir = os.path.join(run_dir, best_checkpoint_folder)
 
             if os.path.exists(best_checkpoint_dir):
                 self.state.best_model_checkpoint = best_checkpoint_dir
-
-        if not self.args.save_only_model:
-            # Save optimizer and scheduler
-            super()._save_optimizer_and_scheduler(output_dir)
-            super()._save_scaler(output_dir)
-            # Save RNG state
-            super()._save_rng_state(output_dir)
 
         # Save the Trainer state
         if self.args.should_save:
@@ -518,9 +526,33 @@ class SwiftMixin:
                 else:
                     self.state.stateful_callbacks[cb_name] = cb_state
             self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
+        # Save RNG state in non-distributed training
+        rng_states = {
+            'python': random.getstate(),
+            'numpy': np.random.get_state(),
+            'cpu': torch.random.get_rng_state(),
+        }
+        if torch.cuda.is_available():
+            if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
+                # In non distributed, we save the global
+                # CUDA RNG state (will take care of DataParallel)
+                rng_states['cuda'] = torch.cuda.random.get_rng_state_all()
+            else:
+                rng_states['cuda'] = torch.cuda.random.get_rng_state()
+
+        # A process can arrive here before the process 0 has a chance to
+        # save the model, in which case output_dir may not yet exist.
+        os.makedirs(output_dir, exist_ok=True)
+
+        if self.args.world_size <= 1:
+            torch.save(rng_states, os.path.join(output_dir, 'rng_state.pth'))
+        else:
+            torch.save(
+                rng_states,
+                os.path.join(output_dir, f'rng_state_{self.args.process_index}.pth'),
+            )
 
         torch.save = torch_native_save
-
         success = self.flash_checkpointer.save_checkpoint_to_storage(self.state.global_step)
         if not success:
             logger.info(f'Skip saving the checkpoint of step {self.state.global_step} '
@@ -770,8 +802,13 @@ class SwiftMixin:
         return labels, logits_to_keep
 
     def get_cu_seqlens(self, position_ids, logits_to_keep) -> torch.Tensor:
-        from swift.llm import get_packed_seq_params
-        cu_seqlens = get_packed_seq_params(position_ids)['cumulative_seqlens_q']
+        assert position_ids.shape[0] == 1
+        position_ids = position_ids[0]
+        indices = torch.arange(position_ids.shape[0], device=position_ids.device)
+        cu_seqlens = torch.concat([
+            indices[position_ids == 0],
+            torch.tensor(position_ids.shape, device=position_ids.device),
+        ])
         res_cu_seqlens = cu_seqlens.clone()
         if isinstance(logits_to_keep, torch.Tensor):
             for i in range(cu_seqlens.shape[0] - 1):

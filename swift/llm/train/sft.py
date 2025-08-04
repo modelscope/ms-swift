@@ -29,7 +29,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
-        if args.use_flash_ckpt:
+        if self.args.use_flash_ckpt:
             try:
                 import dlrover.trainer.torch.flash_checkpoint.hf_trainer
             except ImportError:
