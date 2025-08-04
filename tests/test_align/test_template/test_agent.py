@@ -72,9 +72,6 @@ def _infer(engine, num_tools: int = 1, agent_tools=None, tool_messages=None, que
     stop = [engine.default_template.agent_template.keyword.observation]
     query = query or "How's the weather in Beijing today?"
     infer_request = InferRequest([{
-        'role': 'system',
-        'content': ''
-    }, {
         'role': 'user',
         'content': query
     }],
