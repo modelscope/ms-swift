@@ -937,11 +937,12 @@ class Template(ProcessorMixin):
         total_content = []
         for message in inputs.messages:
             content = message['content'] or ''
-            if message['role'] == 'user' and not isinstance(content, str):
-                # Give up adding the default tag
-                return
-            elif message['role'] == 'assistant' and not isinstance(content, str):
-                continue
+            if not isinstance(content, str):
+                if message['role'] == 'user':
+                    # Give up adding the default tag
+                    return
+                elif message['role'] == 'assistant':
+                    continue
             total_content.append(content)
         total_content = '\n'.join(total_content)
         if inputs.rejected_response:
