@@ -1762,7 +1762,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     else:
                         table['image'].append(None)
 
-            if report_to_wandb is not None:
+            if report_to_wandb:
                 import pandas as pd
                 df = pd.DataFrame(table)
                 if self.wandb_log_unique_prompts:
