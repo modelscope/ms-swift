@@ -513,7 +513,13 @@ class Template(ProcessorMixin):
             elif self.mode == 'gkd':
                 encoded = self._gkd_encode(inputs)
         elif self.task_type == 'seq_cls':
-            encoded = self._seq_cls_encode(inputs)
+            if self.mode == 'rlhf':
+                encoded = self._rlhf_encode(inputs)
+                for prefix in ['chosen', 'rejected']:
+                    encoded.pop(f'{prefix}_labels', None)
+                    encoded.pop(f'{prefix}_loss_scale', None)
+            else:
+                encoded = self._seq_cls_encode(inputs)
         elif self.task_type == 'prm':
             encoded = self._encode_truncated(inputs)
         elif self.task_type == 'embedding':
@@ -1175,7 +1181,9 @@ class Template(ProcessorMixin):
         if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
             encoded = Template._encode(self, inputs)
             for key in ['images', 'audios', 'videos']:
-                encoded[key] = getattr(inputs, key)
+                value = getattr(inputs, key)
+                if value:
+                    encoded[key] = value
         else:
             encoded = self._encode(inputs)
 
@@ -1318,8 +1326,10 @@ class Template(ProcessorMixin):
         old_kwargs = to_device(kwargs, model.device)
         kwargs = to_device(self._post_encode(model, old_kwargs), model.device)
         for k, v in old_kwargs.items():
-            if k in {'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep'
-                     } and k not in kwargs:
+            if k in {
+                    'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep',
+                    'cumulative_seqlens_q', 'cumulative_seqlens_k', 'max_length_q', 'max_length_k'
+            } and k not in kwargs:
                 kwargs[k] = v
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)
@@ -1389,7 +1399,10 @@ class Template(ProcessorMixin):
         elif self.task_type == 'prm':
             res = self._data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'seq_cls':
-            res = self._seq_cls_data_collator(batch, padding_to=padding_to)
+            if self.mode == 'rlhf':
+                res = self._rlhf_data_collator(batch, padding_to=padding_to)
+            else:
+                res = self._seq_cls_data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'embedding':
             res = self._embedding_data_collator(batch, padding_to=padding_to)
         elif self.task_type in {'reranker', 'generative_reranker'}:

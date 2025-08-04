@@ -30,16 +30,34 @@ pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
 # If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
 # This will ensure that the dataset cache is shared, thereby speeding up preprocessing.
 export MODELSCOPE_CACHE='/xxx/shared'
+
+# Megatron-LM
+# The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.13.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)).
+export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 ```
 
 Alternatively, you can also use the image:
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
 ```
 
-The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.13.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)).
+Recommended Operating Environment:
+
+|        | Range | Recommended | Notes |
+|--------------|--------------|-------------|--------------------|
+| python       | >=3.9        | 3.10        |                    |
+| cuda         |              | cuda12      |                    |
+| torch        | >=2.0        | 2.6.0       |                    |
+| transformer_engine    | >=2.3       | 2.5      |                  |
+| apex |   |  0.1 | |
+| megatron_core    | >=0.12       | 0.13      |                  |
+| flash_attn    |        | 2.7.4.post1/3.0.0b1   |                  |
+| transformers | >=4.33       | 4.51.3      |                    |
+| modelscope   | >=1.23       |             |                    |
+| peft         | >=0.11,<0.17 |             |      LoRA          |
+| trl          | >=0.15,<0.21 | 0.19.1      |      RLHF        |
+| deepspeed    | >=0.14       | 0.16.9      |                  |
 
 
 ## Quick Start Example
@@ -244,6 +262,7 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
   - Note: The default is False in RLHF.
 - 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Defaults to flash.
   - Note: We recommend using `--attention_backend flash` with flash_attn version 2.7.4.post1.
+  - If 'flash_attention_3' is installed, FA3 will be used by default. For training scripts, please refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3).
 - optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
 - 🔥optimizer_cpu_offload: Offloads the optimizer state to CPU. Default is `False`.
 - optimizer_offload_fraction: The fraction of the optimizer state to offload to CPU. Default is `1.0`.

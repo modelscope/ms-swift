@@ -1,3 +1,4 @@
+# test_env: 4 * H20
 # fa2: 4 * 43GiB; 35.5s/it
 # fa3: 4 * 43GiB; 32.4s/it
 # https://github.com/Dao-AILab/flash-attention/tree/main#flashattention-3-beta-release
