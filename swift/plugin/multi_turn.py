@@ -109,6 +109,7 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
                   **kwargs) -> Union['RolloutOutput', List['RolloutOutput']]:
+        from swift.llm.template import RolloutInferRequest
         current_request = infer_request
         current_turn = 1
         info_dict = {}
@@ -214,7 +215,6 @@ class GYMScheduler(RolloutScheduler):
                  context_manager_name: Optional[str] = None,
                  max_turns: Optional[int] = None,
                  **kwargs):
-        from swift.llm.infer.protocol import ChatCompletionResponse, RolloutResponseChoice, GymRolloutResponseChoice
         super().__init__(infer_engine, max_turns, **kwargs)
         self.gym_env_name = gym_env
         self.context_manager_name = context_manager_name
@@ -248,6 +248,7 @@ class GYMScheduler(RolloutScheduler):
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
                   **kwargs) -> 'ChatCompletionResponse':
+        from swift.llm.infer.protocol import ChatCompletionResponse, GymRolloutResponseChoice
         """
         Execute the gym environment-based rollout:
         1. Initialize environment and context manager
@@ -286,8 +287,8 @@ class GYMScheduler(RolloutScheduler):
                 current_request.messages = messages
                 remove_response(current_request.messages)
 
-                result: ChatCompletionResponse = await self.infer_async(current_request, request_config, **kwargs)
-                result_choice: RolloutResponseChoice = result.choices[0]
+                result: 'ChatCompletionResponse' = await self.infer_async(current_request, request_config, **kwargs)
+                result_choice: 'RolloutResponseChoice' = result.choices[0]
                 completion = result_choice.message.content
                 messages.append({'role': 'assistant', 'content': completion})
 
