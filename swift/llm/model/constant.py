@@ -155,6 +155,7 @@ class MLLMModelType:
     ovis1_6_llama3 = 'ovis1_6_llama3'
     ovis2 = 'ovis2'
     mimo_vl = 'mimo_vl'
+    midashenglm = 'midashenglm'
 
     glm4v = 'glm4v'
     glm4_1v = 'glm4_1v'
