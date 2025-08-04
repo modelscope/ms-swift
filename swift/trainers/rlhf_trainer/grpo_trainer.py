@@ -1751,22 +1751,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             self.jsonl_writer.append(table)
 
-            if self._logs['image']:
-                table['image'] = []
-                for img in self._logs['image']:
-                    if img is not None:
-                        if report_to_wandb:
-                            table['image'].append(wandb.Image(load_pil_img(img)))
-                        if report_to_swanlab:
-                            pass
-                            # swanlab does not support Image type right now
-                            # table['image'].append(swanlab.Image(load_pil_img(img)))
-                    else:
-                        table['image'].append(None)
-
             if report_to_wandb:
                 import pandas as pd
-                df = pd.DataFrame(table)
+                # Create a copy to avoid modifying the original table used by other loggers.
+                wandb_table = table.copy()
+                if self._logs['image']:
+                    wandb_table['image'] = [
+                        wandb.Image(load_pil_img(img)) if img is not None else None for img in self._logs['image']
+                    ]
+                df = pd.DataFrame(wandb_table)
                 if self.wandb_log_unique_prompts:
                     df = df.drop_duplicates(subset=['prompt'])
                 wandb.log({'completions': wandb.Table(dataframe=df)})

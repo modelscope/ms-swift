@@ -233,9 +233,6 @@ def entropy_from_logits(logits, chunk_size: int = 1) -> torch.Tensor:
 
 
 def load_pil_img(img) -> Image:
-    if not img:
-        return
-
     if isinstance(img, (list, tuple)):
         if len(img) == 1:
             img = img[0]
