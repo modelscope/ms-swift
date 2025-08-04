@@ -817,7 +817,7 @@ register_model(
     ModelMeta(
         MLLMModelType.midashenglm, [
             ModelGroup([
-                Model('midasheng/midashenglm-7b', 'mispeech/midashenglm-7b'),
+                Model('mispeech/midashenglm-7b', 'mispeech/midashenglm-7b'),
             ])
         ],
         TemplateType.qwen2_audio,
