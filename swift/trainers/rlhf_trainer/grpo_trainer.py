@@ -42,7 +42,7 @@ from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_logge
                          is_vllm_available, is_wandb_available, seed_worker, unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import (_ForwardRedirection, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
+from .utils import (_ForwardRedirection, load_pil_img, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
                     patch_profiling_decorator)
 from .vllm_client import VLLMClient
 
@@ -1120,7 +1120,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.args.scale_rewards:
             advantages /= (std_grouped_rewards + 1e-4)
         self._logs['advantages'].extend(gather(advantages).tolist())
-        if 'images' in inputs[0] and any(data['images'] is not None for data in inputs):
+        if any('images' in data and data['images'] is not None for data in inputs):
             self._logs['image'].extend(gather_object([inp['images'] for inp in inputs]))
 
         template = self.template
@@ -1756,9 +1756,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 for img in self._logs['image']:
                     if img is not None:
                         if report_to_wandb:
-                            table['image'].append(wandb.Image(img))
+                            table['image'].append(wandb.Image(load_pil_img(img)))
                         if report_to_swanlab:
-                            table['image'].append(swanlab.Image(img))
+                            table['image'].append(swanlab.Image(load_pil_img(img)))
                     else:
                         table['image'].append(None)
 

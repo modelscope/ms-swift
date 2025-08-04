@@ -3,12 +3,13 @@ import functools
 import time
 from contextlib import contextmanager
 from types import MethodType
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 import torch
 import torch.nn.functional as F
 from peft.tuners import lora
 from peft.tuners.lora import LoraLayer
+from PIL import Image
 from torch import nn
 
 from swift.utils import is_swanlab_available, is_wandb_available
@@ -228,3 +229,14 @@ def entropy_from_logits(logits, chunk_size: int = 1) -> torch.Tensor:
         chunk_entropy = -(torch.exp(logps) * logps).sum(-1)
         per_token_entropies.append(chunk_entropy)
     return torch.cat(per_token_entropies, dim=0)
+
+
+def load_pil_img(img: Dict) -> Image:
+    if not img:
+        return
+    if 'byte' in img:
+        return Image.open(img['byte'])
+    elif 'path' in img:
+        return Image.open(img['path'])
+    else:
+        raise ValueError("Image dictionary must contain either 'byte' or 'path' key.")
