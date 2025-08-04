@@ -142,4 +142,4 @@ The entire gym data flow is as follows:
 <img src="../../../../resources/gym_env.png" width="400" />
 
 5. Reward Logging
-Since the gym reward is calculated within the `step` function, you need to manually return the log via `info`. The final record will be placed in the `trajectory_info` field of `completions.jsonl`.
+Since the gym reward is calculated within the `step` function, you need to manually return the log via `info`. The final record will be placed in the `trajectory_infos` field of `completions.jsonl`.
