@@ -783,14 +783,14 @@ register_model(
 def get_model_tokenizer_midashenglm(model_dir, *args, **kwargs):
     from transformers import AutoModelForCausalLM, AutoProcessor, AutoConfig
 
-    # 设置默认的 automodel_class，如果外部未提供
+    # default automodel_class
     kwargs['automodel_class'] = kwargs.get('automodel_class', AutoModelForCausalLM)
 
 
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['tokenizer'] = processor.tokenizer
 
-    # 加载模型配置
+    # load model config
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['model_config'] = model_config
 
@@ -798,10 +798,8 @@ def get_model_tokenizer_midashenglm(model_dir, *args, **kwargs):
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
 
     if model:
-        # 兼容 AWQ 等量化模型，获取基础模型以进行修改
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
 
-        # 假设 use_submodel_func 是一个必要的初始化步骤
         use_submodel_func(base_model, 'decoder')
 
         if not hasattr(base_model.config, 'keys_to_ignore_at_inference'):
