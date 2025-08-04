@@ -71,16 +71,6 @@ if not hasattr(RepeatSampler, 'old_len_func'):
 
     RepeatSampler.__len__ = patched_len
     RepeatSampler.old_len_func = origin_len_func
-"""
-Refactor：
-    Rollout 返回结果 message.content -> completion_ids
-        设置 request_config.return_details
-        获取 completion_ids
-        修改template.encode 逻辑：只encode prompt 部分
-        多轮和 loss_scale 可能会比较麻烦
-
-
-"""
 
 
 class GRPOCallback(TrainerCallback):
@@ -1770,6 +1760,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'completion': list(self._textual_logs['completion'])[:seen_nums],
                 **{k: list(v)[:seen_nums]
                    for k, v in self._textual_logs['rewards'].items()},
+                'advantage': list(self._logs['advantages'])[:seen_nums],
             }
             if self.use_gym_env:
                 table['trajactory_info'] = self._textual_logs['trajactory_info']
