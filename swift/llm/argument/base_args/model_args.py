@@ -108,28 +108,42 @@ class ModelArguments:
 
     def _init_rope_scaling(self):
         max_model_len = self.model_info.max_model_len
-        try:
-            if isinstance(self.rope_scaling, str):
-                self.rope_scaling = json.loads(self.rope_scaling)
-                if 'factor' in self.rope_scaling and max_model_len:
-                    self.max_model_len = int(self.rope_scaling['factor'] * max_model_len)
-        except Exception:
-            assert self.max_model_len is not None, 'Use max_model_len together with rope_scaling'
-            assert self.rope_scaling in ['linear', 'dynamic', 'yarn']
-            rope_scaling = self.model_info.rope_scaling or {}
-            rope_scaling_factor = 1.0
-            if max_model_len:
-                rope_scaling_factor = max(float(math.ceil(self.max_model_len / max_model_len)), 1.0)
-            if rope_scaling:
-                rope_scaling_factor = max(rope_scaling.get('factor', -1), rope_scaling_factor)
-                rope_scaling['type'] = self.rope_scaling
-                rope_scaling['factor'] = rope_scaling_factor
-            else:
-                rope_scaling = {'type': self.rope_scaling, 'factor': rope_scaling_factor}
-            self.rope_scaling = rope_scaling
-            self.max_model_len = int(max_model_len * rope_scaling_factor)
+        assert max_model_len is not None, 'max_model_len from model config is not set'
+        rope_scaling_factor=1.0
+        if self.rope_scaling:
+            try:
+                ## when user defined rope_scaling in command line is a json format string
+                rope_scaling = json.loads(self.rope_scaling)
+                if 'original_max_position_embeddings' in rope_scaling:
+                    max_model_len = rope_scaling['original_max_position_embeddings']
+            except Exception: 
+                ## rope_scaling is supposed to be one of ['linear', 'dynamic', 'yarn']
+                assert self.max_model_len is not None, 'Use max_model_len together with rope_scaling'
+                assert self.rope_scaling in ['linear', 'dynamic', 'yarn']
+                rope_scaling = {'type': self.rope_scaling}
+        elif self.model_info.rope_scaling:
+            ## when model config has rope_scaling and user does not specify rope_scaling in command line
+            rope_scaling = self.model_info.rope_scaling
+            rope_scaling['type'] = rope_scaling['rope_type']
+            if 'original_max_position_embeddings' in rope_scaling:
+                max_model_len = rope_scaling['original_max_position_embeddings']
+        else:
+            raise ValueError(f'RoPE config has an invalid value: {self.rope_scaling}')
+        if 'factor' in rope_scaling:    
+            rope_scaling_factor = rope_scaling['factor']
+        else:
+            rope_scaling_factor = max(float(math.ceil(self.max_model_len / max_model_len)), 1.0)
+        rope_scaling['factor'] = rope_scaling_factor
+        self.rope_scaling = rope_scaling
+        rope_model_len = int(max_model_len * rope_scaling_factor)
         logger.info(f'rope_scaling is set to type: {self.rope_scaling}')
-
+        if self.max_model_len:
+            assert self.max_model_len <= rope_model_len, f'rope config ({rope_model_len} = {rope_scaling_factor} * {max_model_len}) should be bigger than max_model_len from command line ({self.max_model_len})'
+        else:
+            self.max_model_len = rope_model_len
+        logger.info(f'max_model_len is set to {rope_model_len} from the RoPE config')
+        
+        
     def _init_model_info(self) -> torch.dtype:
         self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
         self.task_type = self.model_info.task_type
@@ -137,7 +151,7 @@ class ModelArguments:
 
         self.model_dir = self.model_info.model_dir
         self.model_type = self.model_info.model_type
-        if self.rope_scaling is not None:
+        if self.rope_scaling or self.model_info.rope_scaling:
             self._init_rope_scaling()
         return self.model_info.torch_dtype
 
