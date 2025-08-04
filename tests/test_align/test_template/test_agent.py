@@ -71,11 +71,7 @@ def _infer(engine, num_tools: int = 1, agent_tools=None, tool_messages=None, que
             })
     stop = [engine.default_template.agent_template.keyword.observation]
     query = query or "How's the weather in Beijing today?"
-    infer_request = InferRequest([{
-        'role': 'user',
-        'content': query
-    }],
-                                 tools=agent_tools)
+    infer_request = InferRequest([{'role': 'user', 'content': query}], tools=agent_tools)
     request_config = RequestConfig(max_tokens=512, stop=stop, temperature=0)
     resp_list = engine.infer([infer_request], request_config=request_config)
     response = resp_list[0].choices[0].message.content
