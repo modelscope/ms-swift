@@ -107,7 +107,7 @@ class ModelArguments:
             self.bf16 = bf16
 
     def _init_rope_scaling(self):
-        self.rope_scaling = json_parse_to_dict(self.rope_scaling, strict=False)
+        self.rope_scaling: dict = json_parse_to_dict(self.rope_scaling, strict=False)
         if isinstance(self.rope_scaling, str):
             assert self.rope_scaling in ['linear', 'dynamic', 'yarn']
             self.rope_scaling = {'type': self.rope_scaling}
@@ -127,9 +127,10 @@ class ModelArguments:
         if self.max_model_len is None:
             self.max_model_len = rope_model_len
         else:
-            assert self.max_model_len <= rope_model_len, (f'rope config ({rope_model_len} = {rope_scaling_factor} * '
-                                                          f'{max_model_len}) should be bigger than max_model_len '
-                                                          f'from command line ({self.max_model_len})')
+            assert self.max_model_len <= rope_model_len, (
+                f'rope config ({rope_model_len} = {self.rope_scaling["factor"]} * '
+                f'{origin_max_model_len}) should be bigger than max_model_len '
+                f'from command line ({self.max_model_len})')
         logger.info(f'args.rope_scaling is set to type: {self.rope_scaling}')
         logger.info(f'args.max_model_len is set to type: {self.max_model_len}')
 
