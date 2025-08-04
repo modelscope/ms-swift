@@ -328,7 +328,6 @@ class GYMScheduler(RolloutScheduler):
             # Ensure environment is properly closed
             await self._close_env_async(env)
 
-
 class MathTipsScheduler(MultiTurnScheduler):
     tips_prompt = 'But wait... It seems I made a mistake,'
 

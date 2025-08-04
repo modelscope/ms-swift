@@ -22,6 +22,8 @@ from trl.scripts.vllm_serve import WeightSyncWorkerExtension
 
 from swift.llm import RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
+from swift.plugin.multi_turn import multi_turns, RolloutScheduler
+
 from swift.utils import get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
@@ -66,6 +68,14 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
     os.environ['VLLM_DP_SIZE'] = str(args.vllm_data_parallel_size)
     os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
     engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(None))
+    if args.multi_turn_scheduler:
+        if args.multi_turn_scheduler not in multi_turns:
+            raise ValueError(f"Multi-turn scheduler '{args.multi_turn_scheduler}' not found in multi_turns.")
+        rollout_engine: RolloutScheduler  = multi_turns[args.multi_turn_scheduler](engine, args.max_turns)
+        if not rollout_engine:
+            raise ValueError(f"Failed to initialize multi-turn scheduler '{args.multi_turn_scheduler}'.")
+    else:
+        rollout_engine = engine
     # Send ready signal to parent process
     connection.send({'status': 'ready'})
 
@@ -81,7 +91,7 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
         if command['type'] in ['call', 'fire_and_forget']:
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
-            method = getattr(engine, method_name, None) or getattr(engine.engine, method_name, None)
+            method = getattr(rollout_engine, method_name, None) or getattr(rollout_engine.engine, method_name, None) or 
             result = method(*args, **kwargs)
             if command['type'] == 'call':
                 connection.send(result)
@@ -193,7 +203,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
             'torch_dtype': args.torch_dtype,
             'template': template,
             'use_async_engine': args.vllm_use_async_engine,
-            'multi_turn_scheduler': args.multi_turn_scheduler,
             'max_turns': args.max_turns,
             'use_gym_env': args.use_gym_env,
             'gym_env': args.gym_env,
