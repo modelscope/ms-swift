@@ -65,24 +65,16 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 
 ## 数据集格式
 
-### 常见原始数据格式
-
-
-```json lines
-{"query": "query", "positive": ["relevant_doc1", "relevant_doc2", ...], "negative": ["irrelevant_doc1", "irrelevant_doc2", ...]}
-```
-
-> 原始数据格式可以参考[MTEB/scidocs-reranking](https://www.modelscope.cn/datasets/MTEB/scidocs-reranking)
-
-### 转换后的数据格式
-
 ```json lines
 {"query": "query", "response": "relevant_doc1", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
 {"query": "query", "response": "relevant_doc2", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
 ...
 ```
 
-> 最终需要转换后的数据格式，开发者可以自行构建数据集，也可以复用[MTEBRerankPreprocessor](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/dataset/llm.py#L381)来转换数据格式。
+**字段说明：**
+- `query`：查询文本
+- `response`：与查询相关的正例文档
+- `rejected_response`：与查询不相关的负例文档列表，支持多个负例
 
 ## 脚手架
 
