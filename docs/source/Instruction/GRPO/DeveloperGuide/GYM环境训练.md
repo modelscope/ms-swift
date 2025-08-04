@@ -142,4 +142,4 @@ swift rollout \
 
 
 5. 奖励日志
-由于gym的奖励是在step函数内计算完成，所以需要手动通过`info`返回日志，最终的记录会放在completions.jsonl中的`trajactory_info`字段.
+由于gym的奖励是在step函数内计算完成，所以需要手动通过`info`返回日志，最终的记录会放在completions.jsonl中的`trajectory_infos`字段.
