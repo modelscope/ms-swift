@@ -1758,7 +1758,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         if report_to_wandb:
                             table['image'].append(wandb.Image(load_pil_img(img)))
                         if report_to_swanlab:
-                            table['image'].append(swanlab.Image(load_pil_img(img)))
+                            pass
+                            # swanlab does not support Image type right now
+                            # table['image'].append(swanlab.Image(load_pil_img(img)))
                     else:
                         table['image'].append(None)
 
