@@ -150,7 +150,7 @@ def create_multimodal_optimizer(args: 'TrainingArguments', model, dataset):
                 continue
             optimizer_grouped_parameters.append({
                 'params': params,
-                'weight_decay': args.weight_decay,
+                'weight_decay': wd,
                 'lr': lr,
             })
     optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(args, model)
