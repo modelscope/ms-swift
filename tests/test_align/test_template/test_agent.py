@@ -334,7 +334,7 @@ def test_hunyuan():
     encoded2 = template.encode(data)
     print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
     print(f'labels: {template.safe_decode(encoded2["labels"])}')
-    assert encoded['input_ids'] == encoded2['input_ids'][:-1]
+    assert encoded['input_ids'] == encoded2['input_ids']
 
 
 if __name__ == '__main__':
