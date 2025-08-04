@@ -350,7 +350,7 @@ register_model(
         [ModelGroup([
             Model('Tencent-Hunyuan/Hunyuan-A13B-Instruct', 'tencent/Hunyuan-A13B-Instruct'),
         ])],
-        TemplateType.hunyuan,
+        TemplateType.hunyuan_moe,
         get_model_tokenizer_with_flash_attn,
         architectures=['HunYuanMoEV1ForCausalLM'],
     ))
