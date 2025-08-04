@@ -11,6 +11,7 @@ from peft.tuners import lora
 from peft.tuners.lora import LoraLayer
 from PIL import Image
 from torch import nn
+from io import BytesIO
 
 from swift.utils import is_swanlab_available, is_wandb_available
 
@@ -235,7 +236,7 @@ def load_pil_img(img: Dict) -> Image:
     if not img:
         return
     if 'byte' in img:
-        return Image.open(img['byte'])
+        return Image.open(BytesIO(img['bytes']))
     elif 'path' in img:
         return Image.open(img['path'])
     else:
