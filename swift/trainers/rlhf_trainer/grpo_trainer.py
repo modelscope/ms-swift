@@ -801,6 +801,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             if 'completion_ids' not in current_input:
                                 current_input['completion_ids'] = []
                             current_input['completion_ids'].append(choice.token_ids)
+
                             cnt += 1
                             current_inputs.append(current_input)
 

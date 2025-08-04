@@ -321,6 +321,11 @@ class CompletionResponseChoice:
     logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
+class RolloutOutput:
+    results: List[ChatCompletionResponse]
+    extra_info: Dict[str, Any]
+
+
 @dataclass
 class ChatCompletionResponse:
     model: str
