@@ -267,7 +267,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
                 self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
                 if self.use_gym_env:
-                    self._logs['trajactory_info'] = deque(maxlen=args.generation_batch_size)
+                    self._logs['trajectory_infos'] = deque(maxlen=args.generation_batch_size)
                     self.reward_func_names = ['gym_reward']
 
             elif self.vllm_mode == 'colocate':
@@ -971,11 +971,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards)
         # Log metrics
         messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
-        trajactory_infos = None
+        trajectory_infos = None
         if self.use_gym_env:
-            trajactory_infos = [inputs[i]['trajectory_info'] for i in range(len(inputs))]
+            trajectory_infos = [inputs[i]['trajectory_info'] for i in range(len(inputs))]
         self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func,
-                          trajactory_infos)
+                          trajectory_infos)
 
         return batch_encoded_inputs
 
@@ -1166,7 +1166,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return ga_batch_encoded_inputs
 
-    def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func, trajactory_infos=None):
+    def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func, trajectory_infos=None):
         """Log training/evaluation metrics"""
         mode = 'train' if self.model.training else 'eval'
         device = self.accelerator.device
@@ -1205,7 +1205,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._logs['completion'].extend(gather_object(completions))
 
         if self.use_gym_env:
-            self._logs['trajactory_info'].extend(gather_object(trajactory_infos))
+            self._logs['trajectory_infos'].extend(gather_object(trajectory_infos))
 
         for i, name in enumerate(self.reward_func_names):
             self._logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
@@ -1741,25 +1741,27 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'advantage': self._logs['advantages'],
             }
             if self.use_gym_env:
-                table['trajactory_info'] = self._logs['trajactory_info']
+                table['trajectory_infos'] = self._logs['trajectory_infos']
             if self.args.log_entropy:
                 table.update({'entropy': self._logs['entropy']})
 
             report_to_wandb = self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None
             report_to_swanlab = self.args.report_to and 'swanlab' in self.args.report_to and swanlab.get_run(
             ) is not None
+
+            self.jsonl_writer.append(table)
+
             if self._logs['image']:
                 table['image'] = []
                 for img in self._logs['image']:
                     if img is not None:
                         if report_to_wandb:
                             table['image'].append(wandb.Image(img))
-                        elif report_to_swanlab:
+                        if report_to_swanlab:
                             table['image'].append(swanlab.Image(img))
                     else:
                         table['image'].append(None)
 
-            self.jsonl_writer.append(table)
             if report_to_wandb is not None:
                 import pandas as pd
                 df = pd.DataFrame(table)
