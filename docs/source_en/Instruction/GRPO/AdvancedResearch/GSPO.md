@@ -21,8 +21,8 @@ Based on GRPO training, we can use the parameter `--importance_sampling_level se
 
 Other hyperparameters in the paper
 ```bash
-    --epsilon 3e-4 # from paper serction 5.1
-    --epsilon_high 4e-4 # from paper serction 5.1
-    --steps_per_generation 4 # from paper serction 5.1 (each batch of rollout data is partitioned into four minibatches for gradient updates)
+    --epsilon 3e-4 # from paper section 5.1
+    --epsilon_high 4e-4 # from paper section 5.1
+    --steps_per_generation 4 # from paper section 5.1 (each batch of rollout data is partitioned into four minibatches for gradient updates)
     --beta 0 # zero kl regularization https://github.com/volcengine/verl/pull/2775#issuecomment-3131807306
 ```

@@ -120,16 +120,18 @@ class RolloutArguments(DeployArguments):
     def _check_device_count(self):
         local_device_count = get_device_count()
         required_device_count = self.vllm_data_parallel_size * self.vllm_tensor_parallel_size
-        assert local_device_count >= required_device_count, (
-            f'Error: local_device_count ({local_device_count}) must be greater than or equal to '
-            f'the product of vllm_data_parallel_size ({self.vllm_data_parallel_size}) and '
-            f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}). '
-            f'Current required_device_count = {required_device_count}.')
+
+        if local_device_count < required_device_count:
+            msg = (f'Error: local_device_count ({local_device_count}) must be greater than or equal to '
+                   f'the product of vllm_data_parallel_size ({self.vllm_data_parallel_size}) and '
+                   f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}). '
+                   f'Current required_device_count = {required_device_count}.')
+            raise ValueError(msg)
 
         if local_device_count > required_device_count:
             logger.warning_once(
                 f'local_device_count ({local_device_count}) is greater than required_device_count ({required_device_count}). '  # noqa
-                f'Only the first {required_device_count} devices will be used for rollout. '
+                f'Only the first {required_device_count} devices will be utilized for rollout. '
                 f'To fully utilize resources, set vllm_tensor_parallel_size * vllm_data_parallel_size = device_count. '  # noqa
                 f'device_count: {local_device_count}, '
                 f'vllm_tensor_parallel_size: {self.vllm_tensor_parallel_size}, '
