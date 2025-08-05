@@ -13,7 +13,7 @@ from transformers import PretrainedConfig
 
 from swift.hub import get_hub
 from swift.llm import to_device
-from swift.utils import deep_getattr, get_logger, safe_ddp_context, subprocess_run
+from swift.utils import deep_getattr, get_logger, safe_ddp_context, subprocess_run, is_local_master
 
 logger = get_logger()
 
@@ -324,7 +324,9 @@ def git_clone_github(github_url: str,
         local_repo_name = github_url.rsplit('/', 1)[1]
     github_url = f'{github_url}.git'
     local_repo_path = os.path.join(git_cache_dir, local_repo_name)
-    with safe_ddp_context(hash_id=local_repo_path):
+    with safe_ddp_context(None, use_barrier=True):
+        if not is_local_master():
+            return local_repo_path
         repo_existed = os.path.exists(local_repo_path)
         if repo_existed:
             command = ['git', '-C', local_repo_path, 'fetch']

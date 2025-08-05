@@ -262,7 +262,7 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padded tokens in the global batch. Default is True.
   - Note: The default is False in RLHF.
 - 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Defaults to flash.
-  - Note: We recommend using `--attention_backend flash` with flash_attn version 2.7.4.post1.
+  - Note: The recommended flash_attn version is 2.7.4.post1. In “ms-swift < 3.7” the default is set to "auto".
   - If 'flash_attention_3' is installed, FA3 will be used by default. For training scripts, please refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3).
 - optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
 - 🔥optimizer_cpu_offload: Offloads the optimizer state to CPU. Default is `False`.
@@ -414,6 +414,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - moe_router_topk_scaling_factor: Default is None. This parameter is read from config.json.
 - moe_router_load_balancing_type: Determines the router’s load balancing strategy. Options are "aux_loss", "seq_aux_loss", "sinkhorn", and "none". Default is None and is read from config.json.
 - 🔥expert_model_parallel_size: The degree of expert parallelism, default is 1.
+- 🔥expert_tensor_parallel_size: Degree of expert tensor parallelism. Defaults to None, which inherits the value of `--tensor_model_parallel_size`.
 - moe_token_dispatcher_type: The type of token dispatcher to use. Options include 'allgather', 'alltoall', 'flex', and 'alltoall_seq'. Default is 'alltoall'.
 - moe_enable_deepep: Experimental feature, Enables DeepSeek/DeepEP for efficient token dispatching and combination in MoE models. Only works when using the flexible token dispatcher by setting `--moe_token_dispatcher_type flex`.
 - 🔥moe_grouped_gemm: When each rank contains multiple experts, multiple local GEMM kernels can be launched in parallel streams to improve utilization and performance by using GroupedLinear from TransformerEngine. Default is False.

@@ -255,8 +255,8 @@ swift export \
 - cross_entropy_fusion_impl: 交叉熵损失融合的实现。可选为'native'和'te'。默认为'native'。
 - calculate_per_token_loss: 根据全局批次中的非填充token数量来对交叉熵损失进行缩放。默认为True。
   - 注意：rlhf中默认为False。
-- 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 auto。
-  - 注意：建议设置为`--attention_backend flash`，推荐flash_attn版本：2.7.4.post1。
+- 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 flash。
+  - 注意：推荐flash_attn版本：2.7.4.post1。在"ms-swift<3.7"默认为'auto'。
   - 如果安装'flash_attention_3'，则优先使用fa3。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。
 - optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
 - 🔥optimizer_cpu_offload: 将优化器状态卸载到 CPU。默认为False。
@@ -397,6 +397,7 @@ swift export \
 - moe_router_topk_scaling_factor: 默认为None。从config.json中读取。
 - moe_router_load_balancing_type: 确定路由器的负载均衡策略。可选项为"aux_loss"、"seq_aux_loss"、"sinkhorn"、"none"。默认值为 None。从config.json中读取。
 - 🔥expert_model_parallel_size: 专家并行数，默认为1。
+- 🔥expert_tensor_parallel_size: 专家TP并行度。默认值为None，即等于`--tensor_model_parallel_size` 的数值。
 - moe_token_dispatcher_type: 要使用的token分发器类型。可选选项包括 'allgather'、'alltoall'、'flex'和'alltoall_seq'。默认值为'alltoall'。
 - moe_enable_deepep: 实验性功能，启用DeepSeek/DeepEP以实现 MoE 模型中的高效令牌分发与组合。仅在设置`--moe_token_dispatcher_type flex`使用灵活令牌分发器时生效。
 - 🔥moe_grouped_gemm: 当每个rank包含多个专家时，通过在多个流中启动多个本地 GEMM 内核，利用 TransformerEngine中的GroupedLinear提高利用率和性能。默认为False。

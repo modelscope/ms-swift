@@ -50,7 +50,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         self.is_grouped = isinstance(base_layer, TEGroupedLinear)
         self.fan_in_fan_out = fan_in_fan_out
         self._active_adapter = adapter_name
-        self.tp_size = config.tensor_model_parallel_size
+        self.tp_size = base_layer.tp_size
         self.is_expert = getattr(base_layer, 'is_expert', False)
         self.update_layer(
             adapter_name,

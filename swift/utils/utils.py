@@ -20,7 +20,7 @@ import torch.distributed as dist
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
 from transformers.utils import strtobool
 
-from .env import is_dist
+from .env import is_dist, is_master
 from .logger import get_logger
 from .np_utils import stat_array
 
@@ -218,7 +218,7 @@ def subprocess_run(command: List[str], env: Optional[Dict[str, str]] = None, std
     # stdoutm stderr: e.g. subprocess.PIPE.
     import shlex
     command_str = ' '.join(shlex.quote(a) for a in command)
-    logger.info(f'Run the command: `{command_str}`')
+    logger.info_if(f'Run the command: `{command_str}`', is_master())
     resp = subprocess.run(command, env=env, stdout=stdout, stderr=stderr)
     resp.check_returncode()
     return resp
