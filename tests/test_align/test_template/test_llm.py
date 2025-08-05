@@ -431,7 +431,8 @@ def test_kimi_dev():
 
 
 def test_hunyuan():
-    pt_engine = PtEngine('Tencent-Hunyuan/Hunyuan-A13B-Instruct')
+    # pt_engine = PtEngine('Tencent-Hunyuan/Hunyuan-A13B-Instruct')
+    pt_engine = PtEngine('Tencent-Hunyuan/Hunyuan-4B-Instruct')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
@@ -653,7 +654,7 @@ if __name__ == '__main__':
     # test_minicpm()
     # test_minimax()
     # test_kimi_dev()
-    # test_hunyuan()
+    test_hunyuan()
     # test_ernie()
     # test_glm4_5()
-    test_devstral()
+    # test_devstral()

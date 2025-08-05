@@ -33,6 +33,7 @@ register_template(EmptyTemplateMeta(LLMTemplateType.dummy))
 
 
 class ThinkingTemplate(Template):
+    with_answer = False
 
     def _swift_prepare_messages(self, messages):
         super()._swift_prepare_messages(messages)
@@ -42,4 +43,12 @@ class ThinkingTemplate(Template):
             for i, message in enumerate(messages):
                 # Delete the content before '</think>' in all assistant turns except the last round.
                 if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:
-                    message['content'] = message['content'].split('</think>')[-1].strip()
+                    if self.with_answer:
+                        message['content'] = message['content'].split('<answer>')[-1].rstrip().rstrip(
+                            '</answer>').strip()
+                    else:
+                        message['content'] = message['content'].split('</think>')[-1].strip()
+
+
+class ThinkingWithAnswerTemplate(ThinkingTemplate):
+    with_answer = True

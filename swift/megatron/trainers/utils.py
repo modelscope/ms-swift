@@ -7,6 +7,8 @@ from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import get_batch_on_this_cp_rank as mcore_get_batch_on_this_cp_rank
 from megatron.training import get_args
 
+from swift.llm import get_packed_seq_params as _get_packed_seq_params
+
 
 def get_swift_datasets_provider(train_dataset, val_dataset):
 
@@ -129,21 +131,13 @@ def get_batch_on_this_tp_rank(data_iterator):
     return batch
 
 
-def get_packed_seq_params(position_ids: torch.Tensor) -> Optional[PackedSeqParams]:
-    position_ids_f = position_ids.flatten()
-    indices_q = torch.arange(position_ids_f.shape[0], device=position_ids_f.device, dtype=torch.int32)
-
-    cu_seqlens = torch.cat([
-        indices_q[position_ids_f == 0],
-        torch.tensor(position_ids_f.shape, device=position_ids_f.device, dtype=torch.int32),
-    ])
-
-    max_length = position_ids_f.max() + 1
+def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
+    params = _get_packed_seq_params(position_ids)
     return PackedSeqParams(
-        cu_seqlens_q=cu_seqlens,
-        cu_seqlens_kv=cu_seqlens,
-        max_seqlen_q=max_length,
-        max_seqlen_kv=max_length,
+        cu_seqlens_q=params['cumulative_seqlens_q'],
+        cu_seqlens_kv=params['cumulative_seqlens_k'],
+        max_seqlen_q=params['max_length_q'],
+        max_seqlen_kv=params['max_length_k'],
         qkv_format='thd')
 
 

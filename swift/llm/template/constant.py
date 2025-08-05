@@ -88,6 +88,7 @@ class LLMTemplateType:
     moonlight = 'moonlight'
     mimo_rl = 'mimo_rl'
     dots1 = 'dots1'
+    hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
     ernie = 'ernie'
 

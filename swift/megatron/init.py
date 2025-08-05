@@ -12,8 +12,8 @@ import torch.nn.functional as F
 from packaging import version
 
 from swift.llm import git_clone_github
-from swift.utils import (JsonlWriter, format_time, get_logger, is_master, is_megatron_available, safe_ddp_context,
-                         subprocess_run)
+from swift.utils import (JsonlWriter, format_time, get_logger, is_flash_attn_3_available, is_master,
+                         is_megatron_available, safe_ddp_context, subprocess_run)
 
 logger = get_logger()
 
@@ -742,7 +742,15 @@ def _patch_compile_helpers():
     utils.compile_helpers = compile_helpers
 
 
+def _patch_flash_attn():
+    # flash_attention_3
+    if is_flash_attn_3_available():
+        import flash_attn_interface
+        sys.modules['flash_attn_3.flash_attn_interface'] = flash_attn_interface
+
+
 def _patch_megatron():
+    _patch_flash_attn()
     _patch_transformer_engine()
     _patch__batched_p2p_ops()
     _patch_mla_attention()

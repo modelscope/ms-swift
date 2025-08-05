@@ -23,7 +23,6 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
                      inputs: Dict[str, Union[torch.Tensor, Any]],
                      return_outputs=False,
                      num_items_in_batch=None) -> Union[torch.Tensor, Tuple[torch.Tensor, Dict[str, torch.Tensor]]]:
-        inputs.pop('labels', None)  # not use
         margin = inputs.pop('margin', None)
         attention_mask = inputs['attention_mask']
         batch_size = attention_mask.shape[0] // 2

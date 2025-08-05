@@ -68,7 +68,13 @@ class LossScale:
                 assert context == messages[2 * i + 1]['content']
                 kwargs = {'query': query}
                 i += 1
-            new_context, loss_scale = self.get_loss_scale(context, context_type, is_last_round, **kwargs)
+            if isinstance(context, dict) and 'loss_scale' in context:
+                new_context = [[token] for token in context['token_ids']]
+                loss_scale = context['loss_scale']
+            else:
+                if isinstance(context, dict) and 'token_ids' in context:
+                    context = context['token_ids']
+                new_context, loss_scale = self.get_loss_scale(context, context_type, is_last_round, **kwargs)
             res_context_list += new_context
             res_loss_scale += loss_scale
         return res_context_list, res_loss_scale
@@ -91,7 +97,7 @@ class AgentFlanLossScale(LossScale):
                        is_last_round: bool,
                        *,
                        query: Optional[str] = None):
-        if context_type == ContextType.RESPONSE:
+        if context_type == ContextType.RESPONSE and isinstance(context, str):
             return calculate_loss_scale(query, context, self.loss_scale_map['response'], self.loss_scale_map['query'])
         return super().get_loss_scale(context, context_type, is_last_round)
 
@@ -105,7 +111,7 @@ class REACTLossScale(LossScale):
                        is_last_round: bool,
                        *,
                        query: Optional[str] = None):
-        if context_type == ContextType.RESPONSE:
+        if context_type == ContextType.RESPONSE and isinstance(context, str):
             return calculate_loss_scale(query, context, self.loss_scale_map)
         return super().get_loss_scale(context, context_type, is_last_round)
 
@@ -143,8 +149,8 @@ class LastRoundWithIgnoreEmptyThink(LossScale):
                        query: Optional[str] = None):
         if context_type == ContextType.RESPONSE:
             if not is_last_round:
-                return [context], [float(is_last_round)]
-            else:
+                return [context], [0.]
+            elif isinstance(context, str):
                 return calculate_loss_scale(query, context, self.loss_scale_map)
 
         return super().get_loss_scale(context, context_type, is_last_round)

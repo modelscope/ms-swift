@@ -84,10 +84,9 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
 
     assert found, 'Cannot find the proper lm_head name'
 
-    def forward(self, input_ids: torch.LongTensor = None, attention_mask=None, *args, **kwargs):
-
-        outputs = self.forward_origin(input_ids=input_ids, attention_mask=attention_mask, *args, **kwargs)
-        hidden_states = outputs.logits
+    def _output_embedding_hook(module, args, kwargs, output):
+        attention_mask = kwargs['attention_mask']
+        hidden_states = output.logits
         left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
         if left_padding:
             embeddings = hidden_states[:, -1]
@@ -101,8 +100,7 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
             'last_hidden_state': embeddings.contiguous(),
         }
 
-    llm_model.forward_origin = llm_model.forward
-    llm_model.forward = MethodType(forward, llm_model)
+    llm_model.register_forward_hook(_output_embedding_hook, with_kwargs=True)
 
 
 def patch_output_to_input_device(module: torch.nn.Module):

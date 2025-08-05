@@ -357,8 +357,6 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.train_type == 'lora':
             require_version('peft>=0.12')
         MegatronTunerMixin.__post_init__(self)
-        if self.use_flash_attn or self.attention_backend == 'flash':
-            require_version('flash-attn')
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self._set_default()
         if hasattr(self, 'ddp_timeout'):
