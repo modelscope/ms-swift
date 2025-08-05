@@ -8,6 +8,20 @@ from swift.utils import get_logger
 logger = get_logger()
 
 
+def check_tie_word_embeddings(model):
+    config = model.config
+    try:
+        from peft.utils import ModulesToSaveWrapper
+        if not config.tie_word_embeddings:
+            return
+        for module in [model.get_input_embeddings(), model.get_output_embeddings()]:
+            if not isinstance(module, ModulesToSaveWrapper):
+                return
+        config.tie_word_embeddings = False
+    except Exception:
+        pass
+
+
 def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) -> None:
     if replace_if_exists:
         logger.info(f'replace_if_exists: {replace_if_exists}')
@@ -24,6 +38,7 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
         logger.info(f'merge_device_map: {device_map}')
         model, template = prepare_model_template(args)
         logger.info('Merge LoRA...')
+        check_tie_word_embeddings(model)
         Swift.merge_and_unload(model)
         model = model.model
         logger.info('Saving merged weights...')
