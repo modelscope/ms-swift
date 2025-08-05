@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Literal, Optional
 
 from swift.llm import safe_snapshot_download
-from swift.utils import find_free_port, get_dist_setting, get_logger
+from swift.utils import find_free_port, get_device_count, get_logger
 from .base_args import BaseArguments
 from .infer_args import InferArguments
 
@@ -109,20 +109,20 @@ class RolloutArguments(DeployArguments):
             raise ValueError('RolloutArguments does not support pipeline parallelism, '
                              'please set vllm_pipeline_parallel_size to 1.')
 
-        local_world_size = get_dist_setting()[3]
-        required_world_size = self.vllm_data_parallel_size * self.vllm_tensor_parallel_size
-        assert local_world_size >= required_world_size, (
-            f'Error: local_world_size ({local_world_size}) must be greater than or equal to '
+        local_device_count = get_device_count()
+        required_device_count = self.vllm_data_parallel_size * self.vllm_tensor_parallel_size
+        assert local_device_count >= required_device_count, (
+            f'Error: local_device_count ({local_device_count}) must be greater than or equal to '
             f'the product of vllm_data_parallel_size ({self.vllm_data_parallel_size}) and '
             f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}). '
-            f'Current required_world_size = {required_world_size}.')
+            f'Current required_device_count = {required_device_count}.')
 
-        if local_world_size > required_world_size:
+        if local_device_count > required_device_count:
             logger.warning_once(
-                f'local_world_size ({local_world_size}) is greater than required_world_size ({required_world_size}). '
-                'Only the first {required_world_size} ranks will be used for rollout. '
-                'To fully utilize resources, set vllm_tensor_parallel_size * vllm_data_parallel_size = world_size. '
-                f'world_size: {local_world_size}, '
+                f'local_device_count ({local_device_count}) is greater than required_device_count ({required_device_count}). '  # noqa
+                f'Only the first {required_device_count} ranks will be used for rollout. '
+                'To fully utilize resources, set vllm_tensor_parallel_size * vllm_data_parallel_size = device_count. '
+                f'device_count: {local_device_count}, '
                 f'vllm_tensor_parallel_size: {self.vllm_tensor_parallel_size}, '
                 f'vllm_data_parallel_size: {self.vllm_data_parallel_size}, '
-                f'required_world_size: {required_world_size}.')
+                f'required_device_count: {required_device_count}.')
