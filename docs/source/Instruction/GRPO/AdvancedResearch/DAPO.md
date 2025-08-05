@@ -5,8 +5,8 @@
 [Decoupled Clip and Dynamic sAmpling Policy Optimization (DAPO)](https://arxiv.org/abs/2503.14476)在GRPO的基础上设置了几种trick，分别是
 - [Clip Higher](#clip-higher)
 - [Dynamic Sampling](#dynamic-sampling)
-- [Token level Loss]()
-- [Overlong Filtering]()
+- [Token level Loss](#token-level-loss)
+- [Overlong Filtering](#overlong-filtering)
 - [Soft Overlong Punishment](#soft-overlong-punishment)
 
 ## Clip Higher

@@ -1,5 +1,7 @@
 # Group Sequence Policy Optimization
 
+**Version Requirement**: ms-swift>=3.7
+
 [Group Sequence Policy Optimization](https://www.arxiv.org/abs/2507.18071) points out that in GRPO, importance sampling weights are computed at the token level. However, this approach samples only once per token, making it ineffective for proper distribution correction. Instead, it introduces high-variance noise into the training process, which can destabilize gradient estimation and ultimately cause model collapse. Therefore, the paper argues that the unit of optimization should match the unit of reward. Since rewards are typically assigned at the sequence level (i.e., for the entire generated response), it is more reasonable to perform off-policy correction and optimization at the sequence level, rather than at the token level.
 
 In GRPO, the importance sampling ratio is computed at the token level as follows:

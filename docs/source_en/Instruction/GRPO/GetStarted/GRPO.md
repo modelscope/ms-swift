@@ -1,18 +1,5 @@
 # GRPO
 
-**Changelog**
-- **2025-07-18** - Support for entropy mask and logging of entropy-related metrics. See [documentation](../AdvancedResearch/entropy_mask.md) for details.
-- **2025-07-17** - Added support for multi-node rollout (both vllm_server_host and vllm_server_port now accept multiple values). See the reference [script](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/multi_node/server_multi_node.sh) for details.
-- **2025-07-16** - Rollout now supports GYM environment interfaces. For more information, refer to the [documentation](../DeveloperGuide/gym_env.md).
-- **2025-06-22** - Refactored multi-round training and added support for AsyncEngine. Refer to the [documentation](../DeveloperGuide/multi_turn.md).
-- **2025-05-29** — Added support for padding-free (`--padding_free true`) and sequence parallelism (`--sequence_parallel_size N`).
-- **2025-05-23** — Added support for custom sampling batch size. Refer to the `generation_batch_size` / `steps_per_generation` parameters.
-- **2025-05-22** — Swift rollout now supports the `data_parallel_size` parameter.
-- **2025-05-16** - Added ref_model synchronization logic. Refer to the `sync_ref_model` parameter.
-- **2025-05-13** — Refactored GRPOTrainer code for better readability and maintainability. Internal mode now supports vLLM>=0.8.
-- **2025-05-11** — Added support for generative reward models. Custom reward model logic can be implemented via `reward_model_plugin`. For more details, refer to the [documentation](../DeveloperGuide/Reward Model) section.
-- **2025-04-30** — The startup command for the external vLLM server has been changed to `swift rollout`.
-
 GRPOTrainer underwent a code refactoring in ms-swift3.5. If you are using a swift version < 3.5, please refer to the [stable documentation](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md).
 
 [GRPO (Group Relative Policy Optimization)](https://arxiv.org/abs/2402.03300) leverages intra-group relative advantage calculations to replace the independent value model in the PPO algorithm and directly incorporates KL divergence penalties into the loss function to improve training stability.

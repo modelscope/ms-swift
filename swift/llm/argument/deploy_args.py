@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Literal, Optional
 
 from swift.llm import safe_snapshot_download
-from swift.utils import find_free_port, get_logger
+from swift.utils import find_free_port, get_dist_setting, get_logger
 from .base_args import BaseArguments
 from .infer_args import InferArguments
 
@@ -104,3 +104,25 @@ class RolloutArguments(DeployArguments):
                 self.vllm_use_async_engine = True
             else:
                 self.vllm_use_async_engine = False
+
+        if self.vllm_pipeline_parallel_size > 1:
+            raise ValueError('RolloutArguments does not support pipeline parallelism, '
+                             'please set vllm_pipeline_parallel_size to 1.')
+
+        local_world_size = get_dist_setting()[3]
+        used_world_size = self.vllm_data_parallel_size * self.vllm_tensor_parallel_size
+        assert local_world_size >= used_world_size, (
+            f'Error: local_world_size ({local_world_size}) must be greater than or equal to '
+            f'the product of vllm_data_parallel_size ({self.vllm_data_parallel_size}) and '
+            f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}). '
+            f'Current used_world_size = {used_world_size}.')
+
+        if local_world_size > used_world_size:
+            logger.warning_once(
+                f'local_world_size ({local_world_size}) is greater than used_world_size ({used_world_size}). '
+                'Only the first {used_world_size} ranks will be used for rollout. '
+                'To fully utilize resources, set vllm_tensor_parallel_size * vllm_data_parallel_size = world_size. '
+                f'world_size: {local_world_size}, '
+                f'vllm_tensor_parallel_size: {self.vllm_tensor_parallel_size}, '
+                f'vllm_data_parallel_size: {self.vllm_data_parallel_size}, '
+                f'used_world_size: {used_world_size}.')
