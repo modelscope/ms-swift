@@ -92,37 +92,46 @@ class RolloutArguments(DeployArguments):
     context_manager: Optional[str] = None
 
     def __post_init__(self):
-        try:
-            from trl.scripts.vllm_serve import WeightSyncWorkerExtension
-        except ImportError as e:
-            raise ImportError("Could not import 'WeightSyncWorkerExtension' from 'trl.scripts.vllm_serve'. "
-                              "Please upgrade your 'trl' package by 'pip install -U trl'") from e
+        self._check_trl_version()
         super().__post_init__()
+        self._set_default_engine_type()
+        self._check_args()
+        self._check_device_count()
 
-        if self.vllm_use_async_engine is None:
-            if self.multi_turn_scheduler or self.use_gym_env:
-                self.vllm_use_async_engine = True
-            else:
-                self.vllm_use_async_engine = False
+        def _check_trl_version(self):
+            try:
+                from trl.scripts.vllm_serve import WeightSyncWorkerExtension
+            except ImportError as e:
+                raise ImportError("Could not import 'WeightSyncWorkerExtension' from 'trl.scripts.vllm_serve'. "
+                                  "Please upgrade your 'trl' package by 'pip install -U trl'") from e
 
-        if self.vllm_pipeline_parallel_size > 1:
-            raise ValueError('RolloutArguments does not support pipeline parallelism, '
-                             'please set vllm_pipeline_parallel_size to 1.')
+        def _set_default_engine_type(self):
+            if self.vllm_use_async_engine is None:
+                if self.multi_turn_scheduler or self.use_gym_env:
+                    self.vllm_use_async_engine = True
+                else:
+                    self.vllm_use_async_engine = False
 
-        local_device_count = get_device_count()
-        required_device_count = self.vllm_data_parallel_size * self.vllm_tensor_parallel_size
-        assert local_device_count >= required_device_count, (
-            f'Error: local_device_count ({local_device_count}) must be greater than or equal to '
-            f'the product of vllm_data_parallel_size ({self.vllm_data_parallel_size}) and '
-            f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}). '
-            f'Current required_device_count = {required_device_count}.')
+        def _check_args(self):
+            if self.vllm_pipeline_parallel_size > 1:
+                raise ValueError('RolloutArguments does not support pipeline parallelism, '
+                                 'please set vllm_pipeline_parallel_size to 1.')
 
-        if local_device_count > required_device_count:
-            logger.warning_once(
-                f'local_device_count ({local_device_count}) is greater than required_device_count ({required_device_count}). '  # noqa
-                f'Only the first {required_device_count} ranks will be used for rollout. '
-                'To fully utilize resources, set vllm_tensor_parallel_size * vllm_data_parallel_size = device_count. '
-                f'device_count: {local_device_count}, '
-                f'vllm_tensor_parallel_size: {self.vllm_tensor_parallel_size}, '
-                f'vllm_data_parallel_size: {self.vllm_data_parallel_size}, '
-                f'required_device_count: {required_device_count}.')
+        def _check_device_count(self):
+            local_device_count = get_device_count()
+            required_device_count = self.vllm_data_parallel_size * self.vllm_tensor_parallel_size
+            assert local_device_count >= required_device_count, (
+                f'Error: local_device_count ({local_device_count}) must be greater than or equal to '
+                f'the product of vllm_data_parallel_size ({self.vllm_data_parallel_size}) and '
+                f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}). '
+                f'Current required_device_count = {required_device_count}.')
+
+            if local_device_count > required_device_count:
+                logger.warning_once(
+                    f'local_device_count ({local_device_count}) is greater than required_device_count ({required_device_count}). '  # noqa
+                    f'Only the first {required_device_count} ranks will be used for rollout. '
+                    'To fully utilize resources, set vllm_tensor_parallel_size * vllm_data_parallel_size = device_count. '  # noqa
+                    f'device_count: {local_device_count}, '
+                    f'vllm_tensor_parallel_size: {self.vllm_tensor_parallel_size}, '
+                    f'vllm_data_parallel_size: {self.vllm_data_parallel_size}, '
+                    f'required_device_count: {required_device_count}.')
