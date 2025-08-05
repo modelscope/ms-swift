@@ -398,7 +398,7 @@ class BaseUI:
     @classmethod
     def update_all_settings(cls, model, train_record, base_tab):
         if not train_record:
-            return [gr.update()] * len(cls.elements())
+            return [gr.update()] * len(cls.valid_elements())
         cache = cls.load_cache(model, train_record)
         updates = []
         for key, value in base_tab.valid_elements().items():
