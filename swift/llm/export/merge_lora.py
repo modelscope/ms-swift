@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 
-from swift.llm import ExportArguments, prepare_model_template, save_checkpoint
+from swift.llm import ExportArguments, HfConfigFactory, prepare_model_template, save_checkpoint
 from swift.tuners import Swift
 from swift.utils import get_logger
 
@@ -12,12 +12,12 @@ def check_tie_word_embeddings(model):
     config = model.config
     try:
         from peft.utils import ModulesToSaveWrapper
-        if not config.tie_word_embeddings:
+        if not HfConfigFactory.get_config_attr(config, 'tie_word_embeddings'):
             return
         for module in [model.get_input_embeddings(), model.get_output_embeddings()]:
             if not isinstance(module, ModulesToSaveWrapper):
                 return
-        config.tie_word_embeddings = False
+        HfConfigFactory.set_config_attr(config, 'tie_word_embeddings', False)
     except Exception:
         pass
 
