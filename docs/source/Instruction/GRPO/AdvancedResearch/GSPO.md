@@ -18,3 +18,11 @@ w^{\mathrm{GSPO}}_{i} = \left[ \frac{\pi_\theta (y_i \mid x)}{\pi_{\theta_{\math
 $$
 
 我们可以在 GRPO 训练的基础上，使用参数`--importance_sampling_level sequence` 来使用 GSPO 算法
+
+论文其他超参
+```bash
+    --epsilon 3e-4 # from paper serction 5.1
+    --epsilon_high 4e-4 # from paper serction 5.1
+    --steps_per_generation 4 # from paper serction 5.1 (each batch of rollout data is partitioned into four minibatches for gradient updates)
+    --beta 0 # zero kl regularization https://github.com/volcengine/verl/pull/2775#issuecomment-3131807306
+```

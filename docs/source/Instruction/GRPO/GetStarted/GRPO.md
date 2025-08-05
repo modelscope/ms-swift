@@ -326,3 +326,14 @@ steps_per_generation = 16
 gradient_accumulation_steps = 8
 
 则一次 rollout 结果将拆分成两批 mini-batch 进行更新
+
+**8. swift deploy 与 swift rollout 的区别**
+
+- swift deploy 主要用于模型的部署和推理，支持 PT、vLLM、SGLang 等多种引擎，兼容流式推理与 OpenAI API 的调用格式。
+
+- swift rollout 则专注于 GRPO 推理加速，目前仅支持 vLLM 引擎，并内置了权重自动同步的功能。
+
+
+**9. 如何取消 KL 项损失**
+
+将参数设置为 `--beta 0`，即可关闭 KL 损失的计算，并且不会加载参考模型（ref model）。

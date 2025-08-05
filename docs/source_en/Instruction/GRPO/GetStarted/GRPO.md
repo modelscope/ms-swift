@@ -324,3 +324,13 @@ In GRPO training, we can configure mini-batch updates in the following two ways:
    gradient_accumulation_steps = 8
 
    The results from one rollout will be split into two mini-batch updates.
+
+**8. Difference between swift deploy and swift rollout**
+
+- swift deploy is primarily used for model deployment and inference. It supports various engines such as PT, vLLM, and SGLang, and is compatible with streaming inference as well as the OpenAI API format.
+
+- swift rollout, on the other hand, is dedicated to GRPO rollout acceleration. Currently, it only supports the vLLM engine and comes with built-in automatic weight synchronization.
+
+**9. How to disable the KL loss term**
+
+Set the parameter `--beta 0` to disable KL loss calculation. The reference model (ref model) will not be loaded in this case.
