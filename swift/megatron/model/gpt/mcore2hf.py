@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from megatron.training import get_args
 from typing import Optional
+
+from megatron.training import get_args
 
 
 def set_mla_attn_state(args, mg_attn, hf_attn):
