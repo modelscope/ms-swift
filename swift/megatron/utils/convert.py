@@ -60,16 +60,16 @@ def _model_cpu_forward_context(modules, torch_dtype=None, device=None, share_emb
 
     def _to_cuda_hook(module, args):
         if device is not None:
-            module.to(device)
+            module.to(device, non_blocking=True)
         if torch_dtype is not None:
-            module.to(torch_dtype)
+            module.to(torch_dtype, non_blocking=True)
 
     def _to_cpu_hook(module, args, output):
         if share_embedding and module is modules[0]:
             return
-        module.to('cpu')
+        module.to('cpu', non_blocking=True)
         if torch_dtype is not None:
-            module.to(origin_torch_dtype)
+            module.to(origin_torch_dtype, non_blocking=True)
 
     hooks = []
     for module in modules:
