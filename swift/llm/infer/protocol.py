@@ -298,19 +298,18 @@ class EmbeddingResponse:
     created: int = field(default_factory=lambda: int(time.time()))
 
 
-@dataclass
-class RolloutResponseChoice(ChatCompletionResponseChoice):
-    messages: Optional[Messages] = None
-    images: Optional[List[str]] = None
-    multi_turn_infos: Dict[str, Any] = field(default_factory=dict)
+# @dataclass
+# class RolloutResponseChoice(ChatCompletionResponseChoice):
+#     messages: Optional[Messages] = None
+#     images: Optional[List[str]] = None
+#     multi_turn_infos: Dict[str, Any] = field(default_factory=dict)
 
-
-@dataclass
-class GymRolloutResponseChoice(RolloutResponseChoice):
-    trajectory_id: str = None
-    total_reward: float = 0.0
-    step_rewards: List[float] = None
-    trajectory_info: List[Dict[str, Any]] = None
+# @dataclass
+# class GymRolloutResponseChoice(RolloutResponseChoice):
+#     trajectory_id: str = None
+#     total_reward: float = 0.0
+#     step_rewards: List[float] = None
+#     trajectory_info: List[Dict[str, Any]] = None
 
 
 @dataclass
@@ -321,15 +320,15 @@ class CompletionResponseChoice:
     logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
-class RolloutOutput:
-    results: List[ChatCompletionResponse]
-    extra_info: Dict[str, Any]
+# class RolloutOutput:
+#     results: List[ChatCompletionResponse]
+#     extra_info: Dict[str, Any]
 
 
 @dataclass
 class ChatCompletionResponse:
     model: str
-    choices: List[Union[ChatCompletionResponseChoice, RolloutResponseChoice, GymRolloutResponseChoice]]
+    choices: List[ChatCompletionResponseChoice]
     usage: UsageInfo
     id: str = field(default_factory=lambda: f'chatcmpl-{random_uuid()}')
     object: str = 'chat.completion'

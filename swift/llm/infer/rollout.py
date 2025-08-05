@@ -22,8 +22,7 @@ from trl.scripts.vllm_serve import WeightSyncWorkerExtension
 
 from swift.llm import RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
-from swift.plugin.multi_turn import multi_turns, RolloutScheduler
-
+from swift.plugin.multi_turn import RolloutScheduler, multi_turns
 from swift.utils import get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
@@ -44,7 +43,6 @@ Usage:
         --vllm_tensor_parallel_size xxx \
         --vllm_data_parallel_size xxx \
         --vllm_use_async_engine true/false \
-        --use_gym_env true/false \
         --other_vllm_arguments
 
 Note:
@@ -71,7 +69,13 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
     if args.multi_turn_scheduler:
         if args.multi_turn_scheduler not in multi_turns:
             raise ValueError(f"Multi-turn scheduler '{args.multi_turn_scheduler}' not found in multi_turns.")
-        rollout_engine: RolloutScheduler  = multi_turns[args.multi_turn_scheduler](engine, args.max_turns)
+        scheduler_cls = multi_turns[args.multi_turn_scheduler]
+
+        kwargs = {}
+        if 'tokenizer' in list(inspect.signature(scheduler_cls.__init__).parameters):
+            kwargs['tokenizer'] = engine.default_template.tokenizer
+
+        rollout_engine: RolloutScheduler = scheduler_cls(engine, args.max_turns, **kwargs)
         if not rollout_engine:
             raise ValueError(f"Failed to initialize multi-turn scheduler '{args.multi_turn_scheduler}'.")
     else:
@@ -91,7 +95,7 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
         if command['type'] in ['call', 'fire_and_forget']:
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
-            method = getattr(rollout_engine, method_name, None) or getattr(rollout_engine.engine, method_name, None) or 
+            method = getattr(rollout_engine, method_name, None) or getattr(rollout_engine.engine, method_name, None)
             result = method(*args, **kwargs)
             if command['type'] == 'call':
                 connection.send(result)
@@ -119,6 +123,7 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
             method = getattr(engine, method_name, None) or getattr(engine.engine, method_name, None)
+
             try:
                 result = await method(*args, **kwargs)
             except Exception:
