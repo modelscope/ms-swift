@@ -350,9 +350,12 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                     # Note that safe_merge will be slower than the normal merge
                     # because of the copy operation.
                     orig_weights = [weight.data.clone() for weight in orig_weights]
-                    delta_weights = self.get_delta_weights(active_adapter)
-                    for orig_weight, delta_weight in zip(orig_weights, delta_weights):
-                        orig_weight.data += delta_weight
+
+                delta_weights = self.get_delta_weights(active_adapter)
+                for orig_weight, delta_weight in zip(orig_weights, delta_weights):
+                    orig_weight.data += delta_weight
+
+                if safe_merge:
                     if not all(torch.isfinite(orig_weights[i]).all() for i in range(len(orig_weights))):
                         raise ValueError(
                             f'NaNs detected in the merged weights. The adapter {active_adapter} seems to be broken')
@@ -362,10 +365,6 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                             weight.data = orig_weights[i]
                     else:
                         base_layer.weight.data = orig_weights[0]
-                else:
-                    delta_weights = self.get_delta_weights(active_adapter)
-                    for orig_weight, delta_weight in zip(orig_weights, delta_weights):
-                        orig_weight.data += delta_weight
 
                 self.merged_adapters.append(active_adapter)
         if origin_device.type == 'cpu':
