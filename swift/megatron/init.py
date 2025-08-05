@@ -779,7 +779,7 @@ def _patch_torch_FileSystemReader():
         def _worker(plan_shard):
             _origin_read_data(self, plan_shard, planner)
 
-        prog_bar = tqdm(total=len(plan.items), dynamic_ncols=True, desc='Load Weights: ')
+        prog_bar = tqdm(total=len(plan.items), dynamic_ncols=True, desc='Loading: ')
         idx_list = np.linspace(0, len(plan.items), READER_MAX_WORKERS + 1)
         with _patch__slice_file(prog_bar):
             with concurrent.futures.ThreadPoolExecutor(max_workers=READER_MAX_WORKERS) as pool:
