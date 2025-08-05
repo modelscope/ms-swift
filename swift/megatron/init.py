@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 from swift.llm import git_clone_github
 from swift.utils import (JsonlWriter, format_time, get_logger, is_flash_attn_3_available, is_master,
-                         is_megatron_available, safe_ddp_context, subprocess_run)
+                         is_megatron_available, safe_ddp_context, split_list, subprocess_run)
 
 logger = get_logger()
 
@@ -780,13 +780,13 @@ def _patch_torch_FileSystemReader():
             _origin_read_data(self, plan_shard, planner)
 
         prog_bar = tqdm(total=len(plan.items), dynamic_ncols=True, desc='Loading: ')
-        idx_list = np.linspace(0, len(plan.items), READER_MAX_WORKERS + 1)
+        plan_shards = split_list(plan.items, READER_MAX_WORKERS, contiguous=False)
         with _patch__slice_file(prog_bar):
             with concurrent.futures.ThreadPoolExecutor(max_workers=READER_MAX_WORKERS) as pool:
                 futures = []
                 for i in range(READER_MAX_WORKERS):
                     plan_shard = copy(plan)
-                    plan_shard.items = plan.items[int(idx_list[i]):int(idx_list[i + 1])]
+                    plan_shard.items = plan_shards[i]
                     futures.append(pool.submit(_worker, plan_shard))
                 concurrent.futures.wait(futures)
         prog_bar.close()
