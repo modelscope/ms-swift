@@ -759,6 +759,7 @@ def _patch_torch_FileSystemReader():
     from torch.futures import Future
     _origin_read_data = FileSystemReader.read_data
     _origin__slice_file = FileSystemReader._slice_file
+    READER_MAX_WORKERS = int(os.environ.get('MCORE_READER_MAX_WORKERS', '8'))
 
     @contextmanager
     def _patch__slice_file(prog_bar):
@@ -778,13 +779,12 @@ def _patch_torch_FileSystemReader():
         def _worker(plan_shard):
             _origin_read_data(self, plan_shard, planner)
 
-        max_workers = 16
         prog_bar = tqdm(total=len(plan.items), dynamic_ncols=True, desc='Load Weights: ')
+        idx_list = np.linspace(0, len(plan.items), READER_MAX_WORKERS + 1)
         with _patch__slice_file(prog_bar):
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
-                idx_list = np.linspace(0, len(plan.items), max_workers + 1)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=READER_MAX_WORKERS) as pool:
                 futures = []
-                for i in range(max_workers):
+                for i in range(READER_MAX_WORKERS):
                     plan_shard = copy(plan)
                     plan_shard.items = plan.items[int(idx_list[i]):int(idx_list[i + 1])]
                     futures.append(pool.submit(_worker, plan_shard))
