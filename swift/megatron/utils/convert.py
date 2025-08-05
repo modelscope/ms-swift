@@ -171,9 +171,11 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
+    current_convert_kwargs = convert_kwargs.copy()
     if hf_model.model_info.is_moe_model:
-        convert_kwargs['moe_grouped_gemm'] = True
-    megatron_args = MegatronArguments(**kwargs, **convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
+        current_convert_kwargs['moe_grouped_gemm'] = True
+    megatron_args = MegatronArguments(
+        **kwargs, **current_convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
     extra_args_provider = megatron_model_meta.extra_args_provider
@@ -204,11 +206,12 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
+    current_convert_kwargs = convert_kwargs.copy()
     if hf_model.model_info.is_moe_model:
-        convert_kwargs['moe_grouped_gemm'] = True
+        current_convert_kwargs['moe_grouped_gemm'] = True
     megatron_args = MegatronArguments(
         **kwargs,
-        **convert_kwargs,
+        **current_convert_kwargs,
         load=args.mcore_model,
         adapter_load=args.mcore_adapters[0] if args.mcore_adapters else None,
         torch_dtype=args.torch_dtype)
