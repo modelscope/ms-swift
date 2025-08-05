@@ -20,8 +20,8 @@ from peft.tuners.lora.layer import LoraLayer
 from peft.tuners.tuners_utils import BaseTunerLayer, check_adapters_to_merge
 from peft.utils.other import transpose
 
-from ..utils import tuners_sharded_state_dict
 from swift.utils import get_current_device
+from ..utils import tuners_sharded_state_dict
 
 
 class LoraParallelLinear(MegatronModule, LoraLayer):
@@ -372,6 +372,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 self.merged_adapters.append(active_adapter)
         if origin_device.type == 'cpu':
             self.to(device=origin_device)
+
 
 def dispatch_megatron(
     target: torch.nn.Module,
