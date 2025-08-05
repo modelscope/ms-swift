@@ -150,7 +150,8 @@ convert_kwargs = {
     'no_masked_softmax_fusion': True,
     'no_bias_dropout_fusion': True,
     'no_bias_swiglu_fusion': True,
-    'no_rope_fusion': True
+    'no_rope_fusion': True,
+    'attention_backend': 'unfused',
 }
 
 
