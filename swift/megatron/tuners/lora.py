@@ -21,6 +21,7 @@ from peft.tuners.tuners_utils import BaseTunerLayer, check_adapters_to_merge
 from peft.utils.other import transpose
 
 from ..utils import tuners_sharded_state_dict
+from swift.utils import get_current_device
 
 
 class LoraParallelLinear(MegatronModule, LoraLayer):
@@ -346,9 +347,12 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             # no adapter to merge
             return
 
+        base_layer = self.get_base_layer()
+        origin_device = base_layer.weight.device
+        if origin_device.type == 'cpu':
+            self.to(device=get_current_device())
         for active_adapter in adapter_names:
             if active_adapter in self.lora_A.keys():
-                base_layer = self.get_base_layer()
                 if safe_merge:
                     # Note that safe_merge will be slower than the normal merge
                     # because of the copy operation.
@@ -366,7 +370,8 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                     base_layer.weight.data += delta_weight
 
                 self.merged_adapters.append(active_adapter)
-
+        if origin_device.type == 'cpu':
+            self.to(device=origin_device)
 
 def dispatch_megatron(
     target: torch.nn.Module,
