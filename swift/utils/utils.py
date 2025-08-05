@@ -316,7 +316,7 @@ def copy_files_by_pattern(source_dir, dest_dir, patterns, exclude_patterns=None)
                         shutil.copy2(file_path, destination)
 
 
-def split_list(ori_list, num_shards, contiguous=True):
+def split_list(ori_list: List[_T], num_shards: int, contiguous=True) -> List[_T]:
     shard = []
     if contiguous:
         idx_list = np.linspace(0, len(ori_list), num_shards + 1, dtype=np.int64)
