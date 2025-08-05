@@ -55,7 +55,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | transformers | >=4.33       | 4.51.3      |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.17 |             |      LoRA          |
-| trl          | >=0.15,<0.21 | 0.19.1      |      RLHF        |
+| trl          | >=0.15,<0.21 |       |      RLHF        |
 | deepspeed    | >=0.14       | 0.16.9      |                  |
 
 
@@ -65,7 +65,6 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 
 首先，我们需要将HF格式的权重转为Megatron格式：
 - 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除即可，会自动使用多卡。若出现内存不足，请将`--test_convert_precision true`删除。
-- `--test_convert_precision`在MoE转换时所需时间较长，可酌情去除。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \

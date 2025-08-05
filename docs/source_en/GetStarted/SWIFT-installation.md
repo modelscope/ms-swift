@@ -89,11 +89,11 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 | python       | >=3.9        | 3.10                |                                           |
 | cuda         |              | cuda12              | No need to install if using CPU, NPU, MPS |
 | torch        | >=2.0        | 2.7.1               |                                           |
-| transformers | >=4.33       | 4.53.3              |                                           |
+| transformers | >=4.33       | 4.54.1              |                                           |
 | modelscope   | >=1.23       |                     |                                           |
 | peft         | >=0.11,<0.17 |                     |                                           |
 | flash_attn   |              | 2.7.4.post1/3.0.0b1 |                                           |
-| trl          | >=0.15,<0.21 | 0.19.1              | RLHF                                      |
+| trl          | >=0.15,<0.21 | 0.20.0              | RLHF                                      |
 | deepspeed    | >=0.14       | 0.16.9              | Training                                  |
 | vllm         | >=0.5.1      | 0.10                | Inference/Deployment                      |
 | sglang       | >=0.4.6      | 0.4.9.post6         | Inference/Deployment                      |
