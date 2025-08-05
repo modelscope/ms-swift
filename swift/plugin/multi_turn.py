@@ -1,9 +1,7 @@
 import asyncio
 from abc import ABC
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
-
-from pydantic import BaseModel, Field
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from swift.plugin import ContextManager, Env, context_managers, envs
 
@@ -25,31 +23,6 @@ def remove_response(messages: 'Messages') -> Optional[str]:
     last_role = messages[-1]['role'] if messages else None
     if last_role == 'assistant':
         return messages.pop()['content']
-
-
-class RolloutOutput(BaseModel):
-    results: 'ChatCompletionResponse'
-    # multi turn rollout
-    messages: Optional['Messages'] = None  # Conversation history for the final rollout (required for multi-turn)
-    response_token_ids: Optional[List[List[int]]] = None  # (optional) Token IDs generated at each rollout turn
-    response_loss_mask: Optional[List[List[int]]] = None  # (optional) Loss mask for each rollout turn
-    extra_info: Dict[str,
-                     Any] = Field(default_factory=dict)  # Additional rollout information; must be JSON-serializable
-
-    def model_post_init(self, __context):
-        # Ensure multimodal data in extra_info is serializable (e.g., images to base64)
-        super().model_post_init(__context)
-        self.mminfo_to_serializable()
-
-    def mminfo_to_serializable(self):
-        mm_keys = ['images', 'audios', 'videos']
-
-        for key, value in self.extra_info.items():
-            if key in mm_keys:
-                from swift.llm.infer.protocol import MultiModalRequestMixin
-                # Convert multimodal content to base64 for serialization
-                self.extra_info[key] = MultiModalRequestMixin.to_base64(value)
-
 
 class RolloutScheduler(ABC):
     # Single Turn Rollout Scheduler

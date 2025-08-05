@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 from PIL import Image
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..template import InferRequest
 from ..utils import Messages, Tool
@@ -298,20 +298,6 @@ class EmbeddingResponse:
     created: int = field(default_factory=lambda: int(time.time()))
 
 
-# @dataclass
-# class RolloutResponseChoice(ChatCompletionResponseChoice):
-#     messages: Optional[Messages] = None
-#     images: Optional[List[str]] = None
-#     multi_turn_infos: Dict[str, Any] = field(default_factory=dict)
-
-# @dataclass
-# class GymRolloutResponseChoice(RolloutResponseChoice):
-#     trajectory_id: str = None
-#     total_reward: float = 0.0
-#     step_rewards: List[float] = None
-#     trajectory_info: List[Dict[str, Any]] = None
-
-
 @dataclass
 class CompletionResponseChoice:
     index: int
@@ -320,9 +306,7 @@ class CompletionResponseChoice:
     logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
-# class RolloutOutput:
-#     results: List[ChatCompletionResponse]
-#     extra_info: Dict[str, Any]
+
 
 
 @dataclass
@@ -341,6 +325,26 @@ class ChatCompletionResponse:
         id_ = f'cmpl{self.id[len("chatcmpl"):]}'
         return CompletionResponse(self.model, choices, self.usage, id_, created=self.created)
 
+class RolloutOutput(BaseModel):
+    results: ChatCompletionResponse
+    # multi turn rollout
+    messages: Optional[Messages] = None  # Conversation history for the final rollout (required for multi-turn)
+    response_token_ids: Optional[List[List[int]]] = None  # (optional) Token IDs generated at each rollout turn
+    response_loss_mask: Optional[List[List[int]]] = None  # (optional) Loss mask for each rollout turn
+    extra_info: Dict[str, Any] = Field(default_factory=dict)  # Additional rollout infos; must be JSON-serializable
+
+    def model_post_init(self, __context):
+        # Ensure multimodal data in extra_info is serializable (e.g., images to base64)
+        super().model_post_init(__context)
+        self.mminfo_to_serializable()
+
+    def mminfo_to_serializable(self):
+        mm_keys = ['images', 'audios', 'videos']
+
+        for key, value in self.extra_info.items():
+            if key in mm_keys:
+                # Convert multimodal content to base64 for serialization
+                self.extra_info[key] = MultiModalRequestMixin.to_base64(value)
 
 @dataclass
 class CompletionResponse:
