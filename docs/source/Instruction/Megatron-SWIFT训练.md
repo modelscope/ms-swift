@@ -300,6 +300,7 @@ swift export \
 - 🔥no_save_optim: 不保存optimizer，默认为False。
 - 🔥no_save_rng: 不保存rng，默认为False。
 - 🔥load: 加载的checkpoint目录，默认None。
+  - 注意：若未使用ms-swift提供的`swift export`进行权重转换，你需要额外设置`--model <hf-repo>`用于加载`config.json`配置文件。
 - 🔥no_load_optim: 不载入optimizer，默认为False。
 - 🔥no_load_rng: 不载入rng，默认为False。
 - 🔥finetune: 将模型加载并微调。不加载检查点的优化器和随机种子状态，并将迭代数设置为0。默认为False。
