@@ -759,7 +759,7 @@ def _patch_torch_FileSystemReader():
     from torch.futures import Future
     _origin_read_data = FileSystemReader.read_data
     _origin__slice_file = FileSystemReader._slice_file
-    READER_MAX_WORKERS = int(os.environ.get('MCORE_READER_MAX_WORKERS', '8'))
+    READER_MAX_WORKERS = int(os.environ.get('MCORE_READER_MAX_WORKERS', '16'))
 
     @contextmanager
     def _patch__slice_file(prog_bar):
