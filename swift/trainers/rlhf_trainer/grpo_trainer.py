@@ -1261,7 +1261,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             # compute the entropy threshold across all tokens in the batch
             if self.args.top_entropy_quantile < 1.0:
-                entropy_threshold = torch.nanquantile(entropies.flatten().float(), 1 - self.top_entropy_quantile)
+                global_entropies = gather(entropies)
+                entropy_threshold = torch.nanquantile(global_entropies.flatten().float(), 1 - self.top_entropy_quantile)
                 self._metrics[mode]['entropy/threshold'].append(entropy_threshold.item())
                 entropy_mask = entropies >= entropy_threshold
 
