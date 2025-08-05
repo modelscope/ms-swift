@@ -274,6 +274,10 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 self.loss_type = 'kto'
             elif self.rlhf_type == 'grpo':
                 self.loss_type = 'grpo'
+        if self.gradient_accumulation_steps is None:
+            if self.rlhf_type == 'grpo':
+                self.gradient_accumulation_steps = 1
+                logger.info('Setting default gradient_accumulation_steps to 1 for GRPO.')
 
     def _check_grpo(self):
         if self.rlhf_type != 'grpo':
