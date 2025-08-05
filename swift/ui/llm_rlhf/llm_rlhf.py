@@ -60,10 +60,10 @@ class LLMRLHF(LLMTrain):
         'submit_alert': {
             'value': {
                 'zh':
-                '任务已开始，请查看tensorboard或日志记录，关闭本页面不影响训练过程',
+                '任务已开始，请查看tensorboard或日志记录，请勿关闭终端，否则训练过程将被打断',
                 'en':
                 'Task started, please check the tensorboard or log file, '
-                'closing this page does not affect training'
+                'do not close the terminal, otherwise the training process will be interrupted'
             }
         },
         'dataset_alert': {
