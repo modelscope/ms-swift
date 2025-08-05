@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Code borrowed from huggingface/peft
 import math
-from typing import Any, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import megatron.core
 import torch
@@ -295,7 +295,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                         sharded_state_dict[k] = apply_swiglu_sharded_factory(sharded_state_dict[k], sharded_offsets)
         return sharded_state_dict
 
-    def get_delta_weight(self, adapter) -> torch.Tensor:
+    def get_delta_weights(self, adapter) -> List[torch.Tensor]:
         """
         Compute the delta weight for the given adapter.
 
@@ -303,29 +303,18 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             adapter (str):
                 The name of the adapter for which the delta weight should be computed.
         """
-        device = self.lora_B[adapter].weight.device
-        dtype = self.lora_B[adapter].weight.dtype
-
-        # In case users wants to merge the adapter weights that are in
-        # (b)float16 while being on CPU, we need to cast the weights to float32, perform the merge and then cast back to
-        # (b)float16 because some CPUs have slow bf16/fp16 matmuls.
-        cast_to_fp32 = device.type == 'cpu' and (dtype == torch.float16 or dtype == torch.bfloat16)
-
-        weight_A = self.lora_A[adapter].weight
-        weight_B = self.lora_B[adapter].weight
-
-        if cast_to_fp32:
-            weight_A = weight_A.float()
-            weight_B = weight_B.float()
-
-        output_tensor = transpose(weight_B @ weight_A, self.fan_in_fan_out) * self.scaling[adapter]
-
-        if cast_to_fp32:
-            output_tensor = output_tensor.to(dtype=dtype)
-
-            # cast back the weights
-            self.lora_A[adapter].weight.data = weight_A.to(dtype)
-            self.lora_B[adapter].weight.data = weight_B.to(dtype)
+        lora_A = self.lora_A[adapter]
+        lora_B = self.lora_B[adapter]
+        if self.is_grouped:
+            weight_A = [getattr(lora_A, f'weight{i}') for i in range(lora_A.num_gemms)]
+            weight_B = [getattr(lora_B, f'weight{i}') for i in range(lora_B.num_gemms)]
+        else:
+            weight_A = [self.lora_A[adapter].weight]
+            weight_B = [self.lora_B[adapter].weight]
+        output_tensor = []
+        assert len(weight_A) == len(weight_B)
+        for i in range(len(weight_B)):
+            output_tensor.append(transpose(weight_B[i] @ weight_A[i], self.fan_in_fan_out) * self.scaling[adapter])
 
         return output_tensor
 
@@ -348,30 +337,38 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             return
 
         base_layer = self.get_base_layer()
-        origin_device = base_layer.weight.device
+        origin_device = base_layer.weight0.device if self.is_grouped else base_layer.weight.device
         if origin_device.type == 'cpu':
-            self.to(device=get_current_device())
+            self.to(device=get_current_device(), non_blocking=True)
         for active_adapter in adapter_names:
             if active_adapter in self.lora_A.keys():
+                if self.is_grouped:
+                    orig_weights = [getattr(base_layer, f'weight{i}') for i in range(base_layer.num_gemms)]
+                else:
+                    orig_weights = [base_layer.weight]
                 if safe_merge:
                     # Note that safe_merge will be slower than the normal merge
                     # because of the copy operation.
-                    orig_weights = base_layer.weight.data.clone()
-                    delta_weight = self.get_delta_weight(active_adapter)
-                    orig_weights += delta_weight
-
-                    if not torch.isfinite(orig_weights).all():
+                    orig_weights = [weight.data.clone() for weight in orig_weights]
+                    delta_weights = self.get_delta_weights(active_adapter)
+                    for orig_weight, delta_weight in zip(orig_weights, delta_weights):
+                        orig_weight += delta_weight
+                    if not all(torch.isfinite(orig_weights[i]).all() for i in range(len(orig_weights))):
                         raise ValueError(
                             f'NaNs detected in the merged weights. The adapter {active_adapter} seems to be broken')
-
-                    base_layer.weight.data = orig_weights
+                    if self.is_grouped:
+                        for i in range(base_layer.num_gemms):
+                            weight = getattr(base_layer, f'weight{i}')
+                            weight.data = orig_weights[i]
+                    else:
+                        base_layer.weight.data = orig_weights[0]
                 else:
-                    delta_weight = self.get_delta_weight(active_adapter)
-                    base_layer.weight.data += delta_weight
-
+                    delta_weights = self.get_delta_weights(active_adapter)
+                    for orig_weight, delta_weight in zip(orig_weights, delta_weights):
+                        orig_weight.data += delta_weight
                 self.merged_adapters.append(active_adapter)
         if origin_device.type == 'cpu':
-            self.to(device=origin_device)
+            self.to(device=origin_device, non_blocking=True)
 
 
 def dispatch_megatron(

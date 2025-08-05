@@ -1,4 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from typing import Optional
+
 import torch
 from megatron.training import get_args
 
@@ -45,12 +47,18 @@ def set_attn_state(args, mg_attn, hf_attn):
         mg_attn.k_layernorm.weight.data.copy_(k_norm.weight)
 
 
-def _set_mlp_state(mg_mlp, hf_mlp):
-    if hasattr(hf_mlp, 'gate_up_proj'):
-        mg_mlp.linear_fc1.weight.data.copy_(hf_mlp.gate_up_proj.weight)
+def _set_mlp_state(mg_mlp, hf_mlp, group_idx: Optional[int] = None):
+    if group_idx is None:
+        linear_fc1_weight = mg_mlp.linear_fc1.weight
+        linear_fc2_weight = mg_mlp.linear_fc2.weight
     else:
-        mg_mlp.linear_fc1.weight.data.copy_(torch.cat([hf_mlp.gate_proj.weight, hf_mlp.up_proj.weight], dim=0))
-    mg_mlp.linear_fc2.weight.data.copy_(hf_mlp.down_proj.weight)
+        linear_fc1_weight = getattr(mg_mlp.linear_fc1, f'weight{group_idx}')
+        linear_fc2_weight = getattr(mg_mlp.linear_fc2, f'weight{group_idx}')
+    if hasattr(hf_mlp, 'gate_up_proj'):
+        linear_fc1_weight.data.copy_(hf_mlp.gate_up_proj.weight)
+    else:
+        linear_fc1_weight.data.copy_(torch.cat([hf_mlp.gate_proj.weight, hf_mlp.up_proj.weight], dim=0))
+    linear_fc2_weight.data.copy_(hf_mlp.down_proj.weight)
 
 
 def _set_moe_state(args, mg_mlp, hf_mlp):
@@ -71,7 +79,7 @@ def _set_moe_state(args, mg_mlp, hf_mlp):
         if mg_mlp.shared_experts.gate_weight is not None:
             mg_mlp.shared_experts.gate_weight.data.copy_(hf_mlp.shared_expert_gate.weight)
     for expert_idx in range(args.num_experts):
-        _set_mlp_state(mg_mlp.experts.local_experts[expert_idx], hf_mlp.experts[expert_idx])
+        _set_mlp_state(mg_mlp.experts, hf_mlp.experts[expert_idx], group_idx=expert_idx)
 
 
 def set_mlp_state(args, mg_mlp, hf_mlp):

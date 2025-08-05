@@ -57,7 +57,7 @@ Recommended Operating Environment:
 | transformers | >=4.33       | 4.51.3      |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.17 |             |      LoRA          |
-| trl          | >=0.15,<0.21 | 0.19.1      |      RLHF        |
+| trl          | >=0.15,<0.21 |       |      RLHF        |
 | deepspeed    | >=0.14       | 0.16.9      |                  |
 
 
