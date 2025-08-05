@@ -67,6 +67,7 @@ This section introduces a quick start example for fine-tuning the self-awareness
 
 First, we need to convert the weights from HF (Hugging Face) format to Megatron format:
 - If OOM (Out of Memory) occurs, simply remove `CUDA_VISIBLE_DEVICES=0`; the system will automatically use multiple GPUs. If you encounter insufficient memory, please remove `--test_convert_precision true`.
+- The `--test_convert_precision true` flag can greatly increase conversion time for MoE models, so feel free to omit it if needed.
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
