@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
 import copy
+import os
 from contextlib import contextmanager
 from functools import wraps
 from types import MethodType
