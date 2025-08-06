@@ -325,5 +325,5 @@ register_template(
         system_prefix=gpt_oss_prefix + ['<|start|>developer<|message|># Instructions\n\n{{SYSTEM}}<|end|>'],
         prompt=['<|start|>user<|message|>{{QUERY}}<|end|><|start|>assistant'],
         chat_sep=['<|end|>'],
-        suffix=['<|end|>'],
+        suffix=['<|return|>'],
     ))

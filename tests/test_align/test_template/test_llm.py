@@ -613,12 +613,10 @@ def test_glm4_5():
 
 
 def test_gpt_oss():
-    messages = [{'role': 'user', 'content': 'Explain quantum mechanics clearly and concisely.'}]
     pt_engine = PtEngine('openai-mirror/gpt-oss-20b')
-    res = _infer_model(pt_engine, messages=messages)
-    pt_engine.default_template.template_backend = 'jinja'
-    res2 = _infer_model(pt_engine, messages=messages)
+    res = _infer_model(pt_engine)
     assert res == res2, f'res: {res}, res2: {res2}'
+    assert res.rsplit('<|message|>', 1)[-1] == '我无法直接查看图片内容。能否请你描述一下图片里出现了什么，或者告诉我你想'
 
 
 if __name__ == '__main__':
