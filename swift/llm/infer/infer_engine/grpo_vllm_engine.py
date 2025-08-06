@@ -12,7 +12,7 @@ from swift.plugin import Metric, multi_turns
 from swift.plugin.context_manager import ContextManager, context_managers
 from swift.plugin.env import Env, envs
 from swift.plugin.multi_turn import MultiTurnScheduler
-from ..protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage, RequestConfig
+from ..protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage, RequestConfig, RolloutOutput
 from .utils import AdapterRequest
 
 try:
@@ -149,9 +149,9 @@ class GRPOVllmEngine(VllmEngine):
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
-    ) -> List[ChatCompletionResponse]:
+    ) -> List[RolloutOutput]:
         assert not self.use_async_engine, 'for Async Engine, use infer_async instead'
-        return super().infer(
+        res = super().infer(
             infer_requests,
             request_config,
             metrics,
@@ -159,6 +159,15 @@ class GRPOVllmEngine(VllmEngine):
             use_tqdm=use_tqdm,
             adapter_request=adapter_request,
         )
+        if not isinstance(res, list):
+            res = [res]
+        for i, result in enumerate(res):
+            if not isinstance(result, RolloutOutput):
+                if not isinstance(result, ChatCompletionResponse):
+                    raise TypeError("Result must be a ChatCompletionResponse or RolloutOutput instance.")                
+                res[i] = RolloutOutput(results=result)
+
+        return res
 
     async def _batch_infer_stream(self,
                                   tasks,

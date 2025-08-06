@@ -32,7 +32,7 @@ from trl.trainer.utils import selective_log_softmax
 
 from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInferRequest, RowPreprocessor, Template,
                        get_model_arch, to_device)
-from swift.llm.infer.protocol import ChatCompletionResponse
+from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
 from swift.llm.model.utils import get_llm_model
 from swift.llm.template.base import MaxLengthError
 from swift.llm.template.template_inputs import StdTemplateInputs
@@ -72,7 +72,16 @@ if not hasattr(RepeatSampler, 'old_len_func'):
     RepeatSampler.__len__ = patched_len
     RepeatSampler.old_len_func = origin_len_func
 
-
+"""
+TODO:
+    1. RolloutOutput 统一输入输出解析
+        a. docstring 修改
+    2. 增加 prompt id 和 device id，修改获取本地数据的逻辑
+        a. 待确认：是均分比较好 还是 获取本地prompt的rollout，前者的话不需要device id
+    3. 动态SPG逻辑，修改 _prepare_inputs 跳过 rollout 的逻辑
+    4. 不足一个batch的样本，随机抽取样本进行填充，并且不计算loss
+    5. 优化 server 分发数据的通信逻辑（利好大集群训练）
+"""
 class GRPOCallback(TrainerCallback):
 
     def __init__(self, trainer):
@@ -609,7 +618,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _infer(self,
                inputs: Optional[InputsType],
                request_config: RequestConfig,
-               is_global_inputs: bool = False) -> List[ChatCompletionResponse]:
+               is_global_inputs: bool = False) -> List[RolloutOutput]:
         request_config = self._get_request_config()
         # keys from InferRequest
         per_device_size = len(inputs)
@@ -629,7 +638,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 return []
 
             if self.accelerator.is_main_process:
-                results: List[ChatCompletionResponse] = self._engine_infer(
+                results: List[RolloutOutput] = self._engine_infer(
                     infer_requests=all_inputs, request_config=request_config)
             else:
                 results = [None] * len(all_inputs)
@@ -665,7 +674,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             #   otherwise, the program may hang.
             # 2. Ensure that the seed for vLLM Engines across different TP groups is different;
             #   otherwise, identical completions will be generated.
-            results: List[ChatCompletionResponse] = self._engine_infer(
+            resltus: List[RolloutOutput] = self._engine_infer(
                 infer_requests=inputs, request_config=request_config)
 
             if self.vllm_tensor_parallel_size > 1:
@@ -724,11 +733,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # for external server, pass the system args which may define in trainer
         self._set_inputs_system(inputs)
         # infer first turn
-        results: List[ChatCompletionResponse] = self._infer(inputs, request_config, is_global_inputs)
+        results: List[RolloutOutput] = self._infer(inputs, request_config, is_global_inputs)
         outputs = []
         if not self.multi_turn_scheduler and not self.vllm_use_async_engine:
             # message concatenation
-            for i, output in enumerate(results):
+            for i, result in enumerate(results):
+                _input: Dict = deepcopy(inputs[i])
+                choice = result.results.choices[0]
+                if result.messages:
+                    messages = result.messages
+                else:
+                    messages = _inputs[i]['messages']
+                    messages.append({'role': 'assistant', 'content': choice.message.content})
+                _input['messages'] = messages
+                # TODO: input 和 results 数量不定
+
                 _choices = []
                 for choice in output.choices:
                     _input: Dict = deepcopy(inputs[i])
@@ -1588,7 +1607,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         request_config: Optional[RequestConfig] = None,
         *,
         use_tqdm: Optional[bool] = False,
-    ) -> List[ChatCompletionResponse]:
+    ) -> List[RolloutOutput]:
         with patch_profiling_context(self, 'generate'):
             if self.vllm_mode == 'server':
                 request_keys = ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
@@ -1608,7 +1627,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._process_infer_requests_images(infer_requests)
                 return self.vllm_client.infer(infer_requests, asdict(request_config), use_tqdm=use_tqdm)
             else:
-                return self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
+                res = self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
+                return [RolloutOutput(results=r) for r in res]
 
     def _process_infer_requests_images(self, infer_requests: InputsType):
         # Process image format into a format that session.post can accept
