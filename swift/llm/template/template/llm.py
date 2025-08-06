@@ -311,3 +311,19 @@ register_template(
         suffix=['<｜hy_place▁holder▁no▁2｜>'],
         template_cls=ThinkingWithAnswerTemplate,
         agent_template='hunyuan_hermes'))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.hunyuan,
+        prefix=['<｜hy_begin▁of▁sentence｜>'],
+        system_prefix=[
+            '<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\n'
+            'Knowledge cutoff: 2024-06\nCurrent date: 2025-08-06\n\nReasoning: medium\n\n'
+            '# Valid channels: analysis, commentary, final. '
+            'Channel must be included for every message.<|end|>'
+            '<|start|>developer<|message|># Instructions\n\n{{SYSTEM}}<|end|>'
+        ],
+        prompt=['<|start|>user<|message|>{{QUERY}}<|end|><|start|>assistant<|channel|>final<|message|>'],
+        chat_sep=['<|end|>'],
+        suffix=['<|end|>'],
+    ))

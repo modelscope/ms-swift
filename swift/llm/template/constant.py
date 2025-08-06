@@ -28,6 +28,7 @@ class LLMTemplateType:
     megrez = 'megrez'
     yi_coder = 'yi_coder'
     sus = 'sus'
+    gpt_oss = 'gpt_oss'
 
     minimax = 'minimax'
     minimax_m1 = 'minimax_m1'

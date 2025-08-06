@@ -391,3 +391,16 @@ register_model(
         requires=['transformers>=4.55.0.dev0'],
         architectures=['HunYuanDenseV1ForCausalLM'],
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.gpt_oss, [
+            ModelGroup([
+                Model('openai-mirror/gpt-oss-20b', 'openai/gpt-oss-20b'),
+                Model('openai-mirror/gpt-oss-120b', 'openai/gpt-oss-120b'),
+            ])
+        ],
+        TemplateType.gpt_oss,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['GptOssForCausalLM'],
+        requires=['transformers>=4.55']))
