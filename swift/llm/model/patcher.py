@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import copy
 import os
 from contextlib import contextmanager
 from functools import wraps
@@ -84,10 +85,9 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
 
     assert found, 'Cannot find the proper lm_head name'
 
-    def forward(self, input_ids: torch.LongTensor = None, attention_mask=None, *args, **kwargs):
-
-        outputs = self.forward_origin(input_ids=input_ids, attention_mask=attention_mask, *args, **kwargs)
-        hidden_states = outputs.logits
+    def _output_embedding_hook(module, args, kwargs, output):
+        attention_mask = kwargs['attention_mask']
+        hidden_states = output.logits
         left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
         if left_padding:
             embeddings = hidden_states[:, -1]
@@ -101,8 +101,7 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
             'last_hidden_state': embeddings.contiguous(),
         }
 
-    llm_model.forward_origin = llm_model.forward
-    llm_model.forward = MethodType(forward, llm_model)
+    llm_model.register_forward_hook(_output_embedding_hook, with_kwargs=True)
 
 
 def patch_output_to_input_device(module: torch.nn.Module):
@@ -239,7 +238,7 @@ def _patch_sequence_classification(model, model_meta):
 
 
 @contextmanager
-def patch_automodel_for_sequence_classification(model_meta):
+def patch_automodel_for_sequence_classification(model_info, model_meta, **kwargs):
     from_pretrained = PreTrainedModel.from_pretrained.__func__
 
     @classmethod
@@ -266,7 +265,7 @@ def patch_automodel_for_sequence_classification(model_meta):
 
 
 @contextmanager
-def patch_automodel(automodel_class, model_info):
+def patch_automodel(model_info, model_meta, automodel_class, return_dummy_model, **kwargs):
     from_pretrained = PreTrainedModel.from_pretrained.__func__
 
     @classmethod
@@ -277,7 +276,11 @@ def patch_automodel(automodel_class, model_info):
             cls.main_input_name = 'input_ids'
         if hasattr(cls, '_tp_plan'):  # fix tp_plan
             cls._tp_plan = cls._tp_plan or {}
-        model = from_pretrained(cls, *args, **kwargs)
+        if return_dummy_model:
+            with torch.device('meta'):
+                model = cls(copy.deepcopy(kwargs['config']))
+        else:
+            model = from_pretrained(cls, *args, **kwargs)
         return model
 
     PreTrainedModel.from_pretrained = _new_from_pretrained

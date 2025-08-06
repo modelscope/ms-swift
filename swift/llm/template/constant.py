@@ -28,6 +28,7 @@ class LLMTemplateType:
     megrez = 'megrez'
     yi_coder = 'yi_coder'
     sus = 'sus'
+    gpt_oss = 'gpt_oss'
 
     minimax = 'minimax'
     minimax_m1 = 'minimax_m1'
@@ -88,6 +89,7 @@ class LLMTemplateType:
     moonlight = 'moonlight'
     mimo_rl = 'mimo_rl'
     dots1 = 'dots1'
+    hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
     ernie = 'ernie'
 

@@ -1,18 +1,5 @@
 # GRPO
 
-**更新日志**
-- **2025-07-18** - 支持 entropy mask 与 entropy 相关指标记录，参考[文档](../AdvancedResearch/entropy_mask.md)
-- **2025-07-17** - 支持多机rollout(vllm_server_host和vllm_server_port支持传入多个)，参考[脚本](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/multi_node/server_multi_node.sh)
-- **2025-07-16** - Rollout 支持 GYM 环境接口，参考[文档](../DeveloperGuide/GYM环境训练.md)
-- **2025-06-22** - 多轮训练重构并支持AsyncEngine，参考[文档](../DeveloperGuide/多轮训练.md)
-- **2025-05-29** — 支持了padding_free(--padding_free true)和序列并行(--sequence_parallel_size N)。
-- **2025-05-23** — 支持自定义采样批量大小，参考 generation_batch_size / steps_per_generation 参数。
-- **2025-05-22** — swift rollout 支持 data_parallel_size 参数。
-- **2025-05-16** - 增加 ref_model 同步逻辑，参考参数 sync_ref_model。
-- **2025-05-13** — 为了代码的可读性和维护性， GRPOTrainer代码重构，Internal mode 支持vLLM>=0.8。
-- **2025-05-11** — 支持生成式奖励模型，通过 reward_model_plugin 自定义奖励模型逻辑。有关更多详细信息，请参阅[文档](../DeveloperGuide/奖励模型)部分。
-- **2025-04-30** — external vllm server 的启动命令改为 `swift rollout`。
-
 GRPOTrainer在ms-swift3.5进行了代码重构，如果你使用的swift版本<3.5, 请参考[stable文档](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md)
 
 [GRPO(Group Relative Policy Optimization)](https://arxiv.org/abs/2402.03300) 算法利用组内相对优势计算来替代 PPO 算法中独立的价值模型，并直接在损失函数中加入 KL 散度惩罚来提高训练稳定性。
@@ -339,3 +326,14 @@ steps_per_generation = 16
 gradient_accumulation_steps = 8
 
 则一次 rollout 结果将拆分成两批 mini-batch 进行更新
+
+**8. swift deploy 与 swift rollout 的区别**
+
+- swift deploy 主要用于模型的部署和推理，支持 PT、vLLM、SGLang 等多种引擎，兼容流式推理与 OpenAI API 的调用格式。
+
+- swift rollout 则专注于 GRPO 推理加速，目前仅支持 vLLM 引擎，并内置了权重自动同步的功能。
+
+
+**9. 如何取消 KL 项损失**
+
+将参数设置为 `--beta 0`，即可关闭 KL 损失的计算，并且不会加载参考模型（ref model）。

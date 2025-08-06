@@ -38,9 +38,9 @@ export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 
 Alternatively, you can also use the image:
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
 ```
 
 Recommended Operating Environment:
@@ -57,7 +57,7 @@ Recommended Operating Environment:
 | transformers | >=4.33       | 4.51.3      |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.17 |             |      LoRA          |
-| trl          | >=0.15,<0.21 | 0.19.1      |      RLHF        |
+| trl          | >=0.15,<0.21 |       |      RLHF        |
 | deepspeed    | >=0.14       | 0.16.9      |                  |
 
 
@@ -67,6 +67,7 @@ This section introduces a quick start example for fine-tuning the self-awareness
 
 First, we need to convert the weights from HF (Hugging Face) format to Megatron format:
 - If OOM (Out of Memory) occurs, simply remove `CUDA_VISIBLE_DEVICES=0`; the system will automatically use multiple GPUs. If you encounter insufficient memory, please remove `--test_convert_precision true`.
+- The `--test_convert_precision true` flag can greatly increase conversion time for MoE models, so feel free to omit it if needed.
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -262,7 +263,7 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padded tokens in the global batch. Default is True.
   - Note: The default is False in RLHF.
 - 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Defaults to flash.
-  - Note: We recommend using `--attention_backend flash` with flash_attn version 2.7.4.post1.
+  - Note: The recommended flash_attn version is 2.7.4.post1. In “ms-swift < 3.7” the default is set to "auto".
   - If 'flash_attention_3' is installed, FA3 will be used by default. For training scripts, please refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3).
 - optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
 - 🔥optimizer_cpu_offload: Offloads the optimizer state to CPU. Default is `False`.
@@ -309,6 +310,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - 🔥no_save_optim: Do not save optimizer, default is False.
 - 🔥no_save_rng: Do not save RNG, default is False.
 - 🔥load: Directory of the checkpoint to load, default is None.
+  - Note: If you did not convert the weights with ms-swift’s `swift export`, you must also specify `--model <hf-repo>` so that the `config.json` configuration file can be loaded.
 - 🔥no_load_optim: Do not load optimizer, default is False.
 - 🔥no_load_rng: Do not load RNG, default is False.
 - 🔥finetune: Load and fine-tune the model. Optimizer and random seed states from the checkpoint will not be loaded, and the number of iterations will be set to 0. The default is False.
@@ -414,6 +416,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - moe_router_topk_scaling_factor: Default is None. This parameter is read from config.json.
 - moe_router_load_balancing_type: Determines the router’s load balancing strategy. Options are "aux_loss", "seq_aux_loss", "sinkhorn", and "none". Default is None and is read from config.json.
 - 🔥expert_model_parallel_size: The degree of expert parallelism, default is 1.
+- 🔥expert_tensor_parallel_size: Degree of expert tensor parallelism. Defaults to None, which inherits the value of `--tensor_model_parallel_size`.
 - moe_token_dispatcher_type: The type of token dispatcher to use. Options include 'allgather', 'alltoall', 'flex', and 'alltoall_seq'. Default is 'alltoall'.
 - moe_enable_deepep: Experimental feature, Enables DeepSeek/DeepEP for efficient token dispatching and combination in MoE models. Only works when using the flexible token dispatcher by setting `--moe_token_dispatcher_type flex`.
 - 🔥moe_grouped_gemm: When each rank contains multiple experts, multiple local GEMM kernels can be launched in parallel streams to improve utilization and performance by using GroupedLinear from TransformerEngine. Default is False.

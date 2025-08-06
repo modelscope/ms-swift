@@ -513,7 +513,13 @@ class Template(ProcessorMixin):
             elif self.mode == 'gkd':
                 encoded = self._gkd_encode(inputs)
         elif self.task_type == 'seq_cls':
-            encoded = self._seq_cls_encode(inputs)
+            if self.mode == 'rlhf':
+                encoded = self._rlhf_encode(inputs)
+                for prefix in ['chosen', 'rejected']:
+                    encoded.pop(f'{prefix}_labels', None)
+                    encoded.pop(f'{prefix}_loss_scale', None)
+            else:
+                encoded = self._seq_cls_encode(inputs)
         elif self.task_type == 'prm':
             encoded = self._encode_truncated(inputs)
         elif self.task_type == 'embedding':
@@ -928,12 +934,22 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs):
-        total_content = '\n'.join([message['content'] or '' for message in inputs.messages])
+        total_content = []
+        for message in inputs.messages:
+            content = message['content'] or ''
+            if not isinstance(content, str):
+                if message['role'] == 'user':
+                    # Give up adding the default tag
+                    return
+                elif message['role'] == 'assistant':
+                    continue
+            total_content.append(content)
         if inputs.rejected_response:
+            rejected_response = inputs.rejected_response
             if isinstance(inputs.rejected_response, str):
-                total_content += inputs.rejected_response
-            else:
-                total_content += '\n'.join(inputs.rejected_response)
+                rejected_response = [rejected_response]
+            total_content += rejected_response
+        total_content = '\n'.join(total_content)
         if inputs.system:
             total_content = f'{inputs.system}\n{total_content}'
         for media_type in ['image', 'audio', 'video']:
@@ -1173,7 +1189,9 @@ class Template(ProcessorMixin):
         if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
             encoded = Template._encode(self, inputs)
             for key in ['images', 'audios', 'videos']:
-                encoded[key] = getattr(inputs, key)
+                value = getattr(inputs, key)
+                if value:
+                    encoded[key] = value
         else:
             encoded = self._encode(inputs)
 
@@ -1316,8 +1334,10 @@ class Template(ProcessorMixin):
         old_kwargs = to_device(kwargs, model.device)
         kwargs = to_device(self._post_encode(model, old_kwargs), model.device)
         for k, v in old_kwargs.items():
-            if k in {'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep'
-                     } and k not in kwargs:
+            if k in {
+                    'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep',
+                    'cumulative_seqlens_q', 'cumulative_seqlens_k', 'max_length_q', 'max_length_k'
+            } and k not in kwargs:
                 kwargs[k] = v
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)
@@ -1387,7 +1407,10 @@ class Template(ProcessorMixin):
         elif self.task_type == 'prm':
             res = self._data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'seq_cls':
-            res = self._seq_cls_data_collator(batch, padding_to=padding_to)
+            if self.mode == 'rlhf':
+                res = self._rlhf_data_collator(batch, padding_to=padding_to)
+            else:
+                res = self._seq_cls_data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'embedding':
             res = self._embedding_data_collator(batch, padding_to=padding_to)
         elif self.task_type in {'reranker', 'generative_reranker'}:

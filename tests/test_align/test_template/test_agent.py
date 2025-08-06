@@ -308,6 +308,28 @@ def test_llama4():
     print(f'labels: {template.safe_decode(encoded["labels"])}')
 
 
+def test_hunyuan():
+    engine = PtEngine('Tencent-Hunyuan/Hunyuan-1.8B-Instruct')
+    template = engine.default_template
+    template.template_backend = 'jinja'
+    _infer(engine, num_tools=2)
+
+    dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
+    data = dataset[6]
+    data['messages'].insert(1, data['messages'][1])
+    data['messages'].insert(3, data['messages'][3])
+    template.template_backend = 'swift'
+    template.set_mode('train')
+    encoded = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    template.template_backend = 'jinja'
+    encoded2 = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded2["labels"])}')
+    assert encoded['input_ids'] == encoded2['input_ids']
+
+
 if __name__ == '__main__':
     from swift.plugin import agent_templates
     from swift.llm import PtEngine, InferRequest, RequestConfig, load_dataset
@@ -317,9 +339,10 @@ if __name__ == '__main__':
     # test_qwen_zh()
     # test_qwen_en_parallel()
     # test_qwen_zh_parallel()
-    test_hermes()
+    # test_hermes()
     # test_toolbench()
     # test_glm4()
     # test_glm4_0414()
     # test_llama3()
     # test_llama4()
+    test_hunyuan()

@@ -1,5 +1,7 @@
 # DeepEyes: Incentivizing "Thinking with Images" via Reinforcement Learning
 
+**版本依赖**：ms-swift>=3.7
+
 ## 原理介绍
 
 [DeepEyes论文](https://arxiv.org/abs/2505.14362) 提出了一种利用强化学习使模型具备“think with images”（以图辅助思考）能力的方法。该方法通过端到端的强化学习，模型能力自发涌现，无需额外的 SFT（监督微调）过程。模型内置图像定位能力，能够主动调用“图像放大工具”：在推理过程中，模型会自动选取图片中的具体区域进行放大和裁剪，将处理后的区域信息进行进一步推理，实现视觉与文本的链式推理。

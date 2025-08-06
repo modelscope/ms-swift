@@ -1,5 +1,7 @@
 # DeepEyes: Incentivizing "Thinking with Images" via Reinforcement Learning
 
+**Version Requirement**: ms-swift>=3.7
+
 ## Principle Introduction
 
 The [DeepEyes paper](https://arxiv.org/abs/2505.14362) proposes a method that enables models to "think with images" (image-assisted reasoning) by leveraging reinforcement learning. This approach achieves emergent model capabilities through end-to-end reinforcement learning, without requiring additional SFT (Supervised Fine-Tuning) steps. The model is equipped with built-in image localization capabilities and can actively invoke an "image zoom-in tool": during inference, the model automatically selects specific regions within an image for zooming and cropping, and then chains the processed region information into downstream reasoning, thus achieving multi-step visual-text reasoning.
