@@ -127,10 +127,6 @@ def test_glm4_5():
     _test_model('ZhipuAI/GLM-4.5-Air')
 
 
-def test_gpt_oss():
-    _test_model('openai-mirror/gpt-oss-20b')
-
-
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -155,5 +151,4 @@ if __name__ == '__main__':
     # test_kimi_dev()
     # test_hunyuan()
     # test_ernie()
-    # test_glm4_5()
-    test_gpt_oss()
+    test_glm4_5()
