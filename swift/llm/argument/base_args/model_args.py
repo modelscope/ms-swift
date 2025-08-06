@@ -107,6 +107,7 @@ class ModelArguments:
             self.bf16 = bf16
 
     def _init_rope_scaling(self):
+<<<<<<< Updated upstream
         if self.rope_scaling:
             rope_scaling: dict = json_parse_to_dict(self.rope_scaling, strict=False)
             if isinstance(rope_scaling, str):
@@ -141,6 +142,23 @@ class ModelArguments:
         logger.info(f'Setting args.rope_scaling: {rope_scaling}')
         logger.info(f'Setting args.max_model_len: {self.max_model_len}')
 
+=======
+        assert self.max_length is not None, 'Use max_model_len together with rope_scaling'
+        rope_scaling = self.model_info.rope_scaling or {}
+        max_model_len = self.model_info.max_model_len
+        rope_scaling_factor = 1.0
+        if max_model_len:
+            rope_scaling_factor = max(float(math.ceil(self.max_length / max_model_len)), 1.0)
+        if rope_scaling:
+            rope_scaling_factor = max(rope_scaling.get('factor', -1), rope_scaling_factor)
+            rope_scaling['type'] = self.rope_scaling
+            rope_scaling['factor'] = rope_scaling_factor
+        else:
+            rope_scaling = {'type': self.rope_scaling, 'factor': rope_scaling_factor}
+        self.rope_scaling = rope_scaling
+        logger.info(f'rope_scaling is set to type: {self.rope_scaling}')
+        
+>>>>>>> Stashed changes
     def _init_model_info(self) -> torch.dtype:
         self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
         self.task_type = self.model_info.task_type
