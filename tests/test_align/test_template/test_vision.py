@@ -143,9 +143,14 @@ Grounded Operation: CLICK(box=[[346,574,424,710]], element_type='卡片', elemen
 
 def test_minicpmv():
     # pt_engine = PtEngine('OpenBMB/MiniCPM-V-2_6')
+    messages = [{'role': 'user', 'content': '<image><image>descibe the picture?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+    ]
     pt_engine = PtEngine('OpenBMB/MiniCPM-V-4')
-    response = _infer_model(pt_engine)
-    print(f'response: {response}')
+    response = _infer_model(pt_engine, messages=messages)
+    assert response[:100] == ('The image features a close-up of a kitten with a soft and fluffy appearance. '
+                              'The kitten has a striki')
 
 
 def test_minicpmo():
