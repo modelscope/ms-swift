@@ -323,7 +323,7 @@ register_template(
         LLMTemplateType.gpt_oss,
         prefix=gpt_oss_prefix,
         system_prefix=gpt_oss_prefix + ['<|start|>developer<|message|># Instructions\n\n{{SYSTEM}}<|end|>'],
-        prompt=['<|start|>user<|message|>{{QUERY}}<|end|><|start|>assistant<|channel|>final<|message|>'],
+        prompt=['<|start|>user<|message|>{{QUERY}}<|end|><|start|>assistant'],
         chat_sep=['<|end|>'],
         suffix=['<|end|>'],
     ))
