@@ -1,4 +1,5 @@
 # 42GB
+# https://github.com/modelscope/ms-swift/pull/5277
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model openai-mirror/gpt-oss-20b \

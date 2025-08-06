@@ -615,7 +615,6 @@ def test_glm4_5():
 def test_gpt_oss():
     pt_engine = PtEngine('openai-mirror/gpt-oss-20b')
     res = _infer_model(pt_engine)
-    assert res == res2, f'res: {res}, res2: {res2}'
     assert res.rsplit('<|message|>', 1)[-1] == '我无法直接查看图片内容。能否请你描述一下图片里出现了什么，或者告诉我你想'
 
 
