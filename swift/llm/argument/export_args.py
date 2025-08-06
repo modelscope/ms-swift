@@ -95,11 +95,6 @@ class ExportArguments(MergeArguments, BaseArguments):
         logger.info(f'args.output_dir: `{self.output_dir}`')
 
     def __post_init__(self):
-        if self.to_cached_dataset:
-            if self.packing:
-                raise ValueError('Packing will be handled during training; here we only perform tokenization '
-                                 'in advance, so you do not need to set up packing separately.')
-            assert not self.streaming and not self.lazy_tokenize, 'not supported'
         if self.quant_batch_size == -1:
             self.quant_batch_size = None
         if isinstance(self.mcore_adapters, str):
@@ -120,3 +115,8 @@ class ExportArguments(MergeArguments, BaseArguments):
         self._init_output_dir()
         if self.quant_method in {'gptq', 'awq'} and len(self.dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, Please input the quant dataset.')
+        if self.to_cached_dataset:
+            if self.packing:
+                raise ValueError('Packing will be handled during training; here we only perform tokenization '
+                                 'in advance, so you do not need to set up packing separately.')
+            assert not self.streaming and not self.lazy_tokenize, 'not supported'
