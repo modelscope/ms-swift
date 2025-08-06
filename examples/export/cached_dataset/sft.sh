@@ -3,6 +3,7 @@ swift export \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \
     --max_length 8192 \
     --dataset_num_proc 64 \
+    --split_dataset_ratio 0.01 \
     --to_cached_dataset true \
     --output_dir ./qwen2_5_cached_dataset
 

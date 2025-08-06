@@ -4,6 +4,7 @@ swift export \
     --max_length 8192 \
     --dataset_num_proc 64 \
     --to_cached_dataset true \
+    --split_dataset_ratio 0.01 \
     --use_chat_template false \
     --loss_scale all \
     --output_dir ./pretrain_cached_dataset
