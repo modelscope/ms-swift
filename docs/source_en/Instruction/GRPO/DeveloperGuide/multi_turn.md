@@ -115,7 +115,8 @@ It is recommended to use AsyncEngine for efficient batch data asynchronous multi
 <img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/asyncengine.png" width="400" />
 
 Use the `use_async_engine` parameter in the `rollout` command to specify the engine type:
-```
+```bash
+CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
     --model xxx \
     --use_async_engine true \
