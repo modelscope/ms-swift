@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Prompt
@@ -312,6 +313,17 @@ register_template(
         template_cls=ThinkingWithAnswerTemplate,
         agent_template='hunyuan_hermes'))
 
+
+class GptTemplate(Template):
+
+    def _swift_prepare_messages(self, messages):
+        super()._swift_prepare_messages(messages)
+        for i, message in enumerate(messages):
+            if message['role'] == 'assistant' and isinstance(message['content'], str):
+                if '<|channel|>' not in message['content']:
+                    message['content'] = '<|channel|>final<|message|>' + message['content']
+
+
 gpt_oss_prefix = [
     '<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\n'
     'Knowledge cutoff: 2024-06\nCurrent date: 2025-08-06\n\nReasoning: medium\n\n'
@@ -326,4 +338,5 @@ register_template(
         prompt=['<|start|>user<|message|>{{QUERY}}<|end|><|start|>assistant'],
         chat_sep=['<|end|>'],
         suffix=['<|return|>'],
+        template_cls=GptTemplate,
     ))

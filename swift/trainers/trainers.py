@@ -343,7 +343,10 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             if router_aux_loss_coef is None:
                 router_aux_loss_coef = getattr(base_model.config, 'router_aux_loss_coef', None)
             if router_aux_loss_coef is not None:
-                base_model.config.router_aux_loss_coef = router_aux_loss_coef
+                from swift.llm import HfConfigFactory
+                HfConfigFactory.set_config_attr(base_model.config, 'router_aux_loss_coef', router_aux_loss_coef)
+                base_model.router_aux_loss_coef = router_aux_loss_coef
+                logger.info_once(f'router_aux_loss_coef: {router_aux_loss_coef}')
                 if router_aux_loss_coef > 0 and 'output_router_logits' in inspect.signature(
                         base_model.forward).parameters:
                     inputs['output_router_logits'] = True
