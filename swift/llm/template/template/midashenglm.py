@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
+
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import register_template
@@ -8,7 +9,6 @@ from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Word
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
-from typing import Any, Dict, List, Optional, Union
 
 @dataclass
 class QwenTemplateMeta(ChatmlTemplateMeta):
@@ -16,6 +16,7 @@ class QwenTemplateMeta(ChatmlTemplateMeta):
     auto_add_bos: bool = False
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>'])
     agent_template: str = 'hermes'
+
 
 class MiDashengLMTemplate(Template):
 
@@ -25,7 +26,7 @@ class MiDashengLMTemplate(Template):
         audios = inputs.audios
         audio = audios[index]
         assert isinstance(audio, str)
-        
+
         return [f'Audio {index + 1}: <|audio_bos|><|AUDIO|><|audio_eos|>']
 
     def _tokenize(self, context, **tokenizer_kwargs):
@@ -34,7 +35,7 @@ class MiDashengLMTemplate(Template):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         if not inputs.audios:
             return super()._encode(inputs)
-        
+
         audio_data = []
         for audio_path in inputs.audios:
             try:
@@ -44,15 +45,15 @@ class MiDashengLMTemplate(Template):
                 audio_array, _ = librosa.load(audio_path, sr=sampling_rate)
                 audio_data.append(audio_array)
             except Exception as e:
-                print(f"Failed to load audio {audio_path}: {e}")
-                audio_data.append(np.zeros(1600)) 
-        
+                print(f'Failed to load audio {audio_path}: {e}')
+                audio_data.append(np.zeros(1600))
+
         if not audio_data:
             return super()._encode(inputs)
-        
+
         original_encoded = super()._encode(inputs)
 
-        conversation_text = ""
+        conversation_text = ''
         if hasattr(inputs, 'conversations') and inputs.conversations:
             for conv in inputs.conversations:
                 role = conv.get('from', conv.get('role', ''))
@@ -71,31 +72,31 @@ class MiDashengLMTemplate(Template):
                         else:
                             text_parts.append(str(item))
                     content = ''.join(text_parts)
-                
-                conversation_text += f"<|im_start|>{role}\n{content}<|im_end|>\n"
 
-            conversation_text += "<|im_start|>assistant\n"
+                conversation_text += f'<|im_start|>{role}\n{content}<|im_end|>\n'
+
+            conversation_text += '<|im_start|>assistant\n'
         else:
             decoded_text = self.tokenizer.decode(original_encoded['input_ids'], skip_special_tokens=False)
             audio_token = getattr(self.processor, 'audio_token', '<|AUDIO|>')
             conversation_text = decoded_text.replace('<|AUDIO|>', audio_token)
-        
+
         try:
             max_length = getattr(self.tokenizer, 'model_max_length', None)
-            if max_length is None or max_length > 1000000:  
-                max_length = 2048  
-            
+            if max_length is None or max_length > 1000000:
+                max_length = 2048
+
             processor_kwargs = {
                 'text': [conversation_text],
                 'audio': audio_data,
-                'return_tensors': "pt",
+                'return_tensors': 'pt',
                 'padding': True,
             }
-            
+
             if max_length and max_length < 1000000:
                 processor_kwargs['truncation'] = True
                 processor_kwargs['max_length'] = max_length
-            
+
             processor_result = self.processor(**processor_kwargs)
 
             result = {}
@@ -108,7 +109,7 @@ class MiDashengLMTemplate(Template):
                         result[key] = squeezed
                 else:
                     result[key] = value
-            
+
             if 'input_ids' in result:
                 input_ids = result['input_ids']
                 labels = input_ids.copy()
@@ -118,11 +119,11 @@ class MiDashengLMTemplate(Template):
                     labels = [-100 if token_id == audio_token_id else token_id for token_id in labels]
 
                 result['labels'] = labels
-            
+
             return result
-            
+
         except Exception as e:
-            print(f"Processor failed: {e}")
+            print(f'Processor failed: {e}')
 
             return original_encoded
 
@@ -138,7 +139,7 @@ class MiDashengLMTemplate(Template):
                     res['input_features'] = torch.stack(values)
                 else:
                     res['input_features'] = torch.tensor(values)
-        
+
         return res
 
 
