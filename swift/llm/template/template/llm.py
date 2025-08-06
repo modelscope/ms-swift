@@ -312,17 +312,17 @@ register_template(
         template_cls=ThinkingWithAnswerTemplate,
         agent_template='hunyuan_hermes'))
 
+gpt_oss_prefix = [
+    '<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\n'
+    'Knowledge cutoff: 2024-06\nCurrent date: 2025-08-06\n\nReasoning: medium\n\n'
+    '# Valid channels: analysis, commentary, final. '
+    'Channel must be included for every message.<|end|>'
+]
 register_template(
     TemplateMeta(
         LLMTemplateType.gpt_oss,
-        prefix=['<｜hy_begin▁of▁sentence｜>'],
-        system_prefix=[
-            '<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\n'
-            'Knowledge cutoff: 2024-06\nCurrent date: 2025-08-06\n\nReasoning: medium\n\n'
-            '# Valid channels: analysis, commentary, final. '
-            'Channel must be included for every message.<|end|>'
-            '<|start|>developer<|message|># Instructions\n\n{{SYSTEM}}<|end|>'
-        ],
+        prefix=gpt_oss_prefix,
+        system_prefix=gpt_oss_prefix + ['<|start|>developer<|message|># Instructions\n\n{{SYSTEM}}<|end|>'],
         prompt=['<|start|>user<|message|>{{QUERY}}<|end|><|start|>assistant<|channel|>final<|message|>'],
         chat_sep=['<|end|>'],
         suffix=['<|end|>'],
