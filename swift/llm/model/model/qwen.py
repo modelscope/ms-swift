@@ -781,7 +781,6 @@ register_model(
     ))
 
 
-
 def get_model_tokenizer_midashenglm(model_dir, *args, **kwargs):
     from transformers import AutoModelForCausalLM, AutoProcessor, AutoConfig
     # default automodel_class
@@ -804,7 +803,6 @@ def get_model_tokenizer_midashenglm(model_dir, *args, **kwargs):
             patch_get_input_embeddings(base_model.audio_encoder, 'patch_embed')
 
     return model, processor
-
 
 
 register_model(
