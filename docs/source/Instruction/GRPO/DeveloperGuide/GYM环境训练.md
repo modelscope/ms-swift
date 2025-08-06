@@ -107,6 +107,7 @@ RolloutResponseChoice(
 ```
 在 `rollout` 命令中使用参数 `use_gym_env` 来指定使用gym作为训练的环境接口
 ```bash
+CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
     --model xxx \
     --use_gym_env true \

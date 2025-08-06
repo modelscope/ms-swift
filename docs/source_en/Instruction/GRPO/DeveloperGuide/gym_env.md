@@ -110,6 +110,7 @@ RolloutResponseChoice(
 
 In the `rollout` command, use the parameter `use_gym_env` to specify the use of gym as the training environment interface.
 ```bash
+CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
     --model xxx \
     --use_gym_env true \

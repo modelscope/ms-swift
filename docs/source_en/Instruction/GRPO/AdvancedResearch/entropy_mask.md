@@ -1,11 +1,6 @@
 # Beyond the 80/20 Rule: High-Entropy Minority Tokens Drive Effective Reinforcement Learning for LLM Reasoning
 
-> Note: To use this feature, you need to install the source version of ms-swift.
->```
->git clone https://github.com/modelscope/ms-swift.git
->cd ms-swift
->pip install -e .
->```
+**Version Requirement**: ms-swift>=3.7
 
 The [paper](https://arxiv.org/abs/2506.01939) finds that when training large language models for reasoning abilities with methods such as RLVR, the key to learning progress lies in a small fraction of high-entropy "minority tokens," rather than the majority of low-entropy tokens.
 
