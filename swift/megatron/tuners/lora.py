@@ -339,7 +339,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         base_layer = self.get_base_layer()
         origin_device = base_layer.weight0.device if self.is_grouped else base_layer.weight.device
         if origin_device.type == 'cpu':
-            self.to(device=get_current_device(), non_blocking=True)
+            self.to(device=get_current_device())
         for active_adapter in adapter_names:
             if active_adapter in self.lora_A.keys():
                 if self.is_grouped:
@@ -368,7 +368,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                         orig_weight.data += delta_weight
                 self.merged_adapters.append(active_adapter)
         if origin_device.type == 'cpu':
-            self.to(device=origin_device, non_blocking=True)
+            self.to(device=origin_device)
 
 
 def dispatch_megatron(
