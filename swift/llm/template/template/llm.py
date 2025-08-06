@@ -314,7 +314,7 @@ register_template(
 
 register_template(
     TemplateMeta(
-        LLMTemplateType.hunyuan,
+        LLMTemplateType.gpt_oss,
         prefix=['<｜hy_begin▁of▁sentence｜>'],
         system_prefix=[
             '<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\n'
