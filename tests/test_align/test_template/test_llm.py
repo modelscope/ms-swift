@@ -612,6 +612,15 @@ def test_glm4_5():
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
+def test_gpt_oss():
+    messages = [{'role': 'user', 'content': 'Explain quantum mechanics clearly and concisely.'}]
+    pt_engine = PtEngine('openai-mirror/gpt-oss-20b')
+    res = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine, messages=messages)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -654,7 +663,8 @@ if __name__ == '__main__':
     # test_minicpm()
     # test_minimax()
     # test_kimi_dev()
-    test_hunyuan()
+    # test_hunyuan()
     # test_ernie()
     # test_glm4_5()
     # test_devstral()
+    test_gpt_oss()

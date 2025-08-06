@@ -403,4 +403,5 @@ register_model(
         TemplateType.gpt_oss,
         get_model_tokenizer_with_flash_attn,
         architectures=['GptOssForCausalLM'],
+        ignore_patterns=['metal/', 'original/'],
         requires=['transformers>=4.55']))
