@@ -1,4 +1,4 @@
-# 22GB
+# 42GB
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model openai-mirror/gpt-oss-20b \
@@ -22,7 +22,6 @@ swift sft \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \
-    --system 'You are a helpful assistant.' \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --model_author swift \
