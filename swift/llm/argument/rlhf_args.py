@@ -130,7 +130,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         self._init_external_vllm()
         GRPOArguments.__post_init__(self)
         TrainArguments.__post_init__(self)
-        self._check_padding_free()
+        self._check_padding_free_sp()
         self._check_grpo()
         self._external_vllm_warning()
 
@@ -274,6 +274,10 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 self.loss_type = 'kto'
             elif self.rlhf_type == 'grpo':
                 self.loss_type = 'grpo'
+        if self.gradient_accumulation_steps is None:
+            if self.rlhf_type == 'grpo':
+                self.gradient_accumulation_steps = 1
+                logger.info('Setting default gradient_accumulation_steps to 1 for GRPO.')
 
     def _check_grpo(self):
         if self.rlhf_type != 'grpo':
@@ -351,9 +355,15 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             logger.warning(
                 "The parameter 'gc_collect_after_offload' has been deprecated and will be removed in version 3.7. ")
 
-    def _check_padding_free(self):
+    def _check_padding_free_sp(self):
         if self.padding_free:
             supported_types = ['grpo', 'dpo', 'gkd']
             if self.rlhf_type not in supported_types:
                 raise NotImplementedError(f"The current rlhf_type '{self.rlhf_type}' does not support padding_free. "
                                           'Please set --padding_free to false.')
+        if self.sequence_parallel_size > 1:
+            supported_types = ['grpo', 'dpo']
+            if self.rlhf_type not in supported_types:
+                raise NotImplementedError(
+                    f"The current rlhf_type '{self.rlhf_type}' does not support sequence_parallel. "
+                    'Please set --sequence_parallel_size to 1.')

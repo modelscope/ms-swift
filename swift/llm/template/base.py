@@ -944,12 +944,12 @@ class Template(ProcessorMixin):
                 elif message['role'] == 'assistant':
                     continue
             total_content.append(content)
-        total_content = '\n'.join(total_content)
         if inputs.rejected_response:
+            rejected_response = inputs.rejected_response
             if isinstance(inputs.rejected_response, str):
-                total_content += inputs.rejected_response
-            else:
-                total_content += '\n'.join(inputs.rejected_response)
+                rejected_response = [rejected_response]
+            total_content += rejected_response
+        total_content = '\n'.join(total_content)
         if inputs.system:
             total_content = f'{inputs.system}\n{total_content}'
         for media_type in ['image', 'audio', 'video']:

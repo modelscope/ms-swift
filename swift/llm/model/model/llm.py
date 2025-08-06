@@ -341,16 +341,67 @@ register_model(
         TemplateType.dots1,
         get_model_tokenizer_with_flash_attn,
         architectures=['Dots1ForCausalLM'],
-        requires=['transformers>=4.53.0.dev0'],
+        requires=['transformers>=4.53'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.hunyuan_moe,
+        [ModelGroup([
+            Model('Tencent-Hunyuan/Hunyuan-A13B-Instruct', 'tencent/Hunyuan-A13B-Instruct'),
+        ])],
+        TemplateType.hunyuan_moe,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['HunYuanMoEV1ForCausalLM'],
     ))
 
 register_model(
     ModelMeta(
         LLMModelType.hunyuan,
-        [ModelGroup([
-            Model('Tencent-Hunyuan/Hunyuan-A13B-Instruct', 'tencent/Hunyuan-A13B-Instruct'),
-        ])],
+        [
+            ModelGroup([
+                Model('Tencent-Hunyuan/Hunyuan-0.5B-Instruct', 'tencent/Hunyuan-0.5B-Instruct'),
+                Model('Tencent-Hunyuan/Hunyuan-1.8B-Instruct', 'tencent/Hunyuan-1.8B-Instruct'),
+                Model('Tencent-Hunyuan/Hunyuan-4B-Instruct', 'tencent/Hunyuan-4B-Instruct'),
+                Model('Tencent-Hunyuan/Hunyuan-7B-Instruct', 'tencent/Hunyuan-7B-Instruct'),
+                # pretrain
+                Model('Tencent-Hunyuan/Hunyuan-0.5B-Pretrain', 'tencent/Hunyuan-0.5B-Pretrain'),
+                Model('Tencent-Hunyuan/Hunyuan-1.8B-Pretrain', 'tencent/Hunyuan-1.8B-Pretrain'),
+                Model('Tencent-Hunyuan/Hunyuan-4B-Pretrain', 'tencent/Hunyuan-4B-Pretrain'),
+                Model('Tencent-Hunyuan/Hunyuan-7B-Pretrain', 'tencent/Hunyuan-7B-Pretrain'),
+                # fp8
+                Model('Tencent-Hunyuan/Hunyuan-0.5B-Instruct-FP8', 'tencent/Hunyuan-0.5B-Instruct-FP8'),
+                Model('Tencent-Hunyuan/Hunyuan-1.8B-Instruct-FP8', 'tencent/Hunyuan-1.8B-Instruct-FP8'),
+                Model('Tencent-Hunyuan/Hunyuan-4B-Instruct-FP8', 'tencent/Hunyuan-4B-Instruct-FP8'),
+                Model('Tencent-Hunyuan/Hunyuan-7B-Instruct-FP8', 'tencent/Hunyuan-7B-Instruct-FP8'),
+                # awq
+                Model('Tencent-Hunyuan/Hunyuan-0.5B-Instruct-AWQ-Int4', 'tencent/Hunyuan-0.5B-Instruct-AWQ-Int4'),
+                Model('Tencent-Hunyuan/Hunyuan-1.8B-Instruct-AWQ-Int4', 'tencent/Hunyuan-1.8B-Instruct-AWQ-Int4'),
+                Model('Tencent-Hunyuan/Hunyuan-4B-Instruct-AWQ-Int4', 'tencent/Hunyuan-4B-Instruct-AWQ-Int4'),
+                Model('Tencent-Hunyuan/Hunyuan-7B-Instruct-AWQ-Int4', 'tencent/Hunyuan-7B-Instruct-AWQ-Int4'),
+                # gptq
+                Model('Tencent-Hunyuan/Hunyuan-0.5B-Instruct-GPTQ-Int4', 'tencent/Hunyuan-0.5B-Instruct-GPTQ-Int4'),
+                Model('Tencent-Hunyuan/Hunyuan-1.8B-Instruct-GPTQ-Int4', 'tencent/Hunyuan-1.8B-Instruct-GPTQ-Int4'),
+                Model('Tencent-Hunyuan/Hunyuan-4B-Instruct-GPTQ-Int4', 'tencent/Hunyuan-4B-Instruct-GPTQ-Int4'),
+                Model('Tencent-Hunyuan/Hunyuan-7B-Instruct-GPTQ-Int4', 'tencent/Hunyuan-7B-Instruct-GPTQ-Int4'),
+            ])
+        ],
         TemplateType.hunyuan,
         get_model_tokenizer_with_flash_attn,
-        architectures=['HunYuanMoEV1ForCausalLM'],
+        requires=['transformers>=4.55.0.dev0'],
+        architectures=['HunYuanDenseV1ForCausalLM'],
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.gpt_oss, [
+            ModelGroup([
+                Model('openai-mirror/gpt-oss-20b', 'openai/gpt-oss-20b'),
+                Model('openai-mirror/gpt-oss-120b', 'openai/gpt-oss-120b'),
+            ])
+        ],
+        TemplateType.gpt_oss,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['GptOssForCausalLM'],
+        ignore_patterns=['metal/', 'original/'],
+        requires=['transformers>=4.55']))

@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import copy
 import os
 from contextlib import contextmanager
 from functools import wraps
@@ -237,7 +238,7 @@ def _patch_sequence_classification(model, model_meta):
 
 
 @contextmanager
-def patch_automodel_for_sequence_classification(model_meta):
+def patch_automodel_for_sequence_classification(model_info, model_meta, **kwargs):
     from_pretrained = PreTrainedModel.from_pretrained.__func__
 
     @classmethod
@@ -264,7 +265,7 @@ def patch_automodel_for_sequence_classification(model_meta):
 
 
 @contextmanager
-def patch_automodel(automodel_class, model_info):
+def patch_automodel(model_info, model_meta, automodel_class, return_dummy_model, **kwargs):
     from_pretrained = PreTrainedModel.from_pretrained.__func__
 
     @classmethod
@@ -275,7 +276,11 @@ def patch_automodel(automodel_class, model_info):
             cls.main_input_name = 'input_ids'
         if hasattr(cls, '_tp_plan'):  # fix tp_plan
             cls._tp_plan = cls._tp_plan or {}
-        model = from_pretrained(cls, *args, **kwargs)
+        if return_dummy_model:
+            with torch.device('meta'):
+                model = cls(copy.deepcopy(kwargs['config']))
+        else:
+            model = from_pretrained(cls, *args, **kwargs)
         return model
 
     PreTrainedModel.from_pretrained = _new_from_pretrained
