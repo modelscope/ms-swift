@@ -324,17 +324,15 @@ class GptTemplate(Template):
                     message['content'] = '<|channel|>final<|message|>' + message['content']
 
 
-gpt_oss_prefix = [
-    '<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\n'
-    'Knowledge cutoff: 2024-06\nCurrent date: 2025-08-06\n\nReasoning: medium\n\n'
-    '# Valid channels: analysis, commentary, final. '
-    'Channel must be included for every message.<|end|>'
-]
+gpt_oss_prefix = ('<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\n'
+                  'Knowledge cutoff: 2024-06\nCurrent date: 2025-08-06\n\nReasoning: medium\n\n'
+                  '# Valid channels: analysis, commentary, final. '
+                  'Channel must be included for every message.<|end|>')
 register_template(
     TemplateMeta(
         LLMTemplateType.gpt_oss,
-        prefix=gpt_oss_prefix,
-        system_prefix=gpt_oss_prefix + ['<|start|>developer<|message|># Instructions\n\n{{SYSTEM}}<|end|>'],
+        prefix=[gpt_oss_prefix],
+        system_prefix=[gpt_oss_prefix, '<|start|>developer<|message|># Instructions\n\n{{SYSTEM}}<|end|>'],
         prompt=['<|start|>user<|message|>{{QUERY}}<|end|><|start|>assistant'],
         chat_sep=['<|end|>'],
         suffix=['<|return|>'],
