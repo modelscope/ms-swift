@@ -69,11 +69,10 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
         # https://github.com/huggingface/trl/issues/2122
         backup_model = self.model
-        # Unwrap DDP model if needed to access the policy
-        if isinstance(self.model, DistributedDataParallel):
-            self.model = self.model.module.policy  # save only the policy
-        else:
-            self.model = self.model.policy  # save only the policy
+
+        # Unwrap model if needed to access the policy
+        unwrapped_model = self.accelerator.unwrap_model(self.model)
+        self.model = unwrapped_model.policy  # save only the policy
 
         Trainer.save_model(self, output_dir, _internal_call)
 
