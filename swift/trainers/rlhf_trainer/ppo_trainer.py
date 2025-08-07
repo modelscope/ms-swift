@@ -5,6 +5,7 @@ from typing import Optional
 
 import transformers
 from packaging import version
+from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, Trainer
 from trl import PPOTrainer as HFPPOTrainer
@@ -68,7 +69,10 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
         # https://github.com/huggingface/trl/issues/2122
         backup_model = self.model
-        self.model = self.model.policy  # save only the policy
+
+        # Unwrap model if needed to access the policy
+        unwrapped_model = self.accelerator.unwrap_model(self.model)
+        self.model = unwrapped_model.policy  # save only the policy
 
         Trainer.save_model(self, output_dir, _internal_call)
 

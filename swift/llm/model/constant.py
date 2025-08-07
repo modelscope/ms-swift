@@ -13,6 +13,7 @@ class LLMModelType:
     qwq_preview = 'qwq_preview'
     qwq = 'qwq'
     qwen3 = 'qwen3'
+    qwen3_thinking = 'qwen3_thinking'
     qwen3_moe = 'qwen3_moe'
     qwen3_moe_thinking = 'qwen3_moe_thinking'
     qwen3_emb = 'qwen3_emb'
@@ -210,6 +211,7 @@ class MLLMModelType:
     minicpmv2_5 = 'minicpmv2_5'
     minicpmv2_6 = 'minicpmv2_6'
     minicpmo2_6 = 'minicpmo2_6'
+    minicpmv4 = 'minicpmv4'
 
     minimax_vl = 'minimax_vl'
 
