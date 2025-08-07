@@ -142,10 +142,12 @@ Grounded Operation: CLICK(box=[[346,574,424,710]], element_type='卡片', elemen
 
 
 def test_minicpmv():
-    pt_engine = PtEngine('OpenBMB/MiniCPM-V-2_6')
-    _infer_model(pt_engine)
-    pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    # pt_engine = PtEngine('OpenBMB/MiniCPM-V-2_6')
+    messages = [{'role': 'user', 'content': '<image>descibe the picture?'}]
+    pt_engine = PtEngine('OpenBMB/MiniCPM-V-4')
+    response = _infer_model(pt_engine, messages=messages)
+    assert response[:100] == ('The image features a close-up of a kitten with a soft and fluffy appearance. '
+                              'The kitten has a striki')
 
 
 def test_minicpmo():
@@ -217,13 +219,14 @@ def test_florence():
     pt_engine = PtEngine('AI-ModelScope/Florence-2-base-ft')
     _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'who are you?'}], images=[])
 
-    _infer_model(
+    response = _infer_model(
         pt_engine,
         messages=[{
             'role': 'user',
             'content': '<OD>'
         }],
         images=['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'])
+    print(f'response: {response}')
 
 
 def test_phi3_vision():
@@ -626,7 +629,7 @@ if __name__ == '__main__':
     # test_glm4v()
     # test_cogagent()
     # test_llava_onevision_hf()
-    # test_minicpmv()
+    test_minicpmv()
     # test_got_ocr()
     # test_got_ocr_hf()
     # test_paligemma()
@@ -660,4 +663,4 @@ if __name__ == '__main__':
     # test_kimi_vl_thinking()
     # test_glm4_1v()
     # test_gemma3n()
-    test_keye_vl()
+    # test_keye_vl()
