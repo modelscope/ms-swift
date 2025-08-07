@@ -1,19 +1,21 @@
 swift export \
     --model Qwen/Qwen2.5-7B \
-    --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \
+    --dataset 'AI-ModelScope/ruozhiba:all' \
     --max_length 8192 \
     --dataset_num_proc 64 \
     --to_cached_dataset true \
-    --output_dir ./qwen2_5_cached_dataset
+    --split_dataset_ratio 0.01 \
+    --use_chat_template false \
+    --loss_scale all \
+    --output_dir ./pretrain_cached_dataset
 
-# 4 * 44GiB; 15.5s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-swift sft \
+swift pt \
     --model Qwen/Qwen2.5-7B \
     --train_type full \
-    --cached_dataset './qwen2_5_cached_dataset' \
+    --cached_dataset './pretrain_cached_dataset' \
     --num_train_epochs 3 \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \

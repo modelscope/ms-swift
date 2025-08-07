@@ -5,7 +5,6 @@ from typing import Optional
 
 import transformers
 from packaging import version
-from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, Trainer
 from trl import PPOTrainer as HFPPOTrainer
