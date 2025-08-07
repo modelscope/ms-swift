@@ -15,7 +15,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift pt \
     --model Qwen/Qwen2.5-7B \
     --train_type full \
-    --cached_dataset './qwen2_5_cached_dataset' \
+    --cached_dataset './pretrain_cached_dataset' \
     --num_train_epochs 3 \
     --split_dataset_ratio 0.01 \
     --torch_dtype bfloat16 \
