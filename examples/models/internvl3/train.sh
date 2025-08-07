@@ -1,7 +1,9 @@
 # 10.5GiB
+pip install "transformers==4.51.*"
+
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model OpenBMB/MiniCPM-V-4 \
+    --model OpenGVLab/InternVL3-8B \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#20000' \
     --split_dataset_ratio 0.01 \
     --train_type lora \

@@ -1,7 +1,10 @@
-# 10.5GiB
+# 9GiB
+pip install "transformers==4.41.*" "peft==0.11.*"
+# pip uninstall autoawq
+
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model OpenBMB/MiniCPM-V-4 \
+    --model deepseek-ai/deepseek-vl2-tiny \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#20000' \
     --split_dataset_ratio 0.01 \
     --train_type lora \
@@ -19,7 +22,7 @@ swift sft \
     --save_steps 50 \
     --save_total_limit 2 \
     --logging_steps 5 \
-    --max_length 2048 \
+    --max_length 4096 \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4

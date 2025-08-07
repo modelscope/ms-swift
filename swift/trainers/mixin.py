@@ -32,8 +32,8 @@ from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import (OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, SCHEDULER_NAME, TRAINER_STATE_NAME,
-                                  DeepSpeedSchedulerWrapper, ParallelMode, TrainerCallback, reissue_pt_warnings)
-from transformers.trainer_utils import EvalPrediction, IntervalStrategy, SaveStrategy
+                                  ParallelMode, TrainerCallback, reissue_pt_warnings)
+from transformers.trainer_utils import EvalPrediction, IntervalStrategy
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
@@ -459,7 +459,8 @@ class SwiftMixin:
         return result
 
     def _save_flash_checkpoint(self, model, trial, metrics=None):
-
+        from transformers.trainer import DeepSpeedSchedulerWrapper
+        from transformers.trainer_utils import SaveStrategy
         from dlrover.trainer.torch.flash_checkpoint.hf_trainer import HfDdpCheckpointer, HfDeepSpeedCheckpointer
         run_dir = self._get_output_dir(trial=trial)
 
