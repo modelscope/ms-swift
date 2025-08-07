@@ -579,8 +579,6 @@ register_model(
         requires=['transformers>=4.51'],
     ))
 
-
-
 register_model(
     ModelMeta(
         LLMModelType.qwen3_thinking,
