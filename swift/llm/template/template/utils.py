@@ -37,6 +37,7 @@ class ThinkingTemplate(Template):
 
     def _swift_prepare_inputs(self, inputs):
         super()._swift_prepare_inputs(inputs)
+        messages = inputs.messages
         # Only during inference or training, and only if the loss_scale is set to 'last_round',
         # will the previous 'think' entries be deleted.
         if not self.is_training or self.loss_scale.name == 'last_round':
