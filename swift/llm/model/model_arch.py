@@ -524,6 +524,7 @@ register_model_arch(
         MLLMModelArch.midashenglm,
         language_model='decoder',
         aligner=['audio_projector'],
+        vision_tower=['audio_encoder'],
         generator=[],
     ))
 

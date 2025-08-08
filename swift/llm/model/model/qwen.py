@@ -3,7 +3,7 @@ import os
 from typing import Any, Dict, Optional, Tuple, Type
 
 import torch
-from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
+from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase, AutoProcessor
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
@@ -799,30 +799,80 @@ register_model(
         ignore_patterns=[],
     ))
 
+# def get_model_tokenizer_midashenglm(model_dir, *args, **kwargs):
+#     from transformers import AutoModelForCausalLM, AutoProcessor, AutoConfig
+#     # default automodel_class
+#     model_info = args[0]
+#     model_kwargs = args[1]
+#     kwargs['automodel_class'] = kwargs.get('automodel_class', AutoModelForCausalLM)
+#     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
 
-def get_model_tokenizer_midashenglm(model_dir, *args, **kwargs):
-    from transformers import AutoModelForCausalLM, AutoProcessor, AutoConfig
-    # default automodel_class
-    kwargs['automodel_class'] = kwargs.get('automodel_class', AutoModelForCausalLM)
-    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    kwargs['tokenizer'] = processor.tokenizer
-    # load model config
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    kwargs['model_config'] = model_config
-    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-    if model:
-        base_model = model.model if 'AWQ' in model.__class__.__name__ else model
-        use_submodel_func(base_model, 'decoder')
+#     kwargs['tokenizer'] = processor.tokenizer
+#     # load model config
+#     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+#     if model_info.torch_dtype is not None:
+#         k_true = dtype_mapping[model_info.torch_dtype]
+#         for k in dtype_mapping.values():
+#             setattr(model_config, k, k == k_true)
+#     kwargs['model_config'] = model_config
+#     kwargs['model_info'] = model_info
+#     kwargs['model_kwargs'] = model_kwargs
+#     model, _ = get_model_tokenizer_with_flash_attn(model_dir, **kwargs)
+#     if model:
+#         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
+#         # use_submodel_func(base_model, 'decoder')
 
-        if not hasattr(base_model.config, 'keys_to_ignore_at_inference'):
-            base_model.config.keys_to_ignore_at_inference = []
-        base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
+#         if not hasattr(base_model.config, 'keys_to_ignore_at_inference'):
+#             base_model.config.keys_to_ignore_at_inference = []
+#         base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
 
-        if hasattr(base_model, 'audio_encoder'):
-            patch_get_input_embeddings(base_model.audio_encoder, 'patch_embed')
+#         if hasattr(base_model, 'audio_encoder'):
+#             patch_get_input_embeddings(base_model.audio_encoder, 'patch_embed')
 
+#     return model, processor
+
+def get_model_tokenizer_midashenglm(model_dir: str,
+                             model_info: ModelInfo,
+                             model_kwargs: Dict[str, Any],
+                             load_model: bool = True,
+                             model_config=None,
+                             **kwargs):
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    if model_info.torch_dtype is not None:
+        k_true = dtype_mapping[model_info.torch_dtype]
+        for k in dtype_mapping.values():
+            setattr(model_config, k, k == k_true)
+
+    quantization_config = model_kwargs.get('quantization_config')
+    if not isinstance(quantization_config, BitsAndBytesConfig):
+        # not bnb quant
+        model_config.torch_dtype = None
+    use_flash_attn = AttnImpl.to_use_flash_attn(kwargs.pop('attn_impl', None), 'auto')
+    model_config.use_flash_attn = use_flash_attn
+
+    tokenizer = kwargs.get('tokenizer')
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+    if tokenizer.eos_token_id is None:
+        tokenizer.eos_token_id = tokenizer.eod_id
+    kwargs['tokenizer'] = tokenizer
+
+    processor = kwargs.get('processor')
+    if processor is None:
+        processor = AutoProcessor.from_pretrained(model_dir, 
+                                            torch_dtype=model_info.torch_dtype,
+                                            trust_remote_code=True)
+    kwargs['processor'] = processor
+
+    model, _ = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    try:
+        # fix mp+ddp bug
+        model.transformer.registered_causal_mask = model.transformer.registered_causal_mask.cuda()
+        logger.info('registered_causal_mask to cuda')
+    except AttributeError:
+        pass
     return model, processor
-
 
 register_model(
     ModelMeta(
