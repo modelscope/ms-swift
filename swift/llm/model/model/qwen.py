@@ -873,7 +873,7 @@ register_model(
         get_model_tokenizer_midashenglm,
         model_arch=ModelArch.midashenglm,
         architectures=['MiDashengLMModel'],
-        requires=['transformers>=4.50', 'soundfile', 'qwen_omni_utils', 'decord'],
+        requires=['transformers>=4.50', 'soundfile', 'decord'],
         tags=['audio'],
     ))
 
