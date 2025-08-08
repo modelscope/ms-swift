@@ -399,7 +399,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 loss = self.label_smoother(outputs, labels)
 
             if self.model.model_info.is_moe_model and self.args.router_aux_loss_coef is not None:
-                aux_loss = outputs['aux_loss']
+                aux_loss = outputs.get('aux_loss')
                 if aux_loss is not None:
                     loss = loss + self.args.router_aux_loss_coef * aux_loss.to(loss.device)
 

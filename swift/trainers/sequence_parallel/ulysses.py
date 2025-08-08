@@ -8,10 +8,10 @@ from packaging import version
 
 from swift.llm import get_llm_model
 from .base import CommonSequenceParallel
-from .utils import (SequenceParallelDispatcher, SequenceParallelSampler, _get_per_token_logps_and_entropies_grpo,
-                    _get_train_sampler_grpo, _prepare_inputs, _prepare_inputs_grpo, get_common_dataloader,
-                    get_per_token_logps, loss_scale_sp_func, old_policy_grpo, setup_compute_acc,
-                    split_by_mini_batches_grpo, GatherLoss)
+from .utils import (GatherLoss, SequenceParallelDispatcher, SequenceParallelSampler,
+                    _get_per_token_logps_and_entropies_grpo, _get_train_sampler_grpo, _prepare_inputs,
+                    _prepare_inputs_grpo, get_common_dataloader, get_per_token_logps, loss_scale_sp_func,
+                    old_policy_grpo, setup_compute_acc, split_by_mini_batches_grpo)
 
 assert version.parse(torch.__version__) >= version.parse('2.0.0')
 torch._dynamo.config.capture_dynamic_output_shape_ops = True
@@ -96,11 +96,11 @@ class _SeqAllToAll(torch.autograd.Function):
 
     @staticmethod
     def forward(
-            ctx: Any,
-            group: dist.ProcessGroup,
-            input: torch.Tensor,
-            scatter_idx: int,
-            gather_idx: int,
+        ctx: Any,
+        group: dist.ProcessGroup,
+        input: torch.Tensor,
+        scatter_idx: int,
+        gather_idx: int,
     ) -> torch.Tensor:
         ctx.group = group
         ctx.scatter_idx = scatter_idx
@@ -116,11 +116,11 @@ class _SeqAllToAll(torch.autograd.Function):
 class DistributedAttention(torch.nn.Module):
 
     def __init__(
-            self,
-            local_attention,
-            sequence_process_group: dist.ProcessGroup,
-            scatter_idx: int = 2,
-            gather_idx: int = 1,
+        self,
+        local_attention,
+        sequence_process_group: dist.ProcessGroup,
+        scatter_idx: int = 2,
+        gather_idx: int = 1,
     ) -> None:
         super(DistributedAttention, self).__init__()
         self.local_attn = local_attention
@@ -247,14 +247,16 @@ class Ulysses(CommonSequenceParallel):
                 compute_device = router_logits[0].device
                 router_logits = torch.cat([layer_gate.to(compute_device) for layer_gate in router_logits], dim=0)
             router_logits, _ = GatherLoss.apply(router_logits, None, self.sp_group)
-            router_logits = router_logits.reshape(self.sp_world_size, num_layers, sp_len, -1).transpose(0, 1).reshape(
-                num_layers, self.sp_world_size * sp_len, -1)
+            router_logits = router_logits.reshape(self.sp_world_size, num_layers, sp_len,
+                                                  -1).transpose(0, 1).reshape(num_layers, self.sp_world_size * sp_len,
+                                                                              -1)
             if attention_mask is not None:
                 router_logits = router_logits[:, :attention_mask.shape[1], :]
             output['router_logits'] = tuple([logit.squeeze() for logit in router_logits.split(1, dim=0)])
             return output
-        
-        base_model.register_forward_hook(moe_aux_loss_hook, with_kwargs=True)
+
+        if model.model_info.is_moe_model:
+            base_model.register_forward_hook(moe_aux_loss_hook, with_kwargs=True)
         self.model_dtype = next(model.parameters()).dtype
         self.tokenizer = tokenizer
 
@@ -267,6 +269,7 @@ class Ulysses(CommonSequenceParallel):
                                                                            value_states, attention_mask, *args,
                                                                            **kwargs)
             if dist_attn.local_attn is None:
+
                 def _attention(query, key, value, *args, **kwargs):
                     query = query.transpose(1, 2)
                     key = key.transpose(1, 2)
@@ -286,6 +289,7 @@ class Ulysses(CommonSequenceParallel):
                 return ALL_ATTENTION_FUNCTIONS['sdpa_origin'](module, query_states, key_states, value_states,
                                                               attention_mask, *args, **kwargs)
             if dist_attn.local_attn is None:
+
                 def _attention(query, key, value, *args, **kwargs):
                     query = query.transpose(1, 2)
                     key = key.transpose(1, 2)
