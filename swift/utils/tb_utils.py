@@ -63,9 +63,10 @@ def plot_images(images_dir: str,
         if len(values) == 1:
             ax.scatter(steps, values, color=TB_COLOR_SMOOTH)
         elif k in smooth_key:
-            ax.plot(steps, values, color=TB_COLOR)
+            ax.plot(steps, values, color=TB_COLOR, label='original')
             values_s = tensorboard_smoothing(values, smooth_val)
-            ax.plot(steps, values_s, color=TB_COLOR_SMOOTH)
+            ax.plot(steps, values_s, color=TB_COLOR_SMOOTH, label='smoothed')
+            ax.legend()
         else:
             ax.plot(steps, values, color=TB_COLOR_SMOOTH)
         fpath = os.path.join(images_dir, k.replace('/', '_').replace('.', '_'))
