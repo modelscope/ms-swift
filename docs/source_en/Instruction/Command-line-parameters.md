@@ -420,6 +420,9 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - eval_dataset_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
 - eval_limit: Number of samples from the evaluation dataset
 - eval_generation_config: Model inference configuration during evaluation, in JSON format, default is `{'max_tokens': 512}`
+- use_flash_ckpt: Whether to use [DLRover Flash Checkpoint](https://github.com/intelligent-machine-learning/dlrover). Default is `false`. If enabled, checkpoints are saved to memory synchronously, then persisted to storage asynchronously, the safetensors format is not supported currently. It's recommended to use this with the environment variable `PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` to avoid CUDA OOM.
+
+
 
 #### SWANLAB
 
@@ -689,6 +692,8 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 
 Specific model arguments can be set using `--model_kwargs` or environment variables, for example: `--model_kwargs '{"fps_max_frames": 12}'` or `FPS_MAX_FRAMES=12`.
 
+The definitions of the parameters listed below can be found in each model’s official repository or in its inference code.
+
 ### qwen2_vl, qvq, qwen2_5_vl, mimo_vl, keye_vl
 The parameter meanings are the same as in the `qwen_vl_utils` or `qwen_omni_utils` library. You can refer to [here](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)
 
@@ -724,7 +729,7 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - VIDEO_MAX_NUM: Default is 1, which is the MAX_NUM for videos
 - VIDEO_SEGMENTS: Default is 8
 
-### minicpmv2_6, minicpmo2_6
+### minicpmv2_6, minicpmo2_6, minicpmv4
 - MAX_SLICE_NUMS: Default is 9, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6/file/view/master?fileName=config.json&status=1)
 - VIDEO_MAX_SLICE_NUMS: Default is 1, which is the MAX_SLICE_NUMS for videos, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
 - MAX_NUM_FRAMES: Default is 64, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
