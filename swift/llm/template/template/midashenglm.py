@@ -103,8 +103,6 @@ class MiDashengLMTemplate(Template):
         
         encoded = {}
 
-
-        
         if 'input_ids' in model_inputs:
             input_ids = model_inputs['input_ids']
             if isinstance(input_ids, torch.Tensor):
@@ -143,7 +141,6 @@ class MiDashengLMTemplate(Template):
             for k in list(encoded.keys()):
                 if k.endswith('labels') or k.endswith('loss_scale'):
                     encoded[k] = None
-        
         
         return encoded
 

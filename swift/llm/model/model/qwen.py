@@ -799,37 +799,6 @@ register_model(
         ignore_patterns=[],
     ))
 
-# def get_model_tokenizer_midashenglm(model_dir, *args, **kwargs):
-#     from transformers import AutoModelForCausalLM, AutoProcessor, AutoConfig
-#     # default automodel_class
-#     model_info = args[0]
-#     model_kwargs = args[1]
-#     kwargs['automodel_class'] = kwargs.get('automodel_class', AutoModelForCausalLM)
-#     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-
-#     kwargs['tokenizer'] = processor.tokenizer
-#     # load model config
-#     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-#     if model_info.torch_dtype is not None:
-#         k_true = dtype_mapping[model_info.torch_dtype]
-#         for k in dtype_mapping.values():
-#             setattr(model_config, k, k == k_true)
-#     kwargs['model_config'] = model_config
-#     kwargs['model_info'] = model_info
-#     kwargs['model_kwargs'] = model_kwargs
-#     model, _ = get_model_tokenizer_with_flash_attn(model_dir, **kwargs)
-#     if model:
-#         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
-#         # use_submodel_func(base_model, 'decoder')
-
-#         if not hasattr(base_model.config, 'keys_to_ignore_at_inference'):
-#             base_model.config.keys_to_ignore_at_inference = []
-#         base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
-
-#         if hasattr(base_model, 'audio_encoder'):
-#             patch_get_input_embeddings(base_model.audio_encoder, 'patch_embed')
-
-#     return model, processor
 
 def get_model_tokenizer_midashenglm(model_dir: str,
                              model_info: ModelInfo,
@@ -839,6 +808,7 @@ def get_model_tokenizer_midashenglm(model_dir: str,
                              **kwargs):
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    
     if model_info.torch_dtype is not None:
         k_true = dtype_mapping[model_info.torch_dtype]
         for k in dtype_mapping.values():
@@ -846,8 +816,8 @@ def get_model_tokenizer_midashenglm(model_dir: str,
 
     quantization_config = model_kwargs.get('quantization_config')
     if not isinstance(quantization_config, BitsAndBytesConfig):
-        # not bnb quant
         model_config.torch_dtype = None
+    
     use_flash_attn = AttnImpl.to_use_flash_attn(kwargs.pop('attn_impl', None), 'auto')
     model_config.use_flash_attn = use_flash_attn
 
@@ -860,18 +830,35 @@ def get_model_tokenizer_midashenglm(model_dir: str,
 
     processor = kwargs.get('processor')
     if processor is None:
-        processor = AutoProcessor.from_pretrained(model_dir, 
-                                            torch_dtype=model_info.torch_dtype,
-                                            trust_remote_code=True)
+        processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['processor'] = processor
 
+    kwargs['model_config'] = model_config
+
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
+        
+    if load_model and model is not None:
+        if not model.training:
+            if hasattr(model, 'decoder') and hasattr(model.decoder, 'model') and hasattr(model.decoder.model, 'embed_tokens'):
+                for param in model.decoder.model.embed_tokens.parameters():
+                    param.requires_grad_(False)
+                logger.info('Fixed embed_tokens gradients for inference')
+
+        if hasattr(model, 'audio_encoder'):
+            model.audio_encoder = model.audio_encoder.float()
+            logger.info('Converted audio_encoder to float32 (cuFFT requirement)')
+            
+            if hasattr(model, 'audio_projector'):
+                main_dtype = next(model.parameters()).dtype
+                model.audio_projector = model.audio_projector.to(main_dtype)
+                logger.info(f'Audio projector set to {main_dtype}')
+    
     try:
-        # fix mp+ddp bug
         model.transformer.registered_causal_mask = model.transformer.registered_causal_mask.cuda()
         logger.info('registered_causal_mask to cuda')
     except AttributeError:
         pass
+    
     return model, processor
 
 register_model(
