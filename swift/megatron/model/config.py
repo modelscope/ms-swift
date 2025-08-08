@@ -27,7 +27,6 @@ config_mapping = {
     'moe_router_topk': ['num_experts_per_tok', 'n_group', 'moe_topk', 'moe_k'],
     'num_experts': ['num_experts', 'n_routed_experts', 'moe_num_experts'],
     'moe_router_pre_softmax': ['norm_topk_prob'],
-    'moe_aux_loss_coeff': ['router_aux_loss_coef'],
     # deepseek
     'q_lora_rank': ['q_lora_rank'],
     'kv_lora_rank': ['kv_lora_rank'],

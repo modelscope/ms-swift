@@ -303,6 +303,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         return None, response_list, labels_list
 
     def _prepare_inputs(self, inputs):
+        from swift.llm import HfConfigFactory
+        args = self.args
         inputs = super()._prepare_inputs(inputs)
         from swift.plugin.loss import get_loss_func
         loss_kwargs = {}
@@ -315,7 +317,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
 
         sample_channels = inputs.pop('channel', None)
         position_ids = inputs.pop('_position_ids', None)
-        if self.args.channels is not None:
+        if args.channels is not None:
             assert sample_channels is not None, f'sample_channels: {sample_channels}'
             state = self.state
             setattr(state, 'local_step', getattr(state, 'local_step', 0))
@@ -334,22 +336,17 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             inputs['labels'], logits_to_keep = self.get_logits_to_keep(inputs['labels'])
             if logits_to_keep is not None:
                 inputs['logits_to_keep'] = logits_to_keep
-                if self.args.tuner_backend == 'unsloth' and isinstance(logits_to_keep, torch.Tensor):
+                if args.tuner_backend == 'unsloth' and isinstance(logits_to_keep, torch.Tensor):
                     inputs['logits_to_keep'] = int(logits_to_keep.sum())
 
-        if self.model.model_info.is_moe_model:
-            base_model = self.template.get_base_model(self.model)
-            router_aux_loss_coef = self.args.router_aux_loss_coef
-            if router_aux_loss_coef is None:
-                router_aux_loss_coef = getattr(base_model.config, 'router_aux_loss_coef', None)
-            if router_aux_loss_coef is not None:
-                from swift.llm import HfConfigFactory
-                HfConfigFactory.set_config_attr(base_model.config, 'router_aux_loss_coef', router_aux_loss_coef)
-                base_model.router_aux_loss_coef = router_aux_loss_coef
-                logger.info_once(f'router_aux_loss_coef: {router_aux_loss_coef}')
-                if router_aux_loss_coef > 0 and 'output_router_logits' in inspect.signature(
-                        base_model.forward).parameters:
-                    inputs['output_router_logits'] = True
+        base_model = self.template.get_base_model(self.model)
+        if self.model.model_info.is_moe_model and 'output_router_logits' in inspect.signature(
+                base_model.forward).parameters:
+            HfConfigFactory.set_config_attr(base_model.config, 'router_aux_loss_coef', args.router_aux_loss_coef)
+            base_model.router_aux_loss_coef = args.router_aux_loss_coef
+            logger.info_once(f'router_aux_loss_coef: {args.router_aux_loss_coef}')
+            if args.router_aux_loss_coef > 0:
+                inputs['output_router_logits'] = True
         inputs['compute_loss_func'] = compute_loss_func
         inputs['loss_kwargs'] = loss_kwargs
         return inputs
