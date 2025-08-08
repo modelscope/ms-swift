@@ -981,8 +981,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Encode and process each batch (size=bs)
             with self._template_context(template):
                 processed_batch = [
-                    replace_assistant_response_with_ids(data['messages'], data['completion_ids'])
-                    if 'completion_ids' in data else data for data in batch
+                    replace_assistant_response_with_ids(data['messages'], data['response_token_ids'])
+                    if 'response_token_ids' in data and data['response_token_ids'] else data for data in batch
                 ]
                 batch_encoded_inputs = [template.encode(data) for data in processed_batch]
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
