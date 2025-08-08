@@ -50,6 +50,7 @@ class GatherLoss(torch.autograd.Function):
             gather_idx: gather the tensors on this dim
         """
         ctx.process_group = process_group
+        # change from label.shape to loss, because label may be None
         shape0 = loss.shape[0]
         ctx.scatter_shape = loss.shape[gather_idx or 0]
         ctx.gather_idx = gather_idx or 0
