@@ -934,14 +934,22 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs):
-        total_content = '\n'.join(
-            (message['content'] if isinstance(message['content'], str) else str(message['content']) or '')
-            for message in inputs.messages)
+        total_content = []
+        for message in inputs.messages:
+            content = message['content'] or ''
+            if not isinstance(content, str):
+                if message['role'] == 'user':
+                    # Give up adding the default tag
+                    return
+                elif message['role'] == 'assistant':
+                    continue
+            total_content.append(content)
         if inputs.rejected_response:
+            rejected_response = inputs.rejected_response
             if isinstance(inputs.rejected_response, str):
-                total_content += inputs.rejected_response
-            else:
-                total_content += '\n'.join(inputs.rejected_response)
+                rejected_response = [rejected_response]
+            total_content += rejected_response
+        total_content = '\n'.join(total_content)
         if inputs.system:
             total_content = f'{inputs.system}\n{total_content}'
         for media_type in ['image', 'audio', 'video']:
@@ -1250,9 +1258,7 @@ class Template(ProcessorMixin):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        if self.use_megatron:
-            self._handle_megatron_cp(encoded)
-            encoded['position_ids'] = list(range(len(encoded['labels'])))
+        self._handle_megatron_cp(encoded)  # TODO: fix cp_size & cached_dataset
         if encoded.get('labels') is not None:
             encoded['labels'][0] = -100
         if encoded.get('loss_scale') is not None:
@@ -1265,7 +1271,7 @@ class Template(ProcessorMixin):
 
     def _handle_megatron_cp(self, encoded: Dict[str, Any]) -> None:
         cp_size = self.sequence_parallel_size
-        if cp_size == 1:
+        if not self.use_megatron or cp_size == 1:
             return
         input_ids = encoded['input_ids']
         padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
@@ -1587,6 +1593,9 @@ class Template(ProcessorMixin):
         padding_right = padding_side == 'right'
         if self.padding_free:
             batch[:] = [self.packing_row(batch)]
+        elif self.use_megatron:
+            for encoded in batch:
+                encoded['position_ids'] = list(range(len(encoded['labels'])))
         if self._packing:
             assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
         res = {}

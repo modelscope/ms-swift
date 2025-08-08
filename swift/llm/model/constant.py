@@ -13,6 +13,7 @@ class LLMModelType:
     qwq_preview = 'qwq_preview'
     qwq = 'qwq'
     qwen3 = 'qwen3'
+    qwen3_thinking = 'qwen3_thinking'
     qwen3_moe = 'qwen3_moe'
     qwen3_moe_thinking = 'qwen3_moe_thinking'
     qwen3_emb = 'qwen3_emb'
@@ -33,6 +34,7 @@ class LLMModelType:
     yi = 'yi'
     yi_coder = 'yi_coder'
     sus = 'sus'
+    gpt_oss = 'gpt_oss'
 
     codefuse_codellama = 'codefuse_codellama'
     mengzi3 = 'mengzi3'
@@ -122,6 +124,7 @@ class LLMModelType:
     mimo = 'mimo'
     mimo_rl = 'mimo_rl'
     dots1 = 'dots1'
+    hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
     ernie = 'ernie'
 
@@ -208,6 +211,7 @@ class MLLMModelType:
     minicpmv2_5 = 'minicpmv2_5'
     minicpmv2_6 = 'minicpmv2_6'
     minicpmo2_6 = 'minicpmo2_6'
+    minicpmv4 = 'minicpmv4'
 
     minimax_vl = 'minimax_vl'
 

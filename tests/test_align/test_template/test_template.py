@@ -21,7 +21,7 @@ def test_deepseek_v2_5():
     template.print_inputs(res)
     template.template_backend = 'jinja'
     res2 = template.encode(inputs)
-    template.print_inputs(res)
+    template.print_inputs(res2)
     assert res['input_ids'] == res2['input_ids']
 
 

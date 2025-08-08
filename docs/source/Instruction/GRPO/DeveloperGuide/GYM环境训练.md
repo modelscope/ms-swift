@@ -107,6 +107,7 @@ RolloutResponseChoice(
 ```
 在 `rollout` 命令中使用参数 `use_gym_env` 来指定使用gym作为训练的环境接口
 ```bash
+CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
     --model xxx \
     --use_gym_env true \
@@ -142,4 +143,4 @@ swift rollout \
 
 
 5. 奖励日志
-由于gym的奖励是在step函数内计算完成，所以需要手动通过`info`返回日志，最终的记录会放在completions.jsonl中的`trajactory_info`字段.
+由于gym的奖励是在step函数内计算完成，所以需要手动通过`info`返回日志，最终的记录会放在completions.jsonl中的`trajectory_infos`字段.

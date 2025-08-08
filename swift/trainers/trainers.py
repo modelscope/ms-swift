@@ -334,7 +334,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             inputs['labels'], logits_to_keep = self.get_logits_to_keep(inputs['labels'])
             if logits_to_keep is not None:
                 inputs['logits_to_keep'] = logits_to_keep
-                if self.args.tuner_backend == 'unsloth':
+                if self.args.tuner_backend == 'unsloth' and isinstance(logits_to_keep, torch.Tensor):
                     inputs['logits_to_keep'] = int(logits_to_keep.sum())
 
         if self.model.model_info.is_moe_model:
@@ -343,7 +343,10 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             if router_aux_loss_coef is None:
                 router_aux_loss_coef = getattr(base_model.config, 'router_aux_loss_coef', None)
             if router_aux_loss_coef is not None:
-                base_model.config.router_aux_loss_coef = router_aux_loss_coef
+                from swift.llm import HfConfigFactory
+                HfConfigFactory.set_config_attr(base_model.config, 'router_aux_loss_coef', router_aux_loss_coef)
+                base_model.router_aux_loss_coef = router_aux_loss_coef
+                logger.info_once(f'router_aux_loss_coef: {router_aux_loss_coef}')
                 if router_aux_loss_coef > 0 and 'output_router_logits' in inspect.signature(
                         base_model.forward).parameters:
                     inputs['output_router_logits'] = True

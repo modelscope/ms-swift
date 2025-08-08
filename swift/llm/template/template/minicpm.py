@@ -15,6 +15,7 @@ from ..utils import Context, Prompt, findall
 from ..vision_utils import load_video_minicpmv_mplug_owl3
 from .llama import Llama3TemplateMeta
 from .qwen import Qwen2_5TemplateMeta, QwenTemplateMeta
+from .utils import ChatmlTemplateMeta
 
 
 @dataclass
@@ -229,5 +230,10 @@ register_template(QwenTemplateMeta(
 
 register_template(Qwen2_5TemplateMeta(
     MLLMTemplateType.minicpmo2_6,
+    template_cls=MiniCPMV2_6Template,
+))
+
+register_template(ChatmlTemplateMeta(
+    MLLMTemplateType.minicpmv4,
     template_cls=MiniCPMV2_6Template,
 ))

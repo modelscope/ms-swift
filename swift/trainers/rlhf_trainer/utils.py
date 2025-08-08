@@ -2,6 +2,7 @@
 import functools
 import time
 from contextlib import contextmanager
+from io import BytesIO
 from types import MethodType
 from typing import TYPE_CHECKING, Any, List, Optional, Union
 
@@ -9,6 +10,7 @@ import torch
 import torch.nn.functional as F
 from peft.tuners import lora
 from peft.tuners.lora import LoraLayer
+from PIL import Image
 from torch import nn
 
 from swift.utils import is_swanlab_available, is_wandb_available
@@ -231,6 +233,29 @@ def entropy_from_logits(logits, chunk_size: int = 1) -> torch.Tensor:
         chunk_entropy = -(torch.exp(logps) * logps).sum(-1)
         per_token_entropies.append(chunk_entropy)
     return torch.cat(per_token_entropies, dim=0)
+
+
+def load_pil_img(img) -> Image:
+    if isinstance(img, (list, tuple)):
+        if len(img) == 1:
+            img = img[0]
+        else:
+            raise ValueError('Image list must contain a single image.')
+
+    if isinstance(img, Image.Image):
+        return img
+    if isinstance(img, str):
+        return Image.open(img)
+
+    if not isinstance(img, dict):
+        raise ValueError("Image must be a PIL Image, a file path, or a dictionary with 'bytes' or 'path' key.")
+
+    if 'bytes' in img and img['bytes'] is not None:
+        return Image.open(BytesIO(img['bytes']))
+    elif 'path' in img and img['path'] is not None:
+        return Image.open(img['path'])
+    else:
+        raise ValueError("Image dictionary must contain either 'bytes' or 'path' key.")
 
 
 def replace_assistant_response_with_ids(messages: 'Messages', completion_ids: List[Union[int,

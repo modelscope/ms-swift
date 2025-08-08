@@ -29,6 +29,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
+        if self.args.use_flash_ckpt:
+            try:
+                import dlrover.trainer.torch.flash_checkpoint.hf_trainer
+            except ImportError:
+                raise ValueError('Please install dlrover to use flash ckpt `pip install dlrover[k8s,torch]')
 
     def _prepare_generation_config(self):
         args = self.args
@@ -233,6 +238,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             trainer.train(trainer.args.resume_from_checkpoint)
         finally:
             res = self._save_trainer_state(trainer)
+            if self.args.use_flash_ckpt:
+                trainer.wait_latest_checkpoint(trainer.FLASH_CKPT_WAIT_TIMEOUT)
+
         return res
 
     def _prepare_callbacks(self):

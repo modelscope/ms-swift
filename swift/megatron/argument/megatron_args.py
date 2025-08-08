@@ -114,7 +114,7 @@ class MegatronArguments(ExtraMegatronArguments):
     cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
     calculate_per_token_loss: bool = True
     use_flash_attn: bool = False
-    attention_backend: str = 'auto'  # flash, fused, unfused, local, auto
+    attention_backend: str = 'flash'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
     optimizer_cpu_offload: bool = False
     optimizer_offload_fraction: float = 1.
@@ -212,6 +212,7 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = None
 
     expert_model_parallel_size: int = 1
+    expert_tensor_parallel_size: Optional[int] = None
     moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex', 'alltoall_seq'] = 'alltoall'
     moe_enable_deepep: bool = False
     moe_grouped_gemm: bool = False

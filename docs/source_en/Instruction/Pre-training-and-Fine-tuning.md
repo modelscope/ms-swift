@@ -37,7 +37,7 @@ You can refer to the CLI script for pre-training [here](https://github.com/model
 
 Tips:
 
-- `swift pt` is equivalent to `swift sft --use_chat_template false`.
+- `swift pt` is equivalent to `swift sft --use_chat_template false --loss_scale all`.
 - `swift pt` typically uses large datasets, and it is recommended to combine it with `--streaming` for streaming datasets.
 
 ## Fine-tuning
