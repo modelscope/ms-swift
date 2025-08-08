@@ -3,7 +3,7 @@ import os
 from typing import Any, Dict, Optional, Tuple, Type
 
 import torch
-from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase, AutoProcessor
+from transformers import AutoConfig, AutoProcessor, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
@@ -801,14 +801,14 @@ register_model(
 
 
 def get_model_tokenizer_midashenglm(model_dir: str,
-                             model_info: ModelInfo,
-                             model_kwargs: Dict[str, Any],
-                             load_model: bool = True,
-                             model_config=None,
-                             **kwargs):
+                                    model_info: ModelInfo,
+                                    model_kwargs: Dict[str, Any],
+                                    load_model: bool = True,
+                                    model_config=None,
+                                    **kwargs):
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    
+
     if model_info.torch_dtype is not None:
         k_true = dtype_mapping[model_info.torch_dtype]
         for k in dtype_mapping.values():
@@ -817,7 +817,7 @@ def get_model_tokenizer_midashenglm(model_dir: str,
     quantization_config = model_kwargs.get('quantization_config')
     if not isinstance(quantization_config, BitsAndBytesConfig):
         model_config.torch_dtype = None
-    
+
     use_flash_attn = AttnImpl.to_use_flash_attn(kwargs.pop('attn_impl', None), 'auto')
     model_config.use_flash_attn = use_flash_attn
 
@@ -836,10 +836,11 @@ def get_model_tokenizer_midashenglm(model_dir: str,
     kwargs['model_config'] = model_config
 
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-        
+
     if load_model and model is not None:
         if not model.training:
-            if hasattr(model, 'decoder') and hasattr(model.decoder, 'model') and hasattr(model.decoder.model, 'embed_tokens'):
+            if hasattr(model, 'decoder') and hasattr(model.decoder, 'model') and hasattr(
+                    model.decoder.model, 'embed_tokens'):
                 for param in model.decoder.model.embed_tokens.parameters():
                     param.requires_grad_(False)
                 logger.info('Fixed embed_tokens gradients for inference')
@@ -847,19 +848,20 @@ def get_model_tokenizer_midashenglm(model_dir: str,
         if hasattr(model, 'audio_encoder'):
             model.audio_encoder = model.audio_encoder.float()
             logger.info('Converted audio_encoder to float32 (cuFFT requirement)')
-            
+
             if hasattr(model, 'audio_projector'):
                 main_dtype = next(model.parameters()).dtype
                 model.audio_projector = model.audio_projector.to(main_dtype)
                 logger.info(f'Audio projector set to {main_dtype}')
-    
+
     try:
         model.transformer.registered_causal_mask = model.transformer.registered_causal_mask.cuda()
         logger.info('registered_causal_mask to cuda')
     except AttributeError:
         pass
-    
+
     return model, processor
+
 
 register_model(
     ModelMeta(
