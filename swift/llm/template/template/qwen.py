@@ -280,7 +280,8 @@ class Qwen2VLTemplate(Template):
                     if self.version == 'v2_5':
                         from qwen_vl_utils import vision_process
                         media_inputs['second_per_grid_ts'] = [
-                            processor.image_processor.temporal_patch_size / tmp for tmp in fps]
+                            processor.image_processor.temporal_patch_size / tmp for tmp in fps
+                        ]
                 idx_list = findall(input_ids, media_token)
                 merge_length = processor.image_processor.merge_size**2
 
