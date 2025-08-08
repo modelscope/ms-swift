@@ -404,7 +404,8 @@ swift export \
 - moe_enable_deepep: 实验性功能，启用DeepSeek/DeepEP以实现 MoE 模型中的高效令牌分发与组合。仅在设置`--moe_token_dispatcher_type flex`使用灵活令牌分发器时生效。
 - 🔥moe_grouped_gemm: 当每个rank包含多个专家时，通过在多个流中启动多个本地 GEMM 内核，利用 TransformerEngine中的GroupedLinear提高利用率和性能。默认为False。
 - 🔥moe_permute_fusion: 在令牌分发过程中融合令牌重排操作。默认为False。
-- 🔥moe_aux_loss_coeff: 辅助损失的缩放系数：建议的初始值为 1e-2。默认为None。自动从config.json读取。
+- 🔥moe_aux_loss_coeff: 默认为0，不使用aux_loss。
+  - 注意：在"ms-swift<3.7.1"，其默认为None，自动从config.json读取。
 - moe_z_loss_coeff: z-loss 的缩放系数。默认为None。
 - moe_expert_capacity_factor: 每个专家的容量因子，None表示不会丢弃任何token。默认为None。自动从config.json读取。
 - 🔥moe_shared_expert_overlap: 启用共享专家计算与调度器通信之间的重叠。如果不启用此选项，共享专家将在路由专家之后执行。仅在设置了`moe_shared_expert_intermediate_size`时有效。默认为False。
