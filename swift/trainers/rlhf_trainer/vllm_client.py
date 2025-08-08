@@ -280,6 +280,8 @@ class VLLMClient:
 
     def parse_resp_data(self, resp_data):
         choice_cls = ChatCompletionResponseChoice
-        result = [ChatCompletionResponse(choices=[from_dict(data_class=choice_cls, data=c) for c in resp['choices']])]
+        result = [
+            ChatCompletionResponse(choices=[from_dict(data_class=choice_cls, data=c) for c in resp_data['choices']])
+        ]
 
         return result

@@ -306,9 +306,6 @@ class CompletionResponseChoice:
     logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
-
-
-
 @dataclass
 class ChatCompletionResponse:
     model: str
@@ -325,26 +322,54 @@ class ChatCompletionResponse:
         id_ = f'cmpl{self.id[len("chatcmpl"):]}'
         return CompletionResponse(self.model, choices, self.usage, id_, created=self.created)
 
+
 class RolloutOutput(BaseModel):
-    results: ChatCompletionResponse
-    # multi turn rollout
-    messages: Optional[Messages] = None  # Conversation history for the final rollout (required for multi-turn)
-    response_token_ids: Optional[List[List[int]]] = None  # (optional) Token IDs generated at each rollout turn
-    response_loss_mask: Optional[List[List[int]]] = None  # (optional) Loss mask for each rollout turn
-    extra_info: Dict[str, Any] = Field(default_factory=dict)  # Additional rollout infos; must be JSON-serializable
+    """
+    Output structure for rollout.
+
+    Attributes:
+        response (ChatCompletionResponse):
+            The model's response
+
+        messages (Optional[Messages]):
+            (Optional) Conversation history for the final rollout; required for multi-turn scenarios.
+            NOTE:
+                - If provided, this messages sequence will overwrite the original messages.
+                - If not provided, 'response' will be appended as the latest turn in the original messages.
+                - For multi-turn training, you need to manually return the updated messages, including the full history.
+                - The messages should include the latest assistant response as the final message.
+
+        response_token_ids (Optional[List[List[int]]]):
+            (Optional) Token IDs generated at each rollout turn.
+            If provided, the training process will skip tokenizing the response.
+
+        response_loss_mask (Optional[List[List[int]]]):
+            (Optional) Loss masks corresponding to each rollout turn.
+            If provided, the training process will skip computing loss masks for the response (as controlled by the `loss_scale` parameter). # noqa
+
+        rollout_infos (Dict[str, Any]):
+            (Optional) Additional rollout information. This must be JSON-serializable.
+    """
+    response: ChatCompletionResponse
+    # multi turn
+    messages: Optional[Messages] = None
+    response_token_ids: List[List[int]] = Field(default_factory=list)
+    response_loss_mask: List[List[int]] = Field(default_factory=list)
+    rollout_infos: Dict[str, Any] = Field(default_factory=dict)
 
     def model_post_init(self, __context):
-        # Ensure multimodal data in extra_info is serializable (e.g., images to base64)
+        # Ensure multimodal data in rollout_infos is serializable (e.g., images to base64)
         super().model_post_init(__context)
         self.mminfo_to_serializable()
 
     def mminfo_to_serializable(self):
         mm_keys = ['images', 'audios', 'videos']
 
-        for key, value in self.extra_info.items():
+        for key, value in self.rollout_infos.items():
             if key in mm_keys:
                 # Convert multimodal content to base64 for serialization
-                self.extra_info[key] = MultiModalRequestMixin.to_base64(value)
+                self.rollout_infos[key] = MultiModalRequestMixin.to_base64(value)
+
 
 @dataclass
 class CompletionResponse:

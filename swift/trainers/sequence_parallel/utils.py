@@ -19,7 +19,7 @@ from .base import SequenceParallel
 if TYPE_CHECKING:
     try:
         from ..rlhf_trainer import GRPOTrainer
-        from ..rlhf_trainer.grpo_trainer import InputsType
+        from ..rlhf_trainer.grpo_trainer import DataType
     except ImportError:
         pass
 # Conditional import for profiling decorator
@@ -497,7 +497,7 @@ def padding_free_context_grpo(self, model: torch.nn.Module, sp_instance):
 def _get_per_token_logps_and_entropies_grpo(
         self: 'GRPOTrainer',
         model: torch.nn.Module,
-        inputs: 'InputsType',
+        inputs: 'DataType',
         sp_instance: SequenceParallel,
         compute_entropy: bool = False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     """Get per token logps for GRPO sequence parallel training"""

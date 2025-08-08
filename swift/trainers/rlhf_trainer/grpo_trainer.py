@@ -1,10 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
+import base64
 import concurrent.futures
 import inspect
 import os
 import re
 import time
+import uuid
 from collections import defaultdict, deque
 from concurrent.futures import Future
 from contextlib import contextmanager, nullcontext
@@ -19,6 +21,7 @@ import torch
 import torch.nn as nn
 import transformers
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
+from dacite import from_dict
 from packaging import version
 from torch.nn import ModuleList
 from torch.utils.data import DataLoader
@@ -39,7 +42,8 @@ from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import multi_turns, orms, rm_plugins
 from swift.plugin.multi_turn import MultiTurnScheduler
 from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_logger, is_swanlab_available,
-                         is_vllm_available, is_wandb_available, seed_worker, unwrap_model_for_generation)
+                         is_vllm_available, is_wandb_available, remove_response, seed_worker,
+                         unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (_ForwardRedirection, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
@@ -60,9 +64,9 @@ if is_wandb_available():
 if is_swanlab_available():
     import swanlab
 
-InputsType = List[Dict[str, Union[torch.Tensor, Any]]]
-# tuple: (messages, finish_reason)
-OutputsType = List[Dict[List[Dict], str]]  # TODO: Check
+DataType = List[Dict[str, Union[torch.Tensor, Any]]]
+
+# patch to fix save last_checkpoint https://github.com/modelscope/ms-swift/pull/4969
 if not hasattr(RepeatSampler, 'old_len_func'):
     origin_len_func = RepeatSampler.__len__
 
@@ -72,16 +76,7 @@ if not hasattr(RepeatSampler, 'old_len_func'):
     RepeatSampler.__len__ = patched_len
     RepeatSampler.old_len_func = origin_len_func
 
-"""
-TODO:
-    1. RolloutOutput 统一输入输出解析
-        a. docstring 修改
-    2. 增加 prompt id 和 device id，修改获取本地数据的逻辑
-        a. 待确认：是均分比较好 还是 获取本地prompt的rollout，前者的话不需要device id
-    3. 动态SPG逻辑，修改 _prepare_inputs 跳过 rollout 的逻辑
-    4. 不足一个batch的样本，随机抽取样本进行填充，并且不计算loss
-    5. 优化 server 分发数据的通信逻辑（利好大集群训练）
-"""
+
 class GRPOCallback(TrainerCallback):
 
     def __init__(self, trainer):
@@ -96,8 +91,7 @@ class GRPOCallback(TrainerCallback):
 
 @dataclass
 class DataCache:
-    inputs: List[Dict] = field(default_factory=list)
-    outputs: List[Dict] = field(default_factory=list)
+    results: DataType
 
 
 def identity_data_collator(features):
@@ -615,73 +609,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         while self._queue.empty():
             time.sleep(0.01)
 
-    def _infer(self,
-               inputs: Optional[InputsType],
-               request_config: RequestConfig,
-               is_global_inputs: bool = False) -> List[RolloutOutput]:
+    def _rollout(self,
+                 inputs: Optional[DataType],
+                 request_config: RequestConfig,
+                 is_global_inputs: bool = False) -> List[RolloutOutput]:
         request_config = self._get_request_config()
-        # keys from InferRequest
-        per_device_size = len(inputs)
-        if is_global_inputs:
-            per_device_size //= self.accelerator.num_processes
         if self.vllm_mode == 'server':
-            # for server mode, we gather all the inputs and send to remote vllm server in main process
-            if is_global_inputs:
-                # async generate, pre-gather to avoid potential communicate operator
-                all_inputs = inputs
-                all_input_lengths = [per_device_size] + [0] * (self.accelerator.num_processes - 1)
-            else:
-                all_inputs = gather_object(inputs)
-                all_input_lengths = gather_object([len(inputs)])
-
-            if not any(inputs for inputs in all_inputs):
-                return []
-
-            if self.accelerator.is_main_process:
-                results: List[RolloutOutput] = self._engine_infer(
-                    infer_requests=all_inputs, request_config=request_config)
-            else:
-                results = [None] * len(all_inputs)
-            # Broadcast the results from the main process to all processes,
-            # ensuring each process receives its corresponding slice.
-            if not is_global_inputs:
-                results = broadcast_object_list(results, from_process=0)
-                start_idx = sum(all_input_lengths[:self.accelerator.process_index])
-                end_idx = start_idx + all_input_lengths[self.accelerator.process_index]
-                results = results[start_idx:end_idx]
-            else:
-                results = results if self.accelerator.is_main_process else []
+            rollout_outputs = self._server_rollout(inputs, request_config, is_global_inputs)
         else:
-            # pt / vllm colocate
-            if self.vllm_tensor_parallel_size > 1:
-                # Gather prompts from all ranks in the TP group and flatten.
-                # Each rank starts with its own prompts; after gathering, all ranks see the full group set.
-                # Note: The input sizes may differ across ranks (e.g., in multi-turn scenarios,
-                # the amount of data each rank continues to process may vary).
-                local_rank_in_group = torch.distributed.get_rank(group=self.tp_group)
-                local_input_length = len(inputs)
-                all_input_lengths = [None] * self.vllm_tensor_parallel_size
-                torch.distributed.all_gather_object(all_input_lengths, local_input_length, group=self.tp_group)
-                start_idx = sum(all_input_lengths[:local_rank_in_group])
-                end_idx = start_idx + all_input_lengths[local_rank_in_group]
-
-                # orig_size = len(inputs)/
-                gathered_inputs = [None for _ in range(self.vllm_tensor_parallel_size)]
-                torch.distributed.all_gather_object(gathered_inputs, inputs, group=self.tp_group)
-                inputs = [p for sublist in gathered_inputs for p in sublist]
-            # Set request_config.seed
-            # 1. Ensure that the seed for vLLM Engines within each TP (Tensor Parallelism) group is the same;
-            #   otherwise, the program may hang.
-            # 2. Ensure that the seed for vLLM Engines across different TP groups is different;
-            #   otherwise, identical completions will be generated.
-            resltus: List[RolloutOutput] = self._engine_infer(
-                infer_requests=inputs, request_config=request_config)
-
-            if self.vllm_tensor_parallel_size > 1:
-                # Slice completions for this rank within its TP group.
-                # Each rank generates all outputs — we keep only our share.
-                results = results[start_idx:end_idx]
-        return results
+            rollout_outputs = self._colocate_rollout(inputs, request_config)
+        return rollout_outputs
 
     def _get_request_config(self) -> RequestConfig:
         request_config = copy(self.request_config)
@@ -702,7 +639,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return request_config
 
-    def _set_inputs_system(self, inputs: InputsType) -> InputsType:
+    def _set_inputs_system(self, inputs: DataType) -> DataType:
+        """
+        Inserts a default system message at the beginning of each input if specified.
+
+        If a default system message is defined in the template and the first message in
+        an input is not already a system message, this method inserts the default system
+        message at the beginning of the messages list for each input. If no default system
+        message is provided, no modification is made.
+
+        Args:
+            inputs (DataType): A list of input data entries, each containing a 'messages' field.
+
+        Returns:
+            DataType: The input list, with the default system message prepended if applicable.
+        """
         if not self.template.template_meta.default_system:
             return
         if all(_input['messages'][0]['role'] == 'system' for _input in inputs):
@@ -713,163 +664,40 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 messages.insert(0, {'role': 'system', 'content': self.template.template_meta.default_system})
 
     def _infer_single_or_multi_turn(self,
-                                    inputs: InputsType,
+                                    inputs: DataType,
                                     request_config: RequestConfig,
-                                    is_global_inputs: bool = False) -> OutputsType:
-        """Perform multi-turn or single-turn inference
+                                    is_global_inputs: bool = False) -> List[DataType]:
+        """
+        Runs inference for either single-turn or multi-turn dialogue.
 
         Args:
-            inputs: list of input requests
-            request_config: Inference configuration parameters
-            is_global_inputs:
-                A boolean indicating whether the inputs are global. When set to True,
-                the returned results in the main process will be a complete list of
-                global_outputs, while other processes will return an empty list [].
+            inputs: Input data for inference.
+            request_config: Configuration for the inference request.
+            is_global_inputs: Whether the inputs are from the global process.
+
         Returns:
-            List of outputs where each entry contains:
-            - List of responses per prompt
-            - Each response is a tuple of (message_history, finish_reason)
+            List of processed outputs.
         """
         # for external server, pass the system args which may define in trainer
+
+        # Step 1: Prepare inputs with system prompts (if any)
         self._set_inputs_system(inputs)
-        # infer first turn
-        results: List[RolloutOutput] = self._infer(inputs, request_config, is_global_inputs)
-        outputs = []
+
+        # Step 2: First-turn rollout
+        rollout_outputs: List[RolloutOutput] = self._rollout(inputs, request_config, is_global_inputs)
+
+        # Step 3: Handle single-turn (no scheduler, no async engine)
         if not self.multi_turn_scheduler and not self.vllm_use_async_engine:
-            # message concatenation
-            for i, result in enumerate(results):
-                _input: Dict = deepcopy(inputs[i])
-                choice = result.results.choices[0]
-                if result.messages:
-                    messages = result.messages
-                else:
-                    messages = _inputs[i]['messages']
-                    messages.append({'role': 'assistant', 'content': choice.message.content})
-                _input['messages'] = messages
-                # TODO: input 和 results 数量不定
+            return self._postprocess_rollout_outputs(inputs, rollout_outputs)
 
-                _choices = []
-                for choice in output.choices:
-                    _input: Dict = deepcopy(inputs[i])
-                    # origin messages may contain response, we should remove it
-                    InferRequest.remove_response(_input['messages'])
-                    _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
-                    output_dict = {
-                        'messages': _input['messages'],
-                        'finish_reason': choice.finish_reason,
-                        # NOTE: for training, we use rollout token_ids to calculate loss
-                        # because the tokenizer encode/decode may change the token ids
-                        'completion_ids': choice.token_ids
-                    }
-                    _choices.append(output_dict)
-                outputs.append(_choices)
-            outputs = [item for sublist in outputs for item in sublist]
-        else:
-            # vLLMAsyncLLMEngine, only server mode is supported right now.
-            # NOTE: The message concatenation has already been done in the engine.
-            if self.vllm_use_async_engine:
-                for i, output in enumerate(results):
-                    _choices = []
-                    for choice in output.choices:
-                        # concated in Engine
-                        _choice = {
-                            'messages': choice.messages,
-                            'finish_reason': choice.finish_reason,
-                            'completion_ids': choice.token_ids,
-                        }
-                        if self.use_gym_env:
-                            _choice.update({
-                                'total_reward': choice.total_reward,
-                                'trajectory_info': choice.trajectory_info
-                            })
-                    outputs.append(_choices)
-                outputs = [item for sublist in outputs for item in sublist]
-            else:
-                # multi turn for PTEngine or vLLMLLMEngine
-                orig_size = len(inputs)
-                outputs = [None] * orig_size
-                # we remove origin response in first turn
-                current_turn = 1
-                while True:
-                    has_local_data = len(inputs) > 0
-                    has_global_data = gather_object([has_local_data])
-                    if not any(has_global_data):
-                        break
-                    # inputs for current turn
-                    current_inputs = []
-                    cnt = 0
-                    # combine completions from results with messages
-                    for i, output in enumerate(results):
-                        for choice in output.choices:
-                            current_input = deepcopy(inputs[i])
-                            messages = current_input['messages']
+        # Step 4: Handle async engine (multi-turn handled inside the engine)
+        if self.vllm_use_async_engine:
+            return self._postprocess_rollout_outputs(inputs, rollout_outputs)
 
-                            if current_turn == 1 or not messages[-1]['content'] or messages[-1]['content'] == '<None>':
-                                # first turn or the last message content is empty(dummy), remove the response
-                                InferRequest.remove_response(messages)
-                            if messages[-1]['role'] == 'assistant':
-                                # If the last message was assistant, concatenate the new content to it
-                                messages[-1]['content'] += choice.message.content
-                            else:
-                                # append a new message from the assistant
-                                messages.append({'role': 'assistant', 'content': choice.message.content})
+        # Step 5: Handle multi-turn locally
+        return self._sync_multi_turn_infer(inputs, rollout_outputs, request_config)
 
-                            if 'index' not in current_input:
-                                current_input['index'] = cnt
-                            current_input['finish_reason'] = choice.finish_reason
-                            if 'completion_ids' not in current_input:
-                                current_input['completion_ids'] = []
-                            current_input['completion_ids'].append(choice.token_ids)
-
-                            cnt += 1
-                            current_inputs.append(current_input)
-
-                    # Process messages in the multi-turn function
-                    should_stops = [
-                        self.multi_turn_scheduler.check_finished(request, result.choices[0], current_turn)
-                        for request, result in zip(self.inputs_to_rolloutrequest(current_inputs), results)
-                    ]
-
-                    # Retain messages that are not yet finished for the next round of rollout
-                    pending_inputs = []
-                    for stop, _input, result in zip(should_stops, current_inputs, results):
-                        index = _input['index']
-                        if stop:
-                            outputs[index] = {
-                                'messages': _input['messages'],
-                                'finish_reason': result.choices[0].finish_reason,
-                                'completion_ids': result.choices[0].token_ids,
-                                'multi_turn_infos': _input.get('multi_turn_infos', {'num_turns': 1})
-                            }
-                        else:
-                            current_request = self.inputs_to_rolloutrequest([_input])[0]
-                            ret = self.multi_turn_scheduler.step(current_request, result.choices[0], current_turn)
-                            if isinstance(ret, tuple):
-                                infer_request, info_dict = ret
-                            else:
-                                infer_request = ret
-                                info_dict = {}
-                            info_dict['num_turns'] = current_turn + 1
-                            pending_input = asdict(infer_request)
-                            if 'multi_turn_infos' not in pending_input:
-                                pending_input['multi_turn_infos'] = {}
-                            for key, value in info_dict.items():
-                                pending_input['multi_turn_infos'][key] = value
-
-                            pending_input['index'] = index
-                            pending_inputs.append(pending_input)
-
-                    current_infer_inputs = pending_inputs if has_local_data else []
-                    results = self._infer(current_infer_inputs, request_config)
-
-                    inputs = pending_inputs
-                    current_turn += 1
-                assert not any([o is None for o in outputs])
-
-        # flatten 2D list to 1D list
-        return outputs
-
-    def async_infer(self, all_inputs):
+    def async_generate_rollout(self, all_inputs):
         current_queue = self._queue
 
         def infer_task():
@@ -887,9 +715,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         def done(future):
             try:
                 result = future.result()
-                current_queue.put(DataCache(all_inputs, result))
+                current_queue.put(DataCache(result))
             except Exception as e:
-                logger.error('Error in async_infer callback: %s', str(e))
+                logger.error('Error in async_generate_rollout callback: %s', str(e))
 
         future.add_done_callback(done)
 
@@ -899,54 +727,60 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.state.global_step != self._last_loaded_step:
             self._move_model_to_vllm(skip_async_check=True)
             self._last_loaded_step = self.state.global_step
-        outputs = self._infer_single_or_multi_turn(all_inputs, self.request_config, is_global_inputs=True)
-        self._queue.put(DataCache(all_inputs, outputs))
+        results = self._infer_single_or_multi_turn(all_inputs, self.request_config, is_global_inputs=True)
+        self._queue.put(DataCache(results))
 
-    def _fast_infer(self, inputs: InputsType) -> Tuple[InputsType, OutputsType]:
-        # Skip the first wake_up to avoid the warning "Executor is not sleeping"
+    def _fast_infer(self, inputs: DataType) -> DataType:
+        """
+        Efficient inference logic with support for vLLM colocate mode, async generation,
+        and model weight offloading.
+        """
 
+        # Step 1: Wake up the engine if it's sleeping (vLLM colocate mode)
         if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
             if self.engine.inner_model_executor.is_sleeping:
-                # First, load weights only, https://github.com/vllm-project/vllm/pull/15500
-                if 'tags' in inspect.signature(self.engine.engine.wake_up).parameters:
-                    self.engine.engine.wake_up(tags=['weights'])
-                else:
-                    logger.info('We recommend installing vLLM >= 0.8.3, (ideally 0.8.5.post1)'
-                                'to help reduce memory peaks during engine wake-up.')
-                    self.engine.engine.wake_up()
+                wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
+                # Load weights only (faster and reduces memory peak)
+                kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
+                self.engine.engine.wake_up(**kwargs)
 
-        # First, have main process load weights if needed
+        # Step 2: Load model weights if global_step has changed
         if self.state.global_step != self._last_loaded_step:
             self._move_model_to_vllm()
             self._last_loaded_step = self.state.global_step
 
+        # Step 3: Offload model/optimizer if enabled
         context = self.offload_context if self.enable_offload else nullcontext
         with context():
-            if self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping and \
-                    'tags' in inspect.signature(self.engine.engine.wake_up).parameters:
+            # Step 4: Wake up kv_cache after offloading (vLLM colocate only)
+            if (self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping
+                    and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
                 # Load the kv_cache only after updating and offload the weights.
                 self.engine.engine.wake_up(tags=['kv_cache'])
 
+            # Step 5: Handle rollout for async generate or sync
             if self.async_generate:
-                # send this step data to server
-                # we gather inputs outside the thread for prevent potential gather deadlock
+                # Pre-gather inputs to avoid potential gather deadlocks
                 all_inputs = gather_object(inputs)
-                self.async_infer(all_inputs)
-                # cached data from last step
-                data_cache = self._queue.get()
-                all_inputs = data_cache.inputs
-                all_outputs = gather_object(data_cache.outputs)
+                self.async_generate_rollout(all_inputs)
+
+                # Retrieve cached outputs from the last step
+                data_cache: DataCache = self._queue.get()
+                all_outputs = gather_object(data_cache.results)
+
+                # Slice inputs/outputs for the current process
+                per_device_datasize = len(all_outputs) // self.accelerator.num_processes
                 process_slice = slice(
-                    self.accelerator.process_index * len(inputs),
-                    (self.accelerator.process_index + 1) * len(inputs),
+                    self.accelerator.process_index * per_device_datasize,
+                    (self.accelerator.process_index + 1) * per_device_datasize,
                 )
-                inputs = all_inputs[process_slice]
                 outputs = all_outputs[process_slice]
 
             else:
                 with self.multi_turn_completion_length_context():
                     outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
 
+            # Step 6: Reset prefix cache and sleep to release memory
             if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
                 # Reset prefix cache before sleeping to prevent using stale cache upon waking up
                 # https://github.com/modelscope/ms-swift/pull/5143
@@ -954,49 +788,27 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.engine.engine.sleep(level=self.args.sleep_level)
                 empty_cache()
 
-        return inputs, outputs
+        return outputs
 
-    def _generate_completions(self, inputs: InputsType) -> InputsType:
-        """Generate completions for given inputs using either fast inference or standard PyTorch inference.
+    def _generate_completions(self, inputs: DataType) -> DataType:
+        inputs = self._preprocess_inputs(inputs)
 
-        Args:
-            inputs: List of input examples containing conversation messages.
-
-        Returns:
-            Modified inputs with generated completions added to the last message
-            and truncation flag set in 'is_truncated' field.
-        """
         mode = 'train' if self.model.training else 'eval'
         if self.use_fast_infer:
-            inputs, outputs = self._fast_infer(inputs)
+            results = self._fast_infer(inputs)
         else:
             with unwrap_model_for_generation(
                     self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
             ), self.template.generate_context(), self.multi_turn_completion_length_context():
-                outputs = self._infer_single_or_multi_turn(inputs, self.request_config)
+                results = self._infer_single_or_multi_turn(inputs, self.request_config)
                 if mode == 'train':
                     # In training mode, ensure the model is returned to train() mode after inference
                     # This is necessary as pt engines set the model to eval mode during generation
                     self.model.train()
 
-        for i, output in enumerate(outputs):
-            inputs[i]['messages'] = output['messages']
-            inputs[i]['is_truncated'] = output['finish_reason'] == 'length'
-            inputs[i]['completion_ids'] = output['completion_ids']
-            if 'multi_turn_infos' in output:
-                multi_turn_infos = output['multi_turn_infos']
+        return results
 
-                if 'images' in output['multi_turn_infos']:
-                    # override images for 'think with images' scenario
-                    inputs[i]['images'] = multi_turn_infos['images']
-                inputs[i]['multi_turn_infos'] = multi_turn_infos
-            if self.use_gym_env:
-                inputs[i]['total_reward'] = output['total_reward']
-                inputs[i]['trajectory_info'] = output['trajectory_info'] if 'trajectory_info' in output else None
-
-        return inputs
-
-    def _generate_and_score_completions(self, inputs: InputsType) -> InputsType:
+    def _generate_and_score_completions(self, inputs: DataType) -> DataType:
         # resample for overlong(> max_length) prompt data
         if self.template.truncation_strategy == 'raise':
             inputs = self.resample_truncated_inputs(inputs)
@@ -1022,7 +834,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return batch_encoded_inputs
 
-    def _score_completions(self, inputs: InputsType) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
+    def _score_completions(self, inputs: DataType) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
         """Score completions using all reward functions
 
         Args:
@@ -1139,19 +951,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         advantage_chunks = torch.chunk(advantages, spg)
         return spg_chunks, advantage_chunks
 
-    def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> List[InputsType]:
+    def _prepare_batch_inputs(self, inputs: DataType, rewards: torch.Tensor) -> List[DataType]:
         """
         Prepare the final batch inputs with advantages, ref/old_policy logps and other fields for RL training.
 
         Args:
-            inputs (InputsType): List of input samples. Original shape is [spg*bs] where:
+            inputs (DataType): List of input samples. Original shape is [spg*bs] where:
                 - spg: steps_per_generation
                 - bs: per-device batch size
             rewards (torch.Tensor): Tensor of global rewards corresponding to the inputs.
                 Shape should match the total number of samples (spg*bs*num_processes*num_generations)
 
         Returns:
-            List[InputsType]: A list of prepared batch inputs, organized as [spg][bs]
+            List[DataType]: A list of prepared batch inputs, organized as [spg][bs]
         """
         # Compute advantages
         grouped_rewards = rewards.view(-1, self.num_generations)
@@ -1252,7 +1064,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, name in enumerate(self.reward_func_names):
             self._textual_logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
 
-    def _apply_chat_template_to_messages_list(self, messages_list: InputsType):
+    def _apply_chat_template_to_messages_list(self, messages_list: DataType):
         prompts_text = []
         for messages in messages_list:
             InferRequest.remove_response(messages)
@@ -1594,7 +1406,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.eval_flag = True
         return output
 
-    def training_step(self, model: nn.Module, inputs: InputsType, num_items_in_batch=None) -> torch.Tensor:
+    def training_step(self, model: nn.Module, inputs: DataType, num_items_in_batch=None) -> torch.Tensor:
         if self.args.async_generate:
             # Wait for the eval rollout to complete
             while not self.is_async_generate_eval_rollout_done():
@@ -1603,47 +1415,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _engine_infer(
         self,
-        infer_requests: InputsType,
+        infer_requests: List[RolloutInferRequest],
         request_config: Optional[RequestConfig] = None,
         *,
         use_tqdm: Optional[bool] = False,
     ) -> List[RolloutOutput]:
         with patch_profiling_context(self, 'generate'):
             if self.vllm_mode == 'server':
-                request_keys = ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
-
-                infer_requests = [{
-                    **{k: request[k]
-                       for k in request_keys if k in request},
-                    **({
-                        'data_dict': {k: request[k]
-                                      for k in request if k not in request_keys}
-                    } if (
-                        (self.multi_turn_scheduler and self.vllm_use_async_engine) or
-                        (self.vllm_use_async_engine and self.use_gym_env)
-                    ) else {})  # use gym infer
-                } for request in infer_requests]
-
-                self._process_infer_requests_images(infer_requests)
                 return self.vllm_client.infer(infer_requests, asdict(request_config), use_tqdm=use_tqdm)
             else:
                 res = self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
-                return [RolloutOutput(results=r) for r in res]
-
-    def _process_infer_requests_images(self, infer_requests: InputsType):
-        # Process image format into a format that session.post can accept
-        import base64
-        if not any('images' in request for request in infer_requests):
-            return
-        for request in infer_requests:
-            if 'images' not in request:
-                continue
-            for i, img in enumerate(request['images']):
-                if 'bytes' in img and img['bytes']:
-                    request['images'][i] = base64.b64encode(img['bytes']).decode('utf-8')
-                elif 'path' in img and img['path']:
-                    request['images'][i] = img['path']
-        return
+                return [RolloutOutput(response=r) for r in res]
 
     def old_policy(self):
         return self.num_iterations > 1 or self.args.gradient_accumulation_steps % self.args.steps_per_generation != 0
@@ -1734,7 +1516,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.engine.max_model_len = original_max_len
             del self.engine.set_grpo_max_model_len
 
-    def resample_truncated_inputs(self, inputs: InputsType, n_try_fetch: int = 10) -> InputsType:
+    def resample_truncated_inputs(self, inputs: DataType, n_try_fetch: int = 10) -> DataType:
         template = self.template
         for i, data in enumerate(inputs):
             n_try = 0
@@ -1811,7 +1593,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def is_async_generate_train_rollout_done(self):
         return not self.train_queue.empty()
 
-    def inputs_to_rolloutrequest(self, inputs: InputsType) -> List[RolloutInferRequest]:
+    def inputs_to_rolloutrequest(self, inputs: DataType) -> List[RolloutInferRequest]:
         """Convert a list of inputs to a list of RolloutInferRequest objects
 
         If the input contains a 'data_dict' key, it will be used as the base for the new data_dict.
@@ -1869,3 +1651,435 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 self.load_optimizer()
             empty_cache()
+
+    def _add_prompt_id_to_inputs(self, inputs: DataType) -> DataType:
+        """
+        Adds a unique `prompt_id` to each input based on their `messages` content.
+
+        Inputs with identical `messages` (assumed to be adjacent) will share the same `prompt_id`.
+
+        Args:
+            inputs (DataType): A list of dictionaries, each containing a 'messages' key.
+
+
+        Returns:
+            DataType: The input list with each item containing a new 'prompt_id' field.
+
+        Example:
+            >>> inputs = [
+            ...     {"messages": [{"role": "user", "content": "hello"}], "data": 1},
+            ...     {"messages": [{"role": "user", "content": "hello"}], "data": 2},
+            ...     {"messages": [{"role": "assistant", "content": "hi"}], "data": 3},
+            ... ]
+            >>> self._add_prompt_id_to_inputs(inputs)
+            [
+                {"messages": [...], "data": 1, "prompt_id": "a1b2c3..."},
+                {"messages": [...], "data": 2, "prompt_id": "a1b2c3..."},
+                {"messages": [...], "data": 3, "prompt_id": "d4e5f6..."},
+            ]
+        """
+        if not inputs:
+            return inputs
+
+        prev_messages = inputs[0].get('messages')
+        current_uuid = str(uuid.uuid4())
+        inputs[0]['prompt_id'] = current_uuid
+
+        for i in range(1, len(inputs)):
+            messages = inputs[i]['messages']
+            if messages == prev_messages:
+                inputs[i]['prompt_id'] = current_id
+            else:
+                prev_messages = messages
+                current_id = str(uuid.uuid4())
+                inputs[i]['prompt_id'] = current_id
+
+        return inputs
+
+    def _server_rollout(self, inputs: DataType, request_config: RequestConfig,
+                        is_global_inputs: bool) -> List[RolloutOutput]:
+        """
+        Perform rollout inference using vLLM server mode.
+
+        Args:
+            inputs: List of input data to be processed
+            request_config: Configuration dictionary for the inference request
+            is_global_inputs: Flag indicating whether inputs are shared across all processes (async-generate)
+
+        Returns:
+            List of RolloutOutput objects containing inference results
+                For non-global inputs(async-generate), returns only the portion assigned to this process.
+
+        Notes:
+            - async engine with multi-turn scenarios, the outputs count may exceed inputs count
+            - For distributed inputs, outputs are scattered to processes
+            - Main process coordinates inference and broadcasts outputs to other processes
+        """
+        # Convert inputs to inference requests
+        infer_requests = self.inputs2requests(inputs)
+
+        if is_global_inputs:
+            per_device_size = len(infer_requests) // self.accelerator.num_processes
+            # for async generate, data have been pre-gathered to avoid potential communicate operator
+            all_requests = infer_requests
+            all_requests_lengths = [per_device_size] + [0] * (self.accelerator.num_processes - 1)
+        else:
+            all_requests = gather_object(infer_requests)
+            all_requests_lengths = gather_object([len(infer_requests)])
+
+        if not any(requests for requests in all_requests):
+            return []
+
+        # TODO: Check flatten
+        if self.accelerator.is_main_process:
+            all_outputs: List[RolloutOutput] = self._engine_infer(
+                infer_requests=all_requests, request_config=request_config)
+
+        # Handle async engine the outputs count may exceed inputs count
+        if self.vllm_use_async_engine:
+            outputs_count = [len(all_outputs)] if self.accelerator.is_main_process else [0]
+            outputs_count = gather_object(outputs_count)[0]  # Broadcast count to all processes
+
+            # Initialize empty outputs for non-main processes
+            if not self.accelerator.is_main_process:
+                all_outputs = [None] * outputs_count
+
+        # Distribute outputs to all processes for non-global inputs
+        if not is_global_inputs:
+            all_outputs = broadcast_object_list(all_outputs, from_process=0)
+
+            # Calculate slice for this process's outputs
+            if not self.vllm_use_async_engine and self.multi_turn_scheduler:
+                # Special handling for colocated + multi-turn inference with varying request counts
+                start_idx = sum(all_requests_lengths[:self.accelerator.process_index])
+                end_idx = start_idx + all_requests_lengths[self.accelerator.process_index]
+                process_slice = slice(start_idx, end_idx)
+                outputs = outputs[process_slice]
+            else:
+                # Standard equal distribution case
+                outputs = self.get_even_process_rollout_outputs(all_outputs)
+
+        else:
+            # For global inputs, only main process keeps outputs
+            outputs = outputs if self.accelerator.is_main_process else []
+
+        return outputs
+
+    def _colocate_rollout(self, inputs: DataType, request_config: RequestConfig) -> List[RolloutOutput]:
+        """
+        Perform co-located rollout inference with PTEngine or vLLMEngine(TP supported).
+
+        Args:
+            inputs: Input data for the current process
+            request_config: Configuration parameters for the inference request
+
+        Returns:
+            List[RolloutOutput]: Inference results for this process's portion of inputs
+
+        Notes:
+            - For tensor parallel groups (vllm_tensor_parallel_size > 1):
+              * Gathers inputs from all ranks in the tensor parallel group
+              * Each rank processes the full input set but keeps only its assigned portion
+              * Ensures consistent seeds within TP groups for synchronization
+            - In single-process mode, directly processes the inputs
+        """
+        # Handle tensor parallel group processing
+        if self.vllm_tensor_parallel_size > 1:
+            # Gather prompts from all ranks in the TP group and flatten.
+            # Each rank starts with its own prompts; after gathering, all ranks see the full group set.
+            # Note: The input sizes may differ across ranks (e.g., in multi-turn scenarios,
+            # the amount of data each rank continues to process may vary).
+
+            # Step 1: Gather input lengths from all ranks in the TP group
+            local_rank_in_group = torch.distributed.get_rank(group=self.tp_group)
+            local_input_length = len(inputs)
+            all_input_lengths = [None] * self.vllm_tensor_parallel_size
+            torch.distributed.all_gather_object(all_input_lengths, local_input_length, group=self.tp_group)
+
+            # Calculate slice indices for this rank's outputs
+            start_idx = sum(all_input_lengths[:local_rank_in_group])
+            end_idx = start_idx + all_input_lengths[local_rank_in_group]
+
+            # Step 2: Gather actual inputs from all TP group ranks
+            gathered_inputs = [None for _ in range(self.vllm_tensor_parallel_size)]
+            torch.distributed.all_gather_object(gathered_inputs, inputs, group=self.tp_group)
+
+            # Flatten the gathered inputs
+            inputs = [p for sublist in gathered_inputs for p in sublist]
+
+        # Critical seed configuration for TP groups:
+        # 1. Same seed within TP group - ensures synchronization and prevents hangs
+        # 2. Different seeds across TP groups - avoids duplicate generations
+        outputs: List[RolloutOutput] = self._engine_infer(infer_requests=inputs, request_config=request_config)
+
+        # For TP groups, each rank keeps only its assigned portion of outputs
+        if self.vllm_tensor_parallel_size > 1:
+            outputs = outputs[start_idx:end_idx]
+
+        return outputs
+
+    def inputs2requests(self, inputs: DataType) -> List[RolloutInferRequest]:
+        """
+        Convert raw input data into RolloutInferRequest objects with proper data processing.
+
+        Args:
+            inputs: List of raw input dictionaries containing messages and multimedia data
+
+        Returns:
+            List[RolloutInferRequest]: Processed inference request objects ready for engine
+
+        Processing includes:
+        - Image data conversion (bytes to base64, path handling)
+        - Field filtering based on request metadata requirements
+        - Optional preservation of additional fields for multi-turn async scenarios
+        """
+
+        def _process_image_data(image_data: Union[dict, str]) -> str:
+            """Convert image data from various formats into standardized representation.
+
+            Args:
+                image_data: Either a dict with 'bytes' or 'path', or a direct string path
+
+            Returns:
+                str: Base64 encoded image data or original file path
+            """
+            if isinstance(image_data, dict):
+                if image_data.get('bytes'):
+                    return base64.b64encode(image_data['bytes']).decode('utf-8')
+                if image_data.get('path'):
+                    return image_data['path']
+            return image_data
+
+        if not inputs:
+            return []
+
+        # Define core metadata fields required for all requests
+        REQUEST_METADATA_FIELDS = ['messages', 'images', 'audios', 'videos', 'objects', 'uuid']
+        requests_dicts = []
+
+        for data in inputs:
+            # Extract required metadata fields
+            request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data}
+
+            # Preserve additional fields for multi-turn async scenarios
+            if self.multi_turn_scheduler and self.vllm_use_async_engine:
+                # data_dict is already concatenated inside async engine
+                extra_fields = {k: v for k, v in data.items() if k not in REQUEST_METADATA_FIELDS}
+                if extra_fields:
+                    request_data['data_dict'] = extra_fields
+            elif self.multi_turn_scheduler:
+                # Concatenate data_dict here
+                base_data_dict = {}
+                if 'data_dict' in data:
+                    if isinstance(data['data_dict'], dict):
+                        base_data_dict = data['data_dict']
+                    else:
+                        raise ValueError('data_dict exists but is not a dictionary')
+                # Add fields that are not in metadata fields and not 'data_dict'
+                extra_data = {k: v for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and k != 'data_dict'}
+                # Merge additional fields and existing data_dict
+                final_data_dict = {**extra_data, **base_data_dict}
+                request_data['data_dict'] = final_data_dict if final_data_dict else {}
+
+            requests_dicts.append(request_data)
+
+        # Process image data in each request
+        for request in requests_dicts:
+            if 'images' in request and request['images']:
+                request['images'] = ([_process_image_data(img) for img in request['images']] if isinstance(
+                    request['images'], list) else _process_image_data(request['images']))
+
+        # Convert dictionaries to formal request objects
+        return [from_dict(RolloutInferRequest, request_data) for request_data in requests_dicts]
+
+    def _preprocess_inputs(self, inputs: DataType) -> DataType:
+        """Preprocess input data before inference.
+
+        Args:
+            inputs: List of input dictionaries containing conversation messages
+
+        Returns:
+            Processed inputs with:
+            - Added prompt IDs for tracking
+            - Removed existing assistant responses from messages
+
+        Processing Steps:
+        1. Adds unique prompt IDs to each input for request tracking
+        2. Cleans each message sequence by removing existing assistant responses
+        """
+        processed_inputs = self._add_prompt_id_to_inputs(inputs)
+
+        for input_item in processed_inputs:
+            remove_response(input_item['messages'])
+
+        return processed_inputs
+
+    def _postprocess_rollout_outputs(self, inputs: DataType, outputs: List[RolloutOutput]) -> DataType:
+        """
+        Postprocess rollout outputs by merging them back into the input data structures.
+
+        Depending on the mode (async or sync), it either matches inputs by UUID
+        or assumes a one-to-one correspondence.
+        """
+
+        def merge_output_input_data(input_data: Dict[str, Union[torch.Tensor, Any]], output: RolloutOutput):
+            response = output.response
+            choice = response.choices[0]
+
+            # Step 1: Update or append assistant message
+            if output.messages:
+                input_data['messages'] = output.messages  # Override full message history
+            else:
+                # not provided, append
+                messages = input_data['messages']
+                remove_response(messages)
+                messages.append({'role': 'assistant', 'content': choice.message.content})
+
+                input_data['messages'].append({'role': 'assistant', 'content': choice.message.content})
+
+            # Step 2: Add token IDs and loss mask
+            if output.response_token_ids:
+                input_data['response_token_ids'] = output.response_token_ids
+                if output.response_loss_mask:
+                    input_data['response_loss_mask'] = output.response_loss_mask
+            else:
+                if not self.multi_turn_scheduler:
+                    # for single turn, skip tokenizer response
+                    input_data['response_token_ids'] = output.response.choices[0].token_ids
+
+            # Step 3: Attach rollout extra info
+            if output.rollout_infos:
+                input_data['rollout_infos'] = output.rollout_infos
+
+            # Step 4: Store finish reason (used for truncation filters etc.)
+            input_data['finish_reason'] = choice.finish_reason,
+
+            return input_data
+
+        # Async engine mode: match by UUID
+        if self.vllm_use_async_engine:
+            results = []
+            id2inputs = {}
+            for input_data in inputs:
+                uuid = input_data['uuid']
+                if uuid not in id2inputs:
+                    id2inputs[uuid] = deepcopy(input_data)
+
+            for output in outputs:
+                uuid = output.response.id
+                assert uuid not in id2inputs
+                input_data = deepcopy(id2inputs[uuid])
+                results.append(merge_output_input_data(input_data, output))
+
+            return results
+        else:
+            # Sync mode: simple zip merge
+            assert len(inputs) == len(outputs)
+            return [
+                merge_output_input_data(deepcopy(input_data), output) for input_data, output in zip(inputs, outputs)
+            ]
+
+    def _sync_multi_turn_infer(self, inputs: DataType, first_turn_rollout_outputs: List[RolloutOutput],
+                               request_config: RequestConfig) -> List[RolloutOutput]:
+        """
+        Handles multi-turn inference when not using async engine.
+
+        This method iteratively rolls out turns until all dialogues are finished
+        according to the multi_turn_scheduler.
+        """
+        orig_size = len(inputs)
+        rollout_outputs = [None] * orig_size  # Preallocate to preserve order
+
+        # Attach index to inputs for tracking
+        for i, input_data in enumerate(inputs):
+            input_data['index'] = i
+
+        current_turn = 1
+        outputs = first_turn_rollout_outputs
+        while True:
+            has_local_data = bool(len(inputs) > 0)
+            has_global_data = gather_object([has_local_data])
+            if not any(has_global_data):
+                break
+
+            for i, output in enumerate(outputs):
+                input_data = deepcopy(inputs[i])
+                if output and output.messages:
+                    messages = output.messages
+                else:
+                    response = output.response
+                    choice = response.choices[0]
+                    messages = input_data['messages']
+                    if (current_turn == 1 or not messages[-1]['content'] or messages[-1]['content'] == '<None>'):
+                        remove_response(messages)
+                    messages.append({'role': 'assistant', 'content': choice.message.content})
+
+                input_data['messages'] = messages
+                index = input_data['index']
+                rollout_outputs[index] = output
+                rollout_outputs[index].messages = messages
+
+            # Determine which dialogues are finished
+            should_stops = [
+                self.multi_turn_scheduler.check_finished(req, output.response.choices[0], current_turn)
+                for req, output in zip(self.inputs_to_rolloutrequest(inputs), outputs)
+            ]
+
+            # Prepare pending inputs for next turn
+            pending_inputs = []
+            for stop, _input, output in zip(should_stops, inputs, outputs):
+                if stop:
+                    continue
+                index = _input['index']
+                step_result = self.multi_turn_scheduler.step(
+                    self.inputs2requests([_input])[0], output.choices[0], current_turn)
+
+                if step_result['response_token_ids']:
+                    rollout_outputs[index].response_token_ids.append(step_result['response_token_ids'])
+                    if step_result['response_loss_mask']:
+                        rollout_outputs[index].response_loss_mask.append(step_result['response_loss_mask'])
+
+                if step_result['rollout_infos']:
+                    rollout_outputs[index].rollout_infos.update(step_result['rollout_infos'])
+
+                pending_input = {**asdict(step_result['infer_request']), 'index': index}
+                pending_inputs.append(pending_input)
+
+            inputs = pending_inputs
+            current_turn += 1
+
+            # Rollout for the next turn
+            outputs = self._rollout(inputs if has_local_data else [], request_config)
+
+        assert all(o is not None for o in rollout_outputs)
+        return rollout_outputs
+
+    def get_even_process_rollout_outputs(self, all_outputs: List[RolloutOutput]) -> List[RolloutOutput]:
+        """
+        Evenly splits `all_outputs` among all processes.
+
+        Each process receives a contiguous chunk of data. If `len(all_outputs)` is not
+        perfectly divisible by the number of processes, the first `remainder` processes
+        will receive one additional item.
+
+        Args:
+            all_outputs (List[RolloutOutput]): The full list of outputs to be distributed.
+
+        Returns:
+            List[RolloutOutput]: The subset of `all_outputs` assigned to this process.
+        """
+        num_procs = self.accelerator.num_processes
+        proc_idx = self.accelerator.process_index
+        total = len(all_outputs)
+
+        base_size = total // num_procs
+        remainder = total % num_procs
+
+        if proc_idx < remainder:
+            start = proc_idx * (base_size + 1)
+            end = start + base_size + 1
+        else:
+            start = remainder * (base_size + 1) + (proc_idx - remainder) * base_size
+            end = start + base_size
+
+        return all_outputs[start:end]

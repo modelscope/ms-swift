@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import torch
 from tqdm.asyncio import tqdm_asyncio
+from vllm.outputs import RequestOutput
 
 from swift.llm import InferRequest, RolloutInferRequest, Template, VllmEngine
 from swift.plugin import Metric, multi_turns
@@ -164,8 +165,8 @@ class GRPOVllmEngine(VllmEngine):
         for i, result in enumerate(res):
             if not isinstance(result, RolloutOutput):
                 if not isinstance(result, ChatCompletionResponse):
-                    raise TypeError("Result must be a ChatCompletionResponse or RolloutOutput instance.")                
-                res[i] = RolloutOutput(results=result)
+                    raise TypeError('Result must be a ChatCompletionResponse or RolloutOutput instance.')
+                res[i] = RolloutOutput(response=result)
 
         return res
 
@@ -191,7 +192,7 @@ class GRPOVllmEngine(VllmEngine):
         new_tasks = [_new_run(task) for task in tasks]
         return await self.batch_run(new_tasks)
 
-    def _create_chat_completion_response(self, result: 'ChatCompletionResponse', template: Template, request_config,
+    def _create_chat_completion_response(self, result: 'RequestOutput', template: Template, request_config,
                                          request_id) -> ChatCompletionResponse:
         assert result is not None
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
