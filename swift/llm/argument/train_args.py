@@ -132,6 +132,9 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     # auto_tp
     deepspeed_autotp_size: Optional[int] = None
 
+    # early_step
+    early_stop_interval: Optional[int] = None
+
     def __post_init__(self) -> None:
         if self.padding_free or self.packing:
             if self.packing:
