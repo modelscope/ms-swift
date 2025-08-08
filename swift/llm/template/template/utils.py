@@ -35,8 +35,8 @@ register_template(EmptyTemplateMeta(LLMTemplateType.dummy))
 class ThinkingTemplate(Template):
     with_answer = False
 
-    def _swift_prepare_messages(self, messages):
-        super()._swift_prepare_messages(messages)
+    def _swift_prepare_inputs(self, inputs):
+        super()._swift_prepare_inputs(inputs)
         # Only during inference or training, and only if the loss_scale is set to 'last_round',
         # will the previous 'think' entries be deleted.
         if not self.is_training or self.loss_scale.name == 'last_round':

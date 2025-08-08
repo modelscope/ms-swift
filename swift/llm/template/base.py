@@ -1051,7 +1051,8 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
         return system
 
-    def _swift_prepare_messages(self, messages):
+    def _swift_prepare_inputs(self, inputs):
+        messages = inputs.messages
         if len(messages) < 2:
             return
         i = 1
@@ -1076,8 +1077,8 @@ class Template(ProcessorMixin):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
+        self._swift_prepare_inputs(inputs)
         system = self._get_system(inputs)
-        self._swift_prepare_messages(inputs.messages)
 
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2
