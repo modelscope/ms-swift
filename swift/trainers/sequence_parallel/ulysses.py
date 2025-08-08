@@ -96,11 +96,11 @@ class _SeqAllToAll(torch.autograd.Function):
 
     @staticmethod
     def forward(
-        ctx: Any,
-        group: dist.ProcessGroup,
-        input: torch.Tensor,
-        scatter_idx: int,
-        gather_idx: int,
+            ctx: Any,
+            group: dist.ProcessGroup,
+            input: torch.Tensor,
+            scatter_idx: int,
+            gather_idx: int,
     ) -> torch.Tensor:
         ctx.group = group
         ctx.scatter_idx = scatter_idx
@@ -116,11 +116,11 @@ class _SeqAllToAll(torch.autograd.Function):
 class DistributedAttention(torch.nn.Module):
 
     def __init__(
-        self,
-        local_attention,
-        sequence_process_group: dist.ProcessGroup,
-        scatter_idx: int = 2,
-        gather_idx: int = 1,
+            self,
+            local_attention,
+            sequence_process_group: dist.ProcessGroup,
+            scatter_idx: int = 2,
+            gather_idx: int = 1,
     ) -> None:
         super(DistributedAttention, self).__init__()
         self.local_attn = local_attention
@@ -235,24 +235,25 @@ class Ulysses(CommonSequenceParallel):
         base_model.register_forward_pre_hook(pre_forward_split_hook, with_kwargs=True)
         base_model: torch.nn.Module
 
-        def moe_aux_loss_hook(module, input, output):
+        def moe_aux_loss_hook(module, args, kwargs, output):
             router_logits = getattr(output, 'router_logits', None)
             if router_logits is None:
-                return
+                return output
 
-            attention_mask = input['attention_mask']
+            attention_mask = kwargs['attention_mask']
             num_layers = len(router_logits)
             sp_len = router_logits[0].shape[0]
-            router_logits = output['router_logits']
-            router_logits, _ = GatherLoss.apply(router_logits, None, self)
+            if isinstance(router_logits, tuple):
+                compute_device = router_logits[0].device
+                router_logits = torch.cat([layer_gate.to(compute_device) for layer_gate in router_logits], dim=0)
+            router_logits, _ = GatherLoss.apply(router_logits, None, self.sp_group)
             router_logits = router_logits.reshape(self.sp_world_size, num_layers, sp_len, -1).transpose(0, 1).reshape(
                 num_layers, self.sp_world_size * sp_len, -1)
             if attention_mask is not None:
                 router_logits = router_logits[:, :attention_mask.shape[1], :]
-            output['router_logits'] = router_logits.split(1, dim=0)
+            output['router_logits'] = tuple([logit.squeeze() for logit in router_logits.split(1, dim=0)])
             return output
-
-
+        
         base_model.register_forward_hook(moe_aux_loss_hook, with_kwargs=True)
         self.model_dtype = next(model.parameters()).dtype
         self.tokenizer = tokenizer
@@ -266,7 +267,6 @@ class Ulysses(CommonSequenceParallel):
                                                                            value_states, attention_mask, *args,
                                                                            **kwargs)
             if dist_attn.local_attn is None:
-
                 def _attention(query, key, value, *args, **kwargs):
                     query = query.transpose(1, 2)
                     key = key.transpose(1, 2)
@@ -286,7 +286,6 @@ class Ulysses(CommonSequenceParallel):
                 return ALL_ATTENTION_FUNCTIONS['sdpa_origin'](module, query_states, key_states, value_states,
                                                               attention_mask, *args, **kwargs)
             if dist_attn.local_attn is None:
-
                 def _attention(query, key, value, *args, **kwargs):
                     query = query.transpose(1, 2)
                     key = key.transpose(1, 2)

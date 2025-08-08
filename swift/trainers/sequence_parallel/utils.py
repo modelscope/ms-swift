@@ -66,10 +66,12 @@ class GatherLoss(torch.autograd.Function):
                 labels_output = torch.cat(labels_output.split(shape0, dim=0), dim=gather_idx)
         else:
             labels_output = None
+        print('forward' + str(output.shape), flush=True)
         return output, labels_output
 
     @staticmethod
     def backward(ctx, *grad_output):
+        print('backward' + str(grad_output[0].shape), flush=True)
         _grad = grad_output[0] * dist.get_world_size(group=ctx.process_group)
         return _grad.split(
             ctx.scatter_shape, dim=ctx.gather_idx)[dist.get_rank(ctx.process_group)].contiguous(), None, None, None
