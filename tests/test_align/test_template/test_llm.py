@@ -613,9 +613,22 @@ def test_glm4_5():
 
 
 def test_gpt_oss():
+    messages = [{
+        'role':
+        'system',
+        'content':
+        '<|start|>system<|message|>You are Qwen.\nKnowledge cutoff: 2024-06\n'
+        'Current date: 2025-08-08\n\nReasoning: medium\n\n'
+        '# Valid channels: analysis, commentary, final. '
+        'Channel must be included for every message.<|end|>'
+        '<|start|>developer<|message|># Instructions\n\nYou are ChatGPT<|end|>'
+    }, {
+        'role': 'user',
+        'content': 'who are you?'
+    }]
     pt_engine = PtEngine('openai-mirror/gpt-oss-20b')
-    res = _infer_model(pt_engine)
-    assert res.rsplit('<|message|>', 1)[-1] == '我无法直接查看图片内容。能否请你描述一下图片里出现了什么，或者告诉我你想'
+    res = _infer_model(pt_engine, messages=messages)
+    assert 'm Qwen' in res.rsplit('<|message|>', 1)[-1]
 
 
 if __name__ == '__main__':
