@@ -3,7 +3,7 @@ import math
 import os
 from contextlib import contextmanager
 from functools import partial
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import datasets
 import numpy as np
@@ -50,8 +50,8 @@ class GatherLoss(torch.autograd.Function):
             gather_idx: gather the tensors on this dim
         """
         ctx.process_group = process_group
-        shape0 = labels.shape[0]
-        ctx.scatter_shape = labels.shape[gather_idx or 0]
+        shape0 = loss.shape[0]
+        ctx.scatter_shape = loss.shape[gather_idx or 0]
         ctx.gather_idx = gather_idx or 0
         world_size = dist.get_world_size(group=process_group)  # the sp world size
         output = torch.empty((shape0 * world_size, *loss.shape[1:]), dtype=loss.dtype, device=loss.device)
@@ -59,10 +59,13 @@ class GatherLoss(torch.autograd.Function):
         dist.all_gather_into_tensor(output, loss, group=process_group)
         if gather_idx is not None:
             output = torch.cat(output.split(shape0, dim=0), dim=gather_idx)
-        labels_output = torch.empty((shape0 * world_size, *labels.shape[1:]), dtype=labels.dtype, device=labels.device)
-        dist.all_gather_into_tensor(labels_output, labels, group=process_group)
-        if gather_idx is not None:
-            labels_output = torch.cat(labels_output.split(shape0, dim=0), dim=gather_idx)
+        if labels is not None:
+            labels_output = torch.empty((shape0 * world_size, *labels.shape[1:]), dtype=labels.dtype, device=labels.device)
+            dist.all_gather_into_tensor(labels_output, labels, group=process_group)
+            if gather_idx is not None:
+                labels_output = torch.cat(labels_output.split(shape0, dim=0), dim=gather_idx)
+        else:
+            labels_output = None
         return output, labels_output
 
     @staticmethod
@@ -112,6 +115,74 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
                 logits[l_start:l_end] = grad_chunk
 
         return logits, None, None
+
+
+def load_balancing_loss_func(
+    gate_logits: Union[torch.Tensor, tuple[torch.Tensor], None],
+    num_experts: Optional[int] = None,
+    top_k=2,
+    attention_mask: Optional[torch.Tensor] = None,
+    sp_instance=None
+) -> Union[torch.Tensor, int]:
+    if gate_logits is None or not isinstance(gate_logits, tuple):
+        return 0
+
+    num_layers = len(gate_logits)
+    sp_len  = gate_logits[0].shape[0]
+    if isinstance(gate_logits, tuple):
+        compute_device = gate_logits[0].device
+        concatenated_gate_logits = torch.cat([layer_gate.to(compute_device) for layer_gate in gate_logits], dim=0)
+
+    concatenated_gate_logits, _ = GatherLoss.apply(concatenated_gate_logits, None, sp_instance)
+    concatenated_gate_logits.reshape(sp_instance.sp_world_size, num_layers, sp_len, -1).transpose(0, 1).reshape(
+        num_layers, sp_instance.sp_world_size*sp_len, -1)
+    if attention_mask is not None:
+        concatenated_gate_logits = concatenated_gate_logits[:, :attention_mask.shape[1], :]
+    concatenated_gate_logits = concatenated_gate_logits.reshape(-1, concatenated_gate_logits.shape[2])
+    routing_weights = torch.nn.functional.softmax(concatenated_gate_logits, dim=-1)
+
+    _, selected_experts = torch.topk(routing_weights, top_k, dim=-1)
+
+    expert_mask = torch.nn.functional.one_hot(selected_experts, num_experts)
+
+    if attention_mask is None:
+        # Compute the percentage of tokens routed to each experts
+        tokens_per_expert = torch.mean(expert_mask.float(), dim=0)
+
+        # Compute the average probability of routing to these experts
+        router_prob_per_expert = torch.mean(routing_weights, dim=0)
+    else:
+        batch_size, sequence_length = attention_mask.shape
+        num_hidden_layers = concatenated_gate_logits.shape[0] // (batch_size * sequence_length)
+
+        # Compute the mask that masks all padding tokens as 0 with the same shape of expert_mask
+        expert_attention_mask = (
+            attention_mask[None, :, :, None, None]
+            .expand((num_hidden_layers, batch_size, sequence_length, top_k, num_experts))
+            .reshape(-1, top_k, num_experts)
+            .to(compute_device)
+        )
+
+        # Compute the percentage of tokens routed to each experts
+        tokens_per_expert = torch.sum(expert_mask.float() * expert_attention_mask, dim=0) / torch.sum(
+            expert_attention_mask, dim=0
+        )
+
+        # Compute the mask that masks all padding tokens as 0 with the same shape of tokens_per_expert
+        router_per_expert_attention_mask = (
+            attention_mask[None, :, :, None]
+            .expand((num_hidden_layers, batch_size, sequence_length, num_experts))
+            .reshape(-1, num_experts)
+            .to(compute_device)
+        )
+
+        # Compute the average probability of routing to these experts
+        router_prob_per_expert = torch.sum(routing_weights * router_per_expert_attention_mask, dim=0) / torch.sum(
+            router_per_expert_attention_mask, dim=0
+        )
+
+    overall_loss = torch.sum(tokens_per_expert * router_prob_per_expert.unsqueeze(0))
+    return overall_loss * num_experts
 
 
 def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None, sp_instance=None) -> torch.Tensor:
