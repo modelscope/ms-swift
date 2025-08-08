@@ -181,7 +181,7 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                 return RolloutOutput(
                     response=response,
                     messages=messages,
-                    response_id=total_response_ids,
+                    respones_token_ids=total_response_ids,
                     response_loss_mask=total_response_loss_mask,
                     rollout_infos=rollout_infos,
                 )
@@ -334,7 +334,8 @@ class MathTipsMultiTurnScheduler(MultiTurnScheduler):
     def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
              current_turn: int) -> Dict:
         infer_request.messages.append({'role': 'user', 'content': self.tips_prompt})
-        return infer_request
+
+        return {'infer_request': infer_request}
 
 
 class GYMScheduler(RolloutScheduler):

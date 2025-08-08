@@ -1700,8 +1700,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return inputs
 
         prev_messages = inputs[0].get('messages')
-        current_uuid = str(uuid.uuid4())
-        inputs[0]['prompt_id'] = current_uuid
+        current_id = str(uuid.uuid4())
+        inputs[0]['prompt_id'] = current_id
 
         for i in range(1, len(inputs)):
             messages = inputs[i]['messages']
@@ -1970,7 +1970,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 input_data['rollout_infos'] = output.rollout_infos
 
             # Step 4: Store finish reason (used for truncation filters etc.)
-            input_data['finish_reason'] = choice.finish_reason,
+            input_data['finish_reason'] = choice.finish_reason
 
             return input_data
 

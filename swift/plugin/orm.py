@@ -321,9 +321,9 @@ class CosineReward(ORM):
 
     def __call__(self, completions, solution, **kwargs) -> List[float]:
         acc_rewards = self.accuracy_orm(completions, solution, **kwargs)
-        completion_ids = kwargs.get('completion_ids')
+        response_token_ids = kwargs.get('response_token_ids')
         rewards = []
-        for ids, acc_reward in zip(completion_ids, acc_rewards):
+        for ids, acc_reward in zip(response_token_ids, acc_rewards):
             is_correct = acc_reward >= 1.
             if is_correct:
                 # Swap min/max for correct answers
@@ -386,8 +386,8 @@ class SoftOverlong(ORM):
 
     def __call__(self, completions, **kwargs) -> List[float]:
         rewards = []
-        completion_ids = kwargs.get('completion_ids')
-        for ids in completion_ids:
+        response_token_ids = kwargs.get('response_token_ids')
+        for ids in response_token_ids:
             completion_length = len(ids)
             expected_len = self.soft_max_length - self.soft_cache_length
             exceed_len = completion_length - expected_len
