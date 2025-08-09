@@ -799,6 +799,15 @@ register_model(
         ignore_patterns=[],
     ))
 
+
+def get_model_tokenizer_midashenglm(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_multimodal(*args, **kwargs)
+    if model is not None:
+        model.audio_encoder.float()
+        patch_output_clone(model.decoder.model.embed_tokens)
+    return model, tokenizer
+
+
 register_model(
     ModelMeta(
         MLLMModelType.midashenglm,
@@ -806,7 +815,7 @@ register_model(
             Model('mispeech/midashenglm-7b', 'mispeech/midashenglm-7b'),
         ])],
         TemplateType.midashenglm,
-        get_model_tokenizer_multimodal,
+        get_model_tokenizer_midashenglm,
         model_arch=ModelArch.midashenglm,
         architectures=['MiDashengLMModel'],
         requires=['transformers>=4.52', 'soundfile'],

@@ -51,8 +51,7 @@ class MiDashengLMTemplate(Template):
 
         if input_values:
             res['input_values'] = torch.concat(input_values)
-            if audio_lengths:
-                res['audio_length'] = torch.concat(audio_lengths)
+            res['audio_length'] = torch.concat(audio_lengths)
 
         return res
 
