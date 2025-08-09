@@ -76,13 +76,12 @@ def test_gemma3n():
 
 
 def test_midashenglm():
-    pt_engine = PtEngine('midasheng/midashenglm-7b')
-    messages = [{'role': 'user', 'content': '<audio>'}]
-    audios = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/guess_age_gender.wav']
-    response = _infer_model(pt_engine, messages=messages, audios=audios)
+    pt_engine = PtEngine('mispeech/midashenglm-7b')
+    messages = [{'role': 'user', 'content': '<audio>Caption the audio.'}]
+    response = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
-    response2 = _infer_model(pt_engine, messages=messages, audios=audios)
-    assert response == response2 == 'The audio is in English.'
+    response2 = _infer_model(pt_engine, messages=messages)
+    assert response == response2 == "The audio contains a male voice speaking the phrase '今天天气真好呀' in Mandarin."
 
 
 if __name__ == '__main__':
@@ -95,4 +94,4 @@ if __name__ == '__main__':
     # test_step_audio_chat()
     # test_qwen2_5_omni()
     # test_gemma3n()
-    test_midashenglm
+    test_midashenglm()

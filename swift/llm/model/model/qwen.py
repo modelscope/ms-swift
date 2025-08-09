@@ -799,70 +799,6 @@ register_model(
         ignore_patterns=[],
     ))
 
-
-def get_model_tokenizer_midashenglm(model_dir: str,
-                                    model_info: ModelInfo,
-                                    model_kwargs: Dict[str, Any],
-                                    load_model: bool = True,
-                                    model_config=None,
-                                    **kwargs):
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-
-    if model_info.torch_dtype is not None:
-        k_true = dtype_mapping[model_info.torch_dtype]
-        for k in dtype_mapping.values():
-            setattr(model_config, k, k == k_true)
-
-    quantization_config = model_kwargs.get('quantization_config')
-    if not isinstance(quantization_config, BitsAndBytesConfig):
-        model_config.torch_dtype = None
-
-    use_flash_attn = AttnImpl.to_use_flash_attn(kwargs.pop('attn_impl', None), 'auto')
-    model_config.use_flash_attn = use_flash_attn
-
-    tokenizer = kwargs.get('tokenizer')
-    if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-    if tokenizer.eos_token_id is None:
-        tokenizer.eos_token_id = tokenizer.eod_id
-    kwargs['tokenizer'] = tokenizer
-
-    processor = kwargs.get('processor')
-    if processor is None:
-        processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    kwargs['processor'] = processor
-
-    kwargs['model_config'] = model_config
-
-    model, _ = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-
-    if load_model and model is not None:
-        if not model.training:
-            if hasattr(model, 'decoder') and hasattr(model.decoder, 'model') and hasattr(
-                    model.decoder.model, 'embed_tokens'):
-                for param in model.decoder.model.embed_tokens.parameters():
-                    param.requires_grad_(False)
-                logger.info('Fixed embed_tokens gradients for inference')
-
-        if hasattr(model, 'audio_encoder'):
-            model.audio_encoder = model.audio_encoder.float()
-            logger.info('Converted audio_encoder to float32 (cuFFT requirement)')
-
-            if hasattr(model, 'audio_projector'):
-                main_dtype = next(model.parameters()).dtype
-                model.audio_projector = model.audio_projector.to(main_dtype)
-                logger.info(f'Audio projector set to {main_dtype}')
-
-    try:
-        model.transformer.registered_causal_mask = model.transformer.registered_causal_mask.cuda()
-        logger.info('registered_causal_mask to cuda')
-    except AttributeError:
-        pass
-
-    return model, processor
-
-
 register_model(
     ModelMeta(
         MLLMModelType.midashenglm,
@@ -870,10 +806,10 @@ register_model(
             Model('mispeech/midashenglm-7b', 'mispeech/midashenglm-7b'),
         ])],
         TemplateType.midashenglm,
-        get_model_tokenizer_midashenglm,
+        get_model_tokenizer_multimodal,
         model_arch=ModelArch.midashenglm,
         architectures=['MiDashengLMModel'],
-        requires=['transformers>=4.50', 'soundfile', 'decord'],
+        requires=['transformers>=4.52', 'soundfile'],
         tags=['audio'],
     ))
 
