@@ -19,6 +19,7 @@ class EarlyStopCallback(TrainerCallback):
         operator = np.greater if args.greater_is_better else np.less
         if self.best_metric is None or operator(state.best_metric, self.best_metric):
             self.best_metric = state.best_metric
+            self.interval = 0
         else:
             self.interval += 1
 
