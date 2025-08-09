@@ -75,7 +75,7 @@ def _patch_training_log():
         """Log training information such as losses, timing, ...."""
         nonlocal jsonl_writer
         args = get_args()
-        if is_last_rank() and jsonl_writer is None:
+        if jsonl_writer is None:
             logging_path = os.path.join(args.save, 'logging.jsonl')
             logger.info(f'logging_path: {logging_path}')
             jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_last_rank=True)
