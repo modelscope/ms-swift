@@ -20,7 +20,7 @@ from megatron.training import ft_integration, get_args, get_timers, is_last_rank
 from megatron.training.checkpointing import load_checkpoint
 from packaging import version
 
-from swift.utils import JsonlWriter, deep_getattr, get_logger, is_master
+from swift.utils import JsonlWriter, deep_getattr, get_logger
 from ..utils import adapter_state_dict_context, copy_original_module_weight, prepare_mcore_model
 from .utils import get_swift_datasets_provider
 
@@ -34,7 +34,7 @@ class BaseMegatronTrainer(ABC):
         self.stimer = StragglerDetector()
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
-        self.jsonl_writer = JsonlWriter(logging_path, enable_async=True)
+        self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_last_rank=True)  # for evaluate
         self._patch_megatron()
 
     @contextmanager
@@ -372,7 +372,7 @@ class BaseMegatronTrainer(ABC):
         timers.log(['evaluate'])
 
         rerun_state_machine.set_mode(rerun_mode)
-        if is_master():
+        if is_last_rank():
             logs = {}
             for key, val in total_loss_dict.items():
                 logs[f'eval_{key}'] = round(val.item(), 8)

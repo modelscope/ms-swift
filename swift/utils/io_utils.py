@@ -11,7 +11,7 @@ from accelerate.utils import gather_object
 from modelscope.hub.api import ModelScopeConfig
 from tqdm import tqdm
 
-from .env import is_master
+from .env import is_last_rank, is_master
 from .logger import get_logger
 from .utils import check_json_format
 
@@ -46,8 +46,15 @@ def write_to_jsonl(fpath: str, obj_list: List[Any], encoding: str = 'utf-8') -> 
 
 class JsonlWriter:
 
-    def __init__(self, fpath: str, *, encoding: str = 'utf-8', strict: bool = True, enable_async: bool = False):
-        self.fpath = os.path.abspath(os.path.expanduser(fpath)) if is_master() else None
+    def __init__(self,
+                 fpath: str,
+                 *,
+                 encoding: str = 'utf-8',
+                 strict: bool = True,
+                 enable_async: bool = False,
+                 write_last_rank: bool = False):
+        self.is_write_rank = is_last_rank() if write_last_rank else is_master()
+        self.fpath = os.path.abspath(os.path.expanduser(fpath)) if self.is_write_rank else None
         self.encoding = encoding
         self.strict = strict
         self.enable_async = enable_async
@@ -66,7 +73,7 @@ class JsonlWriter:
             obj_list = [obj]
         if gather_obj and dist.is_initialized():
             obj_list = gather_object(obj_list)
-        if not is_master():
+        if not self.is_write_rank:
             return
         obj_list = check_json_format(obj_list)
         for i, _obj in enumerate(obj_list):
@@ -85,7 +92,7 @@ class JsonlWriter:
     def _write_buffer(self, text: str):
         if not text:
             return
-        assert is_master(), f'is_master(): {is_master()}'
+        assert self.is_write_rank, f'self.is_write_rank: {self.is_write_rank}'
         try:
             os.makedirs(os.path.dirname(self.fpath), exist_ok=True)
             with open(self.fpath, 'a', encoding=self.encoding) as f:

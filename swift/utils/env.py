@@ -52,6 +52,11 @@ def is_master():
     return rank in {-1, 0}
 
 
+def is_last_rank():
+    rank, _, world_size, _ = get_dist_setting()
+    return rank in {-1, world_size - 1}
+
+
 def is_dist():
     """Determine if the training is distributed"""
     rank, local_rank, _, _ = get_dist_setting()
