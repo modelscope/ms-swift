@@ -34,7 +34,7 @@ class BaseMegatronTrainer(ABC):
         self.stimer = StragglerDetector()
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
-        self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_last_rank=True)  # for evaluate
+        self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')  # for evaluate
         self._patch_megatron()
 
     @contextmanager

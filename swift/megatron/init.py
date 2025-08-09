@@ -8,7 +8,6 @@ from copy import copy
 from datetime import datetime
 from typing import List, Optional, Tuple
 
-import numpy as np
 import peft
 import torch
 import torch.nn as nn
@@ -78,7 +77,7 @@ def _patch_training_log():
         if is_last_rank() and jsonl_writer is None:
             logging_path = os.path.join(args.save, 'logging.jsonl')
             logger.info(f'logging_path: {logging_path}')
-            jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_last_rank=True)
+            jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')
         timers = get_timers()
         writer = get_tensorboard_writer()
         wandb_writer = get_wandb_writer()
