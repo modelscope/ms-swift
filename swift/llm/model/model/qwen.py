@@ -3,7 +3,7 @@ import os
 from typing import Any, Dict, Optional, Tuple, Type
 
 import torch
-from transformers import AutoConfig, AutoProcessor, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
+from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 

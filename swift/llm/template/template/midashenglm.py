@@ -1,25 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
 
-from swift.utils import get_env_args, is_deepspeed_enabled
+from swift.utils import get_env_args
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Word, findall
 from ..vision_utils import load_batch
-from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
-
-
-@dataclass
-class QwenTemplateMeta(ChatmlTemplateMeta):
-    default_system: Optional[str] = DEFAULT_SYSTEM
-    auto_add_bos: bool = False
-    stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>'])
+from .qwen import QwenTemplateMeta
 
 
 class MiDashengLMTemplate(Template):

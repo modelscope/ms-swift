@@ -525,7 +525,6 @@ register_model_arch(
         language_model='decoder',
         aligner=['audio_projector'],
         vision_tower=['audio_encoder'],
-        generator=[],
     ))
 
 register_model_arch(
