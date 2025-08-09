@@ -8,7 +8,6 @@ from copy import copy
 from datetime import datetime
 from typing import List, Optional, Tuple
 
-import numpy as np
 import peft
 import torch
 import torch.nn as nn
@@ -17,8 +16,8 @@ from packaging import version
 from tqdm import tqdm
 
 from swift.llm import git_clone_github
-from swift.utils import (JsonlWriter, format_time, get_logger, is_flash_attn_3_available, is_master,
-                         is_megatron_available, safe_ddp_context, split_list, subprocess_run)
+from swift.utils import (JsonlWriter, format_time, get_logger, is_flash_attn_3_available, is_megatron_available,
+                         safe_ddp_context, split_list, subprocess_run)
 
 logger = get_logger()
 
@@ -75,10 +74,10 @@ def _patch_training_log():
         """Log training information such as losses, timing, ...."""
         nonlocal jsonl_writer
         args = get_args()
-        if is_master() and jsonl_writer is None:
+        if jsonl_writer is None:
             logging_path = os.path.join(args.save, 'logging.jsonl')
             logger.info(f'logging_path: {logging_path}')
-            jsonl_writer = JsonlWriter(logging_path, enable_async=True)
+            jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')
         timers = get_timers()
         writer = get_tensorboard_writer()
         wandb_writer = get_wandb_writer()
@@ -300,7 +299,7 @@ def _patch_training_log():
                 report_memory_flag = False
             timers.log(timers_to_log, normalizer=args.log_interval)
 
-            if is_master():
+            if is_last_rank():
                 logs = {}
                 for key in origin_total_loss_dict:
                     if key not in [advanced_iters_key, skipped_iters_key, nan_iters_key]:
@@ -818,6 +817,9 @@ def _patch_megatron():
         logger.info('Patch peft successfully applied.')
     except Exception:
         pass
+
+    import megatron.core
+    logger.info(f'megatron.core.__version__: {megatron.core.__version__}')
 
 
 def init_megatron_env() -> None:
