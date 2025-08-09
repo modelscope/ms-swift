@@ -301,14 +301,12 @@ class ReActFormat(ORM):
 class CosineReward(ORM):
     # https://arxiv.org/abs/2502.03373
     def __init__(self,
-                 tokenizer=None,
                  cosine_min_len_value_wrong: float = -0.5,
                  cosine_max_len_value_wrong: float = 0.0,
                  cosine_min_len_value_correct: float = 1.0,
                  cosine_max_len_value_correct: float = 0.5,
                  cosine_max_len: int = 1000,
                  accuracy_orm=None):
-        self.tokenizer = tokenizer
         self.min_len_value_wrong = cosine_min_len_value_wrong
         self.max_len_value_wrong = cosine_max_len_value_wrong
         self.min_len_value_correct = cosine_min_len_value_correct
@@ -323,8 +321,9 @@ class CosineReward(ORM):
 
     def __call__(self, completions, solution, **kwargs) -> List[float]:
         acc_rewards = self.accuracy_orm(completions, solution, **kwargs)
+        response_token_ids = kwargs.get('response_token_ids')
         rewards = []
-        for content, acc_reward in zip(completions, acc_rewards):
+        for ids, acc_reward in zip(response_token_ids, acc_rewards):
             is_correct = acc_reward >= 1.
             if is_correct:
                 # Swap min/max for correct answers
@@ -333,7 +332,7 @@ class CosineReward(ORM):
             else:
                 min_value = self.max_len_value_wrong
                 max_value = self.min_len_value_wrong
-            gen_len = len(self.tokenizer.encode(content))
+            gen_len = len(ids)
             reward = self.cosfn(gen_len, self.max_len, min_value, max_value)
             rewards.append(reward)
         return rewards
@@ -380,16 +379,16 @@ class RepetitionPenalty(ORM):
 
 class SoftOverlong(ORM):
 
-    def __init__(self, tokenizer, soft_max_length, soft_cache_length):
-        self.tokenizer = tokenizer
+    def __init__(self, soft_max_length, soft_cache_length):
         assert soft_cache_length < soft_max_length
         self.soft_max_length = soft_max_length
         self.soft_cache_length = soft_cache_length
 
     def __call__(self, completions, **kwargs) -> List[float]:
         rewards = []
-        for completion in completions:
-            completion_length = len(self.tokenizer.encode(completion))
+        response_token_ids = kwargs.get('response_token_ids')
+        for ids in response_token_ids:
+            completion_length = len(ids)
             expected_len = self.soft_max_length - self.soft_cache_length
             exceed_len = completion_length - expected_len
             rewards.append(min(-exceed_len / self.soft_cache_length, 0))

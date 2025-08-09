@@ -16,8 +16,7 @@ from torch import nn
 from transformers.utils import is_torch_cuda_available
 
 from swift.llm import AdapterRequest, RolloutInferRequest, Template
-from swift.llm.infer.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, GymRolloutResponseChoice,
-                                      RequestConfig, RolloutResponseChoice)
+from swift.llm.infer.protocol import RequestConfig, RolloutOutput
 from swift.plugin import Metric
 from swift.utils import is_trl_available, is_vllm_ascend_available, is_vllm_available
 
@@ -151,7 +150,7 @@ class VLLMClient:
                     return
 
                 resp_data = response.json()
-                results[i] = self.parse_resp_data(resp_data)
+                results[i] = [from_dict(data_class=RolloutOutput, data=resp) for resp in resp_data]
             except Exception as e:
                 errors[i] = e
 
@@ -278,19 +277,3 @@ class VLLMClient:
                     logger.warning(f'Server {i} close failed: {response.text}')
             except Exception as e:
                 logger.warning(f'Error closing server {i} communicator: {str(e)}')
-
-    def parse_resp_data(self, resp_data):
-        if self.use_gym_env:
-            choice_cls = GymRolloutResponseChoice
-        elif self.use_async_engine:
-            choice_cls = RolloutResponseChoice
-        else:
-            choice_cls = ChatCompletionResponseChoice
-        result = [
-            ChatCompletionResponse(
-                choices=[from_dict(data_class=choice_cls, data=c) for c in resp['choices']],
-                **{k: v
-                   for k, v in resp.items() if k != 'choices'}) for resp in resp_data
-        ]
-
-        return result
