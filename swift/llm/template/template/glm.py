@@ -65,6 +65,17 @@ class GLM4_0414TemplateMeta(GLM4TemplateMeta):
     agent_template: str = 'glm4_0414'
 
 
+@dataclass
+class GLM4_5TemplateMeta(GLMTemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['[gMASK]<sop>'])
+    prompt: Prompt = field(default_factory=lambda: ['<|user|>\n{{QUERY}}<|assistant|>\n'])
+    chat_sep: Optional[Prompt] = field(default_factory=list)
+    suffix: Prompt = field(default_factory=lambda: ['<|user|>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|system|>\n{{SYSTEM}}'])
+
+    agent_template: str = 'glm4_5'
+    stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>', '<|user|>', '<|observation|>'])
+
 class GLM4_1VTemplateMeta(GLM4_0414TemplateMeta):
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>{{SYSTEM}}'])
 
@@ -237,7 +248,7 @@ register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Templa
 
 register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4_0414Template))
 
-register_template(GLM4TemplateMeta(LLMTemplateType.glm4_5, template_cls=ThinkingTemplate))
+register_template(GLM4_5TemplateMeta(LLMTemplateType.glm4_5, template_cls=ThinkingTemplate))
 
 register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
 
