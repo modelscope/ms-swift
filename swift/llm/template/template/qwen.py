@@ -289,8 +289,8 @@ class Qwen2VLTemplate(Template):
                     token_len = (media_grid_thw[i].prod() // merge_length)
                     return [media_token] * token_len
 
-                input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
-                loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
+                input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                    _get_new_tokens)
                 encoded.update(media_inputs)
 
         encoded['input_ids'] = input_ids
@@ -530,8 +530,8 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             def _get_new_audio_tokens(i):
                 return audio_token_id * audio_lengths[i]
 
-            input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_audio_tokens)
-            loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_audio_tokens)
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                _get_new_audio_tokens)
 
         for media_type in ['image', 'video']:
             token = f'<|{media_type.upper()}|>'
@@ -568,9 +568,8 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                                 res += audio_token_id * audio_seq_length
                         return res
 
-                    input_ids, labels = self._extend_tokens(input_ids, labels, idx_list,
-                                                            _get_new_tokens_use_audio_in_video)
-                    loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens_use_audio_in_video)
+                    input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                        _get_new_tokens_use_audio_in_video)
 
                 else:
 
@@ -578,8 +577,8 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                         token_len = (media_grid_thw[i].prod() // (merge_size**2))
                         return token_id * token_len
 
-                    input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
-                    loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
+                    input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                        _get_new_tokens)
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels

@@ -76,6 +76,8 @@ class MLLMModelArch:
     mistral_2503 = 'mistral_2503'
     keye_vl = 'keye_vl'
 
+    midashenglm = 'midashenglm'
+
 
 class ModelArch(LLMModelArch, MLLMModelArch):
     pass
@@ -515,6 +517,14 @@ register_model_arch(
         vision_tower=['thinker.audio_tower', 'thinker.visual'],
         aligner=['thinker.audio_tower.proj', 'thinker.visual.merger'],
         generator=['talker', 'token2wav'],
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.midashenglm,
+        language_model='decoder',
+        aligner=['audio_projector'],
+        vision_tower=['audio_encoder'],
     ))
 
 register_model_arch(
