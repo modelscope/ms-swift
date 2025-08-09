@@ -53,7 +53,12 @@ class JsonlWriter:
                  strict: bool = True,
                  enable_async: bool = False,
                  write_on_rank: Literal['master', 'last'] = 'master'):
-        self.is_write_rank = is_master() if write_on_rank == 'master' else is_last_rank()
+        if write_on_rank == 'master':
+            self.is_write_rank = is_master()
+        elif write_on_rank == 'last':
+            self.is_write_rank = is_last_rank()
+        else:
+            raise ValueError(f"Invalid `write_on_rank`: {write_on_rank}, should be 'master' or 'last'")
         self.fpath = os.path.abspath(os.path.expanduser(fpath)) if self.is_write_rank else None
         self.encoding = encoding
         self.strict = strict

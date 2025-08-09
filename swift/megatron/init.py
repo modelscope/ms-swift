@@ -818,6 +818,9 @@ def _patch_megatron():
     except Exception:
         pass
 
+    import megatron.core
+    logger.info(f'megatron.core.__version__: {megatron.core.__version__}')
+
 
 def init_megatron_env() -> None:
     if 'MEGATRON_LM_PATH' not in os.environ:
