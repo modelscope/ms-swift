@@ -24,6 +24,7 @@ class QwenTemplateMeta(ChatmlTemplateMeta):
 
 class MiDashengLMTemplate(Template):
     placeholder_tokens = ['<|AUDIO|>']
+    skip_prompt = False
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -61,11 +62,6 @@ class MiDashengLMTemplate(Template):
                 res['audio_length'] = torch.concat(audio_lengths)
 
         return res
-
-    def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
-                         num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
-
-        return generate_ids
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.midashenglm, template_cls=MiDashengLMTemplate))
