@@ -351,9 +351,8 @@ def git_clone_github(github_url: str,
 
 
 def get_llm_model(model: torch.nn.Module, model_meta=None):
-    from swift import SwiftModel
+    from swift.tuners import SwiftModel
     from peft import PeftModel
-    from swift.llm import get_model_arch
     from accelerate.utils import extract_model_from_parallel
     model = extract_model_from_parallel(model)
 
@@ -362,7 +361,7 @@ def get_llm_model(model: torch.nn.Module, model_meta=None):
     if model_meta is None:
         model_meta = model.model_meta
 
-    llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
+    llm_prefix = getattr(model_meta.model_arch, 'language_model', None)
     if llm_prefix:
         llm_model = deep_getattr(model, llm_prefix[0])
     else:

@@ -89,10 +89,9 @@ class QuantizeArguments:
         return quantization_config
 
     def get_modules_to_not_convert(self):
-        from swift.llm import get_model_arch
         if not hasattr(self, 'model_meta') or not hasattr(self, 'model_info'):
             return None
-        model_arch = get_model_arch(self.model_meta.model_arch)
+        model_arch = self.model_meta.model_arch
         res = []
         if self.model_info.is_moe_model:
             res += ['mlp.gate', 'mlp.shared_expert_gate']

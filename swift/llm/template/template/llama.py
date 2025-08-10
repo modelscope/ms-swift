@@ -138,9 +138,8 @@ class Llama4Template(Template):
                 return_tensors='pt')
             splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
 
-            encoded['input_ids'], encoded['labels'] = self._extend_tokens(input_ids, labels, idx_list,
-                                                                          lambda i: splited_tokens[i])
-            encoded['loss_scale'] = self._extend_loss_scale(loss_scale, idx_list, lambda i: splited_tokens[i])
+            encoded['input_ids'], encoded['labels'], encoded['loss_scale'] = self._extend_tokens(
+                input_ids, labels, loss_scale, idx_list, lambda i: splited_tokens[i])
             encoded['pixel_values'] = media_inputs['pixel_values']
         return encoded
 

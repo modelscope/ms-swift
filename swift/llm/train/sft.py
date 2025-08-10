@@ -261,6 +261,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         callbacks += extra_callbacks
         self.callbacks = callbacks
 
+        if args.early_stop_interval is not None and args.early_stop_interval > 0:
+            from swift.plugin.callback import EarlyStopCallback
+            self.callbacks.append(EarlyStopCallback(args.early_stop_interval))
+            logger.info('You are using the default early stop callback, this is a implementation of '
+                        'stopping training when the best metric showing no improvement within {} steps, '
+                        'you can write a new implementation in the plugin/callback.py.')
+
     @staticmethod
     def _stat_dataset(dataset: Union[HfDataset, PackingDataset]):
         if isinstance(dataset, HfDataset):

@@ -35,11 +35,12 @@ register_template(EmptyTemplateMeta(LLMTemplateType.dummy))
 class ThinkingTemplate(Template):
     with_answer = False
 
-    def _swift_prepare_messages(self, messages):
-        super()._swift_prepare_messages(messages)
+    def _swift_prepare_inputs(self, inputs):
+        super()._swift_prepare_inputs(inputs)
+        messages = inputs.messages
         # Only during inference or training, and only if the loss_scale is set to 'last_round',
         # will the previous 'think' entries be deleted.
-        if not self.is_training or self.loss_scale.name == 'last_round':
+        if not self.is_training or self.loss_scale.name in {'last_round', 'last_round_with_ignore_empty_think'}:
             for i, message in enumerate(messages):
                 # Delete the content before '</think>' in all assistant turns except the last round.
                 if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:

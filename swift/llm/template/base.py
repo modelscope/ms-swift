@@ -298,8 +298,10 @@ class Template(ProcessorMixin):
         inputs.generate_mode = generate_mode
 
     @staticmethod
-    def _extend_tokens(input_ids: List[int], labels: Optional[List[int]], replace_idx_list: List[int],
-                       get_new_tokens: Callable[[int], List[int]]) -> Tuple[List[int], Optional[List[int]]]:
+    def _extend_tokens(
+            input_ids: List[int], labels: Optional[List[int]], loss_scale: Optional[List[float]],
+            replace_idx_list: List[int],
+            get_new_tokens: Callable[[int], List[int]]) -> Tuple[List[int], Optional[List[int]], Optional[List[float]]]:
         added_tokens_len = 0
         for i, idx in enumerate(replace_idx_list):
             new_tokens = get_new_tokens(i)
@@ -307,22 +309,12 @@ class Template(ProcessorMixin):
             input_ids = input_ids[:idx + added_tokens_len] + new_tokens + input_ids[added_tokens_len + idx + 1:]
             if labels:
                 labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx + 1:]
-            added_tokens_len += token_len - 1
-        return input_ids, labels
-
-    @staticmethod
-    def _extend_loss_scale(loss_scale: Optional[List[float]], replace_idx_list: List[int],
-                           get_new_tokens: Callable[[int], List[int]]) -> Optional[List[float]]:
-        if loss_scale:
-            added_tokens_len = 0
-            for i, idx in enumerate(replace_idx_list):
-                new_tokens = get_new_tokens(i)
-                token_len = len(new_tokens)
+            if loss_scale:
                 scale_idx = loss_scale[idx + added_tokens_len]
                 loss_scale = loss_scale[:idx + added_tokens_len] + [scale_idx] * token_len + loss_scale[added_tokens_len
                                                                                                         + idx + 1:]
-                added_tokens_len += token_len - 1
-        return loss_scale
+            added_tokens_len += token_len - 1
+        return input_ids, labels, loss_scale
 
     def forward_context(self, model, inputs):
         return nullcontext()
@@ -1051,7 +1043,8 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
         return system
 
-    def _swift_prepare_messages(self, messages):
+    def _swift_prepare_inputs(self, inputs):
+        messages = inputs.messages
         if len(messages) < 2:
             return
         i = 1
@@ -1076,8 +1069,8 @@ class Template(ProcessorMixin):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
+        self._swift_prepare_inputs(inputs)
         system = self._get_system(inputs)
-        self._swift_prepare_messages(inputs.messages)
 
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2

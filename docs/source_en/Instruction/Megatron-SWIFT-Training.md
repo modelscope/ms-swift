@@ -421,7 +421,8 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - moe_enable_deepep: Experimental feature, Enables DeepSeek/DeepEP for efficient token dispatching and combination in MoE models. Only works when using the flexible token dispatcher by setting `--moe_token_dispatcher_type flex`.
 - 🔥moe_grouped_gemm: When each rank contains multiple experts, multiple local GEMM kernels can be launched in parallel streams to improve utilization and performance by using GroupedLinear from TransformerEngine. Default is False.
 - 🔥moe_permute_fusion: Fuses token permutation operations during token dispatch. Default is False.
-- 🔥moe_aux_loss_coeff: Scaling coefficient for the auxiliary loss; a recommended initial value is 1e-2. Default is None and is automatically read from config.json.
+- 🔥moe_aux_loss_coeff: Default is 0, which disables aux_loss.
+  - Note: In ms-swift versions earlier than 3.7.1, the default is None and the value is automatically loaded from config.json.
 - moe_z_loss_coeff: Scaling coefficient for z-loss. Default is None.
 - moe_expert_capacity_factor: Capacity factor for each expert. None means no token will be dropped. Default is None and will be automatically read from config.json.
 - 🔥moe_shared_expert_overlap: Enables overlap between shared expert computation and the dispatcher. If not enabled, shared expert computation will be performed after routing experts. Only effective when `moe_shared_expert_intermediate_size` is set. Default is False.

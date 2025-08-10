@@ -39,8 +39,8 @@ class PixtralTemplate(Template):
                 img_tokens: List[int] = self.processor.encode(replace_str, add_special_tokens=False)
                 return img_tokens
 
-            encoded['input_ids'], encoded['labels'] = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
-            encoded['loss_scale'] = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
+            encoded['input_ids'], encoded['labels'], encoded['loss_scale'] = self._extend_tokens(
+                input_ids, labels, loss_scale, idx_list, _get_new_tokens)
 
         return encoded
 

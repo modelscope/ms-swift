@@ -193,8 +193,7 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
             placeholder += '\n'
             return self.processor.encode(placeholder, add_special_tokens=False)
 
-        input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
-        loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
+        input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list, _get_new_tokens)
 
         if inputs.images:
             input_tensor_ids = torch.tensor(input_ids)
