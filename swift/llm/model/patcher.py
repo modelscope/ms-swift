@@ -151,14 +151,21 @@ def patch_ignore_check_imports():
 
 
 def get_lm_head_model(model, model_meta, lm_heads):
-    llm_prefix = getattr(model_meta.model_arch, 'language_model', None)[0]
-    prefix_list = llm_prefix.split('.')
+    llm_prefix_list = getattr(model_meta.model_arch, 'language_model', None)
+    prefix_list = []
+    if llm_prefix_list:
+        prefix_list = llm_prefix_list[0].split('.')
+
     origin_model = model
-    for prefix in prefix_list:
+    current_model = model
+    for prefix in [None] + prefix_list:
         for lm_head in lm_heads:
-            if hasattr(model, lm_head):
-                return model
-        model = getattr(model, prefix)
+            if hasattr(current_model, lm_head):
+                return current_model
+        if not prefix:
+            continue
+        current_model = getattr(current_model, prefix)
+
     raise ValueError(f'Cannot find the lm_head. model: {origin_model}')
 
 
