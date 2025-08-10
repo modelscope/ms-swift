@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass, field
 from math import ceil
 from queue import Queue
 from types import MethodType
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import torch
 import torch.nn as nn
@@ -65,6 +65,7 @@ if is_swanlab_available():
     import swanlab
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
+T = TypeVar('T')
 
 # patch to fix save last_checkpoint https://github.com/modelscope/ms-swift/pull/4969
 if not hasattr(RepeatSampler, 'old_len_func'):
@@ -173,7 +174,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 multi_turn_scheduler = multi_turns[self.args.multi_turn_scheduler](max_turns=self.args.max_turns)
                 self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_scheduler
             else:
-                assert isinstance(multi_turn_scheduler, MultiTurnScheduler)
+                assert isinstance(self.args.multi_turn_scheduler, MultiTurnScheduler)
                 self.multi_turn_scheduler: MultiTurnScheduler = self.args.multi_turn_scheduler
 
         self.num_generations = args.num_generations
@@ -657,13 +658,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             DataType: The input list, with the default system message prepended if applicable.
         """
         if not self.template.template_meta.default_system:
-            return
+            return inputs
         if all(_input['messages'][0]['role'] == 'system' for _input in inputs):
-            return
+            return inputs
         for _input in inputs:
             messages = _input['messages']
             if messages[0]['role'] != 'system':
                 messages.insert(0, {'role': 'system', 'content': self.template.template_meta.default_system})
+        return inputs
 
     def _infer_single_or_multi_turn(self,
                                     inputs: DataType,
@@ -683,7 +685,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # for external server, pass the system args which may define in trainer
 
         # Step 1: Prepare inputs with system prompts (if any)
-        self._set_inputs_system(inputs)
+        inputs = self._set_inputs_system(inputs)
 
         # Step 2: First-turn rollout
         rollout_outputs: List[RolloutOutput] = self._rollout(inputs, request_config, is_global_inputs)
@@ -793,6 +795,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return outputs
 
     def _generate_completions(self, inputs: DataType) -> DataType:
+        # add prompt ids and system prompts
         inputs = self._preprocess_inputs(inputs)
 
         mode = 'train' if self.model.training else 'eval'
@@ -825,16 +828,42 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._dynamic_sampling(inputs, total_rewards, total_rewards_per_func, completions)
 
         # Prepare final outputs with advantages and other required fields
-        batch_encoded_inputs = self._prepare_batch_inputs(inputs, total_rewards)
+        inputs = self._calculate_advantages(inputs, total_rewards)
+
+        batch_encoded_inputs = self._prepare_batch_inputs(inputs)
         # Log metrics
         messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
-        trajectory_infos = None
-        if self.use_gym_env:
-            trajectory_infos = [inputs[i]['trajectory_info'] for i in range(len(inputs))]
-        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func,
-                          trajectory_infos)
+
+        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func)
 
         return batch_encoded_inputs
+
+    def _calculate_advantages(self, inputs: DataType, total_rewards: torch.Tensor) -> DataType:
+        advantages = self._compute_advantages(inputs, total_rewards)
+        # Legacy method (kept for backward compatibility)
+        legacy_advantages = self._compute_advantages_legacy(inputs, total_rewards)
+
+        # DEBUG
+        assert torch.allclose(advantages, legacy_advantages)
+        try:
+            self._validate_advantage_calculation(inputs, total_rewards, advantages)
+        except Exception as e:
+            logger.warning(f'Advantage validation failed: {e}')
+
+        # log advantages and image(for VL models)
+        self._logs['advantages'].extend(advantages.tolist())
+        if any('images' in data and data['images'] is not None for data in inputs):
+            self._logs['image'].extend(gather_object([inp['images'] for inp in inputs]))
+
+        # get local advantages
+        local_advantages = self.get_even_process_data(advantages)
+        assert len(local_advantages) == len(inputs)
+
+        # merge advantages to inputs
+        for i, advantage in enumerate(local_advantages):
+            inputs[i]['advantage'] = advantage
+
+        return inputs
 
     def _score_completions(self, inputs: DataType) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
         """Score completions using all reward functions
@@ -935,55 +964,312 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return inputs, rewards, rewards_per_func, completions
 
-    def split_by_mini_batches(self, inputs, advantages):
+    def split_by_mini_batches(self, inputs):
+        """
+        Split inputs into mini-batches, handling variable generation counts.
+
+        When rollout count differs from expected (bs * spg * num_generations),
+        we need to adjust the splitting logic to maintain proper batch sizes.
+        """
         # Slice to keep only the local part of the data
-        process_slice = slice(
-            self.accelerator.process_index * len(inputs),
-            (self.accelerator.process_index + 1) * len(inputs),
-        )
-        advantages = advantages[process_slice]
 
         mode = 'train' if self.model.training else 'eval'
         bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
         spg = self.args.steps_per_generation if mode == 'train' else 1
+        # TODO: Check
+        expected_normal_size = bs * spg
 
-        assert len(inputs) == bs * spg, f'Expected {bs * spg} inputs, got {len(inputs)}'
-        spg_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(spg)]
-        # Split advantages by spg chunks
-        advantage_chunks = torch.chunk(advantages, spg)
-        return spg_chunks, advantage_chunks
+        # Check if we have the expected number of inputs (normal case)
+        if len(inputs) == expected_normal_size:
+            # Normal case: rollout returned expected count
+            # Group by (bs * num_generations) to maintain proper prompt grouping
+            group_size = bs * self.num_generations
+            spg_chunks = [inputs[i * group_size:(i + 1) * group_size] for i in range(spg)]
+        else:
+            # Variable generation case: split by actual per_device_batch_size to control memory
+            # Split into chunks of size bs to maintain memory efficiency
+            num_chunks = (len(inputs) + bs - 1) // bs  # Ceiling division
+            spg_chunks = []
 
-    def _prepare_batch_inputs(self, inputs: DataType, rewards: torch.Tensor) -> List[DataType]:
+            for i in range(num_chunks):
+                start_idx = i * bs
+                end_idx = min((i + 1) * bs, len(inputs))
+                spg_chunks.append(inputs[start_idx:end_idx])
+
+        return spg_chunks
+
+    def _compute_advantages(self, inputs: DataType, rewards: torch.Tensor) -> torch.Tensor:
+        """
+        Compute advantages based on prompt_id grouping, handling variable generation counts per prompt.
+
+        Args:
+            inputs (DataType): List of input samples with prompt_id fields
+            rewards (torch.Tensor): Tensor of rewards corresponding to the inputs
+
+        Returns:
+            torch.Tensor: Computed advantages with same shape as rewards
+        """
+        if len(inputs) != len(rewards):
+            raise ValueError(f'Inputs length ({len(inputs)}) != rewards length ({len(rewards)})')
+
+        # Ensure all inputs have prompt_id
+        if not all('prompt_id' in inp for inp in inputs):
+            logger.warning('Some inputs missing prompt_id, adding them...')
+            inputs = self._add_prompt_id_to_inputs(inputs)
+
+        # Group rewards by prompt_id
+        prompt_groups = {}
+        for i, inp in enumerate(inputs):
+            prompt_id = inp['prompt_id']
+            if prompt_id not in prompt_groups:
+                prompt_groups[prompt_id] = []
+            prompt_groups[prompt_id].append((i, rewards[i].item()))
+
+        # Compute advantages for each group
+        advantages = torch.zeros_like(rewards)
+
+        for prompt_id, group_data in prompt_groups.items():
+            indices, group_rewards = zip(*group_data)
+            group_rewards = torch.tensor(group_rewards, device=rewards.device, dtype=rewards.dtype)
+
+            group_mean = group_rewards.mean()
+            group_advantages = group_rewards - group_mean
+
+            # Optional: scale by standard deviation
+            if self.args.scale_rewards:
+                group_std = group_rewards.std()
+                group_advantages /= (group_std + 1e-4)
+
+            # Assign computed advantages back to original positions
+            for idx, advantage in zip(indices, group_advantages):
+                advantages[idx] = advantage
+
+        # Check for groups with unexpected generation counts
+        generation_counts = [len(group_data) for group_data in prompt_groups.values()]
+        if generation_counts and (min(generation_counts) != max(generation_counts)):
+            logger.warning(f'Variable generation counts detected: min={min(generation_counts)}, '
+                           f'max={max(generation_counts)}, expected={self.num_generations}')
+
+        return advantages
+
+    def _compute_advantages_legacy(self, inputs: DataType, rewards: torch.Tensor) -> torch.Tensor:
+        """
+        Legacy advantage computation method using reshape.
+
+        This method assumes a fixed number of generations per prompt (self.num_generations).
+        Kept for backward compatibility, but may fail if rollout count differs from num_generations.
+
+        Args:
+            inputs: List of input samples (not used in legacy method)
+            rewards: Tensor of rewards
+
+        Returns:
+            torch.Tensor: Computed advantages
+
+        Raises:
+            RuntimeError: If rewards cannot be reshaped to (-1, num_generations)
+        """
+        try:
+            # Original logic - assumes fixed num_generations per prompt
+            grouped_rewards = rewards.view(-1, self.num_generations)
+            mean_grouped_rewards = grouped_rewards.mean(dim=1).repeat_interleave(self.num_generations, dim=0)
+            std_grouped_rewards = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations, dim=0)
+
+            advantages = (rewards - mean_grouped_rewards)
+            if self.args.scale_rewards:
+                advantages /= (std_grouped_rewards + 1e-4)
+
+            logger.debug(f'Legacy advantage computation: {len(rewards)} rewards, '
+                         f'{self.num_generations} generations per prompt')
+
+            return advantages
+
+        except RuntimeError as e:
+            raise
+
+    def _validate_advantage_calculation(self, inputs: DataType, rewards: torch.Tensor,
+                                        advantages: torch.Tensor) -> None:
+        """
+        Validate the computed advantages for correctness and consistency.
+
+        This method performs several checks:
+        1. Ensures advantages sum to ~0 within each prompt group
+        2. Verifies advantage shapes match input/reward shapes
+        3. Checks for NaN or infinite values
+
+        Args:
+            inputs: Original input data with prompt_id fields
+            rewards: Original reward tensor
+            advantages: Computed advantage tensor
+
+        Raises:
+            ValueError: If validation fails
+        """
+        if len(advantages) != len(rewards) or len(advantages) != len(inputs):
+            raise ValueError(f'Shape mismatch: advantages={len(advantages)}, '
+                             f'rewards={len(rewards)}, inputs={len(inputs)}')
+
+        # Check for NaN or infinite values
+        if torch.isnan(advantages).any():
+            nan_count = torch.isnan(advantages).sum().item()
+            logger.warning(f'Found {nan_count} NaN values in advantages')
+
+        if torch.isinf(advantages).any():
+            inf_count = torch.isinf(advantages).sum().item()
+            logger.warning(f'Found {inf_count} infinite values in advantages')
+
+        # Verify advantages sum to ~0 within each prompt group
+        prompt_groups = {}
+        for i, inp in enumerate(inputs):
+            prompt_id = inp['prompt_id']
+            if prompt_id not in prompt_groups:
+                prompt_groups[prompt_id] = []
+            prompt_groups[prompt_id].append(advantages[i].item())
+
+        tolerance = 1e-6
+        problematic_groups = []
+        for prompt_id, group_advantages in prompt_groups.items():
+            if len(group_advantages) > 1:  # Only check groups with multiple generations
+                group_sum = sum(group_advantages)
+                if abs(group_sum) > tolerance:
+                    problematic_groups.append((prompt_id, group_sum, len(group_advantages)))
+
+        if problematic_groups:
+            logger.warning(f'Found {len(problematic_groups)} prompt groups where advantages '
+                           f"don't sum to ~0 (tolerance={tolerance})")
+            for prompt_id, group_sum, count in problematic_groups[:5]:  # Log first 5
+                logger.warning(f'  Group {prompt_id}: sum={group_sum:.8f}, count={count}')
+
+    def _test_advantage_calculation_edge_cases(self) -> None:
+        """
+        Test the advantage calculation with various edge cases.
+        This method is useful for debugging and validation.
+        """
+        logger.info('Testing advantage calculation edge cases...')
+
+        # Test case 1: Different generation counts per prompt
+        test_inputs_1 = [
+            {
+                'prompt_id': 'prompt_1',
+                'messages': [{
+                    'role': 'user',
+                    'content': 'hello'
+                }]
+            },
+            {
+                'prompt_id': 'prompt_1',
+                'messages': [{
+                    'role': 'user',
+                    'content': 'hello'
+                }]
+            },
+            {
+                'prompt_id': 'prompt_1',
+                'messages': [{
+                    'role': 'user',
+                    'content': 'hello'
+                }]
+            },  # 3 generations
+            {
+                'prompt_id': 'prompt_2',
+                'messages': [{
+                    'role': 'user',
+                    'content': 'hi'
+                }]
+            },
+            {
+                'prompt_id': 'prompt_2',
+                'messages': [{
+                    'role': 'user',
+                    'content': 'hi'
+                }]
+            },  # 2 generations
+            {
+                'prompt_id': 'prompt_3',
+                'messages': [{
+                    'role': 'user',
+                    'content': 'hey'
+                }]
+            },  # 1 generation
+        ]
+        test_rewards_1 = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], device=self.accelerator.device)
+
+        try:
+            advantages_1 = self._compute_advantages(test_inputs_1, test_rewards_1)
+            logger.info(f'Test 1 passed: advantages shape {advantages_1.shape}')
+
+            # Verify that advantages sum to ~0 for each group
+            assert abs(advantages_1[0] + advantages_1[1] + advantages_1[2]) < 1e-6, 'Group 1 advantages should sum to 0'
+            assert abs(advantages_1[3] + advantages_1[4]) < 1e-6, 'Group 2 advantages should sum to 0'
+            assert advantages_1[5] == 0.0, 'Single generation group should have 0 advantage'
+
+        except Exception as e:
+            logger.error(f'Test 1 failed: {e}')
+
+        # Test case 2: All same generation counts (should match original behavior)
+        test_inputs_2 = [
+            {
+                'prompt_id': 'prompt_a',
+                'messages': [{
+                    'role': 'user',
+                    'content': 'test1'
+                }]
+            },
+            {
+                'prompt_id': 'prompt_a',
+                'messages': [{
+                    'role': 'user',
+                    'content': 'test1'
+                }]
+            },
+            {
+                'prompt_id': 'prompt_b',
+                'messages': [{
+                    'role': 'user',
+                    'content': 'test2'
+                }]
+            },
+            {
+                'prompt_id': 'prompt_b',
+                'messages': [{
+                    'role': 'user',
+                    'content': 'test2'
+                }]
+            },
+        ]
+        test_rewards_2 = torch.tensor([1.0, 3.0, 2.0, 4.0], device=self.accelerator.device)
+
+        try:
+            advantages_2 = self._compute_advantages(test_inputs_2, test_rewards_2)
+            logger.info(f'Test 2 passed: advantages shape {advantages_2.shape}')
+
+            # Check that advantages are correctly computed
+            expected_adv_a = torch.tensor([-1.0, 1.0])  # (1-2, 3-2)
+            expected_adv_b = torch.tensor([-1.0, 1.0])  # (2-3, 4-3)
+
+            assert torch.allclose(advantages_2[0:2], expected_adv_a, atol=1e-6), 'Group A advantages incorrect'
+            assert torch.allclose(advantages_2[2:4], expected_adv_b, atol=1e-6), 'Group B advantages incorrect'
+
+        except Exception as e:
+            logger.error(f'Test 2 failed: {e}')
+
+        logger.info('Advantage calculation edge case testing completed')
+
+    def _prepare_batch_inputs(self, inputs: DataType) -> List[DataType]:
         """
         Prepare the final batch inputs with advantages, ref/old_policy logps and other fields for RL training.
 
         Args:
-            inputs (DataType): List of input samples. Original shape is [spg*bs] where:
-                - spg: steps_per_generation
-                - bs: per-device batch size
-            rewards (torch.Tensor): Tensor of global rewards corresponding to the inputs.
-                Shape should match the total number of samples (spg*bs*num_processes*num_generations)
+            inputs (DataType): List of local input samples.
 
         Returns:
             List[DataType]: A list of prepared batch inputs, organized as [spg][bs]
         """
-        # Compute advantages
-        grouped_rewards = rewards.view(-1, self.num_generations)
-        mean_grouped_rewards = grouped_rewards.mean(dim=1).repeat_interleave(self.num_generations, dim=0)
-        std_grouped_rewards = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations, dim=0)
-
-        advantages = (rewards - mean_grouped_rewards)
-        if self.args.scale_rewards:
-            advantages /= (std_grouped_rewards + 1e-4)
-        self._logs['advantages'].extend(gather(advantages).tolist())
-        if any('images' in data and data['images'] is not None for data in inputs):
-            self._logs['image'].extend(gather_object([inp['images'] for inp in inputs]))
-
         template = self.template
 
-        gas_chunks, advantage_chunks = self.split_by_mini_batches(inputs, advantages)
+        gas_chunks, _ = self.split_by_mini_batches(inputs)
         ga_batch_encoded_inputs = []
-        for i, (batch, batch_advantages) in enumerate(zip(gas_chunks, advantage_chunks)):
+        for i, batch in enumerate(gas_chunks):
             # Encode and process each batch (size=bs)
             with self._template_context(template):
                 processed_batch = [
@@ -996,6 +1282,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Process labels and masks
             labels = batch_encoded_inputs.pop('labels')
             logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
+
             batch_encoded_inputs.update({
                 'completion_mask':
                 labels[:, -logits_to_keep:] != -100,
@@ -1003,8 +1290,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 torch.tensor([b['is_truncated'] for b in batch], dtype=torch.bool),
                 'logits_to_keep':
                 logits_to_keep,
-                'advantages':
-                batch_advantages
             })
 
             with torch.no_grad():
@@ -1107,6 +1392,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _compute_loss(self, model, inputs):
         mode = 'train' if self.model.training else 'eval'
 
+        # Check batch size and decide processing strategy
+        batch_size = inputs['input_ids'].shape[0] if 'input_ids' in inputs else len(inputs.get('completion_mask', []))
+        expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
+
+        # If batch size matches expected, use normal processing
+        if batch_size == expected_bs:
+            return self._compute_loss_single(model, inputs)
+        else:
+            assert batch_size > expected_bs
+            return self._compute_loss_chunked(model, inputs)
+
+    def _compute_loss_single(self, model, inputs):
+        """Original loss computation logic for single batch processing."""
+        mode = 'train' if self.model.training else 'eval'
+
         completion_mask = inputs['completion_mask']
         truncated_mask = inputs['truncated_mask']
 
@@ -1137,8 +1437,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 logger.info('All completions are overlong and truncated, '
                             'resulting in NaN some values for some metrics (e.g., KL)')
             truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask).to(completion_mask.device)
-            completion_mask = completion_mask * (~truncated_mask)
-
+            completion_mask.mul_(~truncated_mask)
         # Compute the KL divergence between the model and the reference model
         if self.beta != 0.0:
             ref_per_token_logps = inputs['ref_per_token_logps']
@@ -1219,6 +1518,42 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return loss
 
+    def _compute_loss_chunked(self, model, inputs):
+        mode = 'train' if self.model.training else 'eval'
+        chunk_size = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
+        batch_size = inputs['input_ids'].shape[0] if 'input_ids' in inputs else len(inputs.get('completion_mask', []))
+
+        logger.debug(f'Computing chunked loss for batch size {batch_size} with chunk size {chunk_size}')
+
+        all_losses = []
+
+        # TODO: Aggregate metrics across chunks
+        # aggregated_metrics = {}
+
+        for i in range(0, batch_size, chunk_size):
+            end_idx = min(i + chunk_size, batch_size)
+
+            # Create chunk inputs
+            chunk_inputs = {}
+            for key, value in inputs.items():
+                if isinstance(value, torch.Tensor):
+                    chunk_inputs[key] = value[i:end_idx]
+                else:
+                    chunk_inputs[key] = value
+
+            # Compute loss for this chunk
+            chunk_loss = self._compute_loss_single(model, chunk_inputs)
+
+            all_losses.append(chunk_loss)
+
+        # Compute average loss
+        final_loss_tensor = torch.stack(all_losses).mean()
+
+        logger.debug(f'Chunked loss computation completed: {len(all_losses)} chunks -> '
+                     f'final loss {final_loss_tensor.item():.6f}')
+
+        return final_loss_tensor
+
     @contextmanager
     def padding_free_context(self, model: torch.nn.Module):
         ctx = {}
@@ -1297,6 +1632,27 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                            model,
                                            inputs,
                                            compute_entropy=False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """
+        Compute per-token log probabilities and entropies with memory-efficient batching.
+
+        When rollout count is larger than expected, we process in smaller batches
+        to control memory usage.
+        """
+        # Check if we need to use memory-efficient batching
+        batch_size = inputs['input_ids'].shape[0]
+        mode = 'train' if self.model.training else 'eval'
+        expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
+
+        # If batch is larger than threshold and adaptive batching is enabled, use chunked processing
+        if batch_size > expected_bs:
+            return self._get_per_token_logps_and_entropies_chunked(model, inputs, compute_entropy)
+        else:
+            return self._get_per_token_logps_and_entropies_single(model, inputs, compute_entropy)
+
+    def _get_per_token_logps_and_entropies_single(self,
+                                                  model,
+                                                  inputs,
+                                                  compute_entropy=False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
         unwrapped_model = self.accelerator.unwrap_model(model)
@@ -1340,6 +1696,54 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 entropies = entropy_from_logits(logits)
 
         return logps, entropies
+
+    def _get_per_token_logps_and_entropies_chunked(self,
+                                                   model,
+                                                   inputs,
+                                                   compute_entropy=False
+                                                   ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """
+        Memory-efficient chunked processing for large batches.
+
+        Splits the batch into smaller chunks based on per_device_batch_size
+        to control memory usage when rollout count is larger than expected.
+        """
+        batch_size = inputs['input_ids'].shape[0]
+        mode = 'train' if self.model.training else 'eval'
+        chunk_size = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
+
+        logger.debug(f'Processing batch of size {batch_size} in chunks of {chunk_size}')
+
+        all_logps = []
+        all_entropies = [] if compute_entropy else None
+
+        # Process in chunks
+        for i in range(0, batch_size, chunk_size):
+            end_idx = min(i + chunk_size, batch_size)
+
+            # Create chunk inputs
+            chunk_inputs = {}
+            for key, value in inputs.items():
+                if isinstance(value, torch.Tensor):
+                    chunk_inputs[key] = value[i:end_idx]
+                else:
+                    chunk_inputs[key] = value  # Non-tensor values (like logits_to_keep) are scalars
+
+            # Process this chunk
+            chunk_logps, chunk_entropies = self._get_per_token_logps_and_entropies_single(
+                model, chunk_inputs, compute_entropy)
+
+            all_logps.append(chunk_logps)
+            if compute_entropy and chunk_entropies is not None:
+                all_entropies.append(chunk_entropies)
+
+        # Concatenate results
+        final_logps = torch.cat(all_logps, dim=0)
+        final_entropies = torch.cat(all_entropies, dim=0) if all_entropies else None
+
+        logger.debug(f'Chunked processing completed: {len(all_logps)} chunks -> ' f'final shape {final_logps.shape}')
+
+        return final_logps, final_entropies
 
     @patch_profiling_decorator
     def _get_last_hidden_state(self, unwrapped_model, inputs, logits_to_keep):
@@ -1775,7 +2179,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs = outputs[process_slice]
             else:
                 # Standard equal distribution case
-                outputs = self.get_even_process_rollout_outputs(all_outputs)
+                outputs = self.get_even_process_data(all_outputs)
 
         else:
             # For global inputs, only main process keeps outputs
@@ -2006,7 +2410,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         according to the multi_turn_scheduler.
         """
         orig_size = len(inputs)
-        rollout_outputs = [None] * orig_size  # Preallocate to preserve order
+        rollout_outputs: List[RolloutOutput] = [None] * orig_size  # Preallocate to preserve order
 
         # Attach index to inputs for tracking
         for i, input_data in enumerate(inputs):
@@ -2050,7 +2454,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     continue
                 index = _input['index']
                 step_result = self.multi_turn_scheduler.step(
-                    self.inputs2requests([_input])[0], output.choices[0], current_turn)
+                    self.inputs2requests([_input])[0], output.response.choices[0], current_turn)
 
                 if step_result['response_token_ids']:
                     rollout_outputs[index].response_token_ids.append(step_result['response_token_ids'])
@@ -2072,23 +2476,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         assert all(o is not None for o in rollout_outputs)
         return rollout_outputs
 
-    def get_even_process_rollout_outputs(self, all_outputs: List[RolloutOutput]) -> List[RolloutOutput]:
+    def get_even_process_data(self, global_data: List[T]) -> List[T]:
         """
-        Evenly splits `all_outputs` among all processes.
+        Evenly splits `global_data` among all processes.
 
-        Each process receives a contiguous chunk of data. If `len(all_outputs)` is not
+        Each process receives a contiguous chunk of data. If `len(global_data)` is not
         perfectly divisible by the number of processes, the first `remainder` processes
         will receive one additional item.
 
         Args:
-            all_outputs (List[RolloutOutput]): The full list of outputs to be distributed.
+            global_data (List[T]): The full list of data to be distributed.
 
         Returns:
-            List[RolloutOutput]: The subset of `all_outputs` assigned to this process.
+            List[T]: The subset of `global_data` assigned to this process.
         """
         num_procs = self.accelerator.num_processes
         proc_idx = self.accelerator.process_index
-        total = len(all_outputs)
+        total = len(global_data)
 
         base_size = total // num_procs
         remainder = total % num_procs
@@ -2100,4 +2504,4 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             start = remainder * (base_size + 1) + (proc_idx - remainder) * base_size
             end = start + base_size
 
-        return all_outputs[start:end]
+        return global_data[start:end]

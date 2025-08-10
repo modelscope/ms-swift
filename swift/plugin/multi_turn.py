@@ -16,7 +16,11 @@ if TYPE_CHECKING:
 
 class RolloutScheduler(ABC):
     # Single Turn Rollout Scheduler
-    def __init__(self, infer_engine: 'GRPOVllmEngine', max_turns: Optional[int] = None, *args, **kwargs):
+    def __init__(self,
+                 infer_engine: Optional['GRPOVllmEngine'] = None,
+                 max_turns: Optional[int] = None,
+                 *args,
+                 **kwargs):
         self.infer_engine = infer_engine
         self.max_turns = max_turns
 
