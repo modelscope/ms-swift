@@ -399,7 +399,7 @@ class SwiftMixin:
             pass
 
     def _prepare_gradient_checkpointing(self, model) -> None:
-        from swift.llm import HfConfigFactory, get_model_arch, deep_getattr, dynamic_gradient_checkpointing
+        from swift.llm import HfConfigFactory, deep_getattr, dynamic_gradient_checkpointing
         args = self.args
         HfConfigFactory.set_model_config_attr(model, 'use_cache', False)
         if args.gradient_checkpointing or args.vit_gradient_checkpointing:
@@ -413,7 +413,7 @@ class SwiftMixin:
             model.enable_input_require_grads()
 
         model_meta = model.model_meta
-        model_arch = get_model_arch(model_meta.model_arch)
+        model_arch = model_meta.model_arch
         if model_meta.is_multimodal and model_arch:
             for vision_tower_name in model_arch.vision_tower:
                 vision_tower = deep_getattr(model, vision_tower_name)

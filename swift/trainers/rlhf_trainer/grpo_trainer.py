@@ -32,7 +32,7 @@ from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
 from trl.trainer.utils import selective_log_softmax
 
 from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInferRequest, RowPreprocessor, Template,
-                       get_model_arch, to_device)
+                       to_device)
 from swift.llm.infer.protocol import ChatCompletionResponse
 from swift.llm.model.utils import get_llm_model
 from swift.llm.template.base import MaxLengthError
@@ -430,7 +430,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # All in one
             return [[n for n, p in model.named_parameters() if 'ref_model' not in n]], [None]
 
-        model_arch = get_model_arch(model.model_meta.model_arch)
+        model_arch = model.model_meta.model_arch
         non_llm_parameters = []
         llm_embeds = []
         parameters = []

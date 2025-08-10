@@ -235,8 +235,7 @@ def find_embedding(model: nn.Module) -> List[str]:
 
 def find_all_linears(model, model_arch=None, extra_layers=None, sub_module=None):
     if model_arch is None:
-        from swift.llm import get_model_arch
-        model_arch = get_model_arch(model.model_meta.model_arch)
+        model_arch = model.model_meta.model_arch
     # lm_head
     if model_arch and model_arch.lm_head:
         output = model_arch.lm_head
