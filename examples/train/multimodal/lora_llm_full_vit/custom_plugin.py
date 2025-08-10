@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Optional
 import safetensors.torch
 import torch
 
-from swift.llm import deep_getattr, get_model_arch, get_multimodal_target_regex
+from swift.llm import deep_getattr, get_multimodal_target_regex
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import LoraConfig, Swift
 from swift.utils import get_logger
@@ -46,14 +46,14 @@ class CustomTuner(Tuner):
                     state_dict[n] = p.detach().cpu()
         model.save_pretrained(save_directory, state_dict=state_dict, safe_serialization=safe_serialization, **kwargs)
         # vit
-        model_arch = get_model_arch(model.model_meta.model_arch)
+        model_arch = model.model_meta.model_arch
         state_dict = {k: v for k, v in state_dict.items() if is_vit_param(model_arch, k)}
         safetensors.torch.save_file(
             state_dict, os.path.join(save_directory, 'vit.safetensors'), metadata={'format': 'pt'})
 
     @staticmethod
     def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
-        model_arch = get_model_arch(model.model_meta.model_arch)
+        model_arch = model.model_meta.model_arch
         target_regex = get_multimodal_target_regex(model)
         logger.info(f'target_regex: {target_regex}')
         lora_config = LoraConfig(
