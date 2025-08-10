@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Optional
 import torch
 from peft import IA3Config, PeftModel, get_peft_model
 
-from swift.llm import MODEL_ARCH_MAPPING, ModelKeys
+from swift.llm import ModelKeys
 from swift.utils import find_all_linears
 
 if TYPE_CHECKING:
