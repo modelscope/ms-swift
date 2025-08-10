@@ -117,6 +117,7 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     model_type: The unique ID for the model type. Models with the same model_type share
         the same architectures, template, get_function, etc.
     """
+    from .model_arch import get_model_arch
     model_type = model_meta.model_type
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
@@ -125,6 +126,8 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
         model_meta.is_multimodal = True
     if model_type in RMModelType.__dict__:
         model_meta.is_reward = True
+    if model_meta.model_arch:
+        model_meta.model_arch = get_model_arch(model_meta.model_arch)
     MODEL_MAPPING[model_type] = model_meta
 
 

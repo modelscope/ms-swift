@@ -150,12 +150,24 @@ def patch_ignore_check_imports():
         td.check_imports = _old_check_imports
 
 
+def get_lm_head_model(model, model_meta, lm_heads):
+    llm_prefix = getattr(model_meta.model_arch, 'language_model', None)[0]
+    prefix_list = llm_prefix.split('.')
+    origin_model = model
+    for prefix in prefix_list:
+        for lm_head in lm_heads:
+            if hasattr(model, lm_head):
+                return model
+        model = getattr(model, prefix)
+    raise ValueError(f'Cannot find the lm_head. model: {origin_model}')
+
+
 def _patch_sequence_classification(model, model_meta):
     hidden_size = HfConfigFactory.get_config_attr(model.config, 'hidden_size')
     initializer_range = HfConfigFactory.get_config_attr(model.config, 'initializer_range')
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
-    llm_model = get_llm_model(model, model_meta=model_meta)
+    llm_model = get_lm_head_model(model, model_meta, lm_heads)
     llm_model.num_labels = model.config.num_labels
     llm_model.score = nn.Linear(hidden_size, llm_model.num_labels, bias=False, dtype=llm_model.dtype)
     if llm_model.score.weight.device == torch.device('meta'):

@@ -78,7 +78,7 @@ class IA3(PeftTuner):
 
     @staticmethod
     def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
-        model_arch: ModelKeys = MODEL_ARCH_MAPPING[model.model_meta.model_arch]
+        model_arch: ModelKeys = model.model_meta.model_arch
         ia3_config = IA3Config(
             target_modules=find_all_linears(model), feedforward_modules='.*' + model_arch.mlp.split('{}.')[1] + '.*')
         return get_peft_model(model, ia3_config)
