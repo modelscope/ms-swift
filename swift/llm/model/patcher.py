@@ -159,12 +159,11 @@ def get_lm_head_model(model, model_meta, lm_heads):
     origin_model = model
     current_model = model
     for prefix in [None] + prefix_list:
+        if prefix:
+            current_model = getattr(current_model, prefix)
         for lm_head in lm_heads:
             if hasattr(current_model, lm_head):
                 return current_model
-        if not prefix:
-            continue
-        current_model = getattr(current_model, prefix)
 
     raise ValueError(f'Cannot find the lm_head. model: {origin_model}')
 
