@@ -50,8 +50,8 @@ class KimiVLTemplate(Template):
                 token_len = (image_grid_hws[i].prod() // merge_length)
                 return [media_token] * token_len
 
-            input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
-            loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                _get_new_tokens)
 
             encoded['loss_scale'] = loss_scale
             encoded['input_ids'] = input_ids

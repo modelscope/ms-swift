@@ -217,7 +217,7 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_enable_deepep: bool = False
     moe_grouped_gemm: bool = False
     moe_permute_fusion: bool = False
-    moe_aux_loss_coeff: Optional[float] = None
+    moe_aux_loss_coeff: float = 0.
     moe_z_loss_coeff: Optional[float] = None
     moe_expert_capacity_factor: Optional[float] = None
     moe_shared_expert_overlap: bool = False
@@ -315,8 +315,6 @@ class MegatronArguments(ExtraMegatronArguments):
             self.moe_router_topk = 2
         if self.moe_router_pre_softmax is None:
             self.moe_router_pre_softmax = False
-        if self.moe_aux_loss_coeff is None:
-            self.moe_aux_loss_coeff = 0.
         if self.moe_router_load_balancing_type is None:
             self.moe_router_load_balancing_type = 'aux_loss'
         if self.moe_router_enable_expert_bias is None:

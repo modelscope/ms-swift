@@ -7,8 +7,8 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
-from swift.llm import (ExportArguments, HfConfigFactory, MaxLengthError, ProcessorMixin, deep_getattr, get_model_arch,
-                       load_dataset, prepare_model_template, save_checkpoint, to_device)
+from swift.llm import (ExportArguments, HfConfigFactory, MaxLengthError, ProcessorMixin, deep_getattr, load_dataset,
+                       prepare_model_template, save_checkpoint, to_device)
 from swift.utils import get_logger, get_model_parameter_info
 
 logger = get_logger()
@@ -160,7 +160,7 @@ class QuantEngine(ProcessorMixin):
                 self.tokenizer, quant_config=quant_config, n_parallel_calib_samples=args.quant_batch_size)
         quantizer.get_calib_dataset = _origin_get_calib_dataset  # recover
         if self.model.quant_config.modules_to_not_convert:
-            model_arch = get_model_arch(args.model_meta.model_arch)
+            model_arch = args.model_meta.model_arch
             lm_head_key = getattr(model_arch, 'lm_head', None) or 'lm_head'
             if lm_head_key not in self.model.quant_config.modules_to_not_convert:
                 self.model.quant_config.modules_to_not_convert.append(lm_head_key)
@@ -180,7 +180,7 @@ class QuantEngine(ProcessorMixin):
 
     @staticmethod
     def get_block_name_to_quantize(model: nn.Module) -> Optional[str]:
-        model_arch = get_model_arch(model.model_meta.model_arch)
+        model_arch = model.model_meta.model_arch
         prefix = ''
         if hasattr(model_arch, 'language_model'):
             assert len(model_arch.language_model) == 1, f'mllm_arch.language_model: {model_arch.language_model}'
