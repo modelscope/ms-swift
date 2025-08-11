@@ -391,6 +391,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         self.truncated_resample_iterator = cyclic_iter(self.get_train_dataloader())
         # flag indicating whether the evaluation has started
         self.eval_flag = False
+        # Record the number of samples that need to be padded for even distribution across processes
+        self.rollout_pad_count = 0
 
     @patch_profiling_decorator
     def _prepare_inputs(self, generation_batch: dict[str, Union[torch.Tensor,
@@ -819,16 +821,22 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs = self.resample_truncated_inputs(inputs)
 
         inputs = self._generate_completions(inputs)
-        total_rewards_per_func, total_rewards, completions = self._score_completions(inputs)
+        total_rewards_per_func, total_rewards, completions, total_advantages = self._score_completions(inputs)
         mode = 'train' if self.model.training else 'eval'
 
         if self.args.dynamic_sample and mode == 'train':
             # dynamic sampling for std=0 groups
-            inputs, total_rewards, total_rewards_per_func, completions = \
-                self._dynamic_sampling(inputs, total_rewards, total_rewards_per_func, completions)
+            inputs, total_rewards, total_rewards_per_func, completions, total_advantages = \
+                self._dynamic_sampling(inputs, total_rewards, total_rewards_per_func, completions, total_advantages)
 
-        # Prepare final outputs with advantages and other required fields
-        inputs = self._calculate_advantages(inputs, total_rewards)
+        local_advantages = self.get_even_process_data(total_advantages)
+        assert len(local_advantages) == len(inputs)
+        for i, advantage in enumerate(local_advantages):
+            inputs[i]['advantage'] = advantage
+
+        self._logs['advantages'].extend(total_advantages.tolist())
+        if any('images' in data and data['images'] is not None for data in inputs):
+            self._logs['image'].extend(gather_object([inp['images'] for inp in inputs]))
 
         batch_encoded_inputs = self._prepare_batch_inputs(inputs)
         # Log metrics
@@ -838,35 +846,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return batch_encoded_inputs
 
-    def _calculate_advantages(self, inputs: DataType, total_rewards: torch.Tensor) -> DataType:
-        advantages = self._compute_advantages(inputs, total_rewards)
-        # Legacy method (kept for backward compatibility)
-        legacy_advantages = self._compute_advantages_legacy(inputs, total_rewards)
-
-        # DEBUG
-        assert torch.allclose(advantages, legacy_advantages)
-        try:
-            self._validate_advantage_calculation(inputs, total_rewards, advantages)
-        except Exception as e:
-            logger.warning(f'Advantage validation failed: {e}')
-
-        # log advantages and image(for VL models)
-        self._logs['advantages'].extend(advantages.tolist())
-        if any('images' in data and data['images'] is not None for data in inputs):
-            self._logs['image'].extend(gather_object([inp['images'] for inp in inputs]))
-
-        # get local advantages
-        local_advantages = self.get_even_process_data(advantages)
-        assert len(local_advantages) == len(inputs)
-
-        # merge advantages to inputs
-        for i, advantage in enumerate(local_advantages):
-            inputs[i]['advantage'] = advantage
-
-        return inputs
-
-    def _score_completions(self, inputs: DataType) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
-        """Score completions using all reward functions
+    def _score_completions(self, inputs: DataType) -> Tuple[torch.Tensor, torch.Tensor, List[str], torch.Tensor]:
+        """Score completions using all reward functions and compute advantages
 
         Args:
             inputs: List of input examples, each containing a 'messages' list with conversation history
@@ -876,9 +857,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             - rewards_per_func: Tensor of shape (num_examples, num_reward_funcs) with individual rewards
             - total_rewards: Tensor of shape (num_examples,) with weighted sum of rewards
             - completions: List of generated completion strings
+            - advantages: Tensor of shape (num_examples,) with computed advantages
         """
         device = self.accelerator.device
         completions = [example['messages'][-1]['content'] for example in inputs]
+
         # If using gym environment, extract rewards directly from inputs
         if self.use_gym_env:
             total_rewards = torch.tensor([inp['total_reward'] for inp in inputs], dtype=torch.float32, device=device)
@@ -886,7 +869,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             rewards_per_func = total_rewards.unsqueeze(1)  # shape: [num_examples, 1]
             total_rewards_per_func = gather(rewards_per_func)
             total_rewards_gathered = total_rewards_per_func.squeeze(1)  # Recover from gathered data
-            return total_rewards_per_func, total_rewards_gathered, completions
+            total_prompt_ids = gather_object([inp['prompt_id'] for inp in inputs])
+            # flatten
+            total_prompt_ids = [pid for sublist in total_prompt_ids for pid in sublist]
+            total_advantages = self._compute_advantages(total_rewards_gathered, total_prompt_ids)
+            return total_rewards_per_func, total_rewards_gathered, completions, total_advantages
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
 
         for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
@@ -912,12 +899,96 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             logger.warning(f'All reward functions returned None for the following kwargs: {row_reward_kwargs}. '
                            'Please ensure that at least one reward function returns a valid reward.')
 
-        total_rewards_per_func = gather(rewards_per_func)
-        total_rewards = (total_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
+        # Calculate total rewards
+        total_rewards = (rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
 
-        return total_rewards_per_func, total_rewards, completions
+        # Extract prompt_ids for grouping
+        prompt_ids = [inp['prompt_id'] for inp in inputs]
 
-    def _dynamic_sampling(self, inputs, rewards, rewards_per_func, completions):
+        # Prepare for gather with padding
+        if self.rollout_pad_count > 0:
+            # Pad total rewards with NaN
+            pad_total_rewards = torch.full((self.rollout_pad_count, ), torch.nan, dtype=torch.float32, device=device)
+            total_rewards = torch.cat([total_rewards, pad_total_rewards], dim=0)
+
+            # Pad prompt_ids with special dummy value
+            dummy_prompt_ids = ['__dummy_pad__'] * self.rollout_pad_count
+            prompt_ids = prompt_ids + dummy_prompt_ids
+
+        # Gather all data across processes
+        gathered_total_rewards = gather(total_rewards)
+        gathered_prompt_ids = gather_object(prompt_ids)
+
+        # Remove dummy data (prompt_id == "__dummy_pad__")
+        valid_indices = [i for i, id in enumerate(gathered_prompt_ids) if id != '__dummy_pad__']
+        valid_total_rewards = gathered_total_rewards[valid_indices]
+        valid_prompt_ids = [gathered_prompt_ids[i] for i in valid_indices]
+
+        # Compute advantages based on prompt_id grouping
+        total_advantages = self._compute_advantages(valid_total_rewards, valid_prompt_ids)
+
+        # Create local advantages by filtering to original local data
+        assert rewards_per_func.shape[0] == total_rewards.shape[0] == total_advantages.shape[0]
+        return rewards_per_func, total_rewards, completions, total_advantages
+
+    def _compute_advantages(self, rewards: torch.Tensor, prompt_ids: List[str]) -> torch.Tensor:
+        """
+        Compute advantages based on prompt_id grouping from gathered data.
+
+        Args:
+            rewards: Tensor of rewards from all processes, shape: (num_examples,)
+            prompt_ids: List of prompt_ids from all processes, len: num_examples
+
+        Returns:
+            torch.Tensor: Computed advantages with same shape as rewards
+        """
+        assert rewards.shape[0] == len(prompt_ids)
+        advantages = torch.zeros_like(rewards)
+
+        # Group rewards by prompt_id
+        unique_prompt_ids = list(set(prompt_ids))
+
+        for prompt_id in unique_prompt_ids:
+            # Find all samples with this prompt_id
+            indices = [i for i, pid in enumerate(prompt_ids) if pid == prompt_id]
+            if len(indices) == 0:
+                continue
+
+            group_rewards = rewards[indices]
+
+            # Compute group statistics
+            group_mean = group_rewards.mean()
+            group_advantages = group_rewards - group_mean
+
+            # Optional: scale by standard deviation
+            if self.args.scale_rewards:
+                group_std = group_rewards.std()
+                group_advantages /= (group_std + 1e-4)
+
+            # Assign computed advantages back to original positions
+            for idx, advantage in zip(indices, group_advantages):
+                advantages[idx] = advantage
+
+        return advantages
+
+    def _dynamic_sampling(self, inputs, rewards, rewards_per_func, completions, advantages):
+        """
+        Perform dynamic sampling to replace samples with zero-reward-variance groups.
+
+        This method implements DAPO (https://arxiv.org/abs/2503.14476) by replacing
+        samples from groups with zero reward variance (std=0) through resampling.
+
+        Args:
+            inputs: local input data samples
+            rewards: Tensor of rewards for global data samples
+            rewards_per_func: Rewards per function/model for global data samples
+            completions: Generated completions for local inputs
+            advantages: Computed advantages for global data samples
+
+        Returns:
+            tuple: (inputs, rewards, rewards_per_func, completions, advantages)
+                   with zero-variance groups replaced by resampled data
+        """
         # DAPO https://arxiv.org/abs/2503.14476
         # Replaces samples with zero-reward-variance groups (std=0)
         resample_count = 0
@@ -925,8 +996,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         valid_rewards = []
         valid_rewards_per_func = []
         valid_completions = []
-
-        origin_data = (inputs, rewards, rewards_per_func, completions)
+        valid_advantages = []
+        origin_data = (inputs, rewards, rewards_per_func, completions, advantages)
 
         while resample_count < self.args.max_resample_times:
             grouped_rewards = rewards.view(-1, self.num_generations)
@@ -939,14 +1010,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             valid_rewards_per_func.append(rewards_per_func[valid_mask])
             valid_completions.extend(
                 [inp['messages'][-1]['content'] for inp, mask in zip(all_inputs, valid_mask) if mask])
-
+            valid_advantages.append(advantages[valid_mask])
             if len(valid_samples) >= self.args.generation_batch_size:
                 break
 
             inputs = next(self.dynamic_resample_iterator)
             inputs = Trainer._prepare_inputs(self, inputs)
             inputs = self._generate_completions(inputs)
-            rewards_per_func, rewards, completions = self._score_completions(inputs)
+            rewards_per_func, rewards, completions, advantages = self._score_completions(inputs)
             resample_count += 1
 
         if len(valid_samples) >= self.args.generation_batch_size:
@@ -958,11 +1029,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             rewards = torch.cat(valid_rewards)[:self.args.generation_batch_size]
             rewards_per_func = torch.cat(valid_rewards_per_func)[:self.args.generation_batch_size]
             completions = valid_completions[:self.args.generation_batch_size][process_slice]
+            advantages = torch.cat(valid_advantages)[:self.args.generation_batch_size]
         else:
             logger.warning(f'There are still std=0 groups present after {self.args.max_resample_times} retries.')
-            inputs, rewards, rewards_per_func, completions = origin_data
+            inputs, rewards, rewards_per_func, completions, advantages = origin_data
 
-        return inputs, rewards, rewards_per_func, completions
+        return inputs, rewards, rewards_per_func, completions, advantages
 
     def split_by_mini_batches(self, inputs):
         """
@@ -997,263 +1069,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 spg_chunks.append(inputs[start_idx:end_idx])
 
         return spg_chunks
-
-    def _compute_advantages(self, inputs: DataType, rewards: torch.Tensor) -> torch.Tensor:
-        """
-        Compute advantages based on prompt_id grouping, handling variable generation counts per prompt.
-
-        Args:
-            inputs (DataType): List of input samples with prompt_id fields
-            rewards (torch.Tensor): Tensor of rewards corresponding to the inputs
-
-        Returns:
-            torch.Tensor: Computed advantages with same shape as rewards
-        """
-        if len(inputs) != len(rewards):
-            raise ValueError(f'Inputs length ({len(inputs)}) != rewards length ({len(rewards)})')
-
-        # Ensure all inputs have prompt_id
-        if not all('prompt_id' in inp for inp in inputs):
-            logger.warning('Some inputs missing prompt_id, adding them...')
-            inputs = self._add_prompt_id_to_inputs(inputs)
-
-        # Group rewards by prompt_id
-        prompt_groups = {}
-        for i, inp in enumerate(inputs):
-            prompt_id = inp['prompt_id']
-            if prompt_id not in prompt_groups:
-                prompt_groups[prompt_id] = []
-            prompt_groups[prompt_id].append((i, rewards[i].item()))
-
-        # Compute advantages for each group
-        advantages = torch.zeros_like(rewards)
-
-        for prompt_id, group_data in prompt_groups.items():
-            indices, group_rewards = zip(*group_data)
-            group_rewards = torch.tensor(group_rewards, device=rewards.device, dtype=rewards.dtype)
-
-            group_mean = group_rewards.mean()
-            group_advantages = group_rewards - group_mean
-
-            # Optional: scale by standard deviation
-            if self.args.scale_rewards:
-                group_std = group_rewards.std()
-                group_advantages /= (group_std + 1e-4)
-
-            # Assign computed advantages back to original positions
-            for idx, advantage in zip(indices, group_advantages):
-                advantages[idx] = advantage
-
-        # Check for groups with unexpected generation counts
-        generation_counts = [len(group_data) for group_data in prompt_groups.values()]
-        if generation_counts and (min(generation_counts) != max(generation_counts)):
-            logger.warning(f'Variable generation counts detected: min={min(generation_counts)}, '
-                           f'max={max(generation_counts)}, expected={self.num_generations}')
-
-        return advantages
-
-    def _compute_advantages_legacy(self, inputs: DataType, rewards: torch.Tensor) -> torch.Tensor:
-        """
-        Legacy advantage computation method using reshape.
-
-        This method assumes a fixed number of generations per prompt (self.num_generations).
-        Kept for backward compatibility, but may fail if rollout count differs from num_generations.
-
-        Args:
-            inputs: List of input samples (not used in legacy method)
-            rewards: Tensor of rewards
-
-        Returns:
-            torch.Tensor: Computed advantages
-
-        Raises:
-            RuntimeError: If rewards cannot be reshaped to (-1, num_generations)
-        """
-        try:
-            # Original logic - assumes fixed num_generations per prompt
-            grouped_rewards = rewards.view(-1, self.num_generations)
-            mean_grouped_rewards = grouped_rewards.mean(dim=1).repeat_interleave(self.num_generations, dim=0)
-            std_grouped_rewards = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations, dim=0)
-
-            advantages = (rewards - mean_grouped_rewards)
-            if self.args.scale_rewards:
-                advantages /= (std_grouped_rewards + 1e-4)
-
-            logger.debug(f'Legacy advantage computation: {len(rewards)} rewards, '
-                         f'{self.num_generations} generations per prompt')
-
-            return advantages
-
-        except RuntimeError:
-            raise
-
-    def _validate_advantage_calculation(self, inputs: DataType, rewards: torch.Tensor,
-                                        advantages: torch.Tensor) -> None:
-        """
-        Validate the computed advantages for correctness and consistency.
-
-        This method performs several checks:
-        1. Ensures advantages sum to ~0 within each prompt group
-        2. Verifies advantage shapes match input/reward shapes
-        3. Checks for NaN or infinite values
-
-        Args:
-            inputs: Original input data with prompt_id fields
-            rewards: Original reward tensor
-            advantages: Computed advantage tensor
-
-        Raises:
-            ValueError: If validation fails
-        """
-        if len(advantages) != len(rewards) or len(advantages) != len(inputs):
-            raise ValueError(f'Shape mismatch: advantages={len(advantages)}, '
-                             f'rewards={len(rewards)}, inputs={len(inputs)}')
-
-        # Check for NaN or infinite values
-        if torch.isnan(advantages).any():
-            nan_count = torch.isnan(advantages).sum().item()
-            logger.warning(f'Found {nan_count} NaN values in advantages')
-
-        if torch.isinf(advantages).any():
-            inf_count = torch.isinf(advantages).sum().item()
-            logger.warning(f'Found {inf_count} infinite values in advantages')
-
-        # Verify advantages sum to ~0 within each prompt group
-        prompt_groups = {}
-        for i, inp in enumerate(inputs):
-            prompt_id = inp['prompt_id']
-            if prompt_id not in prompt_groups:
-                prompt_groups[prompt_id] = []
-            prompt_groups[prompt_id].append(advantages[i].item())
-
-        tolerance = 1e-6
-        problematic_groups = []
-        for prompt_id, group_advantages in prompt_groups.items():
-            if len(group_advantages) > 1:  # Only check groups with multiple generations
-                group_sum = sum(group_advantages)
-                if abs(group_sum) > tolerance:
-                    problematic_groups.append((prompt_id, group_sum, len(group_advantages)))
-
-        if problematic_groups:
-            logger.warning(f'Found {len(problematic_groups)} prompt groups where advantages '
-                           f"don't sum to ~0 (tolerance={tolerance})")
-            for prompt_id, group_sum, count in problematic_groups[:5]:  # Log first 5
-                logger.warning(f'  Group {prompt_id}: sum={group_sum:.8f}, count={count}')
-
-    def _test_advantage_calculation_edge_cases(self) -> None:
-        """
-        Test the advantage calculation with various edge cases.
-        This method is useful for debugging and validation.
-        """
-        logger.info('Testing advantage calculation edge cases...')
-
-        # Test case 1: Different generation counts per prompt
-        test_inputs_1 = [
-            {
-                'prompt_id': 'prompt_1',
-                'messages': [{
-                    'role': 'user',
-                    'content': 'hello'
-                }]
-            },
-            {
-                'prompt_id': 'prompt_1',
-                'messages': [{
-                    'role': 'user',
-                    'content': 'hello'
-                }]
-            },
-            {
-                'prompt_id': 'prompt_1',
-                'messages': [{
-                    'role': 'user',
-                    'content': 'hello'
-                }]
-            },  # 3 generations
-            {
-                'prompt_id': 'prompt_2',
-                'messages': [{
-                    'role': 'user',
-                    'content': 'hi'
-                }]
-            },
-            {
-                'prompt_id': 'prompt_2',
-                'messages': [{
-                    'role': 'user',
-                    'content': 'hi'
-                }]
-            },  # 2 generations
-            {
-                'prompt_id': 'prompt_3',
-                'messages': [{
-                    'role': 'user',
-                    'content': 'hey'
-                }]
-            },  # 1 generation
-        ]
-        test_rewards_1 = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], device=self.accelerator.device)
-
-        try:
-            advantages_1 = self._compute_advantages(test_inputs_1, test_rewards_1)
-            logger.info(f'Test 1 passed: advantages shape {advantages_1.shape}')
-
-            # Verify that advantages sum to ~0 for each group
-            assert abs(advantages_1[0] + advantages_1[1] + advantages_1[2]) < 1e-6, 'Group 1 advantages should sum to 0'
-            assert abs(advantages_1[3] + advantages_1[4]) < 1e-6, 'Group 2 advantages should sum to 0'
-            assert advantages_1[5] == 0.0, 'Single generation group should have 0 advantage'
-
-        except Exception as e:
-            logger.error(f'Test 1 failed: {e}')
-
-        # Test case 2: All same generation counts (should match original behavior)
-        test_inputs_2 = [
-            {
-                'prompt_id': 'prompt_a',
-                'messages': [{
-                    'role': 'user',
-                    'content': 'test1'
-                }]
-            },
-            {
-                'prompt_id': 'prompt_a',
-                'messages': [{
-                    'role': 'user',
-                    'content': 'test1'
-                }]
-            },
-            {
-                'prompt_id': 'prompt_b',
-                'messages': [{
-                    'role': 'user',
-                    'content': 'test2'
-                }]
-            },
-            {
-                'prompt_id': 'prompt_b',
-                'messages': [{
-                    'role': 'user',
-                    'content': 'test2'
-                }]
-            },
-        ]
-        test_rewards_2 = torch.tensor([1.0, 3.0, 2.0, 4.0], device=self.accelerator.device)
-
-        try:
-            advantages_2 = self._compute_advantages(test_inputs_2, test_rewards_2)
-            logger.info(f'Test 2 passed: advantages shape {advantages_2.shape}')
-
-            # Check that advantages are correctly computed
-            expected_adv_a = torch.tensor([-1.0, 1.0])  # (1-2, 3-2)
-            expected_adv_b = torch.tensor([-1.0, 1.0])  # (2-3, 4-3)
-
-            assert torch.allclose(advantages_2[0:2], expected_adv_a, atol=1e-6), 'Group A advantages incorrect'
-            assert torch.allclose(advantages_2[2:4], expected_adv_b, atol=1e-6), 'Group B advantages incorrect'
-
-        except Exception as e:
-            logger.error(f'Test 2 failed: {e}')
-
-        logger.info('Advantage calculation edge case testing completed')
 
     def _prepare_batch_inputs(self, inputs: DataType) -> List[DataType]:
         """
@@ -1311,7 +1126,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return ga_batch_encoded_inputs
 
-    def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func, trajectory_infos=None):
+    def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func):
         """Log training/evaluation metrics"""
         mode = 'train' if self.model.training else 'eval'
         device = self.accelerator.device
@@ -1350,7 +1165,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._logs['completion'].extend(gather_object(completions))
 
         if self.use_gym_env:
-            self._logs['trajectory_infos'].extend(gather_object(trajectory_infos))
+            pass
+            # TODO: extra from rollout_infos
+            # self._logs['trajectory_infos'].extend(gather_object(trajectory_infos))
 
         for i, name in enumerate(self.reward_func_names):
             self._logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
@@ -1830,12 +1647,28 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         *,
         use_tqdm: Optional[bool] = False,
     ) -> List[RolloutOutput]:
+        """
+        Perform inference using the configured engine (VLLM server or colocate engine).
+
+        Args:
+            infer_requests: List of rollout inference requests to process
+            request_config: Optional configuration for the requests
+            use_tqdm: Whether to show progress bar during inference
+
+        Returns:
+            List of RolloutOutput objects containing the inference results
+        """
         with patch_profiling_context(self, 'generate'):
             if self.vllm_mode == 'server':
                 return self.vllm_client.infer(infer_requests, asdict(request_config), use_tqdm=use_tqdm)
             else:
                 res = self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
-                return [RolloutOutput(response=r) for r in res]
+                if all(isinstance(r, RolloutOutput) for r in res):
+                    return res
+                else:
+                    # PT Eninge
+                    assert all(isinstance(r, ChatCompletionResponse) for r in res)
+                    return [RolloutOutput(response=r) for r in res]
 
     def old_policy(self):
         return self.num_iterations > 1 or self.args.gradient_accumulation_steps % self.args.steps_per_generation != 0
@@ -2496,6 +2329,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         base_size = total // num_procs
         remainder = total % num_procs
+
+        # Calculate the number of samples that need to be padded
+        # This ensures all processes have the same number of samples for gather operations
+        if remainder > 0 and proc_idx >= remainder:
+            # Processes with extra samples need padding
+            self.rollout_pad_count = 1
 
         if proc_idx < remainder:
             start = proc_idx * (base_size + 1)

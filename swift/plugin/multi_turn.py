@@ -267,9 +267,195 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
 
 
 class ThinkingModelScheduler(MultiTurnScheduler):
-    # TODO: example for thinking model
-    # replace history thinking block
-    pass
+    """
+    Scheduler for Thinking class models that handle multi-turn reasoning.
+
+    For Thinking models, the assistant response format is:
+    "<think> think content </think> <answer> answer content </answer>"
+
+    This scheduler:
+    1. Parses think and answer content from assistant responses
+    2. Only keeps the think content from the last round
+    3. Processes each round's history separately
+    4. Returns List[RolloutOutput] with one output per round
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def _parse_think_answer(self, content: str) -> tuple[str, str]:
+        """
+        Parse think and answer content from assistant response.
+
+        Args:
+            content: Assistant response content
+
+        Returns:
+            tuple: (think_content, answer_content)
+        """
+        think_content = ''
+        answer_content = ''
+
+        # Parse think content
+        think_start = content.find('<think>')
+        think_end = content.find('</think>')
+        if think_start != -1 and think_end != -1:
+            think_content = content[think_start + 7:think_end].strip()
+
+        # Parse answer content
+        answer_start = content.find('<answer>')
+        answer_end = content.find('</answer>')
+        if answer_start != -1 and answer_end != -1:
+            answer_content = content[answer_start + 8:answer_end].strip()
+
+        return think_content, answer_content
+
+    def _is_thinking_template(self) -> bool:
+        """
+        Check if the model's template is a ThinkingTemplate.
+
+        Returns:
+            bool: True if the template is a ThinkingTemplate or its subclass
+        """
+        if not hasattr(self.infer_engine, 'default_template'):
+            return False
+
+        template = self.infer_engine.default_template
+        from swift.llm.template.template.utils import ThinkingTemplate
+
+        return isinstance(template, ThinkingTemplate)
+
+    def _build_round_history(self, original_messages: 'Messages', round_num: int, think_content: str) -> 'Messages':
+        """
+        Build history for a specific round, keeping only the think content from the last round.
+
+        Args:
+            original_messages: Original conversation messages
+            round_num: Current round number
+            think_content: Think content to include
+
+        Returns:
+            Messages: History for this specific round
+        """
+        from copy import deepcopy
+
+        # If this is a thinking template, use the template's method to prepare messages
+        if self._is_thinking_template():
+            # Create a mock inputs object to use the template's _swift_prepare_inputs method
+            class MockInputs:
+
+                def __init__(self, messages):
+                    self.messages = deepcopy(messages)
+
+            mock_inputs = MockInputs(original_messages)
+
+            # Set up the template for inference mode
+            template = self.infer_engine.default_template
+            original_is_training = getattr(template, 'is_training', False)
+            template.is_training = False
+
+            # Use the template's method to prepare messages
+            template._swift_prepare_inputs(mock_inputs)
+
+            # Restore original training state
+            template.is_training = original_is_training
+
+            return mock_inputs.messages
+        else:
+            # Fallback to manual processing for non-thinking templates
+            round_messages = []
+
+            # Process messages in original order
+            for i, msg in enumerate(original_messages):
+                if msg['role'] == 'assistant' and isinstance(msg['content'], str) and i != len(original_messages) - 1:
+                    # For assistant messages
+                    assistant_no_think = msg['content'].split('</think>')[-1].strip()
+                    round_messages.append(assistant_no_think)
+                else:
+                    round_messages.append(deepcopy(msg))
+
+            return round_messages
+
+    async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
+                  **kwargs) -> List['RolloutOutput']:
+        """
+        Execute multi-turn conversation for Thinking models.
+
+        Args:
+            infer_request: The initial inference request containing messages
+            request_config: Configuration for the inference request
+            **kwargs: Additional inference parameters
+
+        Returns:
+            List[RolloutOutput]: List of outputs, one for each round
+        """
+        from swift.llm.infer.protocol import RolloutOutput
+
+        current_request = infer_request
+        current_turn = 1
+        rollout_outputs = []
+        last_think_content = ''
+
+        while True:
+            messages = current_request.messages
+            if current_turn == 1 or not messages[-1]['content']:
+                # If it's the first turn or the last message content is empty(dummy), remove the response
+                remove_response(messages)
+
+            # Get model response
+            response: 'ChatCompletionResponse' = await self.infer_engine.infer_async(
+                current_request, request_config, **kwargs)
+            response_choice: 'ChatCompletionResponseChoice' = response.choices[0]
+
+            # Parse think and answer content
+            completion = response_choice.message.content
+            think_content, answer_content = self._parse_think_answer(completion)
+
+            # Update last think content
+            if think_content:
+                last_think_content = think_content
+
+            # Update conversation history
+            if messages[-1]['role'] == 'assistant':
+                messages[-1]['content'] += completion
+            else:
+                messages.append({'role': 'assistant', 'content': completion})
+
+            # Build history for this round
+            round_history = self._build_round_history(messages, current_turn, last_think_content)
+
+            # Create RolloutOutput for this round
+            round_output = RolloutOutput(
+                response=response,
+                messages=round_history,
+                rollout_infos={
+                    'num_turns': current_turn,
+                    'think_content': think_content,
+                    'answer_content': answer_content,
+                    'round_number': current_turn
+                })
+            rollout_outputs.append(round_output)
+
+            # Check stopping conditions
+            should_stop = self.check_finished(current_request, response_choice, current_turn)
+
+            if self.max_turns:
+                should_stop = should_stop or (current_turn >= self.max_turns)
+
+            if should_stop:
+                break
+
+            # Prepare next turn
+            ret = self.step(current_request, response_choice, current_turn)
+            current_request: 'RolloutInferRequest' = ret['infer_request']
+
+            if current_request.messages[-1]['role'] == 'assistant':
+                # Add a dummy response to allow engine to continue generating
+                current_request.messages.append({'role': 'assistant', 'content': None})
+
+            current_turn += 1
+
+        return rollout_outputs
 
 
 class MathTipsScheduler(MultiTurnScheduler):
@@ -475,4 +661,5 @@ multi_turns = {
     'math_tip_trick': MathTipsScheduler,
     'math_tip_trick_multi_turn': MathTipsMultiTurnScheduler,
     'gym_scheduler': GYMScheduler,
+    'thinking_scheduler': ThinkingModelScheduler,
 }

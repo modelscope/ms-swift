@@ -1044,6 +1044,23 @@ class Template(ProcessorMixin):
         return system
 
     def _swift_prepare_inputs(self, inputs):
+        """
+        Preprocesses the list of messages in the input by merging and formatting consecutive messages
+        according to their roles.
+
+        Specifically, this method:
+            - Merges consecutive messages from the same role ('assistant' or 'user') to prevent downstream errors.
+            - Detects consecutive tool-related messages following an assistant message, then formats and
+            combines them using `agent_template._format_tool_responses` for structured output.
+            - Updates the messages list in-place for further processing.
+
+        Args:
+            inputs: An object containing a 'messages' attribute, which is a list of dictionaries.
+                    Each message dictionary should have at least the keys 'role' and 'content'.
+
+        Returns:
+            None. The input messages list is updated in-place.
+        """
         messages = inputs.messages
         if len(messages) < 2:
             return
