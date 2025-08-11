@@ -379,7 +379,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             outputs.loss = None
             if loss_scale is not None:
                 loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
-                outputs.loss = get_loss_func('per_token_ce')(outputs, labels)
+                outputs.loss = get_loss_func('per_token_cross_entropy')(outputs, labels)
                 outputs.loss = outputs.loss * loss_scale
             unwrapped_model = self.accelerator.unwrap_model(model)
             if is_peft_available() and isinstance(unwrapped_model, PeftModel):

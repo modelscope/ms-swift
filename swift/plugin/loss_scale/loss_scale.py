@@ -10,7 +10,11 @@ from .utils import calculate_loss_scale
 
 
 class LossScale:
-    # If the values in loss_scale consist only of 0 and 1.
+    # Indicates whether loss_scale contains only 0 and 1.
+    # If set to True, loss_scale will be replaced by labels to stay compatible with 
+    # acceleration techniques such as liger_kernel. 
+    # If set to False, an additional 'loss_scale' key will be stored and the 
+    # corresponding loss function will be used.
     is_binary = False
     loss_scale_config = None  # path
 

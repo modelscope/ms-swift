@@ -796,7 +796,7 @@ def listwise_generative_reranker_loss(outputs,
 
 
 loss_mapping = {
-    'per_token_ce': per_token_loss_func,
+    'per_token_cross_entropy': per_token_loss_func,
     'channel_loss': channel_loss_func,
     # embedding
     'cosine_similarity': cosine_similarity_func,
