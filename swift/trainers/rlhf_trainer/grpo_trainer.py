@@ -35,7 +35,7 @@ from trl.trainer.utils import selective_log_softmax
 
 from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInferRequest, RowPreprocessor, Template,
                        to_device)
-from swift.llm.infer.protocol import ChatCompletionResponse
+from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
 from swift.llm.model.utils import get_llm_model
 from swift.llm.template.base import MaxLengthError
 from swift.llm.template.template_inputs import StdTemplateInputs
@@ -1084,7 +1084,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             return advantages
 
-        except RuntimeError as e:
+        except RuntimeError:
             raise
 
     def _validate_advantage_calculation(self, inputs: DataType, rewards: torch.Tensor,
@@ -2176,7 +2176,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 start_idx = sum(all_requests_lengths[:self.accelerator.process_index])
                 end_idx = start_idx + all_requests_lengths[self.accelerator.process_index]
                 process_slice = slice(start_idx, end_idx)
-                outputs = outputs[process_slice]
+                outputs = all_outputs[process_slice]
             else:
                 # Standard equal distribution case
                 outputs = self.get_even_process_data(all_outputs)
