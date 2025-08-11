@@ -9,7 +9,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, Word, findall
-from ..vision_utils import load_batch, load_video_cogvlm2
+from ..vision_utils import load_batch, load_video_cogvlm2, load_video_hf
 from .utils import ThinkingTemplate
 
 
@@ -255,7 +255,11 @@ class GLM4_5VTemplate(Template):
             if idx_list:
                 split_token = self._tokenize('\n')[0]
                 mm_data = getattr(inputs, f'{mm_type}s')
-                kwargs = {f'{mm_type}s': mm_data}
+                if mm_type == 'image':
+                    kwargs = {f'images': mm_data}
+                else:
+                    videos, video_metadata = load_video_hf(mm_data)
+                    kwargs = {'videos': [videos], 'video_metadata': [video_metadata]}
                 mm_inputs = self.processor(text='\n'.join([mm_token] * len(mm_data)), return_tensors='pt', **kwargs)
                 splited_tokens = self._split_list(mm_inputs['input_ids'][0].tolist(), split_token)
                 for key in ['input_ids', 'token_type_ids', 'attention_mask']:

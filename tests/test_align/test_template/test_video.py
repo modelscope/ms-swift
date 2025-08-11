@@ -162,6 +162,16 @@ def test_glm4_1v():
     assert response == response2
 
 
+def get_glm4_5v():
+    messages = [{'role': 'user', 'content': '<video>What happened in the video?'}]
+    videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
+    pt_engine = PtEngine('ZhipuAI/GLM-4.5V')
+    response = _infer_model(pt_engine, messages=messages, videos=videos)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, videos=videos)
+    assert response == response2
+
+
 def test_keye_vl():
     pt_engine = PtEngine('Kwai-Keye/Keye-VL-8B-Preview', attn_impl='flash_attention_2')
     messages = [{'role': 'user', 'content': '<video>What happened in the video?'}]
@@ -187,4 +197,5 @@ if __name__ == '__main__':
     # test_qwen2_5_vl()
     # test_qwen2_5_omni()
     # test_glm4_1v()  # bug now, wait model fix
-    test_keye_vl()
+    # test_keye_vl()
+    get_glm4_5v()
