@@ -216,6 +216,7 @@ Other important parameters:
 - 🔥 target_modules: Specifies the LoRA modules. The default is `['all-linear']`, but you can also pass layer-name suffixes, e.g. `--target_modules q_proj k_proj v_proj`. This argument is not restricted to LoRA and can be used with other tuners as well.
   - Note: The behavior of the special value `'all-linear'` differs between plain LLMs and multimodal LLMs. For a standard LLM, it automatically locates every linear layer except `lm_head` and attaches a tuner. For a multimodal LLM, it attaches the tuner only to the LLM component by default. This default can be changed with the `freeze_llm`, `freeze_vit`, and `freeze_aligner` options.
 - 🔥target_regex: Specifies a regex expression for LoRA modules, with a default of `None`. If this value is provided, the target_modules parameter becomes ineffective. This parameter is not limited to LoRA and can be used for other tuners.
+- target_parameters: List of parameter names to be replaced with LoRA. This argument behaves similarly to target_modules, but you should pass parameter names instead. This feature requires "peft>=0.17.0".
 - init_weights: Specifies the method for initializing weights. LoRA can specify `true`, `false`, `gaussian`, `pissa`, `pissa_niter_[number of iters]`. Bone can specify `true`, `false`, `bat`. The default is `true`.
 - 🔥modules_to_save: After attaching a tuner, explicitly specifies additional original model modules to participate in training and storage. The default is `[]`. This parameter is not limited to LoRA and can be used for other tuners.
 
@@ -752,7 +753,7 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - HD_NUM: Default is 24 when the number of images is 1. Greater than 1, the default is 6. Refer to [here](https://modelscope.cn/models/AI-ModelScope/internlm-xcomposer2d5-7b/file/view/master?fileName=modeling_internlm_xcomposer2.py&status=1#L254)
 
 ### video_cogvlm2
-- NUM_FRAMES: Default is 24, refer to [here](https://github.com/THUDM/CogVLM2/blob/main/video_demo/inference.py#L22)
+- NUM_FRAMES: Default is 24, refer to [here](https://github.com/zai-org/CogVLM2/blob/main/video_demo/inference.py#L22)
 
 ### phi3_vision
 - NUM_CROPS: Default is 4, refer to [here](https://modelscope.cn/models/LLM-Research/Phi-3.5-vision-instruct)
