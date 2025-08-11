@@ -40,6 +40,7 @@ class MegatronTunerMixin:
     adapter_load: Optional[str] = None
     target_modules: List[str] = field(default_factory=lambda: ['all-linear'])
     target_regex: Optional[str] = None
+    target_parameters: Optional[List[str]] = None
     modules_to_save: List[str] = field(default_factory=list)
 
     # lora

@@ -71,6 +71,8 @@ def prepare_adapter(model):
         'modules_to_save': modules_to_save,
         'use_rslora': args.use_rslora,
     }
+    if args.target_parameters is not None:
+        lora_kwargs['target_parameters'] = args.target_parameters
     lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
     logger.info(f'lora_config: {lora_config}')
     return Swift.prepare_model(model, lora_config)
