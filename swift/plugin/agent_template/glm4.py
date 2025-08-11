@@ -109,7 +109,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
 
     def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
         tool_descs = [
-            '[gMASK]<sop><|system|>\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>'
+            '# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>'
         ]
         for tool in tools:
             tool_descs.append(f'{json.dumps(tool, ensure_ascii=False)}')
