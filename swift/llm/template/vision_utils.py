@@ -148,6 +148,28 @@ def load_batch(path_list: List[Union[str, None, Any, BytesIO]],
     return res
 
 
+def load_video_hf(videos: List[str]):
+    from transformers.video_utils import load_video
+    res = []
+    video_metadata = []
+    for video in videos:
+        if isinstance(video, (list, tuple)) and isinstance(video[0], str):
+            # Case a: Video is provided as a list of image file names
+            video = [np.array(load_image(image_fname)) for image_fname in video]
+            video = np.stack(video)
+            metadata = None
+        else:
+            # Case b: Video is provided as a single file path or URL or decoded frames in a np.ndarray or torch.tensor
+            video_load_backend = get_env_args('video_load_backend', str, 'pyav')
+            video, metadata = load_video(
+                video,
+                backend=video_load_backend,
+            )
+        res.append(video)
+        video_metadata.append(metadata)
+    return res, video_metadata
+
+
 def _get_index(bound, fps, max_frame, first_idx=0, num_segments=32):
     if bound:
         start, end = bound[0], bound[1]
