@@ -256,7 +256,7 @@ class GLM4_5VTemplate(Template):
                 split_token = self._tokenize('\n')[0]
                 mm_data = getattr(inputs, f'{mm_type}s')
                 if mm_type == 'image':
-                    kwargs = {f'images': mm_data}
+                    kwargs = {'images': mm_data}
                 else:
                     videos, video_metadata = load_video_hf(mm_data)
                     kwargs = {'videos': [videos], 'video_metadata': [video_metadata]}
