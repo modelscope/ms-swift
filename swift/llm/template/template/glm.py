@@ -241,6 +241,34 @@ register_template(GLM4TemplateMeta(LLMTemplateType.glm4_5, template_cls=Thinking
 
 register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
 
+
+
+class GLM4_5VTemplate(Template):
+    placeholder_tokens = ['<|image|>']
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return ['<|begin_of_image|><|image|><|end_of_image|>']
+        elif media_type == 'video':
+            return ['<|begin_of_video|><|video|><|end_of_video|>']
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        print()
+
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
+        for media_type in ['image', 'video']:
+            grid_thw = self.concat_tensor(batch, f'{media_type}_grid_thw', 0)
+            if grid_thw is not None:
+                res[f'{media_type}_grid_thw'] = grid_thw
+        return res
+
+
+register_template(GLM4_0414TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
+
+
 glm4z1rumination_system = (
     '你是一个专业的深度研究助手，通过提供的工具与模拟浏览器交互，来帮助用户完成深度信息调研和报告撰写任务。'
     '今年是 2025 年。\n\n'
