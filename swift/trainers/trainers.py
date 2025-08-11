@@ -395,6 +395,11 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             else:
                 loss = self.label_smoother(outputs, labels)
 
+            if self.model.model_info.is_moe_model and self.args.router_aux_loss_coef is not None:
+                aux_loss = outputs.get('aux_loss')
+                if aux_loss is not None:
+                    loss = loss + self.args.router_aux_loss_coef * aux_loss.to(loss.device)
+
         if self.template.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
             loss = sequence_parallel.reduce_outputs(loss, labels)
