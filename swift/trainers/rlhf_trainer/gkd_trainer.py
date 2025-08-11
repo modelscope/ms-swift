@@ -89,6 +89,7 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
         use_logits_to_keep = self.get_use_logits_to_keep(True)
         if use_logits_to_keep:
             self.prepare_logits_to_keep(inputs)
+            model_inputs['logits_to_keep'] = inputs['logits_to_keep']
         if self.args.sft_alpha > 0:
             model_inputs['labels'] = inputs['labels']
         # compute student output
