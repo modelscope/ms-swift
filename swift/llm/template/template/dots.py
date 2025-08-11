@@ -1,25 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal
 
-import numpy as np
-import torch
-
-from swift.llm import to_device
-from swift.utils import is_deepspeed_enabled
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, Word, findall
+from ..utils import Context, findall
 from .utils import TemplateMeta
 
 
 class DotsOCRTemplate(Template):
     image_token_id = 151665
     placeholder_tokens = ['<|imgpad|>']
-    
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         from qwen_vl_utils import fetch_image
@@ -29,7 +22,7 @@ class DotsOCRTemplate(Template):
             return ['<|img|>', [-100], '<|endofimg|>']
         else:
             return ['<|img|><|imgpad|><|endofimg|>']
-        
+
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         processor = self.processor
@@ -39,8 +32,7 @@ class DotsOCRTemplate(Template):
 
         images = inputs.images
         media_token = self.image_token_id
-        media_inputs = processor.image_processor(
-            images=images, videos=None, return_tensors='pt', do_resize=False)
+        media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt', do_resize=False)
         media_grid_thw = media_inputs['image_grid_thw']
         idx_list = findall(input_ids, media_token)
         merge_length = processor.image_processor.merge_size**2
@@ -64,6 +56,7 @@ class DotsOCRTemplate(Template):
         if grid_thw is not None:
             res['image_grid_thw'] = grid_thw
         return res
+
 
 register_template(
     TemplateMeta(
