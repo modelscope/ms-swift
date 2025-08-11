@@ -354,9 +354,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             labels = inputs.pop('labels')
         outputs = model(**inputs)
         if getattr(outputs, 'aux_loss', None) is not None:
-            if 'aux_loss' not in self._custom_metrics:
-                self._custom_metrics['aux_loss'] = MeanMetric(nan_value=None)
-            self._custom_metrics['aux_loss'].update(outputs.aux_loss)
+            mode = 'train' if self.model.training else 'eval'
+            self._custom_metrics[mode]['aux_loss'].update(outputs.aux_loss)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
         if self.args.past_index >= 0:
@@ -389,15 +388,15 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             # User-defined compute_loss function
             if compute_loss_func is not None:
                 loss = compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, **loss_kwargs)
-            elif self.label_smoother is not None:
+            elif self.label_smoother is None:
+                if num_items_in_batch is None:
+                    num_items_in_batch = (labels[:, 1:] != -100).sum()
+                loss = outputs.loss.sum() / num_items_in_batch
+            else:
                 if model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
                     loss = self.label_smoother(outputs, labels, shift_labels=True)
                 else:
                     loss = self.label_smoother(outputs, labels)
-            else:
-                if num_items_in_batch is None:
-                    num_items_in_batch = (labels[:, 1:] != -100).sum()
-                loss = outputs.loss.sum() / num_items_in_batch
 
             if self.model.model_info.is_moe_model and self.args.router_aux_loss_coef is not None:
                 aux_loss = outputs.get('aux_loss')

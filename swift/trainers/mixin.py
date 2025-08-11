@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
+import collections
 import inspect
 import logging
 import os
@@ -89,8 +90,11 @@ class SwiftMixin:
             else:
                 args.evaluation_strategy = IntervalStrategy.NO
                 args.eval_strategy = IntervalStrategy.NO
-
-        self._custom_metrics = {}
+        _get_mean_metric = lambda: MeanMetric(nan_value=None, device=args.device)
+        self._custom_metrics = {
+            'train': collections.defaultdict(_get_mean_metric),
+            'eval': collections.defaultdict(_get_mean_metric)
+        }
         self.template = template
         self.max_memory = 0
         self.hub = get_hub()
@@ -698,8 +702,8 @@ class SwiftMixin:
             tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
             loss = tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged)
             logs: Dict[str, float] = {'loss': loss}  # loss first
-
-            for k, metric in self._custom_metrics.items():
+            mode = 'train' if self.model.training else 'eval'
+            for k, metric in self._custom_metrics[mode].items():
                 value = metric.compute()
                 if len(value) == 1:
                     val = list(value.values())[0]
@@ -752,10 +756,9 @@ class SwiftMixin:
         preds = outputs.logits.argmax(dim=-1)
         metrics = compute_acc(
             preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
+        mode = 'train' if self.model.training else 'eval'
         for k, v in metrics.items():
-            if k not in self._custom_metrics:
-                self._custom_metrics[k] = MeanMetric(nan_value=None)
-            self._custom_metrics[k].update(v)
+            self._custom_metrics[mode][k].update(v)
 
     @torch.no_grad()
     def _evalscope_eval(self):
