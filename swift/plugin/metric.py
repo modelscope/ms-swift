@@ -102,7 +102,7 @@ class MeanMetric(Metric):
             value = self.nan_value
         elif dist.is_initialized():
             tensor = torch.tensor([self.state, self.count], device=self.device)
-            tensor = dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+            dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
             value = (tensor[0] / tensor[1]).item()
         else:
             value = self.state / self.count
