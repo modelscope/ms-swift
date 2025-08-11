@@ -169,6 +169,7 @@ def load_video_hf(videos: List[str]):
         video_metadata.append(metadata)
     return res, video_metadata
 
+
 def _get_index(bound, fps, max_frame, first_idx=0, num_segments=32):
     if bound:
         start, end = bound[0], bound[1]
