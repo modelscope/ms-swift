@@ -438,3 +438,19 @@ register_model(
         architectures=['Glm4MoeForCausalLM'],
         requires=['transformers>=4.54'],
     ))
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.glm4_5v,
+        [
+            ModelGroup([
+                Model('ZhipuAI/GLM-4.5V', 'THUDM/GLM-4.5V'),
+                Model('ZhipuAI/GLM-4.5V-FP8', 'THUDM/GLM-4.5V-FP8'),
+            ]),
+        ],
+        TemplateType.glm4_5v,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Glm4vMoeForConditionalGeneration'],
+        requires=['transformers>=4.56.0.dev'],
+    ))
