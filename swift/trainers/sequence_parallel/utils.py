@@ -3,7 +3,7 @@ import math
 import os
 from contextlib import contextmanager
 from functools import partial
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import datasets
 import numpy as np
@@ -50,8 +50,9 @@ class GatherLoss(torch.autograd.Function):
             gather_idx: gather the tensors on this dim
         """
         ctx.process_group = process_group
-        shape0 = labels.shape[0]
-        ctx.scatter_shape = labels.shape[gather_idx or 0]
+        # change from label.shape to loss, because label may be None
+        shape0 = loss.shape[0]
+        ctx.scatter_shape = loss.shape[gather_idx or 0]
         ctx.gather_idx = gather_idx or 0
         world_size = dist.get_world_size(group=process_group)  # the sp world size
         output = torch.empty((shape0 * world_size, *loss.shape[1:]), dtype=loss.dtype, device=loss.device)
@@ -59,10 +60,15 @@ class GatherLoss(torch.autograd.Function):
         dist.all_gather_into_tensor(output, loss, group=process_group)
         if gather_idx is not None:
             output = torch.cat(output.split(shape0, dim=0), dim=gather_idx)
-        labels_output = torch.empty((shape0 * world_size, *labels.shape[1:]), dtype=labels.dtype, device=labels.device)
-        dist.all_gather_into_tensor(labels_output, labels, group=process_group)
-        if gather_idx is not None:
-            labels_output = torch.cat(labels_output.split(shape0, dim=0), dim=gather_idx)
+        if labels is not None:
+            labels_output = torch.empty((shape0 * world_size, *labels.shape[1:]),
+                                        dtype=labels.dtype,
+                                        device=labels.device)
+            dist.all_gather_into_tensor(labels_output, labels, group=process_group)
+            if gather_idx is not None:
+                labels_output = torch.cat(labels_output.split(shape0, dim=0), dim=gather_idx)
+        else:
+            labels_output = None
         return output, labels_output
 
     @staticmethod
