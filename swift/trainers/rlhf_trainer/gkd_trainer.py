@@ -110,10 +110,10 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
         tea_dim = shifted_teacher_logits.shape[-1]
         if stu_dim < tea_dim:
             shifted_student_logits = F.pad(shifted_student_logits, (0, tea_dim - stu_dim), 'constant', 0)
-            shifted_student_logits[stu_dim:] = shifted_teacher_logits[stu_dim:]
+            shifted_student_logits[..., stu_dim:] = shifted_teacher_logits[..., stu_dim:]
         elif stu_dim > tea_dim:
             shifted_teacher_logits = F.pad(shifted_teacher_logits, (0, stu_dim - tea_dim), 'constant', 0)
-            shifted_teacher_logits[tea_dim:] = shifted_student_logits[tea_dim:]
+            shifted_teacher_logits[..., tea_dim:] = shifted_student_logits[..., tea_dim:]
 
         # compute loss
         loss = self.generalized_jsd_loss(
