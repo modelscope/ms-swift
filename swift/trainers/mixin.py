@@ -687,7 +687,7 @@ class SwiftMixin:
         with self.hub.patch_hub():
             return super().push_to_hub(*args, **kwargs)
 
-    def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
+    def log(self, logs: dict[str, float], *args, **kwargs) -> None:
         mode = 'train' if self.model.training else 'eval'
         for k, metric in self._custom_metrics[mode].items():
             if mode == 'eval':
@@ -710,7 +710,7 @@ class SwiftMixin:
         for k in list(logs.keys()):
             if logs[k] is None:
                 logs.pop(k)
-        return super().log(logs, start_time)
+        return super().log(logs, *args, **kwargs)
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
         if self.control.should_log and self.state.global_step > self._globalstep_last_logged:

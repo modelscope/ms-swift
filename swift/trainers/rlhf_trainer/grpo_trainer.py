@@ -1715,7 +1715,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if mode == 'eval':
             metrics = {f'eval_{key}': val for key, val in metrics.items()}
 
-        logs = {**logs, **metrics}
+        logs.update(metrics)
         if version.parse(transformers.__version__) >= version.parse('4.47.0.dev0'):
             super().log(logs, start_time)
         else:  # transformers<=4.46
