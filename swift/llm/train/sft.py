@@ -183,9 +183,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         elif args.predict_with_generate:
             compute_metrics, preprocess_logits_for_metrics = get_metric('nlg')
         else:
-            compute_metrics, preprocess_logits_for_metrics = get_metric('acc')
-            compute_metrics = partial(
-                compute_metrics, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
+            compute_metrics, preprocess_logits_for_metrics = None, None
         return {
             'compute_metrics': compute_metrics,
             'preprocess_logits_for_metrics': preprocess_logits_for_metrics,
@@ -224,7 +222,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             'best_metric': state.best_metric,
             'global_step': state.global_step,
             'log_history': state.log_history,
-            'memory': trainer.max_memory,
+            'memory': getattr(state, 'max_memory', None),
         })
         if is_master():
             jsonl_path = os.path.join(training_args.output_dir, 'logging.jsonl')

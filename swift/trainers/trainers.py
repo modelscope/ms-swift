@@ -410,8 +410,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         if getattr(self.args, 'average_tokens_across_devices', False) and self.model_accepts_loss_kwargs:
             loss *= self.accelerator.num_processes
 
-        if (outputs.logits is not None and labels is not None and not return_outputs
-                and self.args.tuner_backend != 'unsloth'):
+        if (outputs.logits is not None and labels is not None and self.args.tuner_backend != 'unsloth'):
             # Liger does not have logits
             # Unsloth has a bug with output logits
             self._compute_acc(outputs, labels)

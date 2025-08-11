@@ -90,13 +90,15 @@ class SwiftMixin:
             else:
                 args.evaluation_strategy = IntervalStrategy.NO
                 args.eval_strategy = IntervalStrategy.NO
-        _get_mean_metric = lambda: MeanMetric(nan_value=None, device=args.device)
+
+        def _get_mean_metric():
+            return MeanMetric(nan_value=None, device=args.device)
+
         self._custom_metrics = {
             'train': collections.defaultdict(_get_mean_metric),
             'eval': collections.defaultdict(_get_mean_metric)
         }
         self.template = template
-        self.max_memory = 0
         self.hub = get_hub()
 
         self.model_meta = model.model_meta
@@ -685,14 +687,30 @@ class SwiftMixin:
         with self.hub.patch_hub():
             return super().push_to_hub(*args, **kwargs)
 
-    def get_max_cuda_memory(self, device: Optional[Union[torch.device, int]] = None) -> float:
-        if device is None:
-            mems = [torch.cuda.max_memory_reserved(device=device) for device in range(get_device_count())]
-        else:
-            mems = [torch.cuda.max_memory_reserved(device=device)]
-        mem = sum(mems) / 1024**3
-        self.max_memory = max(self.max_memory, mem)
-        return mem
+    def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
+        mode = 'train' if self.model.training else 'eval'
+        for k, metric in self._custom_metrics[mode].items():
+            if mode == 'eval':
+                k = f'eval_{k}'
+            if hasattr(metric, 'compute'):
+                value = metric.compute()
+                metric.reset()
+            else:
+                value = metric
+            if isinstance(value, dict):
+                if len(value) == 1:
+                    val = list(value.values())[0]
+                    logs[k] = val
+                else:
+                    for k_suffix, val in value.items():
+                        new_k = f'{k}_{k_suffix}'
+                        logs[new_k] = val
+            else:
+                logs[k] = value
+        for k in list(logs.keys()):
+            if logs[k] is None:
+                logs.pop(k)
+        return super().log(logs, start_time)
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
         if self.control.should_log and self.state.global_step > self._globalstep_last_logged:
@@ -702,31 +720,11 @@ class SwiftMixin:
             tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
             loss = tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged)
             logs: Dict[str, float] = {'loss': loss}  # loss first
-            mode = 'train' if self.model.training else 'eval'
-            for k, metric in self._custom_metrics[mode].items():
-                value = metric.compute()
-                if len(value) == 1:
-                    val = list(value.values())[0]
-                    logs[k] = val
-                else:
-                    for k_suffix, val in value.items():
-                        new_k = f'{k}_{k_suffix}'
-                        logs[new_k] = val
-                metric.reset()
-
             if version.parse(transformers.__version__) >= version.parse('4.38'):
                 grad_norm = args[0]
                 if grad_norm is not None:
                     logs['grad_norm'] = grad_norm.item() if isinstance(grad_norm, torch.Tensor) else grad_norm
             logs['learning_rate'] = self._get_learning_rate()
-            if not is_torch_npu_available():
-                logs['memory(GiB)'] = round(self.get_max_cuda_memory(), 2)
-
-            elapse_time = time.time() - self.start_time
-            logs['train_speed(iter/s)'] = round(self.state.global_step / elapse_time, 6)
-            for k in list(logs.keys()):
-                if logs[k] is None:
-                    logs.pop(k)
             tr_loss -= tr_loss
             self._total_loss_scalar += tr_loss_scalar
             self._globalstep_last_logged = self.state.global_step
