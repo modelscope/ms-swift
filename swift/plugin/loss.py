@@ -458,8 +458,7 @@ def channel_loss_func(outputs,
     if outputs.loss is None:
         outputs.loss = per_token_loss_func(outputs, labels)
     token_loss = outputs.loss
-    labels = torch.roll(labels, shifts=-1, dims=-1).view(-1)
-    masks = labels != -100
+    masks = torch.roll(labels, shifts=-1, dims=-1).view(-1) != -100
     if num_items_in_batch is None:
         num_items_in_batch = masks.sum()
     loss = token_loss.sum() / num_items_in_batch
