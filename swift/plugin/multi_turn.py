@@ -123,32 +123,39 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                   **kwargs) -> Union['RolloutOutput', List['RolloutOutput']]:
         """Execute multi-turn conversation rollout with built-in turn management logic.
 
-        This implements the default multi-turn interaction flow, which you can override
-        to customize the conversation handling behavior. The default logic:
+        This implements the default multi-turn interaction flow that can be overridden
+        to customize conversation handling behavior. The default logic provides:
 
-        1. Manages conversation turns and stopping conditions
-        2. Handles message accumulation across turns
-        3. Tracks response tokens and loss masks
-        4. Supports early stopping conditions
+        1. Automatic conversation turn management and stopping conditions
+        2. Seamless message accumulation across multiple turns
+        3. Response token tracking and loss mask management
+        4. Configurable early stopping mechanisms
 
         Args:
-            infer_request: The initial inference request containing messages
-            request_config: Configuration for the inference request
-            **kwargs: Additional inference parameters
+            infer_request: The initial inference request containing conversation messages
+            request_config: Configuration parameters for the inference request
+            **kwargs: Additional inference parameters passed to the engine
 
         Returns:
             RolloutOutput containing the complete conversation history and metadata,
             or a list of outputs for batched requests
 
-        Customization Points:
-            - Override check_finished() to change stopping conditions
-            - Override step() to customize turn-to-turn transitions
-            - Subclass to completely change multi-turn behavior
+        Customization Approaches:
+            - Override check_finished() to implement custom stopping criteria
+            - Override step() to customize turn-to-turn transition logic
+            - Override this entire run() method for completely custom multi-turn behavior
+
+        Important Notes:
+            - Method overriding is only supported when using server mode (swift rollout)
+              with vllm_use_async_engine=True
+            - Custom implementations must maintain async/await compatibility
+            - Ensure proper handling of conversation state across turns
 
         Example:
             class CustomScheduler(MultiTurnScheduler):
-                async def run(self, *args, **kwargs):
-                    # Custom multi-turn logic here
+                async def run(self, infer_request, request_config, **kwargs):
+                    # Implement custom multi-turn conversation logic
+                    # Must return RolloutOutput or List[RolloutOutput]
                     ...
         """
 
@@ -283,6 +290,87 @@ class ThinkingModelScheduler(MultiTurnScheduler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
+                  **kwargs) -> List['RolloutOutput']:
+        """
+        Execute multi-turn conversation for Thinking models.
+
+        Args:
+            infer_request: The initial inference request containing messages
+            request_config: Configuration for the inference request
+            **kwargs: Additional inference parameters
+
+        Returns:
+            List[RolloutOutput]: List of outputs, one for each round
+        """
+        from swift.llm.infer.protocol import RolloutOutput
+
+        current_request = infer_request
+        current_turn = 1
+        rollout_outputs = []
+        last_think_content = ''
+
+        while True:
+            messages = current_request.messages
+            if current_turn == 1 or not messages[-1]['content']:
+                # If it's the first turn or the last message content is empty(dummy), remove the response
+                remove_response(messages)
+
+            # Get model response
+            response: 'ChatCompletionResponse' = await self.infer_engine.infer_async(
+                current_request, request_config, **kwargs)
+            response_choice: 'ChatCompletionResponseChoice' = response.choices[0]
+
+            # Parse think and answer content
+            completion = response_choice.message.content
+            think_content, answer_content = self._parse_think_answer(completion)
+
+            # Update last think content
+            if think_content:
+                last_think_content = think_content
+
+            # Update conversation history
+            if messages[-1]['role'] == 'assistant':
+                messages[-1]['content'] += completion
+            else:
+                messages.append({'role': 'assistant', 'content': completion})
+
+            # Build history for this round
+            round_history = self._build_round_history(messages, current_turn, last_think_content)
+
+            # Create RolloutOutput for this round
+            round_output = RolloutOutput(
+                response=response,
+                messages=round_history,
+                rollout_infos={
+                    'num_turns': current_turn,
+                    'think_content': think_content,
+                    'answer_content': answer_content,
+                    'round_number': current_turn
+                })
+            rollout_outputs.append(round_output)
+
+            # Check stopping conditions
+            should_stop = self.check_finished(current_request, response_choice, current_turn)
+
+            if self.max_turns:
+                should_stop = should_stop or (current_turn >= self.max_turns)
+
+            if should_stop:
+                break
+
+            # Prepare next turn
+            ret = self.step(current_request, response_choice, current_turn)
+            current_request: 'RolloutInferRequest' = ret['infer_request']
+
+            if current_request.messages[-1]['role'] == 'assistant':
+                # Add a dummy response to allow engine to continue generating
+                current_request.messages.append({'role': 'assistant', 'content': None})
+
+            current_turn += 1
+
+        return rollout_outputs
+
     def _parse_think_answer(self, content: str) -> tuple[str, str]:
         """
         Parse think and answer content from assistant response.
@@ -375,87 +463,6 @@ class ThinkingModelScheduler(MultiTurnScheduler):
                     round_messages.append(deepcopy(msg))
 
             return round_messages
-
-    async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
-                  **kwargs) -> List['RolloutOutput']:
-        """
-        Execute multi-turn conversation for Thinking models.
-
-        Args:
-            infer_request: The initial inference request containing messages
-            request_config: Configuration for the inference request
-            **kwargs: Additional inference parameters
-
-        Returns:
-            List[RolloutOutput]: List of outputs, one for each round
-        """
-        from swift.llm.infer.protocol import RolloutOutput
-
-        current_request = infer_request
-        current_turn = 1
-        rollout_outputs = []
-        last_think_content = ''
-
-        while True:
-            messages = current_request.messages
-            if current_turn == 1 or not messages[-1]['content']:
-                # If it's the first turn or the last message content is empty(dummy), remove the response
-                remove_response(messages)
-
-            # Get model response
-            response: 'ChatCompletionResponse' = await self.infer_engine.infer_async(
-                current_request, request_config, **kwargs)
-            response_choice: 'ChatCompletionResponseChoice' = response.choices[0]
-
-            # Parse think and answer content
-            completion = response_choice.message.content
-            think_content, answer_content = self._parse_think_answer(completion)
-
-            # Update last think content
-            if think_content:
-                last_think_content = think_content
-
-            # Update conversation history
-            if messages[-1]['role'] == 'assistant':
-                messages[-1]['content'] += completion
-            else:
-                messages.append({'role': 'assistant', 'content': completion})
-
-            # Build history for this round
-            round_history = self._build_round_history(messages, current_turn, last_think_content)
-
-            # Create RolloutOutput for this round
-            round_output = RolloutOutput(
-                response=response,
-                messages=round_history,
-                rollout_infos={
-                    'num_turns': current_turn,
-                    'think_content': think_content,
-                    'answer_content': answer_content,
-                    'round_number': current_turn
-                })
-            rollout_outputs.append(round_output)
-
-            # Check stopping conditions
-            should_stop = self.check_finished(current_request, response_choice, current_turn)
-
-            if self.max_turns:
-                should_stop = should_stop or (current_turn >= self.max_turns)
-
-            if should_stop:
-                break
-
-            # Prepare next turn
-            ret = self.step(current_request, response_choice, current_turn)
-            current_request: 'RolloutInferRequest' = ret['infer_request']
-
-            if current_request.messages[-1]['role'] == 'assistant':
-                # Add a dummy response to allow engine to continue generating
-                current_request.messages.append({'role': 'assistant', 'content': None})
-
-            current_turn += 1
-
-        return rollout_outputs
 
 
 class MathTipsScheduler(MultiTurnScheduler):

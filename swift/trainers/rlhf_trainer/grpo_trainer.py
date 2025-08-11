@@ -14,6 +14,7 @@ from copy import copy, deepcopy
 from dataclasses import asdict, dataclass, field
 from math import ceil
 from queue import Queue
+from threading import local
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
@@ -854,7 +855,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         Returns:
             Tuple containing:
-            - rewards_per_func: Tensor of shape (num_examples, num_reward_funcs) with individual rewards
+            - total_rewards_per_func: Tensor of shape (num_examples, num_reward_funcs) with individual rewards
             - total_rewards: Tensor of shape (num_examples,) with weighted sum of rewards
             - completions: List of generated completion strings
             - advantages: Tensor of shape (num_examples,) with computed advantages
@@ -862,18 +863,40 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         device = self.accelerator.device
         completions = [example['messages'][-1]['content'] for example in inputs]
 
+        # Extract prompt_ids for grouping
+        prompt_ids = [inp['prompt_id'] for inp in inputs]
+
         # If using gym environment, extract rewards directly from inputs
         if self.use_gym_env:
-            total_rewards = torch.tensor([inp['total_reward'] for inp in inputs], dtype=torch.float32, device=device)
-            # For gym environment, there's only one total reward, so rewards_per_func is just total_rewards reshaped
-            rewards_per_func = total_rewards.unsqueeze(1)  # shape: [num_examples, 1]
-            total_rewards_per_func = gather(rewards_per_func)
-            total_rewards_gathered = total_rewards_per_func.squeeze(1)  # Recover from gathered data
-            total_prompt_ids = gather_object([inp['prompt_id'] for inp in inputs])
-            # flatten
-            total_prompt_ids = [pid for sublist in total_prompt_ids for pid in sublist]
-            total_advantages = self._compute_advantages(total_rewards_gathered, total_prompt_ids)
-            return total_rewards_per_func, total_rewards_gathered, completions, total_advantages
+            local_rewards = torch.tensor([inp['total_reward'] for inp in inputs], dtype=torch.float32, device=device)
+            # For gym environment, there's only one total reward, so rewards_per_func is just local_rewards reshaped
+            local_rewards_per_func = local_rewards.unsqueeze(1)  # shape: [num_examples, 1]
+        else:
+            # Compute rewards using reward functions
+            local_rewards_per_func = self._compute_rewards_per_func(inputs, completions)
+            local_rewards = (local_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
+
+        # Gather rewards and prompt_ids across processes with padding
+        gathered_rewards_per_func, gathered_prompt_ids = self._gather_rewards_and_prompt_ids(
+            local_rewards_per_func, prompt_ids)
+
+        # Remove dummy data and compute total rewards
+        total_rewards_per_func, total_prompt_ids = self._remove_dummy_data(gathered_rewards_per_func,
+                                                                           gathered_prompt_ids)
+
+        if self.use_gym_env:
+            total_rewards = total_rewards_per_func.squeeze(1)  # Recover from gathered data
+        else:
+            total_rewards = (total_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
+
+        # Compute advantages based on prompt_id grouping
+        total_advantages = self._compute_advantages(total_rewards, total_prompt_ids)
+
+        return total_rewards_per_func, total_rewards, completions, total_advantages
+
+    def _compute_rewards_per_func(self, inputs: DataType, completions: List[str]) -> torch.Tensor:
+        """Compute rewards using all reward functions"""
+        device = self.accelerator.device
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
 
         for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
@@ -899,37 +922,42 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             logger.warning(f'All reward functions returned None for the following kwargs: {row_reward_kwargs}. '
                            'Please ensure that at least one reward function returns a valid reward.')
 
-        # Calculate total rewards
-        total_rewards = (rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
+        return rewards_per_func
 
-        # Extract prompt_ids for grouping
-        prompt_ids = [inp['prompt_id'] for inp in inputs]
+    def _gather_rewards_and_prompt_ids(self, local_rewards_per_func: torch.Tensor,
+                                       local_prompt_ids: List[str]) -> Tuple[torch.Tensor, List[str]]:
+        """Gather rewards and prompt_ids across processes with padding"""
+        device = self.accelerator.device
+        rewards_per_func = local_rewards_per_func
+        prompt_ids = local_prompt_ids
 
         # Prepare for gather with padding
         if self.rollout_pad_count > 0:
-            # Pad total rewards with NaN
-            pad_total_rewards = torch.full((self.rollout_pad_count, ), torch.nan, dtype=torch.float32, device=device)
-            total_rewards = torch.cat([total_rewards, pad_total_rewards], dim=0)
+            # Pad rewards with NaN
+            pad_rewards_per_func = torch.full((self.rollout_pad_count, rewards_per_func.shape[1]),
+                                              torch.nan,
+                                              dtype=torch.float32,
+                                              device=device)
+            rewards_per_func = torch.cat([rewards_per_func, pad_rewards_per_func], dim=0)
 
             # Pad prompt_ids with special dummy value
             dummy_prompt_ids = ['__dummy_pad__'] * self.rollout_pad_count
             prompt_ids = prompt_ids + dummy_prompt_ids
 
         # Gather all data across processes
-        gathered_total_rewards = gather(total_rewards)
+        gathered_rewards_per_func = gather(rewards_per_func)
         gathered_prompt_ids = gather_object(prompt_ids)
 
-        # Remove dummy data (prompt_id == "__dummy_pad__")
-        valid_indices = [i for i, id in enumerate(gathered_prompt_ids) if id != '__dummy_pad__']
-        valid_total_rewards = gathered_total_rewards[valid_indices]
+        return gathered_rewards_per_func, gathered_prompt_ids
+
+    def _remove_dummy_data(self, gathered_rewards_per_func: torch.Tensor,
+                           gathered_prompt_ids: List[str]) -> Tuple[torch.Tensor, List[str]]:
+        """Remove dummy data (prompt_id == '__dummy_pad__') from gathered data"""
+        valid_indices = [i for i, pid in enumerate(gathered_prompt_ids) if pid != '__dummy_pad__']
+        valid_rewards_per_func = gathered_rewards_per_func[valid_indices]
         valid_prompt_ids = [gathered_prompt_ids[i] for i in valid_indices]
 
-        # Compute advantages based on prompt_id grouping
-        total_advantages = self._compute_advantages(valid_total_rewards, valid_prompt_ids)
-
-        # Create local advantages by filtering to original local data
-        assert rewards_per_func.shape[0] == total_rewards.shape[0] == total_advantages.shape[0]
-        return rewards_per_func, total_rewards, completions, total_advantages
+        return valid_rewards_per_func, valid_prompt_ids
 
     def _compute_advantages(self, rewards: torch.Tensor, prompt_ids: List[str]) -> torch.Tensor:
         """
@@ -2332,6 +2360,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Calculate the number of samples that need to be padded
         # This ensures all processes have the same number of samples for gather operations
+        self.rollout_pad_count = 0
         if remainder > 0 and proc_idx >= remainder:
             # Processes with extra samples need padding
             self.rollout_pad_count = 1
