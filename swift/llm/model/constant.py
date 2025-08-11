@@ -162,6 +162,7 @@ class MLLMModelType:
 
     glm4v = 'glm4v'
     glm4_1v = 'glm4_1v'
+    glm4_5v = 'glm4_5v'
     glm_edge_v = 'glm_edge_v'
     cogvlm = 'cogvlm'
     cogagent_vqa = 'cogagent_vqa'
