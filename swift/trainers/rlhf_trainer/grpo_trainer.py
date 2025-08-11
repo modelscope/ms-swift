@@ -950,10 +950,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return valid_rewards_per_func, valid_prompt_ids
 
-    def _gather_tensors_with_padding(self, local_tensors: List[torch.Tensor],
-                                     device: torch.device) -> List[torch.Tensor]:
-        """Gather tensors across processes with padding to ensure consistent sizes"""
+    def _gather_tensors(self, local_tensors: List[torch.Tensor]) -> List[torch.Tensor]:
+        """Gather tensors across processes with padding and remove dummy data"""
         # Prepare for gather with padding
+        device = self.accelerator.device
         tensors = local_tensors.copy()
         if self.rollout_pad_count > 0 and tensors:
             # Create dummy tensors with the same shape as the first tensor
@@ -962,11 +962,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 tensors.append(dummy_tensor)
 
         # Gather all tensors across processes
-        gathered_tensors = gather_object(tensors)
-        return gathered_tensors
+        gathered_tensors = gather(tensors)
 
-    def _remove_padded_tensors(self, gathered_tensors: List[torch.Tensor]) -> List[torch.Tensor]:
-        """Remove padded dummy tensors (NaN tensors) from gathered data"""
+        # Remove padded dummy tensors (NaN tensors) from gathered data
         if not gathered_tensors:
             return []
 
@@ -974,12 +972,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for tensor in gathered_tensors:
             # Check if tensor is dummy (all NaN)
             if not torch.isnan(tensor).all():
-                valid_tensors.append(tensor)
+                # Ensure tensor is on the correct device
+                valid_tensors.append(tensor.to(device))
 
         return valid_tensors
 
-    def _gather_objects_with_padding(self, local_objects: List[Any]) -> List[Any]:
-        """Gather objects across processes with padding to ensure consistent sizes"""
+    def _gather_objects(self, local_objects: List[Any]) -> List[Any]:
+        """Gather objects across processes with padding and remove dummy data"""
         # Prepare for gather with padding
         objects = local_objects.copy()
         if self.rollout_pad_count > 0:
@@ -990,10 +989,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Gather all objects across processes
         gathered_objects = gather_object(objects)
-        return gathered_objects
 
-    def _remove_padded_objects(self, gathered_objects: List[Any]) -> List[Any]:
-        """Remove padded dummy objects from gathered data"""
+        # Remove padded dummy objects from gathered data
         if not gathered_objects:
             return []
 
@@ -1202,10 +1199,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mode = 'train' if self.model.training else 'eval'
         device = self.accelerator.device
 
-        # Gather completion masks with padding
         local_completion_masks = [inp['completion_mask'].sum(1) for inp in inputs]
-        gathered_completion_masks = self._gather_tensors_with_padding(local_completion_masks, device)
-        valid_completion_masks = self._remove_padded_tensors(gathered_completion_masks)
+        valid_completion_masks = self._gather_tensors(local_completion_masks)
         agg_completion_mask = torch.cat(valid_completion_masks)
 
         self._metrics[mode]['completions/mean_length'].append(agg_completion_mask.float().mean().item())
@@ -1214,9 +1209,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Calculate clip ratio
         local_truncated_masks = [inp['truncated_mask'] for inp in inputs]
-        gathered_truncated_masks = self._gather_tensors_with_padding(local_truncated_masks, device)
-        valid_truncated_masks = self._remove_padded_tensors(gathered_truncated_masks)
-        agg_truncated_mask = torch.cat(valid_truncated_masks).to(device)
+        valid_truncated_masks = self._gather_tensors(local_truncated_masks)
+        agg_truncated_mask = torch.cat(valid_truncated_masks)
 
         term_completion_mask = agg_completion_mask[agg_truncated_mask]
         clipped_completions_ratio = len(term_completion_mask) / len(agg_completion_mask)
@@ -1238,12 +1232,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics[mode]['reward_std'].append(std_grouped_rewards.mean().item())
         self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
 
-        # Log prompt and completion texts with padding
-        gathered_messages = self._gather_objects_with_padding(messages)
-        gathered_completions = self._gather_objects_with_padding(completions)
-
-        valid_messages = self._remove_padded_objects(gathered_messages)
-        valid_completions = self._remove_padded_objects(gathered_completions)
+        # Log prompt and completion texts with padding and remove dummy data
+        valid_messages = self._gather_objects(messages)
+        valid_completions = self._gather_objects(completions)
 
         self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
         self._logs['completion'].extend(valid_completions)
@@ -2292,6 +2283,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             # Step 4: Store finish reason (used for truncation filters etc.)
             input_data['finish_reason'] = choice.finish_reason
+            input_data['is_truncated'] = choice.finish_reason == 'length'
 
             return input_data
 
