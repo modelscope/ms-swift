@@ -398,6 +398,12 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 if num_items_in_batch is None:
                     num_items_in_batch = (labels[:, 1:] != -100).sum()
                 loss = outputs.loss.sum() / num_items_in_batch
+
+            if self.model.model_info.is_moe_model and self.args.router_aux_loss_coef is not None:
+                aux_loss = outputs.get('aux_loss')
+                if aux_loss is not None:
+                    loss = loss + self.args.router_aux_loss_coef * aux_loss.to(loss.device)
+
         if self.template.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
             loss = sequence_parallel.reduce_outputs(loss, labels)
