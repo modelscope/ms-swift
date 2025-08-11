@@ -31,7 +31,7 @@ from transformers.trainer import Trainer
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import prepare_deepspeed
 from trl.trainer.callbacks import SyncRefModelCallback
-from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
+from trl.trainer.grpo_trainer import nanmax, nanmin, nanstd
 from trl.trainer.utils import selective_log_softmax
 
 from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInferRequest, RowPreprocessor, Template,
@@ -48,7 +48,7 @@ from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_logge
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (_ForwardRedirection, load_pil_img, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
-                    patch_profiling_decorator, replace_assistant_response_with_ids)
+                    patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids)
 from .vllm_client import VLLMClient
 
 try:
@@ -68,18 +68,8 @@ if is_swanlab_available():
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 T = TypeVar('T')
 
-# patch to fix save last_checkpoint https://github.com/modelscope/ms-swift/pull/4969
-if not hasattr(RepeatSampler, 'old_len_func'):
-    origin_len_func = RepeatSampler.__len__
 
-    def patched_len(self) -> int:
-        return (self.num_samples // self.batch_size) * self.batch_size * self.mini_repeat_count * self.repeat_count
-
-    RepeatSampler.__len__ = patched_len
-    RepeatSampler.old_len_func = origin_len_func
-
-
-class GRPOCallback(TrainerCallback):
+class AsyncGenerateCallback(TrainerCallback):
 
     def __init__(self, trainer):
         self.trainer = trainer
@@ -110,6 +100,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  reward_funcs: Optional[List[Union[str, Callable]]] = None,
                  *_args,
                  **kwargs):
+        patch_save_last_checkpoint()
         from swift.trainers.rlhf_arguments import GRPOConfig
         args: GRPOConfig = kwargs['args']
         self.args = args
@@ -347,7 +338,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.add_callback(SyncRefModelCallback(ref_model=self.ref_model, accelerator=self.accelerator))
 
         if self.async_generate:
-            self.add_callback(GRPOCallback(self))
+            self.add_callback(AsyncGenerateCallback(self))
 
         if self.args.dynamic_sample or self.template.truncation_strategy == 'raise':
             self.resample_dataset = deepcopy(self.train_dataset)
@@ -1076,25 +1067,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mode = 'train' if self.model.training else 'eval'
         bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
         spg = self.args.steps_per_generation if mode == 'train' else 1
-        # TODO: Check
-        expected_normal_size = bs * spg
 
-        # Check if we have the expected number of inputs (normal case)
-        if len(inputs) == expected_normal_size:
-            # Normal case: rollout returned expected count
-            # Group by (bs * num_generations) to maintain proper prompt grouping
-            group_size = bs * self.num_generations
-            spg_chunks = [inputs[i * group_size:(i + 1) * group_size] for i in range(spg)]
-        else:
-            # Variable generation case: split by actual per_device_batch_size to control memory
-            # Split into chunks of size bs to maintain memory efficiency
-            num_chunks = (len(inputs) + bs - 1) // bs  # Ceiling division
-            spg_chunks = []
+        chunk_size = len(inputs) // spg
+        remainder = len(inputs) % spg
+        spg_chunks = []
 
-            for i in range(num_chunks):
-                start_idx = i * bs
-                end_idx = min((i + 1) * bs, len(inputs))
-                spg_chunks.append(inputs[start_idx:end_idx])
+        start_idx = 0
+        for i in range(spg):
+            current_chunk_size = chunk_size + (1 if i < remainder else 0)
+            end_idx = start_idx + current_chunk_size
+            spg_chunks.append(inputs[start_idx:end_idx])
+            start_idx = end_idx
 
         return spg_chunks
 
@@ -1115,11 +1098,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, batch in enumerate(gas_chunks):
             # Encode and process each batch (size=bs)
             with self._template_context(template):
-                processed_batch = [
-                    replace_assistant_response_with_ids(data['messages'], data['response_token_ids'])
-                    if 'response_token_ids' in data and data['response_token_ids'] else data for data in batch
-                ]
-                batch_encoded_inputs = [template.encode(data) for data in processed_batch]
+                if 'response_token_ids' in batch and batch['response_token_ids']:
+                    batch['messages'] = replace_assistant_response_with_ids(batch['messages'],
+                                                                            batch['response_token_ids'])
+
+                batch_encoded_inputs = [template.encode(data) for data in batch]
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
 
             # Process labels and masks

@@ -361,6 +361,7 @@ class ThinkingModelScheduler(MultiTurnScheduler):
 
             # Prepare next turn
             ret = self.step(current_request, response_choice, current_turn)
+            current_request.messages = messages
             current_request: 'RolloutInferRequest' = ret['infer_request']
 
             if current_request.messages[-1]['role'] == 'assistant':
@@ -370,6 +371,11 @@ class ThinkingModelScheduler(MultiTurnScheduler):
             current_turn += 1
 
         return rollout_outputs
+
+    def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
+             current_turn: int) -> Dict:
+        # TODO: tool calling example
+        pass
 
     def _parse_think_answer(self, content: str) -> tuple[str, str]:
         """

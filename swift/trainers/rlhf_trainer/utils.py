@@ -302,3 +302,21 @@ def replace_assistant_response_with_ids(messages: 'Messages', completion_ids: Li
         completion_index += 1
 
     return messages
+
+
+def patch_save_last_checkpoint():
+    import trl
+    from packaging import version
+    if version.parse(trl.__version__) >= version.parse('0.20'):
+        return
+
+    # patch to fix save last_checkpoint https://github.com/modelscope/ms-swift/pull/4969
+    from trl.trainer.grpo_trainer import RepeatSampler
+    if not hasattr(RepeatSampler, 'old_len_func'):
+        origin_len_func = RepeatSampler.__len__
+
+        def patched_len(self) -> int:
+            return (self.num_samples // self.batch_size) * self.batch_size * self.mini_repeat_count * self.repeat_count
+
+        RepeatSampler.__len__ = patched_len
+        RepeatSampler.old_len_func = origin_len_func
