@@ -950,6 +950,56 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return valid_rewards_per_func, valid_prompt_ids
 
+    def _gather_tensors_with_padding(self, local_tensors: List[torch.Tensor],
+                                     device: torch.device) -> List[torch.Tensor]:
+        """Gather tensors across processes with padding to ensure consistent sizes"""
+        # Prepare for gather with padding
+        tensors = local_tensors.copy()
+        if self.rollout_pad_count > 0 and tensors:
+            # Create dummy tensors with the same shape as the first tensor
+            dummy_tensor = torch.full_like(tensors[0], torch.nan, device=device)
+            for _ in range(self.rollout_pad_count):
+                tensors.append(dummy_tensor)
+
+        # Gather all tensors across processes
+        gathered_tensors = gather_object(tensors)
+        return gathered_tensors
+
+    def _remove_padded_tensors(self, gathered_tensors: List[torch.Tensor]) -> List[torch.Tensor]:
+        """Remove padded dummy tensors (NaN tensors) from gathered data"""
+        if not gathered_tensors:
+            return []
+
+        valid_tensors = []
+        for tensor in gathered_tensors:
+            # Check if tensor is dummy (all NaN)
+            if not torch.isnan(tensor).all():
+                valid_tensors.append(tensor)
+
+        return valid_tensors
+
+    def _gather_objects_with_padding(self, local_objects: List[Any]) -> List[Any]:
+        """Gather objects across processes with padding to ensure consistent sizes"""
+        # Prepare for gather with padding
+        objects = local_objects.copy()
+        if self.rollout_pad_count > 0:
+            # Add dummy objects
+            dummy_object = '__dummy_pad__'
+            for _ in range(self.rollout_pad_count):
+                objects.append(dummy_object)
+
+        # Gather all objects across processes
+        gathered_objects = gather_object(objects)
+        return gathered_objects
+
+    def _remove_padded_objects(self, gathered_objects: List[Any]) -> List[Any]:
+        """Remove padded dummy objects from gathered data"""
+        if not gathered_objects:
+            return []
+
+        valid_objects = [obj for obj in gathered_objects if obj != '__dummy_pad__']
+        return valid_objects
+
     def _compute_advantages(self, rewards: torch.Tensor, prompt_ids: List[str]) -> torch.Tensor:
         """
         Compute advantages based on prompt_id grouping from gathered data.
@@ -1055,27 +1105,37 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return inputs, rewards, rewards_per_func, completions, advantages
 
-    def split_by_mini_batches(self, inputs):
+    def split_by_mini_batches(self, inputs: DataType) -> List[DataType]:
         """
         Split inputs into mini-batches, handling variable generation counts.
 
         When rollout count differs from expected (bs * spg * num_generations),
         we need to adjust the splitting logic to maintain proper batch sizes.
+
+        This method divides the input data into chunks based on the steps per generation (spg).
+        If the total number of inputs is not evenly divisible by spg, the remainder is
+        distributed across the first few chunks to ensure all data is included.
+
+        Args:
+            inputs (DataType): List of input data samples to be split into mini-batches.
+
+        Returns:
+            List[DataType]: A list of data chunks, where each chunk represents one step
+                           in the generation process. The number of chunks equals spg.
         """
         # Slice to keep only the local part of the data
 
-        mode = 'train' if self.model.training else 'eval'
-        bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-        spg = self.args.steps_per_generation if mode == 'train' else 1
+        mode: str = 'train' if self.model.training else 'eval'
+        spg: int = self.args.steps_per_generation if mode == 'train' else 1
 
-        chunk_size = len(inputs) // spg
-        remainder = len(inputs) % spg
-        spg_chunks = []
+        chunk_size: int = len(inputs) // spg
+        remainder: int = len(inputs) % spg
+        spg_chunks: List[DataType] = []
 
-        start_idx = 0
+        start_idx: int = 0
         for i in range(spg):
-            current_chunk_size = chunk_size + (1 if i < remainder else 0)
-            end_idx = start_idx + current_chunk_size
+            current_chunk_size: int = chunk_size + (1 if i < remainder else 0)
+            end_idx: int = start_idx + current_chunk_size
             spg_chunks.append(inputs[start_idx:end_idx])
             start_idx = end_idx
 
@@ -1083,7 +1143,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _prepare_batch_inputs(self, inputs: DataType) -> List[DataType]:
         """
-        Prepare the final batch inputs with advantages, ref/old_policy logps and other fields for RL training.
+        Prepare the final batch inputs with ref/old_policy logps and other fields for RL training.
 
         Args:
             inputs (DataType): List of local input samples.
@@ -1093,7 +1153,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         template = self.template
 
-        gas_chunks, _ = self.split_by_mini_batches(inputs)
+        gas_chunks = self.split_by_mini_batches(inputs)
         ga_batch_encoded_inputs = []
         for i, batch in enumerate(gas_chunks):
             # Encode and process each batch (size=bs)
@@ -1142,14 +1202,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mode = 'train' if self.model.training else 'eval'
         device = self.accelerator.device
 
-        # Calculate completion length metrics
-        agg_completion_mask = gather(torch.cat([inp['completion_mask'].sum(1) for inp in inputs]))
+        # Gather completion masks with padding
+        local_completion_masks = [inp['completion_mask'].sum(1) for inp in inputs]
+        gathered_completion_masks = self._gather_tensors_with_padding(local_completion_masks, device)
+        valid_completion_masks = self._remove_padded_tensors(gathered_completion_masks)
+        agg_completion_mask = torch.cat(valid_completion_masks)
 
         self._metrics[mode]['completions/mean_length'].append(agg_completion_mask.float().mean().item())
         self._metrics[mode]['completions/min_length'].append(agg_completion_mask.float().min().item())
         self._metrics[mode]['completions/max_length'].append(agg_completion_mask.float().max().item())
+
         # Calculate clip ratio
-        agg_truncated_mask = gather(torch.cat([inp['truncated_mask'] for inp in inputs]).to(device))
+        local_truncated_masks = [inp['truncated_mask'] for inp in inputs]
+        gathered_truncated_masks = self._gather_tensors_with_padding(local_truncated_masks, device)
+        valid_truncated_masks = self._remove_padded_tensors(gathered_truncated_masks)
+        agg_truncated_mask = torch.cat(valid_truncated_masks).to(device)
 
         term_completion_mask = agg_completion_mask[agg_truncated_mask]
         clipped_completions_ratio = len(term_completion_mask) / len(agg_completion_mask)
@@ -1171,9 +1238,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics[mode]['reward_std'].append(std_grouped_rewards.mean().item())
         self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
 
-        # Log prompt and completion texts
-        self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(gather_object(messages)))
-        self._logs['completion'].extend(gather_object(completions))
+        # Log prompt and completion texts with padding
+        gathered_messages = self._gather_objects_with_padding(messages)
+        gathered_completions = self._gather_objects_with_padding(completions)
+
+        valid_messages = self._remove_padded_objects(gathered_messages)
+        valid_completions = self._remove_padded_objects(gathered_completions)
+
+        self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
+        self._logs['completion'].extend(valid_completions)
 
         if self.use_gym_env:
             pass
