@@ -440,6 +440,12 @@ register_model(
     ))
 
 
+def get_model_tokenizer_glm4_5v(*args, **kwargs):
+    from transformers import Glm4vMoeForConditionalGeneration
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Glm4vMoeForConditionalGeneration
+    return get_model_tokenizer_multimodal(*args, **kwargs)
+
+
 register_model(
     ModelMeta(
         MLLMModelType.glm4_5v,
@@ -450,7 +456,8 @@ register_model(
             ]),
         ],
         TemplateType.glm4_5v,
-        get_model_tokenizer_with_flash_attn,
+        get_model_tokenizer_glm4_5v,
+        model_arch=ModelArch.glm4_1v,
         architectures=['Glm4vMoeForConditionalGeneration'],
         requires=['transformers>=4.56.0.dev'],
     ))

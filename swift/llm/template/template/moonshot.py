@@ -59,12 +59,5 @@ class KimiVLTemplate(Template):
             encoded.update(image_inputs)
         return encoded
 
-    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        res = super()._data_collator_mm_data(batch)
-        image_grid_hws = self.concat_tensor(batch, 'image_grid_hws', 0)
-        if image_grid_hws is not None:
-            res['image_grid_hws'] = image_grid_hws
-        return res
-
 
 register_template(MoonlightTemplateMeta(MLLMTemplateType.kimi_vl, template_cls=KimiVLTemplate))
