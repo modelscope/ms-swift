@@ -306,14 +306,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         from swift.llm import HfConfigFactory
         args = self.args
         inputs = super()._prepare_inputs(inputs)
-        from swift.plugin.loss import get_loss_func
         loss_kwargs = {}
         compute_loss_func = self.compute_loss_func
-        loss_scale = inputs.pop('loss_scale', None)
-        if loss_scale is not None:
-            loss_kwargs['loss_scale'] = loss_scale
-            if compute_loss_func is None:
-                compute_loss_func = get_loss_func('loss_scale')
 
         sample_channels = inputs.pop('channel', None)
         position_ids = inputs.pop('_position_ids', None)
@@ -330,14 +324,11 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             if position_ids is not None:
                 loss_kwargs['position_ids'] = position_ids
 
-        use_logits_to_keep = self.get_use_logits_to_keep('labels' in inputs and self.label_smoother is None
-                                                         and compute_loss_func is None)
+        use_logits_to_keep = self.get_use_logits_to_keep(True)
         if use_logits_to_keep:
-            inputs['labels'], logits_to_keep = self.get_logits_to_keep(inputs['labels'])
-            if logits_to_keep is not None:
-                inputs['logits_to_keep'] = logits_to_keep
-                if args.tuner_backend == 'unsloth' and isinstance(logits_to_keep, torch.Tensor):
-                    inputs['logits_to_keep'] = int(logits_to_keep.sum())
+            self.prepare_logits_to_keep(inputs)
+            if args.tuner_backend == 'unsloth' and isinstance(inputs['logits_to_keep'], torch.Tensor):
+                inputs['logits_to_keep'] = int(inputs['logits_to_keep'].sum())
 
         base_model = self.template.get_base_model(self.model)
         if self.model.model_info.is_moe_model and 'output_router_logits' in inspect.signature(
@@ -352,11 +343,14 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         return inputs
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        from swift.plugin import get_loss_func
         labels = None
         compute_loss_func = inputs.pop('compute_loss_func', None)
+        loss_scale = inputs.pop('loss_scale', None)
         loss_kwargs = inputs.pop('loss_kwargs', {})
 
-        if (self.label_smoother is not None or compute_loss_func is not None) and 'labels' in inputs:
+        if (self.label_smoother is not None or compute_loss_func is not None
+                or loss_scale is not None) and 'labels' in inputs:
             labels = inputs.pop('labels')
         outputs = model(**inputs)
         if getattr(outputs, 'aux_loss', None) is not None:
@@ -382,6 +376,11 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             # We don't use .loss here since the model may return tuples instead of ModelOutput.
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
         else:
+            outputs.loss = None
+            if loss_scale is not None:
+                loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
+                outputs.loss = get_loss_func('per_token_ce')(outputs, labels)
+                outputs.loss = outputs.loss * loss_scale
             unwrapped_model = self.accelerator.unwrap_model(model)
             if is_peft_available() and isinstance(unwrapped_model, PeftModel):
                 model_name = unwrapped_model.model._get_name()
@@ -390,11 +389,15 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             # User-defined compute_loss function
             if compute_loss_func is not None:
                 loss = compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, **loss_kwargs)
-            elif model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
-                loss = self.label_smoother(outputs, labels, shift_labels=True)
+            elif self.label_smoother is not None:
+                if model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+                    loss = self.label_smoother(outputs, labels, shift_labels=True)
+                else:
+                    loss = self.label_smoother(outputs, labels)
             else:
-                loss = self.label_smoother(outputs, labels)
-
+                if num_items_in_batch is None:
+                    num_items_in_batch = (labels[:, 1:] != -100).sum()
+                loss = outputs.loss.sum() / num_items_in_batch
         if self.template.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
             loss = sequence_parallel.reduce_outputs(loss, labels)

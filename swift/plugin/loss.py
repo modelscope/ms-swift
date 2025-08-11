@@ -15,44 +15,18 @@ from transformers.utils import strtobool
 from swift.plugin import MeanMetric
 
 
-def ce_loss_func(outputs, labels):
+def per_token_loss_func(outputs, labels, **kwargs):
     logits = outputs.logits
-    device = logits.device
-    # Shift so that tokens < n predict n
-    shift_logits = logits[..., :-1, :]
-    shift_labels = labels[..., 1:].to(device)
-    # Save memory
-    masks = shift_labels != -100
-    shift_logits = shift_logits[masks]
-    shift_labels = shift_labels[masks]
+    # Upcast to float if we need to compute the loss to avoid potential precision issues
+    logits = logits.float()
+    labels = torch.roll(labels, shifts=-1, dims=-1)
+
     # Flatten the tokens
-    loss_fct = CrossEntropyLoss(reduction='none')
-    loss = loss_fct(shift_logits, shift_labels)
-    return loss, masks
-
-
-def loss_scale_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
-    """Loss func
-
-    Args:
-        outputs: The model outputs
-        labels: The labels
-        loss_scale: The loss scale
-        num_items_in_batch: Number of tokens in the labels of gradient accumulation round that are not -100.
-
-    Returns:
-
-    """
-    loss, masks = ce_loss_func(outputs, labels)
-    if loss_scale is not None:
-        shift_scale = loss_scale[..., 1:].to(masks.device)
-        shift_scale = shift_scale[masks]
-        loss = (shift_scale * loss)
-    if num_items_in_batch is None:
-        loss = loss.mean()
-    else:
-        # compat transformers>=4.46
-        loss = loss.sum() / num_items_in_batch
+    logits = logits.view(-1, logits.shape[-1])
+    labels = labels.view(-1)
+    # Enable model parallelism
+    labels = labels.to(logits.device)
+    loss = F.cross_entropy(logits, labels, ignore_index=-100, reduction='none')
     return loss
 
 
@@ -478,6 +452,7 @@ def channel_loss_func(outputs,
                       sample_channels=None,
                       trainer=None,
                       position_ids=None) -> torch.Tensor:
+    # Note: loss_scale is not supported at the moment.
     channels = trainer.args.channels
     assert channels is not None, 'Please pass --channels as a hyperparameter.'
     assert sample_channels is not None, 'Data does not have channel field.'
@@ -821,7 +796,7 @@ def listwise_generative_reranker_loss(outputs,
 
 
 loss_mapping = {
-    'loss_scale': loss_scale_func,
+    'per_token_ce': per_token_loss_func,
     'channel_loss': channel_loss_func,
     # embedding
     'cosine_similarity': cosine_similarity_func,
@@ -835,10 +810,8 @@ loss_mapping = {
     'listwise_generative_reranker': listwise_generative_reranker_loss,
 }
 
-# use --loss_type xxx to train
-
 
 def get_loss_func(loss_type: Optional[str]) -> Optional[Callable]:
     if loss_type is None:
         return None
-    return loss_mapping[loss_type]['loss_func']
+    return loss_mapping[loss_type]

@@ -72,9 +72,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
         if use_logits_to_keep:
-            labels, logits_to_keep = self.get_logits_to_keep(labels)
-            if logits_to_keep is not None:
-                batch['logits_to_keep'] = logits_to_keep
+            self.prepare_logits_to_keep(batch)
+            labels = batch['labels']
         if self.aux_loss_enabled:
             batch['output_router_logits'] = True
         if self.is_encoder_decoder:
