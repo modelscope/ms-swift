@@ -786,18 +786,26 @@ class SwiftMixin:
         self.model.train()
         return eval_dict
 
-    def get_logits_to_keep(self, labels):
+    def prepare_logits_to_keep(self, inputs):
+        labels = inputs['labels']
+        loss_scale = inputs.get('loss_scale')
         if labels.shape[0] == 1 and not is_mp():
             # device_map may encounter device mismatch issues.
             loss_mask = (labels != -100)[0]
             labels = labels[:, loss_mask]
             labels = nn.functional.pad(labels, (1, 0), value=-100)
+            if loss_scale is not None:
+                loss_scale = loss_scale[:, loss_mask]
+                inputs['loss_scale'] = nn.functional.pad(loss_scale, (1, 0), value=0)
             logits_to_keep = nn.functional.pad(loss_mask[1:], (0, 1), value=True)
         else:
             logits_to_keep = labels.shape[-1] - ((labels != -100).int().argmax(-1).min().item()) + 1
             assert logits_to_keep > 0
             labels = labels[:, -logits_to_keep:]
-        return labels, logits_to_keep
+            if loss_scale is not None:
+                inputs['loss_scale'] = loss_scale[:, -logits_to_keep:]
+        inputs['labels'] = labels
+        inputs['logits_to_keep'] = logits_to_keep
 
     def get_cu_seqlens(self, position_ids, logits_to_keep) -> torch.Tensor:
         from swift.llm import get_packed_seq_params

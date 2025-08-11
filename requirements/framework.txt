@@ -19,7 +19,7 @@ numpy
 openai
 oss2
 pandas
-peft>=0.11,<0.17
+peft>=0.11,<0.18
 pillow
 PyYAML>=5.4
 requests

@@ -6,7 +6,7 @@ from typing import Literal, Optional
 from transformers import Seq2SeqTrainingArguments
 from transformers.utils.versions import require_version
 
-from swift.plugin import LOSS_MAPPING
+from swift.plugin import loss_mapping
 from swift.trainers import TrainerFactory
 from swift.trainers.arguments import TrainArgumentsMixin
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
@@ -118,7 +118,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     create_checkpoint_symlink: bool = False
 
     # plugin
-    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
+    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(loss_mapping.keys())}'})
     metric: Optional[str] = None
 
     # extra
