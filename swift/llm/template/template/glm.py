@@ -229,7 +229,7 @@ register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Templa
 
 register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4_0414Template))
 
-register_template(GLM4TemplateMeta(LLMTemplateType.glm4_5, template_cls=ThinkingTemplate))
+register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_5, template_cls=ThinkingTemplate))
 
 register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
 
