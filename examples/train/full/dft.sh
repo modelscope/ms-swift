@@ -1,11 +1,12 @@
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
+# 4*80G
+CUDA_VISIBLE_DEVICES=4,5,6,7 \
 NPROC_PER_NODE=4 \
 swift sft \
     --model Qwen/Qwen2.5-Math-1.5B \
     --train_type full \
     --dataset AI-MO/NuminaMath-CoT#100000 \
     --torch_dtype bfloat16 \
-    --enable_dft_loss true \
+    --enable_dft_loss false \
     --num_train_epochs 1 \
     --per_device_train_batch_size 16 \
     --learning_rate 5e-5 \

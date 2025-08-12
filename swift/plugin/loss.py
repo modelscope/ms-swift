@@ -29,9 +29,8 @@ def per_token_loss_func(outputs, labels, **kwargs):
     labels = labels.to(logits.device)
     loss = F.cross_entropy(logits, labels, ignore_index=-100, reduction='none')
     if enable_dft_loss:
-        safe_labels = torch.where(labels == -100, 0, labels)
         with torch.no_grad():
-            target_probs = torch.softmax(logits, dim=-1).gather(1, safe_labels.unsqueeze(-1)).squeeze(-1).detach()
+            target_probs = torch.exp(-loss)
         loss *= target_probs
     return loss
 
