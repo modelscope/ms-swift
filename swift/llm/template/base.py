@@ -533,7 +533,7 @@ class Template(ProcessorMixin):
                 elif isinstance(value, (tuple, list)):
                     lengths += value
         if return_length:
-            encoded['length'] = max(lengths)
+            encoded['length'] = sum(lengths)
         else:
             encoded.pop('length', None)
         if return_template_inputs:
@@ -623,14 +623,12 @@ class Template(ProcessorMixin):
                generate_ids: List[int],
                *,
                is_finished: bool = True,
-               tokenizer_kwargs=None,
                first_token=True,
                **kwargs) -> Any:
-        tokenizer_kwargs = tokenizer_kwargs or {}
-        if 'spaces_between_special_tokens' not in tokenizer_kwargs:
-            tokenizer_kwargs['spaces_between_special_tokens'] = False
+        if kwargs.get('spaces_between_special_tokens') is None:
+            kwargs['spaces_between_special_tokens'] = False
         generate_ids = self.skip_stop_tokens(generate_ids, is_finished)
-        response = self.tokenizer.decode(generate_ids)
+        response = self.tokenizer.decode(generate_ids, **kwargs)
         if first_token and self.template_meta.response_prefix:
             response = self.template_meta.response_prefix + response
         return response
@@ -782,9 +780,9 @@ class Template(ProcessorMixin):
                 loss_scale_res.append(loss_scale)
         return res, loss_scale_res
 
-    def _tokenize(self, context, **tokenizer_kwargs):
+    def _tokenize(self, context, **kwargs):
         return self.tokenizer(
-            context, return_attention_mask=False, add_special_tokens=False, **tokenizer_kwargs)['input_ids']
+            context, return_attention_mask=False, add_special_tokens=False, **kwargs)['input_ids']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -963,18 +961,14 @@ class Template(ProcessorMixin):
     def _encode_context_list(
             self,
             context_list: List[Context],
-            loss_scale_list: Optional[List[float]] = None) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
-        """return: input_ids, labels, tokenizer_kwargs"""
+            loss_scale_list: Optional[List[float]] = None) -> Tuple[List[int], List[int], List[float]]:
         input_ids: List[int] = []
         labels: List[int] = []
         loss_scale: List[float] = []
-        tokenizer_kwargs = {}
         if loss_scale_list is None:
             loss_scale_list = [0.] * len(context_list)
         for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
             if isinstance(context, str):
-                # tokenizer_kwargs is the returned tokenizer_kwargs,
-                # while curr_tokenizer_kwargs is the tokenizer_kwargs for the current context.
                 token_list = self._tokenize(context)
             else:
                 token_list = context
@@ -987,7 +981,7 @@ class Template(ProcessorMixin):
                 loss_scale.extend([loss_weight] * len(token_list))
         if self.loss_scale.is_binary:
             loss_scale = None
-        return input_ids, labels, loss_scale, tokenizer_kwargs
+        return input_ids, labels, loss_scale
 
     @staticmethod
     def _add_dynamic_eos(input_ids: List[int], labels: List[int], loss_scale: Optional[List[int]],
@@ -1219,14 +1213,13 @@ class Template(ProcessorMixin):
             self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
         encoded = {}
         if self.is_encoder_decoder or self.mode == 'gkd':
-            # tokenizer_kwargs: use prompt (qwen-audio)
             total_len = len(res_context_list)
             for key, _slice in zip(['prompt', 'answer'],
                                    [slice(0, total_len - answer_len),
                                     slice(total_len - answer_len, total_len)]):
                 context_list, loss_scale = self._simplify_context_list(res_context_list[_slice],
                                                                        loss_scale_list[_slice], inputs)
-                input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(context_list, loss_scale)
+                input_ids, labels, loss_scale = self._encode_context_list(context_list, loss_scale)
                 encoded[f'{key}_input_ids'] = input_ids
                 encoded[f'{key}_labels'] = labels
                 encoded[f'{key}_loss_scale'] = loss_scale
@@ -1237,12 +1230,9 @@ class Template(ProcessorMixin):
                 loss_scale = encoded['prompt_loss_scale'] + encoded['answer_loss_scale']
         else:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
-            input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
+            input_ids, labels, loss_scale = self._encode_context_list(
                 res_context_list, loss_scale_list)
         self._add_dynamic_eos(input_ids, labels, loss_scale, self._encode_context_list(self.template_meta.suffix)[0])
-
-        if tokenizer_kwargs:
-            encoded['tokenizer_kwargs'] = tokenizer_kwargs
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
@@ -1382,6 +1372,8 @@ class Template(ProcessorMixin):
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         from swift.llm import RowPreprocessor
+        if self._packing and isinstance(batch[0], list):
+            batch = sum(batch, start=[])
         if self.task_type == 'causal_lm':
             if self.mode in {'pt', 'train'}:
                 res = self._data_collator(batch, padding_to=padding_to)
@@ -1580,13 +1572,13 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
-        if self.padding_free:
+        if self._packing:
             batch[:] = [self.packing_row(batch)]
+            assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
         elif self.use_megatron:
             for encoded in batch:
                 encoded['position_ids'] = list(range(len(encoded['labels'])))
-        if self._packing:
-            assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
+
         res = {}
         if self._packing:
             # only support llm
@@ -1717,11 +1709,9 @@ class Template(ProcessorMixin):
                 res[key] = value
         return res
 
-    def print_inputs(self, inputs: Dict[str, Any], tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
-        if tokenizer_kwargs is None:
-            tokenizer_kwargs = {}
-
+    def print_inputs(self, inputs: Dict[str, Any]) -> None:
         # Base keys to check
+        tokenizer_kwargs = inputs.pop('tokenizer_kwargs', None) or {}
         base_keys = [
             'input', 'labels', 'generate', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels'
         ]
@@ -1847,7 +1837,7 @@ class Template(ProcessorMixin):
 
         return torch.stack(padded_sequences)
 
-    def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
+    def safe_decode(self, input_ids: List[int], **kwargs) -> str:
         if isinstance(self, Template):
             tokenizer = self.tokenizer
             placeholder_tokens = self.placeholder_tokens
@@ -1874,14 +1864,14 @@ class Template(ProcessorMixin):
                 continue
             if _is_special(input_ids[i]) and not _is_special(input_ids[i - 1]):
                 s = i
-                result_str += tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
+                result_str += tokenizer.decode(input_ids[e:s], **kwargs)
             if not _is_special(input_ids[i]) and _is_special(input_ids[i - 1]):
                 e = i
                 result_str += f'[{input_ids[i - 1]} * {e - s}]'
         if _is_special(input_ids[i]):
             result_str += f'[{input_ids[i]} * {len(input_ids) - s}]'
         else:
-            result_str += tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
+            result_str += tokenizer.decode(input_ids[e:], **kwargs)
         return result_str
 
     @staticmethod

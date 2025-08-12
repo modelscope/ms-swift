@@ -70,6 +70,7 @@ class SwiftMixin:
         if not hasattr(train_dataset, '__len__') and args.dataloader_num_workers > 1:
             args.dataloader_num_workers = 1
             logger.warning('Using IterableDataset, setting args.dataloader_num_workers to 1.')
+        self.compute_loss_func = None  # Compatible with the older version of transformers
 
         if args.check_model and hasattr(model, 'model_dir'):
             with ms_logger_context(logging.CRITICAL):

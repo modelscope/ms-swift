@@ -160,7 +160,7 @@ class QwenAudioTemplate(Template):
         assert isinstance(audio, str)
         return [f'Audio {index + 1}:<audio>{audio}</audio>\n']
 
-    def _tokenize(self, context, **tokenizer_kwargs):
+    def _tokenize(self, context, **kwargs):
         audio_info = self.processor.process_audio(context)
         return super()._tokenize(context, audio_info=audio_info)
 

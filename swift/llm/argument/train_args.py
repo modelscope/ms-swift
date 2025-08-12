@@ -130,15 +130,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     early_stop_interval: Optional[int] = None
 
     def __post_init__(self) -> None:
-        if self.padding_free or self.packing:
-            if self.packing:
-                feature = 'packing'
-                self.padding_free = False
-            else:
-                feature = 'padding_free'
-            if self.attn_impl not in {'flash_attn', 'flash_attention_2', 'flash_attention_3'}:
-                raise ValueError(f'The "{feature}" feature requires a flash attention implementation. '
-                                 'Please use one of: "flash_attn", "flash_attention_2", "flash_attention_3".')
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
             # The non-resume_only_model will have its weights loaded in the trainer.
@@ -150,7 +141,33 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
         BaseArguments.__post_init__(self)
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
         TunerArguments.__post_init__(self)
+        if self.padding_free or self.packing:
+            if self.packing:
+                feature = 'packing'
+                self.padding_free = False
+            else:
+                feature = 'padding_free'
+            if self.attn_impl not in {'flash_attn', 'flash_attention_2', 'flash_attention_3'}:
+                raise ValueError(f'The "{feature}" feature requires a flash attention implementation. '
+                                 'Please use one of: "flash_attn", "flash_attention_2", "flash_attention_3".')
 
+            if self.model_meta.is_multimodal:
+                supported_model_type = [
+                    'qwen2_vl',
+                    'qwen2_5_vl',
+                    'qwen2_5_omni',
+                    'qvq',
+                    'mimo_vl',
+                    'internvl',
+                    'internvl_phi3',
+                    'internvl2',
+                    'internvl2_phi3',
+                    'internvl2_5',
+                    'internvl3',
+                ]
+                assert self.model_type in supported_model_type, (
+                    f'Packing/padding_free is not supported for model_type `{self.model_type}`. '
+                    f'model_type of multimodal models that support packing/padding_free: {supported_model_type}.')
         if self.optimizer is None:
             if self.lorap_lr_ratio:
                 self.optimizer = 'lorap'
