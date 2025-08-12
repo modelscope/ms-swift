@@ -129,18 +129,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     # early_step
     early_stop_interval: Optional[int] = None
 
-    def __post_init__(self) -> None:
-        if self.resume_from_checkpoint:
-            self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
-            # The non-resume_only_model will have its weights loaded in the trainer.
-            if self.resume_only_model:
-                if self.train_type == 'full':
-                    self.model = self.resume_from_checkpoint
-                else:
-                    self.adapters = [self.resume_from_checkpoint]
-        BaseArguments.__post_init__(self)
-        Seq2SeqTrainingOverrideArguments.__post_init__(self)
-        TunerArguments.__post_init__(self)
+    def _check_padding_free(self):
         if self.padding_free or self.packing:
             if self.packing:
                 feature = 'packing'
@@ -169,6 +158,20 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                     raise ValueError(
                         f'Packing/padding_free is not supported for model_type `{self.model_type}`. '
                         f'model_type of multimodal models that support packing/padding_free: {supported_model_type}.')
+
+    def __post_init__(self) -> None:
+        if self.resume_from_checkpoint:
+            self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
+            # The non-resume_only_model will have its weights loaded in the trainer.
+            if self.resume_only_model:
+                if self.train_type == 'full':
+                    self.model = self.resume_from_checkpoint
+                else:
+                    self.adapters = [self.resume_from_checkpoint]
+        BaseArguments.__post_init__(self)
+        Seq2SeqTrainingOverrideArguments.__post_init__(self)
+        TunerArguments.__post_init__(self)
+        self._check_padding_free()
         if self.optimizer is None:
             if self.lorap_lr_ratio:
                 self.optimizer = 'lorap'

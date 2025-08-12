@@ -458,7 +458,7 @@ Megatron训练参数继承自Megatron参数和基本参数。基本参数的内�
 - padding_free: 将一个batch中的数据进行展平而避免数据padding，从而降低显存占用并加快训练。默认为True。
   - 若要自定义attention_mask，你可以设置`--padding_free false`。
 - mlp_padding_free: 默认为False。用于padding_free设置为false时，对mlp进行padding_free优化。这可以在自定义attention_mask的同时，提升训练速度和减少显存占用。
-- 🔥packing: 是否使用序列packing，默认为False。当前支持`megatron pt/sft`。
+- 🔥packing: 是否使用序列packing，默认为False。当前支持CPT/SFT/DPO。
 - packing_cache: 指定 packing 缓存目录。默认值为`None`，表示缓存将存储在环境变量 `$MODELSCOPE_CACHE`所指定的路径下。在跨节点使用 packing 功能时，需确保所有节点的 packing 缓存路径共享且一致。你可以通过设置`MODELSCOPE_CACHE`环境变量，或在命令行中添加 `--packing_cache <shared_path>`参数来实现这一要求。
   - 注意：该参数将在"ms-swift>=3.7"被移除。多机packing不再需要设置packing_cache。
 - streaming: 流式读取并处理数据集，默认False。通常在处理大型数据集时，设置为True。更多流式的参数查看命令行参数文档。
