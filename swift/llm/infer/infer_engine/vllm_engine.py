@@ -29,6 +29,7 @@ try:
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '86400'
     import vllm
     from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams, EngineArgs, LLMEngine
+    from vllm.reasoning import ReasoningParserManager
 except Exception:
     raise
 
@@ -67,6 +68,8 @@ class VllmEngine(InferEngine):
         enable_sleep_mode: bool = False,
         distributed_executor_backend: Optional[str] = None,
         quantization: Optional[str] = None,
+        # reasoning parser
+        reasoning_parser: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
     ) -> None:
@@ -105,6 +108,7 @@ class VllmEngine(InferEngine):
             enable_sleep_mode=enable_sleep_mode,
             quantization=quantization,
             task=task_type,
+            reasoning_parser=reasoning_parser,
             **engine_kwargs,
         )
         context = nullcontext()
@@ -142,6 +146,7 @@ class VllmEngine(InferEngine):
         distributed_executor_backend: Optional[str] = None,
         enable_sleep_mode: bool = False,
         task: Optional[str] = None,
+        reasoning_parser: Optional[str] = None,
         **engine_kwargs,
     ) -> None:
         if task == 'embedding':
@@ -192,10 +197,21 @@ class VllmEngine(InferEngine):
             trust_remote_code=True,
             enable_prefix_caching=enable_prefix_caching,
             distributed_executor_backend=distributed_executor_backend,
+            reasoning_parser=reasoning_parser,
             **engine_kwargs,
         )
         self.engine_args = engine_args
         self.enable_lora = enable_lora
+        self.reasoning_parser = reasoning_parser
+
+        # Validate reasoning_parser if provided
+        if reasoning_parser:
+            valid_reasoning_parsers = list(ReasoningParserManager.reasoning_parsers.keys())
+            if reasoning_parser not in valid_reasoning_parsers:
+                raise ValueError(f'Invalid reasoning_parser: {reasoning_parser}. '
+                                 f'Available parsers: {valid_reasoning_parsers}')
+            logger.info(f'Using reasoning_parser: {reasoning_parser}')
+
         if max_model_len is not None:
             self.max_model_len = max_model_len
             logger.info(f'Setting max_model_len: {max_model_len}')
@@ -379,12 +395,50 @@ class VllmEngine(InferEngine):
             logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idxs[output.index]:],
                                           request_config.top_logprobs)
             token_idxs[output.index] = len(output.token_ids)
+
+            # Handle reasoning content in streaming
+            delta_content = output.delta_text
+            delta_reasoning_content = None
+
+            if self.reasoning_parser and output.delta_text:
+                try:
+                    reasoning_parser_cls = ReasoningParserManager.get_reasoning_parser(self.reasoning_parser)
+                    reasoning_parser = reasoning_parser_cls(self.tokenizer)
+
+                    # Get current accumulated text for this output
+                    current_text = template.decode(output.token_ids)
+                    previous_text = template.decode(output.token_ids[:-len(output.token_ids)
+                                                                     + token_idxs[output.index]])
+
+                    # Extract reasoning content from the delta
+                    delta_message = reasoning_parser.extract_reasoning_content_streaming(
+                        previous_text, current_text, output.delta_text,
+                        output.token_ids[:-len(output.token_ids) + token_idxs[output.index]], output.token_ids,
+                        output.token_ids[token_idxs[output.index]:])
+
+                    if delta_message:
+                        delta_reasoning_content = delta_message.reasoning_content
+                        if delta_message.content:
+                            delta_content = delta_message.content
+                        else:
+                            delta_content = None
+
+                except Exception as e:
+                    logger.warning(f'Failed to extract reasoning content in streaming: {e}')
+                    # Fallback to original delta_text
+                    delta_content = output.delta_text
+
             toolcall = None
             if output.is_finished:
                 toolcall = self._get_toolcall(template.decode(output.token_ids), template)
+
             choice = ChatCompletionResponseStreamChoice(
                 index=output.index,
-                delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
+                delta=DeltaMessage(
+                    role='assistant',
+                    content=delta_content,
+                    reasoning_content=delta_reasoning_content,
+                    tool_calls=toolcall),
                 finish_reason=output.finish_reason,
                 logprobs=logprobs)
             choices.append(choice)
@@ -411,12 +465,30 @@ class VllmEngine(InferEngine):
         for output in result.outputs:
             output.token_ids = list(output.token_ids)
             response = template.decode(output.token_ids)
+
+            # Extract reasoning content if reasoning_parser is enabled
+            reasoning_content = None
+            content = response
+            if self.reasoning_parser:
+                try:
+                    reasoning_parser_cls = ReasoningParserManager.get_reasoning_parser(self.reasoning_parser)
+                    reasoning_parser = reasoning_parser_cls(self.tokenizer)
+                    reasoning_content, content = reasoning_parser.extract_reasoning_content(
+                        response,
+                        request=None  # We don't have the original request here
+                    )
+                except Exception as e:
+                    logger.warning(f'Failed to extract reasoning content: {e}')
+                    # Fallback to original response
+                    content = response
+
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, request_config.top_logprobs)
-            toolcall = self._get_toolcall(response, template)
+            toolcall = self._get_toolcall(content, template)  # Use content instead of response for tool calls
             token_ids = template.skip_stop_tokens(output.token_ids) if request_config.return_details else None
             choice = ChatCompletionResponseChoice(
                 index=output.index,
-                message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+                message=ChatMessage(
+                    role='assistant', content=content, reasoning_content=reasoning_content, tool_calls=toolcall),
                 finish_reason=output.finish_reason,
                 logprobs=logprobs,
                 token_ids=token_ids)

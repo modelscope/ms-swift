@@ -55,6 +55,9 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
     def __post_init__(self):
         GRPOArgumentsMixin.__post_init__(self)
         SwiftArgumentsMixin.__post_init__(self)
+        if self.vllm_reasoning_parser is not None:
+            raise ValueError('vllm_reasoning_parser is not supported for GRPO Training, please unset it.')
+
         if self.cosine_max_len is None:
             self.cosine_max_len = self.max_completion_length
 
