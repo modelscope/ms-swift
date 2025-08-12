@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import warnings
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
