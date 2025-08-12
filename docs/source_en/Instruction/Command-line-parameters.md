@@ -415,7 +415,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - temperature: Generation parameter override. The temperature setting when `predict_with_generate=True`, defaulting to 0.
 - optimizer: Custom optimizer name for the plugin, defaults to None. Optional optimizer reference: [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/optimizer.py).
 - loss_type: Type of loss. Defaults to None, which uses the model's built-in loss function.
-- metric: Custom metric name for the plugin. Defaults to None, with the default set to 'acc' when `predict_with_generate=False` and 'nlg' when `predict_with_generate=True`.
+- metric: Custom metric name for the plugin. Defaults to None, with the default set to 'nlg' when `predict_with_generate=True`.
 - eval_use_evalscope: Whether to use evalscope for evaluation, this parameter needs to be set to enable evaluation, refer to [example](../Instruction/Evaluation.md#evaluation-during-training). Default is False.
 - eval_dataset: Evaluation datasets, multiple datasets can be set, separated by spaces
 - eval_dataset_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set

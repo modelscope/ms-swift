@@ -24,7 +24,7 @@ from .mixin import DataLoaderMixin, SwiftMixin
 logger = get_logger()
 
 
-class Trainer(SwiftMixin, HfTrainer):
+class Trainer(SwiftMixin, DataLoaderMixin, HfTrainer):
     args: TrainingArguments
 
     @contextmanager
