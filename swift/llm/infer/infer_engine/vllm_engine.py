@@ -418,7 +418,7 @@ class VllmEngine(InferEngine):
 
                     # Get current accumulated text for this output
                     previous_text = previous_texts[i]
-                    current_text = current_text = previous_text + output.delta_text
+                    current_text = previous_text + output.delta_text
                     previous_texts[i] = current_text
                     # Extract reasoning content from the delta
                     delta_message = self.reasoning_parser.extract_reasoning_content_streaming(
