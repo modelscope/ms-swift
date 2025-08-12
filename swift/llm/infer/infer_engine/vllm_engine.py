@@ -410,11 +410,14 @@ class VllmEngine(InferEngine):
                     previous_text = template.decode(output.token_ids[:-len(output.token_ids)
                                                                      + token_idxs[output.index]])
 
+                    # Get token IDs for the delta (new tokens in this step)
+                    delta_token_ids = output.token_ids[token_idxs[output.index]:]
+                    previous_token_ids = output.token_ids[:-len(delta_token_ids)]
+
                     # Extract reasoning content from the delta
                     delta_message = reasoning_parser.extract_reasoning_content_streaming(
-                        previous_text, current_text, output.delta_text,
-                        output.token_ids[:-len(output.token_ids) + token_idxs[output.index]], output.token_ids,
-                        output.token_ids[token_idxs[output.index]:])
+                        previous_text, current_text, output.delta_text, previous_token_ids, output.token_ids,
+                        delta_token_ids)
 
                     if delta_message:
                         delta_reasoning_content = delta_message.reasoning_content
