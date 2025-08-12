@@ -2,7 +2,7 @@
 import os
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
 import torch.nn.functional as F
