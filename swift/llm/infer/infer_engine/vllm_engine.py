@@ -222,7 +222,7 @@ class VllmEngine(InferEngine):
                                  f'Available parsers: {valid_reasoning_parsers}')
             logger.info(f'Using reasoning_parser: {reasoning_parser}')
 
-        reasoning_parser_cls = ReasoningParserManager.get_reasoning_parser(self.reasoning_parser)
+        reasoning_parser_cls = ReasoningParserManager.get_reasoning_parser(reasoning_parser)
         self.reasoning_parser = reasoning_parser_cls(self.tokenizer)
 
     def _fix_vllm_bug(self) -> None:
