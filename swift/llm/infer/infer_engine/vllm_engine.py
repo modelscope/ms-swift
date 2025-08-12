@@ -394,7 +394,6 @@ class VllmEngine(InferEngine):
         for output in result.outputs:
             logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idxs[output.index]:],
                                           request_config.top_logprobs)
-            token_idxs[output.index] = len(output.token_ids)
 
             # Handle reasoning content in streaming
             delta_content = output.delta_text
@@ -430,6 +429,7 @@ class VllmEngine(InferEngine):
                     logger.warning(f'Failed to extract reasoning content in streaming: {e}')
                     # Fallback to original delta_text
                     delta_content = output.delta_text
+            token_idxs[output.index] = len(output.token_ids)
 
             toolcall = None
             if output.is_finished:

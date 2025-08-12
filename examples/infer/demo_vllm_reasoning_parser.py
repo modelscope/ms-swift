@@ -44,7 +44,7 @@ def main():
             print('\n=== Final Answer ===')
             print(f'Answer: {message.content}')
 
-            print(f'\n=== Finish Reason ===')
+            print('\n=== Finish Reason ===')
             print(f'Reason: {choice.finish_reason}')
 
 
