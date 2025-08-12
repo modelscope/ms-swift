@@ -469,7 +469,7 @@ def channel_loss_func(outputs,
             token_channels.extend([sample_channels[i]] * seq)
 
     mode = 'train' if trainer.model.training else 'eval'
-    metrics = trainer._custom_metrics[mode]
+    metrics = trainer.custom_metrics[mode]
     for ch in set(sample_channels):
         indices = [i for i, c in enumerate(token_channels) if c == ch]
         if not indices:
