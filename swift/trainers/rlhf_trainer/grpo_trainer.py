@@ -26,6 +26,7 @@ from transformers import PreTrainedModel, TrainerCallback
 from transformers.trainer import Trainer
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import prepare_deepspeed
+from trl.trainer import grpo_trainer
 from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
 from trl.trainer.utils import selective_log_softmax
@@ -53,6 +54,7 @@ except ImportError:
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
+grpo_trainer.seed_worker = seed_worker  # fix transformers 4.51.3
 
 logger = get_logger()
 if is_wandb_available():
