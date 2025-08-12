@@ -29,9 +29,13 @@ try:
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '86400'
     import vllm
     from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams, EngineArgs, LLMEngine
-    from vllm.reasoning import ReasoningParserManager
 except Exception:
     raise
+
+try:
+    from vllm.reasoning import ReasoningParserManager
+except ImportError:
+    ReasoningParserManager = None
 
 dtype_mapping = {torch.float16: 'float16', torch.bfloat16: 'bfloat16', torch.float32: 'float32'}
 
@@ -210,6 +214,8 @@ class VllmEngine(InferEngine):
 
         # Validate reasoning_parser if provided
         if reasoning_parser:
+            if not ReasoningParserManager:
+                raise ImportError('the version of vLLM is too old, please upgrade vLLM')
             valid_reasoning_parsers = list(ReasoningParserManager.reasoning_parsers.keys())
             if reasoning_parser not in valid_reasoning_parsers:
                 raise ValueError(f'Invalid reasoning_parser: {reasoning_parser}. '
@@ -394,8 +400,10 @@ class VllmEngine(InferEngine):
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
         choices = []
+        previous_texts = [''] * len(result.outputs)
         for output in result.outputs:
-            logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idxs[output.index]:],
+            i = output.index
+            logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idxs[i]:],
                                           request_config.top_logprobs)
 
             # Handle reasoning content in streaming
@@ -405,13 +413,13 @@ class VllmEngine(InferEngine):
             if self.reasoning_parser and output.delta_text:
                 try:
                     # Get token IDs for the delta (new tokens in this step)
-                    delta_token_ids = output.token_ids[token_idxs[output.index]:]
-                    previous_token_ids = output.token_ids[:token_idxs[output.index]]
+                    delta_token_ids = output.token_ids[token_idxs[i]:]
+                    previous_token_ids = output.token_ids[:token_idxs[i]]
 
                     # Get current accumulated text for this output
-                    current_text = template.decode(output.token_ids)
-                    previous_text = template.decode(previous_token_ids)
-
+                    previous_text = previous_texts[i]
+                    current_text = current_text = previous_text + output.delta_text
+                    previous_texts[i] = current_text
                     # Extract reasoning content from the delta
                     delta_message = self.reasoning_parser.extract_reasoning_content_streaming(
                         previous_text, current_text, output.delta_text, previous_token_ids, output.token_ids,
@@ -428,14 +436,14 @@ class VllmEngine(InferEngine):
                     logger.warning(f'Failed to extract reasoning content in streaming: {e}')
                     # Fallback to original delta_text
                     delta_content = output.delta_text
-            token_idxs[output.index] = len(output.token_ids)
+            token_idxs[i] = len(output.token_ids)
 
             toolcall = None
             if output.is_finished:
                 toolcall = self._get_toolcall(template.decode(output.token_ids), template)
 
             choice = ChatCompletionResponseStreamChoice(
-                index=output.index,
+                index=i,
                 delta=DeltaMessage(
                     role='assistant',
                     content=delta_content,
