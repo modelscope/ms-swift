@@ -120,7 +120,12 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
         return logits, None, None
 
 
-def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None, sp_instance=None) -> torch.Tensor:
+def loss_scale_sp_func(outputs,
+                       labels,
+                       loss_scale=None,
+                       num_items_in_batch=None,
+                       sp_instance=None,
+                       enable_dft_loss=False) -> torch.Tensor:
     """Common loss function for sequence parallel training"""
     if hasattr(outputs, 'logits'):
         logits = outputs.logits
@@ -141,6 +146,10 @@ def loss_scale_sp_func(outputs, labels, loss_scale=None, num_items_in_batch=None
     else:
         loss_fct = CrossEntropyLoss(reduction='none')
         loss = loss_fct(logits, labels)
+    if enable_dft_loss:
+        with torch.no_grad():
+            target_probs = torch.exp(-loss)
+        loss *= target_probs
     if loss_scale is not None:
         loss_scale = loss_scale.flatten().to(device)
         loss = (loss_scale * loss)
