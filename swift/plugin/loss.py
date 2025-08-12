@@ -56,7 +56,7 @@ class SiameseDistanceMetric(Enum):
     COSINE_DISTANCE = lambda x, y: 1 - F.cosine_similarity(x, y)  # noqa
 
 
-def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=None, **kwargs) -> torch.Tensor:
     cos_score_transformation = nn.Identity()
     loss_fct = MSELoss()
     sentence1, sentence2 = _parse_pair_sentence(outputs)
@@ -64,7 +64,7 @@ def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=
     return loss_fct(output, labels.to(output.dtype).view(-1))
 
 
-def contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+def contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kwargs) -> torch.Tensor:
     sentence1, sentence2 = _parse_pair_sentence(outputs)
     distance_metric = SiameseDistanceMetric.COSINE_DISTANCE
     distances = distance_metric(sentence1, sentence2)
@@ -327,7 +327,7 @@ def _parse_multi_negative_sentences(sentences, labels, hard_negatives=None):
     return split_tensors
 
 
-def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kwargs) -> torch.Tensor:
     temperature = float(os.environ.get('INFONCE_TEMPERATURE', '0.01'))  # temperature
     # calculate CE across the batch, meaning all samples will be negative except the matching positive
     use_batch = strtobool(os.environ.get('INFONCE_USE_BATCH', 'True'))
@@ -427,7 +427,7 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
     return loss
 
 
-def online_contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+def online_contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kwargs) -> torch.Tensor:
     sentence1, sentence2 = _parse_pair_sentence(outputs)
     distance_metric = SiameseDistanceMetric.COSINE_DISTANCE
     distance_matrix = distance_metric(sentence1, sentence2)
@@ -450,7 +450,8 @@ def channel_loss_func(outputs,
                       num_items_in_batch=None,
                       sample_channels=None,
                       trainer=None,
-                      position_ids=None) -> torch.Tensor:
+                      position_ids=None,
+                      **kwargs) -> torch.Tensor:
     channels = trainer.args.channels
     assert channels is not None, 'Please pass --channels as a hyperparameter.'
     assert sample_channels is not None, 'Data does not have channel field.'
@@ -485,7 +486,7 @@ def channel_loss_func(outputs,
     return loss
 
 
-def reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+def reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kwargs) -> torch.Tensor:
     logits = outputs.logits
     logits = logits.squeeze(1)
     labels = labels.to(logits.dtype)
@@ -494,7 +495,12 @@ def reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> 
     return loss
 
 
-def generative_reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, trainer=None) -> torch.Tensor:
+def generative_reranker_loss(outputs,
+                             labels,
+                             loss_scale=None,
+                             num_items_in_batch=None,
+                             trainer=None,
+                             **kwargs) -> torch.Tensor:
     """
     Generative reranker loss function.
 
@@ -549,7 +555,7 @@ def generative_reranker_loss(outputs, labels, loss_scale=None, num_items_in_batc
     return loss
 
 
-def listwise_reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+def listwise_reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kwargs) -> torch.Tensor:
     """
     List-wise reranker loss function.
 
@@ -642,7 +648,8 @@ def listwise_generative_reranker_loss(outputs,
                                       labels,
                                       loss_scale=None,
                                       num_items_in_batch=None,
-                                      trainer=None) -> torch.Tensor:
+                                      trainer=None,
+                                      **kwargs) -> torch.Tensor:
     """
     List-wise generative reranker loss function.
 

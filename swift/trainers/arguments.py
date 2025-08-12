@@ -9,6 +9,7 @@ from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
 from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, json_parse_to_dict
+from swift.plugin import loss_mapping
 from .optimizers.galore import GaLoreConfig
 
 logger = get_logger()
@@ -19,6 +20,9 @@ class TrainArgumentsMixin:
     """
     check_model (bool): Flag to check the model is latest. Default is True.
     acc_strategy (Literal['token', 'seq']): Strategy for accumulation. Default is 'token'.
+    optimizer (Optional[str]): Optimizer type to use, define it in the plugin package. Default is None.
+    loss_type (Optional[str]): Type of loss function to use. Default is None.
+    metric (Optional[str]): Metric to use for evaluation, define it in the plugin package. Default is None.
     """
     per_device_train_batch_size: int = 1
     per_device_eval_batch_size: int = 1
@@ -49,11 +53,14 @@ class TrainArgumentsMixin:
     max_epochs: Optional[int] = None
     aligner_lr: Optional[float] = None
     vit_lr: Optional[float] = None
-    optimizer: Optional[str] = None
     use_logits_to_keep: Optional[bool] = None
     channels: List[str] = None
     ds3_gather_for_generation: bool = True
     resume_only_model: bool = False
+
+    optimizer: Optional[str] = None
+    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(loss_mapping.keys())}'})
+    metric: Optional[str] = None
 
     # train-eval loop args
     eval_use_evalscope: bool = False

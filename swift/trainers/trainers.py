@@ -97,7 +97,8 @@ class EmbeddingTrainer(Trainer):
 
     def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
         from swift.plugin.loss import infonce_loss, calculate_paired_metrics, calculate_infonce_metrics
-        if self.compute_loss_func is infonce_loss:
+        args = self.args
+        if args.loss_type == 'infonce':
             return calculate_infonce_metrics(eval_prediction.predictions, eval_prediction.label_ids)
         else:
             return calculate_paired_metrics(eval_prediction.predictions, eval_prediction.label_ids)
@@ -111,11 +112,7 @@ class RerankerTrainer(Trainer):
         self.label_names = ['labels']
 
         # Set up preprocess_logits_for_metrics to reduce memory usage for generative reranker
-        from swift.plugin.loss import get_loss_func, LossType
-        if self.compute_loss_func in [
-                get_loss_func(LossType.generative_reranker),
-                get_loss_func(LossType.listwise_generative_reranker)
-        ]:
+        if self.args.loss_type in {'generative_reranker', 'listwise_generative_reranker'}:
             self.preprocess_logits_for_metrics = self._preprocess_generative_reranker_logits
         else:
             self.preprocess_logits_for_metrics = None
@@ -164,13 +161,10 @@ class RerankerTrainer(Trainer):
         return output
 
     def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
-        from swift.plugin.loss import (get_loss_func, LossType, calculate_reranker_metrics)
+        from swift.plugin.loss import calculate_reranker_metrics
 
         # Check if we're using generative reranker (point-wise or list-wise)
-        if self.compute_loss_func in [
-                get_loss_func(LossType.generative_reranker),
-                get_loss_func(LossType.listwise_generative_reranker)
-        ]:
+        if self.args.loss_type in {'generative_reranker', 'listwise_generative_reranker'}:
             # For generative reranker, predictions are now [batch_size, 2] from preprocessing
             # We need to handle this differently
             predictions = eval_prediction.predictions
@@ -192,15 +186,6 @@ class RerankerTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # Check if we have a custom loss function
         if self.compute_loss_func is not None:
-            from swift.plugin.loss import get_loss_func, LossType
-            loss_kwargs = {}
-
-            if self.compute_loss_func in [
-                    get_loss_func(LossType.generative_reranker),
-                    get_loss_func(LossType.listwise_generative_reranker)
-            ]:
-                loss_kwargs['trainer'] = self
-
             # Get labels and compute outputs
             labels = inputs.get('labels')
             if labels is not None:
@@ -210,7 +195,7 @@ class RerankerTrainer(Trainer):
 
             if labels is not None:
                 # Call custom loss function
-                loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, **loss_kwargs)
+                loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, trainer=self)
             else:
                 # Fallback to model's loss
                 loss = outputs.loss
@@ -318,7 +303,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             setattr(state, 'ch_loss_steps', getattr(state, 'ch_loss_steps', {}))
 
             loss_kwargs['sample_channels'] = sample_channels
-            loss_kwargs['trainer'] = self
             if position_ids is None:
                 position_ids = inputs.get('position_ids')
             if position_ids is not None:
@@ -387,7 +371,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 model_name = unwrapped_model._get_name()
             # User-defined compute_loss function
             if compute_loss_func is not None:
-                loss = compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, **loss_kwargs)
+                loss = compute_loss_func(
+                    outputs, labels, num_items_in_batch=num_items_in_batch, trainer=self, **loss_kwargs)
             elif self.label_smoother is None:
                 if num_items_in_batch is None:
                     num_items_in_batch = (labels[:, 1:] != -100).sum()

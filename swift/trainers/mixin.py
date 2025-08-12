@@ -66,11 +66,8 @@ class SwiftMixin:
                  eval_dataset: Optional[Union[HfDataset, Dict[str, HfDataset]]] = None,
                  template: Optional[Template] = None,
                  model_init: Optional[Callable[[], PreTrainedModel]] = None,
-                 compute_loss_func: Optional[Callable] = None,
-                 compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
                  callbacks: Optional[List[TrainerCallback]] = None,
                  optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
-                 preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
                  **kwargs) -> None:
         if not hasattr(train_dataset, '__len__') and args.dataloader_num_workers > 1:
             args.dataloader_num_workers = 1
@@ -102,6 +99,8 @@ class SwiftMixin:
         self.hub = get_hub()
 
         self.model_meta = model.model_meta
+
+        kwargs.update(self.create_loss_and_metric(args))
         with self.hub.patch_hub():
             super().__init__(
                 model=model,
@@ -111,13 +110,10 @@ class SwiftMixin:
                 eval_dataset=eval_dataset,
                 tokenizer=template.tokenizer,
                 model_init=model_init,
-                compute_metrics=compute_metrics,
                 callbacks=callbacks,
                 optimizers=optimizers,
-                preprocess_logits_for_metrics=preprocess_logits_for_metrics,
                 **kwargs)
 
-        self.compute_loss_func = compute_loss_func
         if get_function(model.__class__.forward) is not get_function(model.forward):
             self.label_names = find_labels(model)
             self.can_return_loss = can_return_loss(model)
@@ -736,6 +732,19 @@ class SwiftMixin:
             if not self.eval_dataset:
                 self.control.should_evaluate = False
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
+
+    def create_loss_and_metric(self, args):
+        if args.metric is not None:
+            compute_metrics, preprocess_logits_for_metrics = get_metric(args.metric)
+        elif args.predict_with_generate:
+            compute_metrics, preprocess_logits_for_metrics = get_metric('nlg')
+        else:
+            compute_metrics, preprocess_logits_for_metrics = None, None
+        return {
+            'compute_metrics': compute_metrics,
+            'preprocess_logits_for_metrics': preprocess_logits_for_metrics,
+            'compute_loss_func': get_loss_func(args.loss_type)
+        }
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
         if self.args.optimizer is not None:

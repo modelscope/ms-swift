@@ -172,23 +172,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             eval_dataset=val_dataset,
             callbacks=self.callbacks,
             template=self.template,
-            **self._get_trainer_kwargs(),
-        )
+            **self._get_trainer_kwargs())
         return self.train(trainer)
 
     def _get_trainer_kwargs(self):
-        args = self.args
-        if args.metric is not None:
-            compute_metrics, preprocess_logits_for_metrics = get_metric(args.metric)
-        elif args.predict_with_generate:
-            compute_metrics, preprocess_logits_for_metrics = get_metric('nlg')
-        else:
-            compute_metrics, preprocess_logits_for_metrics = None, None
-        return {
-            'compute_metrics': compute_metrics,
-            'preprocess_logits_for_metrics': preprocess_logits_for_metrics,
-            'compute_loss_func': get_loss_func(args.loss_type)
-        }
+        return {}
 
     def _save_trainer_state(self, trainer):
         training_args = trainer.args
