@@ -30,7 +30,6 @@ class KeyeVLTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         from keye_vl_utils import fetch_image, fetch_video
-        # from qwen_vl_utils import fetch_image, fetch_video
         assert media_type in {'image', 'video'}
         if media_type == 'image':
             inputs.images[index] = fetch_image({'image': inputs.images[index]})
@@ -49,7 +48,6 @@ class KeyeVLTemplate(Template):
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        from keye_vl_utils import vision_process
         encoded = super()._encode(inputs)
         processor = self.processor
         input_ids = encoded['input_ids']

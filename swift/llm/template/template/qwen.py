@@ -279,7 +279,6 @@ class Qwen2VLTemplate(Template):
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
                     if self.version == 'v2_5':
-                        from qwen_vl_utils import vision_process
                         media_inputs['second_per_grid_ts'] = [
                             processor.image_processor.temporal_patch_size / tmp for tmp in fps
                         ]
