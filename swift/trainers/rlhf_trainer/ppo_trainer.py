@@ -54,6 +54,9 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
         unwrap_model = self.accelerator.unwrap_model(self.model)
         patch_getattr(unwrap_model.__class__, 'policy')
 
+    def create_loss_and_metric(self, args):
+        return {}
+
     def train(self, *args, **kwargs):
         # remove args that are not needed for the HFPPOTrainer
         super().train()

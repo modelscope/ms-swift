@@ -125,7 +125,8 @@ def loss_scale_sp_func(outputs,
                        loss_scale=None,
                        num_items_in_batch=None,
                        sp_instance=None,
-                       enable_dft_loss=False) -> torch.Tensor:
+                       enable_dft_loss=False,
+                       **kwargs) -> torch.Tensor:
     """Common loss function for sequence parallel training"""
     if hasattr(outputs, 'logits'):
         logits = outputs.logits

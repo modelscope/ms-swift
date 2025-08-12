@@ -5,25 +5,21 @@ from typing import Callable, Optional
 
 import numpy as np
 import torch
-import torch.distributed as dist
 import torch.nn.functional as F
 from accelerate.utils import gather_object
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 from transformers.utils import strtobool
 
-from swift.plugin import MeanMetric
-
 
 def per_token_loss_func(outputs, labels, enable_dft_loss, **kwargs):
     logits = outputs.logits
     # Upcast to float if we need to compute the loss to avoid potential precision issues
     logits = logits.float()
-    labels = torch.roll(labels, shifts=-1, dims=-1)
+    labels = torch.roll(labels, shifts=-1, dims=-1).view(-1)
 
     # Flatten the tokens
     logits = logits.view(-1, logits.shape[-1])
-    labels = labels.view(-1)
     # Enable model parallelism
     labels = labels.to(logits.device)
     loss = F.cross_entropy(logits, labels, ignore_index=-100, reduction='none')
@@ -61,7 +57,7 @@ class SiameseDistanceMetric(Enum):
     COSINE_DISTANCE = lambda x, y: 1 - F.cosine_similarity(x, y)  # noqa
 
 
-def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=None, **kwargs) -> torch.Tensor:
     cos_score_transformation = nn.Identity()
     loss_fct = MSELoss()
     sentence1, sentence2 = _parse_pair_sentence(outputs)
@@ -69,7 +65,7 @@ def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=
     return loss_fct(output, labels.to(output.dtype).view(-1))
 
 
-def contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+def contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kwargs) -> torch.Tensor:
     sentence1, sentence2 = _parse_pair_sentence(outputs)
     distance_metric = SiameseDistanceMetric.COSINE_DISTANCE
     distances = distance_metric(sentence1, sentence2)
@@ -80,8 +76,8 @@ def contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) 
 
 
 def calculate_paired_metrics(embeddings, labels):
-    from sklearn.metrics.pairwise import paired_cosine_distances, paired_euclidean_distances, \
-        paired_manhattan_distances
+    from sklearn.metrics.pairwise import (paired_cosine_distances, paired_euclidean_distances,
+                                          paired_manhattan_distances)
     from scipy.stats import pearsonr, spearmanr
 
     embeddings1, embeddings2 = _parse_pair_sentence(embeddings)
@@ -115,9 +111,6 @@ def calculate_paired_metrics(embeddings, labels):
 
 
 def calculate_infonce_metrics(embeddings, labels):
-    from sklearn.metrics.pairwise import paired_cosine_distances, paired_euclidean_distances, \
-        paired_manhattan_distances
-    from scipy.stats import pearsonr, spearmanr
     hard_negatives = os.environ.get('INFONCE_HARD_NEGATIVES', None)
     use_batch = strtobool(os.environ.get('INFONCE_USE_BATCH', 'True'))
     if hard_negatives is not None:
@@ -332,7 +325,7 @@ def _parse_multi_negative_sentences(sentences, labels, hard_negatives=None):
     return split_tensors
 
 
-def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kwargs) -> torch.Tensor:
     temperature = float(os.environ.get('INFONCE_TEMPERATURE', '0.01'))  # temperature
     # calculate CE across the batch, meaning all samples will be negative except the matching positive
     use_batch = strtobool(os.environ.get('INFONCE_USE_BATCH', 'True'))
@@ -432,7 +425,7 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
     return loss
 
 
-def online_contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+def online_contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kwargs) -> torch.Tensor:
     sentence1, sentence2 = _parse_pair_sentence(outputs)
     distance_metric = SiameseDistanceMetric.COSINE_DISTANCE
     distance_matrix = distance_metric(sentence1, sentence2)
@@ -455,75 +448,43 @@ def channel_loss_func(outputs,
                       num_items_in_batch=None,
                       sample_channels=None,
                       trainer=None,
-                      position_ids=None) -> torch.Tensor:
-    # Note: loss_scale is not supported at the moment.
+                      position_ids=None,
+                      **kwargs) -> torch.Tensor:
     channels = trainer.args.channels
     assert channels is not None, 'Please pass --channels as a hyperparameter.'
     assert sample_channels is not None, 'Data does not have channel field.'
-    logits = outputs.logits
 
-    # compute token loss
-    shift_logits = logits[..., :-1, :].contiguous()
-    shift_labels = labels[..., 1:].contiguous()
-    loss_fct = nn.CrossEntropyLoss(reduction='none')
-    flat_logits = shift_logits.view(-1, shift_logits.size(-1))
-    flat_labels = shift_labels.view(-1)
-    token_loss = loss_fct(flat_logits, flat_labels)
-    mask = flat_labels != -100
+    if outputs.loss is None:
+        outputs.loss = per_token_loss_func(outputs, labels)
+    token_loss = outputs.loss
+    masks = torch.roll(labels, shifts=-1, dims=-1).view(-1) != -100
+    if num_items_in_batch is None:
+        num_items_in_batch = masks.sum()
+    loss = token_loss.sum() / num_items_in_batch
 
     if position_ids is not None and trainer.template._packing:
-        pos = position_ids[..., :-1].view(-1)
-        start_idx_mask = pos.eq(0).int()
+        start_idx_mask = position_ids.view(-1).eq(0).int()
         sample_idx = (torch.cumsum(start_idx_mask, dim=0) - 1).tolist()
         token_channels = [sample_channels[i] for i in sample_idx]
     else:
-        bs, seq = shift_labels.shape
+        bs, seq = labels.shape
         token_channels = []
         for i in range(bs):
             token_channels.extend([sample_channels[i]] * seq)
 
-    state = trainer.state
-    state.local_step += 1
+    mode = 'train' if trainer.model.training else 'eval'
+    metrics = trainer._custom_metrics[mode]
     for ch in set(sample_channels):
         indices = [i for i, c in enumerate(token_channels) if c == ch]
         if not indices:
             continue
-        ch_mask = mask[indices]
-        ch_losses = token_loss[indices]
-        valid_losses = ch_losses[ch_mask]
-        state.ch_loss_steps.setdefault(ch, []).append(valid_losses)
+        ch_loss = token_loss[indices][masks[indices]]
+        metrics[f'loss_{ch}'].update(ch_loss)
 
-    # At the end of a global step, compute the mean loss for each channel
-    if state.local_step % trainer.args.gradient_accumulation_steps == 0:
-        for ch in channels:
-            ch_loss_steps = state.ch_loss_steps.get(ch, [])
-            loss_sum_tensor = torch.tensor([sum(torch.sum(x) for x in ch_loss_steps)],
-                                           dtype=torch.float32,
-                                           device=logits.device)
-            num_items_tensor = torch.tensor([sum(x.numel() for x in ch_loss_steps)],
-                                            dtype=torch.float32,
-                                            device=logits.device)
-            if dist.is_initialized():
-                dist.all_reduce(loss_sum_tensor, op=dist.ReduceOp.SUM)
-                dist.all_reduce(num_items_tensor, op=dist.ReduceOp.SUM)
-            loss_sum = loss_sum_tensor.item()
-            num_items = num_items_tensor.item()
-            ch_loss = loss_sum / (num_items + 1e-12)
-
-            if ch_loss > 0.0:
-                metric_key = f'loss_{ch}'
-                trainer._custom_metrics.setdefault(metric_key, MeanMetric(nan_value=None)).update(ch_loss)
-            # Reset
-            state.ch_loss_steps[ch] = []
-
-    # return loss
-    total_loss = token_loss.masked_select(mask).sum()
-    total_tokens = mask.sum()
-    return total_loss / num_items_in_batch if num_items_in_batch is not None \
-        else total_loss / (total_tokens.float() + 1e-12)
+    return loss
 
 
-def reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+def reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kwargs) -> torch.Tensor:
     logits = outputs.logits
     logits = logits.squeeze(1)
     labels = labels.to(logits.dtype)
@@ -532,7 +493,12 @@ def reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> 
     return loss
 
 
-def generative_reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, trainer=None) -> torch.Tensor:
+def generative_reranker_loss(outputs,
+                             labels,
+                             loss_scale=None,
+                             num_items_in_batch=None,
+                             trainer=None,
+                             **kwargs) -> torch.Tensor:
     """
     Generative reranker loss function.
 
@@ -587,7 +553,7 @@ def generative_reranker_loss(outputs, labels, loss_scale=None, num_items_in_batc
     return loss
 
 
-def listwise_reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+def listwise_reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kwargs) -> torch.Tensor:
     """
     List-wise reranker loss function.
 
@@ -680,7 +646,8 @@ def listwise_generative_reranker_loss(outputs,
                                       labels,
                                       loss_scale=None,
                                       num_items_in_batch=None,
-                                      trainer=None) -> torch.Tensor:
+                                      trainer=None,
+                                      **kwargs) -> torch.Tensor:
     """
     List-wise generative reranker loss function.
 

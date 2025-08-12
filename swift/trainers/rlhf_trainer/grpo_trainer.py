@@ -26,6 +26,7 @@ from transformers import PreTrainedModel, TrainerCallback
 from transformers.trainer import Trainer
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import prepare_deepspeed
+from trl.trainer import grpo_trainer
 from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
 from trl.trainer.utils import selective_log_softmax
@@ -53,6 +54,7 @@ except ImportError:
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
+grpo_trainer.seed_worker = seed_worker  # fix transformers 4.51.3
 
 logger = get_logger()
 if is_wandb_available():
@@ -1545,10 +1547,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 time.sleep(0.1)
         if self._queue.empty() and self.args.async_generate:
             self._prefetch(dataloader)
-        metric_key_prefix = kwargs['metric_key_prefix']
         output = super().evaluation_loop(dataloader, *args, **kwargs)
-        metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics['eval'].items()}
-        output.metrics.update(metrics)
         self.eval_flag = True
         return output
 
@@ -1718,7 +1717,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if mode == 'eval':
             metrics = {f'eval_{key}': val for key, val in metrics.items()}
 
-        logs = {**logs, **metrics}
+        logs.update(metrics)
         if version.parse(transformers.__version__) >= version.parse('4.47.0.dev0'):
             super().log(logs, start_time)
         else:  # transformers<=4.46

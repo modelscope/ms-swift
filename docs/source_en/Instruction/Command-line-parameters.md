@@ -358,6 +358,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - vllm_quantization: vllm is able to quantize model with this argument，supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 - vllm_enable_prefix_caching: Enable the automatic prefix caching of vllm to save processing time for querying repeated prefixes. The default is `False`.
 - vllm_use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
+- vllm_reasoning_parser: Reasoning parser type, used for parsing the chain of thought content of reasoning models. Default is `None`. Only used for the `swift deploy` command. Available types can be found in the [vLLM documentation](https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#streaming-chat-completions)
 
 ### SGLang Arguments
 Parameter meanings can be found in the [sglang documentation](https://docs.sglang.ai/backend/server_arguments.html).
@@ -400,7 +401,6 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - add_version: Add directory to output_dir with `'<version>-<timestamp>'` to prevent weight overwrite, default is True.
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. If in an offline environment, please set to False.
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
-- loss_type: Type of loss. Defaults to None, which uses the model's built-in loss function.
 - channels: Set of channels included in the dataset. Defaults to None. Used in conjunction with `--loss_type channel_loss`. Refer to [this example](https://github.com/modelscope/ms-swift/blob/main/examples/train/plugins/channel_loss.sh) for more details.
 - 🔥packing: Whether to use sequence packing to improve computational efficiency. The default value is False. Currently supports `swift pt/sft`.
   - Note: When using packing, please combine it with `--attn_impl flash_attn` and ensure "transformers>=4.44". For details, see [this PR](https://github.com/huggingface/transformers/pull/31629).
@@ -416,7 +416,8 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - max_new_tokens: Generation parameter override. The maximum number of tokens to generate when `predict_with_generate=True`, defaulting to 64.
 - temperature: Generation parameter override. The temperature setting when `predict_with_generate=True`, defaulting to 0.
 - optimizer: Custom optimizer name for the plugin, defaults to None. Optional optimizer reference: [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/optimizer.py).
-- metric: Custom metric name for the plugin. Defaults to None, with the default set to 'acc' when `predict_with_generate=False` and 'nlg' when `predict_with_generate=True`.
+- loss_type: Type of loss. Defaults to None, which uses the model's built-in loss function.
+- metric: Custom metric name for the plugin. Defaults to None, with the default set to 'nlg' when `predict_with_generate=True`.
 - eval_use_evalscope: Whether to use evalscope for evaluation, this parameter needs to be set to enable evaluation, refer to [example](../Instruction/Evaluation.md#evaluation-during-training). Default is False.
 - eval_dataset: Evaluation datasets, multiple datasets can be set, separated by spaces
 - eval_dataset_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
