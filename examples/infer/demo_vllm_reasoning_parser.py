@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Example of using reasoning_parser
 
@@ -8,14 +7,7 @@ This example demonstrates how to use reasoning_parser in Swift's VllmEngine to s
 from swift.llm import InferRequest, RequestConfig, VllmEngine
 
 
-def main():
-    # Initialize VllmEngine with reasoning_parser enabled
-    engine = VllmEngine(
-        model_id_or_path='Qwen/Qwen3-8B',
-        reasoning_parser='qwen3',  # Specify reasoning parser
-        gpu_memory_utilization=0.9,
-    )
-
+def main(engine: VllmEngine):
     # Create inference request
     infer_request = InferRequest(messages=[{'role': 'user', 'content': '9.11 and 9.8, which is greater?'}])
 
@@ -48,14 +40,8 @@ def main():
             print(f'Reason: {choice.finish_reason}')
 
 
-def streaming_example():
+def streaming_example(engine: VllmEngine):
     """Streaming inference example"""
-    engine = VllmEngine(
-        model_id_or_path='Qwen/Qwen3-8B',
-        reasoning_parser='qwen3',
-        gpu_memory_utilization=0.9,
-    )
-
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'Calculate the result of 15 + 27'}])
 
     request_config = RequestConfig(
@@ -83,10 +69,17 @@ def streaming_example():
 
 
 if __name__ == '__main__':
+    # Initialize VllmEngine with reasoning_parser enabled
+    engine = VllmEngine(
+        model_id_or_path='Qwen/Qwen3-8B',
+        reasoning_parser='qwen3',  # Specify reasoning parser
+        gpu_memory_utilization=0.9,
+    )
+
     print('=== Non-streaming Inference Example ===')
-    main()
+    main(engine)
 
     print('\n' + '=' * 50 + '\n')
 
     print('=== Streaming Inference Example ===')
-    streaming_example()
+    streaming_example(engine)

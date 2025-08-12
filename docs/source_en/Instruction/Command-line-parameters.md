@@ -357,7 +357,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - vllm_quantization: vllm is able to quantize model with this argument，supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 - vllm_enable_prefix_caching: Enable the automatic prefix caching of vllm to save processing time for querying repeated prefixes. The default is `False`.
 - vllm_use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
-- vllm_reasoning_parser: Reasoning parser type, used for parsing the chain of thought content of reasoning models. Default is `None`. Only used for the `swift deploy` command. Default is None, available types can be found in the [vLLM documentation](https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#streaming-chat-completions)
+- vllm_reasoning_parser: Reasoning parser type, used for parsing the chain of thought content of reasoning models. Default is `None`. Only used for the `swift deploy` command. Available types can be found in the [vLLM documentation](https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#streaming-chat-completions)
 
 ### SGLang Arguments
 Parameter meanings can be found in the [sglang documentation](https://docs.sglang.ai/backend/server_arguments.html).

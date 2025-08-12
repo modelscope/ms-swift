@@ -108,7 +108,6 @@ class VllmEngine(InferEngine):
             enable_sleep_mode=enable_sleep_mode,
             quantization=quantization,
             task=task_type,
-            reasoning_parser=reasoning_parser,
             **engine_kwargs,
         )
         context = nullcontext()
@@ -120,6 +119,7 @@ class VllmEngine(InferEngine):
         self._fix_vllm_bug()
         self.patch_remove_log()
         self._request_count = 0
+        self._prepare_reasoning_parser(reasoning_parser)
 
     def _prepare_engine(self) -> None:
         with patch_auto_tokenizer(self.tokenizer), patch_auto_config(self.config):
@@ -146,7 +146,6 @@ class VllmEngine(InferEngine):
         distributed_executor_backend: Optional[str] = None,
         enable_sleep_mode: bool = False,
         task: Optional[str] = None,
-        reasoning_parser: Optional[str] = None,
         **engine_kwargs,
     ) -> None:
         if task == 'embedding':
@@ -197,12 +196,17 @@ class VllmEngine(InferEngine):
             trust_remote_code=True,
             enable_prefix_caching=enable_prefix_caching,
             distributed_executor_backend=distributed_executor_backend,
-            reasoning_parser=reasoning_parser,
             **engine_kwargs,
         )
         self.engine_args = engine_args
         self.enable_lora = enable_lora
-        self.reasoning_parser = reasoning_parser
+        if max_model_len is not None:
+            self.max_model_len = max_model_len
+            logger.info(f'Setting max_model_len: {max_model_len}')
+
+    def _prepare_reasoning_parser(self, reasoning_parser: Optional[str]) -> None:
+        if reasoning_parser is None:
+            return
 
         # Validate reasoning_parser if provided
         if reasoning_parser:
@@ -212,9 +216,8 @@ class VllmEngine(InferEngine):
                                  f'Available parsers: {valid_reasoning_parsers}')
             logger.info(f'Using reasoning_parser: {reasoning_parser}')
 
-        if max_model_len is not None:
-            self.max_model_len = max_model_len
-            logger.info(f'Setting max_model_len: {max_model_len}')
+        reasoning_parser_cls = ReasoningParserManager.get_reasoning_parser(self.reasoning_parser)
+        self.reasoning_parser = reasoning_parser_cls(self.tokenizer)
 
     def _fix_vllm_bug(self) -> None:
         # fix vllm==0.4 bug (very slow)
@@ -401,20 +404,16 @@ class VllmEngine(InferEngine):
 
             if self.reasoning_parser and output.delta_text:
                 try:
-                    reasoning_parser_cls = ReasoningParserManager.get_reasoning_parser(self.reasoning_parser)
-                    reasoning_parser = reasoning_parser_cls(self.tokenizer)
+                    # Get token IDs for the delta (new tokens in this step)
+                    delta_token_ids = output.token_ids[token_idxs[output.index]:]
+                    previous_token_ids = output.token_ids[:token_idxs[output.index]]
 
                     # Get current accumulated text for this output
                     current_text = template.decode(output.token_ids)
-                    previous_text = template.decode(output.token_ids[:-len(output.token_ids)
-                                                                     + token_idxs[output.index]])
-
-                    # Get token IDs for the delta (new tokens in this step)
-                    delta_token_ids = output.token_ids[token_idxs[output.index]:]
-                    previous_token_ids = output.token_ids[:-len(delta_token_ids)]
+                    previous_text = template.decode(previous_token_ids)
 
                     # Extract reasoning content from the delta
-                    delta_message = reasoning_parser.extract_reasoning_content_streaming(
+                    delta_message = self.reasoning_parser.extract_reasoning_content_streaming(
                         previous_text, current_text, output.delta_text, previous_token_ids, output.token_ids,
                         delta_token_ids)
 
@@ -474,9 +473,7 @@ class VllmEngine(InferEngine):
             content = response
             if self.reasoning_parser:
                 try:
-                    reasoning_parser_cls = ReasoningParserManager.get_reasoning_parser(self.reasoning_parser)
-                    reasoning_parser = reasoning_parser_cls(self.tokenizer)
-                    reasoning_content, content = reasoning_parser.extract_reasoning_content(
+                    reasoning_content, content = self.reasoning_parser.extract_reasoning_content(
                         response,
                         request=None  # We don't have the original request here
                     )
