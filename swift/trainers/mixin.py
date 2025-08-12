@@ -733,15 +733,8 @@ class SwiftMixin:
 
     def create_loss_and_metric(self, args):
         res = {}
-        compute_metrics, preprocess_logits_for_metrics = None, None
         if args.metric is not None:
-            compute_metrics, preprocess_logits_for_metrics = get_metric(args.metric)
-        elif args.predict_with_generate:
-            compute_metrics, preprocess_logits_for_metrics = get_metric('nlg')
-        if compute_metrics is not None:
-            res['compute_metrics'] = compute_metrics
-        if preprocess_logits_for_metrics is not None:
-            res['preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
+            res['compute_metrics'], res['preprocess_logits_for_metrics'] = get_metric(args.metric)
         if args.loss_type is not None:
             res['compute_loss_func'] = get_loss_func(args.loss_type)
         return res
