@@ -1,3 +1,4 @@
+# 8 * 75GiB 10.5s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
@@ -6,7 +7,7 @@ megatron rlhf \
     --load Qwen3-30B-A3B-Base-mcore \
     --dataset AI-ModelScope/orpo-dpo-mix-40k \
     --split_dataset_ratio 0.01 \
-    --tensor_model_parallel_size 4 \
+    --tensor_model_parallel_size 2 \
     --expert_tensor_parallel_size 1 \
     --expert_model_parallel_size 8 \
     --moe_permute_fusion true \
@@ -37,7 +38,7 @@ megatron rlhf \
     --attention_backend flash \
     --optimizer_cpu_offload true \
     --use_precision_aware_optimizer true \
-    --optimizer_offload_fraction 0.5 \
+    --optimizer_offload_fraction 1 \
     --beta 0.1 \
     --rpo_alpha 1 \
     --loss_type sigmoid
