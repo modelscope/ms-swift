@@ -346,7 +346,6 @@ def patch_mp_ddp():
         transformers.modeling_utils.get_balanced_memory = lambda *args, **kwargs: {}
         transformers.modeling_utils.infer_auto_device_map = _infer_auto_device_map_patch
 
-    if is_mp_ddp():
         _old_accelerator_init = trainer.Accelerator.__init__
         trainer.Accelerator.__init__ = (lambda self, device_placement=False, *args, **kwargs: _old_accelerator_init(
             self, device_placement=device_placement, *args, **kwargs))

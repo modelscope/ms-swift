@@ -1545,10 +1545,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 time.sleep(0.1)
         if self._queue.empty() and self.args.async_generate:
             self._prefetch(dataloader)
-        metric_key_prefix = kwargs['metric_key_prefix']
         output = super().evaluation_loop(dataloader, *args, **kwargs)
-        metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics['eval'].items()}
-        output.metrics.update(metrics)
         self.eval_flag = True
         return output
 
@@ -1718,7 +1715,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if mode == 'eval':
             metrics = {f'eval_{key}': val for key, val in metrics.items()}
 
-        logs = {**logs, **metrics}
+        logs.update(metrics)
         if version.parse(transformers.__version__) >= version.parse('4.47.0.dev0'):
             super().log(logs, start_time)
         else:  # transformers<=4.46
