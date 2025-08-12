@@ -686,11 +686,8 @@ class SwiftMixin:
         for k, metric in self._custom_metrics[mode].items():
             if mode == 'eval':
                 k = f'eval_{k}'
-            if hasattr(metric, 'compute'):
-                value = metric.compute()
-                metric.reset()
-            else:
-                value = metric
+            value = metric.compute()
+            metric.reset()
             if isinstance(value, dict):
                 if len(value) == 1:
                     val = list(value.values())[0]
