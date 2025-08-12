@@ -1,16 +1,17 @@
 # 4*80G
-CUDA_VISIBLE_DEVICES=4,5,6,7 \
+# exp: https://github.com/modelscope/ms-swift/pull/5355
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
     --model Qwen/Qwen2.5-Math-1.5B \
     --train_type full \
     --dataset AI-MO/NuminaMath-CoT#100000 \
     --torch_dtype bfloat16 \
-    --enable_dft_loss false \
+    --enable_dft_loss true \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 16 \
+    --per_device_train_batch_size 8 \
     --learning_rate 5e-5 \
-    --gradient_accumulation_steps 16 \
+    --gradient_accumulation_steps 32 \
     --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 2048 \
