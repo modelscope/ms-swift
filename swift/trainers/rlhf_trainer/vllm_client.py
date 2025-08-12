@@ -9,7 +9,6 @@ from urllib.parse import urlparse
 
 import requests
 import torch
-from dacite import from_dict
 from packaging import version
 from requests import ConnectionError
 from torch import nn
@@ -150,7 +149,7 @@ class VLLMClient:
                     return
 
                 resp_data = response.json()
-                results[i] = [from_dict(data_class=RolloutOutput, data=resp) for resp in resp_data]
+                results[i] = [RolloutOutput.parse_obj(resp) for resp in resp_data]
             except Exception as e:
                 errors[i] = e
 

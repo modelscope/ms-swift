@@ -151,7 +151,6 @@ class GRPOVllmEngine(VllmEngine):
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
     ) -> List[RolloutOutput]:
-        assert not self.use_async_engine, 'for Async Engine, use infer_async instead'
         res = super().infer(
             infer_requests,
             request_config,
@@ -169,6 +168,22 @@ class GRPOVllmEngine(VllmEngine):
                 res[i] = RolloutOutput(response=result)
 
         return res
+
+    async def async_infer(self,
+                          infer_requests: List[InferRequest],
+                          request_config: Optional[RequestConfig] = None,
+                          metrics: Optional[List[Metric]] = None,
+                          *,
+                          use_tqdm: Optional[bool] = None,
+                          **kwargs) -> List[ChatCompletionResponse]:
+        if request_config is None:
+            request_config = RequestConfig()
+        assert request_config.n == 1
+
+        tasks = [self.infer_async(infer_request, request_config, **kwargs) for infer_request in infer_requests]
+        if use_tqdm is None:
+            use_tqdm = len(infer_requests) > 1
+        return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
     async def _batch_infer_stream(self,
                                   tasks,
