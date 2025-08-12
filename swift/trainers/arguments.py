@@ -183,6 +183,7 @@ class VllmArguments:
     vllm_enable_prefix_caching: bool = False
     vllm_use_async_engine: bool = False
     vllm_quantization: Optional[str] = None
+    vllm_reasoning_parser: Optional[str] = None
     # rollout
     vllm_data_parallel_size: int = 1
 
@@ -232,6 +233,7 @@ class VllmArguments:
             'enable_prefix_caching': self.vllm_enable_prefix_caching,
             'use_async_engine': self.vllm_use_async_engine,
             'quantization': self.vllm_quantization,
+            'reasoning_parser': self.vllm_reasoning_parser,
         }
         if self.task_type == 'embedding':
             kwargs['task_type'] = 'embedding'
