@@ -34,16 +34,14 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import (OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, SCHEDULER_NAME, TRAINER_STATE_NAME,
                                   ParallelMode, TrainerCallback, reissue_pt_warnings)
-from transformers.trainer_utils import EvalPrediction, IntervalStrategy
-from transformers.utils import is_torch_npu_available
+from transformers.trainer_utils import IntervalStrategy
 
 from swift.hub import get_hub
 from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
 from swift.llm.utils import update_generation_config_eos_token
-from swift.plugin import MeanMetric, compute_acc, extra_tuners
+from swift.plugin import MeanMetric, compute_acc, extra_tuners, get_loss_func, get_metric
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker
-from ..utils.torch_utils import get_device_count
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
@@ -734,17 +732,19 @@ class SwiftMixin:
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
 
     def create_loss_and_metric(self, args):
+        res = {}
+        compute_metrics, preprocess_logits_for_metrics = None, None
         if args.metric is not None:
             compute_metrics, preprocess_logits_for_metrics = get_metric(args.metric)
         elif args.predict_with_generate:
             compute_metrics, preprocess_logits_for_metrics = get_metric('nlg')
-        else:
-            compute_metrics, preprocess_logits_for_metrics = None, None
-        return {
-            'compute_metrics': compute_metrics,
-            'preprocess_logits_for_metrics': preprocess_logits_for_metrics,
-            'compute_loss_func': get_loss_func(args.loss_type)
-        }
+        if compute_metrics is not None:
+            res['compute_metrics'] = compute_metrics
+        if preprocess_logits_for_metrics is not None:
+            res['preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
+        if args.loss_type is not None:
+            res['compute_loss_func'] = get_loss_func(args.loss_type)
+        return res
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
         if self.args.optimizer is not None:

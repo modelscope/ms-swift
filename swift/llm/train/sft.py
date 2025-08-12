@@ -7,7 +7,7 @@ from datasets import Dataset as HfDataset
 from datasets import load_from_disk
 
 from swift.llm.dataset.loader import DatasetLoader
-from swift.plugin import extra_callbacks, get_loss_func, get_metric
+from swift.plugin import extra_callbacks
 from swift.trainers import TrainerFactory
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
 from ..argument import TrainArguments
@@ -172,7 +172,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             eval_dataset=val_dataset,
             callbacks=self.callbacks,
             template=self.template,
-            **self._get_trainer_kwargs())
+            **self._get_trainer_kwargs(),
+        )
         return self.train(trainer)
 
     def _get_trainer_kwargs(self):

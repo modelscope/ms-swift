@@ -5,14 +5,11 @@ from typing import Callable, Optional
 
 import numpy as np
 import torch
-import torch.distributed as dist
 import torch.nn.functional as F
 from accelerate.utils import gather_object
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 from transformers.utils import strtobool
-
-from swift.plugin import MeanMetric
 
 
 def per_token_loss_func(outputs, labels, **kwargs):
@@ -75,8 +72,8 @@ def contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, 
 
 
 def calculate_paired_metrics(embeddings, labels):
-    from sklearn.metrics.pairwise import paired_cosine_distances, paired_euclidean_distances, \
-        paired_manhattan_distances
+    from sklearn.metrics.pairwise import (paired_cosine_distances, paired_euclidean_distances,
+                                          paired_manhattan_distances)
     from scipy.stats import pearsonr, spearmanr
 
     embeddings1, embeddings2 = _parse_pair_sentence(embeddings)
@@ -110,9 +107,6 @@ def calculate_paired_metrics(embeddings, labels):
 
 
 def calculate_infonce_metrics(embeddings, labels):
-    from sklearn.metrics.pairwise import paired_cosine_distances, paired_euclidean_distances, \
-        paired_manhattan_distances
-    from scipy.stats import pearsonr, spearmanr
     hard_negatives = os.environ.get('INFONCE_HARD_NEGATIVES', None)
     use_batch = strtobool(os.environ.get('INFONCE_USE_BATCH', 'True'))
     if hard_negatives is not None:

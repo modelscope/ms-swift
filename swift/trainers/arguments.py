@@ -8,8 +8,8 @@ from typing import List, Literal, Optional, Union
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
-from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, json_parse_to_dict
 from swift.plugin import loss_mapping
+from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, json_parse_to_dict
 from .optimizers.galore import GaLoreConfig
 
 logger = get_logger()

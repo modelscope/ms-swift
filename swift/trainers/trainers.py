@@ -96,7 +96,7 @@ class EmbeddingTrainer(Trainer):
         return output
 
     def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
-        from swift.plugin.loss import infonce_loss, calculate_paired_metrics, calculate_infonce_metrics
+        from swift.plugin.loss import calculate_paired_metrics, calculate_infonce_metrics
         args = self.args
         if args.loss_type == 'infonce':
             return calculate_infonce_metrics(eval_prediction.predictions, eval_prediction.label_ids)
