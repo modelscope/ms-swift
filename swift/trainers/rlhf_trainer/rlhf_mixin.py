@@ -50,6 +50,9 @@ class RLHFTrainerMixin:
 
         self.padding_value = self.tokenizer.pad_token_id
 
+    def create_loss_and_metric(self, args):
+        return {}
+
     def get_train_dataloader(self, *args, **kwargs):
         train_dataloader = super().get_train_dataloader(*args, **kwargs)
         base_dataloader = train_dataloader.base_dataloader if hasattr(
