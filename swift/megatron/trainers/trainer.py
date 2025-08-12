@@ -37,7 +37,9 @@ class MegatronTrainer(BaseMegatronTrainer):
         args = get_args()
 
         losses = output_tensor.float()
-        loss_mask = loss_mask.view(-1).float()
+        if args.enable_dft_loss:
+            losses = losses * torch.exp(-losses.detach())
+        loss_mask = loss_mask.view(-1).float()  # or loss_scale
         total_tokens = loss_mask.sum()
         loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), total_tokens.view(1)])
 
