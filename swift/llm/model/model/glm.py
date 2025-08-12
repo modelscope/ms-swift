@@ -76,12 +76,12 @@ register_model(
     ModelMeta(
         LLMModelType.chatglm2, [
             ModelGroup([
-                Model('ZhipuAI/chatglm2-6b', 'THUDM/chatglm2-6b'),
-                Model('ZhipuAI/chatglm2-6b-32k', 'THUDM/chatglm2-6b-32k')
+                Model('ZhipuAI/chatglm2-6b', 'zai-org/chatglm2-6b'),
+                Model('ZhipuAI/chatglm2-6b-32k', 'zai-org/chatglm2-6b-32k')
             ],
                        requires=['transformers<4.42']),
             ModelGroup(
-                [Model('ZhipuAI/codegeex2-6b', 'THUDM/codegeex2-6b')],
+                [Model('ZhipuAI/codegeex2-6b', 'zai-org/codegeex2-6b')],
                 requires=['transformers<4.34'],
                 tags=['coding'],
             ),
@@ -95,10 +95,10 @@ register_model(
     ModelMeta(
         LLMModelType.chatglm3, [
             ModelGroup([
-                Model('ZhipuAI/chatglm3-6b', 'THUDM/chatglm3-6b'),
-                Model('ZhipuAI/chatglm3-6b-base', 'THUDM/chatglm3-6b-base'),
-                Model('ZhipuAI/chatglm3-6b-32k', 'THUDM/chatglm3-6b-32k'),
-                Model('ZhipuAI/chatglm3-6b-128k', 'THUDM/chatglm3-6b-128k'),
+                Model('ZhipuAI/chatglm3-6b', 'zai-org/chatglm3-6b'),
+                Model('ZhipuAI/chatglm3-6b-base', 'zai-org/chatglm3-6b-base'),
+                Model('ZhipuAI/chatglm3-6b-32k', 'zai-org/chatglm3-6b-32k'),
+                Model('ZhipuAI/chatglm3-6b-128k', 'zai-org/chatglm3-6b-128k'),
             ])
         ],
         TemplateType.glm4,
@@ -128,12 +128,12 @@ register_model(
         LLMModelType.glm4,
         [
             ModelGroup([
-                Model('ZhipuAI/glm-4-9b-chat', 'THUDM/glm-4-9b-chat'),
-                Model('ZhipuAI/glm-4-9b', 'THUDM/glm-4-9b'),
-                Model('ZhipuAI/glm-4-9b-chat-1m', 'THUDM/glm-4-9b-chat-1m'),
+                Model('ZhipuAI/glm-4-9b-chat', 'zai-org/glm-4-9b-chat'),
+                Model('ZhipuAI/glm-4-9b', 'zai-org/glm-4-9b'),
+                Model('ZhipuAI/glm-4-9b-chat-1m', 'zai-org/glm-4-9b-chat-1m'),
             ]),
             ModelGroup([
-                Model('ZhipuAI/LongWriter-glm4-9b', 'THUDM/LongWriter-glm4-9b'),
+                Model('ZhipuAI/LongWriter-glm4-9b', 'zai-org/LongWriter-glm4-9b'),
             ])
         ],
         TemplateType.glm4,
@@ -148,11 +148,11 @@ register_model(
         LLMModelType.glm4_0414,
         [
             ModelGroup([
-                Model('ZhipuAI/GLM-4-9B-0414', 'THUDM/GLM-4-9B-0414'),
-                Model('ZhipuAI/GLM-4-32B-0414', 'THUDM/GLM-4-32B-0414'),
-                Model('ZhipuAI/GLM-4-32B-Base-0414', 'THUDM/GLM-4-32B-Base-0414'),
-                Model('ZhipuAI/GLM-Z1-9B-0414', 'THUDM/GLM-Z1-9B-0414'),
-                Model('ZhipuAI/GLM-Z1-32B-0414', 'THUDM/GLM-Z1-32B-0414'),
+                Model('ZhipuAI/GLM-4-9B-0414', 'zai-org/GLM-4-9B-0414'),
+                Model('ZhipuAI/GLM-4-32B-0414', 'zai-org/GLM-4-32B-0414'),
+                Model('ZhipuAI/GLM-4-32B-Base-0414', 'zai-org/GLM-4-32B-Base-0414'),
+                Model('ZhipuAI/GLM-Z1-9B-0414', 'zai-org/GLM-Z1-9B-0414'),
+                Model('ZhipuAI/GLM-Z1-32B-0414', 'zai-org/GLM-Z1-32B-0414'),
             ])
         ],
         TemplateType.glm4_0414,
@@ -166,7 +166,7 @@ register_model(
     ModelMeta(
         LLMModelType.glm4_z1_rumination,
         [ModelGroup([
-            Model('ZhipuAI/GLM-Z1-Rumination-32B-0414', 'THUDM/GLM-Z1-Rumination-32B-0414'),
+            Model('ZhipuAI/GLM-Z1-Rumination-32B-0414', 'zai-org/GLM-Z1-Rumination-32B-0414'),
         ])],
         TemplateType.glm4_z1_rumination,
         get_model_tokenizer_with_flash_attn,
@@ -179,7 +179,7 @@ register_model(
     ModelMeta(
         LLMModelType.longwriter_llama3_1,
         [ModelGroup([
-            Model('ZhipuAI/LongWriter-llama3.1-8b', 'THUDM/LongWriter-llama3.1-8b'),
+            Model('ZhipuAI/LongWriter-llama3.1-8b', 'zai-org/LongWriter-llama3.1-8b'),
         ])],
         TemplateType.longwriter_llama,
         get_model_tokenizer_with_flash_attn,
@@ -192,7 +192,7 @@ register_model(
     ModelMeta(
         LLMModelType.codegeex4,
         [ModelGroup([
-            Model('ZhipuAI/codegeex4-all-9b', 'THUDM/codegeex4-all-9b'),
+            Model('ZhipuAI/codegeex4-all-9b', 'zai-org/codegeex4-all-9b'),
         ])],
         TemplateType.codegeex4,
         get_model_tokenizer_glm4,
@@ -231,13 +231,13 @@ register_model(
         [
             ModelGroup(
                 [
-                    Model('ZhipuAI/glm-4v-9b', 'THUDM/glm-4v-9b'),
+                    Model('ZhipuAI/glm-4v-9b', 'zai-org/glm-4v-9b'),
                 ],
                 requires=['transformers>=4.42,<4.45'],
             ),
             ModelGroup(
                 [
-                    Model('ZhipuAI/cogagent-9b-20241220', 'THUDM/cogagent-9b-20241220'),
+                    Model('ZhipuAI/cogagent-9b-20241220', 'zai-org/cogagent-9b-20241220'),
                 ],
                 requires=['transformers>=4.42'],
             )
@@ -268,8 +268,8 @@ register_model(
         [
             ModelGroup(
                 [
-                    Model('ZhipuAI/GLM-4.1V-9B-Base', 'THUDM/GLM-4.1V-9B-Base'),
-                    Model('ZhipuAI/GLM-4.1V-9B-Thinking', 'THUDM/GLM-4.1V-9B-Thinking'),
+                    Model('ZhipuAI/GLM-4.1V-9B-Base', 'zai-org/GLM-4.1V-9B-Base'),
+                    Model('ZhipuAI/GLM-4.1V-9B-Thinking', 'zai-org/GLM-4.1V-9B-Thinking'),
                 ],
                 requires=['transformers>=4.53'],
             ),
@@ -301,7 +301,7 @@ register_model(
     ModelMeta(
         MLLMModelType.cogvlm, [
             ModelGroup([
-                Model('ZhipuAI/cogvlm-chat', 'THUDM/cogvlm-chat-hf'),
+                Model('ZhipuAI/cogvlm-chat', 'zai-org/cogvlm-chat-hf'),
             ]),
         ],
         TemplateType.cogvlm,
@@ -314,7 +314,7 @@ register_model(
     ModelMeta(
         MLLMModelType.cogagent_chat, [
             ModelGroup([
-                Model('ZhipuAI/cogagent-chat', 'THUDM/cogagent-chat-hf'),
+                Model('ZhipuAI/cogagent-chat', 'zai-org/cogagent-chat-hf'),
             ]),
         ],
         TemplateType.cogagent_chat,
@@ -326,7 +326,7 @@ register_model(
 register_model(
     ModelMeta(
         MLLMModelType.cogagent_vqa, [ModelGroup([
-            Model('ZhipuAI/cogagent-vqa', 'THUDM/cogagent-vqa-hf'),
+            Model('ZhipuAI/cogagent-vqa', 'zai-org/cogagent-vqa-hf'),
         ])],
         TemplateType.cogagent_vqa,
         get_model_tokenizer_cogvlm,
@@ -353,8 +353,8 @@ register_model(
     ModelMeta(
         MLLMModelType.cogvlm2, [
             ModelGroup([
-                Model('ZhipuAI/cogvlm2-llama3-chat-19B', 'THUDM/cogvlm2-llama3-chat-19B'),
-                Model('ZhipuAI/cogvlm2-llama3-chinese-chat-19B', 'THUDM/cogvlm2-llama3-chinese-chat-19B'),
+                Model('ZhipuAI/cogvlm2-llama3-chat-19B', 'zai-org/cogvlm2-llama3-chat-19B'),
+                Model('ZhipuAI/cogvlm2-llama3-chinese-chat-19B', 'zai-org/cogvlm2-llama3-chinese-chat-19B'),
             ]),
         ],
         TemplateType.cogvlm2,
@@ -368,7 +368,7 @@ register_model(
         MLLMModelType.cogvlm2_video,
         [
             ModelGroup([
-                Model('ZhipuAI/cogvlm2-video-llama3-chat', 'THUDM/cogvlm2-video-llama3-chat'),
+                Model('ZhipuAI/cogvlm2-video-llama3-chat', 'zai-org/cogvlm2-video-llama3-chat'),
             ]),
         ],
         TemplateType.cogvlm2_video,
@@ -384,8 +384,8 @@ register_model(
         LLMModelType.glm_edge,
         [
             ModelGroup([
-                Model('ZhipuAI/glm-edge-1.5b-chat', 'THUDM/glm-edge-1.5b-chat'),
-                Model('ZhipuAI/glm-edge-4b-chat', 'THUDM/glm-edge-4b-chat'),
+                Model('ZhipuAI/glm-edge-1.5b-chat', 'zai-org/glm-edge-1.5b-chat'),
+                Model('ZhipuAI/glm-edge-4b-chat', 'zai-org/glm-edge-4b-chat'),
             ]),
         ],
         TemplateType.glm4,
@@ -408,8 +408,8 @@ register_model(
         MLLMModelType.glm_edge_v,
         [
             ModelGroup([
-                Model('ZhipuAI/glm-edge-v-2b', 'THUDM/glm-edge-v-2b'),
-                Model('ZhipuAI/glm-edge-4b-chat', 'THUDM/glm-edge-4b-chat'),
+                Model('ZhipuAI/glm-edge-v-2b', 'zai-org/glm-edge-v-2b'),
+                Model('ZhipuAI/glm-edge-4b-chat', 'zai-org/glm-edge-4b-chat'),
             ]),
         ],
         TemplateType.glm_edge_v,
@@ -425,16 +425,39 @@ register_model(
         LLMModelType.glm4_5,
         [
             ModelGroup([
-                Model('ZhipuAI/GLM-4.5-Air-Base', 'THUDM/GLM-4.5-Air-Base'),
-                Model('ZhipuAI/GLM-4.5-Air', 'THUDM/GLM-4.5-Air'),
-                Model('ZhipuAI/GLM-4.5-Air-FP8', 'THUDM/GLM-4.5-Air-FP8'),
-                Model('ZhipuAI/GLM-4.5-Base', 'THUDM/GLM-4.5-Base'),
-                Model('ZhipuAI/GLM-4.5', 'THUDM/GLM-4.5'),
-                Model('ZhipuAI/GLM-4.5-FP8', 'THUDM/GLM-4.5-FP8'),
+                Model('ZhipuAI/GLM-4.5-Air-Base', 'zai-org/GLM-4.5-Air-Base'),
+                Model('ZhipuAI/GLM-4.5-Air', 'zai-org/GLM-4.5-Air'),
+                Model('ZhipuAI/GLM-4.5-Air-FP8', 'zai-org/GLM-4.5-Air-FP8'),
+                Model('ZhipuAI/GLM-4.5-Base', 'zai-org/GLM-4.5-Base'),
+                Model('ZhipuAI/GLM-4.5', 'zai-org/GLM-4.5'),
+                Model('ZhipuAI/GLM-4.5-FP8', 'zai-org/GLM-4.5-FP8'),
             ]),
         ],
         TemplateType.glm4_5,
         get_model_tokenizer_with_flash_attn,
         architectures=['Glm4MoeForCausalLM'],
         requires=['transformers>=4.54'],
+    ))
+
+
+def get_model_tokenizer_glm4_5v(*args, **kwargs):
+    from transformers import Glm4vMoeForConditionalGeneration
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Glm4vMoeForConditionalGeneration
+    return get_model_tokenizer_multimodal(*args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.glm4_5v,
+        [
+            ModelGroup([
+                Model('ZhipuAI/GLM-4.5V', 'zai-org/GLM-4.5V'),
+                Model('ZhipuAI/GLM-4.5V-FP8', 'zai-org/GLM-4.5V-FP8'),
+            ]),
+        ],
+        TemplateType.glm4_5v,
+        get_model_tokenizer_glm4_5v,
+        model_arch=ModelArch.glm4_1v,
+        architectures=['Glm4vMoeForConditionalGeneration'],
+        requires=['transformers>=4.56.0.dev'],
     ))

@@ -66,6 +66,7 @@ class MLLMModelArch:
     idefics3 = 'idefics3'
 
     got_ocr2 = 'got_ocr2'
+    dots_ocr = 'dots_ocr'
 
     ovis1_6 = 'ovis1_6'
     molmo = 'molmo'
@@ -75,6 +76,8 @@ class MLLMModelArch:
     gemma3n = 'gemma3n'
     mistral_2503 = 'mistral_2503'
     keye_vl = 'keye_vl'
+
+    midashenglm = 'midashenglm'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -519,6 +522,14 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
+        MLLMModelArch.midashenglm,
+        language_model='decoder',
+        aligner=['audio_projector'],
+        vision_tower=['audio_encoder'],
+    ))
+
+register_model_arch(
+    MultiModelKeys(
         MLLMModelArch.glm4v,
         language_model='transformer.encoder',
         vision_tower='transformer.vision',
@@ -629,6 +640,11 @@ register_model_arch(
         aligner='mlp_AR',
         vision_tower='visual',
     ))
+
+register_model_arch(MultiModelKeys(
+    MLLMModelArch.dots_ocr,
+    language_model='model',
+))
 
 
 def get_model_arch(arch_name: Optional[str]) -> Optional[MultiModelKeys]:

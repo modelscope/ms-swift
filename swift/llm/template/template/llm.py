@@ -3,12 +3,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Prompt
 from .llama import Llama3_2TemplateMeta
 from .qwen import Qwen2VLTemplate, QwenTemplateMeta
-from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
+from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta, ThinkingWithAnswerTemplate
 
 register_template(
     TemplateMeta(
@@ -293,10 +294,54 @@ register_template(
 
 register_template(
     TemplateMeta(
-        LLMTemplateType.hunyuan,
+        LLMTemplateType.hunyuan_moe,
         prefix=['<|startoftext|>'],
         system_prefix=['<|startoftext|>{{SYSTEM}}<|extra_4|>'],
         prompt=['{{QUERY}}<|extra_0|>'],
         chat_sep=['<|eos|><|startoftext|>'],
         suffix=['<|eos|>'],
+    ))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.hunyuan,
+        prefix=['<｜hy_begin▁of▁sentence｜>'],
+        system_prefix=['<｜hy_begin▁of▁sentence｜>{{SYSTEM}}<｜hy_place▁holder▁no▁3｜>'],
+        prompt=['<｜hy_User｜>{{QUERY}}<｜hy_Assistant｜>'],
+        chat_sep=['<｜hy_place▁holder▁no▁2｜>'],
+        suffix=['<｜hy_place▁holder▁no▁2｜>'],
+        template_cls=ThinkingWithAnswerTemplate,
+        agent_template='hunyuan_hermes'))
+
+
+class GptTemplate(Template):
+
+    def _get_gpt_oss_prefix(self):
+        return ('<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\n'
+                f'Knowledge cutoff: 2024-06\nCurrent date: {today}\n\nReasoning: medium\n\n'
+                '# Valid channels: analysis, commentary, final. '
+                'Channel must be included for every message.<|end|>')
+
+    def _swift_prepare_inputs(self, inputs):
+        super()._swift_prepare_inputs(inputs)
+        messages = inputs.messages
+        if inputs.system is None:
+            inputs.system = self._get_gpt_oss_prefix()
+        elif not inputs.system.startswith('<|start|>'):
+            inputs.system = self._get_gpt_oss_prefix() + (
+                f'<|start|>developer<|message|># Instructions\n\n{inputs.system}<|end|>')
+        for i, message in enumerate(messages):
+            if message['role'] == 'assistant' and isinstance(message['content'], str):
+                if not message['content'].startswith('<|channel|>'):
+                    message['content'] = '<|channel|>final<|message|>' + message['content']
+
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.gpt_oss,
+        prefix=['{{SYSTEM}}'],
+        prompt=['<|start|>user<|message|>{{QUERY}}<|end|><|start|>assistant'],
+        chat_sep=['<|end|>'],
+        suffix=['<|return|>'],
+        template_cls=GptTemplate,
     ))

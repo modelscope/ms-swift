@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import List, Union
+from typing import List, Optional, Union
 
 from swift.utils import get_logger
 from ..argument import TrainArguments
@@ -20,5 +20,5 @@ class SwiftPt(SwiftSft):
         super()._prepare_template()
 
 
-def pt_main(args: Union[List[str], TrainArguments, None] = None):
+def pt_main(args: Optional[Union[List[str], TrainArguments]] = None):
     return SwiftPt(args).main()

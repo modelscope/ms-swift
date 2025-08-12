@@ -9,7 +9,7 @@ import transformers
 from packaging import version
 from transformers import TrainingArguments
 
-from swift.llm import TrainArguments, deep_getattr, get_model_arch
+from swift.llm import TrainArguments, deep_getattr
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
 from swift.utils import activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters, get_logger
@@ -56,7 +56,7 @@ def get_multimodal_target_regex(
     freeze_aligner: bool = True,
     include_embedding: bool = False,
 ) -> str:
-    model_arch = get_model_arch(model.model_meta.model_arch)
+    model_arch = model.model_meta.model_arch
     modules = []
     if not freeze_llm:
         modules += model_arch.language_model
@@ -247,7 +247,7 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
         model = Swift.prepare_model(model, llamapro_config)
         logger.info(f'llamapro_config: {llamapro_config}')
     elif args.train_type == 'adapter':
-        model_arch = get_model_arch(model.model_meta.model_arch)
+        model_arch = model.model_meta.model_arch
         mlp_key = model_arch.mlp
         mlp_key = mlp_key.split('.{}.')[1]
         adapter_config = AdapterConfig(

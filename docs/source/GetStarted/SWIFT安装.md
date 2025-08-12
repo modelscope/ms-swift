@@ -39,10 +39,10 @@ pip install ms-swift==2.*
 ## 镜像
 
 ```
-# swift3.6.3
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
+# swift3.6.4
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
 
 # swift3.5.3
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.27.1-swift3.5.3
@@ -83,20 +83,22 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 
 ## 运行环境
 
-|        | 范围           | 推荐 | 备注 |
-| ------ |--------------| ---- | --|
-| python | >=3.9        | 3.10 ||
-| cuda |              | cuda12 |使用cpu、npu、mps则无需安装|
-| torch | >=2.0        |  ||
-| transformers | >=4.33       | 4.51.3 ||
-| modelscope | >=1.23       |  ||
-| peft | >=0.11,<0.16 | ||
-| trl | >=0.13,<0.19 | 0.18 |RLHF|
-| deepspeed | >=0.14       | 0.16.9 |训练|
-| vllm | >=0.5.1      | 0.8.5.post1 |推理/部署/评测|
-| sglang |     | 0.4.6.post5 |推理/部署/评测|
-| lmdeploy | >=0.5,<0.9        | 0.8 |推理/部署/评测|
-| evalscope | >=0.11       | |评测|
+|              | 范围           | 推荐                  | 备注                 |
+|--------------|--------------|---------------------|--------------------|
+| python       | >=3.9        | 3.10                |                    |
+| cuda         |              | cuda12              | 使用cpu、npu、mps则无需安装 |
+| torch        | >=2.0        | 2.7.1               |                    |
+| transformers | >=4.33       | 4.54.1              |                    |
+| modelscope   | >=1.23       |                     |                    |
+| peft         | >=0.11,<0.17 |                     |                    |
+| flash_attn   |              | 2.7.4.post1/3.0.0b1 |                    |
+| trl          | >=0.15,<0.21 | 0.20.0              | RLHF               |
+| deepspeed    | >=0.14       | 0.16.9              | 训练                 |
+| vllm         | >=0.5.1      | 0.10                | 推理/部署              |
+| sglang       | >=0.4.6      | 0.4.9.post6         | 推理/部署              |
+| lmdeploy     | >=0.5,<0.9   | 0.8                 | 推理/部署              |
+| evalscope    | >=0.11       |                     | 评测                 |
+| gradio       |              | 5.32.1              | Web-UI/App         |
 
 更多可选依赖可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh)。
 

@@ -31,8 +31,9 @@ Hints:
 - model_revision: Model revision, default is None.
 - task_type: The default value is 'causal_lm'. Optional values are 'causal_lm', 'seq_cls', and 'embedding'. Examples for seq_cls can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls), and examples for embedding can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/embedding).
 - 🔥torch_dtype: Data type of model weights, supports `float16`, `bfloat16`, `float32`. The default is None, and it is read from the 'config.json' file.
-- attn_impl: The type of attention, with options including `flash_attn`, `sdpa`, and `eager`. The default is None, which reads from `config.json`.
-  - Note: These three implementations may not all be supported, depending on the support of the corresponding model.
+- attn_impl: specifies the attention implementation. Available options include 'sdpa', 'eager', 'flash_attention_2', 'flash_attention_3', etc. If left as None (default), the value is taken from `config.json`.
+  - Note: Not all implementations are guaranteed to be supported; support depends on the particular model.
+  - If you set it to 'flash_attn' (for backward compatibility), 'flash_attention_2' will be used.
 - new_special_tokens: The special tokens to be added. Default is `[]`. See the example [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/new_special_tokens).
   - Note: You can also pass a file path ending with `.txt`, where each line represents a special token.
 - num_labels: This parameter is required for classification models (i.e., `--task_type seq_cls`). It represents the number of labels, with a default value of None.
@@ -58,7 +59,7 @@ Hints:
 - dataset_shuffle: Whether to shuffle the dataset. Defaults to True.
   - Note: The shuffling in CPT/SFT consists of two parts: dataset shuffling, controlled by `dataset_shuffle`; and shuffling in the train_dataloader, controlled by `train_dataloader_shuffle`.
 - val_dataset_shuffle: Whether to perform shuffling on the val_dataset. Default is False.
-- 🔥streaming: Stream reading and processing of the dataset, default is False.
+- streaming: Stream reading and processing of the dataset, default is False.
   - Note: You need to set `--max_steps` explicitly, as the streaming dataset does not have a defined length. You can achieve training equivalent to `--num_train_epochs` by setting `--save_strategy epoch` and specifying a sufficiently large `max_steps`. Alternatively, you can set `max_epochs` to ensure training exits after the corresponding number of epochs, at which point the model weights will be validated and saved.
   - Note: Streaming datasets can skip preprocessing wait time by overlapping preprocessing with training. Preprocessing for streaming datasets is performed only on rank 0 and then synchronized to other processes via data distribution. This approach is generally less efficient than the data sharding and reading method used by non-streaming datasets. When the world size is large, preprocessing and data distribution can become a training bottleneck.
 - interleave_prob: Defaults to None. When combining multiple datasets, the `concatenate_datasets` function is used by default. If this parameter is set, the `interleave_datasets` function will be used instead. This parameter is typically used when combining streaming datasets and is passed to the `interleave_datasets` function.
@@ -99,7 +100,7 @@ Hints:
   - 'all': Calculate the loss for all tokens.
   - 'ignore_empty_think': On top of 'default', ignore the loss calculation for empty `'<think>\n\n</think>\n\n'`. See [this issue](https://github.com/modelscope/ms-swift/issues/4030) for more details.
   - `'react'`, `'hermes'`, `'qwen'`: On top of `'default'`, set the loss weight of the `tool_call` part to 2.
-- sequence_parallel_size: Sequence parallelism size, default is 1. Currently supported in CPT/SFT/DPO/GRPO. The training script refers to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/long_text/ulysses/sequence_parallel.sh).
+- sequence_parallel_size: Sequence parallelism size, default is 1. Currently supported in CPT/SFT/DPO/GRPO. The training script refers to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel/ulysses/sequence_parallel.sh).
 - response_prefix: The prefix character for the response, for example, setting the response_prefix to `'<think>\n'` for QwQ-32B. The default is None, and it is automatically set according to the model.
   - Note: If you are training the deepseek-r1/qwq model with a dataset that does not include `<think>...</think>`, please pass `--response_prefix ''` additionally when inferring after training.
 - template_backend: Selection of the template backend. Options are 'swift' and 'jinja', with 'swift' as the default. If using jinja, it applies transformer's `apply_chat_template`.
@@ -146,11 +147,11 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - 🔥gradient_checkpointing: Whether to use gradient checkpointing, default is True.
 - 🔥vit_gradient_checkpointing: Whether to enable gradient_checkpointing for the vit part during multi-modal model training. Defaults to None, meaning it is set to `gradient_checkpointing`. For an example, please refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/vit_gradient_checkpointing.sh).
   - Note: For multimodal models using LoRA training, when `--freeze_vit false` is set and the following warning appears in the command line: `UserWarning: None of the inputs have requires_grad=True. Gradients will be None`, please set `--vit_gradient_checkpointing false`, or raise a related issue. This problem does not occur during full-parameter training.
-- 🔥deepspeed: Defaults to None. It can be set to 'zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload' to use the built-in deepspeed configuration file of ms-swift.
+- 🔥deepspeed: Defaults to None. It can be set to 'zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload' to use the built-in deepspeed configuration file of ms-swift. You can also provide a path to a custom DeepSpeed configuration file.
 - zero_hpz_partition_size: Default is `None`. This parameter is a feature of `ZeRO++`, which implements model sharding within nodes and data sharding between nodes. If you encounter grad_norm `NaN` issues, please try using `--torch_dtype float16`
 - 🔥per_device_train_batch_size: Default is 1.
 - 🔥per_device_eval_batch_size: Default is 1.
-- 🔥gradient_accumulation_steps: Gradient accumulation, default is None, meaning set gradient_accumulation_steps such that total_batch_size >= 16. The total_batch_size equals `per_device_train_batch_size * gradient_accumulation_steps * world_size`.
+- 🔥gradient_accumulation_steps: Gradient accumulation, default is None, meaning set gradient_accumulation_steps such that total_batch_size >= 16. The total_batch_size equals `per_device_train_batch_size * gradient_accumulation_steps * world_size`. In GRPO Training, the default is 1.
 - weight_decay: Weight decay coefficient, default value is 0.1.
 - adam_beta2: Default is 0.95.
 - 🔥learning_rate: Learning rate, defaults to 1e-5 for full parameters, and 1e-4 for LoRA and other tuners.
@@ -165,6 +166,8 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - 🔥report_to: Default value is `tensorboard`. You can also specify `--report_to tensorboard wandb swanlab` or `--report_to all`.
 - logging_first_step: Whether to log the first step, defaults to True.
 - logging_steps: Interval for logging, defaults to 5.
+- router_aux_loss_coef: Sets the weight of the aux_loss when training MoE models; default is `0.`
+  - Note: In ms-swift == 3.7.0, the default is None and the value is read from config.json; this behavior was changed starting with ms-swift >= 3.7.1.
 - logging_dir: The path for TensorBoard logs. Defaults to None, which means it is set to `f'{self.output_dir}/runs'`.
 - predict_with_generate: Whether to use generative method during validation, default is False.
 - metric_for_best_model: Default is None, which means that when predict_with_generate is set to False, it is set to 'loss'; otherwise, it is set to 'rouge-l' (during PPO training, the default value is not set; in GRPO training, it is set to 'reward').
@@ -210,7 +213,8 @@ Other important parameters:
 - 🔥freeze_vit: This parameter is only effective for multimodal models and can be used for full parameter training and LoRA, with similar meanings as `freeze_llm`. The default is True.
   - Note: Here, "vit" refers not only to the vision_tower but also includes the audio_tower.
 - 🔥freeze_aligner: This parameter is only effective for multimodal models and can be used for full parameter training and LoRA, with similar meanings as `freeze_llm`. The default is True.
-- 🔥target_modules: Specifies LoRA modules, with a default of `['all-linear']`. Its behavior differs in LLM and multimodal LLM. For LLM, it automatically finds all linear modules except lm_head and adds a tuner. For multimodal LLM, by default, it only adds a tuner to the LLM part, and this behavior can be controlled by `freeze_llm`, `freeze_vit`, and `freeze_aligner`. This parameter is not limited to LoRA and can be used for other tuners.
+- 🔥 target_modules: Specifies the LoRA modules. The default is `['all-linear']`, but you can also pass layer-name suffixes, e.g. `--target_modules q_proj k_proj v_proj`. This argument is not restricted to LoRA and can be used with other tuners as well.
+  - Note: The behavior of the special value `'all-linear'` differs between plain LLMs and multimodal LLMs. For a standard LLM, it automatically locates every linear layer except `lm_head` and attaches a tuner. For a multimodal LLM, it attaches the tuner only to the LLM component by default. This default can be changed with the `freeze_llm`, `freeze_vit`, and `freeze_aligner` options.
 - 🔥target_regex: Specifies a regex expression for LoRA modules, with a default of `None`. If this value is provided, the target_modules parameter becomes ineffective. This parameter is not limited to LoRA and can be used for other tuners.
 - init_weights: Specifies the method for initializing weights. LoRA can specify `true`, `false`, `gaussian`, `pissa`, `pissa_niter_[number of iters]`. Bone can specify `true`, `false`, `bat`. The default is `true`.
 - 🔥modules_to_save: After attaching a tuner, explicitly specifies additional original model modules to participate in training and storage. The default is `[]`. This parameter is not limited to LoRA and can be used for other tuners.
@@ -402,7 +406,9 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
   - Supported multimodal models reference: https://github.com/modelscope/ms-swift/blob/main/examples/train/packing/qwen2_5_vl.sh. Note: Please use "ms-swift>=3.6" and follow [this PR](https://github.com/modelscope/ms-swift/pull/4838).
 - packing_cache: Specifies the directory for packing cache. The default value is `None`, which means the cache will be stored in the path defined by the environment variable `$MODELSCOPE_CACHE`. When using the packing feature across multiple nodes, ensure that all nodes share the same packing cache directory. You can achieve this by setting the `MODELSCOPE_CACHE` environment variable or by adding the `--packing_cache <shared_path>` argument in the command line.
   - Note: This parameter will be removed in "ms-swift>=3.7". The `packing_cache` setting will no longer be required for multi-node packing.
-- 🔥lazy_tokenize: Whether to use lazy tokenization. If set to False, all dataset samples are tokenized before training (for multimodal models, this includes reading images from disk). This parameter defaults to False for LLM training, and True for MLLM training, to save memory.
+- lazy_tokenize: Whether to use lazy tokenization. If set to False, all dataset samples are tokenized before training (for multimodal models, this includes reading images from disk). This parameter defaults to False for LLM training, and True for MLLM training, to save memory.
+- 🔥cached_dataset: Use a cached dataset (generated with `swift export --to_cached_dataset true ...`) during training to avoid GPU time spent on tokenizing large datasets. Default: `[]`.
+  - Note: cached_dataset supports `--packing` but does not support `--lazy_tokenize` or `--streaming`.
 - use_logits_to_keep: Pass `logits_to_keep` in the `forward` method based on labels to reduce the computation and storage of unnecessary logits, thereby reducing memory usage and accelerating training. The default is `None`, which enables automatic selection.
   - Note: For stability, this value is set to False by default for multimodal models and needs to be manually enabled.
 - acc_strategy: Strategy for calculating accuracy during training and validation. Options are `seq`-level and `token`-level accuracy, with `token` as the default.
@@ -415,6 +421,9 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - eval_dataset_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
 - eval_limit: Number of samples from the evaluation dataset
 - eval_generation_config: Model inference configuration during evaluation, in JSON format, default is `{'max_tokens': 512}`
+- use_flash_ckpt: Whether to use [DLRover Flash Checkpoint](https://github.com/intelligent-machine-learning/dlrover). Default is `false`. If enabled, checkpoints are saved to memory synchronously, then persisted to storage asynchronously, the safetensors format is not supported currently. It's recommended to use this with the environment variable `PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` to avoid CUDA OOM.
+- early_stop_interval: The interval for early stopping. It will check if the best_metric has not improved within early_stop_interval periods (based on save_steps; it's recommended to set eval_steps and save_steps to the same value) and terminate training when this condition is met. The specific code implementation is in the callback plugin. Additionally, if you have more complex early stopping requirements, you can directly override the existing implementation in [callback.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/callback.py).
+
 
 #### SWANLAB
 
@@ -489,7 +498,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - per_device_eval_batch_size: The evaluation batch size per device. In GRPO, this refers to the batch size of completions during evaluation.
 - generation_batch_size: Batch size to use for generation. It defaults to the effective training batch size: per_device_train_batch_size * num_processes * gradient_accumulation_steps`
 - steps_per_generation: Number of optimization steps per generation. It defaults to gradient_accumulation_steps. This parameter and generation_batch_size cannot be set simultaneously
-- num_generations: The number of samples for each prompt, referred to as the G value in the paper, needs to be divisible by per_device_batch_size * - gradient_accumulation_steps * num_processes, default is 8.
+- num_generations: The number of samples generated per prompt (corresponding to the G value in the paper). The sampling batch size (generation_batch_size or steps_per_generation × per_device_batch_size × num_processes) must be divisible by num_generations. The default value is 8.
 - ds3_gather_for_generation: This parameter applies to DeepSpeed ZeRO-3. If enabled, the policy model weights are gathered for generation, improving generation speed. However, disabling this option allows training models that exceed the VRAM capacity of a single GPU, albeit at the cost of slower generation. Disabling this option is not compatible with vLLM generation. The default is True.
 - reward_funcs: Reward functions in the GRPO algorithm; options include `accuracy`,`format`,`cosine`,`repetition` and `soft_overlong`, as seen in `swift/plugin/orm.py`. You can also customize your own reward functions in the plugin. Default is `[]`.
 - reward_weights: Weights for each reward function. The number should be equal to the sum of the number of reward functions and reward models. If `None`, all rewards are weighted equally with weight `1.0`.
@@ -637,6 +646,8 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - max_length: Max length for the calibration set, default value is 2048.
 - quant_batch_size: Quantization batch size, default is 1.
 - group_size: Group size for quantization, default is 128.
+- to_cached_dataset: pre-tokenize the dataset and export it in advance, default is False. See the example [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/cached_dataset).
+  - Note: data packing is performed during training, not in this step.
 - to_ollama: Generate the Modelfile required by Ollama. Default is False.
 - 🔥to_mcore: Convert weights from HF format to Megatron format. Default is False.
 - to_hf: Convert weights from Megatron format to HF format. Default is False.
@@ -682,6 +693,8 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 
 Specific model arguments can be set using `--model_kwargs` or environment variables, for example: `--model_kwargs '{"fps_max_frames": 12}'` or `FPS_MAX_FRAMES=12`.
 
+The definitions of the parameters listed below can be found in each model’s official repository or in its inference code.
+
 ### qwen2_vl, qvq, qwen2_5_vl, mimo_vl, keye_vl
 The parameter meanings are the same as in the `qwen_vl_utils` or `qwen_omni_utils` library. You can refer to [here](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)
 
@@ -717,7 +730,7 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - VIDEO_MAX_NUM: Default is 1, which is the MAX_NUM for videos
 - VIDEO_SEGMENTS: Default is 8
 
-### minicpmv2_6, minicpmo2_6
+### minicpmv2_6, minicpmo2_6, minicpmv4
 - MAX_SLICE_NUMS: Default is 9, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6/file/view/master?fileName=config.json&status=1)
 - VIDEO_MAX_SLICE_NUMS: Default is 1, which is the MAX_SLICE_NUMS for videos, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
 - MAX_NUM_FRAMES: Default is 64, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
@@ -739,7 +752,7 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - HD_NUM: Default is 24 when the number of images is 1. Greater than 1, the default is 6. Refer to [here](https://modelscope.cn/models/AI-ModelScope/internlm-xcomposer2d5-7b/file/view/master?fileName=modeling_internlm_xcomposer2.py&status=1#L254)
 
 ### video_cogvlm2
-- NUM_FRAMES: Default is 24, refer to [here](https://github.com/THUDM/CogVLM2/blob/main/video_demo/inference.py#L22)
+- NUM_FRAMES: Default is 24, refer to [here](https://github.com/zai-org/CogVLM2/blob/main/video_demo/inference.py#L22)
 
 ### phi3_vision
 - NUM_CROPS: Default is 4, refer to [here](https://modelscope.cn/models/LLM-Research/Phi-3.5-vision-instruct)

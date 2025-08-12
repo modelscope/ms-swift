@@ -46,6 +46,7 @@ class GRPOVllmEngine(VllmEngine):
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         seed: Optional[int] = None,
+        task_type: Optional[str] = None,
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -76,6 +77,7 @@ class GRPOVllmEngine(VllmEngine):
             enforce_eager=enforce_eager,
             limit_mm_per_prompt=limit_mm_per_prompt,
             seed=seed,
+            task_type=task_type,
             enable_lora=enable_lora,
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,
@@ -294,11 +296,12 @@ class GRPOVllmEngine(VllmEngine):
                 result_choice.messages = messages
                 info_dict['num_turns'] = current_turn
                 for key, value in info_dict.items():
+                    if key in ['images', 'audios', 'videos']:
+                        value = MultiModalRequestMixin.to_base64(value)
                     if hasattr(result_choice, key):
                         setattr(result_choice, key, value)
                     else:
                         result_choice.multi_turn_infos[key] = value
-                result_choice.process_images()
                 return result
 
             ret = self.multi_turn_scheduler.step(current_request, result_choice, current_turn)
@@ -365,7 +368,7 @@ class GRPOVllmEngine(VllmEngine):
             else:
                 choice_cls = ChatCompletionResponseChoice
 
-            token_ids = output.token_ids if request_config.return_details else None
+            token_ids = template.skip_stop_tokens(output.token_ids) if request_config.return_details else None
             choice = choice_cls(
                 index=output.index,
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),

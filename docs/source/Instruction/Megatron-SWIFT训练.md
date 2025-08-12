@@ -29,16 +29,34 @@ pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
 # 若使用多机训练，请额外设置`MODELSCOPE_CACHE`环境变量为共享存储路径
 # 这将确保数据集缓存共享，而加速预处理速度
 expert MODELSCOPE_CACHE='/xxx/shared'
+
+# Megatron-LM
+# 依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.13.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)）。
+export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 ```
 
 或者你也可以使用镜像：
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
 ```
 
-依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.13.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)）。
+推荐运行环境：
+|              | 范围           | 推荐          | 备注                 |
+|--------------|--------------|-------------|--------------------|
+| python       | >=3.9        | 3.10        |                    |
+| cuda         |              | cuda12      |                    |
+| torch        | >=2.0        | 2.6.0       |                    |
+| transformer_engine    | >=2.3       | 2.5      |                  |
+| apex |   |  0.1 | |
+| megatron_core    | >=0.12       | 0.13      |                  |
+| flash_attn    |        | 2.7.4.post1/3.0.0b1   |                  |
+| transformers | >=4.33       | 4.51.3      |                    |
+| modelscope   | >=1.23       |             |                    |
+| peft         | >=0.11,<0.17 |             |      LoRA          |
+| trl          | >=0.15,<0.21 |       |      RLHF        |
+| deepspeed    | >=0.14       | 0.16.9      |                  |
 
 
 ## 快速入门案例
@@ -47,6 +65,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 
 首先，我们需要将HF格式的权重转为Megatron格式：
 - 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除即可，会自动使用多卡。若出现内存不足，请将`--test_convert_precision true`删除。
+- `--test_convert_precision`在MoE转换时所需时间较长，可酌情去除。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -237,7 +256,9 @@ swift export \
 - cross_entropy_fusion_impl: 交叉熵损失融合的实现。可选为'native'和'te'。默认为'native'。
 - calculate_per_token_loss: 根据全局批次中的非填充token数量来对交叉熵损失进行缩放。默认为True。
   - 注意：rlhf中默认为False。
-- 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 auto。
+- 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 flash。
+  - 注意：推荐flash_attn版本：2.7.4.post1。在"ms-swift<3.7"默认为'auto'。
+  - 如果安装'flash_attention_3'，则优先使用fa3。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。
 - optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
 - 🔥optimizer_cpu_offload: 将优化器状态卸载到 CPU。默认为False。
 - optimizer_offload_fraction: 卸载到 CPU 的优化器状态所占比例。默认为1.。
@@ -280,6 +301,7 @@ swift export \
 - 🔥no_save_optim: 不保存optimizer，默认为False。
 - 🔥no_save_rng: 不保存rng，默认为False。
 - 🔥load: 加载的checkpoint目录，默认None。
+  - 注意：若未使用ms-swift提供的`swift export`进行权重转换，你需要额外设置`--model <hf-repo>`用于加载`config.json`配置文件。
 - 🔥no_load_optim: 不载入optimizer，默认为False。
 - 🔥no_load_rng: 不载入rng，默认为False。
 - 🔥finetune: 将模型加载并微调。不加载检查点的优化器和随机种子状态，并将迭代数设置为0。默认为False。
@@ -297,7 +319,7 @@ swift export \
 - 🔥pipeline_model_parallel_size: pp数，默认为1。
 - 🔥decoder_first_pipeline_num_layers: decoder第一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
 - 🔥decoder_last_pipeline_num_layers: decoder最后一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
-- 🔥sequence_parallel: 启动序列并行的优化器。默认为False。
+- 🔥sequence_parallel: 启动序列并行优化，该参数需要设置`tensor_model_parallel_size`才生效。默认为False。
 - 🔥context_parallel_size: cp数，默认为1。
 - tp_comm_overlap: 启用张量并行通信与GEMM（通用矩阵乘法）内核的重叠（降低通信耗时）。默认为False。
 - 🔥overlap_grad_reduce: 启用DDP中grad reduce操作的重叠（降低DP通信耗时）。默认为False。
@@ -377,11 +399,13 @@ swift export \
 - moe_router_topk_scaling_factor: 默认为None。从config.json中读取。
 - moe_router_load_balancing_type: 确定路由器的负载均衡策略。可选项为"aux_loss"、"seq_aux_loss"、"sinkhorn"、"none"。默认值为 None。从config.json中读取。
 - 🔥expert_model_parallel_size: 专家并行数，默认为1。
+- 🔥expert_tensor_parallel_size: 专家TP并行度。默认值为None，即等于`--tensor_model_parallel_size` 的数值。
 - moe_token_dispatcher_type: 要使用的token分发器类型。可选选项包括 'allgather'、'alltoall'、'flex'和'alltoall_seq'。默认值为'alltoall'。
 - moe_enable_deepep: 实验性功能，启用DeepSeek/DeepEP以实现 MoE 模型中的高效令牌分发与组合。仅在设置`--moe_token_dispatcher_type flex`使用灵活令牌分发器时生效。
 - 🔥moe_grouped_gemm: 当每个rank包含多个专家时，通过在多个流中启动多个本地 GEMM 内核，利用 TransformerEngine中的GroupedLinear提高利用率和性能。默认为False。
 - 🔥moe_permute_fusion: 在令牌分发过程中融合令牌重排操作。默认为False。
-- 🔥moe_aux_loss_coeff: 辅助损失的缩放系数：建议的初始值为 1e-2。默认为None。自动从config.json读取。
+- 🔥moe_aux_loss_coeff: 默认为0，不使用aux_loss。
+  - 注意：在"ms-swift<3.7.1"，其默认为None，自动从config.json读取。
 - moe_z_loss_coeff: z-loss 的缩放系数。默认为None。
 - moe_expert_capacity_factor: 每个专家的容量因子，None表示不会丢弃任何token。默认为None。自动从config.json读取。
 - 🔥moe_shared_expert_overlap: 启用共享专家计算与调度器通信之间的重叠。如果不启用此选项，共享专家将在路由专家之后执行。仅在设置了`moe_shared_expert_intermediate_size`时有效。默认为False。
@@ -437,8 +461,10 @@ Megatron训练参数继承自Megatron参数和基本参数。基本参数的内�
 - 🔥packing: 是否使用序列packing，默认为False。当前支持`megatron pt/sft`。
 - packing_cache: 指定 packing 缓存目录。默认值为`None`，表示缓存将存储在环境变量 `$MODELSCOPE_CACHE`所指定的路径下。在跨节点使用 packing 功能时，需确保所有节点的 packing 缓存路径共享且一致。你可以通过设置`MODELSCOPE_CACHE`环境变量，或在命令行中添加 `--packing_cache <shared_path>`参数来实现这一要求。
   - 注意：该参数将在"ms-swift>=3.7"被移除。多机packing不再需要设置packing_cache。
-- 🔥streaming: 流式读取并处理数据集，默认False。通常在处理大型数据集时，设置为True。更多流式的参数查看命令行参数文档。
+- streaming: 流式读取并处理数据集，默认False。通常在处理大型数据集时，设置为True。更多流式的参数查看命令行参数文档。
 - lazy_tokenize: 默认为False。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（这可以避免在训练中出现报错）；设置为True，则在训练中对数据集进行tokenize（这可以节约内存）。
+- 🔥cached_dataset: 训练中使用缓存数据集（使用`swift export --to_cached_dataset true ...`命令产生），避免大型数据集训练时，tokenize占用gpu时。默认为`[]`。
+  - 注意：cached_dataset支持`--packing`，但不支持`--lazy_tokenize`和`--streaming`。
 - max_epochs: 训练到`max_epochs`时强制退出训练，并对权重进行验证和保存。该参数在使用流式数据集时很有用。默认为None。
   - 注意：如果你使用非流式数据集，该参数会为你自动计算train_iters，你不需要手动传入`train_iters`。
 

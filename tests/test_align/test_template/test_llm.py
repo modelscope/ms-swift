@@ -431,7 +431,8 @@ def test_kimi_dev():
 
 
 def test_hunyuan():
-    pt_engine = PtEngine('Tencent-Hunyuan/Hunyuan-A13B-Instruct')
+    # pt_engine = PtEngine('Tencent-Hunyuan/Hunyuan-A13B-Instruct')
+    pt_engine = PtEngine('Tencent-Hunyuan/Hunyuan-4B-Instruct')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
@@ -611,6 +612,25 @@ def test_glm4_5():
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
+def test_gpt_oss():
+    messages = [{
+        'role':
+        'system',
+        'content':
+        '<|start|>system<|message|>You are Qwen.\nKnowledge cutoff: 2024-06\n'
+        'Current date: 2025-08-08\n\nReasoning: medium\n\n'
+        '# Valid channels: analysis, commentary, final. '
+        'Channel must be included for every message.<|end|>'
+        '<|start|>developer<|message|># Instructions\n\nYou are ChatGPT<|end|>'
+    }, {
+        'role': 'user',
+        'content': 'who are you?'
+    }]
+    pt_engine = PtEngine('openai-mirror/gpt-oss-20b')
+    res = _infer_model(pt_engine, messages=messages)
+    assert 'm Qwen' in res.rsplit('<|message|>', 1)[-1]
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -656,4 +676,5 @@ if __name__ == '__main__':
     # test_hunyuan()
     # test_ernie()
     # test_glm4_5()
-    test_devstral()
+    # test_devstral()
+    test_gpt_oss()

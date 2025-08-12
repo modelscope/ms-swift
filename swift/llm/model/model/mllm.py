@@ -203,3 +203,24 @@ register_model(
         tags=['vision'],
         requires=['keye_vl_utils'],
     ))
+
+
+def get_model_tokenizer_dots_ocr(model_dir, *args, **kwargs):
+    model_cls = get_class_from_dynamic_module('modeling_dots_vision.DotsVisionTransformer', model_dir)
+    model_cls._no_split_modules = ['DotsVisionBlock']
+    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.dots_ocr,
+        [ModelGroup([
+            Model('rednote-hilab/dots.ocr', 'rednote-hilab/dots.ocr'),
+        ])],
+        TemplateType.dots_ocr,
+        get_model_tokenizer_dots_ocr,
+        model_arch=ModelArch.dots_ocr,
+        architectures=['DotsOCRForCausalLM'],
+        requires=['transformers>=4.51.0'],
+    ))

@@ -28,6 +28,7 @@ class LLMTemplateType:
     megrez = 'megrez'
     yi_coder = 'yi_coder'
     sus = 'sus'
+    gpt_oss = 'gpt_oss'
 
     minimax = 'minimax'
     minimax_m1 = 'minimax_m1'
@@ -71,6 +72,7 @@ class LLMTemplateType:
 
     mistral_nemo = 'mistral_nemo'
     mistral_2501 = 'mistral_2501'
+    devstral = 'devstral'
     zephyr = 'zephyr'
     wizardlm2 = 'wizardlm2'
     wizardlm2_moe = 'wizardlm2_moe'
@@ -87,6 +89,7 @@ class LLMTemplateType:
     moonlight = 'moonlight'
     mimo_rl = 'mimo_rl'
     dots1 = 'dots1'
+    hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
     ernie = 'ernie'
 
@@ -114,6 +117,7 @@ class MLLMTemplateType:
     ovis1_6_llama3 = 'ovis1_6_llama3'
     ovis2 = 'ovis2'
     mimo_vl = 'mimo_vl'
+    midashenglm = 'midashenglm'
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'
@@ -156,11 +160,13 @@ class MLLMTemplateType:
     glm4v = 'glm4v'
     glm4_1v = 'glm4_1v'
     glm_edge_v = 'glm_edge_v'
+    glm4_5v = 'glm4_5v'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'
     minicpmv2_6 = 'minicpmv2_6'
     minicpmo2_6 = 'minicpmo2_6'
+    minicpmv4 = 'minicpmv4'
 
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
@@ -180,6 +186,7 @@ class MLLMTemplateType:
     step_audio = 'step_audio'
     kimi_vl = 'kimi_vl'
     keye_vl = 'keye_vl'
+    dots_ocr = 'dots_ocr'
 
     idefics3 = 'idefics3'
     pixtral = 'pixtral'

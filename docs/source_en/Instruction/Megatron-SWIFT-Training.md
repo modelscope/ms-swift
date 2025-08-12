@@ -30,16 +30,35 @@ pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.13.0
 # If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
 # This will ensure that the dataset cache is shared, thereby speeding up preprocessing.
 export MODELSCOPE_CACHE='/xxx/shared'
+
+# Megatron-LM
+# The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.13.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)).
+export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 ```
 
 Alternatively, you can also use the image:
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.3
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
 ```
 
-The training module in the dependent library Megatron-LM will be cloned and installed by swift via `git clone`. Alternatively, you can use the environment variable `MEGATRON_LM_PATH` to point to the path of an already downloaded repository (in offline environments, use the [core_r0.13.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.13.0)).
+Recommended Operating Environment:
+
+|        | Range | Recommended | Notes |
+|--------------|--------------|-------------|--------------------|
+| python       | >=3.9        | 3.10        |                    |
+| cuda         |              | cuda12      |                    |
+| torch        | >=2.0        | 2.6.0       |                    |
+| transformer_engine    | >=2.3       | 2.5      |                  |
+| apex |   |  0.1 | |
+| megatron_core    | >=0.12       | 0.13      |                  |
+| flash_attn    |        | 2.7.4.post1/3.0.0b1   |                  |
+| transformers | >=4.33       | 4.51.3      |                    |
+| modelscope   | >=1.23       |             |                    |
+| peft         | >=0.11,<0.17 |             |      LoRA          |
+| trl          | >=0.15,<0.21 |       |      RLHF        |
+| deepspeed    | >=0.14       | 0.16.9      |                  |
 
 
 ## Quick Start Example
@@ -48,6 +67,7 @@ This section introduces a quick start example for fine-tuning the self-awareness
 
 First, we need to convert the weights from HF (Hugging Face) format to Megatron format:
 - If OOM (Out of Memory) occurs, simply remove `CUDA_VISIBLE_DEVICES=0`; the system will automatically use multiple GPUs. If you encounter insufficient memory, please remove `--test_convert_precision true`.
+- The `--test_convert_precision true` flag can greatly increase conversion time for MoE models, so feel free to omit it if needed.
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -242,7 +262,9 @@ The speed comparison of full-parameter training for Dense/MoE models using `mega
 - cross_entropy_fusion_impl: Implementation of cross-entropy loss fusion. Options include 'native' and 'te'. Defaults to 'native'.
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padded tokens in the global batch. Default is True.
   - Note: The default is False in RLHF.
-- 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Defaults to auto.
+- 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Defaults to flash.
+  - Note: The recommended flash_attn version is 2.7.4.post1. In “ms-swift < 3.7” the default is set to "auto".
+  - If 'flash_attention_3' is installed, FA3 will be used by default. For training scripts, please refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3).
 - optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
 - 🔥optimizer_cpu_offload: Offloads the optimizer state to CPU. Default is `False`.
 - optimizer_offload_fraction: The fraction of the optimizer state to offload to CPU. Default is `1.0`.
@@ -288,6 +310,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - 🔥no_save_optim: Do not save optimizer, default is False.
 - 🔥no_save_rng: Do not save RNG, default is False.
 - 🔥load: Directory of the checkpoint to load, default is None.
+  - Note: If you did not convert the weights with ms-swift’s `swift export`, you must also specify `--model <hf-repo>` so that the `config.json` configuration file can be loaded.
 - 🔥no_load_optim: Do not load optimizer, default is False.
 - 🔥no_load_rng: Do not load RNG, default is False.
 - 🔥finetune: Load and fine-tune the model. Optimizer and random seed states from the checkpoint will not be loaded, and the number of iterations will be set to 0. The default is False.
@@ -306,7 +329,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - 🔥pipeline_model_parallel_size: PP (Pipeline Parallelism) size, default is 1.
 - 🔥decoder_first_pipeline_num_layers: The number of Transformer layers in the first pipeline stage of the decoder. Default is None, which means the Transformer layers are evenly distributed across all pipeline stages.
 - 🔥decoder_last_pipeline_num_layers: The number of Transformer layers in the last pipeline stage of the decoder. Default is None, which means the Transformer layers are evenly distributed across all pipeline stages.
-- 🔥sequence_parallel: Enable sequence parallel optimization. Default is False.
+- 🔥sequence_parallel: Enables sequence parallel optimization; this option takes effect only when `tensor_model_parallel_size` is set. Default is False.
 - 🔥context_parallel_size: CP (Context Parallelism) size, default is 1.
 - tp_comm_overlap: Overlap tensor parallel communication with GEMM (General Matrix Multiplication) kernels (to reduce communication time). Default is False.
 - 🔥overlap_grad_reduce: Overlap grad reduction operations in DDP (to reduce DP communication time). Default is False.
@@ -393,11 +416,13 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 - moe_router_topk_scaling_factor: Default is None. This parameter is read from config.json.
 - moe_router_load_balancing_type: Determines the router’s load balancing strategy. Options are "aux_loss", "seq_aux_loss", "sinkhorn", and "none". Default is None and is read from config.json.
 - 🔥expert_model_parallel_size: The degree of expert parallelism, default is 1.
+- 🔥expert_tensor_parallel_size: Degree of expert tensor parallelism. Defaults to None, which inherits the value of `--tensor_model_parallel_size`.
 - moe_token_dispatcher_type: The type of token dispatcher to use. Options include 'allgather', 'alltoall', 'flex', and 'alltoall_seq'. Default is 'alltoall'.
 - moe_enable_deepep: Experimental feature, Enables DeepSeek/DeepEP for efficient token dispatching and combination in MoE models. Only works when using the flexible token dispatcher by setting `--moe_token_dispatcher_type flex`.
 - 🔥moe_grouped_gemm: When each rank contains multiple experts, multiple local GEMM kernels can be launched in parallel streams to improve utilization and performance by using GroupedLinear from TransformerEngine. Default is False.
 - 🔥moe_permute_fusion: Fuses token permutation operations during token dispatch. Default is False.
-- 🔥moe_aux_loss_coeff: Scaling coefficient for the auxiliary loss; a recommended initial value is 1e-2. Default is None and is automatically read from config.json.
+- 🔥moe_aux_loss_coeff: Default is 0, which disables aux_loss.
+  - Note: In ms-swift versions earlier than 3.7.1, the default is None and the value is automatically loaded from config.json.
 - moe_z_loss_coeff: Scaling coefficient for z-loss. Default is None.
 - moe_expert_capacity_factor: Capacity factor for each expert. None means no token will be dropped. Default is None and will be automatically read from config.json.
 - 🔥moe_shared_expert_overlap: Enables overlap between shared expert computation and the dispatcher. If not enabled, shared expert computation will be performed after routing experts. Only effective when `moe_shared_expert_intermediate_size` is set. Default is False.
@@ -456,8 +481,10 @@ Megatron training parameters inherit from Megatron parameters and basic paramete
 - 🔥packing: Whether to use sequence packing, defaults to False. Currently supports `megatron pt/sft`.
 - packing_cache: Specifies the directory for packing cache. The default value is `None`, which means the cache will be stored in the path defined by the environment variable `$MODELSCOPE_CACHE`. When using the packing feature across multiple nodes, ensure that all nodes share the same packing cache directory. You can achieve this by setting the `MODELSCOPE_CACHE` environment variable or by adding the `--packing_cache <shared_path>` argument in the command line.
   - Note: This parameter will be removed in "ms-swift>=3.7". The `packing_cache` setting will no longer be required for multi-node packing.
-- 🔥streaming: Stream reading and processing of the dataset, default is False. It is typically set to True when handling large datasets. For more information on streaming parameters, refer to the command-line parameters documentation.
+- streaming: Stream reading and processing of the dataset, default is False. It is typically set to True when handling large datasets. For more information on streaming parameters, refer to the command-line parameters documentation.
 - lazy_tokenize: Default is False. If this parameter is set to False, all dataset samples are tokenized before training (this avoids errors during training); if set to True, tokenization occurs during training (this saves memory).
+- 🔥cached_dataset: Use a cached dataset (generated with `swift export --to_cached_dataset true ...`) during training to avoid GPU time spent on tokenizing large datasets. Default: `[]`.
+  - Note: cached_dataset supports `--packing` but does not support `--lazy_tokenize` or `--streaming`.
 - max_epochs: Forces the training to exit after reaching `max_epochs`, and performs validation and saving of the model weights. This parameter is especially useful when using a streaming dataset. Default is None.
   - Note: If you use a non-streaming dataset, this parameter will automatically calculate train_iters for you, so there is no need to pass `train_iters` manually.
 

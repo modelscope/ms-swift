@@ -7,6 +7,7 @@ from typing import Any, Optional, Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from transformers import PreTrainedModel
 from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
@@ -87,9 +88,8 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
         # If generate is used, then use_logits_to_keep must be set to False.
         use_logits_to_keep = self.get_use_logits_to_keep(True)
         if use_logits_to_keep:
-            inputs['labels'], logits_to_keep = self.get_logits_to_keep(inputs['labels'])
-            if logits_to_keep is not None:
-                model_inputs['logits_to_keep'] = logits_to_keep
+            self.prepare_logits_to_keep(inputs)
+            model_inputs['logits_to_keep'] = inputs['logits_to_keep']
         if self.args.sft_alpha > 0:
             model_inputs['labels'] = inputs['labels']
         # compute student output
@@ -103,6 +103,16 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
         mask = shifted_labels != -100
         shifted_student_logits = outputs_student.logits[mask][None]
         shifted_teacher_logits = outputs_teacher.logits[mask][None]
+
+        # Fix the vocab_size mismatch between Qwen2.5-VL-3B-Instruct and Qwen2.5-VL-7B-Instruct.
+        stu_dim = shifted_student_logits.shape[-1]
+        tea_dim = shifted_teacher_logits.shape[-1]
+        if stu_dim < tea_dim:
+            shifted_student_logits = F.pad(shifted_student_logits, (0, tea_dim - stu_dim), 'constant', 0)
+            shifted_student_logits[..., stu_dim:] = shifted_teacher_logits[..., stu_dim:]
+        elif stu_dim > tea_dim:
+            shifted_teacher_logits = F.pad(shifted_teacher_logits, (0, stu_dim - tea_dim), 'constant', 0)
+            shifted_teacher_logits[..., tea_dim:] = shifted_student_logits[..., tea_dim:]
 
         # compute loss
         loss = self.generalized_jsd_loss(
@@ -133,8 +143,10 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
             with unwrap_model_for_generation(
                     model, self.accelerator,
                     gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_model:
+                unwrapped_model.eval()  # Remove the gradient_checkpointing warning.
                 new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
                     unwrapped_model, inputs, self.generation_config, self.processing_class.pad_token_id)
+                unwrapped_model.train()
             inputs['input_ids'] = new_input_ids
             inputs['attention_mask'] = new_attention_mask
             inputs['labels'] = new_labels

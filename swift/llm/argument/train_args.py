@@ -6,7 +6,7 @@ from typing import Literal, Optional
 from transformers import Seq2SeqTrainingArguments
 from transformers.utils.versions import require_version
 
-from swift.plugin import LOSS_MAPPING
+from swift.plugin import loss_mapping
 from swift.trainers import TrainerFactory
 from swift.trainers.arguments import TrainArgumentsMixin
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
@@ -109,8 +109,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     Args:
         add_version (bool): Flag to add version information to output_dir. Default is True.
         loss_type (Optional[str]): Type of loss function to use. Default is None.
-        packing (bool): Flag to enable packing of datasets. Default is False.
-        lazy_tokenize (Optional[bool]): Flag to enable lazy tokenization. Default is None.
         max_new_tokens (int): Maximum number of new tokens to generate. Default is 64.
         temperature (float): Temperature for sampling. Default is 0.
         optimizer (Optional[str]): Optimizer type to use, define it in the plugin package. Default is None.
@@ -118,10 +116,9 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     """
     add_version: bool = True
     create_checkpoint_symlink: bool = False
-    lazy_tokenize: Optional[bool] = None
 
     # plugin
-    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
+    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(loss_mapping.keys())}'})
     metric: Optional[str] = None
 
     # extra
@@ -135,14 +132,8 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     # auto_tp
     deepspeed_autotp_size: Optional[int] = None
 
-    def _init_lazy_tokenize(self):
-        if self.streaming and self.lazy_tokenize:
-            self.lazy_tokenize = False
-            logger.warning('Streaming and lazy_tokenize are incompatible. '
-                           f'Setting args.lazy_tokenize: {self.lazy_tokenize}.')
-        if self.lazy_tokenize is None:
-            self.lazy_tokenize = self.model_meta.is_multimodal and not self.streaming
-            logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
+    # early_step
+    early_stop_interval: Optional[int] = None
 
     def __post_init__(self) -> None:
         if self.padding_free or self.packing:
@@ -151,9 +142,9 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                 self.padding_free = False
             else:
                 feature = 'padding_free'
-            if self.attn_impl != 'flash_attn':
-                raise ValueError(f'The "{feature}" feature needs to be used in conjunction with "flash_attn". '
-                                 'Please specify `--attn_impl flash_attn`.')
+            if self.attn_impl not in {'flash_attn', 'flash_attention_2', 'flash_attention_3'}:
+                raise ValueError(f'The "{feature}" feature requires a flash attention implementation. '
+                                 'Please use one of: "flash_attn", "flash_attention_2", "flash_attention_3".')
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
             # The non-resume_only_model will have its weights loaded in the trainer.
@@ -172,14 +163,14 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
             elif self.use_galore:
                 self.optimizer = 'galore'
 
-        if len(self.dataset) == 0:
-            raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
+        if len(self.dataset) == 0 and len(self.cached_dataset) == 0:
+            raise ValueError(f'self.dataset: {self.dataset}, self.cached_dataset: {self.cached_dataset}. '
+                             'Please input the training dataset.')
 
         self._handle_pai_compat()
 
         self._init_deepspeed()
         self._init_device()
-        self._init_lazy_tokenize()
 
         if getattr(self, 'accelerator_config', None) is None:
             self.accelerator_config = {'dispatch_batches': False}

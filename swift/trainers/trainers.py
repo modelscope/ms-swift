@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
+import inspect
 import os
 from contextlib import contextmanager, nullcontext
 from functools import wraps
@@ -15,6 +16,7 @@ from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
+from swift.plugin import MeanMetric
 from swift.utils import JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
@@ -301,19 +303,15 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         return None, response_list, labels_list
 
     def _prepare_inputs(self, inputs):
+        from swift.llm import HfConfigFactory
+        args = self.args
         inputs = super()._prepare_inputs(inputs)
-        from swift.plugin.loss import get_loss_func
         loss_kwargs = {}
         compute_loss_func = self.compute_loss_func
-        loss_scale = inputs.pop('loss_scale', None)
-        if loss_scale is not None:
-            loss_kwargs['loss_scale'] = loss_scale
-            if compute_loss_func is None:
-                compute_loss_func = get_loss_func('loss_scale')
 
         sample_channels = inputs.pop('channel', None)
         position_ids = inputs.pop('_position_ids', None)
-        if self.args.channels is not None:
+        if args.channels is not None:
             assert sample_channels is not None, f'sample_channels: {sample_channels}'
             state = self.state
             setattr(state, 'local_step', getattr(state, 'local_step', 0))
@@ -326,28 +324,39 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             if position_ids is not None:
                 loss_kwargs['position_ids'] = position_ids
 
-        use_logits_to_keep = self.get_use_logits_to_keep('labels' in inputs and self.label_smoother is None
-                                                         and compute_loss_func is None)
+        use_logits_to_keep = self.get_use_logits_to_keep(True)
         if use_logits_to_keep:
-            inputs['labels'], logits_to_keep = self.get_logits_to_keep(inputs['labels'])
-            if logits_to_keep is not None:
-                inputs['logits_to_keep'] = logits_to_keep
-                if self.args.tuner_backend == 'unsloth':
-                    inputs['logits_to_keep'] = int(logits_to_keep.sum())
+            self.prepare_logits_to_keep(inputs)
+            if args.tuner_backend == 'unsloth' and isinstance(inputs['logits_to_keep'], torch.Tensor):
+                inputs['logits_to_keep'] = int(inputs['logits_to_keep'].sum())
 
+        base_model = self.template.get_base_model(self.model)
+        if self.model.model_info.is_moe_model and 'output_router_logits' in inspect.signature(
+                base_model.forward).parameters:
+            HfConfigFactory.set_config_attr(base_model.config, 'router_aux_loss_coef', args.router_aux_loss_coef)
+            base_model.router_aux_loss_coef = args.router_aux_loss_coef
+            logger.info_once(f'router_aux_loss_coef: {args.router_aux_loss_coef}')
+            if args.router_aux_loss_coef > 0:
+                inputs['output_router_logits'] = True
         inputs['compute_loss_func'] = compute_loss_func
         inputs['loss_kwargs'] = loss_kwargs
         return inputs
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        from swift.plugin import get_loss_func
         labels = None
         compute_loss_func = inputs.pop('compute_loss_func', None)
+        loss_scale = inputs.pop('loss_scale', None)
         loss_kwargs = inputs.pop('loss_kwargs', {})
 
-        if (self.label_smoother is not None or compute_loss_func is not None) and 'labels' in inputs:
+        if (self.label_smoother is not None or compute_loss_func is not None
+                or loss_scale is not None) and 'labels' in inputs:
             labels = inputs.pop('labels')
-
         outputs = model(**inputs)
+        if getattr(outputs, 'aux_loss', None) is not None:
+            if 'aux_loss' not in self._custom_metrics:
+                self._custom_metrics['aux_loss'] = MeanMetric(nan_value=None)
+            self._custom_metrics['aux_loss'].update(outputs.aux_loss)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
         if self.args.past_index >= 0:
@@ -367,6 +376,11 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             # We don't use .loss here since the model may return tuples instead of ModelOutput.
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
         else:
+            outputs.loss = None
+            if loss_scale is not None:
+                loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
+                outputs.loss = get_loss_func('per_token_cross_entropy')(outputs, labels)
+                outputs.loss = outputs.loss * loss_scale
             unwrapped_model = self.accelerator.unwrap_model(model)
             if is_peft_available() and isinstance(unwrapped_model, PeftModel):
                 model_name = unwrapped_model.model._get_name()
@@ -375,10 +389,20 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             # User-defined compute_loss function
             if compute_loss_func is not None:
                 loss = compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, **loss_kwargs)
-            elif model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
-                loss = self.label_smoother(outputs, labels, shift_labels=True)
+            elif self.label_smoother is not None:
+                if model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+                    loss = self.label_smoother(outputs, labels, shift_labels=True)
+                else:
+                    loss = self.label_smoother(outputs, labels)
             else:
-                loss = self.label_smoother(outputs, labels)
+                if num_items_in_batch is None:
+                    num_items_in_batch = (labels[:, 1:] != -100).sum()
+                loss = outputs.loss.sum() / num_items_in_batch
+
+            if self.model.model_info.is_moe_model and self.args.router_aux_loss_coef is not None:
+                aux_loss = outputs.get('aux_loss')
+                if aux_loss is not None:
+                    loss = loss + self.args.router_aux_loss_coef * aux_loss.to(loss.device)
 
         if self.template.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel

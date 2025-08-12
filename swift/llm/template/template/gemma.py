@@ -112,8 +112,8 @@ class Gemma3VisionTemplate(Gemma3Template):
             loss_scale = encoded.get('loss_scale', None)
             idx_list = findall(input_ids, self.boi_token_id)
             img_tokens = self._tokenize(self.processor.full_image_sequence)
-            input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, lambda _: img_tokens)
-            loss_scale = self._extend_loss_scale(loss_scale, idx_list, lambda _: img_tokens)
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                lambda _: img_tokens)
 
             # TODO: customize
             processor_kwargs = Gemma3ProcessorKwargs._defaults['images_kwargs']
@@ -171,8 +171,8 @@ class Gemma3nTemplate(Gemma3Template):
         if inputs.images:
             idx_list = findall(input_ids, self.boi_token_id)
             img_tokens = self._tokenize(processor.full_image_sequence)
-            input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, lambda _: img_tokens)
-            loss_scale = self._extend_loss_scale(loss_scale, idx_list, lambda _: img_tokens)
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                lambda _: img_tokens)
 
             # Process images
             processor_kwargs = Gemma3nProcessorKwargs._defaults.get('images_kwargs', {})
@@ -188,8 +188,8 @@ class Gemma3nTemplate(Gemma3Template):
             if audio_idx_list:
                 # Get audio token sequence from processor
                 audio_tokens = self._tokenize(processor.full_audio_sequence)
-                input_ids, labels = self._extend_tokens(input_ids, labels, audio_idx_list, lambda _: audio_tokens)
-                loss_scale = self._extend_loss_scale(loss_scale, audio_idx_list, lambda _: audio_tokens)
+                input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, audio_idx_list,
+                                                                    lambda _: audio_tokens)
 
                 # Process audios
                 processor_kwargs = Gemma3nProcessorKwargs._defaults.get('audio_kwargs', {})

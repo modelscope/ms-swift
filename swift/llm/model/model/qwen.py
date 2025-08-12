@@ -529,6 +529,10 @@ register_model(
                 # swift
                 Model('swift/Qwen3-32B-AWQ'),
             ]),
+            ModelGroup([
+                Model('Qwen/Qwen3-4B-Instruct-2507', 'Qwen/Qwen3-4B-Instruct-2507'),
+                Model('Qwen/Qwen3-4B-Instruct-2507-FP8', 'Qwen/Qwen3-4B-Instruct-2507-FP8'),
+            ])
         ],
         TemplateType.qwen3,
         get_model_tokenizer_with_flash_attn,
@@ -561,6 +565,8 @@ register_model(
                 Model('swift/Qwen3-235B-A22B-Instruct-2507-AWQ'),
             ]),
             ModelGroup([
+                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct', 'Qwen/Qwen3-Coder-30B-A3B-Instruct'),
+                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8'),
                 Model('Qwen/Qwen3-Coder-480B-A35B-Instruct', 'Qwen/Qwen3-Coder-480B-A35B-Instruct'),
                 Model('Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8', 'Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8'),
                 Model('swift/Qwen3-Coder-480B-A35B-Instruct-AWQ'),
@@ -575,6 +581,21 @@ register_model(
 
 register_model(
     ModelMeta(
+        LLMModelType.qwen3_thinking,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-4B-Thinking-2507', 'Qwen/Qwen3-4B-Thinking-2507'),
+                Model('Qwen/Qwen3-4B-Thinking-2507-FP8', 'Qwen/Qwen3-4B-Thinking-2507-FP8'),
+            ]),
+        ],
+        TemplateType.qwen3_thinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3ForCausalLM'],
+        requires=['transformers>=4.51'],
+    ))
+
+register_model(
+    ModelMeta(
         LLMModelType.qwen3_moe_thinking,
         [
             ModelGroup([
@@ -583,7 +604,7 @@ register_model(
                 Model('Qwen/Qwen3-235B-A22B-Thinking-2507', 'Qwen/Qwen3-235B-A22B-Thinking-2507'),
                 Model('Qwen/Qwen3-235B-A22B-Thinking-2507-FP8', 'Qwen/Qwen3-235B-A22B-Thinking-2507-FP8'),
                 # awq
-                Model('swift/Qwen3-235B-A22B-Thinking-2507-AWQ')
+                Model('swift/Qwen3-235B-A22B-Thinking-2507-AWQ'),
             ]),
         ],
         TemplateType.qwen3_thinking,
@@ -776,6 +797,29 @@ register_model(
         tags=['vision', 'video', 'audio'],
         additional_saved_files=['spk_dict.pt'],
         ignore_patterns=[],
+    ))
+
+
+def get_model_tokenizer_midashenglm(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_multimodal(*args, **kwargs)
+    if model is not None:
+        model.audio_encoder.float()
+        patch_output_clone(model.decoder.model.embed_tokens)
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.midashenglm,
+        [ModelGroup([
+            Model('mispeech/midashenglm-7b', 'mispeech/midashenglm-7b'),
+        ])],
+        TemplateType.midashenglm,
+        get_model_tokenizer_midashenglm,
+        model_arch=ModelArch.midashenglm,
+        architectures=['MiDashengLMModel'],
+        requires=['transformers>=4.52', 'soundfile'],
+        tags=['audio'],
     ))
 
 

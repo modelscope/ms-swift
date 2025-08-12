@@ -182,9 +182,8 @@ class Phi4MMTemplate(Template):
         def _get_new_tokens(i):
             return placeholders[i]
 
-        encoded['input_ids'], encoded['labels'] = self._extend_tokens(input_ids, labels, images_idx + audios_idx,
-                                                                      _get_new_tokens)
-        encoded['loss_scale'] = self._extend_loss_scale(loss_scale, images_idx + audios_idx, _get_new_tokens)
+        encoded['input_ids'], encoded['labels'], encoded['loss_scale'] = self._extend_tokens(
+            input_ids, labels, loss_scale, images_idx + audios_idx, _get_new_tokens)
         new_encoded.pop('attention_mask')
         encoded.update(new_encoded)
         return encoded

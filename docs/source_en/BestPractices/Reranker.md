@@ -64,23 +64,16 @@ The loss function source code can be found [here](https://github.com/modelscope/
 
 ## Dataset Format
 
-### Common Original Data Format
-
-```json lines
-{"query": "query", "positive": ["relevant_doc1", "relevant_doc2", ...], "negative": ["irrelevant_doc1", "irrelevant_doc2", ...]}
-```
-
-> Reference: [MTEB/scidocs-reranking](https://www.modelscope.cn/datasets/MTEB/scidocs-reranking)
-
-### Converted Data Format
-
 ```json lines
 {"query": "query", "response": "relevant_doc1", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
 {"query": "query", "response": "relevant_doc2", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
 ...
 ```
 
-> The final converted data format is required, developers can build their own dataset or reuse [MTEBRerankPreprocessor](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/dataset/llm.py#L381) to convert data format.
+**Field Description:**
+- `query`: Query text
+- `response`: Positive document relevant to the query
+- `rejected_response`: List of negative documents irrelevant to the query, supports multiple negative examples
 
 ## Training Scripts
 

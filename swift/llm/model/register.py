@@ -117,6 +117,7 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     model_type: The unique ID for the model type. Models with the same model_type share
         the same architectures, template, get_function, etc.
     """
+    from .model_arch import get_model_arch
     model_type = model_meta.model_type
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
@@ -125,6 +126,8 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
         model_meta.is_multimodal = True
     if model_type in RMModelType.__dict__:
         model_meta.is_reward = True
+    if model_meta.model_arch:
+        model_meta.model_arch = get_model_arch(model_meta.model_arch)
     MODEL_MAPPING[model_type] = model_meta
 
 
@@ -261,24 +264,30 @@ def get_model_tokenizer_from_local(model_dir: str,
 
         automodel_class = automodel_class or AutoModelForCausalLM
         model_meta = kwargs['model_meta']
+        context_kwargs = {
+            'model_info': model_info,
+            'model_meta': model_meta,
+            'automodel_class': automodel_class,
+            'return_dummy_model': kwargs['return_dummy_model']
+        }
         if model is None:
             if model_info.task_type == 'seq_cls' and not model_meta.is_reward:
-                context = partial(patch_automodel_for_sequence_classification, model_meta=model_meta)
+                context = partial(patch_automodel_for_sequence_classification, **context_kwargs)
             elif model_info.task_type == 'seq_cls' and model_meta.is_reward and model_config.num_labels > 1:
                 logger.warning('You are using a reward model for seq_cls task and num_labels > 1, '
                                'ignore_mismatched_sizes will be set to True')
                 model_kwargs['ignore_mismatched_sizes'] = True
-                context = partial(patch_automodel_for_sequence_classification, model_meta=model_meta)
+                context = partial(patch_automodel_for_sequence_classification, **context_kwargs)
             elif model_info.task_type == 'reranker':
                 # For reranker task, patch CausalLM to SequenceClassification with num_labels=1
                 logger.info('Converting CausalLM to SequenceClassification for reranker task with num_labels=1')
-                context = partial(patch_automodel_for_sequence_classification, model_meta=model_meta)
+                context = partial(patch_automodel_for_sequence_classification, **context_kwargs)
             elif model_info.task_type == 'generative_reranker':
                 # For generative reranker, keep CausalLM structure unchanged
                 logger.info('Loading model as CausalLM for generative_reranker task')
-                context = partial(patch_automodel, automodel_class=automodel_class, model_info=model_info)
+                context = partial(patch_automodel, **context_kwargs)
             else:
-                context = partial(patch_automodel, automodel_class=automodel_class, model_info=model_info)
+                context = partial(patch_automodel, **context_kwargs)
             with context():
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
@@ -588,13 +597,14 @@ def get_model_tokenizer(
         model_type: Optional[str] = None,
         quantization_config=None,
         max_memory: Union[str, Dict[str, Any]] = None,
-        attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
+        attn_impl: Optional[str] = None,
         new_special_tokens: Optional[List[str]] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
         max_model_len: Optional[int] = None,
         automodel_class=None,
         task_type: Literal['causal_lm', 'seq_cls', 'reranker', 'generative_reranker'] = None,
         num_labels: Optional[int] = None,
+        return_dummy_model: bool = False,
         model_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
@@ -614,7 +624,7 @@ def get_model_tokenizer(
     if model_kwargs is None:
         model_kwargs = {}
     if download_model is None:
-        download_model = load_model
+        download_model = load_model and not return_dummy_model
 
     model_info, model_meta = get_model_info_meta(
         model_id_or_path,
@@ -642,6 +652,7 @@ def get_model_tokenizer(
     kwargs['rope_scaling'] = rope_scaling
     kwargs['model_meta'] = model_meta
     kwargs['max_model_len'] = max_model_len
+    kwargs['return_dummy_model'] = return_dummy_model
     with patch_get_dynamic_module(), patch_tp_plan(load_model):
         model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 

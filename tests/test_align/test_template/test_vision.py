@@ -142,10 +142,12 @@ Grounded Operation: CLICK(box=[[346,574,424,710]], element_type='卡片', elemen
 
 
 def test_minicpmv():
-    pt_engine = PtEngine('OpenBMB/MiniCPM-V-2_6')
-    _infer_model(pt_engine)
-    pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    # pt_engine = PtEngine('OpenBMB/MiniCPM-V-2_6')
+    messages = [{'role': 'user', 'content': '<image>descibe the picture?'}]
+    pt_engine = PtEngine('OpenBMB/MiniCPM-V-4')
+    response = _infer_model(pt_engine, messages=messages)
+    assert response[:100] == ('The image features a close-up of a kitten with a soft and fluffy appearance. '
+                              'The kitten has a striki')
 
 
 def test_minicpmo():
@@ -217,13 +219,14 @@ def test_florence():
     pt_engine = PtEngine('AI-ModelScope/Florence-2-base-ft')
     _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'who are you?'}], images=[])
 
-    _infer_model(
+    response = _infer_model(
         pt_engine,
         messages=[{
             'role': 'user',
             'content': '<OD>'
         }],
         images=['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'])
+    print(f'response: {response}')
 
 
 def test_phi3_vision():
@@ -598,6 +601,31 @@ def test_keye_vl():
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
     ]
+    pt_engine.default_template.template_backend = 'swift'
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
+def test_dots_ocr():
+    # https://github.com/modelscope/ms-swift/issues/2122
+    pt_engine = PtEngine('rednote-hilab/dots.ocr')
+    messages = [{'role': 'user', 'content': '<image>Extract the text content from this image.'}]
+    images = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
+def test_glm4_5v():
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    pt_engine = PtEngine('ZhipuAI/GLM-4.5V')
     response = _infer_model(pt_engine, messages=messages, images=images)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, images=images)
@@ -660,4 +688,6 @@ if __name__ == '__main__':
     # test_kimi_vl_thinking()
     # test_glm4_1v()
     # test_gemma3n()
-    test_keye_vl()
+    # test_keye_vl()
+    # test_dots_ocr()
+    test_glm4_5v()

@@ -1,5 +1,7 @@
 # Group Sequence Policy Optimization
 
+**Version Requirement**: ms-swift>=3.7
+
 In [Group Sequence Policy Optimization](https://www.arxiv.org/abs/2507.18071), it is pointed out that GRPO computes importance sampling weights at the token level. However, this approach is problematic: since each token is only sampled once, it cannot realize effective distribution correction, and instead introduces high-variance noise during training, which can easily lead to unstable gradient estimates and even training collapse. Therefore, the paper argues that the unit of the objective function should be consistent with that of the reward. Since the reward is typically given at the sequence level (i.e., for the entire generated response), it is more reasonable to perform off-policy correction and optimization at the sequence level rather than the token level.
 
 Below are the three main strategies for computing importance sampling weights:
@@ -52,5 +54,14 @@ Based on GRPO training, you can select different algorithms via the `--importanc
 - `importance_sampling_level token` (default, GRPO implementation)
 - `importance_sampling_level sequence` (GSPO)
 - `importance_sampling_level sequence_token` (GSPO-token)
+
+
+Other hyperparameters in the paper
+```bash
+    --epsilon 3e-4 # from paper section 5.1
+    --epsilon_high 4e-4 # from paper section 5.1
+    --steps_per_generation 4 # from paper section 5.1 (each batch of rollout data is partitioned into four minibatches for gradient updates)
+    --beta 0 # zero kl regularization https://github.com/volcengine/verl/pull/2775#issuecomment-3131807306
+```
 
 For training, you can refer to [this script](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/internal/gspo.sh).

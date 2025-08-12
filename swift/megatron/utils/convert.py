@@ -59,17 +59,13 @@ def _model_cpu_forward_context(modules, torch_dtype=None, device=None, share_emb
     origin_torch_dtype = next(modules[0].parameters()).dtype
 
     def _to_cuda_hook(module, args):
-        if device is not None:
-            module.to(device)
-        if torch_dtype is not None:
-            module.to(torch_dtype)
+        if device is not None or torch_dtype is not None:
+            module.to(device=device, dtype=torch_dtype)
 
     def _to_cpu_hook(module, args, output):
         if share_embedding and module is modules[0]:
             return
-        module.to('cpu')
-        if torch_dtype is not None:
-            module.to(origin_torch_dtype)
+        module.to(device='cpu', dtype=origin_torch_dtype)
 
     hooks = []
     for module in modules:
@@ -147,10 +143,7 @@ convert_kwargs = {
     'no_save_rng': True,
     'no_load_optim': True,
     'no_load_rng': True,
-    'no_masked_softmax_fusion': True,
-    'no_bias_dropout_fusion': True,
-    'no_bias_swiglu_fusion': True,
-    'no_rope_fusion': True
+    'attention_backend': 'unfused',
 }
 
 
@@ -174,7 +167,11 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
-    megatron_args = MegatronArguments(**kwargs, **convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
+    current_convert_kwargs = convert_kwargs.copy()
+    if hf_model.model_info.is_moe_model:
+        current_convert_kwargs['moe_grouped_gemm'] = True
+    megatron_args = MegatronArguments(
+        **kwargs, **current_convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
     extra_args_provider = megatron_model_meta.extra_args_provider
@@ -185,6 +182,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     megatron_model_meta.convert_hf2mcore(hf_model, mg_model)
     if args.test_convert_precision:
         test_convert_precision(hf_model, mg_model, template)
+    del hf_model
     logger.info('Successfully transferred HF model weights to MG model.')
     args.save_args()
     mg_save_checkpoint(1, [mg_model], None, None, 0)
@@ -205,9 +203,12 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
+    current_convert_kwargs = convert_kwargs.copy()
+    if hf_model.model_info.is_moe_model:
+        current_convert_kwargs['moe_grouped_gemm'] = True
     megatron_args = MegatronArguments(
         **kwargs,
-        **convert_kwargs,
+        **current_convert_kwargs,
         load=args.mcore_model,
         adapter_load=args.mcore_adapters[0] if args.mcore_adapters else None,
         torch_dtype=args.torch_dtype)
@@ -228,6 +229,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
     if args.test_convert_precision:
         test_convert_precision(hf_model, mg_model, template)
+    del mg_model
     logger.info('Successfully transferred MG model weights to HF model.')
     ckpt_dir = megatron_args.load if megatron_args.adapter_load is None else megatron_args.adapter_load
     save_checkpoint(

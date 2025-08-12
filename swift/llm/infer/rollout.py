@@ -141,7 +141,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.post('/infer/', response_model=None)(self.infer)
         self.app.post('/get_engine_type/')(self.get_engine_type)
 
-    def __init__(self, args: Union[List[str], RolloutArguments, None] = None):
+    def __init__(self, args: Optional[Union[List[str], RolloutArguments]] = None):
         super().__init__(args)
         self.use_gym_env = self.args.use_gym_env
         self.use_async_engine = self.args.vllm_use_async_engine
@@ -350,7 +350,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         uvicorn.run(self.app, host=args.host, port=args.port, log_level=args.log_level)
 
 
-def rollout_main(args: Union[List[str], RolloutArguments, None] = None) -> None:
+def rollout_main(args: Optional[Union[List[str], RolloutArguments]] = None) -> None:
     SwiftRolloutDeploy(args).main()
 
 

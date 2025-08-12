@@ -67,6 +67,7 @@ class MegatronTunerMixin:
                 if self.adapter_load is not None and hasattr(self, 'load'):
                     old_value = old_args.get('load')
                     if self.load is None and old_value is not None:
+                        logger.info(f'Setting args.load: {old_value}')
                         self.load = old_value
 
 
@@ -113,7 +114,7 @@ class MegatronArguments(ExtraMegatronArguments):
     cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
     calculate_per_token_loss: bool = True
     use_flash_attn: bool = False
-    attention_backend: str = 'auto'  # flash, fused, unfused, local, auto
+    attention_backend: str = 'flash'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
     optimizer_cpu_offload: bool = False
     optimizer_offload_fraction: float = 1.
@@ -211,11 +212,12 @@ class MegatronArguments(ExtraMegatronArguments):
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'] = None
 
     expert_model_parallel_size: int = 1
+    expert_tensor_parallel_size: Optional[int] = None
     moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex', 'alltoall_seq'] = 'alltoall'
     moe_enable_deepep: bool = False
     moe_grouped_gemm: bool = False
     moe_permute_fusion: bool = False
-    moe_aux_loss_coeff: Optional[float] = None
+    moe_aux_loss_coeff: float = 0.
     moe_z_loss_coeff: Optional[float] = None
     moe_expert_capacity_factor: Optional[float] = None
     moe_shared_expert_overlap: bool = False
@@ -313,8 +315,6 @@ class MegatronArguments(ExtraMegatronArguments):
             self.moe_router_topk = 2
         if self.moe_router_pre_softmax is None:
             self.moe_router_pre_softmax = False
-        if self.moe_aux_loss_coeff is None:
-            self.moe_aux_loss_coeff = 0.
         if self.moe_router_load_balancing_type is None:
             self.moe_router_load_balancing_type = 'aux_loss'
         if self.moe_router_enable_expert_bias is None:
@@ -356,8 +356,6 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.train_type == 'lora':
             require_version('peft>=0.12')
         MegatronTunerMixin.__post_init__(self)
-        if self.use_flash_attn or self.attention_backend == 'flash':
-            require_version('flash-attn')
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self._set_default()
         if hasattr(self, 'ddp_timeout'):

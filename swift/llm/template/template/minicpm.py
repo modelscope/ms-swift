@@ -15,6 +15,7 @@ from ..utils import Context, Prompt, findall
 from ..vision_utils import load_video_minicpmv_mplug_owl3
 from .llama import Llama3TemplateMeta
 from .qwen import Qwen2_5TemplateMeta, QwenTemplateMeta
+from .utils import ChatmlTemplateMeta
 
 
 @dataclass
@@ -192,8 +193,7 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
             placeholder += '\n'
             return self.processor.encode(placeholder, add_special_tokens=False)
 
-        input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
-        loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
+        input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list, _get_new_tokens)
 
         if inputs.images:
             input_tensor_ids = torch.tensor(input_ids)
@@ -229,5 +229,10 @@ register_template(QwenTemplateMeta(
 
 register_template(Qwen2_5TemplateMeta(
     MLLMTemplateType.minicpmo2_6,
+    template_cls=MiniCPMV2_6Template,
+))
+
+register_template(ChatmlTemplateMeta(
+    MLLMTemplateType.minicpmv4,
     template_cls=MiniCPMV2_6Template,
 ))

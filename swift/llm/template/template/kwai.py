@@ -42,10 +42,10 @@ class KeyeVLTemplate(Template):
             video = inputs.videos[index]
             if os.path.isdir(video):
                 video = [os.path.join(video, fname) for fname in os.listdir(video)]
-            video = fetch_video({'video': video})
+            video, video_kwargs = fetch_video({'video': video}, return_video_sample_fps=True)
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
-            inputs.videos[index] = video
+            inputs.videos[index] = (video, video_kwargs)
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -57,7 +57,8 @@ class KeyeVLTemplate(Template):
         loss_scale = encoded.get('loss_scale', None)
 
         images = inputs.images
-        videos = inputs.videos
+        videos = [video[0] for video in inputs.videos]
+        fps = [video[1] for video in inputs.videos]
         for media_type in ['images', 'videos']:
             if locals()[media_type]:
                 if media_type == 'images':
@@ -74,8 +75,8 @@ class KeyeVLTemplate(Template):
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
                     media_inputs['second_per_grid_ts'] = [
-                        processor.image_processor.temporal_patch_size / vision_process.FPS
-                    ] * len(media_grid_thw)
+                        processor.image_processor.temporal_patch_size / tmp for tmp in fps
+                    ]
                 idx_list = findall(input_ids, media_token)
                 merge_length = processor.image_processor.merge_size**2
 
@@ -83,8 +84,8 @@ class KeyeVLTemplate(Template):
                     token_len = (media_grid_thw[i].prod() // merge_length)
                     return [media_token] * token_len
 
-                input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
-                loss_scale = self._extend_loss_scale(loss_scale, idx_list, _get_new_tokens)
+                input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                    _get_new_tokens)
                 encoded.update(media_inputs)
 
         encoded['input_ids'] = input_ids
@@ -287,10 +288,6 @@ class KeyeVLTemplate(Template):
         second_per_grid_ts = self.gather_list(batch, 'second_per_grid_ts')
         if second_per_grid_ts:
             res['second_per_grid_ts'] = second_per_grid_ts
-        for media_type in ['image', 'video']:
-            grid_thw = self.concat_tensor(batch, f'{media_type}_grid_thw', 0)
-            if grid_thw is not None:
-                res[f'{media_type}_grid_thw'] = grid_thw
         return res
 
 

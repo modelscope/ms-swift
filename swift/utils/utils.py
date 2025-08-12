@@ -20,7 +20,7 @@ import torch.distributed as dist
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
 from transformers.utils import strtobool
 
-from .env import is_dist
+from .env import is_dist, is_master
 from .logger import get_logger
 from .np_utils import stat_array
 
@@ -216,6 +216,9 @@ def read_multi_line(addi_prompt: str = '') -> str:
 
 def subprocess_run(command: List[str], env: Optional[Dict[str, str]] = None, stdout=None, stderr=None):
     # stdoutm stderr: e.g. subprocess.PIPE.
+    import shlex
+    command_str = ' '.join(shlex.quote(a) for a in command)
+    logger.info_if(f'Run the command: `{command_str}`', is_master())
     resp = subprocess.run(command, env=env, stdout=stdout, stderr=stderr)
     resp.check_returncode()
     return resp
@@ -313,11 +316,16 @@ def copy_files_by_pattern(source_dir, dest_dir, patterns, exclude_patterns=None)
                         shutil.copy2(file_path, destination)
 
 
-def split_list(ori_list, num_shards):
-    idx_list = np.linspace(0, len(ori_list), num_shards + 1)
+def split_list(ori_list: List[_T], num_shards: int, contiguous=True) -> List[List[_T]]:
     shard = []
-    for i in range(len(idx_list) - 1):
-        shard.append(ori_list[int(idx_list[i]):int(idx_list[i + 1])])
+    if contiguous:
+        idx_list = np.linspace(0, len(ori_list), num_shards + 1, dtype=np.int64)
+        for i in range(len(idx_list) - 1):
+            shard.append(ori_list[idx_list[i]:idx_list[i + 1]])
+    else:
+        ori_list = np.array(ori_list)
+        for i in range(num_shards):
+            shard.append(ori_list[np.arange(i, len(ori_list), num_shards)].tolist())
     return shard
 
 

@@ -30,6 +30,7 @@ class TrainArgumentsMixin:
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
     logging_first_step: bool = True
     logging_steps: int = 5
+    router_aux_loss_coef: float = 0.
 
     weight_decay: float = 0.1
     adam_beta2: float = 0.95
@@ -60,6 +61,9 @@ class TrainArgumentsMixin:
     eval_dataset_args: Optional[Union[str, dict]] = None
     eval_limit: Optional[int] = None
     eval_generation_config: Optional[Union[str, dict]] = None
+
+    # dlrover flash_checkpoint
+    use_flash_ckpt: bool = False
 
     @staticmethod
     def _patch_liger_kernel():
@@ -223,7 +227,7 @@ class VllmArguments:
             'quantization': self.vllm_quantization,
         }
         if self.task_type == 'embedding':
-            kwargs['task_type'] = 'embed'
+            kwargs['task_type'] = 'embedding'
         return kwargs
 
 
