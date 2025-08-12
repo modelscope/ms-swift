@@ -15,8 +15,7 @@ from transformers.utils import strtobool
 from swift.plugin import MeanMetric
 
 
-def per_token_loss_func(outputs, labels, **kwargs):
-    enable_dft_loss = kwargs.get('enable_dft_loss', False)
+def per_token_loss_func(outputs, labels, enable_dft_loss, **kwargs):
     logits = outputs.logits
     # Upcast to float if we need to compute the loss to avoid potential precision issues
     logits = logits.float()
