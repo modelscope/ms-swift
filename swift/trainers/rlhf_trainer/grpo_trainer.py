@@ -26,9 +26,9 @@ from transformers import PreTrainedModel, TrainerCallback
 from transformers.trainer import Trainer
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import prepare_deepspeed
+from trl.trainer import grpo_trainer
 from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
-from trl.trainer import grpo_trainer
 from trl.trainer.utils import selective_log_softmax
 
 from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInferRequest, RowPreprocessor, Template,
