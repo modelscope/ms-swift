@@ -414,7 +414,7 @@ class Qwen2VLTemplate(Template):
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
-        if self._packing:
+        if self.padding_free:
             res['real_position_ids'] = self.concat_tensor(batch, 'real_position_ids', -1)
         elif self.is_training:
             res['position_ids'] = self._get_position_ids(res)

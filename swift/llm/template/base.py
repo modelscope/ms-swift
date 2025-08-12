@@ -111,7 +111,8 @@ class Template(ProcessorMixin):
         self.max_pixels = max_pixels
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
-        self.padding_free = padding_free
+        self.padding_free = padding_free  # padding_free/packing
+        self.packing = False
         agent_template = agent_template or template_meta.agent_template
         self._agent_template = agent_template
         self.agent_template = agent_templates[agent_template]()
@@ -122,7 +123,6 @@ class Template(ProcessorMixin):
                            'train', 'rlhf', 'kto', 'gkd'] = 'pt'  # train
         self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
                                 'generative_reranker'] = 'causal_lm'
-        self._packing = self.padding_free
         self.use_megatron = False
         self._handles = []
         self._deepspeed_initialize = None
@@ -619,12 +619,7 @@ class Template(ProcessorMixin):
             logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
         return preds, logprobs
 
-    def decode(self,
-               generate_ids: List[int],
-               *,
-               is_finished: bool = True,
-               first_token=True,
-               **kwargs) -> Any:
+    def decode(self, generate_ids: List[int], *, is_finished: bool = True, first_token=True, **kwargs) -> Any:
         if kwargs.get('spaces_between_special_tokens') is None:
             kwargs['spaces_between_special_tokens'] = False
         generate_ids = self.skip_stop_tokens(generate_ids, is_finished)
@@ -781,8 +776,7 @@ class Template(ProcessorMixin):
         return res, loss_scale_res
 
     def _tokenize(self, context, **kwargs):
-        return self.tokenizer(
-            context, return_attention_mask=False, add_special_tokens=False, **kwargs)['input_ids']
+        return self.tokenizer(context, return_attention_mask=False, add_special_tokens=False, **kwargs)['input_ids']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -958,10 +952,9 @@ class Template(ProcessorMixin):
                         f'num_media: {num_media}, num_media_tags: {num_media_tags}, total_content: {total_content}. '
                         'We will only replace the frontmost media_tags while keeping the subsequent media_tags.')
 
-    def _encode_context_list(
-            self,
-            context_list: List[Context],
-            loss_scale_list: Optional[List[float]] = None) -> Tuple[List[int], List[int], List[float]]:
+    def _encode_context_list(self,
+                             context_list: List[Context],
+                             loss_scale_list: Optional[List[float]] = None) -> Tuple[List[int], List[int], List[float]]:
         input_ids: List[int] = []
         labels: List[int] = []
         loss_scale: List[float] = []
@@ -1230,8 +1223,7 @@ class Template(ProcessorMixin):
                 loss_scale = encoded['prompt_loss_scale'] + encoded['answer_loss_scale']
         else:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
-            input_ids, labels, loss_scale = self._encode_context_list(
-                res_context_list, loss_scale_list)
+            input_ids, labels, loss_scale = self._encode_context_list(res_context_list, loss_scale_list)
         self._add_dynamic_eos(input_ids, labels, loss_scale, self._encode_context_list(self.template_meta.suffix)[0])
 
         encoded['input_ids'] = input_ids
@@ -1372,7 +1364,7 @@ class Template(ProcessorMixin):
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         from swift.llm import RowPreprocessor
-        if self._packing and isinstance(batch[0], list):
+        if self.packing and isinstance(batch[0], list):
             batch = sum(batch, start=[])
         if self.task_type == 'causal_lm':
             if self.mode in {'pt', 'train'}:
@@ -1572,7 +1564,7 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
-        if self._packing:
+        if self.padding_free:
             batch[:] = [self.packing_row(batch)]
             assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
         elif self.use_megatron:
@@ -1580,7 +1572,7 @@ class Template(ProcessorMixin):
                 encoded['position_ids'] = list(range(len(encoded['labels'])))
 
         res = {}
-        if self._packing:
+        if self.padding_free:
             # only support llm
             for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel']:
                 v = self.gather_list(batch, k)
@@ -1623,7 +1615,7 @@ class Template(ProcessorMixin):
                 res[key][i] = val
             if not seq_lens:
                 seq_lens = [seq.shape[0] for seq in res[key]]
-        if not self._packing and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
+        if not self.padding_free and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
             if not self.use_megatron:
                 res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
             if self.is_training and self.padding_side == 'left':
@@ -1633,7 +1625,7 @@ class Template(ProcessorMixin):
             # For code simplicity, only the attention_backend 'flash' is supported here.
             if padding_to is not None:
                 padding_to = math.ceil(max(seq_lens) / padding_to) * padding_to
-            if self._packing:
+            if self.padding_free:
                 cp_size = self.sequence_parallel_size
                 if cp_size > 1:
                     padding_len = padding_to - seq_lens[0]
@@ -1651,9 +1643,9 @@ class Template(ProcessorMixin):
         for key, pad_value in zip(keys, pad_values):
             if key not in res:
                 continue
-            if self.use_megatron and not self._packing and key == 'attention_mask':
+            if self.use_megatron and not self.padding_free and key == 'attention_mask':
                 continue
-            if padding_to is not None and not (self._packing and key == 'position_ids'
+            if padding_to is not None and not (self.padding_free and key == 'position_ids'
                                                and self.sequence_parallel_size > 1):
                 padding_len = padding_to - seq_lens[0]
                 if padding_len > 0:

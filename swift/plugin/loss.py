@@ -458,7 +458,7 @@ def channel_loss_func(outputs,
         num_items_in_batch = masks.sum()
     loss = token_loss.sum() / num_items_in_batch
 
-    if position_ids is not None and trainer.template._packing:
+    if position_ids is not None and trainer.template.padding_free:
         start_idx_mask = position_ids.view(-1).eq(0).int()
         sample_idx = (torch.cumsum(start_idx_mask, dim=0) - 1).tolist()
         token_channels = [sample_channels[i] for i in sample_idx]

@@ -165,9 +165,10 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                     'internvl2_5',
                     'internvl3',
                 ]
-                assert self.model_type in supported_model_type, (
-                    f'Packing/padding_free is not supported for model_type `{self.model_type}`. '
-                    f'model_type of multimodal models that support packing/padding_free: {supported_model_type}.')
+                if self.model_type not in supported_model_type:
+                    raise ValueError(
+                        f'Packing/padding_free is not supported for model_type `{self.model_type}`. '
+                        f'model_type of multimodal models that support packing/padding_free: {supported_model_type}.')
         if self.optimizer is None:
             if self.lorap_lr_ratio:
                 self.optimizer = 'lorap'

@@ -139,7 +139,8 @@ class PackingDataset(Dataset):
         load_from_cache_file: bool = True,
         **kwargs,
     ):
-        template._packing = True
+        template.packing = True
+        template.padding_free = True
         self.template = template
         self.dataset = dataset
         self.num_proc = num_proc
@@ -194,7 +195,8 @@ class IterablePackingDataset(IterableDataset):
         cyclic: bool = False,
         **kwargs,
     ):
-        template._packing = True
+        template.packing = True
+        template.padding_free = True
         self.template = template
         self.dataset = dataset
         self.num_proc = num_proc
