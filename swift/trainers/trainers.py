@@ -349,8 +349,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         loss_scale = inputs.pop('loss_scale', None)
         loss_kwargs = inputs.pop('loss_kwargs', {})
 
-        if (self.label_smoother is not None or compute_loss_func is not None
-                or loss_scale is not None) and 'labels' in inputs:
+        if (self.label_smoother is not None or compute_loss_func is not None or loss_scale is not None
+                or self.args.enable_dft_loss) and 'labels' in inputs:
             labels = inputs.pop('labels')
         outputs = model(**inputs)
         if getattr(outputs, 'aux_loss', None) is not None:
