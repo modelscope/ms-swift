@@ -30,7 +30,6 @@ class KeyeVLTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         from keye_vl_utils import fetch_image, fetch_video
-        # from qwen_vl_utils import fetch_image, fetch_video
         assert media_type in {'image', 'video'}
         if media_type == 'image':
             inputs.images[index] = fetch_image({'image': inputs.images[index]})
@@ -49,7 +48,6 @@ class KeyeVLTemplate(Template):
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        from keye_vl_utils import vision_process
         encoded = super()._encode(inputs)
         processor = self.processor
         input_ids = encoded['input_ids']
@@ -63,15 +61,16 @@ class KeyeVLTemplate(Template):
             if locals()[media_type]:
                 if media_type == 'images':
                     media_token = self.image_token_id
-                    media_inputs = processor.image_processor(
-                        images=images, videos=None, return_tensors='pt', do_resize=False)
+                    media_inputs = processor.image_processor(images=images, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
+                    kwargs = {}
                     if hasattr(processor, 'video_processor'):
                         processor_func = processor.video_processor
                     else:
                         processor_func = processor.image_processor
-                    media_inputs = processor_func(images=None, videos=videos, return_tensors='pt', do_resize=False)
+                        kwargs['images'] = None
+                    media_inputs = processor_func(videos=videos, return_tensors='pt', do_resize=False, **kwargs)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
                     media_inputs['second_per_grid_ts'] = [
@@ -118,7 +117,7 @@ class KeyeVLTemplate(Template):
             if is_deepspeed_enabled():
                 from PIL import Image
                 images = [Image.new('RGB', (32, 32), (0, 0, 0))]
-                media_inputs = self.processor.image_processor(images=images, videos=None, return_tensors='pt')
+                media_inputs = self.processor.image_processor(images=images, return_tensors='pt')
                 device = input_ids.device
                 media_inputs = to_device(media_inputs, device)
                 pixel_values = media_inputs['pixel_values'].type(dtype)

@@ -300,11 +300,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 continue
             if not args.lazy_tokenize and not args.streaming:
                 preprocessor = EncodePreprocessor(template=template)
+                batch_size = 100 if args.model_meta.is_multimodal else 1000
                 dataset = preprocessor(
                     dataset,
                     num_proc=args.dataset_num_proc,
                     load_from_cache_file=args.load_from_cache_file,
-                    strict=args.strict)
+                    strict=args.strict,
+                    batch_size=batch_size)
             datasets[i] = dataset
         template.model = origin_template_model
 
