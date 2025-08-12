@@ -68,6 +68,7 @@ class TrainArgumentsMixin:
     eval_dataset_args: Optional[Union[str, dict]] = None
     eval_limit: Optional[int] = None
     eval_generation_config: Optional[Union[str, dict]] = None
+    extra_eval_args: Optional[Union[str, dict]] = None
 
     # dlrover flash_checkpoint
     use_flash_ckpt: bool = False
@@ -126,6 +127,7 @@ class TrainArgumentsMixin:
                 raise ImportError('evalscope is not installed, please install it by `pip install evalscope`')
             self.eval_dataset_args = json_parse_to_dict(self.eval_dataset_args)
             self.eval_generation_config = json_parse_to_dict(self.eval_generation_config)
+            self.extra_eval_args = json_parse_to_dict(self.extra_eval_args)
 
         super().__post_init__()
 

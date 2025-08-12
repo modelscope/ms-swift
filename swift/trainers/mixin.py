@@ -776,6 +776,7 @@ class SwiftMixin:
             work_dir=os.path.join(self.args.output_dir, 'eval'),
             eval_batch_size=max_batch_size,
             generation_config=self.args.eval_generation_config or {'max_tokens': 512},
+            **(self.args.extra_eval_args or {}),
         )
         # start evaluation
         eval_report = run_task(task_config)
