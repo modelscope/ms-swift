@@ -377,10 +377,14 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
         else:
             outputs.loss = None
-            if loss_scale is not None:
-                loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
-                outputs.loss = get_loss_func('per_token_cross_entropy')(outputs, labels)
-                outputs.loss = outputs.loss * loss_scale
+            if self.args.enable_dft_loss or loss_scale is not None:
+                outputs.loss = get_loss_func('per_token_cross_entropy')(
+                    outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
+
+                if loss_scale is not None:
+                    loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
+                    outputs.loss = outputs.loss * loss_scale
+
             unwrapped_model = self.accelerator.unwrap_model(model)
             if is_peft_available() and isinstance(unwrapped_model, PeftModel):
                 model_name = unwrapped_model.model._get_name()

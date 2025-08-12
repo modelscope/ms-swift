@@ -16,6 +16,7 @@ from swift.plugin import MeanMetric
 
 
 def per_token_loss_func(outputs, labels, **kwargs):
+    enable_dft_loss = kwargs.get('enable_dft_loss', False)
     logits = outputs.logits
     # Upcast to float if we need to compute the loss to avoid potential precision issues
     logits = logits.float()
@@ -27,6 +28,11 @@ def per_token_loss_func(outputs, labels, **kwargs):
     # Enable model parallelism
     labels = labels.to(logits.device)
     loss = F.cross_entropy(logits, labels, ignore_index=-100, reduction='none')
+    if enable_dft_loss:
+        safe_labels = torch.where(labels == -100, 0, labels)
+        with torch.no_grad():
+            target_probs = torch.softmax(logits, dim=-1).gather(1, safe_labels.unsqueeze(-1)).squeeze(-1).detach()
+        loss *= target_probs
     return loss
 
 
