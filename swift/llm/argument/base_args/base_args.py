@@ -149,11 +149,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token) for adapter in self.adapters
         ]
 
-    def _set_packing_length(self):
-        if self.packing and self.packing_length is None:
-            self.packing_length = self.max_length
-            logger.info(f'Setting args.packing_length: {self.packing_length}')
-
     def __post_init__(self):
         if self.use_hf or use_hf_hub():
             self.use_hf = True
@@ -179,7 +174,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         DataArguments.__post_init__(self)
         if self.max_length is None:
             self.max_length = self.model_info.max_model_len
-        self._set_packing_length()
+        if self.packing and self.packing_length is None:
+            self.packing_length = self.max_length
         if isinstance(self.cached_dataset, str):
             self.cached_dataset = [self.cached_dataset]
         self._init_lazy_tokenize()

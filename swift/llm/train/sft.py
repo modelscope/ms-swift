@@ -148,6 +148,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     dataset,
                     num_proc=args.dataset_num_proc,
                     strict=args.strict,
+                    packing_length=args.packing_length,
                     load_from_cache_file=args.load_from_cache_file)
             datasets[i] = dataset
         self._show_dataset(*datasets)
