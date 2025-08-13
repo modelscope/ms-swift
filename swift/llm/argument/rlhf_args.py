@@ -355,6 +355,14 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             logger.warning(
                 "The parameter 'gc_collect_after_offload' has been deprecated and will be removed in version 3.7. ")
 
+    def _set_packing_length(self):
+        if self.packing and self.packing_length is None:
+            length_coef = {'dpo': 2, 'gkd': 1}
+            if self.rlhf_type in length_coef:
+                self.packing_length = self.max_length * length_coef[self.rlhf_type]
+                logger.info(f'Setting args.packing_length: {self.packing_length}')
+        super()._set_packing_length()
+
     def _check_padding_free(self):
         super()._check_padding_free()
         if self.padding_free or self.packing:
