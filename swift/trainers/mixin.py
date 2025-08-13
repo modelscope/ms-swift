@@ -768,7 +768,7 @@ class SwiftMixin:
         max_batch_size = self.args.per_device_eval_batch_size
         custom_model = EvalModel(
             self.model, self.template, max_batch_size=max_batch_size, model_name=f'model-step{self.state.global_step}')
-        task_config = TaskConfig(
+        task_config_kwargs = dict(
             model=custom_model,
             eval_type=EvalType.CUSTOM,
             datasets=self.args.eval_dataset,
@@ -778,6 +778,8 @@ class SwiftMixin:
             eval_batch_size=max_batch_size,
             generation_config=self.args.eval_generation_config or {'max_tokens': 512},
         )
+        task_config_kwargs.update(self.args.extra_eval_args or {})
+        task_config = TaskConfig(**task_config_kwargs)
         # start evaluation
         eval_report = run_task(task_config)
         # convert to dict
