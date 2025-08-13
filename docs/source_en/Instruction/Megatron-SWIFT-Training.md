@@ -487,6 +487,7 @@ Megatron training parameters inherit from Megatron parameters and basic paramete
   - Note: cached_dataset supports `--packing` but does not support `--lazy_tokenize` or `--streaming`.
 - max_epochs: Forces the training to exit after reaching `max_epochs`, and performs validation and saving of the model weights. This parameter is especially useful when using a streaming dataset. Default is None.
   - Note: If you use a non-streaming dataset, this parameter will automatically calculate train_iters for you, so there is no need to pass `train_iters` manually.
+- enable_dft_loss: Whether to use [DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss in SFT training, default is False.
 
 
 ### RLHF Parameters

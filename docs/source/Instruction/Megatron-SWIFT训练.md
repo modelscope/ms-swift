@@ -467,6 +467,7 @@ Megatron训练参数继承自Megatron参数和基本参数。基本参数的内�
   - 注意：cached_dataset支持`--packing`，但不支持`--lazy_tokenize`和`--streaming`。
 - max_epochs: 训练到`max_epochs`时强制退出训练，并对权重进行验证和保存。该参数在使用流式数据集时很有用。默认为None。
   - 注意：如果你使用非流式数据集，该参数会为你自动计算train_iters，你不需要手动传入`train_iters`。
+- 🔥enable_dft_loss: 是否在SFT训练中使用[DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss，默认为False。
 
 
 ### RLHF参数

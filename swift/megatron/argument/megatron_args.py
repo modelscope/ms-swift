@@ -85,6 +85,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     architectures: Optional[str] = None
     max_epochs: Optional[int] = None
+    enable_dft_loss: bool = False
 
     original_max_position_embeddings: Optional[int] = None
     partial_rotary_factor: Optional[float] = None
