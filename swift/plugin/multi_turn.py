@@ -273,22 +273,36 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
         return False
 
 
-class ThinkingModelScheduler(MultiTurnScheduler):
+class ThinkingModelTipsScheduler(MultiTurnScheduler):
     """
-    Scheduler for Thinking class models that handle multi-turn reasoning.
+    Scheduler for multi-turn reasoning with Thinking class models.
 
-    For Thinking models, the assistant response format is:
-    "<think> think content </think> <answer> answer content </answer>"
+    Key Features:
+    1. Parses both "think" and "answer" content from each assistant response.
+    2. For each round, only the "think" content from the last round is retained in the message history.
+    3. Each round's conversation history is processed independently.
+    4. Returns a list of RolloutOutput objects, one for each round.
+    5. Please set `--loss_scale last_round` for training last round response.
 
-    This scheduler:
-    1. Parses think and answer content from assistant responses
-    2. Only keeps the think content from the last round
-    3. Processes each round's history separately
-    4. Returns List[RolloutOutput] with one output per round
+    The scheduler will automatically inject a tip prompt if the answer is incorrect, encouraging the model to recheck its reasoning. # noqa
     """
+    from .orm import MathAccuracy
+    tips_prompt = 'The answer is not correct, It seems You made a mistake, you need to recheck very carefully.'
+    acc_func = MathAccuracy()
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
                   **kwargs) -> List['RolloutOutput']:
+        """
+        Execute multi-turn inference for Thinking models.
+
+        Args:
+            infer_request (RolloutInferRequest): The initial inference request containing the conversation history.
+            request_config (RequestConfig): Configuration for the inference request.
+            **kwargs: Additional arguments for the inference engine.
+
+        Returns:
+            List[RolloutOutput]: A list of RolloutOutput objects, one for each reasoning round.
+        """
         from swift.llm.infer.protocol import RolloutOutput
 
         current_request = infer_request
@@ -297,59 +311,63 @@ class ThinkingModelScheduler(MultiTurnScheduler):
 
         while True:
             messages = current_request.messages
-            # Get model response
+            # Obtain model response for the current turn
             response: 'ChatCompletionResponse' = await self.infer_engine.infer_async(
                 current_request, request_config, **kwargs)
             response_choice: 'ChatCompletionResponseChoice' = response.choices[0]
-
-            # Parse think and answer content
             completion = response_choice.message.content
 
-            # Update conversation history
-            if messages[-1]['role'] == 'assistant':
-                messages[-1]['content'] += completion
-            else:
-                messages.append({'role': 'assistant', 'content': completion})
+            # Append the assistant's response to the message history
+            messages.append({'role': 'assistant', 'content': completion})
 
-            # Build history for this round
+            # Construct the message history for this round, keeping only the last "think" content
             messages_with_last_think = self._build_messages(messages)
 
-            # Create RolloutOutput for this round
+            # Create a RolloutOutput for the current round
             round_output = RolloutOutput(
                 response=response,
                 messages=messages_with_last_think,
-            )
+                response_token_ids=response_choice.token_ids,
+                rollout_infos={'num_turns': current_turn})
+            # Store the output for this round
             rollout_outputs.append(round_output)
 
-            # Check stopping conditions
+            # Determine whether to stop the multi-turn reasoning
             should_stop = self.check_finished(current_request, response_choice, current_turn)
-
-            if self.max_turns:
-                should_stop = should_stop or (current_turn >= self.max_turns)
 
             if should_stop:
                 break
 
-            # Prepare next turn
+            # Prepare for the next turn by updating the inference request
             ret = self.step(current_request, response_choice, current_turn)
-            current_request.messages = messages
             current_request: 'RolloutInferRequest' = ret['infer_request']
-
-            if current_request.messages[-1]['role'] == 'assistant':
-                # Add a dummy response to allow engine to continue generating
-                current_request.messages.append({'role': 'assistant', 'content': None})
-
             current_turn += 1
 
         return rollout_outputs
 
-    def _is_thinking_template(self) -> bool:
-        """
-        Check if the model's template is a ThinkingTemplate.
+    def check_finished(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
+                       current_turn: int) -> bool:
 
-        Returns:
-            bool: True if the template is a ThinkingTemplate or its subclass
-        """
+        last_query = infer_request.messages[-2]['content']
+        # tips once
+        if self.tips_prompt in last_query:
+            return True
+
+        completion = response_choice.message.content
+        solution = infer_request.data_dict['solution']
+        acc = self.acc_func([completion], [solution])[0]
+        if acc == 1:
+            return True
+
+        return super().check_finished(infer_request, response_choice, current_turn)
+
+    def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
+             current_turn: int) -> Dict:
+        infer_request.messages.append({'role': 'user', 'content': self.tips_prompt})
+
+        return {'infer_request': infer_request}
+
+    def _is_thinking_template(self) -> bool:
         if not hasattr(self.infer_engine, 'default_template'):
             return False
 
@@ -446,34 +464,6 @@ class MathTipsScheduler(MultiTurnScheduler):
             infer_request.messages[-1]['content'] = completion
         else:
             infer_request.messages.append({'role': 'assistant', 'content': completion})
-
-        return {'infer_request': infer_request}
-
-
-class MathTipsMultiTurnScheduler(MultiTurnScheduler):
-    from .orm import MathAccuracy
-    tips_prompt = 'The answer is not correct, It seems You made a mistake, you need to recheck very carefully.'
-    acc_func = MathAccuracy()
-
-    def check_finished(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
-                       current_turn: int) -> bool:
-
-        last_query = infer_request.messages[-2]['content']
-        # we only give tips once
-        if self.tips_prompt in last_query:
-            return True
-
-        completion = response_choice.message.content
-        solution = infer_request.data_dict['solution']
-        acc = self.acc_func([completion], [solution])[0]
-        if acc == 1:
-            return True
-
-        return super().check_finished(infer_request, response_choice, current_turn)
-
-    def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
-             current_turn: int) -> Dict:
-        infer_request.messages.append({'role': 'user', 'content': self.tips_prompt})
 
         return {'infer_request': infer_request}
 
@@ -609,7 +599,6 @@ class GYMScheduler(RolloutScheduler):
 multi_turns = {
     'base_scheduler': RolloutScheduler,
     'math_tip_trick': MathTipsScheduler,
-    'math_tip_trick_multi_turn': MathTipsMultiTurnScheduler,
     'gym_scheduler': GYMScheduler,
-    'thinking_scheduler': ThinkingModelScheduler,
+    'thinking_tips_scheduler': ThinkingModelTipsScheduler,
 }
