@@ -126,10 +126,6 @@ class ValleyTemplate(Template):
         if 'images' in batch[0]:
             res['images'] = sum([b['images'] for b in batch if 'images' in b], start=[])
             res['image_sizes'] = torch.concat([b['image_sizes'] for b in batch if 'image_sizes' in b], dim=0)
-            for media_type in ['image', 'video']:
-                grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
-                if grid_thw:
-                    res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
         return res
 
 

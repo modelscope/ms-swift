@@ -601,6 +601,31 @@ def test_keye_vl():
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
         'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
     ]
+    pt_engine.default_template.template_backend = 'swift'
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
+def test_dots_ocr():
+    # https://github.com/modelscope/ms-swift/issues/2122
+    pt_engine = PtEngine('rednote-hilab/dots.ocr')
+    messages = [{'role': 'user', 'content': '<image>Extract the text content from this image.'}]
+    images = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
+def test_glm4_5v():
+    messages = [{'role': 'user', 'content': '<image><image>What is the difference between the two images?'}]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    pt_engine = PtEngine('ZhipuAI/GLM-4.5V')
     response = _infer_model(pt_engine, messages=messages, images=images)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, images=images)
@@ -629,7 +654,7 @@ if __name__ == '__main__':
     # test_glm4v()
     # test_cogagent()
     # test_llava_onevision_hf()
-    test_minicpmv()
+    # test_minicpmv()
     # test_got_ocr()
     # test_got_ocr_hf()
     # test_paligemma()
@@ -664,3 +689,5 @@ if __name__ == '__main__':
     # test_glm4_1v()
     # test_gemma3n()
     # test_keye_vl()
+    # test_dots_ocr()
+    test_glm4_5v()

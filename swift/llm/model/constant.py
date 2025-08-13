@@ -162,6 +162,7 @@ class MLLMModelType:
 
     glm4v = 'glm4v'
     glm4_1v = 'glm4_1v'
+    glm4_5v = 'glm4_5v'
     glm_edge_v = 'glm_edge_v'
     cogvlm = 'cogvlm'
     cogagent_vqa = 'cogagent_vqa'
@@ -229,6 +230,7 @@ class MLLMModelType:
     step_audio = 'step_audio'
     kimi_vl = 'kimi_vl'
     keye_vl = 'keye_vl'
+    dots_ocr = 'dots_ocr'
 
     phi3_vision = 'phi3_vision'
     phi4_multimodal = 'phi4_multimodal'

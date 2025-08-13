@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import warnings
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
@@ -68,15 +69,13 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         is_ref_model: bool = False
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         batch = batch.copy()
-        labels = batch.pop('labels', None)
 
         use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
         if use_logits_to_keep:
-            labels, logits_to_keep = self.get_logits_to_keep(labels)
-            if logits_to_keep is not None:
-                batch['logits_to_keep'] = logits_to_keep
+            self.prepare_logits_to_keep(batch)
         if self.aux_loss_enabled:
             batch['output_router_logits'] = True
+        labels = batch.pop('labels', None)
         if self.is_encoder_decoder:
             batch['labels'] = labels
         position_ids = batch.pop('_position_ids', None)

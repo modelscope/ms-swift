@@ -8,6 +8,7 @@ from typing import List, Literal, Optional, Union
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
+from swift.plugin import loss_mapping
 from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, json_parse_to_dict
 from .optimizers.galore import GaLoreConfig
 
@@ -19,6 +20,9 @@ class TrainArgumentsMixin:
     """
     check_model (bool): Flag to check the model is latest. Default is True.
     acc_strategy (Literal['token', 'seq']): Strategy for accumulation. Default is 'token'.
+    optimizer (Optional[str]): Optimizer type to use, define it in the plugin package. Default is None.
+    loss_type (Optional[str]): Type of loss function to use. Default is None.
+    metric (Optional[str]): Metric to use for evaluation, define it in the plugin package. Default is None.
     """
     per_device_train_batch_size: int = 1
     per_device_eval_batch_size: int = 1
@@ -31,6 +35,7 @@ class TrainArgumentsMixin:
     logging_first_step: bool = True
     logging_steps: int = 5
     router_aux_loss_coef: float = 0.
+    enable_dft_loss: bool = False  # https://arxiv.org/abs/2508.05629
 
     weight_decay: float = 0.1
     adam_beta2: float = 0.95
@@ -49,11 +54,14 @@ class TrainArgumentsMixin:
     max_epochs: Optional[int] = None
     aligner_lr: Optional[float] = None
     vit_lr: Optional[float] = None
-    optimizer: Optional[str] = None
     use_logits_to_keep: Optional[bool] = None
     channels: List[str] = None
     ds3_gather_for_generation: bool = True
     resume_only_model: bool = False
+
+    optimizer: Optional[str] = None
+    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(loss_mapping.keys())}'})
+    metric: Optional[str] = None
 
     # train-eval loop args
     eval_use_evalscope: bool = False
@@ -176,6 +184,7 @@ class VllmArguments:
     vllm_enable_prefix_caching: bool = False
     vllm_use_async_engine: bool = False
     vllm_quantization: Optional[str] = None
+    vllm_reasoning_parser: Optional[str] = None
     # rollout
     vllm_data_parallel_size: int = 1
 
@@ -225,6 +234,7 @@ class VllmArguments:
             'enable_prefix_caching': self.vllm_enable_prefix_caching,
             'use_async_engine': self.vllm_use_async_engine,
             'quantization': self.vllm_quantization,
+            'reasoning_parser': self.vllm_reasoning_parser,
         }
         if self.task_type == 'embedding':
             kwargs['task_type'] = 'embedding'
@@ -300,7 +310,7 @@ class GRPOArgumentsMixin(VllmArguments):
     top_entropy_quantile: float = 1.0
 
     # GSPO https://www.arxiv.org/abs/2507.18071
-    importance_sampling_level: Literal['token', 'sequence'] = 'token'
+    importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
 
     wandb_log_unique_prompts: Optional[bool] = None
     generation_batch_size: Optional[int] = None

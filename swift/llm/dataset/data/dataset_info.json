@@ -574,7 +574,7 @@
     {
         "ms_dataset_id": "ZhipuAI/LongWriter-6k",
         "tags": ["long", "chat", "sft", "🔥"],
-        "hf_dataset_id": "THUDM/LongWriter-6k"
+        "hf_dataset_id": "zai-org/LongWriter-6k"
     },
     {
         "ms_dataset_id": "swift/longwriter-6k-filtered",

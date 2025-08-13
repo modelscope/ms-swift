@@ -971,10 +971,6 @@ class Template(ProcessorMixin):
         tokenizer_kwargs = {}
         if loss_scale_list is None:
             loss_scale_list = [0.] * len(context_list)
-        if self.loss_scale.keep_loss_scale:
-            ignore_loss_scale = False
-        else:
-            ignore_loss_scale = all(loss_scale in {0, 1} for loss_scale in loss_scale_list)
         for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
             if isinstance(context, str):
                 # tokenizer_kwargs is the returned tokenizer_kwargs,
@@ -987,9 +983,9 @@ class Template(ProcessorMixin):
                 labels += token_list
             else:
                 labels += [-100] * len(token_list)
-            if not ignore_loss_scale:
+            if not self.loss_scale.is_binary:
                 loss_scale.extend([loss_weight] * len(token_list))
-        if ignore_loss_scale:
+        if self.loss_scale.is_binary:
             loss_scale = None
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
@@ -1711,6 +1707,11 @@ class Template(ProcessorMixin):
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
+
+        for media_type in ['image', 'video']:
+            grid_thw = self.concat_tensor(batch, f'{media_type}_grid_thw', 0)
+            if grid_thw is not None:
+                res[f'{media_type}_grid_thw'] = grid_thw
         return res
 
     def _sp_data_collator(self, res, padding_to, tokenizer, padding_side):

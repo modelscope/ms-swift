@@ -2,7 +2,7 @@
 import os
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
 import torch.nn.functional as F
@@ -266,19 +266,19 @@ class Qwen2VLTemplate(Template):
             if locals()[media_type]:
                 if media_type == 'images':
                     media_token = self.image_token_id
-                    media_inputs = processor.image_processor(
-                        images=images, videos=None, return_tensors='pt', do_resize=False)
+                    media_inputs = processor.image_processor(images=images, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
+                    kwargs = {}
                     if hasattr(processor, 'video_processor'):
                         processor_func = processor.video_processor
                     else:
                         processor_func = processor.image_processor
-                    media_inputs = processor_func(images=None, videos=videos, return_tensors='pt', do_resize=False)
+                        kwargs['images'] = None
+                    media_inputs = processor_func(videos=videos, return_tensors='pt', do_resize=False, **kwargs)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
                     if self.version == 'v2_5':
-                        from qwen_vl_utils import vision_process
                         media_inputs['second_per_grid_ts'] = [
                             processor.image_processor.temporal_patch_size / tmp for tmp in fps
                         ]
@@ -335,7 +335,7 @@ class Qwen2VLTemplate(Template):
             if is_deepspeed_enabled():
                 from PIL import Image
                 images = [Image.new('RGB', (32, 32), (0, 0, 0))]
-                media_inputs = self.processor.image_processor(images=images, videos=None, return_tensors='pt')
+                media_inputs = self.processor.image_processor(images=images, return_tensors='pt')
                 device = input_ids.device
                 media_inputs = to_device(media_inputs, device)
                 pixel_values = media_inputs['pixel_values'].type(dtype)
@@ -382,10 +382,6 @@ class Qwen2VLTemplate(Template):
         second_per_grid_ts = self.gather_list(batch, 'second_per_grid_ts')
         if second_per_grid_ts:
             res['second_per_grid_ts'] = second_per_grid_ts
-        for media_type in ['image', 'video']:
-            grid_thw = self.concat_tensor(batch, f'{media_type}_grid_thw', 0)
-            if grid_thw is not None:
-                res[f'{media_type}_grid_thw'] = grid_thw
         return res
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:

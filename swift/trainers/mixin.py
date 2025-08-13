@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
+import collections
 import inspect
 import logging
 import os
@@ -33,16 +34,14 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import (OPTIMIZER_NAME, PREFIX_CHECKPOINT_DIR, SCHEDULER_NAME, TRAINER_STATE_NAME,
                                   ParallelMode, TrainerCallback, reissue_pt_warnings)
-from transformers.trainer_utils import EvalPrediction, IntervalStrategy
-from transformers.utils import is_torch_npu_available
+from transformers.trainer_utils import IntervalStrategy
 
 from swift.hub import get_hub
 from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, Template
 from swift.llm.utils import update_generation_config_eos_token
-from swift.plugin import MeanMetric, compute_acc, extra_tuners
+from swift.plugin import MeanMetric, compute_acc, extra_tuners, get_loss_func, get_metric
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker
-from ..utils.torch_utils import get_device_count
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
@@ -65,11 +64,8 @@ class SwiftMixin:
                  eval_dataset: Optional[Union[HfDataset, Dict[str, HfDataset]]] = None,
                  template: Optional[Template] = None,
                  model_init: Optional[Callable[[], PreTrainedModel]] = None,
-                 compute_loss_func: Optional[Callable] = None,
-                 compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
                  callbacks: Optional[List[TrainerCallback]] = None,
                  optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
-                 preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
                  **kwargs) -> None:
         if not hasattr(train_dataset, '__len__') and args.dataloader_num_workers > 1:
             args.dataloader_num_workers = 1
@@ -90,12 +86,19 @@ class SwiftMixin:
                 args.evaluation_strategy = IntervalStrategy.NO
                 args.eval_strategy = IntervalStrategy.NO
 
-        self._custom_metrics = {}
+        def _get_mean_metric():
+            return MeanMetric(nan_value=None, device=args.device)
+
+        self._custom_metrics = {
+            'train': collections.defaultdict(_get_mean_metric),
+            'eval': collections.defaultdict(_get_mean_metric)
+        }
         self.template = template
-        self.max_memory = 0
         self.hub = get_hub()
 
         self.model_meta = model.model_meta
+
+        kwargs.update(self.create_loss_and_metric(args))
         with self.hub.patch_hub():
             super().__init__(
                 model=model,
@@ -105,13 +108,10 @@ class SwiftMixin:
                 eval_dataset=eval_dataset,
                 tokenizer=template.tokenizer,
                 model_init=model_init,
-                compute_metrics=compute_metrics,
                 callbacks=callbacks,
                 optimizers=optimizers,
-                preprocess_logits_for_metrics=preprocess_logits_for_metrics,
                 **kwargs)
 
-        self.compute_loss_func = compute_loss_func
         if get_function(model.__class__.forward) is not get_function(model.forward):
             self.label_names = find_labels(model)
             self.can_return_loss = can_return_loss(model)
@@ -681,14 +681,27 @@ class SwiftMixin:
         with self.hub.patch_hub():
             return super().push_to_hub(*args, **kwargs)
 
-    def get_max_cuda_memory(self, device: Optional[Union[torch.device, int]] = None) -> float:
-        if device is None:
-            mems = [torch.cuda.max_memory_reserved(device=device) for device in range(get_device_count())]
-        else:
-            mems = [torch.cuda.max_memory_reserved(device=device)]
-        mem = sum(mems) / 1024**3
-        self.max_memory = max(self.max_memory, mem)
-        return mem
+    def log(self, logs: dict[str, float], *args, **kwargs) -> None:
+        mode = 'train' if self.model.training else 'eval'
+        for k, metric in self._custom_metrics[mode].items():
+            if mode == 'eval':
+                k = f'eval_{k}'
+            value = metric.compute()
+            metric.reset()
+            if isinstance(value, dict):
+                if len(value) == 1:
+                    val = list(value.values())[0]
+                    logs[k] = val
+                else:
+                    for k_suffix, val in value.items():
+                        new_k = f'{k}_{k_suffix}'
+                        logs[new_k] = val
+            else:
+                logs[k] = value
+        for k in list(logs.keys()):
+            if logs[k] is None:
+                logs.pop(k)
+        return super().log(logs, *args, **kwargs)
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
         if self.control.should_log and self.state.global_step > self._globalstep_last_logged:
@@ -698,31 +711,11 @@ class SwiftMixin:
             tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
             loss = tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged)
             logs: Dict[str, float] = {'loss': loss}  # loss first
-
-            for k, metric in self._custom_metrics.items():
-                value = metric.compute()
-                if len(value) == 1:
-                    val = list(value.values())[0]
-                    logs[k] = val
-                else:
-                    for k_suffix, val in value.items():
-                        new_k = f'{k}_{k_suffix}'
-                        logs[new_k] = val
-                metric.reset()
-
             if version.parse(transformers.__version__) >= version.parse('4.38'):
                 grad_norm = args[0]
                 if grad_norm is not None:
                     logs['grad_norm'] = grad_norm.item() if isinstance(grad_norm, torch.Tensor) else grad_norm
             logs['learning_rate'] = self._get_learning_rate()
-            if not is_torch_npu_available():
-                logs['memory(GiB)'] = round(self.get_max_cuda_memory(), 2)
-
-            elapse_time = time.time() - self.start_time
-            logs['train_speed(iter/s)'] = round(self.state.global_step / elapse_time, 6)
-            for k in list(logs.keys()):
-                if logs[k] is None:
-                    logs.pop(k)
             tr_loss -= tr_loss
             self._total_loss_scalar += tr_loss_scalar
             self._globalstep_last_logged = self.state.global_step
@@ -734,6 +727,14 @@ class SwiftMixin:
             if not self.eval_dataset:
                 self.control.should_evaluate = False
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
+
+    def create_loss_and_metric(self, args):
+        res = {}
+        if args.metric is not None:
+            res['compute_metrics'], res['preprocess_logits_for_metrics'] = get_metric(args.metric)
+        if args.loss_type is not None:
+            res['compute_loss_func'] = get_loss_func(args.loss_type)
+        return res
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
         if self.args.optimizer is not None:
@@ -752,10 +753,9 @@ class SwiftMixin:
         preds = outputs.logits.argmax(dim=-1)
         metrics = compute_acc(
             preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
+        mode = 'train' if self.model.training else 'eval'
         for k, v in metrics.items():
-            if k not in self._custom_metrics:
-                self._custom_metrics[k] = MeanMetric(nan_value=None)
-            self._custom_metrics[k].update(v)
+            self._custom_metrics[mode][k].update(v)
 
     @torch.no_grad()
     def _evalscope_eval(self):
@@ -786,18 +786,26 @@ class SwiftMixin:
         self.model.train()
         return eval_dict
 
-    def get_logits_to_keep(self, labels):
+    def prepare_logits_to_keep(self, inputs):
+        labels = inputs['labels']
+        loss_scale = inputs.get('loss_scale')
         if labels.shape[0] == 1 and not is_mp():
             # device_map may encounter device mismatch issues.
             loss_mask = (labels != -100)[0]
             labels = labels[:, loss_mask]
             labels = nn.functional.pad(labels, (1, 0), value=-100)
+            if loss_scale is not None:
+                loss_scale = loss_scale[:, loss_mask]
+                inputs['loss_scale'] = nn.functional.pad(loss_scale, (1, 0), value=0)
             logits_to_keep = nn.functional.pad(loss_mask[1:], (0, 1), value=True)
         else:
             logits_to_keep = labels.shape[-1] - ((labels != -100).int().argmax(-1).min().item()) + 1
             assert logits_to_keep > 0
             labels = labels[:, -logits_to_keep:]
-        return labels, logits_to_keep
+            if loss_scale is not None:
+                inputs['loss_scale'] = loss_scale[:, -logits_to_keep:]
+        inputs['labels'] = labels
+        inputs['logits_to_keep'] = logits_to_keep
 
     def get_cu_seqlens(self, position_ids, logits_to_keep) -> torch.Tensor:
         from swift.llm import get_packed_seq_params

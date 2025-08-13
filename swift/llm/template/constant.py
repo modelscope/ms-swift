@@ -160,6 +160,7 @@ class MLLMTemplateType:
     glm4v = 'glm4v'
     glm4_1v = 'glm4_1v'
     glm_edge_v = 'glm_edge_v'
+    glm4_5v = 'glm4_5v'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'
@@ -185,6 +186,7 @@ class MLLMTemplateType:
     step_audio = 'step_audio'
     kimi_vl = 'kimi_vl'
     keye_vl = 'keye_vl'
+    dots_ocr = 'dots_ocr'
 
     idefics3 = 'idefics3'
     pixtral = 'pixtral'

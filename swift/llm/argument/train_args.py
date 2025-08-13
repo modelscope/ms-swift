@@ -1,12 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal, Optional
 
 from transformers import Seq2SeqTrainingArguments
 from transformers.utils.versions import require_version
 
-from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
 from swift.trainers.arguments import TrainArgumentsMixin
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
@@ -43,15 +42,17 @@ class Seq2SeqTrainingOverrideArguments(TrainArgumentsMixin, Seq2SeqTrainingArgum
             self.eval_steps = self.save_steps
         self.evaluation_strategy = self.eval_strategy
 
-    def _init_metric_for_best_model(self):
+    def _init_metric(self):
+        if self.metric is None and self.predict_with_generate:
+            self.metric = 'nlg'
         if self.metric_for_best_model is None:
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
+        if self.greater_is_better is None and self.metric_for_best_model is not None:
+            self.greater_is_better = 'loss' not in self.metric_for_best_model
 
     def __post_init__(self):
         self._init_output_dir()
-        self._init_metric_for_best_model()
-        if self.greater_is_better is None and self.metric_for_best_model is not None:
-            self.greater_is_better = 'loss' not in self.metric_for_best_model
+        self._init_metric()
 
         if self.learning_rate is None:
             if self.train_type == 'full':
@@ -108,18 +109,11 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
 
     Args:
         add_version (bool): Flag to add version information to output_dir. Default is True.
-        loss_type (Optional[str]): Type of loss function to use. Default is None.
         max_new_tokens (int): Maximum number of new tokens to generate. Default is 64.
         temperature (float): Temperature for sampling. Default is 0.
-        optimizer (Optional[str]): Optimizer type to use, define it in the plugin package. Default is None.
-        metric (Optional[str]): Metric to use for evaluation, define it in the plugin package. Default is None.
     """
     add_version: bool = True
     create_checkpoint_symlink: bool = False
-
-    # plugin
-    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
-    metric: Optional[str] = None
 
     # extra
     max_new_tokens: int = 64

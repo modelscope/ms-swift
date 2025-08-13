@@ -10,17 +10,13 @@ from .utils import calculate_loss_scale
 
 
 class LossScale:
+    # Indicates whether loss_scale contains only 0 and 1.
+    # If set to True, loss_scale will be replaced by labels to stay compatible with
+    # acceleration techniques such as liger_kernel.
+    # If set to False, an additional 'loss_scale' key will be stored and the
+    # corresponding loss function will be used.
+    is_binary = False
     loss_scale_config = None  # path
-
-    def _set_keep_loss_scale(self):
-        self.keep_loss_scale = False
-        if self.loss_scale_map is None:
-            return
-        res = set()
-        for v in self.loss_scale_map.values():
-            res.update(v)
-        if len(res - {0., 1.}) > 0:
-            self.keep_loss_scale = True
 
     def __init__(self):
         if self.loss_scale_config is not None:
@@ -30,14 +26,9 @@ class LossScale:
                 self.loss_scale_map = json.load(json_file)
         else:
             self.loss_scale_map = None
-        self._set_keep_loss_scale()
 
-    def get_loss_scale(self,
-                       context: str,
-                       context_type: ContextType,
-                       is_last_round: bool,
-                       *,
-                       query: Optional[str] = None) -> Tuple[List[str], List[float]]:
+    def get_loss_scale(self, context: str, context_type: ContextType, is_last_round: bool,
+                       **kwargs) -> Tuple[List[str], List[float]]:
         """Calculate loss scale
 
         Args:
@@ -80,7 +71,12 @@ class LossScale:
         return res_context_list, res_loss_scale
 
 
+class DefaultLossScale(LossScale):
+    is_binary = True
+
+
 class LastRoundLossScale(LossScale):
+    is_binary = True
 
     def get_loss_scale(self, context: str, context_type: ContextType, is_last_round: bool, **kwargs):
         if context_type == ContextType.RESPONSE:
@@ -129,6 +125,7 @@ class AlphaUmiLossScale(REACTLossScale):
 
 
 class TrainAllLossScale(LossScale):
+    is_binary = True
 
     def get_loss_scale(self, context: str, context_type: ContextType, *args, **kwargs):
         return [context], [1.]
@@ -136,10 +133,12 @@ class TrainAllLossScale(LossScale):
 
 class IgnoreEmptyThink(REACTLossScale):
     loss_scale_config = 'ignore_empty_think.json'
+    is_binary = True
 
 
 class LastRoundWithIgnoreEmptyThink(LossScale):
     loss_scale_config = 'ignore_empty_think.json'
+    is_binary = True
 
     def get_loss_scale(self,
                        context: str,
@@ -159,7 +158,7 @@ class LastRoundWithIgnoreEmptyThink(LossScale):
 # Add your loss scale here, use --loss_scale xxx to train
 loss_scale_map = {
     'last_round': LastRoundLossScale,
-    'default': LossScale,
+    'default': DefaultLossScale,
     'all': TrainAllLossScale,
     'ignore_empty_think': IgnoreEmptyThink,
     'last_round_with_ignore_empty_think': LastRoundWithIgnoreEmptyThink,

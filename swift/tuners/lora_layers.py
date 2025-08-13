@@ -264,7 +264,8 @@ class LoraModel(_LoraModel):
                        model: nn.Module,
                        adapter_name: str,
                        autocast_adapter_dtype: bool = True,
-                       low_cpu_mem_usage: bool = False):
+                       low_cpu_mem_usage: bool = False,
+                       **kwargs):
         r"""
         Override code:
         1. ModulesToSaveWrapper construction method: add module_key=key argument to offload to cpu
