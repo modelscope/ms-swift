@@ -397,7 +397,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             from swift.trainers.sequence_parallel import sequence_parallel
             loss = sequence_parallel.reduce_outputs(loss, labels)
 
-        if getattr(self.args, 'average_tokens_across_devices', False) and self.model_accepts_loss_kwargs:
+        if getattr(self.args, 'average_tokens_across_devices',
+                   False) and self.model_accepts_loss_kwargs and num_items_in_batch is not None:
             loss *= self.accelerator.num_processes
 
         if (outputs.logits is not None and labels is not None and self.args.tuner_backend != 'unsloth'):
