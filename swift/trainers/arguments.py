@@ -310,7 +310,7 @@ class GRPOArgumentsMixin(VllmArguments):
     top_entropy_quantile: float = 1.0
 
     # GSPO https://www.arxiv.org/abs/2507.18071
-    importance_sampling_level: Literal['token', 'sequence'] = 'token'
+    importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
 
     wandb_log_unique_prompts: Optional[bool] = None
     generation_batch_size: Optional[int] = None
