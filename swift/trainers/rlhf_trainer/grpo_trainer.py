@@ -826,7 +826,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         local_advantages = self.get_even_process_data(total_advantages)
         assert len(local_advantages) == len(inputs)
         for i, advantage in enumerate(local_advantages):
-            inputs[i]['advantage'] = advantage
+            inputs[i]['advantages'] = advantage
 
         self._logs['advantages'].extend(total_advantages.tolist())
         if any('images' in data and data['images'] is not None for data in inputs):
@@ -1175,6 +1175,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 torch.tensor([b['is_truncated'] for b in batch], dtype=torch.bool),
                 'logits_to_keep':
                 logits_to_keep,
+                'advantages':
+                torch.stack([data['advantages'] for data in batch])
             })
 
             with torch.no_grad():
@@ -1201,21 +1203,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mode = 'train' if self.model.training else 'eval'
         device = self.accelerator.device
 
-        local_completion_masks = [inp['completion_mask'].sum(1) for inp in inputs]
-        valid_completion_masks = self._gather_tensors(local_completion_masks)
-        agg_completion_mask = torch.cat(valid_completion_masks)
+        local_completion_lengths = [inp['completion_mask'].sum(1).to(device) for inp in inputs]
 
-        self._metrics[mode]['completions/mean_length'].append(agg_completion_mask.float().mean().item())
-        self._metrics[mode]['completions/min_length'].append(agg_completion_mask.float().min().item())
-        self._metrics[mode]['completions/max_length'].append(agg_completion_mask.float().max().item())
+        total_completion_lengths = self._gather_tensors(local_completion_lengths)
+        total_completion_lengths = torch.cat(total_completion_lengths)
+
+        self._metrics[mode]['completions/mean_length'].append(total_completion_lengths.float().mean().item())
+        self._metrics[mode]['completions/min_length'].append(total_completion_lengths.float().min().item())
+        self._metrics[mode]['completions/max_length'].append(total_completion_lengths.float().max().item())
 
         # Calculate clip ratio
-        local_truncated_masks = [inp['truncated_mask'] for inp in inputs]
-        valid_truncated_masks = self._gather_tensors(local_truncated_masks)
-        agg_truncated_mask = torch.cat(valid_truncated_masks)
+        local_truncated_masks = [inp['truncated_mask'].to(device) for inp in inputs]
+        total_truncated_masks = self._gather_tensors(local_truncated_masks)
+        total_truncated_masks = torch.cat(total_truncated_masks)
 
-        term_completion_mask = agg_completion_mask[agg_truncated_mask]
-        clipped_completions_ratio = len(term_completion_mask) / len(agg_completion_mask)
+        num_truncated_samples = total_truncated_masks.sum().item()
+        num_total_samples = total_completion_lengths.shape[0]
+        clipped_completions_ratio = num_truncated_samples / num_total_samples
 
         self._metrics[mode]['completions/clipped_ratio'].append(clipped_completions_ratio)
 
@@ -1739,7 +1743,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         with patch_profiling_context(self, 'generate'):
             if self.vllm_mode == 'server':
-                return self.vllm_client.infer(infer_requests, asdict(request_config), use_tqdm=use_tqdm)
+                return self.vllm_client.infer([asdict(req) for req in infer_requests],
+                                              asdict(request_config),
+                                              use_tqdm=use_tqdm)
             else:
                 res = self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
                 if all(isinstance(r, RolloutOutput) for r in res):
@@ -2194,7 +2200,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for data in inputs:
             # Extract required metadata fields
             request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data}
-
+            request_data['uuid'] = data['prompt_id']
             # Preserve additional fields for multi-turn async scenarios
             if self.multi_turn_scheduler and self.vllm_use_async_engine:
                 # data_dict is already concatenated inside async engine

@@ -287,35 +287,16 @@ class ThinkingModelScheduler(MultiTurnScheduler):
     4. Returns List[RolloutOutput] with one output per round
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
                   **kwargs) -> List['RolloutOutput']:
-        """
-        Execute multi-turn conversation for Thinking models.
-
-        Args:
-            infer_request: The initial inference request containing messages
-            request_config: Configuration for the inference request
-            **kwargs: Additional inference parameters
-
-        Returns:
-            List[RolloutOutput]: List of outputs, one for each round
-        """
         from swift.llm.infer.protocol import RolloutOutput
 
         current_request = infer_request
         current_turn = 1
         rollout_outputs = []
-        last_think_content = ''
 
         while True:
             messages = current_request.messages
-            if current_turn == 1 or not messages[-1]['content']:
-                # If it's the first turn or the last message content is empty(dummy), remove the response
-                remove_response(messages)
-
             # Get model response
             response: 'ChatCompletionResponse' = await self.infer_engine.infer_async(
                 current_request, request_config, **kwargs)
@@ -323,11 +304,6 @@ class ThinkingModelScheduler(MultiTurnScheduler):
 
             # Parse think and answer content
             completion = response_choice.message.content
-            think_content, answer_content = self._parse_think_answer(completion)
-
-            # Update last think content
-            if think_content:
-                last_think_content = think_content
 
             # Update conversation history
             if messages[-1]['role'] == 'assistant':
@@ -336,18 +312,13 @@ class ThinkingModelScheduler(MultiTurnScheduler):
                 messages.append({'role': 'assistant', 'content': completion})
 
             # Build history for this round
-            round_history = self._build_round_history(messages, current_turn, last_think_content)
+            messages_with_last_think = self._build_messages(messages)
 
             # Create RolloutOutput for this round
             round_output = RolloutOutput(
                 response=response,
-                messages=round_history,
-                rollout_infos={
-                    'num_turns': current_turn,
-                    'think_content': think_content,
-                    'answer_content': answer_content,
-                    'round_number': current_turn
-                })
+                messages=messages_with_last_think,
+            )
             rollout_outputs.append(round_output)
 
             # Check stopping conditions
@@ -372,38 +343,6 @@ class ThinkingModelScheduler(MultiTurnScheduler):
 
         return rollout_outputs
 
-    def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
-             current_turn: int) -> Dict:
-        # TODO: tool calling example
-        pass
-
-    def _parse_think_answer(self, content: str) -> tuple[str, str]:
-        """
-        Parse think and answer content from assistant response.
-
-        Args:
-            content: Assistant response content
-
-        Returns:
-            tuple: (think_content, answer_content)
-        """
-        think_content = ''
-        answer_content = ''
-
-        # Parse think content
-        think_start = content.find('<think>')
-        think_end = content.find('</think>')
-        if think_start != -1 and think_end != -1:
-            think_content = content[think_start + 7:think_end].strip()
-
-        # Parse answer content
-        answer_start = content.find('<answer>')
-        answer_end = content.find('</answer>')
-        if answer_start != -1 and answer_end != -1:
-            answer_content = content[answer_start + 8:answer_end].strip()
-
-        return think_content, answer_content
-
     def _is_thinking_template(self) -> bool:
         """
         Check if the model's template is a ThinkingTemplate.
@@ -419,14 +358,12 @@ class ThinkingModelScheduler(MultiTurnScheduler):
 
         return isinstance(template, ThinkingTemplate)
 
-    def _build_round_history(self, original_messages: 'Messages', round_num: int, think_content: str) -> 'Messages':
+    def _build_messages(self, original_messages: 'Messages') -> 'Messages':
         """
         Build history for a specific round, keeping only the think content from the last round.
 
         Args:
             original_messages: Original conversation messages
-            round_num: Current round number
-            think_content: Think content to include
 
         Returns:
             Messages: History for this specific round
