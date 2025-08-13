@@ -731,10 +731,22 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='hjh0119/shareAI-Llama3-DPO-zh-en-emoji',
         hf_dataset_id='shareAI/DPO-zh-en-emoji',
-        preprocess_func=EmojiPreprocessr(columns={
-            'answer_zh': 'response',
-            'answer_en': 'rejected_response'
-        }),
+        subsets=[
+            SubsetDataset(
+                'default',
+                'default',
+                preprocess_func=EmojiPreprocessr(columns={
+                    'answer_zh': 'response',
+                    'answer_en': 'rejected_response'
+                })),
+            SubsetDataset(
+                'en',
+                'default',
+                preprocess_func=EmojiPreprocessr(columns={
+                    'answer_en': 'response',
+                    'answer_zh': 'rejected_response'
+                }))
+        ],
         tags=['rlhf', 'dpo']))
 
 register_dataset(

@@ -77,7 +77,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         ref_model_revision (Optional[str]): Revision of the reference model. Default is None.
         beta (Optional[float]): Beta parameter for RLHF. Default is None.
         label_smoothing (float): Label smoothing value. Default is 0.
-        rpo_alpha (float): Alpha parameter for RPO. Default is 1.
+        rpo_alpha (Optional[float]): Alpha parameter for RPO. Default is None.
         cpo_alpha (float): Alpha parameter for CPO. Default is 1.
         simpo_gamma (float): Gamma parameter for SimPO. Default is 1.
         desirable_weight (float): Weight for desirable outcomes in KTO. Default is 1.0.
@@ -94,7 +94,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     max_completion_length: int = 512
     loss_scale: Optional[str] = None  # 'last_round'
     # DPO
-    rpo_alpha: float = 1.
+    rpo_alpha: Optional[float] = None
     loss_type: Optional[List[str]] = None
     loss_weights: Optional[List[float]] = None
     # CPO

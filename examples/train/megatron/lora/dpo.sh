@@ -1,11 +1,12 @@
 # 2 * 60GiB; 4.50s/it
+# After training, the model will respond only in Chinese.
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron rlhf \
     --rlhf_type dpo \
-    --load Qwen3-30B-A3B-Base-mcore \
-    --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji#20000' \
+    --load Qwen3-30B-A3B-mcore \
+    --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji' \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -39,5 +40,4 @@ megatron rlhf \
     --sequence_parallel true \
     --attention_backend flash \
     --beta 0.1 \
-    --rpo_alpha 1 \
     --loss_type sigmoid

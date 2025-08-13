@@ -447,8 +447,9 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - 🔥beta: Coefficient for the KL regularization term. Default is `None`, meaning `simpo` algorithm defaults to `2.`, `grpo` algorithm defaults to `0.04`, `gkd` algorithm defaults to `0.5`, and other algorithms default to `0.1`. For more details, refer to the [documentation](./RLHF.md).
 - label_smoothing: Whether to use DPO smoothing, default value is `0`.
 - max_completion_length: The maximum generation length in the GRPO/PPO/GKD algorithms. Default is 512.
-- 🔥rpo_alpha: The weight of sft_loss added to DPO, default is `1`. The final loss is `KL_loss + rpo_alpha * sft_loss`.
-- loss_type: Loss type
+- 🔥rpo_alpha: Controls the weight of the SFT loss added to the DPO loss. Default is `None`, meaning SFT loss is not included by default. The final loss is `dpo_loss + rpo_alpha * sft_loss`.
+  - Note: In "ms-swift < 3.7.1", the default value was `1.0`. In "ms-swift >= 3.7.1", the default has been changed to `None`.
+- loss_type: Loss type.
   - DPO: Available options can be found in the [documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer#loss-functions). Multiple values can be provided to enable mixed training ([MPO](https://arxiv.org/abs/2411.10442)); when multiple values are given, the loss_weights parameter must also be set. Default is `sigmoid`.
   - GRPO: See [GRPO parameters](#grpo-arguments) for reference.
 - loss_weights: When setting multiple loss_type values in DPO training, this parameter specifies the weight for each loss component.

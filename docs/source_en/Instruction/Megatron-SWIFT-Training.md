@@ -463,7 +463,8 @@ LoRA Training:
 **DPO Parameters**
 - ref_load: The path to load the reference model. Defaults to `None`, which means it will be set to `load`.
 - beta: Has the same meaning as in [TRL](https://huggingface.co/docs/trl/main/en/dpo_trainer#trl.DPOConfig). It controls the degree of deviation from the reference model. A higher beta value indicates less deviation from the reference model. For the IPO loss function (`loss_type="ipo"`), beta is the regularization parameter as mentioned in the [paper](https://huggingface.co/papers/2310.12036). Default is 0.1.
-- rpo_alpha: A parameter from the [RPO paper](https://huggingface.co/papers/2404.19733) used to control the weight of the NLL term (i.e., SFT loss) in the loss function. The total loss is calculated as `loss = dpo_loss + rpo_alpha * nll_loss`. Default is 1.
+- rpo_alpha: A parameter from the [RPO paper](https://huggingface.co/papers/2404.19733), used to control the weight of the NLL term (i.e., SFT loss) in the loss function. `loss = dpo_loss + rpo_alpha * sft_loss`. Default is `None`, meaning SFT loss is not included by default.
+  - Note: In "ms-swift < 3.7.1", the default value was `1.0`. In "ms-swift >= 3.7.1", this default has been changed to `None`.
 - reference_free: Whether to ignore the provided reference model and implicitly use a reference model that assigns equal probability to all responses. Default is `False`.
 - label_smoothing: Default is 0.
 - f_divergence_type: Default is `reverse_kl`. See the [TRL documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer) for possible values.
