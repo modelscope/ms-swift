@@ -231,14 +231,14 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
     def _patch_predict_with_generate(self):
         origin_data_collator = self.data_collator
         self.data_collator = self._predict_data_collator
-        _packing = self.template._packing
+        packing = self.template.packing
         padding_free = self.template.padding_free
-        self.template._packing = False
+        self.template.packing = False
         self.template.padding_free = False
         try:
             yield
         finally:
-            self.template._packing = _packing
+            self.template.packing = packing
             self.template.padding_free = padding_free
             self.data_collator = origin_data_collator
 
@@ -339,7 +339,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         outputs = model(**inputs)
         if getattr(outputs, 'aux_loss', None) is not None:
             mode = 'train' if self.model.training else 'eval'
-            self._custom_metrics[mode]['aux_loss'].update(outputs.aux_loss)
+            self.custom_metrics[mode]['aux_loss'].update(outputs.aux_loss)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
         if self.args.past_index >= 0:

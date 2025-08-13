@@ -4,18 +4,26 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+from accelerate.utils import gather_object
 from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.dpo_config import DPOConfig
 from trl.trainer.utils import RunningMoments, selective_log_softmax
 
+from swift.llm import to_device
 from swift.utils import get_logger
 from ..mixin import DataLoaderMixin, SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
 del HFDPOTrainer.__init__
 logger = get_logger()
+
+
+def new_gather_function(tensor):
+    tensor_list = gather_object([tensor])
+    tensor_list = [t[None] if t.ndim == 0 else t for t in tensor_list]
+    return torch.concat(to_device(tensor_list, tensor.device), dim=0)
 
 
 class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
@@ -61,6 +69,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         if 'bco_pair' in loss_types:
             self.running = RunningMoments(self.accelerator)
+        if self.template.packing:
+            self.accelerator.gather_for_metrics = new_gather_function
 
     def concatenated_forward(
         self,

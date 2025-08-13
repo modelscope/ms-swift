@@ -105,7 +105,7 @@ class MegatronTrainer(BaseMegatronTrainer):
         with self.stimer(bdata=True):
             data = get_batch(data_iterator)
         timers('batch-generator').stop()
-        loss_scale = data.pop('loss_scale')
+        loss_scale = data.pop('loss_scale', None)
         with self.stimer:
             output_tensor = model(**data)
         labels = data.get('labels')

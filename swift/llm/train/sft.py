@@ -270,7 +270,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         predict_with_generate = getattr(args, 'predict_with_generate', False)
         if is_master():
             inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
-            self.template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
+            if isinstance(inputs, list):
+                inputs = inputs[0]
+            self.template.print_inputs(inputs)
         elif hasattr(train_dataset, '__len__'):
             # Avoid the random mismatch issue in LazyLLMDataset.
             inputs = train_dataset[0]

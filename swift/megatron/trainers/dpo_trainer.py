@@ -98,9 +98,10 @@ class MegatronDPOTrainer(MegatronTrainer):
         per_token_logps = -output_tensor
         loss_mask = labels != -100
         per_token_logps = per_token_logps * loss_mask
-        cu_seqlens = packed_seq_params.cu_seqlens_q[:args.micro_batch_size * 2 + 1] // args.context_parallel_size
-        all_logps = per_token_logps.new_zeros((args.micro_batch_size * 2, ))
-        for i in range(args.micro_batch_size * 2):
+        num_samples = packed_seq_params.num_samples
+        cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples * 2 + 1] // args.context_parallel_size
+        all_logps = per_token_logps.new_zeros((num_samples * 2, ))
+        for i in range(num_samples * 2):
             start, end = cu_seqlens[i], cu_seqlens[i + 1]
             all_logps[i] = per_token_logps[:, start:end].sum()
         if args.context_parallel_size > 1:
@@ -111,7 +112,8 @@ class MegatronDPOTrainer(MegatronTrainer):
                   packed_seq_params):
         args = get_args()
         loss_mask = labels != -100
-        num_tokens = packed_seq_params.cu_seqlens_q[args.micro_batch_size] // args.context_parallel_size
+        num_samples = packed_seq_params.num_samples
+        num_tokens = packed_seq_params.cu_seqlens_q[num_samples] // args.context_parallel_size
         loss_mask[:, num_tokens:] = 0
         nll_loss = torch.concat([torch.sum(output_tensor * loss_mask)[None], loss_mask.sum()[None]])
         if args.context_parallel_size > 1:
@@ -120,10 +122,10 @@ class MegatronDPOTrainer(MegatronTrainer):
 
         logps = self.get_logps(output_tensor, labels, packed_seq_params)
         loss, chosen_rewards, rejected_rewards = self.dummy_dpo_trainer.dpo_loss(
-            logps[:args.micro_batch_size],
-            logps[args.micro_batch_size:],
-            ref_logps[:args.micro_batch_size],
-            ref_logps[args.micro_batch_size:],
+            logps[:num_samples],
+            logps[num_samples:],
+            ref_logps[:num_samples],
+            ref_logps[num_samples:],
         )
         if args.rpo_alpha > 0:
             loss = loss + args.rpo_alpha * nll_loss
@@ -131,8 +133,8 @@ class MegatronDPOTrainer(MegatronTrainer):
         metric = {
             'loss': loss.clone().detach(),
             'nll_loss': nll_loss.detach(),
-            'logps/chosen': logps[:args.micro_batch_size].mean(),
-            'logps/rejected': logps[args.micro_batch_size:].mean(),
+            'logps/chosen': logps[:num_samples].mean(),
+            'logps/rejected': logps[num_samples:].mean(),
             'rewards/chosen': chosen_rewards.mean(),
             'rewards/rejected': rejected_rewards.mean(),
             'rewards/accuracies': (chosen_rewards > rejected_rewards).float().mean(),
