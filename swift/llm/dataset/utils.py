@@ -274,14 +274,14 @@ class IterablePackingDataset(IterableDataset):
 
 class EncodePreprocessor(RowPreprocessor):
 
-    def __init__(self, template: 'Template'):
+    def __init__(self, template: 'Template', pre_tokenize: bool = False):
         super().__init__()
         self.template = template
-        self.is_multimodal = template.model_meta.is_multimodal
+        self.pre_tokenize = pre_tokenize
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         encoded = self.template.encode(row, return_length=True)
-        if self.is_multimodal:
+        if self.pre_tokenize:
             row['length'] = encoded['length']
             encoded = row
         return encoded

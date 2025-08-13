@@ -127,7 +127,14 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             if i == 1 and predict_with_generate:
                 # val_dataset
                 continue
-            if (args.model_meta.is_multimodal or args.lazy_tokenize) and not args.streaming:
+            if args.streaming:
+                preprocessor = EncodePreprocessor(template=template)
+                dataset = preprocessor(
+                    dataset,
+                    num_proc=args.dataset_num_proc,
+                    load_from_cache_file=args.load_from_cache_file,
+                    strict=args.strict)
+            elif (args.model_meta.is_multimodal or args.lazy_tokenize):
                 dataset = LazyLLMDataset(dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             if args.packing:
                 packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
@@ -299,7 +306,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 # val_dataset
                 continue
             if not args.lazy_tokenize and not args.streaming:
-                preprocessor = EncodePreprocessor(template=template)
+                preprocessor = EncodePreprocessor(template=template, pre_tokenize=args.model_meta.is_multimodal)
                 batch_size = 100 if args.model_meta.is_multimodal else 1000
                 dataset = preprocessor(
                     dataset,
