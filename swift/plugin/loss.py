@@ -12,7 +12,7 @@ from torch.nn import CrossEntropyLoss, MSELoss
 from transformers.utils import strtobool
 
 
-def per_token_loss_func(outputs, labels, **kwargs):
+def per_token_loss_func(outputs, labels, enable_dft_loss, **kwargs):
     logits = outputs.logits
     # Upcast to float if we need to compute the loss to avoid potential precision issues
     logits = logits.float()
@@ -23,6 +23,10 @@ def per_token_loss_func(outputs, labels, **kwargs):
     # Enable model parallelism
     labels = labels.to(logits.device)
     loss = F.cross_entropy(logits, labels, ignore_index=-100, reduction='none')
+    if enable_dft_loss:
+        with torch.no_grad():
+            target_probs = torch.exp(-loss)
+        loss *= target_probs
     return loss
 
 

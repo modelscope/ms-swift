@@ -168,6 +168,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - logging_steps: Interval for logging, defaults to 5.
 - router_aux_loss_coef: Sets the weight of the aux_loss when training MoE models; default is `0.`
   - Note: In ms-swift == 3.7.0, the default is None and the value is read from config.json; this behavior was changed starting with ms-swift >= 3.7.1.
+- enable_dft_loss: Whether to use [DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss in SFT training, default is False.
 - logging_dir: The path for TensorBoard logs. Defaults to None, which means it is set to `f'{self.output_dir}/runs'`.
 - predict_with_generate: Whether to use generative method during validation, default is False.
 - metric_for_best_model: Default is None, which means that when predict_with_generate is set to False, it is set to 'loss'; otherwise, it is set to 'rouge-l' (during PPO training, the default value is not set; in GRPO training, it is set to 'reward').
@@ -357,6 +358,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - vllm_quantization: vllm is able to quantize model with this argument，supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 - vllm_enable_prefix_caching: Enable the automatic prefix caching of vllm to save processing time for querying repeated prefixes. The default is `False`.
 - vllm_use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
+- vllm_reasoning_parser: Reasoning parser type, used for parsing the chain of thought content of reasoning models. Default is `None`. Only used for the `swift deploy` command. Available types can be found in the [vLLM documentation](https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#streaming-chat-completions)
 
 ### SGLang Arguments
 Parameter meanings can be found in the [sglang documentation](https://docs.sglang.ai/backend/server_arguments.html).

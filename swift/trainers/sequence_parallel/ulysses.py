@@ -326,9 +326,10 @@ class Ulysses(CommonSequenceParallel):
 
         trainer.ulysses = self
         if trainer.__class__.__name__ == 'Seq2SeqTrainer':
+            enable_dft_loss = trainer.args.enable_dft_loss
             trainer._origin_prepare_inputs = trainer._prepare_inputs
             trainer._prepare_inputs = MethodType(partial(_prepare_inputs, sp_instance=self), trainer)
-            trainer.compute_loss_func = partial(loss_scale_sp_func, sp_instance=self)
+            trainer.compute_loss_func = partial(loss_scale_sp_func, sp_instance=self, enable_dft_loss=enable_dft_loss)
 
         elif trainer.__class__.__name__ == 'DPOTrainer':
             trainer._origin_prepare_inputs = trainer._prepare_inputs
