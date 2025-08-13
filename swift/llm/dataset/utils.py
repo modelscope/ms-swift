@@ -139,7 +139,8 @@ class PackingDataset(Dataset):
         load_from_cache_file: bool = True,
         **kwargs,
     ):
-        template._packing = True
+        template.packing = True
+        template.padding_free = True
         self.template = template
         self.dataset = dataset
         self.num_proc = num_proc
@@ -175,7 +176,7 @@ class PackingDataset(Dataset):
     def __getitem__(self, index):
         sequence = self.packed_idx[index]
         row = [self.dataset[i] for i in sequence]
-        return self.template.packing_row(row)
+        return row
 
     def __len__(self):
         return len(self.packed_idx)
@@ -194,7 +195,8 @@ class IterablePackingDataset(IterableDataset):
         cyclic: bool = False,
         **kwargs,
     ):
-        template._packing = True
+        template.packing = True
+        template.padding_free = True
         self.template = template
         self.dataset = dataset
         self.num_proc = num_proc
@@ -265,8 +267,7 @@ class IterablePackingDataset(IterableDataset):
             sequences, data = calculate_matched_group(self.template, data, is_finished=finished)
             res = []
             for row in sequences:
-                packed = self.template.packing_row([r[0] for r in row])
-                res.append(packed)
+                res.append([r[0] for r in row])
             yield from res
             if finished:
                 break

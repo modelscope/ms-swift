@@ -325,7 +325,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.model_accepts_loss_kwargs = False
         self.padding_free = self.template.padding_free
         self.template.padding_free = False
-        self.template._packing = False
+        self.template.packing = False
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 if self.is_deepspeed_enabled:
@@ -1300,6 +1300,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         elif self.importance_sampling_level == 'sequence':
             log_importance_weights = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
             log_importance_weights = log_importance_weights.unsqueeze(-1)
+        elif self.importance_sampling_level == 'sequence_token':
+            # GSPO-token: sg[si(θ)] * πθ(yi,t)/sg[πθ(yi,t)]
+            seq_level_log_weight = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+            seq_level_log_weight = seq_level_log_weight.detach().unsqueeze(-1)  # Stop gradient
+            log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
         else:
             raise ValueError(
                 f"Unknown importance sampling level: {self.importance_sampling_level}. Possible values are 'token' "

@@ -35,6 +35,7 @@ class TrainArgumentsMixin:
     logging_first_step: bool = True
     logging_steps: int = 5
     router_aux_loss_coef: float = 0.
+    enable_dft_loss: bool = False  # https://arxiv.org/abs/2508.05629
 
     weight_decay: float = 0.1
     adam_beta2: float = 0.95
@@ -183,6 +184,7 @@ class VllmArguments:
     vllm_enable_prefix_caching: bool = False
     vllm_use_async_engine: bool = False
     vllm_quantization: Optional[str] = None
+    vllm_reasoning_parser: Optional[str] = None
     # rollout
     vllm_data_parallel_size: int = 1
 
@@ -232,6 +234,7 @@ class VllmArguments:
             'enable_prefix_caching': self.vllm_enable_prefix_caching,
             'use_async_engine': self.vllm_use_async_engine,
             'quantization': self.vllm_quantization,
+            'reasoning_parser': self.vllm_reasoning_parser,
         }
         if self.task_type == 'embedding':
             kwargs['task_type'] = 'embedding'
@@ -307,7 +310,7 @@ class GRPOArgumentsMixin(VllmArguments):
     top_entropy_quantile: float = 1.0
 
     # GSPO https://www.arxiv.org/abs/2507.18071
-    importance_sampling_level: Literal['token', 'sequence'] = 'token'
+    importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
 
     wandb_log_unique_prompts: Optional[bool] = None
     generation_batch_size: Optional[int] = None

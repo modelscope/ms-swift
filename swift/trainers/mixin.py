@@ -70,6 +70,7 @@ class SwiftMixin:
         if not hasattr(train_dataset, '__len__') and args.dataloader_num_workers > 1:
             args.dataloader_num_workers = 1
             logger.warning('Using IterableDataset, setting args.dataloader_num_workers to 1.')
+        self.compute_loss_func = None  # Compatible with the older version of transformers
 
         if args.check_model and hasattr(model, 'model_dir'):
             with ms_logger_context(logging.CRITICAL):
@@ -89,7 +90,7 @@ class SwiftMixin:
         def _get_mean_metric():
             return MeanMetric(nan_value=None, device=args.device)
 
-        self._custom_metrics = {
+        self.custom_metrics = {
             'train': collections.defaultdict(_get_mean_metric),
             'eval': collections.defaultdict(_get_mean_metric)
         }
@@ -683,7 +684,7 @@ class SwiftMixin:
 
     def log(self, logs: dict[str, float], *args, **kwargs) -> None:
         mode = 'train' if self.model.training else 'eval'
-        for k, metric in self._custom_metrics[mode].items():
+        for k, metric in self.custom_metrics[mode].items():
             if mode == 'eval':
                 k = f'eval_{k}'
             value = metric.compute()
@@ -755,7 +756,7 @@ class SwiftMixin:
             preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
         mode = 'train' if self.model.training else 'eval'
         for k, v in metrics.items():
-            self._custom_metrics[mode][k].update(v)
+            self.custom_metrics[mode][k].update(v)
 
     @torch.no_grad()
     def _evalscope_eval(self):

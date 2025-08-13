@@ -231,14 +231,14 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
     def _patch_predict_with_generate(self):
         origin_data_collator = self.data_collator
         self.data_collator = self._predict_data_collator
-        _packing = self.template._packing
+        packing = self.template.packing
         padding_free = self.template.padding_free
-        self.template._packing = False
+        self.template.packing = False
         self.template.padding_free = False
         try:
             yield
         finally:
-            self.template._packing = _packing
+            self.template.packing = packing
             self.template.padding_free = padding_free
             self.data_collator = origin_data_collator
 
@@ -333,13 +333,13 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         loss_scale = inputs.pop('loss_scale', None)
         loss_kwargs = inputs.pop('loss_kwargs', {})
 
-        if (self.label_smoother is not None or compute_loss_func is not None
-                or loss_scale is not None) and 'labels' in inputs:
+        if (self.label_smoother is not None or compute_loss_func is not None or loss_scale is not None
+                or self.args.enable_dft_loss) and 'labels' in inputs:
             labels = inputs.pop('labels')
         outputs = model(**inputs)
         if getattr(outputs, 'aux_loss', None) is not None:
             mode = 'train' if self.model.training else 'eval'
-            self._custom_metrics[mode]['aux_loss'].update(outputs.aux_loss)
+            self.custom_metrics[mode]['aux_loss'].update(outputs.aux_loss)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
         if self.args.past_index >= 0:
@@ -360,10 +360,14 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
         else:
             outputs.loss = None
-            if loss_scale is not None:
-                loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
-                outputs.loss = get_loss_func('per_token_cross_entropy')(outputs, labels)
-                outputs.loss = outputs.loss * loss_scale
+            if self.args.enable_dft_loss or loss_scale is not None:
+                outputs.loss = get_loss_func('per_token_cross_entropy')(
+                    outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
+
+                if loss_scale is not None:
+                    loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
+                    outputs.loss = outputs.loss * loss_scale
+
             unwrapped_model = self.accelerator.unwrap_model(model)
             if is_peft_available() and isinstance(unwrapped_model, PeftModel):
                 model_name = unwrapped_model.model._get_name()
