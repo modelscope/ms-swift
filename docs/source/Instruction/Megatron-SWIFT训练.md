@@ -460,7 +460,6 @@ Megatron训练参数继承自Megatron参数和基本参数。基本参数的内�
 - mlp_padding_free: 默认为False。用于padding_free设置为false时，对mlp进行padding_free优化。这可以在自定义attention_mask的同时，提升训练速度和减少显存占用。
 - 🔥packing: 是否使用序列packing，默认为False。当前支持CPT/SFT/DPO。
 - packing_length: packing的长度。默认为None，设置为max_length。
-  - 注意：DPO packing的默认值为2倍max_length。
 - streaming: 流式读取并处理数据集，默认False。通常在处理大型数据集时，设置为True。更多流式的参数查看命令行参数文档。
 - lazy_tokenize: 默认为False。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（这可以避免在训练中出现报错）；设置为True，则在训练中对数据集进行tokenize（这可以节约内存）。
 - cached_dataset: 训练中使用缓存数据集（使用`swift export --to_cached_dataset true ...`命令产生），避免大型数据集训练时，tokenize占用gpu时。默认为`[]`。

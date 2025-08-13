@@ -1,9 +1,7 @@
-# If `num_labels` is provided, it will be considered a classification task.
-# You can also specify `--model Qwen/Qwen2.5-VL-2B-Instruct --use_chat_template true`.
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 swift sft \
-    --model Qwen/Qwen2-VL-2B \
+    --model Qwen/Qwen2.5-Omni-3B \
     --train_type lora \
     --dataset 'tany0699/garbage265#20000' \
     --split_dataset_ratio 0.01 \
@@ -26,4 +24,4 @@ swift sft \
     --dataloader_num_workers 4 \
     --num_labels 265 \
     --task_type seq_cls \
-    --use_chat_template false
+    --use_chat_template true
