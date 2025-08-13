@@ -1366,6 +1366,7 @@ class Template(ProcessorMixin):
         from swift.llm import RowPreprocessor
         if self.packing and isinstance(batch[0], list):
             batch = sum(batch, start=[])
+        num_samples = len(batch)
         if self.task_type == 'causal_lm':
             if self.mode in {'pt', 'train'}:
                 res = self._data_collator(batch, padding_to=padding_to)
@@ -1390,6 +1391,8 @@ class Template(ProcessorMixin):
             extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]
             extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
             res.update({k: v for k, v in extra_kwargs.items() if k not in res})
+        if self.use_megatron:
+            res['num_samples'] = num_samples
         return res
 
     @staticmethod
