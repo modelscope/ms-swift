@@ -333,8 +333,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         loss_scale = inputs.pop('loss_scale', None)
         loss_kwargs = inputs.pop('loss_kwargs', {})
 
-        if (self.label_smoother is not None or compute_loss_func is not None
-                or loss_scale is not None) and 'labels' in inputs:
+        if (self.label_smoother is not None or compute_loss_func is not None or loss_scale is not None
+                or self.args.enable_dft_loss) and 'labels' in inputs:
             labels = inputs.pop('labels')
         outputs = model(**inputs)
         if getattr(outputs, 'aux_loss', None) is not None:
@@ -360,10 +360,14 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
         else:
             outputs.loss = None
-            if loss_scale is not None:
-                loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
-                outputs.loss = get_loss_func('per_token_cross_entropy')(outputs, labels)
-                outputs.loss = outputs.loss * loss_scale
+            if self.args.enable_dft_loss or loss_scale is not None:
+                outputs.loss = get_loss_func('per_token_cross_entropy')(
+                    outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
+
+                if loss_scale is not None:
+                    loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
+                    outputs.loss = outputs.loss * loss_scale
+
             unwrapped_model = self.accelerator.unwrap_model(model)
             if is_peft_available() and isinstance(unwrapped_model, PeftModel):
                 model_name = unwrapped_model.model._get_name()
