@@ -7,7 +7,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 megatron rlhf \
     --rlhf_type dpo \
     --load Qwen3-30B-A3B-Instruct-2507-mcore \
-    --dataset 'AI-ModelScope/orpo-dpo-mix-40k' \
+    --dataset AI-ModelScope/orpo-dpo-mix-40k \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -17,6 +17,7 @@ megatron rlhf \
     --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
+    --moe_aux_loss_coeff 1e-3 \
     --micro_batch_size 8 \
     --global_batch_size 16 \
     --recompute_granularity full \
