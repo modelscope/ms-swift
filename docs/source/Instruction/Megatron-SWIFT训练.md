@@ -443,7 +443,8 @@ lora训练：
 **DPO参数**:
 - ref_load: ref_model的加载路径。默认为None，即设置为`load`。
 - beta: 含义与[TRL](https://huggingface.co/docs/trl/main/en/dpo_trainer#trl.DPOConfig)相同。控制与参考模型偏差程度的参数。beta值越高，表示与参考模型的偏差越小。对于 IPO 损失函数 (loss_type="ipo")，beta是[论文](https://huggingface.co/papers/2310.12036)中所指的正则化参数。默认为0.1。
-- rpo_alpha: 来自[RPO 论文](https://huggingface.co/papers/2404.19733)中的参数，用于控制损失函数中NLL项的权重（即SFT损失）。`loss = dpo_loss + rpo_alpha * nll_loss`。默认为1。
+- rpo_alpha: 来自[RPO 论文](https://huggingface.co/papers/2404.19733)中的参数，用于控制损失函数中NLL项的权重（即SFT损失），`loss = dpo_loss + rpo_alpha * sft_loss`，论文中推荐设置为`1.`。默认为`None`，即默认不引入sft_loss。
+  - 注意：在"ms-swift<3.8"，其默认值为`1.`。在"ms-swift>=3.8"该默认值修改为`None`。
 - reference_free: 是否忽略提供的参考模型，并隐式地使用一个对所有响应赋予相等概率的参考模型。默认为False。
 - label_smoothing: 默认为0.。
 - f_divergence_type: 默认为`reverse_kl`。可选值参考[TRL文档](https://huggingface.co/docs/trl/main/en/dpo_trainer)。

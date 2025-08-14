@@ -111,14 +111,7 @@ class MegatronDPOTrainer(MegatronTrainer):
     def loss_func(self, output_tensor: torch.Tensor, *, ref_logps: torch.Tensor, labels: torch.Tensor,
                   packed_seq_params):
         args = get_args()
-        loss_mask = labels != -100
         num_samples = packed_seq_params.num_samples
-        num_tokens = packed_seq_params.cu_seqlens_q[num_samples] // args.context_parallel_size
-        loss_mask[:, num_tokens:] = 0
-        nll_loss = torch.concat([torch.sum(output_tensor * loss_mask)[None], loss_mask.sum()[None]])
-        if args.context_parallel_size > 1:
-            nll_loss = all_reduce(nll_loss, group=mpu.get_context_parallel_group())
-        nll_loss = nll_loss[0] / nll_loss[1]
 
         logps = self.get_logps(output_tensor, labels, packed_seq_params)
         loss, chosen_rewards, rejected_rewards = self.dummy_dpo_trainer.dpo_loss(
@@ -127,12 +120,18 @@ class MegatronDPOTrainer(MegatronTrainer):
             ref_logps[:num_samples],
             ref_logps[num_samples:],
         )
-        if args.rpo_alpha > 0:
+        if args.rpo_alpha:
+            loss_mask = labels != -100
+            num_tokens = packed_seq_params.cu_seqlens_q[num_samples] // args.context_parallel_size
+            loss_mask[:, num_tokens:] = 0
+            nll_loss = torch.concat([torch.sum(output_tensor * loss_mask)[None], loss_mask.sum()[None]])
+            if args.context_parallel_size > 1:
+                nll_loss = all_reduce(nll_loss, group=mpu.get_context_parallel_group())
+            nll_loss = nll_loss[0] / nll_loss[1]
             loss = loss + args.rpo_alpha * nll_loss
         loss = loss.mean()
         metric = {
             'loss': loss.clone().detach(),
-            'nll_loss': nll_loss.detach(),
             'logps/chosen': logps[:num_samples].mean(),
             'logps/rejected': logps[num_samples:].mean(),
             'rewards/chosen': chosen_rewards.mean(),
@@ -140,6 +139,8 @@ class MegatronDPOTrainer(MegatronTrainer):
             'rewards/accuracies': (chosen_rewards > rejected_rewards).float().mean(),
             'rewards/margins': (chosen_rewards - rejected_rewards).mean(),
         }
+        if args.rpo_alpha:
+            metric['nll_loss'] = nll_loss.detach()
         reporting_metric = loss.new_tensor(list(metric.values()))
         torch.distributed.all_reduce(
             reporting_metric, torch.distributed.ReduceOp.AVG, group=mpu.get_data_parallel_group())

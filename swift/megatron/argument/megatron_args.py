@@ -20,7 +20,7 @@ class RLHFMegatronArgumentsMixin:
     ref_load: Optional[str] = None
 
     beta: float = 0.1
-    rpo_alpha: float = 1.
+    rpo_alpha: Optional[float] = None
     reference_free: bool = False
     label_smoothing: float = 0.
     f_divergence_type: str = 'reverse_kl'

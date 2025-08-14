@@ -31,7 +31,6 @@ class RLHFTrainerMixin:
                 disable_dropout_in_model(self.ref_model)
 
         self.is_encoder_decoder = kwargs['template'].is_encoder_decoder
-        self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
         self._peft_has_been_casted_to_bf16 = False
         self.generate_during_eval = getattr(args, 'generate_during_eval', False)
         if self.is_encoder_decoder:
@@ -42,6 +41,8 @@ class RLHFTrainerMixin:
         self.label_pad_token_id = -100
         self.use_dpo_data_collator = True
         super().__init__(model, *_args, **kwargs)
+        self.aux_loss_enabled = model.model_info.is_moe_model and args.router_aux_loss_coef > 0
+        self.aux_loss_coef = args.router_aux_loss_coef
         if ref_model is not None:
             if self.is_deepspeed_enabled:
                 self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
