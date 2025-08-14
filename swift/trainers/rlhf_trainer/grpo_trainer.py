@@ -871,12 +871,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             local_rewards = (local_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
 
         # Gather rewards and prompt_ids across processes with padding
+        rewards_list = [row.tolist() for row in local_rewards_per_func]
+
+        # gather objects
+        gathered_rewards_list = gather_object(rewards_list)
+        gathered_prompt_ids = gather_object(prompt_ids)
+
+        # flatten rewards: gathered_rewards_list 是 List[List[...]]，要展平
+        flat_rewards = [rewards for rewards in gathered_rewards_list]
+        flat_prompt_ids = [pids for pids in gathered_prompt_ids]
+
+        gathered_rewards = torch.tensor(flat_rewards, dtype=torch.float32, device=self.accelerator.device)
+
         gathered_rewards_per_func, gathered_prompt_ids = self._gather_rewards_and_prompt_ids(
             local_rewards_per_func, prompt_ids)
 
-        # Remove dummy data and compute total rewards
         total_rewards_per_func, total_prompt_ids = self._remove_dummy_data(gathered_rewards_per_func,
                                                                            gathered_prompt_ids)
+        assert flat_prompt_ids == total_prompt_ids
+        assert torch.allclose(gathered_rewards, total_rewards_per_func)
 
         if self.use_gym_env:
             total_rewards = total_rewards_per_func.squeeze(1)  # Recover from gathered data
@@ -952,53 +965,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         valid_prompt_ids = [gathered_prompt_ids[i] for i in valid_indices]
 
         return valid_rewards_per_func, valid_prompt_ids
-
-    def _gather_tensors(self, local_tensors: List[torch.Tensor]) -> List[torch.Tensor]:
-        """Gather tensors across processes with padding and remove dummy data"""
-        # Prepare for gather with padding
-        device = self.accelerator.device
-        tensors = local_tensors.copy()
-        if self.rollout_pad_count > 0 and tensors:
-            # Create dummy tensors with the same shape as the first tensor
-            dummy_tensor = torch.full_like(tensors[0], torch.nan, device=device)
-            for _ in range(self.rollout_pad_count):
-                tensors.append(dummy_tensor)
-
-        # Gather all tensors across processes
-        gathered_tensors = gather(tensors)
-
-        # Remove padded dummy tensors (NaN tensors) from gathered data
-        if not gathered_tensors:
-            return []
-
-        valid_tensors = []
-        for tensor in gathered_tensors:
-            # Check if tensor is dummy (all NaN)
-            if not torch.isnan(tensor).all():
-                # Ensure tensor is on the correct device
-                valid_tensors.append(tensor.to(device))
-
-        return valid_tensors
-
-    def _gather_objects(self, local_objects: List[Any]) -> List[Any]:
-        """Gather objects across processes with padding and remove dummy data"""
-        # Prepare for gather with padding
-        objects = local_objects.copy()
-        if self.rollout_pad_count > 0:
-            # Add dummy objects
-            dummy_object = '__dummy_pad__'
-            for _ in range(self.rollout_pad_count):
-                objects.append(dummy_object)
-
-        # Gather all objects across processes
-        gathered_objects = gather_object(objects)
-
-        # Remove padded dummy objects from gathered data
-        if not gathered_objects:
-            return []
-
-        valid_objects = [obj for obj in gathered_objects if obj != '__dummy_pad__']
-        return valid_objects
 
     def _compute_advantages(self, rewards: torch.Tensor, prompt_ids: List[str]) -> torch.Tensor:
         """
@@ -1232,47 +1198,43 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return ga_batch_encoded_inputs
 
     def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func):
-        """Log training/evaluation metrics"""
         mode = 'train' if self.model.training else 'eval'
         device = self.accelerator.device
 
-        local_completion_lengths = [inp['completion_mask'].sum(1).to(device) for inp in inputs]
+        # --- completion lengths ---
+        local_lengths = [inp['completion_mask'].sum(1).tolist() for inp in inputs]
+        total_lengths = self._gather_and_flatten(local_lengths, dtype=torch.float32, device=device, flatten_level=1)
 
-        total_completion_lengths = self._gather_tensors(local_completion_lengths)
-        total_completion_lengths = torch.cat(total_completion_lengths)
+        self._metrics[mode]['completions/mean_length'].append(total_lengths.mean().item())
+        self._metrics[mode]['completions/min_length'].append(total_lengths.min().item())
+        self._metrics[mode]['completions/max_length'].append(total_lengths.max().item())
 
-        self._metrics[mode]['completions/mean_length'].append(total_completion_lengths.float().mean().item())
-        self._metrics[mode]['completions/min_length'].append(total_completion_lengths.float().min().item())
-        self._metrics[mode]['completions/max_length'].append(total_completion_lengths.float().max().item())
+        # --- clipped ratio ---
+        local_trunc_masks = [inp['truncated_mask'].tolist() for inp in inputs]
+        total_trunc_masks = self._gather_and_flatten(
+            local_trunc_masks, dtype=torch.bool, device=device, flatten_level=1)
 
-        # Calculate clip ratio
-        local_truncated_masks = [inp['truncated_mask'].to(device) for inp in inputs]
-        total_truncated_masks = self._gather_tensors(local_truncated_masks)
-        total_truncated_masks = torch.cat(total_truncated_masks)
+        clipped_ratio = total_trunc_masks.sum().item() / total_lengths.shape[0]
+        self._metrics[mode]['completions/clipped_ratio'].append(clipped_ratio)
 
-        num_truncated_samples = total_truncated_masks.sum().item()
-        num_total_samples = total_completion_lengths.shape[0]
-        clipped_completions_ratio = num_truncated_samples / num_total_samples
+        # --- rewards ---
+        for i, name in enumerate(self.reward_func_names):
+            col = rewards_per_func[:, i]
+            self._metrics[mode][f'rewards/{name}/mean'].append(torch.nanmean(col).item())
+            self._metrics[mode][f'rewards/{name}/std'].append(nanstd(col).item())
 
-        self._metrics[mode]['completions/clipped_ratio'].append(clipped_completions_ratio)
-
-        for i, reward_func_name in enumerate(self.reward_func_names):
-            mean_rewards = torch.nanmean(rewards_per_func[:, i]).item()
-            self._metrics[mode][f'rewards/{reward_func_name}/mean'].append(mean_rewards)
-            std_rewards = nanstd(rewards_per_func[:, i]).item()
-            self._metrics[mode][f'rewards/{reward_func_name}/std'].append(std_rewards)
-
-        # Log prompt and completion texts with padding and remove dummy data
-        valid_messages = self._gather_objects(messages)
-        valid_completions = self._gather_objects(completions)
+        # --- logs (prompts + completions) ---
+        valid_messages = self._gather_and_flatten(messages, flatten_level=0)
+        valid_completions = self._gather_and_flatten(completions, flatten_level=0)
 
         self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
         self._logs['completion'].extend(valid_completions)
 
         if self.use_gym_env:
             pass
-            # TODO: extra from rollout_infos
-            # self._logs['trajectory_infos'].extend(gather_object(trajectory_infos))
+            # self._logs['trajectory_infos'].extend(
+            #     self._gather_and_flatten(trajectory_infos, flatten_level=1)
+            # )
 
         for i, name in enumerate(self.reward_func_names):
             self._logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
@@ -1446,37 +1408,71 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return loss
 
     def _compute_loss_chunked(self, model, inputs):
+        """
+        Compute loss in **fixed-size chunks** to reduce peak GPU memory.
+
+        The function guarantees that **all ranks step through the same number of
+        chunks**, so that collective communication (e.g. gradient
+        all-reduce) remain synchronized even when local ``batch_size`` differs.
+
+        Args
+        ----
+        model : torch.nn.Module
+            The model used to forward the chunk.
+        inputs : Dict[str, Union[torch.Tensor, Any]]
+            A mini-batch dictionary.  Leading dimension of every **Tensor** must
+            equal ``batch_size``; other types are left untouched.
+
+        Returns
+        -------
+        torch.Tensor
+            Scalar tensor containing the **sample-weighted average loss** across
+            all chunks (and all ranks).
+        """
         mode = 'train' if self.model.training else 'eval'
         chunk_size = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
         batch_size = inputs['input_ids'].shape[0] if 'input_ids' in inputs else len(inputs.get('completion_mask', []))
 
         logger.debug(f'Computing chunked loss for batch size {batch_size} with chunk size {chunk_size}')
 
-        all_losses = []
+        losses, weights = [], []
+
+        # ------------------------------------------------------------------
+        # 1. Let every rank agree on a **single global** chunk count.
+        #    We broadcast the **maximum** number of chunks instead of changing
+        #    chunk_size, avoiding numerical discrepancies.
+        # ------------------------------------------------------------------
+        # batch_sizes = gather_object(batch_size)
+        # max_chunks = max((bs + chunk_size - 1) // chunk_size for bs in batch_sizes)
 
         # TODO: Aggregate metrics across chunks
         # aggregated_metrics = {}
 
-        for i in range(0, batch_size, chunk_size):
-            end_idx = min(i + chunk_size, batch_size)
+        # ------------------------------------------------------------------
+        # 2. Iterate over **max_chunks** so all ranks stay in lock-step.
+        #    Ranks whose local batch is smaller simply skip empty slices.
+        # ------------------------------------------------------------------
+        for chunk_idx in range(max_num_chunks):
+            start_idx = chunk_idx * new_chunk_size
+            end_idx = min(start_idx + new_chunk_size, batch_size)
 
             # Create chunk inputs
             chunk_inputs = {}
             for key, value in inputs.items():
                 if isinstance(value, torch.Tensor):
-                    chunk_inputs[key] = value[i:end_idx]
+                    chunk_inputs[key] = value[start_idx:end_idx]
                 else:
                     chunk_inputs[key] = value
 
             # Compute loss for this chunk
-            chunk_loss = self._compute_loss_single(model, chunk_inputs)
-
-            all_losses.append(chunk_loss)
+            loss = self._compute_loss_single(model, chunk_inputs)
+            losses.append(loss * (end_idx - start_idx))  # 加权
+            weights.append(end_idx - start_idx)
 
         # Compute average loss
-        final_loss_tensor = torch.stack(all_losses).mean()
+        final_loss_tensor = torch.stack(losses).mean()
 
-        logger.debug(f'Chunked loss computation completed: {len(all_losses)} chunks -> '
+        logger.debug(f'Chunked loss computation completed: {len(losses)} chunks -> '
                      f'final loss {final_loss_tensor.item():.6f}')
 
         return final_loss_tensor
@@ -2290,14 +2286,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return input_data
 
         # Async engine mode: match by request_id
+        global_inputs = gather_object(inputs)
         if self.vllm_use_async_engine:
             results = []
             id2inputs = {}
-            for input_data in inputs:
+            for input_data in global_inputs:
                 request_id = input_data['request_id']
                 if request_id not in id2inputs:
                     id2inputs[request_id] = deepcopy(input_data)
-
             for output in outputs:
                 request_id = output.response.id
                 assert request_id in id2inputs, f'Request ID {request_id} not found in inputs'
@@ -2423,3 +2419,44 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             end = start + base_size
 
         return global_data[start:end]
+
+    def _gather_and_flatten(self, local_list, dtype=None, device=None, flatten_level: int = 1):
+        """
+        Gather data from all ranks with `gather_object` and flatten as required.
+
+        Args
+        ----
+        local_list : Sequence[Any]
+            The per-rank data to be gathered. Can be any picklable structure.
+        dtype : torch.dtype, optional
+            If provided, the flattened result is converted to a tensor with this dtype.
+        device : torch.device, optional
+            Target device for the resulting tensor. Ignored if dtype is None.
+        flatten_level : int
+            0  keep the outer list of per-rank results: List[rank_data]
+            1  flatten across ranks: List[element]
+            2  flatten one more level (assumes rank_data is iterable): List[sub_element]
+
+        Returns
+        -------
+        Any
+            - List[Any] when dtype is None
+            - torch.Tensor when dtype is given
+        """
+        gathered = gather_object(local_list)  # List[rank][...] returned by gather_object
+
+        if flatten_level == 0:
+            flat = gathered
+        elif flatten_level == 1:  # flatten over ranks
+            flat = [elem for rank_data in gathered for elem in rank_data]
+        elif flatten_level == 2:  # flatten one additional level
+            flat = [item for rank_data in gathered for sublist in rank_data for item in sublist]
+        else:
+            raise ValueError(f'Invalid flatten_level: {flatten_level}')
+
+        if dtype is not None:
+            try:
+                return torch.tensor(flat, dtype=dtype, device=device)
+            except (TypeError, ValueError) as e:
+                raise RuntimeError(f'Cannot convert gathered+flattened data to tensor: {e}') from e
+        return flat
