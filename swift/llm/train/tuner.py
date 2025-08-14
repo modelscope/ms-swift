@@ -329,13 +329,13 @@ class TunerMixin:
                 # Unsloth prepares and loads lora outside this function when
                 # resume_from_checkpoint, so do not disable grad here
                 model.requires_grad_(False)
-            if args.resume_from_checkpoint:
+            if args.resume_from_checkpoint or args.adapters:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
                 else:
                     tuner = Swift
                 kwargs = {}
-                model = tuner.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
+                model = tuner.from_pretrained(model, args.resume_from_checkpoint or args.adapters[0], is_trainable=True, **kwargs)
             else:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
