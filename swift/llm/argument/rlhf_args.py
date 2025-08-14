@@ -254,12 +254,14 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             return
         from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
         if is_master():
+            logger.info('Start connecting to vLLM server')
             self.vllm_client = VLLMClient(
                 base_urls=self.vllm_server_base_url,
                 hosts=self.vllm_server_host,
                 server_ports=self.vllm_server_port,
                 connection_timeout=self.vllm_server_timeout)
             self.vllm_client.init_communicator(device=get_current_device())
+            logger.info('Connected to vLLM server')
 
     def _set_default(self):
         if self.beta is None:

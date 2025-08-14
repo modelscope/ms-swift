@@ -815,13 +815,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs = self.resample_truncated_inputs(inputs)
 
         inputs = self._generate_completions(inputs)
-        total_rewards_per_func, total_rewards, completions, total_advantages = self._score_completions(inputs)
+        total_rewards_per_func, total_rewards, completions, total_advantages, rewards_std = self._score_completions(
+            inputs)
         mode = 'train' if self.model.training else 'eval'
 
         if self.args.dynamic_sample and mode == 'train':
             # dynamic sampling for std=0 groups
             inputs, total_rewards, total_rewards_per_func, completions, total_advantages = \
-                self._dynamic_sampling(inputs, total_rewards, total_rewards_per_func, completions, total_advantages)
+                self._dynamic_sampling(inputs, total_rewards, total_rewards_per_func, completions, total_advantages, rewards_std) # noqa
 
         local_advantages = self.get_even_process_data(total_advantages)
         assert len(local_advantages) == len(inputs)
@@ -883,9 +884,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             total_rewards = (total_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
 
         # Compute advantages based on prompt_id grouping
-        total_advantages = self._compute_advantages(total_rewards, total_prompt_ids)
+        total_advantages, rewards_std = self._compute_advantages(total_rewards, total_prompt_ids)
 
-        return total_rewards_per_func, total_rewards, completions, total_advantages
+        return total_rewards_per_func, total_rewards, completions, total_advantages, rewards_std
 
     def _compute_rewards_per_func(self, inputs: DataType, completions: List[str]) -> torch.Tensor:
         """Compute rewards using all reward functions"""
@@ -1001,20 +1002,38 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _compute_advantages(self, rewards: torch.Tensor, prompt_ids: List[str]) -> torch.Tensor:
         """
-        Compute advantages based on prompt_id grouping from gathered data.
+        Compute normalized advantages by grouping rewards based on prompt IDs.
+
+        This method performs group-wise advantage computation where rewards are normalized
+        within each prompt group by subtracting the group mean. Optionally scales advantages
+        by group standard deviation for variance normalization.
+
+        The computation process:
+        1. Groups rewards by unique prompt_id
+        2. Computes group-wise mean and standard deviation
+        3. Calculates advantages as (reward - group_mean)
+        4. Optionally normalizes by group standard deviation if scale_rewards is enabled
+        5. Tracks training/evaluation metrics for monitoring
 
         Args:
-            rewards: Tensor of rewards from all processes, shape: (num_examples,)
-            prompt_ids: List of prompt_ids from all processes, len: num_examples
+            rewards (torch.Tensor): Reward values from all processes with shape (num_examples,)
+            prompt_ids (List[str]): Corresponding prompt identifiers with length num_examples
 
         Returns:
-            torch.Tensor: Computed advantages with same shape as rewards
+            tuple: A tuple containing:
+                - advantages (torch.Tensor): Computed advantages with same shape as rewards
+                - rewards_std (torch.Tensor): Group standard deviations for each sample
         """
         assert rewards.shape[0] == len(prompt_ids)
+        mode = 'train' if self.model.training else 'eval'
         advantages = torch.zeros_like(rewards)
+        # calculate rewards_std for dynamic_sampling
+        rewards_std = torch.zeros_like(rewards)
 
         # Group rewards by prompt_id
         unique_prompt_ids = list(set(prompt_ids))
+        group_rewards_mean = []
+        group_rewards_std = []
 
         for prompt_id in unique_prompt_ids:
             # Find all samples with this prompt_id
@@ -1026,20 +1045,34 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             # Compute group statistics
             group_mean = group_rewards.mean()
+            group_rewards_mean.append(group_mean)
             group_advantages = group_rewards - group_mean
+
+            group_std = group_rewards.std()
+            group_rewards_std.append(group_std)
+            rewards_std[indices] = group_std
 
             # Optional: scale by standard deviation
             if self.args.scale_rewards:
-                group_std = group_rewards.std()
                 group_advantages /= (group_std + 1e-4)
 
             # Assign computed advantages back to original positions
             for idx, advantage in zip(indices, group_advantages):
                 advantages[idx] = advantage
 
-        return advantages
+        if group_rewards_mean:
+            # compute metrics
+            group_rewards_mean = torch.stack(group_rewards_mean)
+            group_rewards_std = torch.stack(group_rewards_std)
+            is_std_zero = torch.isclose(group_rewards_std, torch.zeros_like(group_rewards_std))
 
-    def _dynamic_sampling(self, inputs, rewards, rewards_per_func, completions, advantages):
+            self._metrics[mode]['reward'].append(group_rewards_mean.mean().item())
+            self._metrics[mode]['reward_std'].append(group_rewards_std.mean().item())
+            self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
+
+        return advantages, rewards_std
+
+    def _dynamic_sampling(self, inputs, rewards, rewards_per_func, completions, advantages, rewards_std):
         """
         Perform dynamic sampling to replace samples with zero-reward-variance groups.
 
@@ -1052,6 +1085,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             rewards_per_func: Rewards per function/model for global data samples
             completions: Generated completions for local inputs
             advantages: Computed advantages for global data samples
+            rewards_std: Group standard deviations for each sample
 
         Returns:
             tuple: (inputs, rewards, rewards_per_func, completions, advantages)
@@ -1068,10 +1102,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         origin_data = (inputs, rewards, rewards_per_func, completions, advantages)
 
         while resample_count < self.args.max_resample_times:
-            grouped_rewards = rewards.view(-1, self.num_generations)
-            group_std = grouped_rewards.std(dim=1)
-
-            valid_mask = (group_std > 0).repeat_interleave(self.num_generations)
+            valid_mask = (rewards_std > 0)
             all_inputs = gather_object(inputs)
             valid_samples.extend([inp for inp, mask in zip(all_inputs, valid_mask) if mask])
             valid_rewards.append(rewards[valid_mask])
@@ -1085,7 +1116,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs = next(self.dynamic_resample_iterator)
             inputs = Trainer._prepare_inputs(self, inputs)
             inputs = self._generate_completions(inputs)
-            rewards_per_func, rewards, completions, advantages = self._score_completions(inputs)
+            rewards_per_func, rewards, completions, advantages, rewards_std = self._score_completions(inputs)
             resample_count += 1
 
         if len(valid_samples) >= self.args.generation_batch_size:
@@ -1157,9 +1188,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, batch in enumerate(gas_chunks):
             # Encode and process each batch (size=bs)
             with self._template_context(template):
-                if 'response_token_ids' in batch and batch['response_token_ids']:
-                    batch['messages'] = replace_assistant_response_with_ids(batch['messages'],
-                                                                            batch['response_token_ids'])
+                [
+                    data.update(
+                        {'messages': replace_assistant_response_with_ids(data['messages'], data['response_token_ids'])})
+                    for data in batch if 'response_token_ids' in data and data['response_token_ids']
+                ]
 
                 batch_encoded_inputs = [template.encode(data) for data in batch]
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
@@ -1228,15 +1261,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self._metrics[mode][f'rewards/{reward_func_name}/mean'].append(mean_rewards)
             std_rewards = nanstd(rewards_per_func[:, i]).item()
             self._metrics[mode][f'rewards/{reward_func_name}/std'].append(std_rewards)
-
-        # Log overall reward stats
-        grouped_rewards = rewards.view(-1, self.num_generations)
-        std_grouped_rewards = grouped_rewards.std(dim=1)
-        is_std_zero = torch.isclose(std_grouped_rewards, torch.zeros_like(std_grouped_rewards))
-
-        self._metrics[mode]['reward'].append(grouped_rewards.mean().item())
-        self._metrics[mode]['reward_std'].append(std_grouped_rewards.mean().item())
-        self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
 
         # Log prompt and completion texts with padding and remove dummy data
         valid_messages = self._gather_objects(messages)
@@ -1933,43 +1957,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def is_async_generate_train_rollout_done(self):
         return not self.train_queue.empty()
 
-    def inputs_to_rolloutrequest(self, inputs: DataType) -> List[RolloutInferRequest]:
-        """Convert a list of inputs to a list of RolloutInferRequest objects
-
-        If the input contains a 'data_dict' key, it will be used as the base for the new data_dict.
-        For other keys, if they overlap with keys in data_dict, the values from data_dict will be used.
-        Non-overlapping keys will be added to data_dict.
-
-        Args:
-            inputs: List of input dictionaries
-
-        Returns:
-            List of RolloutInferRequest objects
-        """
-        request_keys = ['messages', 'images', 'audios', 'videos', 'tools', 'objects']
-        infer_requests = []
-
-        for request in inputs:
-            # Get the base data_dict if it exists in the input
-            base_data_dict = {}
-            if 'data_dict' in request:
-                if isinstance(request['data_dict'], dict):
-                    base_data_dict = request['data_dict']
-                else:
-                    raise ValueError('data_dict exists but is not a dictionary')
-
-            # Collect all non-request_keys items as extra fields
-            extra_data = {k: request[k] for k in request if k not in request_keys and k != 'data_dict'}
-
-            # Merge the data_dict, keeping keys from base_data_dict as priority
-            final_data_dict = {**extra_data, **base_data_dict}
-
-            # Create RolloutInferRequest instance
-            req_args = {k: request[k] for k in request_keys if k in request}
-            infer_requests.append(RolloutInferRequest(**req_args, data_dict=final_data_dict))
-
-        return infer_requests
-
     @contextmanager
     def offload_context(self):
         if self.args.offload_model:
@@ -1997,13 +1984,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         Adds a unique `prompt_id` to each input based on their `messages` content.
 
         Inputs with identical `messages` (assumed to be adjacent) will share the same `prompt_id`.
+        Each input also gets a unique `request_id` for vLLM request tracking.
 
         Args:
             inputs (DataType): A list of dictionaries, each containing a 'messages' key.
 
-
         Returns:
-            DataType: The input list with each item containing a new 'prompt_id' field.
+            DataType: The input list with each item containing new 'prompt_id' and 'request_id' fields.
 
         Example:
             >>> inputs = [
@@ -2013,26 +2000,29 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             ... ]
             >>> self._add_prompt_id_to_inputs(inputs)
             [
-                {"messages": [...], "data": 1, "prompt_id": "a1b2c3..."},
-                {"messages": [...], "data": 2, "prompt_id": "a1b2c3..."},
-                {"messages": [...], "data": 3, "prompt_id": "d4e5f6..."},
+                {"messages": [...], "data": 1, "prompt_id": "a1b2c3...", "request_id": "req1"},
+                {"messages": [...], "data": 2, "prompt_id": "a1b2c3...", "request_id": "req2"},
+                {"messages": [...], "data": 3, "prompt_id": "d4e5f6...", "request_id": "req3"},
             ]
         """
         if not inputs:
             return inputs
 
         prev_messages = inputs[0].get('messages')
-        current_id = str(uuid.uuid4())
-        inputs[0]['prompt_id'] = current_id
+        current_prompt_id = str(uuid.uuid4())
+        inputs[0]['prompt_id'] = current_prompt_id
+        inputs[0]['request_id'] = str(uuid.uuid4())  # Each request gets a unique ID
 
         for i in range(1, len(inputs)):
             messages = inputs[i]['messages']
             if messages == prev_messages:
-                inputs[i]['prompt_id'] = current_id
+                inputs[i]['prompt_id'] = current_prompt_id
             else:
                 prev_messages = messages
-                current_id = str(uuid.uuid4())
-                inputs[i]['prompt_id'] = current_id
+                current_prompt_id = str(uuid.uuid4())
+                inputs[i]['prompt_id'] = current_prompt_id
+            # Each request always gets a unique request_id, regardless of prompt_id
+            inputs[i]['request_id'] = str(uuid.uuid4())
 
         return inputs
 
@@ -2171,6 +2161,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         Processing includes:
         - Image data conversion (bytes to base64, path handling)
         - Field filtering based on request metadata requirements
+        - UUID assignment using unique request_id for vLLM request tracking
         - Optional preservation of additional fields for multi-turn async scenarios
         """
 
@@ -2200,9 +2191,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for data in inputs:
             # Extract required metadata fields
             request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data}
-            request_data['uuid'] = data['prompt_id']
+            request_data['uuid'] = data['request_id']  # Use unique request_id for vLLM
             # Preserve additional fields for multi-turn async scenarios
-            if self.multi_turn_scheduler and self.vllm_use_async_engine:
+            if self.args.vllm_server_pass_dataset:
                 # data_dict is already concatenated inside async engine
                 extra_fields = {k: v for k, v in data.items() if k not in REQUEST_METADATA_FIELDS}
                 if extra_fields:
@@ -2240,11 +2231,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         Returns:
             Processed inputs with:
-            - Added prompt IDs for tracking
+            - Added prompt IDs for grouping (same messages share same prompt_id)
+            - Added unique request IDs for vLLM request tracking
             - Removed existing assistant responses from messages
 
         Processing Steps:
-        1. Adds unique prompt IDs to each input for request tracking
+        1. Adds prompt IDs and unique request IDs to each input
         2. Cleans each message sequence by removing existing assistant responses
         """
         processed_inputs = self._add_prompt_id_to_inputs(inputs)
@@ -2258,7 +2250,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         Postprocess rollout outputs by merging them back into the input data structures.
 
-        Depending on the mode (async or sync), it either matches inputs by UUID
+        Depending on the mode (async or sync), it either matches inputs by request_id
         or assumes a one-to-one correspondence.
         """
 
@@ -2297,19 +2289,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             return input_data
 
-        # Async engine mode: match by UUID
+        # Async engine mode: match by request_id
         if self.vllm_use_async_engine:
             results = []
             id2inputs = {}
             for input_data in inputs:
-                uuid = input_data['uuid']
-                if uuid not in id2inputs:
-                    id2inputs[uuid] = deepcopy(input_data)
+                request_id = input_data['request_id']
+                if request_id not in id2inputs:
+                    id2inputs[request_id] = deepcopy(input_data)
 
             for output in outputs:
-                uuid = output.response.id
-                assert uuid not in id2inputs
-                input_data = deepcopy(id2inputs[uuid])
+                request_id = output.response.id
+                assert request_id in id2inputs, f'Request ID {request_id} not found in inputs'
+                input_data = deepcopy(id2inputs[request_id])
                 results.append(merge_output_input_data(input_data, output))
 
             return results
@@ -2363,7 +2355,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Determine which dialogues are finished
             should_stops = [
                 self.multi_turn_scheduler.check_finished(req, output.response.choices[0], current_turn)
-                for req, output in zip(self.inputs_to_rolloutrequest(inputs), outputs)
+                for req, output in zip(self.inputs2requests(inputs), outputs)
             ]
 
             # Prepare pending inputs for next turn

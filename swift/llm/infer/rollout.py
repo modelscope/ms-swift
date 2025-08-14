@@ -105,7 +105,25 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
 
 async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int,
                            connection: Connection) -> None:
-    engine = SwiftRolloutDeploy.get_infer_engine(args)
+    # Set required environment variables for DP to work with vLLM
+    args._import_external_plugins()
+    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(None))
+
+    if args.multi_turn_scheduler:
+        if args.multi_turn_scheduler not in multi_turns:
+            raise ValueError(f"Multi-turn scheduler '{args.multi_turn_scheduler}' not found in multi_turns.")
+        scheduler_cls = multi_turns[args.multi_turn_scheduler]
+
+        kwargs = {}
+        if 'tokenizer' in list(inspect.signature(scheduler_cls.__init__).parameters):
+            kwargs['tokenizer'] = engine.default_template.tokenizer
+
+        rollout_engine: RolloutScheduler = scheduler_cls(engine, args.max_turns, **kwargs)
+        if not rollout_engine:
+            raise ValueError(f"Failed to initialize multi-turn scheduler '{args.multi_turn_scheduler}'.")
+    else:
+        rollout_engine = engine
+
     # Send ready signal to parent process
     connection.send({'status': 'ready'})
 
@@ -122,8 +140,7 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
             import traceback
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
-            method = getattr(engine, method_name, None) or getattr(engine.engine, method_name, None)
-
+            method = getattr(rollout_engine, method_name, None) or getattr(rollout_engine.engine, method_name, None)
             try:
                 result = await method(*args, **kwargs)
             except Exception:
@@ -137,8 +154,6 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
 
 
 def llm_worker_entry(*args, **kwargs):
-    rollout_args: RolloutArguments = args[0]
-    rollout_args._import_external_plugins()
     asyncio.run(async_llm_worker(*args, **kwargs))
 
 

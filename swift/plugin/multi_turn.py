@@ -43,7 +43,16 @@ class RolloutScheduler(ABC):
         tasks = [_infer_async_single(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
             use_tqdm = len(infer_requests) > 1
-        return await self.infer_engine._batch_infer_stream(tasks, request_config.stream, use_tqdm)
+        # Execute all tasks and flatten the results
+        results = await self.infer_engine._batch_infer_stream(tasks, request_config.stream, use_tqdm, None)
+        # Flatten the results since each task may return a list
+        flattened_results = []
+        for result in results:
+            if isinstance(result, list):
+                flattened_results.extend(result)
+            else:
+                flattened_results.append(result)
+        return flattened_results
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
                   **kwargs) -> 'RolloutOutput':
@@ -68,6 +77,8 @@ class RolloutScheduler(ABC):
             infer_engine = object.__getattribute__(self, 'infer_engine')
             if hasattr(infer_engine, key):
                 return getattr(infer_engine, key)
+            if hasattr(infer_engine.engine, key):
+                return getattr(infer_engine.engine, key)
 
         except AttributeError:
             raise AttributeError(f'{type(self).__name__} object has no attribute {key}')
@@ -400,14 +411,13 @@ class ThinkingModelTipsScheduler(MultiTurnScheduler):
 
             # Set up the template for inference mode
             template = self.infer_engine.default_template
-            original_is_training = getattr(template, 'is_training', False)
-            template.is_training = False
-
+            # _swift_prepare_inputs will remove historical thinking content when in train mode, patch the mode here
+            original_mode = template.mode
+            template.mode = 'train'
             # Use the template's method to prepare messages
             template._swift_prepare_inputs(mock_inputs)
-
-            # Restore original training state
-            template.is_training = original_is_training
+            # Restore original mode
+            template.mode = original_mode
 
             return mock_inputs.messages
         else:

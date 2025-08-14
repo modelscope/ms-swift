@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 from PIL import Image
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..template import InferRequest
 from ..utils import Messages, Tool
@@ -357,6 +357,13 @@ class RolloutOutput(BaseModel):
     response_token_ids: List[List[int]] = Field(default_factory=list)
     response_loss_mask: List[List[int]] = Field(default_factory=list)
     rollout_infos: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator('response_token_ids', 'response_loss_mask', mode='before')
+    @classmethod
+    def _wrap_flat_list(cls, v):
+        if isinstance(v, list) and v and isinstance(v[0], int):
+            return [v]
+        return v
 
     def model_post_init(self, __context):
         # Ensure multimodal data in rollout_infos is serializable (e.g., images to base64)

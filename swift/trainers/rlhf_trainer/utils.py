@@ -258,8 +258,8 @@ def load_pil_img(img) -> Image:
         raise ValueError("Image dictionary must contain either 'bytes' or 'path' key.")
 
 
-def replace_assistant_response_with_ids(messages: 'Messages', completion_ids: List[Union[int,
-                                                                                         List[int]]]) -> 'Messages':
+def replace_assistant_response_with_ids(messages: 'Messages',
+                                        completion_ids: List[Union[int, List[int]]]) -> 'Messages':  # noqa
     """
     Replaces the content of assistant messages with the provided completion IDs.
 
