@@ -1,8 +1,6 @@
 # 24GiB
 # It is recommended to use padding_free. For more details, please refer to:
 # https://github.com/modelscope/ms-swift/blob/main/examples/train/padding_free/dpo.sh
-
-# After training, the model will respond only in Chinese.
 CUDA_VISIBLE_DEVICES=0 \
 swift rlhf \
     --rlhf_type dpo \
