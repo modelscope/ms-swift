@@ -5,7 +5,7 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron rlhf \
     --rlhf_type dpo \
-    --load Qwen3-30B-A3B-mcore \
+    --load Qwen3-30B-A3B-Instruct-2507-mcore \
     --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji' \
     --train_type lora \
     --lora_rank 8 \
@@ -17,7 +17,6 @@ megatron rlhf \
     --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
-    --moe_aux_loss_coeff 1e-3 \
     --micro_batch_size 8 \
     --global_batch_size 16 \
     --recompute_granularity full \
@@ -29,7 +28,7 @@ megatron rlhf \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --save megatron_output/Qwen3-30B-A3B-Base \
+    --save megatron_output/Qwen3-30B-A3B-Instruct-2507 \
     --eval_interval 100 \
     --save_interval 100 \
     --max_length 2048 \
