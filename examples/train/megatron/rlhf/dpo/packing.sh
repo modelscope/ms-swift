@@ -1,10 +1,10 @@
-# 4 * 62GiB
+# 4 * 33GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron rlhf \
     --rlhf_type dpo \
-    --load Qwen3-8B-Base-mcore \
+    --load Qwen3-4B-Instruct-2507-mcore \
     --dataset 'AI-ModelScope/orpo-dpo-mix-40k' \
     --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 4 \
@@ -20,7 +20,7 @@ megatron rlhf \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --save megatron_output/Qwen3-8B-Base \
+    --save megatron_output/Qwen3-4B-Instruct-2507 \
     --eval_interval 200 \
     --save_interval 200 \
     --max_length 8192 \
