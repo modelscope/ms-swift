@@ -26,4 +26,5 @@ swift rlhf \
     --deepspeed zero3 \
     --attn_impl flash_attn \
     --padding_free true \
+    --rpo_alpha 0.1 \
     --sequence_parallel_size 2

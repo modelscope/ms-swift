@@ -20,8 +20,8 @@ megatron rlhf \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
     --save megatron_output/Qwen2.5-7B-Instruct \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --eval_interval 100 \
+    --save_interval 100 \
     --max_length 8192 \
     --num_workers 8 \
     --dataset_num_proc 8 \
@@ -30,4 +30,5 @@ megatron rlhf \
     --sequence_parallel true \
     --attention_backend flash \
     --beta 0.1 \
+    --rpo_alpha 0.1 \
     --loss_type sigmoid
