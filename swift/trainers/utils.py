@@ -4,6 +4,8 @@ import inspect
 from types import FunctionType, MethodType
 from typing import List, Union
 
+import torch
+import torch.nn.functional as F
 from peft import PeftModel
 from torch.nn import Module
 
@@ -51,3 +53,21 @@ def is_instance_of_ms_model(model: Module) -> bool:
         if cls_name == 'Model' and cls_module.startswith('modelscope'):
             return True
     return False
+
+
+def per_token_loss_func(outputs, labels, enable_dft_loss: bool = False, **kwargs):
+    logits = outputs.logits
+    # Upcast to float if we need to compute the loss to avoid potential precision issues
+    logits = logits.float()
+    labels = torch.roll(labels, shifts=-1, dims=-1).view(-1)
+
+    # Flatten the tokens
+    logits = logits.view(-1, logits.shape[-1])
+    # Enable model parallelism
+    labels = labels.to(logits.device)
+    loss = F.cross_entropy(logits, labels, ignore_index=-100, reduction='none')
+    if enable_dft_loss:
+        with torch.no_grad():
+            target_probs = torch.exp(-loss)
+        loss *= target_probs
+    return loss
