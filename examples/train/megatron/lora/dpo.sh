@@ -7,7 +7,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 megatron rlhf \
     --rlhf_type dpo \
     --load Qwen3-30B-A3B-Instruct-2507-mcore \
-    --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji:en' \
+    --dataset 'AI-ModelScope/orpo-dpo-mix-40k' \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \

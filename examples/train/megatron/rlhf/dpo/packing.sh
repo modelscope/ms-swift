@@ -5,7 +5,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron rlhf \
     --rlhf_type dpo \
     --load Qwen3-8B-Base-mcore \
-    --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji#20000' \
+    --dataset 'AI-ModelScope/orpo-dpo-mix-40k' \
     --split_dataset_ratio 0.01 \
     --tensor_model_parallel_size 4 \
     --packing true \
@@ -31,5 +31,4 @@ megatron rlhf \
     --sequence_parallel true \
     --attention_backend flash \
     --beta 0.1 \
-    --rpo_alpha 1 \
     --loss_type sigmoid
