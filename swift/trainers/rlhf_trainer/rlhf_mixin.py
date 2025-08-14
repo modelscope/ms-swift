@@ -31,7 +31,8 @@ class RLHFTrainerMixin:
                 disable_dropout_in_model(self.ref_model)
 
         self.is_encoder_decoder = kwargs['template'].is_encoder_decoder
-        self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
+        self.aux_loss_enabled = model.model_info.is_moe_model and args.router_aux_loss_coef > 0
+        self.aux_loss_coef = args.router_aux_loss_coef
         self._peft_has_been_casted_to_bf16 = False
         self.generate_during_eval = getattr(args, 'generate_during_eval', False)
         if self.is_encoder_decoder:
