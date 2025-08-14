@@ -16,10 +16,10 @@ from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.plugin import MeanMetric
 from swift.utils import JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
+from .utils import per_token_loss_func
 
 logger = get_logger()
 
@@ -327,7 +327,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         return inputs
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        from swift.plugin import get_loss_func
         labels = None
         compute_loss_func = inputs.pop('compute_loss_func', None)
         loss_scale = inputs.pop('loss_scale', None)
@@ -361,8 +360,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         else:
             outputs.loss = None
             if self.args.enable_dft_loss or loss_scale is not None:
-                outputs.loss = get_loss_func('per_token_cross_entropy')(
-                    outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
+                outputs.loss = per_token_loss_func(outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
 
                 if loss_scale is not None:
                     loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
