@@ -111,10 +111,7 @@ class MegatronDPOTrainer(MegatronTrainer):
     def loss_func(self, output_tensor: torch.Tensor, *, ref_logps: torch.Tensor, labels: torch.Tensor,
                   packed_seq_params):
         args = get_args()
-        loss_mask = labels != -100
         num_samples = packed_seq_params.num_samples
-        num_tokens = packed_seq_params.cu_seqlens_q[num_samples] // args.context_parallel_size
-        loss_mask[:, num_tokens:] = 0
 
         logps = self.get_logps(output_tensor, labels, packed_seq_params)
         loss, chosen_rewards, rejected_rewards = self.dummy_dpo_trainer.dpo_loss(
@@ -124,6 +121,9 @@ class MegatronDPOTrainer(MegatronTrainer):
             ref_logps[num_samples:],
         )
         if args.rpo_alpha:
+            loss_mask = labels != -100
+            num_tokens = packed_seq_params.cu_seqlens_q[num_samples] // args.context_parallel_size
+            loss_mask[:, num_tokens:] = 0
             nll_loss = torch.concat([torch.sum(output_tensor * loss_mask)[None], loss_mask.sum()[None]])
             if args.context_parallel_size > 1:
                 nll_loss = all_reduce(nll_loss, group=mpu.get_context_parallel_group())
