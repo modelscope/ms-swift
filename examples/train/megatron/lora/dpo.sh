@@ -1,5 +1,4 @@
 # 2 * 60GiB; 4.50s/it
-# Note: Please do not set `moe_aux_loss_coeff` for this experiment.
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
