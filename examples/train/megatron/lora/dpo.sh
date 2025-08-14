@@ -7,12 +7,11 @@ CUDA_VISIBLE_DEVICES=0,1 \
 megatron rlhf \
     --rlhf_type dpo \
     --load Qwen3-30B-A3B-Instruct-2507-mcore \
-    --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji' \
+    --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji:en' \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
-    --modules_to_save word_embeddings output_layer \
     --split_dataset_ratio 0.01 \
     --expert_model_parallel_size 2 \
     --moe_permute_fusion true \
