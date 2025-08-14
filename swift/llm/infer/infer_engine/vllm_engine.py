@@ -210,6 +210,7 @@ class VllmEngine(InferEngine):
 
     def _prepare_reasoning_parser(self, reasoning_parser: Optional[str]) -> None:
         if reasoning_parser is None:
+            self.reasoning_parser = None
             return
 
         # Validate reasoning_parser if provided
