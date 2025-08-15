@@ -665,11 +665,14 @@ def get_model_tokenizer(
         num_new_tokens = tokenizer.add_special_tokens({'additional_special_tokens': new_special_tokens})
         if num_new_tokens > 0:
             logger.info(f'Added {num_new_tokens} new special tokens.')
-            if model is not None and model.config.vocab_size < len(tokenizer):
-                vocab_size = math.ceil(len(tokenizer) / 128) * 128
-                model.resize_token_embeddings(vocab_size)
-                # fix transformers==4.52.4 qwen2.5-vl
-                model.config.vocab_size = vocab_size
+
+            if model is not None:
+                origin_vocab_size = HfConfigFactory.get_config_attr(model.config, 'vocab_size')
+                if origin_vocab_size < len(tokenizer):
+                    vocab_size = math.ceil(len(tokenizer) / 128) * 128
+                    model.resize_token_embeddings(vocab_size)
+                    # fix transformers==4.52.4 qwen2.5-vl
+                    HfConfigFactory.set_config_attr(model.config, 'vocab_size', vocab_size)
 
     problem_type = kwargs.get('problem_type')
     if problem_type is None and model_info.num_labels == 1:
