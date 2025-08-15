@@ -439,7 +439,6 @@ def _patch_mla_attention():
         output, bias = self.linear_proj(core_attn_out)
 
         return output, bias
-        pass
 
     MultiLatentAttention.forward = forward
 
