@@ -326,14 +326,31 @@ class SwiftRolloutDeploy(SwiftPipeline):
 
     async def get_engine_type(self):
         """
-        Health check endpoint to verify that the server is running.
+        Return a dictionary describing the runtime engine configuration.
+
+        The returned object contains three keys:
+        - engine_type (str): Either 'AsyncLLMEngine' or 'LLMEngine', indicating
+        whether the asynchronous or synchronous engine is in use.
+        - gym_env (bool, optional): Present and True **only when**
+        ``use_async_engine`` and ``use_gym_env`` are both True.
+        - enable_multi_turn (bool): True if multi-turn scheduling is enabled
+        via ``args.multi_turn_scheduler``, otherwise False.
+
+        Returns
+        -------
+        dict
+            A concise specification of the current engine setup.
         """
+        enable_multi_turn = False
+        if self.args.multi_turn_scheduler:
+            enable_multi_turn = True
+
         if self.use_async_engine:
             if self.use_gym_env:
-                return {'engine_type': 'AsyncLLMEngine', 'gym_env': True}
-            return {'engine_type': 'AsyncLLMEngine'}
+                return {'engine_type': 'AsyncLLMEngine', 'gym_env': True, 'enable_multi_turn': True}
+            return {'engine_type': 'AsyncLLMEngine', 'enable_multi_turn': enable_multi_turn}
         else:
-            return {'engine_type': 'LLMEngine'}
+            return {'engine_type': 'LLMEngine', 'enable_multi_turn': enable_multi_turn}
 
     async def close_communicator(self):
         """

@@ -250,6 +250,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.enable_offload = False
         # gym engine
         self.use_gym_env = False
+        self.enable_multi_turn = self.args.multi_turn_scheduler is not None
         if self.use_vllm:
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
@@ -257,13 +258,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.vllm_mode == 'server':
                 self.vllm_client: VLLMClient = vllm_client
                 if self.accelerator.is_main_process:
-                    vllm_use_async_engine = [self.vllm_client.get_engine_type() == 'AsyncLLMEngine']
+                    self.vllm_client.get_engine_type()
+                    vllm_use_async_engine = [self.vllm_client.use_async_engine]
                     use_gym_env = [self.vllm_client.use_gym_env]
+                    enable_multi_turn = [self.vllm_client.enable_multi_turn]
                 else:
                     vllm_use_async_engine = [False]
                     use_gym_env = [False]
+                    enable_multi_turn = [self.enable_multi_turn]
                 self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
                 self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
+                self.enable_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
                 if self.use_gym_env:
                     self._logs['trajectory_infos'] = deque(maxlen=args.generation_batch_size)
                     self.reward_func_names = ['gym_reward']
@@ -1280,11 +1285,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         batch_size = inputs['input_ids'].shape[0] if 'input_ids' in inputs else len(inputs.get('completion_mask', []))
         expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
 
-        # If batch size matches expected, use normal processing
-        if batch_size == expected_bs:
+        should_chunk = self.enable_multi_turn and any(gather_object([batch_size > expected_bs]))
+        if not should_chunk:
             return self._compute_loss_single(model, inputs)
         else:
-            assert batch_size > expected_bs
+            # maybe dynamic rollout num for multi-turn training
             return self._compute_loss_chunked(model, inputs)
 
     def _compute_loss_single(self, model, inputs):
@@ -1407,7 +1412,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return loss
 
-    def _compute_loss_chunked(self, model, inputs):
+    def _compute_loss_chunked(self, model, inputs: DataType):
         """
         Compute loss in **fixed-size chunks** to reduce peak GPU memory.
 
@@ -1417,11 +1422,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         Args
         ----
-        model : torch.nn.Module
-            The model used to forward the chunk.
-        inputs : Dict[str, Union[torch.Tensor, Any]]
-            A mini-batch dictionary.  Leading dimension of every **Tensor** must
-            equal ``batch_size``; other types are left untouched.
+        model : The model used to forward the chunk.
+        inputs : batch data for a single backward pass.
 
         Returns
         -------
@@ -1433,26 +1435,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         chunk_size = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
         batch_size = inputs['input_ids'].shape[0] if 'input_ids' in inputs else len(inputs.get('completion_mask', []))
 
-        logger.debug(f'Computing chunked loss for batch size {batch_size} with chunk size {chunk_size}')
-
-        losses, weights = [], []
-
         # ------------------------------------------------------------------
-        # 1. Let every rank agree on a **single global** chunk count.
-        #    We broadcast the **maximum** number of chunks instead of changing
-        #    chunk_size, avoiding numerical discrepancies.
+        # 1. Decide *how many* chunks every rank must run
+        #    We should ensure that all ranks run the same number of chunks.
         # ------------------------------------------------------------------
-        # batch_sizes = gather_object(batch_size)
-        # max_chunks = max((bs + chunk_size - 1) // chunk_size for bs in batch_sizes)
+        batch_sizes = gather_object([batch_size])  # list[int]
+        chunks_per_device = [(bs + chunk_size - 1) // chunk_size for bs in batch_sizes]
+        max_chunks = max(chunks_per_device)
 
         # TODO: Aggregate metrics across chunks
         # aggregated_metrics = {}
 
         # ------------------------------------------------------------------
-        # 2. Iterate over **max_chunks** so all ranks stay in lock-step.
-        #    Ranks whose local batch is smaller simply skip empty slices.
+        # 2. Re-compute chunk size so that `max_chunks * new_chunk_size`
+        #    covers this rank's entire batch
         # ------------------------------------------------------------------
-        for chunk_idx in range(max_num_chunks):
+        new_chunk_size = (batch_size + max_chunks - 1) // max_chunks
+        losses, weights = [], []
+
+        for chunk_idx in range(max_chunks):
             start_idx = chunk_idx * new_chunk_size
             end_idx = min(start_idx + new_chunk_size, batch_size)
 
@@ -1463,19 +1464,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     chunk_inputs[key] = value[start_idx:end_idx]
                 else:
                     chunk_inputs[key] = value
-
             # Compute loss for this chunk
             loss = self._compute_loss_single(model, chunk_inputs)
             losses.append(loss * (end_idx - start_idx))  # 加权
             weights.append(end_idx - start_idx)
 
         # Compute average loss
-        final_loss_tensor = torch.stack(losses).mean()
+        total_weight = sum(weights)
+        final_loss = (torch.stack(losses).sum() / total_weight)
 
-        logger.debug(f'Chunked loss computation completed: {len(losses)} chunks -> '
-                     f'final loss {final_loss_tensor.item():.6f}')
-
-        return final_loss_tensor
+        return final_loss
 
     @contextmanager
     def padding_free_context(self, model: torch.nn.Module):
@@ -1565,12 +1563,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         batch_size = inputs['input_ids'].shape[0]
         mode = 'train' if self.model.training else 'eval'
         expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-
-        # If batch is larger than threshold and adaptive batching is enabled, use chunked processing
-        if batch_size > expected_bs:
-            return self._get_per_token_logps_and_entropies_chunked(model, inputs, compute_entropy)
-        else:
+        should_chunk = self.enable_multi_turn and any(gather_object([batch_size > expected_bs]))
+        if not should_chunk:
             return self._get_per_token_logps_and_entropies_single(model, inputs, compute_entropy)
+        else:
+            return self._get_per_token_logps_and_entropies_chunked(model, inputs, compute_entropy)
 
     def _get_per_token_logps_and_entropies_single(self,
                                                   model,
@@ -1626,33 +1623,53 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                                    compute_entropy=False
                                                    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
-        Memory-efficient chunked processing for large batches.
+        Compute per-token log-probabilities (and optionally entropies) in **fixed-size
+        chunks** to bound peak GPU memory.
 
-        Splits the batch into smaller chunks based on per_device_batch_size
-        to control memory usage when rollout count is larger than expected.
+        This routine **guarantees that every rank executes the same number of
+        chunks**, even when the local batch sizes differ.
+
+        Parameters
+        ----------
+        model : torch.nn.Module
+            The model used to compute log-probs and entropies.
+        inputs : DataType
+            A list of dictionary of tensors that constitute the full rollout/training batch.
+        compute_entropy : bool, optional
+            Whether to compute per-token entropies as well (default: False).
+
+        Returns
+        -------
+        final_logps : torch.Tensor
+            Concatenated per-token log-probabilities for the **entire batch**.
+        final_entropies : torch.Tensor or None
+            Concatenated per-token entropies, or ``None`` if ``compute_entropy`` is
+            ``False``.
         """
         batch_size = inputs['input_ids'].shape[0]
         mode = 'train' if self.model.training else 'eval'
         chunk_size = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
 
-        logger.debug(f'Processing batch of size {batch_size} in chunks of {chunk_size}')
+        batch_sizes = gather_object([batch_size])  # list[int]
+        chunks_per_device = [(bs + chunk_size - 1) // chunk_size for bs in batch_sizes]
+        max_chunks = max(chunks_per_device)
 
-        all_logps = []
-        all_entropies = [] if compute_entropy else None
+        new_chunk_size = (batch_size + max_chunks - 1) // max_chunks
+
+        all_logps, all_entropies = [], [] if compute_entropy else None
 
         # Process in chunks
-        for i in range(0, batch_size, chunk_size):
-            end_idx = min(i + chunk_size, batch_size)
+        for chunk_idx in range(max_chunks):
+            start_idx = chunk_idx * new_chunk_size
+            end_idx = min(start_idx + new_chunk_size, batch_size)
 
-            # Create chunk inputs
             chunk_inputs = {}
-            for key, value in inputs.items():
-                if isinstance(value, torch.Tensor):
-                    chunk_inputs[key] = value[i:end_idx]
+            for key, val in inputs.items():
+                if isinstance(val, torch.Tensor):
+                    chunk_inputs[key] = val[start_idx:end_idx]
                 else:
-                    chunk_inputs[key] = value  # Non-tensor values (like logits_to_keep) are scalars
+                    chunk_inputs[key] = val
 
-            # Process this chunk
             chunk_logps, chunk_entropies = self._get_per_token_logps_and_entropies_single(
                 model, chunk_inputs, compute_entropy)
 
@@ -1663,8 +1680,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Concatenate results
         final_logps = torch.cat(all_logps, dim=0)
         final_entropies = torch.cat(all_entropies, dim=0) if all_entropies else None
-
-        logger.debug(f'Chunked processing completed: {len(all_logps)} chunks -> ' f'final shape {final_logps.shape}')
 
         return final_logps, final_entropies
 

@@ -265,8 +265,9 @@ class VLLMClient:
 
         result = response.json()
         self.use_async_engine = result['engine_type'] == 'AsyncLLMEngine'
+        self.enable_multi_turn = result.get('enable_multi_turn', False)
         self.use_gym_env = result.get('gym_env', False)
-        return result['engine_type']
+        return result
 
     def close_communicator(self):
         for i in range(self.num_servers):
