@@ -131,7 +131,7 @@ Running Environment:
 | deepspeed    | >=0.14       | 0.16.9              | Training                                  |
 | vllm         | >=0.5.1      | 0.10                | Inference/Deployment                      |
 | sglang       | >=0.4.6      | 0.4.9.post6         | Inference/Deployment                      |
-| lmdeploy     | >=0.5,<0.9   | 0.8                 | Inference/Deployment                      |
+| lmdeploy     | >=0.5   | 0.9.2                 | Inference/Deployment                      |
 | evalscope    | >=0.11       |                     | Evaluation                                |
 | gradio       |              | 5.32.1              | Web-UI/App                                |
 
