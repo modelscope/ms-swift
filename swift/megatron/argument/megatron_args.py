@@ -161,6 +161,7 @@ class MegatronArguments(ExtraMegatronArguments):
 
     # dist
     distributed_backend: Literal['nccl', 'gloo'] = 'nccl'
+    local_rank: Optional[int] = None
     use_distributed_optimizer: bool = True
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
@@ -274,6 +275,8 @@ class MegatronArguments(ExtraMegatronArguments):
     def _set_default(self):
         if self.mlp_padding_free and self.sequence_parallel:
             raise ValueError('mlp_padding_free is not compatible with sequence_parallel.')
+        if self.local_rank is None:
+            self.local_rank = int(os.getenv('LOCAL_RANK', '0'))
         if self.lr is None:
             if self.train_type == 'full':
                 self.lr = 1e-5
