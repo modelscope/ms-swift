@@ -439,7 +439,6 @@ def _patch_mla_attention():
         output, bias = self.linear_proj(core_attn_out)
 
         return output, bias
-        pass
 
     MultiLatentAttention.forward = forward
 
@@ -555,12 +554,7 @@ def _patch_mla_attention():
                 sequence_start = inference_context.sequence_len_offset
                 sequence_end = sequence_start + q_len
                 rotary_pos_emb = rotary_pos_emb[sequence_start:sequence_end]
-            else:
-                # Shorten rotary_pos_emb to the sequence length when inference_params
-                # is not provided. This makes sure we can run forward directly with
-                # any sequence length. During training, the sequence length is always
-                # the full rotary_pos_emb length.
-                rotary_pos_emb = rotary_pos_emb[0:q_len]
+            # Remove the else branch to fix cp.
 
             # [num_tokens, qk_pos_emb_head_dim] -> [num_tokens, 1, qk_pos_emb_head_dim]
             k_pos_emb = torch.unsqueeze(k_pos_emb, -2)
