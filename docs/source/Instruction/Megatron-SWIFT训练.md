@@ -432,6 +432,7 @@ lora训练：
 - adapter_load: 加载adapter的权重路径，用于lora断点续训，默认为None。lora断点续训方式与全参数一致，请关注`--finetune`参数的含义。
 - 🔥target_modules: 指定lora模块的后缀, 默认为`['all-linear']`。
 - 🔥target_regex: 指定lora模块的regex表达式，默认为`None`。如果该值传入，则target_modules参数失效。
+- target_parameters: 要替换为LoRA的参数名称列表。该参数的行为与 `target_modules` 类似，但传入的应是参数名称。该特性需要安装"peft>=0.17.0"。
 - 🔥modules_to_save: 在已附加tuner后，额外指定一部分原模型模块参与训练和存储。默认为`[]`。
 - 🔥lora_rank: 默认为`8`。
 - 🔥lora_alpha: 默认为`32`。
