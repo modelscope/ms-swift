@@ -203,7 +203,7 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                 return RolloutOutput(
                     response=response,
                     messages=messages,
-                    respones_token_ids=total_response_ids,
+                    response_token_ids=total_response_ids,
                     response_loss_mask=total_response_loss_mask,
                     rollout_infos=rollout_infos,
                 )

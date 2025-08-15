@@ -58,14 +58,7 @@ def safe_set_start_method():
         multiprocessing.set_start_method('spawn')
 
 
-def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
-    # Set required environment variables for DP to work with vLLM
-    args._import_external_plugins()
-    os.environ['VLLM_DP_RANK'] = str(data_parallel_rank)
-    os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
-    os.environ['VLLM_DP_SIZE'] = str(args.vllm_data_parallel_size)
-    os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
-    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(None))
+def get_rollout_engine_type(args: RolloutArguments, engine: GRPOVllmEngine):
     if args.multi_turn_scheduler:
         if args.multi_turn_scheduler not in multi_turns:
             raise ValueError(f"Multi-turn scheduler '{args.multi_turn_scheduler}' not found in multi_turns.")
@@ -80,6 +73,18 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
             raise ValueError(f"Failed to initialize multi-turn scheduler '{args.multi_turn_scheduler}'.")
     else:
         rollout_engine = engine
+    return rollout_engine
+
+
+def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
+    # Set required environment variables for DP to work with vLLM
+    args._import_external_plugins()
+    os.environ['VLLM_DP_RANK'] = str(data_parallel_rank)
+    os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
+    os.environ['VLLM_DP_SIZE'] = str(args.vllm_data_parallel_size)
+    os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
+    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(None))
+    rollout_engine = get_rollout_engine_type(args, engine)
     # Send ready signal to parent process
     connection.send({'status': 'ready'})
 
@@ -109,20 +114,7 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
     args._import_external_plugins()
     engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(None))
 
-    if args.multi_turn_scheduler:
-        if args.multi_turn_scheduler not in multi_turns:
-            raise ValueError(f"Multi-turn scheduler '{args.multi_turn_scheduler}' not found in multi_turns.")
-        scheduler_cls = multi_turns[args.multi_turn_scheduler]
-
-        kwargs = {}
-        if 'tokenizer' in list(inspect.signature(scheduler_cls.__init__).parameters):
-            kwargs['tokenizer'] = engine.default_template.tokenizer
-
-        rollout_engine: RolloutScheduler = scheduler_cls(engine, args.max_turns, **kwargs)
-        if not rollout_engine:
-            raise ValueError(f"Failed to initialize multi-turn scheduler '{args.multi_turn_scheduler}'.")
-    else:
-        rollout_engine = engine
+    rollout_engine = get_rollout_engine_type(args, engine)
 
     # Send ready signal to parent process
     connection.send({'status': 'ready'})

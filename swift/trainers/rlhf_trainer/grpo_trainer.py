@@ -239,6 +239,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.compute_entropy = self.args.log_entropy or self.top_entropy_quantile < 1.0
         if self.args.log_entropy:
             self._logs.update({'entropy': deque(maxlen=args.generation_batch_size)})
+        if 'solution' in self.train_dataset.column_names:
+            self._logs['solution'] = deque(maxlen=args.generation_batch_size)
         # Ensure each process receives a unique seed to prevent duplicate completions when generating with
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
@@ -846,7 +848,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return batch_encoded_inputs
 
-    def _score_completions(self, inputs: DataType) -> Tuple[torch.Tensor, torch.Tensor, List[str], torch.Tensor]:
+    def _score_completions(
+            self, inputs: DataType) -> Tuple[torch.Tensor, torch.Tensor, List[str], torch.Tensor, torch.Tensor]:
         """Score completions using all reward functions and compute advantages
 
         Args:
@@ -858,6 +861,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             - total_rewards: Tensor of shape (num_examples,) with weighted sum of rewards
             - completions: List of generated completion strings
             - advantages: Tensor of shape (num_examples,) with computed advantages
+            - rewards_std: Tensor of shape (num_examples,) with group standard deviations
         """
         device = self.accelerator.device
         completions = [example['messages'][-1]['content'] for example in inputs]
@@ -876,25 +880,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             local_rewards = (local_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
 
         # Gather rewards and prompt_ids across processes with padding
-        rewards_list = [row.tolist() for row in local_rewards_per_func]
+        local_rewards_list = [row.tolist() for row in local_rewards_per_func]
 
         # gather objects
-        gathered_rewards_list = gather_object(rewards_list)
-        gathered_prompt_ids = gather_object(prompt_ids)
-
-        # flatten rewards: gathered_rewards_list 是 List[List[...]]，要展平
-        flat_rewards = [rewards for rewards in gathered_rewards_list]
-        flat_prompt_ids = [pids for pids in gathered_prompt_ids]
-
-        gathered_rewards = torch.tensor(flat_rewards, dtype=torch.float32, device=self.accelerator.device)
-
-        gathered_rewards_per_func, gathered_prompt_ids = self._gather_rewards_and_prompt_ids(
-            local_rewards_per_func, prompt_ids)
-
-        total_rewards_per_func, total_prompt_ids = self._remove_dummy_data(gathered_rewards_per_func,
-                                                                           gathered_prompt_ids)
-        assert flat_prompt_ids == total_prompt_ids
-        assert torch.allclose(gathered_rewards, total_rewards_per_func)
+        total_rewards_per_func = gather_object(local_rewards_list)
+        total_prompt_ids = gather_object(prompt_ids)
+        total_rewards_per_func = torch.tensor(
+            total_rewards_per_func, dtype=torch.float32, device=self.accelerator.device)
 
         if self.use_gym_env:
             total_rewards = total_rewards_per_func.squeeze(1)  # Recover from gathered data
@@ -935,41 +927,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                            'Please ensure that at least one reward function returns a valid reward.')
 
         return rewards_per_func
-
-    def _gather_rewards_and_prompt_ids(self, local_rewards_per_func: torch.Tensor,
-                                       local_prompt_ids: List[str]) -> Tuple[torch.Tensor, List[str]]:
-        """Gather rewards and prompt_ids across processes with padding"""
-        device = self.accelerator.device
-        rewards_per_func = local_rewards_per_func
-        prompt_ids = local_prompt_ids
-
-        # Prepare for gather with padding
-        if self.rollout_pad_count > 0:
-            # Pad rewards with NaN
-            pad_rewards_per_func = torch.full((self.rollout_pad_count, rewards_per_func.shape[1]),
-                                              torch.nan,
-                                              dtype=torch.float32,
-                                              device=device)
-            rewards_per_func = torch.cat([rewards_per_func, pad_rewards_per_func], dim=0)
-
-            # Pad prompt_ids with special dummy value
-            dummy_prompt_ids = ['__dummy_pad__'] * self.rollout_pad_count
-            prompt_ids = prompt_ids + dummy_prompt_ids
-
-        # Gather all data across processes
-        gathered_rewards_per_func = gather(rewards_per_func)
-        gathered_prompt_ids = gather_object(prompt_ids)
-
-        return gathered_rewards_per_func, gathered_prompt_ids
-
-    def _remove_dummy_data(self, gathered_rewards_per_func: torch.Tensor,
-                           gathered_prompt_ids: List[str]) -> Tuple[torch.Tensor, List[str]]:
-        """Remove dummy data (prompt_id == '__dummy_pad__') from gathered data"""
-        valid_indices = [i for i, pid in enumerate(gathered_prompt_ids) if pid != '__dummy_pad__']
-        valid_rewards_per_func = gathered_rewards_per_func[valid_indices]
-        valid_prompt_ids = [gathered_prompt_ids[i] for i in valid_indices]
-
-        return valid_rewards_per_func, valid_prompt_ids
 
     def _compute_advantages(self, rewards: torch.Tensor, prompt_ids: List[str]) -> torch.Tensor:
         """
@@ -1153,6 +1110,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             List[DataType]: A list of prepared batch inputs, organized as [spg][bs]
         """
         template = self.template
+        if 'solution' in self._logs.keys():
+            solutions = [inp['solution'] for inp in inputs]
+            self._logs['solution'].extend(self._gather_and_flatten(solutions, flatten_level=0))
 
         gas_chunks = self.split_by_mini_batches(inputs)
         ga_batch_encoded_inputs = []
@@ -1231,7 +1191,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # --- logs (prompts + completions) ---
         valid_messages = self._gather_and_flatten(messages, flatten_level=0)
         valid_completions = self._gather_and_flatten(completions, flatten_level=0)
-
         self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
         self._logs['completion'].extend(valid_completions)
 
@@ -2071,7 +2030,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if not any(requests for requests in all_requests):
             return []
 
-        # TODO: Check flatten
         if self.accelerator.is_main_process:
             all_outputs: List[RolloutOutput] = self._engine_infer(
                 infer_requests=all_requests, request_config=request_config)
