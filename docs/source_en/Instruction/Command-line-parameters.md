@@ -771,5 +771,5 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - NNODES: Pass-through for the `--nnodes` parameter in torchrun.
 - NODE_RANK: Pass-through for the `--node_rank` parameter in torchrun.
 - LOG_LEVEL: The log level, default is 'INFO'. You can set it to 'WARNING', 'ERROR', etc.
-- SWIFT_DEBUG: During `engine.infer(...)`, if set to '1', the content of input_ids and generate_ids will be printed.
+- SWIFT_DEBUG: When set to '1', the PtEngine will print the contents of input_ids and generate_ids during `engine.infer(...)`.
 - VLLM_USE_V1: Used to switch between V0 and V1 versions of vLLM.
