@@ -14,6 +14,7 @@ from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve import async_engine
 from packaging import version
 from transformers import GenerationConfig
+from transformers.utils.versions import require_version
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
@@ -105,6 +106,9 @@ class LmdeployEngine(InferEngine):
         pipeline_kwargs = {}
         is_multimodal = self.model_meta.is_multimodal
         if is_multimodal:
+            require_version(
+                'lmdeploy<0.9', 'LmdeployEngine will no longer maintain inference for '
+                'multimodal models in lmdeploy>=0.9.')
             vision_config = VisionConfig(max_batch_size=vision_batch_size)
             pipeline_kwargs['vision_config'] = vision_config
             logger.info(f'vision_config: {vision_config}')

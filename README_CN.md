@@ -128,7 +128,7 @@ pip install -e .
 | deepspeed    | >=0.14       | 0.16.9              | 训练                 |
 | vllm         | >=0.5.1      | 0.10                | 推理/部署              |
 | sglang       | >=0.4.6      | 0.4.9.post6         | 推理/部署              |
-| lmdeploy     | >=0.5,<0.9   | 0.8                 | 推理/部署              |
+| lmdeploy     | >=0.5   | 0.9.2                 | 推理/部署              |
 | evalscope    | >=0.11       |                     | 评测                 |
 | gradio       |              | 5.32.1              | Web-UI/App         |
 
