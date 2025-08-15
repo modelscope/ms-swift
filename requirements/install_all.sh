@@ -7,7 +7,7 @@ pip install autoawq -U --no-deps
 pip install auto_gptq optimum bitsandbytes "gradio<5.33" -U
 pip install git+https://github.com/modelscope/ms-swift.git
 pip install timm -U
-pip install "deepspeed<0.17" -U
+pip install "deepspeed" -U
 pip install qwen_vl_utils qwen_omni_utils decord librosa icecream soundfile -U
 pip install liger_kernel nvitop pre-commit math_verify py-spy -U
 # flash-attn: https://github.com/Dao-AILab/flash-attention/releases
