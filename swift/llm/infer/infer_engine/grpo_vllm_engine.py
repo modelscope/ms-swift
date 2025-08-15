@@ -8,6 +8,7 @@ import torch
 from tqdm.asyncio import tqdm_asyncio
 
 from swift.llm import InferRequest, RolloutInferRequest, Template, VllmEngine
+from swift.llm.infer.protocol import MultiModalRequestMixin
 from swift.plugin import Metric, multi_turns
 from swift.plugin.context_manager import ContextManager, context_managers
 from swift.plugin.env import Env, envs
@@ -295,13 +296,16 @@ class GRPOVllmEngine(VllmEngine):
             if should_stop:
                 result_choice.messages = messages
                 info_dict['num_turns'] = current_turn
-                for key, value in info_dict.items():
+                for key, values in info_dict.items():
                     if key in ['images', 'audios', 'videos']:
-                        value = MultiModalRequestMixin.to_base64(value)
+                        if not isinstance(values, list):
+                            values = [values]
+                        for i, value in enumerate(values):
+                            values[i] = MultiModalRequestMixin.to_base64(value)
                     if hasattr(result_choice, key):
-                        setattr(result_choice, key, value)
+                        setattr(result_choice, key, values)
                     else:
-                        result_choice.multi_turn_infos[key] = value
+                        result_choice.multi_turn_infos[key] = values
                 return result
 
             ret = self.multi_turn_scheduler.step(current_request, result_choice, current_turn)
