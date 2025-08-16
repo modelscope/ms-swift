@@ -1253,6 +1253,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _compute_loss_single(self, model, inputs):
         """Original loss computation logic for single batch processing."""
+        loss, metrics_data = self._compute_loss_and_metrics(model, inputs)
+        self._update_metrics(metrics_data)
+        return loss
+
+    def _compute_loss_and_metrics(self, model, inputs):
+        """Core loss computation without metrics recording."""
         mode = 'train' if self.model.training else 'eval'
 
         completion_mask = inputs['completion_mask']
@@ -1262,21 +1268,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             model, inputs, compute_entropy=self.compute_entropy)
 
         entropy_mask = None
+        entropy_metrics = {}
+
         if self.compute_entropy:
             # fill the padded token with NaN
             entropies = entropies.masked_fill(completion_mask == 0, float('nan'))
             if self.args.log_entropy:
                 per_completion_entropies_mean = torch.nanmean(entropies, dim=1)
                 global_per_completion_entropies_mean = gather(per_completion_entropies_mean)
-                self._logs['entropy'].extend(global_per_completion_entropies_mean.tolist())
-                self._metrics[mode]['entropy/mean'].append(global_per_completion_entropies_mean.mean().item())
-                self._metrics[mode]['entropy/max'].append(global_per_completion_entropies_mean.max().item())
-                self._metrics[mode]['entropy/min'].append(global_per_completion_entropies_mean.min().item())
+                entropy_metrics = {
+                    'entropy_logs': global_per_completion_entropies_mean.tolist(),
+                    'entropy_mean': global_per_completion_entropies_mean.nanmean().item(),
+                    'entropy_max': nanmax(global_per_completion_entropies_mean).item(),
+                    'entropy_min': nanmin(global_per_completion_entropies_mean).item()
+                }
 
             # compute the entropy threshold across all tokens in the batch
             if self.args.top_entropy_quantile < 1.0:
                 entropy_threshold = torch.nanquantile(entropies.flatten().float(), 1 - self.top_entropy_quantile)
-                self._metrics[mode]['entropy/threshold'].append(entropy_threshold.item())
+                entropy_metrics['entropy_threshold'] = entropy_threshold.item()
                 entropy_mask = entropies >= entropy_threshold
 
         # apply the completion_mask to exclude loss and metrics for overlong completions
@@ -1285,7 +1295,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 logger.info('All completions are overlong and truncated, '
                             'resulting in NaN some values for some metrics (e.g., KL)')
             truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask).to(completion_mask.device)
-            completion_mask.mul_(~truncated_mask)
+            completion_mask = completion_mask & (~truncated_mask)
+
         # Compute the KL divergence between the model and the reference model
         if self.beta != 0.0:
             ref_per_token_logps = inputs['ref_per_token_logps']
@@ -1314,8 +1325,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             raise ValueError(
                 f"Unknown importance sampling level: {self.importance_sampling_level}. Possible values are 'token' "
                 "and 'sequence'.")
-        # From here, log_importance_weights (and all subsequent tensors, coef_1, coef_2, etc.) shape depends on
-        # importance_sampling_level: "token" level: (B, T); "sequence" level: (B, 1)
 
         coef_1 = torch.exp(log_importance_weights)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
@@ -1347,9 +1356,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:
                 return (x * completion_mask).sum() / completion_token_count
 
+        # Prepare metrics data
+        metrics_data = {
+            'mode': mode,
+            'entropy': entropy_metrics,
+            'completion_mask': completion_mask,
+            'completion_token_count': completion_token_count,
+            'masked_batch_mean_fn': masked_batch_mean
+        }
+
         if self.beta != 0.0:
             mean_kl = masked_batch_mean(per_token_kl)
-            self._metrics[mode]['kl'].append(self.accelerator.gather_for_metrics(mean_kl).nanmean().item())
+            metrics_data['kl'] = self.accelerator.gather_for_metrics(mean_kl).nanmean().item()
 
         # Compute the clipped probability ratios
         is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages.unsqueeze(1) < 0)
@@ -1361,60 +1379,76 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         clip_ratio = masked_batch_mean(is_region_clipped.float())
 
         gathered_low_clip = self.accelerator.gather_for_metrics(low_clip)
-        self._metrics[mode]['clip_ratio/low_mean'].append(gathered_low_clip.nanmean().item())
-        self._metrics[mode]['clip_ratio/low_min'].append(nanmin(gathered_low_clip).item())
         gathered_high_clip = self.accelerator.gather_for_metrics(high_clip)
-        self._metrics[mode]['clip_ratio/high_mean'].append(gathered_high_clip.nanmean().item())
-        self._metrics[mode]['clip_ratio/high_max'].append(nanmax(gathered_high_clip).item())
         gathered_clip_ratio = self.accelerator.gather_for_metrics(clip_ratio)
-        self._metrics[mode]['clip_ratio/region_mean'].append(gathered_clip_ratio.nanmean().item())
 
-        return loss
+        metrics_data['clipping'] = {
+            'low_clip_mean': gathered_low_clip.nanmean().item(),
+            'low_clip_min': nanmin(gathered_low_clip).item(),
+            'high_clip_mean': gathered_high_clip.nanmean().item(),
+            'high_clip_max': nanmax(gathered_high_clip).item(),
+            'region_clip_mean': gathered_clip_ratio.nanmean().item()
+        }
+
+        return loss, metrics_data
+
+    def _update_metrics(self, metrics_data):
+        """Update metrics from metrics_data."""
+        mode = metrics_data['mode']
+
+        # Update entropy metrics
+        if metrics_data['entropy']:
+            entropy_metrics = metrics_data['entropy']
+            if 'entropy_logs' in entropy_metrics:
+                self._logs['entropy'].extend(entropy_metrics['entropy_logs'])
+                self._metrics[mode]['entropy/mean'].append(entropy_metrics['entropy_mean'])
+                self._metrics[mode]['entropy/max'].append(entropy_metrics['entropy_max'])
+                self._metrics[mode]['entropy/min'].append(entropy_metrics['entropy_min'])
+            if 'entropy_threshold' in entropy_metrics:
+                self._metrics[mode]['entropy/threshold'].append(entropy_metrics['entropy_threshold'])
+
+        # Update KL metrics
+        if 'kl' in metrics_data:
+            self._metrics[mode]['kl'].append(metrics_data['kl'])
+
+        # Update clipping metrics
+        if 'clipping' in metrics_data:
+            clipping = metrics_data['clipping']
+            self._metrics[mode]['clip_ratio/low_mean'].append(clipping['low_clip_mean'])
+            self._metrics[mode]['clip_ratio/low_min'].append(clipping['low_clip_min'])
+            self._metrics[mode]['clip_ratio/high_mean'].append(clipping['high_clip_mean'])
+            self._metrics[mode]['clip_ratio/high_max'].append(clipping['high_clip_max'])
+            self._metrics[mode]['clip_ratio/region_mean'].append(clipping['region_clip_mean'])
 
     def _compute_loss_chunked(self, model, inputs: DataType):
         """
         Compute loss in **fixed-size chunks** to reduce peak GPU memory.
 
         The function guarantees that **all ranks step through the same number of
-        chunks**, so that collective communication (e.g. gradient
-        all-reduce) remain synchronized even when local ``batch_size`` differs.
-
-        Args
-        ----
-        model : The model used to forward the chunk.
-        inputs : batch data for a single backward pass.
-
-        Returns
-        -------
-        torch.Tensor
-            Scalar tensor containing the **sample-weighted average loss** across
-            all chunks (and all ranks).
+        chunks**, so that collective communication remain synchronized
+        even when local ``batch_size`` differs.
         """
         mode = 'train' if self.model.training else 'eval'
         chunk_size = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
         batch_size = inputs['input_ids'].shape[0] if 'input_ids' in inputs else len(inputs.get('completion_mask', []))
 
-        # ------------------------------------------------------------------
-        # 1. Decide *how many* chunks every rank must run
-        #    We should ensure that all ranks run the same number of chunks.
-        # ------------------------------------------------------------------
-        batch_sizes = gather_object([batch_size])  # list[int]
+        # Decide how many chunks every rank must run
+        batch_sizes = gather_object([batch_size])
         chunks_per_device = [(bs + chunk_size - 1) // chunk_size for bs in batch_sizes]
         max_chunks = max(chunks_per_device)
 
-        # TODO: Aggregate metrics across chunks
-        # aggregated_metrics = {}
-
-        # ------------------------------------------------------------------
-        # 2. Re-compute chunk size so that `max_chunks * new_chunk_size`
-        #    covers this rank's entire batch
-        # ------------------------------------------------------------------
+        # Re-compute chunk size so that max_chunks * new_chunk_size covers entire batch
         new_chunk_size = (batch_size + max_chunks - 1) // max_chunks
+
         losses, weights = [], []
+        all_metrics_data = []
 
         for chunk_idx in range(max_chunks):
             start_idx = chunk_idx * new_chunk_size
             end_idx = min(start_idx + new_chunk_size, batch_size)
+
+            if start_idx >= batch_size:
+                continue
 
             # Create chunk inputs
             chunk_inputs = {}
@@ -1423,16 +1457,102 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     chunk_inputs[key] = value[start_idx:end_idx]
                 else:
                     chunk_inputs[key] = value
-            # Compute loss for this chunk
-            loss = self._compute_loss_single(model, chunk_inputs)
-            losses.append(loss * (end_idx - start_idx))  # 加权
-            weights.append(end_idx - start_idx)
 
-        # Compute average loss
+            # Compute loss and metrics for this chunk (without updating global metrics)
+            chunk_loss, chunk_metrics_data = self._compute_loss_and_metrics(model, chunk_inputs)
+            chunk_weight = end_idx - start_idx
+
+            losses.append(chunk_loss * chunk_weight)
+            weights.append(chunk_weight)
+            all_metrics_data.append((chunk_metrics_data, chunk_weight))
+
+        # Compute weighted average loss
         total_weight = sum(weights)
-        final_loss = (torch.stack(losses).sum() / total_weight)
+        if total_weight > 0:
+            final_loss = torch.stack(losses).sum() / total_weight
+        else:
+            final_loss = torch.tensor(0.0, device=model.device)
+
+        # Aggregate metrics across all chunks
+        self._aggregate_and_update_metrics(all_metrics_data, mode)
 
         return final_loss
+
+    def _aggregate_and_update_metrics(self, all_metrics_data, mode):
+        """Aggregate metrics from multiple chunks and update global metrics."""
+        if not all_metrics_data:
+            return
+
+        # Separate metrics by type for aggregation
+        entropy_logs, entropy_stats, kl_values = [], [], []
+        clip_values = {'low': [], 'high': [], 'region': [], 'low_min': [], 'high_max': []}
+        entropy_thresholds = []
+
+        for chunk_metrics, chunk_weight in all_metrics_data:
+            chunk_tokens = chunk_metrics['completion_token_count']
+
+            # Collect entropy metrics
+            if chunk_metrics['entropy']:
+                entropy_metrics = chunk_metrics['entropy']
+                if 'entropy_logs' in entropy_metrics:
+                    entropy_logs.extend(entropy_metrics['entropy_logs'])
+                    entropy_stats.append({
+                        'mean': entropy_metrics['entropy_mean'],
+                        'max': entropy_metrics['entropy_max'],
+                        'min': entropy_metrics['entropy_min']
+                    })
+                if 'entropy_threshold' in entropy_metrics:
+                    entropy_thresholds.append(entropy_metrics['entropy_threshold'])
+
+            # Collect KL metrics
+            if 'kl' in chunk_metrics:
+                kl_values.append(chunk_metrics['kl'])
+
+            # Collect clipping metrics (weighted by tokens)
+            if 'clipping' in chunk_metrics:
+                clipping = chunk_metrics['clipping']
+                weight = chunk_tokens.item() if hasattr(chunk_tokens, 'item') else chunk_tokens
+                clip_values['low'].append((clipping['low_clip_mean'], weight))
+                clip_values['high'].append((clipping['high_clip_mean'], weight))
+                clip_values['region'].append((clipping['region_clip_mean'], weight))
+                clip_values['low_min'].append(clipping['low_clip_min'])
+                clip_values['high_max'].append(clipping['high_clip_max'])
+
+        # Build aggregated metrics
+        aggregated_metrics = {'mode': mode, 'entropy': {}}
+
+        # Aggregate entropy
+        if entropy_logs:
+            # Directly update entropy logs
+            self._logs['entropy'].extend(entropy_logs)
+            aggregated_metrics['entropy'] = {
+                'entropy_mean': sum(s['mean'] for s in entropy_stats) / len(entropy_stats),
+                'entropy_max': max(s['max'] for s in entropy_stats),
+                'entropy_min': min(s['min'] for s in entropy_stats)
+            }
+        if entropy_thresholds:
+            aggregated_metrics['entropy']['entropy_threshold'] = sum(entropy_thresholds) / len(entropy_thresholds)
+
+        # Aggregate KL
+        if kl_values:
+            aggregated_metrics['kl'] = sum(kl_values) / len(kl_values)
+
+        # Aggregate clipping (token-weighted averages)
+        if clip_values['low']:
+
+            def weighted_avg(values):
+                return sum(v * w for v, w in values) / sum(w for _, w in values)
+
+            aggregated_metrics['clipping'] = {
+                'low_clip_mean': weighted_avg(clip_values['low']),
+                'low_clip_min': min(clip_values['low_min']),
+                'high_clip_mean': weighted_avg(clip_values['high']),
+                'high_clip_max': max(clip_values['high_max']),
+                'region_clip_mean': weighted_avg(clip_values['region'])
+            }
+
+        # Update metrics
+        self._update_metrics(aggregated_metrics)
 
     @contextmanager
     def padding_free_context(self, model: torch.nn.Module):
