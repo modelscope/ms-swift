@@ -1,18 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from functools import partial
-from types import MethodType
 
 import torch
 import torch.nn.functional as F
-from packaging import version
 
 from swift.llm import get_llm_model
 from .base import CommonSequenceParallel
-from .utils import (SequenceParallelDispatcher, SequenceParallelSampler, _get_per_token_logps_and_entropies_grpo,
-                    _get_train_sampler_grpo, _prepare_inputs, _prepare_inputs_grpo, get_common_dataloader,
-                    get_per_token_logps, loss_scale_sp_func, old_policy_grpo, setup_compute_acc,
-                    split_by_mini_batches_grpo)
 
 RING_ATTN_GROUP = None
 
@@ -193,54 +186,3 @@ class RingAttention(CommonSequenceParallel):
         # Store model dtype and tokenizer
         self.model_dtype = next(model.parameters()).dtype
         self.tokenizer = tokenizer
-
-    def get_dataloader(self, trainer, dataset, batch_size, skip_batches: int = 0):
-        return get_common_dataloader(
-            self,
-            trainer,
-            dataset,
-            batch_size,
-            SequenceParallelSampler,
-            SequenceParallelDispatcher,
-            skip_batches=skip_batches)
-
-    def prepare_trainer(self, trainer):
-        """Prepare trainer for ring attention sequence parallel.
-
-        Args:
-            trainer: The trainer to prepare
-        """
-        if trainer.train_dataset is None:
-            raise ValueError('Trainer: training requires a train_dataset.')
-
-        trainer.ring_attention = self
-
-        if trainer.__class__.__name__ == 'Seq2SeqTrainer':
-            enable_dft_loss = trainer.args.enable_dft_loss
-            trainer._origin_prepare_inputs = trainer._prepare_inputs
-            trainer._prepare_inputs = MethodType(partial(_prepare_inputs, sp_instance=self), trainer)
-            trainer.compute_loss_func = partial(loss_scale_sp_func, sp_instance=self, enable_dft_loss=enable_dft_loss)
-
-        elif trainer.__class__.__name__ == 'DPOTrainer':
-            trainer._origin_prepare_inputs = trainer._prepare_inputs
-            trainer._prepare_inputs = MethodType(partial(_prepare_inputs, sp_instance=self), trainer)
-            trainer.get_per_token_logps = partial(get_per_token_logps, sp_instance=self)
-
-        elif trainer.__class__.__name__ == 'GRPOTrainer':
-            try:
-                import trl
-                assert version.parse(trl.__version__) >= version.parse('0.18.0')
-            except (ImportError, AssertionError):
-                raise ImportError('trl>=0.18.0 is required for GRPOTrainer with ring attention. '
-                                  'Please install it with: pip install trl>=0.18.0')
-
-            trainer.ring_attention = self
-            trainer.args.gradient_accumulation_steps = trainer.args.gradient_accumulation_steps * self.sp_world_size
-            trainer.old_policy = MethodType(partial(old_policy_grpo, sp_instance=self), trainer)
-            trainer._get_train_sampler = MethodType(partial(_get_train_sampler_grpo, sp_instance=self), trainer)
-            trainer._prepare_inputs = MethodType(partial(_prepare_inputs_grpo, sp_instance=self), trainer)
-            trainer._get_per_token_logps_and_entropies = MethodType(
-                partial(_get_per_token_logps_and_entropies_grpo, sp_instance=self), trainer)
-            trainer.split_by_mini_batches = MethodType(partial(split_by_mini_batches_grpo, sp_instance=self), trainer)
-
-        setup_compute_acc(self)

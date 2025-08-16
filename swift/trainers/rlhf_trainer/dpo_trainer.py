@@ -10,7 +10,7 @@ from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.dpo_config import DPOConfig
 from trl.trainer.utils import RunningMoments, selective_log_softmax
-
+import torch.distributed as dist
 from swift.llm import to_device
 from swift.utils import get_logger
 from ..mixin import DataLoaderMixin, SwiftMixin
@@ -139,8 +139,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['aux_loss'] = outputs.aux_loss
         return output
 
-    @staticmethod
     def get_per_token_logps(
+        self,
         logits: torch.FloatTensor,
         labels: torch.LongTensor,
         label_pad_token_id=-100,
@@ -151,11 +151,25 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         loss_mask = labels != label_pad_token_id
         labels = labels.clone()
         labels[~loss_mask] = 0
-        # https://github.com/huggingface/trl/pull/2799
-        # Reduce peak vram consumption with efficient selective log_softmax
-        per_token_logps = selective_log_softmax(logits, labels)
-        per_token_logps[~loss_mask] = 0
-        return per_token_logps, logits.mean(-1), loss_mask
+        if self.template.sequence_parallel_size == 1:
+            # https://github.com/huggingface/trl/pull/2799
+            # Reduce peak vram consumption with efficient selective log_softmax
+            per_token_logps = selective_log_softmax(logits, labels)
+            per_token_logps[~loss_mask] = 0
+            return per_token_logps, logits.mean(-1), loss_mask
+        else:
+            labels = labels.to(logits.device)
+            loss_mask = loss_mask.to(logits.device)
+            mean_logits = logits.mean(-1)
+            per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
+            from swift.trainers.sequence_parallel.utils import GatherLoss
+            from swift.trainers.sequence_parallel import sequence_parallel
+            total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps,
+                                                                      loss_mask, sequence_parallel.sp_group, 1)
+            world_size = dist.get_world_size(group=sequence_parallel.sp_group)
+            total_mean_logits = mean_logits.new_empty((mean_logits.shape[0], mean_logits.shape[1] * world_size))
+            dist.all_gather_into_tensor(total_mean_logits, mean_logits, group=sequence_parallel.sp_group)
+            return total_per_token_logps, total_mean_logits, total_loss_mask
 
     def training_step(self, model, inputs, *args, **kwargs):
         inputs['_position_ids'] = inputs.get('position_ids')

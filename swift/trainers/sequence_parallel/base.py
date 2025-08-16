@@ -33,11 +33,6 @@ class SequenceParallel(abc.ABC):
         """Pad and split inputs for sequence parallel training"""
         pass
 
-    @abstractmethod
-    def reduce_outputs(self, loss, labels):
-        """Reduce outputs for sequence parallel training"""
-        pass
-
     @property
     @abstractmethod
     def sp_group(self):
@@ -47,16 +42,6 @@ class SequenceParallel(abc.ABC):
     @abstractmethod
     def world_size(self):
         """Return the sequence parallel world size"""
-        pass
-
-    @abstractmethod
-    def prepare_trainer(self, trainer):
-        """Prepare trainer for sequence parallel training"""
-        pass
-
-    @abstractmethod
-    def get_dataloader(self, trainer, dataset, batch_size):
-        """Get dataloader for sequence parallel training"""
         pass
 
 
@@ -153,10 +138,6 @@ class CommonSequenceParallel(SequenceParallel):
 
         return input_ids, input_embeds, labels, position_ids, attention_mask, loss_scale
 
-    def reduce_outputs(self, loss, labels):
-        """Default implementation for reducing outputs"""
-        return loss
-
     def world_size(self):
         """Return the sequence parallel world size"""
         return self.sp_world_size
@@ -191,3 +172,14 @@ class CommonSequenceParallel(SequenceParallel):
     def dp_rank(self):
         """Return the data parallel rank"""
         return dist.get_rank(self.device_mesh['data'].get_group()) if self.device_mesh else 0
+
+    def pad_and_split_extra_inputs(self, inputs):
+        """Common input preparation function"""
+        if 'labels' in inputs:
+            labels = inputs['labels']
+            _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, None, None, None)
+            inputs['labels'] = labels
+        if 'loss_scale' in inputs:
+            loss_scale = inputs['loss_scale']
+            _, _, _, _, _, loss_scale = self.pad_and_split_inputs(None, None, None, None, None, loss_scale)
+            inputs['loss_scale'] = loss_scale

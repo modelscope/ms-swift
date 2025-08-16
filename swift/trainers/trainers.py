@@ -20,6 +20,7 @@ from swift.plugin import MeanMetric
 from swift.utils import JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
+from .utils import per_token_loss_func
 
 logger = get_logger()
 
@@ -291,6 +292,10 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         from swift.llm import HfConfigFactory
         args = self.args
         inputs = super()._prepare_inputs(inputs)
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            sequence_parallel.pad_and_split_extra_inputs(inputs)
+
         loss_kwargs = {}
         compute_loss_func = self.compute_loss_func
 
@@ -308,7 +313,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             if position_ids is not None:
                 loss_kwargs['position_ids'] = position_ids
 
-        use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
+        use_logits_to_keep = self.get_use_logits_to_keep()
         if use_logits_to_keep:
             self.prepare_logits_to_keep(inputs)
             if args.tuner_backend == 'unsloth' and isinstance(inputs['logits_to_keep'], torch.Tensor):
@@ -360,8 +365,18 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
         else:
             outputs.loss = None
-            if self.args.enable_dft_loss or loss_scale is not None:
-                outputs.loss = get_loss_func('per_token_cross_entropy')(
+            if self.template.sequence_parallel_size > 1:
+                from swift.trainers.sequence_parallel import sequence_parallel
+                from swift.trainers.sequence_parallel.utils import loss_scale_sp_func
+                outputs.loss = loss_scale_sp_func(outputs,
+                                          labels,
+                                          loss_scale=loss_scale,
+                                          num_items_in_batch=num_items_in_batch,
+                                          sp_instance=sequence_parallel,
+                                          enable_dft_loss=self.args.enable_dft_loss)
+            elif self.args.enable_dft_loss or loss_scale is not None or self.template.sequence_parallel_size > 1:
+                loss_func = per_token_loss_func
+                outputs.loss = loss_func(
                     outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
 
                 if loss_scale is not None:
@@ -392,10 +407,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 aux_loss = outputs.get('aux_loss')
                 if aux_loss is not None:
                     loss = loss + self.args.router_aux_loss_coef * aux_loss.to(loss.device)
-
-        if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            loss = sequence_parallel.reduce_outputs(loss, labels)
 
         if getattr(self.args, 'average_tokens_across_devices',
                    False) and self.model_accepts_loss_kwargs and num_items_in_batch is not None:

@@ -1,5 +1,4 @@
 from functools import partial
-from types import MethodType
 from typing import Any, Optional, Tuple
 
 import torch
@@ -8,10 +7,7 @@ from packaging import version
 
 from swift.llm import get_llm_model
 from .base import CommonSequenceParallel
-from .utils import (GatherLoss, SequenceParallelDispatcher, SequenceParallelSampler,
-                    _get_per_token_logps_and_entropies_grpo, _get_train_sampler_grpo, _prepare_inputs,
-                    _prepare_inputs_grpo, get_common_dataloader, get_per_token_logps, loss_scale_sp_func,
-                    old_policy_grpo, setup_compute_acc, split_by_mini_batches_grpo)
+from .utils import GatherLoss
 
 assert version.parse(torch.__version__) >= version.parse('2.0.0')
 torch._dynamo.config.capture_dynamic_output_shape_ops = True
@@ -309,43 +305,3 @@ class Ulysses(CommonSequenceParallel):
             ALL_ATTENTION_FUNCTIONS['sdpa'] = partial(
                 local_sdpa_attn, dist_attn=DistributedAttention(None, self.sp_group))
 
-    def get_dataloader(self, trainer, dataset, batch_size, skip_batches: int = 0):
-        return get_common_dataloader(
-            self,
-            trainer,
-            dataset,
-            batch_size,
-            SequenceParallelSampler,
-            SequenceParallelDispatcher,
-            skip_batches=skip_batches)
-
-    def prepare_trainer(self, trainer):
-        # TODO hack methods, not cool
-        if trainer.train_dataset is None:
-            raise ValueError('Trainer: training requires a train_dataset.')
-
-        trainer.ulysses = self
-        if trainer.__class__.__name__ == 'Seq2SeqTrainer':
-            enable_dft_loss = trainer.args.enable_dft_loss
-            trainer._origin_prepare_inputs = trainer._prepare_inputs
-            trainer._prepare_inputs = MethodType(partial(_prepare_inputs, sp_instance=self), trainer)
-            trainer.compute_loss_func = partial(loss_scale_sp_func, sp_instance=self, enable_dft_loss=enable_dft_loss)
-
-        elif trainer.__class__.__name__ == 'DPOTrainer':
-            trainer._origin_prepare_inputs = trainer._prepare_inputs
-            trainer._prepare_inputs = MethodType(partial(_prepare_inputs, sp_instance=self), trainer)
-            trainer.get_per_token_logps = partial(get_per_token_logps, sp_instance=self)
-
-        elif trainer.__class__.__name__ == 'GRPOTrainer':
-            import trl
-            assert version.parse(trl.__version__) >= version.parse('0.18.0')
-            trainer.ulysses = self
-            trainer.args.gradient_accumulation_steps = trainer.args.gradient_accumulation_steps * self.sp_world_size
-            trainer.old_policy = MethodType(partial(old_policy_grpo, sp_instance=self), trainer)
-            trainer._get_train_sampler = MethodType(partial(_get_train_sampler_grpo, sp_instance=self), trainer)
-            trainer._prepare_inputs = MethodType(partial(_prepare_inputs_grpo, sp_instance=self), trainer)
-            trainer._get_per_token_logps_and_entropies = MethodType(
-                partial(_get_per_token_logps_and_entropies_grpo, sp_instance=self), trainer)
-            trainer.split_by_mini_batches = MethodType(partial(split_by_mini_batches_grpo, sp_instance=self), trainer)
-
-        setup_compute_acc(self)

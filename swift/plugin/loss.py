@@ -12,24 +12,6 @@ from torch.nn import CrossEntropyLoss, MSELoss
 from transformers.utils import strtobool
 
 
-def per_token_loss_func(outputs, labels, enable_dft_loss: bool = False, **kwargs):
-    logits = outputs.logits
-    # Upcast to float if we need to compute the loss to avoid potential precision issues
-    logits = logits.float()
-    labels = torch.roll(labels, shifts=-1, dims=-1).view(-1)
-
-    # Flatten the tokens
-    logits = logits.view(-1, logits.shape[-1])
-    # Enable model parallelism
-    labels = labels.to(logits.device)
-    loss = F.cross_entropy(logits, labels, ignore_index=-100, reduction='none')
-    if enable_dft_loss:
-        with torch.no_grad():
-            target_probs = torch.exp(-loss)
-        loss *= target_probs
-    return loss
-
-
 def _parse_pair_sentence(outputs):
     if isinstance(outputs, dict):
         last_hidden_state = outputs['last_hidden_state']
@@ -455,6 +437,7 @@ def channel_loss_func(outputs,
     assert sample_channels is not None, 'Data does not have channel field.'
 
     if outputs.loss is None:
+        from swift.trainers.utils import per_token_loss_func
         outputs.loss = per_token_loss_func(outputs, labels)
     token_loss = outputs.loss
     masks = torch.roll(labels, shifts=-1, dims=-1).view(-1) != -100
