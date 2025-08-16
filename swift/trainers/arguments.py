@@ -239,7 +239,7 @@ class VllmArguments:
             'reasoning_parser': self.vllm_reasoning_parser,
         }
         if self.task_type == 'embedding':
-            kwargs['task_type'] = 'embedding'
+            kwargs['task_type'] = 'embed'
         return kwargs
 
 
