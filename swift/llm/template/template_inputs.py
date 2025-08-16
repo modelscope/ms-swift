@@ -14,21 +14,44 @@ logger = get_logger()
 @dataclass
 class InferRequest:
     """
-    messages: Input in messages format.
-        Examples: [{
-            "role": "user",  # or assistant/system/role
-            "content": [  # str or List[Dict[str, Any]]
-                {
-                    "type": "image",  # or audio/video
-                    "image": "<url/path/base64/PIL.Image>",
-                },
-                {"type": "text", "text": "Please describe the picture."},
-            ],
-        }]
-        The above content is equivalent to:
-        [{"role": "user", "content": "<image>Please describe the picture."}]
-        and additionally passing in images: ["<url/path/base64/PIL.Image>"].
-    tools: Organize tools into the format of agent_template for system. for example, 'react_en'.
+    Data structure for inference requests.
+
+    Attributes:
+        messages (Messages):
+            The input conversation in messages format. Each message is a dict containing at least
+            a "role" field (e.g., "user", "assistant", "system") and a "content" field.
+            Example:
+                [{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",  # can also be audio/video
+                            "image": "<url/path/base64/PIL.Image>",
+                        },
+                        {"type": "text", "text": "Please describe the picture."},
+                    ],
+                }]
+            The above is equivalent to:
+                [{"role": "user", "content": "<image>Please describe the picture."}]
+            with an additional argument:
+                images = ["<url/path/base64/PIL.Image>"]
+
+        images (List[Union[str, Image.Image]]):
+            Optional, a list of images associated with the request.
+            Each image can be a URL, local path, base64 string, or PIL.Image object.
+
+        audios (List[str]):
+            Optional, a list of audio resources associated with the request.
+
+        videos (List[str]):
+            Optional, a list of video resources associated with the request.
+
+        tools (Optional[List[Tool]]):
+            An optional list of tools. These should be organized in the agent_template format for
+            tools requested by the system, for example 'react_en'.
+
+        objects (Dict[str, List[Any]]):
+            Container for additional multimodal objects, grouped by type (key).
     """
     messages: Messages
 
@@ -75,12 +98,35 @@ class InferRequest:
 @dataclass
 class RolloutInferRequest(InferRequest):
     """
-    A request class that modifies the 'images' attribute
-    to be a list of strings for compatibility with POST requests.
-    The strings can represent image URLs or Base64 encoded images.
+    An inference request class for rollout scenarios.
+
+    This class extends `InferRequest` and specifically overrides the `images` attribute
+    to be a list of strings for compatibility with POST requests. Each string may
+    represent an image URL or a Base64-encoded image.
+
+    Inherits all fields from `InferRequest`:
+        messages (Messages):
+            Input conversation messages, supporting multimodal content.
+        audios (List[str]):
+            List of audio resources associated with the request.
+        videos (List[str]):
+            List of video resources associated with the request.
+        tools (Optional[List[Tool]]):
+            List of tools, organized by the agent template (e.g. 'react_en').
+        objects (Dict[str, List[Any]]):
+            Optional container for additional multimodal objects.
+
+    Additional / Overridden fields:
+        images (List[str]):
+            List of image resources, each as a string (URL or base64).
+        data_dict (Dict):
+            Optional dictionary for extra request data.
+        uuid (Optional[str]):
+            Optional unique identifier for this request instance.
     """
     images: List[str] = field(default_factory=list)
     data_dict: Dict = field(default_factory=dict)
+    uuid: Optional[str] = None
 
 
 @dataclass

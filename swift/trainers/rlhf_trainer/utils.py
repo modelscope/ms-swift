@@ -4,7 +4,7 @@ import time
 from contextlib import contextmanager
 from io import BytesIO
 from types import MethodType
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -19,6 +19,9 @@ if is_wandb_available():
     import wandb
 if is_swanlab_available():
     import swanlab
+
+if TYPE_CHECKING:
+    from swift.llm.utils import Messages
 
 
 def round_robin(num_reqs, num_workers):
@@ -253,3 +256,67 @@ def load_pil_img(img) -> Image:
         return Image.open(img['path'])
     else:
         raise ValueError("Image dictionary must contain either 'bytes' or 'path' key.")
+
+
+def replace_assistant_response_with_ids(messages: 'Messages',
+                                        completion_ids: List[Union[int, List[int]]]) -> 'Messages':  # noqa
+    """
+    Replaces the content of assistant messages with the provided completion IDs.
+
+    This function processes messages in reverse order and replaces the content of
+    assistant messages with the given completion IDs. If completion_ids is a flat
+    list of integers, it will be treated as a single completion sequence.
+
+    Args:
+        messages: List of message dictionaries containing conversation history.
+        completion_ids: Either:
+            - A single list of token IDs (e.g., [1, 2, 3])
+            - A list of completion sequences (e.g., [[1, 2], [3, 4]])
+
+    Returns:
+        The modified messages list with assistant responses replaced by token IDs.
+
+    Example:
+        >>> messages = [{'role': 'user', 'content': 'Hello'},
+        ...            {'role': 'assistant', 'content': 'Hi there'}]
+        >>> replace_assistant_response_with_ids(messages, [1, 2, 3])
+        [{'role': 'user', 'content': 'Hello'},
+         {'role': 'assistant', 'content': [1, 2, 3]}]
+    """
+    # Normalize input to always be list of lists
+    if isinstance(completion_ids[0], int):
+        completion_ids = [completion_ids]
+
+    remaining_completions = len(completion_ids)
+    completion_index = 0
+
+    for message in reversed(messages):
+        if message['role'] != 'assistant':
+            continue
+
+        if completion_index >= remaining_completions:
+            break
+
+        # Assign completion IDs (starting from last)
+        message['content'] = completion_ids[-1 - completion_index]
+        completion_index += 1
+
+    return messages
+
+
+def patch_save_last_checkpoint():
+    import trl
+    from packaging import version
+    if version.parse(trl.__version__) >= version.parse('0.20'):
+        return
+
+    # patch to fix save last_checkpoint https://github.com/modelscope/ms-swift/pull/4969
+    from trl.trainer.grpo_trainer import RepeatSampler
+    if not hasattr(RepeatSampler, 'old_len_func'):
+        origin_len_func = RepeatSampler.__len__
+
+        def patched_len(self) -> int:
+            return (self.num_samples // self.batch_size) * self.batch_size * self.mini_repeat_count * self.repeat_count
+
+        RepeatSampler.__len__ = patched_len
+        RepeatSampler.old_len_func = origin_len_func
