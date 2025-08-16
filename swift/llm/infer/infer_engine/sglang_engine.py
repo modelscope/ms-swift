@@ -198,7 +198,7 @@ class SglangEngine(InferEngine):
         else:
             return await self._infer_full_async(**kwargs)
 
-    async def _infer_embedding_async(self, template: Template, inputs: Dict[str, Any]) -> EmbeddingResponse:
+    async def _infer_embedding_async(self, template: Template, inputs: Dict[str, Any], **kwargs) -> EmbeddingResponse:
         from sglang.srt.managers.io_struct import EmbeddingReqInput
         obj = EmbeddingReqInput(
             input_ids=inputs['input_ids'], image_data=inputs.get('images'), audio_data=inputs.get('audios'))
