@@ -308,7 +308,7 @@ class VllmEngine(InferEngine):
                 llm_inputs['multi_modal_data'] = mm_data
             if self.task_type == 'embedding':
                 from vllm.pooling_params import PoolingParams
-                return self.engine.encode(llm_inputs, PoolingParams(**kwargs), request_id)
+                return self.engine.encode(llm_inputs, PoolingParams(), request_id)
             elif self.use_async_engine:
                 return self.engine.generate(llm_inputs, generation_config, request_id, **kwargs)
             else:
