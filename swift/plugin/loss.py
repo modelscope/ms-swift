@@ -12,24 +12,6 @@ from torch.nn import CrossEntropyLoss, MSELoss
 from transformers.utils import strtobool
 
 
-def per_token_loss_func(outputs, labels, enable_dft_loss, **kwargs):
-    logits = outputs.logits
-    # Upcast to float if we need to compute the loss to avoid potential precision issues
-    logits = logits.float()
-    labels = torch.roll(labels, shifts=-1, dims=-1).view(-1)
-
-    # Flatten the tokens
-    logits = logits.view(-1, logits.shape[-1])
-    # Enable model parallelism
-    labels = labels.to(logits.device)
-    loss = F.cross_entropy(logits, labels, ignore_index=-100, reduction='none')
-    if enable_dft_loss:
-        with torch.no_grad():
-            target_probs = torch.exp(-loss)
-        loss *= target_probs
-    return loss
-
-
 def _parse_pair_sentence(outputs):
     if isinstance(outputs, dict):
         last_hidden_state = outputs['last_hidden_state']
@@ -450,6 +432,7 @@ def channel_loss_func(outputs,
                       trainer=None,
                       position_ids=None,
                       **kwargs) -> torch.Tensor:
+    from swift.trainers import per_token_loss_func
     channels = trainer.args.channels
     assert channels is not None, 'Please pass --channels as a hyperparameter.'
     assert sample_channels is not None, 'Data does not have channel field.'
@@ -462,7 +445,7 @@ def channel_loss_func(outputs,
         num_items_in_batch = masks.sum()
     loss = token_loss.sum() / num_items_in_batch
 
-    if position_ids is not None and trainer.template._packing:
+    if position_ids is not None and trainer.template.padding_free:
         start_idx_mask = position_ids.view(-1).eq(0).int()
         sample_idx = (torch.cumsum(start_idx_mask, dim=0) - 1).tolist()
         token_channels = [sample_channels[i] for i in sample_idx]
@@ -473,7 +456,7 @@ def channel_loss_func(outputs,
             token_channels.extend([sample_channels[i]] * seq)
 
     mode = 'train' if trainer.model.training else 'eval'
-    metrics = trainer._custom_metrics[mode]
+    metrics = trainer.custom_metrics[mode]
     for ch in set(sample_channels):
         indices = [i for i, c in enumerate(token_channels) if c == ch]
         if not indices:
@@ -767,7 +750,6 @@ def listwise_generative_reranker_loss(outputs,
 
 
 loss_mapping = {
-    'per_token_cross_entropy': per_token_loss_func,
     'channel_loss': channel_loss_func,
     # embedding
     'cosine_similarity': cosine_similarity_func,

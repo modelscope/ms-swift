@@ -16,10 +16,10 @@ from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.plugin import MeanMetric
 from swift.utils import JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
+from .utils import per_token_loss_func
 
 logger = get_logger()
 
@@ -231,14 +231,14 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
     def _patch_predict_with_generate(self):
         origin_data_collator = self.data_collator
         self.data_collator = self._predict_data_collator
-        _packing = self.template._packing
+        packing = self.template.packing
         padding_free = self.template.padding_free
-        self.template._packing = False
+        self.template.packing = False
         self.template.padding_free = False
         try:
             yield
         finally:
-            self.template._packing = _packing
+            self.template.packing = packing
             self.template.padding_free = padding_free
             self.data_collator = origin_data_collator
 
@@ -327,7 +327,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         return inputs
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        from swift.plugin import get_loss_func
         labels = None
         compute_loss_func = inputs.pop('compute_loss_func', None)
         loss_scale = inputs.pop('loss_scale', None)
@@ -339,7 +338,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         outputs = model(**inputs)
         if getattr(outputs, 'aux_loss', None) is not None:
             mode = 'train' if self.model.training else 'eval'
-            self._custom_metrics[mode]['aux_loss'].update(outputs.aux_loss)
+            self.custom_metrics[mode]['aux_loss'].update(outputs.aux_loss)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
         if self.args.past_index >= 0:
@@ -361,8 +360,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         else:
             outputs.loss = None
             if self.args.enable_dft_loss or loss_scale is not None:
-                outputs.loss = get_loss_func('per_token_cross_entropy')(
-                    outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
+                outputs.loss = per_token_loss_func(outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
 
                 if loss_scale is not None:
                     loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
@@ -397,7 +395,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             from swift.trainers.sequence_parallel import sequence_parallel
             loss = sequence_parallel.reduce_outputs(loss, labels)
 
-        if getattr(self.args, 'average_tokens_across_devices', False) and self.model_accepts_loss_kwargs:
+        if getattr(self.args, 'average_tokens_across_devices',
+                   False) and self.model_accepts_loss_kwargs and num_items_in_batch is not None:
             loss *= self.accelerator.num_processes
 
         if (outputs.logits is not None and labels is not None and self.args.tuner_backend != 'unsloth'):

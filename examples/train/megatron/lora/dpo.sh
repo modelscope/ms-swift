@@ -1,16 +1,15 @@
-# 2 * 60GiB; 4.50s/it
+# 2 * 65GiB; 4.50s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron rlhf \
     --rlhf_type dpo \
-    --load Qwen3-30B-A3B-Base-mcore \
-    --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji#20000' \
+    --load Qwen3-30B-A3B-Instruct-2507-mcore \
+    --dataset AI-ModelScope/orpo-dpo-mix-40k \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
-    --modules_to_save word_embeddings output_layer \
     --split_dataset_ratio 0.01 \
     --expert_model_parallel_size 2 \
     --moe_permute_fusion true \
@@ -28,7 +27,7 @@ megatron rlhf \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --save megatron_output/Qwen3-30B-A3B-Base \
+    --save megatron_output/Qwen3-30B-A3B-Instruct-2507 \
     --eval_interval 100 \
     --save_interval 100 \
     --max_length 2048 \
@@ -39,5 +38,4 @@ megatron rlhf \
     --sequence_parallel true \
     --attention_backend flash \
     --beta 0.1 \
-    --rpo_alpha 1 \
     --loss_type sigmoid

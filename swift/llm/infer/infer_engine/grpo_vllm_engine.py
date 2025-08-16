@@ -9,6 +9,7 @@ from tqdm.asyncio import tqdm_asyncio
 from vllm.outputs import RequestOutput
 
 from swift.llm import InferRequest, RolloutInferRequest, Template, VllmEngine
+from swift.llm.infer.protocol import MultiModalRequestMixin
 from swift.plugin import Metric, multi_turns
 from swift.plugin.context_manager import ContextManager, context_managers
 from swift.plugin.env import Env, envs

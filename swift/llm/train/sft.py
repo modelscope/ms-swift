@@ -142,6 +142,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     num_proc=args.dataset_num_proc,
                     strict=args.strict,
                     load_from_cache_file=args.load_from_cache_file)
+            elif args.streaming:
+                preprocessor = EncodePreprocessor(template=template)
+                dataset = preprocessor(
+                    dataset,
+                    num_proc=args.dataset_num_proc,
+                    load_from_cache_file=args.load_from_cache_file,
+                    strict=args.strict)
             datasets[i] = dataset
         self._show_dataset(*datasets)
         return datasets
@@ -270,7 +277,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         predict_with_generate = getattr(args, 'predict_with_generate', False)
         if is_master():
             inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
-            self.template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
+            if isinstance(inputs, list):
+                inputs = inputs[0]
+            self.template.print_inputs(inputs)
         elif hasattr(train_dataset, '__len__'):
             # Avoid the random mismatch issue in LazyLLMDataset.
             inputs = train_dataset[0]
@@ -301,7 +310,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 # val_dataset
                 continue
             if not args.lazy_tokenize and not args.streaming:
-                preprocessor = EncodePreprocessor(template=template)
+                preprocessor = EncodePreprocessor(template=template, pre_tokenize=args.model_meta.is_multimodal)
                 batch_size = 100 if args.model_meta.is_multimodal else 1000
                 dataset = preprocessor(
                     dataset,

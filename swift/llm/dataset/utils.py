@@ -114,12 +114,12 @@ class LazyLLMDataset(Dataset):
         return len(self.dataset)
 
 
-def calculate_matched_group(template, sequences, is_finished: bool = True):
+def calculate_matched_group(template, sequences, packing_length: int, is_finished: bool = True):
     if len(sequences) == 0:
         return [], []
     # https://arxiv.org/pdf/2404.10830
     import binpacking
-    sequences = binpacking.to_constant_volume(sequences, template.max_length, weight_pos=1)
+    sequences = binpacking.to_constant_volume(sequences, packing_length, weight_pos=1)
     if sequences and not is_finished:
         sequences, ret_sequences = sequences[:-1], sequences[-1]
     else:
@@ -137,14 +137,17 @@ class PackingDataset(Dataset):
         *,
         strict: bool = False,
         load_from_cache_file: bool = True,
+        packing_length: Optional[int] = None,
         **kwargs,
     ):
-        template._packing = True
+        template.packing = True
+        template.padding_free = True
         self.template = template
         self.dataset = dataset
         self.num_proc = num_proc
         self.strict = strict
         self.load_from_cache_file = load_from_cache_file
+        self.packing_length = packing_length or self.template.max_length
         self.workers = []
         self.packed_idx, self.packed_length = self.create_packed_idx() if is_master() else (None, None)
         if dist.is_initialized() and is_dist():
@@ -167,7 +170,8 @@ class PackingDataset(Dataset):
                     break
                 i += PACKING_BATCH_SIZE
                 is_finished = i >= len(data)
-                sequences, input_data = calculate_matched_group(self.template, input_data, is_finished=is_finished)
+                sequences, input_data = calculate_matched_group(
+                    self.template, input_data, self.packing_length, is_finished=is_finished)
                 packed_idx += [[x[0] for x in seq] for seq in sequences]
                 packed_length += [sum(x[1] for x in seq) for seq in sequences]
         return packed_idx, packed_length
@@ -175,7 +179,7 @@ class PackingDataset(Dataset):
     def __getitem__(self, index):
         sequence = self.packed_idx[index]
         row = [self.dataset[i] for i in sequence]
-        return self.template.packing_row(row)
+        return row
 
     def __len__(self):
         return len(self.packed_idx)
@@ -190,15 +194,18 @@ class IterablePackingDataset(IterableDataset):
         num_proc: int = 1,
         *,
         packing_interval: int = 128,
+        packing_length: Optional[int] = None,
         strict: bool = False,
         cyclic: bool = False,
         **kwargs,
     ):
-        template._packing = True
+        template.packing = True
+        template.padding_free = True
         self.template = template
         self.dataset = dataset
         self.num_proc = num_proc
         self.strict = strict
+        self.packing_length = packing_length or self.template.max_length
 
         self.packing_interval = packing_interval
         self._in_queue = mp.Queue()
@@ -262,11 +269,10 @@ class IterablePackingDataset(IterableDataset):
             num_samples = self._put_data_in_queue(iterator)
             finished = num_samples != self.packing_interval
             data = self._fetch_data_out_queue(data, num_samples)
-            sequences, data = calculate_matched_group(self.template, data, is_finished=finished)
+            sequences, data = calculate_matched_group(self.template, data, self.packing_length, is_finished=finished)
             res = []
             for row in sequences:
-                packed = self.template.packing_row([r[0] for r in row])
-                res.append(packed)
+                res.append([r[0] for r in row])
             yield from res
             if finished:
                 break
@@ -274,14 +280,14 @@ class IterablePackingDataset(IterableDataset):
 
 class EncodePreprocessor(RowPreprocessor):
 
-    def __init__(self, template: 'Template'):
+    def __init__(self, template: 'Template', pre_tokenize: bool = False):
         super().__init__()
         self.template = template
-        self.is_multimodal = template.model_meta.is_multimodal
+        self.pre_tokenize = pre_tokenize
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         encoded = self.template.encode(row, return_length=True)
-        if self.is_multimodal:
+        if self.pre_tokenize:
             row['length'] = encoded['length']
             encoded = row
         return encoded

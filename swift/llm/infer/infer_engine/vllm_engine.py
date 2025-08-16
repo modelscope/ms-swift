@@ -209,18 +209,19 @@ class VllmEngine(InferEngine):
             logger.info(f'Setting max_model_len: {max_model_len}')
 
     def _prepare_reasoning_parser(self, reasoning_parser: Optional[str]) -> None:
-        if reasoning_parser is None:
+        self.reasoning_parser = None
+        if not reasoning_parser:
             return
 
         # Validate reasoning_parser if provided
-        if reasoning_parser:
-            if ReasoningParserManager is None:
-                raise ImportError('the version of vLLM is too old, please upgrade vLLM')
-            valid_reasoning_parsers = list(ReasoningParserManager.reasoning_parsers.keys())
-            if reasoning_parser not in valid_reasoning_parsers:
-                raise ValueError(f'Invalid reasoning_parser: {reasoning_parser}. '
-                                 f'Available parsers: {valid_reasoning_parsers}')
-            logger.info(f'Using reasoning_parser: {reasoning_parser}')
+        if ReasoningParserManager is None:
+            raise ImportError('the version of vLLM is too old, please upgrade vLLM')
+
+        valid_reasoning_parsers = list(ReasoningParserManager.reasoning_parsers.keys())
+        if reasoning_parser not in valid_reasoning_parsers:
+            raise ValueError(f'Invalid reasoning_parser: {reasoning_parser}. '
+                             f'Available parsers: {valid_reasoning_parsers}')
+        logger.info(f'Using reasoning_parser: {reasoning_parser}')
 
         reasoning_parser_cls = ReasoningParserManager.get_reasoning_parser(reasoning_parser)
         self.reasoning_parser = reasoning_parser_cls(self.tokenizer)
