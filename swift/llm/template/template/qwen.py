@@ -734,6 +734,7 @@ register_template(QwenTemplateMeta(
 
 class Ovis2_5Template(Template):
     num_frames = 8
+    use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -751,7 +752,30 @@ class Ovis2_5Template(Template):
         images = inputs.images
         input_ids = encoded['input_ids']
         labels = encoded['labels']
-        idx_list = findall(input_ids, [-200])
+        pixel_values, grid_thws = None, None
+        if images:
+            idx_list = findall(input_ids, [-200])
+            pixel_values, grid_thws = zip(
+                *(self.model.visual_tokenizer.preprocess(image=image, min_pixels=min_pixels, max_pixels=max_pixels)
+                  for image in images)
+            )
+        
+            num_image_atoms = grid_thw.prod().item()
+            num_image_atoms //= self.visual_tokenizer.vit.config.hidden_stride ** 2
+            num_image_atoms //= self.visual_tokenizer.vit.config.temporal_patch_size
+            input_ids = self._merge_inputs(
+                input_ids, IMAGE_PLACEHOLDER_ID, grid_thws, INDICATOR_IDS[0], INDICATOR_IDS[1]
+            )
+            pixel_values = torch.cat(pixel_values, dim=0)
+            grid_thws = torch.cat(grid_thws, dim=0)
+        elif videos:
+            assert len(videos) == 1, "only support single video"
+            pixel_values, grid_thws = self.visual_tokenizer.preprocess(
+                video=videos[0], min_pixels=min_pixels, max_pixels=max_pixels
+            )
+            input_ids = self._merge_inputs(
+                input_ids, VIDEO_PLACEHOLDER_ID, grid_thws, INDICATOR_IDS[2], INDICATOR_IDS[3]
+            )
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         pass
