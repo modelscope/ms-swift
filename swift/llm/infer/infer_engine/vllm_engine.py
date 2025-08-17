@@ -522,8 +522,8 @@ class VllmEngine(InferEngine):
         prompt_token_ids = None
         if request_config.return_details:
             prompt_token_ids = result.prompt_token_ids
-            if all(isinstance(image, Image.Image) for image in template_inputs[i].images):
-                images_size = [image.size for image in template_inputs[i].images]
+            if all(isinstance(inputs.images, Image.Image)):
+                images_size = [image.size for image in inputs.images]
         return ChatCompletionResponse(
             model=self.model_name,
             choices=choices,
