@@ -5,6 +5,7 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional, Union
 
 import torch
+from PIL import Image
 from tqdm.asyncio import tqdm_asyncio
 
 from swift.llm import InferRequest, RolloutInferRequest, Template, VllmEngine
@@ -385,7 +386,7 @@ class GRPOVllmEngine(VllmEngine):
         prompt_token_ids = None
         if request_config.return_details:
             prompt_token_ids = result.prompt_token_ids
-            if all(isinstance(inputs.images, Image.Image)):
+            if all(isinstance(image, Image.Image) for image in inputs.images):
                 images_size = [image.size for image in inputs.images]
         return ChatCompletionResponse(
             model=self.model_name,
