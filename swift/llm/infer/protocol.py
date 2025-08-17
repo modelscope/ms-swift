@@ -331,6 +331,7 @@ class ChatCompletionResponse:
     object: str = 'chat.completion'
     created: int = field(default_factory=lambda: int(time.time()))
     prompt_token_ids: Optional[List[int]] = None
+    images_size: Optional[List[Tuple[int, int]]] = None
 
     def to_cmpl_response(self) -> 'CompletionResponse':
         self = deepcopy(self)

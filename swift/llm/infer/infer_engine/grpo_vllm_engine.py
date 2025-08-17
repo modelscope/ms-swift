@@ -353,7 +353,7 @@ class GRPOVllmEngine(VllmEngine):
         except Exception:
             pass
 
-    def _create_chat_completion_response(self, result, template: Template, request_config,
+    def _create_chat_completion_response(self, result, inputs, template: Template, request_config,
                                          request_id) -> ChatCompletionResponse:
         assert result is not None
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
@@ -381,6 +381,16 @@ class GRPOVllmEngine(VllmEngine):
                 token_ids=token_ids,
             )
             choices.append(choice)
-        prompt_token_ids = result.prompt_token_ids if request_config.return_details else None
+        images_size = None
+        prompt_token_ids = None
+        if request_config.return_details:
+            prompt_token_ids = result.prompt_token_ids
+            if all(isinstance(image, Image.Image) for image in template_inputs[i].images):
+                images_size = [image.size for image in template_inputs[i].images]
         return ChatCompletionResponse(
-            model=self.model_name, choices=choices, usage=usage_info, id=request_id, prompt_token_ids=prompt_token_ids)
+            model=self.model_name,
+            choices=choices,
+            usage=usage_info,
+            id=request_id,
+            prompt_token_ids=prompt_token_ids,
+            images_size=images_size)

@@ -11,6 +11,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, 
 
 import json
 import torch
+from PIL import Image
 from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
@@ -406,14 +407,22 @@ class PtEngine(InferEngine):
                         logprobs=logprobs,
                         token_ids=token_ids))
             prompt_token_ids = None
-            if request_config.return_details and 'input_ids' in inputs:
-                non_pad_indices = (inputs['input_ids'][i] != self.tokenizer.pad_token_id).nonzero()
-                if non_pad_indices.numel() > 0:
-                    idx = non_pad_indices.min().item()
-                    prompt_token_ids = inputs['input_ids'][i][idx:].tolist()
+            images_size = None
+            if request_config.return_details:
+                if 'input_ids' in inputs:
+                    non_pad_indices = (inputs['input_ids'][i] != self.tokenizer.pad_token_id).nonzero()
+                    if non_pad_indices.numel() > 0:
+                        idx = non_pad_indices.min().item()
+                        prompt_token_ids = inputs['input_ids'][i][idx:].tolist()
+                if all(isinstance(image, Image.Image) for image in template_inputs[i].images):
+                    images_size = [image.size for image in template_inputs[i].images]
             res.append(
                 ChatCompletionResponse(
-                    model=self.model_name, choices=choices, usage=usage_info, prompt_token_ids=prompt_token_ids))
+                    model=self.model_name,
+                    choices=choices,
+                    usage=usage_info,
+                    prompt_token_ids=prompt_token_ids,
+                    images_size=images_size))
         return res
 
     async def infer_async(
