@@ -18,6 +18,7 @@ from threading import local
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
+import json
 import torch
 import torch.nn as nn
 import transformers
@@ -2072,8 +2073,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         Adds a unique `prompt_id` to each input based on their `messages` content.
 
-        Inputs with identical `messages` (assumed to be adjacent) will share the same `prompt_id`.
-        Each input also gets a unique `request_id` for vLLM request tracking.
+        In distributed environments, inputs with identical `messages` across different processes
+        will share the same `prompt_id`. Each input also gets a unique `request_id` for vLLM request tracking.
 
         Args:
             inputs (DataType): A list of dictionaries, each containing a 'messages' key.
@@ -2097,21 +2098,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if not inputs:
             return inputs
 
-        prev_messages = inputs[0].get('messages')
-        current_prompt_id = str(uuid.uuid4())
-        inputs[0]['prompt_id'] = current_prompt_id
-        inputs[0]['request_id'] = str(uuid.uuid4())  # Each request gets a unique ID
+        # Gather all messages from all processes to ensure consistent prompt_id assignment
+        all_messages = gather_object([inp['messages'] for inp in inputs])
 
-        for i in range(1, len(inputs)):
-            messages = inputs[i]['messages']
-            if messages == prev_messages:
-                inputs[i]['prompt_id'] = current_prompt_id
-            else:
-                prev_messages = messages
-                current_prompt_id = str(uuid.uuid4())
-                inputs[i]['prompt_id'] = current_prompt_id
-            # Each request always gets a unique request_id, regardless of prompt_id
-            inputs[i]['request_id'] = str(uuid.uuid4())
+        # Create a mapping from messages to prompt_id
+        messages_to_prompt_id = {}
+        prompt_id_counter = 0
+
+        # Process all inputs from all processes to create consistent mapping
+        for messages in all_messages:
+            key = json.dumps(messages)
+            if key not in messages_to_prompt_id:
+                messages_to_prompt_id[key] = f'prompt_{prompt_id_counter}'
+                prompt_id_counter += 1
+
+        # Apply the mapping to current process inputs
+        for input_item in inputs:
+            messages = input_item.get('messages')
+            input_item['prompt_id'] = messages_to_prompt_id[json.dumps(messages)]
+            input_item['request_id'] = str(uuid.uuid4())  # Each request gets a unique ID
 
         return inputs
 
@@ -2152,7 +2157,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.accelerator.is_main_process:
             all_outputs: List[RolloutOutput] = self._engine_infer(
                 infer_requests=all_requests, request_config=request_config)
-
+        else:
+            all_outputs = [None] * len(all_requests)
         # Handle async engine the outputs count may exceed inputs count
         if self.vllm_use_async_engine:
             outputs_count = [len(all_outputs)] if self.accelerator.is_main_process else [0]
