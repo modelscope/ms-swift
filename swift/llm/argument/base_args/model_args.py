@@ -124,8 +124,8 @@ class ModelArguments:
         elif self.model_info.rope_scaling:
             if self.model_info.rope_scaling.get('original_max_position_embeddings'):
                 origin_max_model_len = self.model_info.rope_scaling['original_max_position_embeddings']
-            elif self.model_info.get('factor'):
-                origin_max_model_len = self.model_info.max_model_len // self.model_info['factor']
+            elif self.model_info.rope_scaling.get('factor'):
+                origin_max_model_len = self.model_info.max_model_len // self.model_info.rope_scaling['factor']
         if origin_max_model_len is None:
             origin_max_model_len = self.model_info.max_model_len
         assert origin_max_model_len is not None, '`origin_max_model_len` from model config is not set'
