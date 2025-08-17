@@ -129,7 +129,7 @@ class ModelArguments:
         if origin_max_model_len is None:
             origin_max_model_len = self.model_info.max_model_len
         assert origin_max_model_len is not None, '`origin_max_model_len` from model config is not set'
-        rope_scaling['origin_max_model_len'] = origin_max_model_len
+        rope_scaling['original_max_position_embeddings'] = origin_max_model_len
 
         if 'factor' not in rope_scaling:
             assert self.max_model_len is not None, '`max_model_len` or `rope_scaling_factor` is not set'
