@@ -68,7 +68,7 @@ class MLLMModelArch:
     got_ocr2 = 'got_ocr2'
     dots_ocr = 'dots_ocr'
 
-    ovis1_6 = 'ovis1_6'
+    ovis = 'ovis'
     molmo = 'molmo'
     emu3_chat = 'emu3_chat'
     megrez_omni = 'megrez_omni'
@@ -593,11 +593,12 @@ register_model_arch(
         vision_tower='vision_model',
     ))
 
-register_model_arch(MultiModelKeys(
-    MLLMModelArch.ovis1_6,
-    language_model='llm',
-    vision_tower='visual_tokenizer',
-))
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.ovis,
+        language_model='llm',
+        vision_tower=['visual_tokenizer', 'vte'],
+    ))
 
 register_model_arch(
     MultiModelKeys(

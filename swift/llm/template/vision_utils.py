@@ -296,6 +296,7 @@ def load_video_ovis2(video_path, num_frames):
         frames = [Image.fromarray(frame, mode='RGB') for frame in frames]
     return frames
 
+
 def load_video_ovis2_5(video_path, num_frames):
     from moviepy.editor import VideoFileClip
     with VideoFileClip(video_path) as clip:

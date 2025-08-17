@@ -756,11 +756,13 @@ class Ovis2_5Template(Template):
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         pass
 
+
 register_template(QwenTemplateMeta(
     MLLMTemplateType.ovis2_5,
     template_cls=Ovis2_5Template,
     default_system=None,
 ))
+
 
 @dataclass
 class MarcoO1TemplateMeta(QwenTemplateMeta):
