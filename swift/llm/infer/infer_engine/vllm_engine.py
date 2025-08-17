@@ -523,12 +523,13 @@ class VllmEngine(InferEngine):
                 logprobs=logprobs,
                 token_ids=token_ids)
             choices.append(choice)
-        images_size = None
         prompt_token_ids = None
+        images_size = None
         if request_config.return_details:
             prompt_token_ids = result.prompt_token_ids
-            if all(isinstance(image, Image.Image) for image in inputs.images):
-                images_size = [image.size for image in inputs.images]
+            images = inputs['template_inputs'].images
+            if all(isinstance(image, Image.Image) for image in images):
+                images_size = [image.size for image in images]
         return ChatCompletionResponse(
             model=self.model_name,
             choices=choices,
@@ -662,7 +663,7 @@ class VllmEngine(InferEngine):
         template.set_mode('vllm')
         loop = asyncio.get_running_loop()
         with torch.inference_mode():
-            inputs = await loop.run_in_executor(None, template.encode, infer_request, return_template_inputs=True)
+            inputs = await loop.run_in_executor(None, template.encode, infer_request, True)
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)

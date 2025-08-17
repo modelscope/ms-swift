@@ -382,12 +382,13 @@ class GRPOVllmEngine(VllmEngine):
                 token_ids=token_ids,
             )
             choices.append(choice)
-        images_size = None
         prompt_token_ids = None
+        images_size = None
         if request_config.return_details:
             prompt_token_ids = result.prompt_token_ids
-            if all(isinstance(image, Image.Image) for image in inputs.images):
-                images_size = [image.size for image in inputs.images]
+            images = inputs['template_inputs'].images
+            if all(isinstance(image, Image.Image) for image in images):
+                images_size = [image.size for image in images]
         return ChatCompletionResponse(
             model=self.model_name,
             choices=choices,
