@@ -1119,11 +1119,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, batch in enumerate(gas_chunks):
             # Encode and process each batch (size=bs)
             with self._template_context(template):
-                [
-                    data.update(
-                        {'messages': replace_assistant_response_with_ids(data['messages'], data['response_token_ids'])})
-                    for data in batch if 'response_token_ids' in data and data['response_token_ids']
-                ]
+                for data in batch:
+                    if 'response_token_ids' in data and data['response_token_ids']:
+                        data['messages'] = replace_assistant_response_with_ids(data['messages'],
+                                                                               data['response_token_ids'])
 
                 batch_encoded_inputs = [template.encode(data) for data in batch]
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
@@ -2355,8 +2354,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 messages = input_data['messages']
                 remove_response(messages)
                 messages.append({'role': 'assistant', 'content': choice.message.content})
-
-                input_data['messages'].append({'role': 'assistant', 'content': choice.message.content})
 
             # Step 2: Add token IDs and loss mask
             if output.response_token_ids:

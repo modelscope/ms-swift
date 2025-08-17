@@ -439,9 +439,8 @@ class ThinkingModelTipsScheduler(MultiTurnScheduler):
 class MathTipsScheduler(MultiTurnScheduler):
     tips_prompt = 'But wait... It seems I made a mistake,'
 
-    def __init__(self, tokenizer, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         from .orm import MathAccuracy
-        self.tokenizer = tokenizer
         super().__init__(*args, **kwargs)
         self.acc_func = kwargs.get('acc_function', MathAccuracy())
 
