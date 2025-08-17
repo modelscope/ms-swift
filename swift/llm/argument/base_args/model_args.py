@@ -119,12 +119,12 @@ class ModelArguments:
 
         # get origin_max_model_len
         origin_max_model_len = None
-        if rope_scaling and rope_scaling.get('original_max_position_embeddings'):
+        if rope_scaling and rope_scaling.get('original_max_position_embeddings') is not None:
             origin_max_model_len = rope_scaling['original_max_position_embeddings']
         elif self.model_info.rope_scaling:
-            if self.model_info.rope_scaling.get('original_max_position_embeddings'):
+            if self.model_info.rope_scaling.get('original_max_position_embeddings') is not None:
                 origin_max_model_len = self.model_info.rope_scaling['original_max_position_embeddings']
-            elif self.model_info.rope_scaling.get('factor'):
+            elif self.model_info.rope_scaling.get('factor') is not None:
                 origin_max_model_len = self.model_info.max_model_len // self.model_info.rope_scaling['factor']
         if origin_max_model_len is None:
             origin_max_model_len = self.model_info.max_model_len
