@@ -84,7 +84,7 @@ class VllmEngine(InferEngine):
         if isinstance(adapters, str):
             adapters = [adapters]
         self.default_adapter_request = None
-        if isinstance(adapters, list):
+        if isinstance(adapters, list) and adapters:
             assert len(adapters) == 1, 'Only one adapter is supported for now.'
             enable_lora = True
             self.default_adapter_request = AdapterRequest('default', adapters[0])
