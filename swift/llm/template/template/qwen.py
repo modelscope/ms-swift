@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 import transformers
 from packaging import version
+from torch import nn as nn
 
 from swift.llm import get_packed_seq_params, to_device, to_float_dtype
 from swift.utils import get_env_args, is_deepspeed_enabled
@@ -17,7 +18,7 @@ from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
-from ..vision_utils import load_audio, load_batch, load_video_ovis2
+from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta, ThinkingTemplate
 
@@ -730,6 +731,36 @@ register_template(QwenTemplateMeta(
     template_cls=Ovis2Template,
 ))
 
+
+class Ovis2_5Template(Template):
+    num_frames = 8
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return [[-200], '\n']
+        elif media_type == 'video':
+            num_frames = get_env_args('num_frames', int, self.num_frames)
+            inputs.images = load_video_ovis2_5(inputs.videos[index], num_frames)
+            return [[-200] * num_frames, '\n']
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        min_pixels = get_env_args('min_pixels', int, 448 * 448)
+        max_pixels = get_env_args('max_pixels', int, 1344 * 1792)
+        encoded = super()._encode(inputs)
+        images = inputs.images
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        idx_list = findall(input_ids, [-200])
+
+    def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        pass
+
+register_template(QwenTemplateMeta(
+    MLLMTemplateType.ovis2_5,
+    template_cls=Ovis2_5Template,
+    default_system=None,
+))
 
 @dataclass
 class MarcoO1TemplateMeta(QwenTemplateMeta):
