@@ -166,6 +166,7 @@ Supervised Fine-tuning:
   - images: image, images.
   - videos: video, videos.
   - audios: audio, audios.
+- If you need to pass base64 data instead of file paths, here are sample examples: `"videos": ['data:video/mp4;base64,{base64_encoded}']`, `"images": ['data:image/jpg;base64,{base64_encoded}']`.
 
 The data format for RLHF and sequence classification of multimodal models can reference the format of pure text large models, with additional fields such as `images` added on top of that.
 
