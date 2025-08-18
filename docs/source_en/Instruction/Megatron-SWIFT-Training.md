@@ -56,7 +56,7 @@ Recommended Operating Environment:
 | flash_attn    |        | 2.7.4.post1/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.51.3      |                    |
 | modelscope   | >=1.23       |             |                    |
-| peft         | >=0.11,<0.17 |             |      LoRA          |
+| peft         | >=0.11,<0.18 |             |      LoRA          |
 | trl          | >=0.15,<0.21 |       |      RLHF        |
 | deepspeed    | >=0.14       | 0.16.9      |                  |
 
@@ -453,7 +453,6 @@ LoRA Training:
 - adapter_load: The path to the adapter weights for loading, used for resuming LoRA training from a checkpoint. The default is None. The method for resuming LoRA training from a checkpoint is the same as for full-parameter training. Please pay attention to the meaning of the `--finetune` parameter.
 - 🔥target_modules: Suffixes of modules to apply LoRA to. Default is `['all-linear']`.
 - 🔥target_regex: Regex expression to specify LoRA modules. Default is `None`. If this value is provided, the `target_modules` parameter will be ignored.
-- target_parameters: List of parameter names to be replaced with LoRA. This argument behaves similarly to target_modules, but you should pass parameter names instead. This feature requires "peft>=0.17.0".
 - 🔥modules_to_save: After attaching a tuner, explicitly specifies additional original model modules to participate in training and storage. The default is `[]`.
 - 🔥lora_rank: Default is `8`.
 - 🔥lora_alpha: Default is `32`.
