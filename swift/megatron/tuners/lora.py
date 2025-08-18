@@ -75,11 +75,13 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         self,
         adapter_name,
         r,
+        *,
         lora_alpha,
         lora_dropout,
         init_lora_weights,
         use_rslora,
         lora_bias,
+        **kwargs
     ):
         if r <= 0:
             raise ValueError(f'`r` should be a positive integer value but the value passed is {r}')
