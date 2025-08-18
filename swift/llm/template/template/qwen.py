@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 import transformers
 from packaging import version
-from torch import nn as nn
+from torch import nn
 
 from swift.llm import get_packed_seq_params, to_device, to_float_dtype
 from swift.utils import get_env_args, is_deepspeed_enabled

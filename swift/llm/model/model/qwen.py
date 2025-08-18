@@ -970,7 +970,6 @@ register_model(
 
 
 def get_model_tokenizer_ovis2_5(*args, **kwargs):
-    kwargs['attn_impl_keys'] = ['llm_attn_implementation']
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
     if model is not None:
         model.visual_tokenizer.to(model.dtype)
