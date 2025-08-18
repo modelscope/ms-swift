@@ -54,7 +54,7 @@ importance_weights = torch.exp(log_importance_weights)
 - `importance_sampling_level sequence` （GSPO）
 - `importance_sampling_level sequence_token` （GSPO-token）
 
-其中 sequence_token 要求 ms-swfit > 3.7 （源码安装）
+其中 sequence_token 要求 ms-swift > 3.7 （源码安装）
 
 论文其他超参
 ```bash
