@@ -49,13 +49,6 @@ class DotsOCRTemplate(Template):
         encoded['loss_scale'] = loss_scale
         return encoded
 
-    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        res = super()._data_collator_mm_data(batch)
-        grid_thw = self.concat_tensor(batch, 'image_grid_thw', 0)
-        if grid_thw is not None:
-            res['image_grid_thw'] = grid_thw
-        return res
-
 
 register_template(
     TemplateMeta(

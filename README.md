@@ -75,6 +75,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🎁 2025.08.12: Support [Dynamic Fine-Tuning](https://arxiv.org/abs/2508.05629)(DFT) in SFT training, use parameter `--enable_dft_loss true`. Training scripts can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/full/dft.sh).
 - 🎁 2025.07.12: Deployment(pt/vLLM/SGLang) of Embedding models is supported, check [here](examples/deploy/embedding/client.py).
 - 🎁 2025.07.09: Megatron-SWIFT supports LoRA training. Compared to ms-swift, it achieves significant speedup on MoE models. Training scripts can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/megatron/lora).
 - 🎁 2025.06.23: Fine-tuning of reranker models is supported. Training scripts can be found here: [Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh).
@@ -131,7 +132,7 @@ Running Environment:
 | deepspeed    | >=0.14       | 0.16.9              | Training                                  |
 | vllm         | >=0.5.1      | 0.10                | Inference/Deployment                      |
 | sglang       | >=0.4.6      | 0.4.9.post6         | Inference/Deployment                      |
-| lmdeploy     | >=0.5,<0.9   | 0.8                 | Inference/Deployment                      |
+| lmdeploy     | >=0.5   | 0.9.2                 | Inference/Deployment                      |
 | evalscope    | >=0.11       |                     | Evaluation                                |
 | gradio       |              | 5.32.1              | Web-UI/App                                |
 

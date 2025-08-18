@@ -3,6 +3,7 @@ import re
 from typing import Literal
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['MAX_PIXELS'] = '1003520'
 
 
 def draw_bbox_qwen2_vl(image, response, norm_bbox: Literal['norm1000', 'none']):
@@ -18,17 +19,19 @@ def draw_bbox_qwen2_vl(image, response, norm_bbox: Literal['norm1000', 'none']):
 
 
 def infer_grounding():
+    # use transformers==4.51.3
     from swift.llm import PtEngine, RequestConfig, BaseArguments, InferRequest, safe_snapshot_download
     output_path = 'bbox.png'
     image = load_image('http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png')
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'Task: Object Detection'}], images=[image])
 
-    request_config = RequestConfig(max_tokens=512, temperature=0)
+    request_config = RequestConfig(max_tokens=512, temperature=0, return_details=True)
     adapter_path = safe_snapshot_download('swift/test_grounding')
     args = BaseArguments.from_pretrained(adapter_path)
 
     engine = PtEngine(args.model, adapters=[adapter_path])
     resp_list = engine.infer([infer_request], request_config)
+    image = image.resize(resp_list[0].images_size[0])
     response = resp_list[0].choices[0].message.content
     print(f'lora-response: {response}')
 

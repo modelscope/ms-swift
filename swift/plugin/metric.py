@@ -5,9 +5,10 @@ from typing import Dict, List, Literal
 
 import numpy as np
 import torch
+import torch.distributed as dist
 from transformers.trainer_utils import EvalPrediction
 
-from swift.utils import Serializer, get_logger
+from swift.utils import Serializer, get_current_device, get_logger
 
 logger = get_logger()
 
@@ -74,17 +75,20 @@ class InferStats(Metric):
 
 class MeanMetric(Metric):
 
-    def __init__(self, nan_value=0):
+    def __init__(self, nan_value=0, device=None):
         super().__init__()
         self.nan_value = nan_value
         self.add_state('state', default=0.)
         self.add_state('count', default=0)
+        if device is None:
+            device = get_current_device()
+        self.device = device
 
     def update(self, state: torch.Tensor):
         if isinstance(state, (torch.Tensor, np.ndarray)):
-            state = state.tolist()
-
-        if isinstance(state, (list, tuple)):
+            count = len(state)
+            state = state.sum().item()
+        elif isinstance(state, (list, tuple)):
             count = len(state)
             state = sum(state)
         else:
@@ -94,8 +98,16 @@ class MeanMetric(Metric):
         self.count += count
 
     def compute(self):
+        if self.count == 0:
+            value = self.nan_value
+        elif dist.is_initialized():
+            tensor = torch.tensor([self.state, self.count], device=self.device)
+            dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+            value = (tensor[0] / tensor[1]).item()
+        else:
+            value = self.state / self.count
         return {
-            'value': self.state / self.count if self.count > 0 else self.nan_value,
+            'value': value,
         }
 
 

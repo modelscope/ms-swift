@@ -157,11 +157,13 @@ class MLLMModelType:
     ovis1_6 = 'ovis1_6'
     ovis1_6_llama3 = 'ovis1_6_llama3'
     ovis2 = 'ovis2'
+    ovis2_5 = 'ovis2_5'
     mimo_vl = 'mimo_vl'
     midashenglm = 'midashenglm'
 
     glm4v = 'glm4v'
     glm4_1v = 'glm4_1v'
+    glm4_5v = 'glm4_5v'
     glm_edge_v = 'glm_edge_v'
     cogvlm = 'cogvlm'
     cogagent_vqa = 'cogagent_vqa'

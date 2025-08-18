@@ -48,7 +48,7 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     # Code borrowed from huggingface/trl
     def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):
-        assert not self.template._packing, 'generate not support padding_free/packing.'
+        assert not self.template.padding_free, 'generate not support padding_free/packing.'
         # Generate output with respect to the prompt only
         model_inputs = {k: v for k, v in inputs.items() if not k.startswith('prompt') and k != 'labels'}
         model_inputs['input_ids'] = inputs['prompts']
@@ -88,9 +88,8 @@ class GKDTrainer(RLHFTrainerMixin, SwiftMixin, HFGKDTrainer):
         # If generate is used, then use_logits_to_keep must be set to False.
         use_logits_to_keep = self.get_use_logits_to_keep(True)
         if use_logits_to_keep:
-            inputs['labels'], logits_to_keep = self.get_logits_to_keep(inputs['labels'])
-            if logits_to_keep is not None:
-                model_inputs['logits_to_keep'] = logits_to_keep
+            self.prepare_logits_to_keep(inputs)
+            model_inputs['logits_to_keep'] = inputs['logits_to_keep']
         if self.args.sft_alpha > 0:
             model_inputs['labels'] = inputs['labels']
         # compute student output

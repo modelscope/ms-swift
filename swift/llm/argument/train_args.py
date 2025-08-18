@@ -1,12 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal, Optional
 
 from transformers import Seq2SeqTrainingArguments
 from transformers.utils.versions import require_version
 
-from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
 from swift.trainers.arguments import TrainArgumentsMixin
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
@@ -43,15 +42,17 @@ class Seq2SeqTrainingOverrideArguments(TrainArgumentsMixin, Seq2SeqTrainingArgum
             self.eval_steps = self.save_steps
         self.evaluation_strategy = self.eval_strategy
 
-    def _init_metric_for_best_model(self):
+    def _init_metric(self):
+        if self.metric is None and self.predict_with_generate:
+            self.metric = 'nlg'
         if self.metric_for_best_model is None:
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
+        if self.greater_is_better is None and self.metric_for_best_model is not None:
+            self.greater_is_better = 'loss' not in self.metric_for_best_model
 
     def __post_init__(self):
         self._init_output_dir()
-        self._init_metric_for_best_model()
-        if self.greater_is_better is None and self.metric_for_best_model is not None:
-            self.greater_is_better = 'loss' not in self.metric_for_best_model
+        self._init_metric()
 
         if self.learning_rate is None:
             if self.train_type == 'full':
@@ -108,18 +109,11 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
 
     Args:
         add_version (bool): Flag to add version information to output_dir. Default is True.
-        loss_type (Optional[str]): Type of loss function to use. Default is None.
         max_new_tokens (int): Maximum number of new tokens to generate. Default is 64.
         temperature (float): Temperature for sampling. Default is 0.
-        optimizer (Optional[str]): Optimizer type to use, define it in the plugin package. Default is None.
-        metric (Optional[str]): Metric to use for evaluation, define it in the plugin package. Default is None.
     """
     add_version: bool = True
     create_checkpoint_symlink: bool = False
-
-    # plugin
-    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
-    metric: Optional[str] = None
 
     # extra
     max_new_tokens: int = 64
@@ -135,7 +129,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
     # early_step
     early_stop_interval: Optional[int] = None
 
-    def __post_init__(self) -> None:
+    def _check_padding_free(self):
         if self.padding_free or self.packing:
             if self.packing:
                 feature = 'packing'
@@ -145,6 +139,27 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
             if self.attn_impl not in {'flash_attn', 'flash_attention_2', 'flash_attention_3'}:
                 raise ValueError(f'The "{feature}" feature requires a flash attention implementation. '
                                  'Please use one of: "flash_attn", "flash_attention_2", "flash_attention_3".')
+
+            if self.model_meta.is_multimodal:
+                supported_model_type = [
+                    'qwen2_vl',
+                    'qwen2_5_vl',
+                    'qwen2_5_omni',
+                    'qvq',
+                    'mimo_vl',
+                    'internvl',
+                    'internvl_phi3',
+                    'internvl2',
+                    'internvl2_phi3',
+                    'internvl2_5',
+                    'internvl3',
+                ]
+                if self.model_type not in supported_model_type:
+                    raise ValueError(
+                        f'Packing/padding_free is not supported for model_type `{self.model_type}`. '
+                        f'model_type of multimodal models that support packing/padding_free: {supported_model_type}.')
+
+    def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
             # The non-resume_only_model will have its weights loaded in the trainer.
@@ -156,7 +171,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
         BaseArguments.__post_init__(self)
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
         TunerArguments.__post_init__(self)
-
+        self._check_padding_free()
         if self.optimizer is None:
             if self.lorap_lr_ratio:
                 self.optimizer = 'lorap'

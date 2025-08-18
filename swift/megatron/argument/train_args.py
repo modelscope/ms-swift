@@ -56,3 +56,6 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
             if self.num_workers > 1:
                 self.num_workers = 1
                 logger.info('Using streaming dataset, setting args.num_workers to 1.')
+        if self.load is None and self.no_initialization:
+            raise ValueError('You did not pass `--load`, so you need to set `--no_initialization false` '
+                             'to allow the model to initialize weights properly.')

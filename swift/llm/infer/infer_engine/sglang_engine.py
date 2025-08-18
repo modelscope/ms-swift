@@ -6,6 +6,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import sglang as sgl
 import torch
+from PIL import Image
 from sglang.srt.sampling.sampling_params import SamplingParams
 from sglang.srt.server_args import ServerArgs
 from transformers import GenerationConfig
@@ -128,7 +129,7 @@ class SglangEngine(InferEngine):
         stop_words = (request_config.stop or []) + (self.generation_config.get('stop') or []) + template_meta.stop_words
         generation_config['stop_token_ids'] = self._get_stop_token_ids(stop_words)
 
-    def _create_chat_completion_response(self, output, template, return_details: bool = False):
+    def _create_chat_completion_response(self, output, inputs, template, return_details: bool = False):
         assert output is not None
         meta_info = output['meta_info']
         usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
@@ -143,13 +144,20 @@ class SglangEngine(InferEngine):
             finish_reason=meta_info['finish_reason']['type'],
             logprobs=None,
             token_ids=token_ids)
-        prompt_token_ids = output.get('prompt_token_ids') if return_details else None
+        prompt_token_ids = None
+        images_size = None
+        if return_details:
+            prompt_token_ids = output.get('prompt_token_ids')
+            images = inputs['template_inputs'].images
+            if all(isinstance(image, Image.Image) for image in images):
+                images_size = [image.size for image in images]
         return ChatCompletionResponse(
             model=self.model_name,
             choices=[choice],
             usage=usage_info,
             id=random_uuid(),
-            prompt_token_ids=prompt_token_ids)
+            prompt_token_ids=prompt_token_ids,
+            images_size=images_size)
 
     def infer(
         self,
@@ -176,7 +184,7 @@ class SglangEngine(InferEngine):
         template.set_mode('sglang')
         loop = asyncio.get_running_loop()
         with torch.inference_mode():
-            inputs = await loop.run_in_executor(None, template.encode, infer_request)
+            inputs = await loop.run_in_executor(None, template.encode, infer_request, True)
         if self.task_type == 'embedding':
             inputs.pop('length', None)
         self.set_default_max_tokens(request_config, inputs)
@@ -198,7 +206,7 @@ class SglangEngine(InferEngine):
         else:
             return await self._infer_full_async(**kwargs)
 
-    async def _infer_embedding_async(self, template: Template, inputs: Dict[str, Any]) -> EmbeddingResponse:
+    async def _infer_embedding_async(self, template: Template, inputs: Dict[str, Any], **kwargs) -> EmbeddingResponse:
         from sglang.srt.managers.io_struct import EmbeddingReqInput
         obj = EmbeddingReqInput(
             input_ids=inputs['input_ids'], image_data=inputs.get('images'), audio_data=inputs.get('audios'))
@@ -215,7 +223,7 @@ class SglangEngine(InferEngine):
                                 request_config: RequestConfig) -> ChatCompletionResponse:
         output = await self.engine.async_generate(**inputs, sampling_params=generation_config)
         output['prompt_token_ids'] = inputs['input_ids']
-        return self._create_chat_completion_response(output, template, request_config.return_details)
+        return self._create_chat_completion_response(output, inputs, template, request_config.return_details)
 
     async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any], generation_config: Dict[str, Any],
                                   **kwargs) -> AsyncIterator[ChatCompletionStreamResponse]:

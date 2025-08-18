@@ -117,6 +117,9 @@ class RolloutArguments(DeployArguments):
             raise ValueError('RolloutArguments does not support pipeline parallelism, '
                              'please set vllm_pipeline_parallel_size to 1.')
 
+        if self.vllm_reasoning_parser is not None:
+            raise ValueError('vllm_reasoning_parser is not supported for Rollout, please unset it.')
+
     def _check_device_count(self):
         local_device_count = get_device_count()
         required_device_count = self.vllm_data_parallel_size * self.vllm_tensor_parallel_size

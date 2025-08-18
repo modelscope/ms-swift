@@ -116,6 +116,7 @@ class MLLMTemplateType:
     ovis1_6 = 'ovis1_6'
     ovis1_6_llama3 = 'ovis1_6_llama3'
     ovis2 = 'ovis2'
+    ovis2_5 = 'ovis2_5'
     mimo_vl = 'mimo_vl'
     midashenglm = 'midashenglm'
 
@@ -160,6 +161,7 @@ class MLLMTemplateType:
     glm4v = 'glm4v'
     glm4_1v = 'glm4_1v'
     glm_edge_v = 'glm_edge_v'
+    glm4_5v = 'glm4_5v'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'

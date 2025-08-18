@@ -265,6 +265,7 @@ class ChatMessage:
     role: Literal['system', 'user', 'assistant']
     content: Union[str, List[Dict[str, Any]], int, float]
     tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
+    reasoning_content: Optional[str] = None
 
 
 @dataclass
@@ -330,6 +331,7 @@ class ChatCompletionResponse:
     object: str = 'chat.completion'
     created: int = field(default_factory=lambda: int(time.time()))
     prompt_token_ids: Optional[List[int]] = None
+    images_size: Optional[List[Tuple[int, int]]] = None
 
     def to_cmpl_response(self) -> 'CompletionResponse':
         self = deepcopy(self)
@@ -353,6 +355,7 @@ class DeltaMessage:
     role: Literal['system', 'user', 'assistant', None] = None
     content: Optional[str] = None
     tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
+    reasoning_content: Optional[str] = None
 
 
 @dataclass

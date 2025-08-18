@@ -7,7 +7,7 @@ from datasets import Dataset as HfDataset
 from datasets import load_from_disk
 
 from swift.llm.dataset.loader import DatasetLoader
-from swift.plugin import extra_callbacks, get_loss_func, get_metric
+from swift.plugin import extra_callbacks
 from swift.trainers import TrainerFactory
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
 from ..argument import TrainArguments
@@ -142,6 +142,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     num_proc=args.dataset_num_proc,
                     strict=args.strict,
                     load_from_cache_file=args.load_from_cache_file)
+            elif args.streaming:
+                preprocessor = EncodePreprocessor(template=template)
+                dataset = preprocessor(
+                    dataset,
+                    num_proc=args.dataset_num_proc,
+                    load_from_cache_file=args.load_from_cache_file,
+                    strict=args.strict)
             datasets[i] = dataset
         self._show_dataset(*datasets)
         return datasets
@@ -177,20 +184,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         return self.train(trainer)
 
     def _get_trainer_kwargs(self):
-        args = self.args
-        if args.metric is not None:
-            compute_metrics, preprocess_logits_for_metrics = get_metric(args.metric)
-        elif args.predict_with_generate:
-            compute_metrics, preprocess_logits_for_metrics = get_metric('nlg')
-        else:
-            compute_metrics, preprocess_logits_for_metrics = get_metric('acc')
-            compute_metrics = partial(
-                compute_metrics, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
-        return {
-            'compute_metrics': compute_metrics,
-            'preprocess_logits_for_metrics': preprocess_logits_for_metrics,
-            'compute_loss_func': get_loss_func(args.loss_type)
-        }
+        return {}
 
     def _save_trainer_state(self, trainer):
         training_args = trainer.args
@@ -224,7 +218,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             'best_metric': state.best_metric,
             'global_step': state.global_step,
             'log_history': state.log_history,
-            'memory': trainer.max_memory,
+            'memory': getattr(state, 'max_memory', None),
         })
         if is_master():
             jsonl_path = os.path.join(training_args.output_dir, 'logging.jsonl')
@@ -283,7 +277,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         predict_with_generate = getattr(args, 'predict_with_generate', False)
         if is_master():
             inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
-            self.template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
+            if isinstance(inputs, list):
+                inputs = inputs[0]
+            self.template.print_inputs(inputs)
         elif hasattr(train_dataset, '__len__'):
             # Avoid the random mismatch issue in LazyLLMDataset.
             inputs = train_dataset[0]
@@ -314,12 +310,14 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 # val_dataset
                 continue
             if not args.lazy_tokenize and not args.streaming:
-                preprocessor = EncodePreprocessor(template=template)
+                preprocessor = EncodePreprocessor(template=template, pre_tokenize=args.model_meta.is_multimodal)
+                batch_size = 100 if args.model_meta.is_multimodal else 1000
                 dataset = preprocessor(
                     dataset,
                     num_proc=args.dataset_num_proc,
                     load_from_cache_file=args.load_from_cache_file,
-                    strict=args.strict)
+                    strict=args.strict,
+                    batch_size=batch_size)
             datasets[i] = dataset
         template.model = origin_template_model
 

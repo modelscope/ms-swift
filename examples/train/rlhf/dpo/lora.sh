@@ -17,12 +17,13 @@ swift rlhf \
     --lora_alpha 32 \
     --target_modules all-linear \
     --gradient_accumulation_steps 16 \
-    --eval_steps 100 \
-    --save_steps 100 \
+    --eval_steps 50 \
+    --save_steps 50 \
     --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
+    --rpo_alpha 0.1 \
     --dataset_num_proc 4

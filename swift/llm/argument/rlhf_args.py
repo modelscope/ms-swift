@@ -77,7 +77,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         ref_model_revision (Optional[str]): Revision of the reference model. Default is None.
         beta (Optional[float]): Beta parameter for RLHF. Default is None.
         label_smoothing (float): Label smoothing value. Default is 0.
-        rpo_alpha (float): Alpha parameter for RPO. Default is 1.
+        rpo_alpha (Optional[float]): Alpha parameter for RPO. Default is None.
         cpo_alpha (float): Alpha parameter for CPO. Default is 1.
         simpo_gamma (float): Gamma parameter for SimPO. Default is 1.
         desirable_weight (float): Weight for desirable outcomes in KTO. Default is 1.0.
@@ -94,7 +94,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     max_completion_length: int = 512
     loss_scale: Optional[str] = None  # 'last_round'
     # DPO
-    rpo_alpha: float = 1.
+    rpo_alpha: Optional[float] = None
     loss_type: Optional[List[str]] = None
     loss_weights: Optional[List[float]] = None
     # CPO
@@ -130,7 +130,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         self._init_external_vllm()
         GRPOArguments.__post_init__(self)
         TrainArguments.__post_init__(self)
-        self._check_padding_free_sp()
+        self._check_sequence_parallel()
         self._check_grpo()
         self._external_vllm_warning()
 
@@ -355,12 +355,16 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             logger.warning(
                 "The parameter 'gc_collect_after_offload' has been deprecated and will be removed in version 3.7. ")
 
-    def _check_padding_free_sp(self):
-        if self.padding_free:
+    def _check_padding_free(self):
+        super()._check_padding_free()
+        if self.padding_free or self.packing:
             supported_types = ['grpo', 'dpo', 'gkd']
             if self.rlhf_type not in supported_types:
-                raise NotImplementedError(f"The current rlhf_type '{self.rlhf_type}' does not support padding_free. "
-                                          'Please set --padding_free to false.')
+                raise NotImplementedError(
+                    f"The current rlhf_type '{self.rlhf_type}' does not support padding_free/packing. "
+                    'Please set --padding_free/packing to false.')
+
+    def _check_sequence_parallel(self):
         if self.sequence_parallel_size > 1:
             supported_types = ['grpo', 'dpo']
             if self.rlhf_type not in supported_types:

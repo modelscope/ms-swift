@@ -5,9 +5,11 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional, Union
 
 import torch
+from PIL import Image
 from tqdm.asyncio import tqdm_asyncio
 
 from swift.llm import InferRequest, RolloutInferRequest, Template, VllmEngine
+from swift.llm.infer.protocol import MultiModalRequestMixin
 from swift.plugin import Metric, multi_turns
 from swift.plugin.context_manager import ContextManager, context_managers
 from swift.plugin.env import Env, envs
@@ -295,13 +297,16 @@ class GRPOVllmEngine(VllmEngine):
             if should_stop:
                 result_choice.messages = messages
                 info_dict['num_turns'] = current_turn
-                for key, value in info_dict.items():
+                for key, values in info_dict.items():
                     if key in ['images', 'audios', 'videos']:
-                        value = MultiModalRequestMixin.to_base64(value)
+                        if not isinstance(values, list):
+                            values = [values]
+                        for i, value in enumerate(values):
+                            values[i] = MultiModalRequestMixin.to_base64(value)
                     if hasattr(result_choice, key):
-                        setattr(result_choice, key, value)
+                        setattr(result_choice, key, values)
                     else:
-                        result_choice.multi_turn_infos[key] = value
+                        result_choice.multi_turn_infos[key] = values
                 return result
 
             ret = self.multi_turn_scheduler.step(current_request, result_choice, current_turn)
@@ -349,7 +354,7 @@ class GRPOVllmEngine(VllmEngine):
         except Exception:
             pass
 
-    def _create_chat_completion_response(self, result, template: Template, request_config,
+    def _create_chat_completion_response(self, result, inputs, template: Template, request_config,
                                          request_id) -> ChatCompletionResponse:
         assert result is not None
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
@@ -377,6 +382,17 @@ class GRPOVllmEngine(VllmEngine):
                 token_ids=token_ids,
             )
             choices.append(choice)
-        prompt_token_ids = result.prompt_token_ids if request_config.return_details else None
+        prompt_token_ids = None
+        images_size = None
+        if request_config.return_details:
+            prompt_token_ids = result.prompt_token_ids
+            images = inputs['template_inputs'].images
+            if all(isinstance(image, Image.Image) for image in images):
+                images_size = [image.size for image in images]
         return ChatCompletionResponse(
-            model=self.model_name, choices=choices, usage=usage_info, id=request_id, prompt_token_ids=prompt_token_ids)
+            model=self.model_name,
+            choices=choices,
+            usage=usage_info,
+            id=request_id,
+            prompt_token_ids=prompt_token_ids,
+            images_size=images_size)

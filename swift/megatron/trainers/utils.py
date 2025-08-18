@@ -50,8 +50,9 @@ def get_batch_on_this_tp_rank(data_iterator):
             'attention_mask': None if 'attention_mask' not in data else data['attention_mask'].cuda(non_blocking=True),
             'position_ids': data['position_ids'].cuda(non_blocking=True),
             'loss_scale': None if not has_loss_scale else data['loss_scale'].cuda(non_blocking=True),
+            'num_samples': data['num_samples'],
         }
-        flags = torch.tensor([seq_length, is_finished, has_loss_scale]).cuda(non_blocking=True)
+        flags = torch.tensor([seq_length, is_finished, has_loss_scale, data['num_samples']]).cuda(non_blocking=True)
         _broadcast(flags)
         if args.pipeline_model_parallel_size == 1:
             _broadcast(batch['input_ids'])
@@ -73,11 +74,14 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(batch['attention_mask'])
             _broadcast(batch['position_ids'])
             _broadcast(batch['loss_scale'])
+        else:
+            for key in ('input_ids', 'labels', 'attention_mask', 'position_ids', 'loss_scale'):
+                batch[key] = None
 
     else:
-        flags = torch.empty((3), dtype=torch.int64, device=torch.cuda.current_device())
+        flags = torch.empty((4), dtype=torch.int64, device=torch.cuda.current_device())
         _broadcast(flags)
-        seq_length, is_finished, has_loss_scale = flags.tolist()
+        seq_length, is_finished, has_loss_scale, num_samples = flags.tolist()
         if args.padding_free:
             micro_batch_size = 1  # use qkv_format 'thd'
             attention_mask = None
@@ -117,6 +121,8 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(attention_mask)
             _broadcast(position_ids)  # compat packing & cp
             _broadcast(loss_scale)
+        else:
+            input_ids, labels, attention_mask, position_ids, loss_scale = (None, ) * 5
 
         batch = {
             'input_ids': input_ids,
@@ -124,6 +130,7 @@ def get_batch_on_this_tp_rank(data_iterator):
             'attention_mask': attention_mask,
             'position_ids': position_ids,
             'loss_scale': loss_scale,
+            'num_samples': num_samples,
         }
     if is_finished:
         args.train_iters = args.curr_iteration + 1
@@ -187,16 +194,13 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
 
 def get_batch(data_iterator):
     """Generate a batch."""
-
-    # TODO: this is pretty hacky, find a better way
-    if (not mpu.is_pipeline_first_stage()) and (not mpu.is_pipeline_last_stage()):
-        return {key: None for key in ['input_ids', 'attention_mask', 'position_ids', 'loss_scale']}
-
     # get batches based on the TP rank you are on
     batch = get_batch_on_this_tp_rank(data_iterator)
     args = get_args()
-    if args.padding_free:
+    num_samples = batch.pop('num_samples')
+    if args.padding_free and batch.get('position_ids') is not None:
         batch['packed_seq_params'] = get_packed_seq_params(batch['position_ids'])
+        batch['packed_seq_params'].num_samples = num_samples
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch)
     return batch

@@ -150,22 +150,21 @@ def patch_ignore_check_imports():
         td.check_imports = _old_check_imports
 
 
-def get_lm_head_model(model, model_meta, lm_heads):
+def get_lm_head_model(model, model_meta=None, lm_heads=None):
+    model_meta = model_meta or model.model_meta
+    lm_heads = lm_heads or ['lm_head']
     llm_prefix_list = getattr(model_meta.model_arch, 'language_model', None)
     prefix_list = []
     if llm_prefix_list:
         prefix_list = llm_prefix_list[0].split('.')
 
-    origin_model = model
     current_model = model
-    for prefix in [None] + prefix_list:
-        if prefix:
-            current_model = getattr(current_model, prefix)
+    for prefix in prefix_list:
+        current_model = getattr(current_model, prefix)
         for lm_head in lm_heads:
             if hasattr(current_model, lm_head):
                 return current_model
-
-    raise ValueError(f'Cannot find the lm_head. model: {origin_model}')
+    return model
 
 
 def _patch_sequence_classification(model, model_meta):
@@ -346,7 +345,6 @@ def patch_mp_ddp():
         transformers.modeling_utils.get_balanced_memory = lambda *args, **kwargs: {}
         transformers.modeling_utils.infer_auto_device_map = _infer_auto_device_map_patch
 
-    if is_mp_ddp():
         _old_accelerator_init = trainer.Accelerator.__init__
         trainer.Accelerator.__init__ = (lambda self, device_placement=False, *args, **kwargs: _old_accelerator_init(
             self, device_placement=device_placement, *args, **kwargs))

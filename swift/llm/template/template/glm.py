@@ -9,7 +9,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, Word, findall
-from ..vision_utils import load_batch, load_video_cogvlm2
+from ..vision_utils import load_batch, load_video_cogvlm2, load_video_hf
 from .utils import ThinkingTemplate
 
 
@@ -222,14 +222,6 @@ class GLM4_1VTemplate(Template):
         encoded['position_ids'] = list(range(len(input_ids)))
         return encoded
 
-    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        res = super()._data_collator_mm_data(batch)
-        for media_type in ['image', 'video']:
-            grid_thw = self.concat_tensor(batch, f'{media_type}_grid_thw', 0)
-            if grid_thw is not None:
-                res[f'{media_type}_grid_thw'] = grid_thw
-        return res
-
 
 register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate, suffix=['<|endoftext|>']))
 
@@ -237,9 +229,49 @@ register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Templa
 
 register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=GLM4_0414Template))
 
-register_template(GLM4TemplateMeta(LLMTemplateType.glm4_5, template_cls=ThinkingTemplate))
+register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_5, template_cls=ThinkingTemplate))
 
 register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
+
+
+class GLM4_5VTemplate(Template):
+    placeholder_tokens = ['<|image|>']
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return ['<|begin_of_image|><|image|><|end_of_image|>']
+        elif media_type == 'video':
+            return ['<|begin_of_video|><|video|><|end_of_video|>']
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        input_ids = encoded['input_ids']
+        for mm_type in ['image', 'video']:
+            mm_token = f'<|{mm_type}|>'
+            mm_token_id = self._tokenize(mm_token)[0]
+
+            idx_list = findall(input_ids, mm_token_id)
+            if idx_list:
+                split_token = self._tokenize('\n')[0]
+                mm_data = getattr(inputs, f'{mm_type}s')
+                if mm_type == 'image':
+                    kwargs = {'images': mm_data}
+                else:
+                    videos, video_metadata = load_video_hf(mm_data)
+                    kwargs = {'videos': [videos], 'video_metadata': [video_metadata]}
+                mm_inputs = self.processor(text='\n'.join([mm_token] * len(mm_data)), return_tensors='pt', **kwargs)
+                splited_tokens = self._split_list(mm_inputs['input_ids'][0].tolist(), split_token)
+                for key in ['input_ids', 'token_type_ids', 'attention_mask']:
+                    mm_inputs.pop(key, None)
+                input_ids, encoded['labels'], encoded['loss_scale'] = self._extend_tokens(
+                    input_ids, encoded['labels'], encoded['loss_scale'], idx_list, lambda i: splited_tokens[i])
+                encoded.update(mm_inputs)
+        encoded['input_ids'] = input_ids
+        return encoded
+
+
+register_template(GLM4_0414TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
 
 glm4z1rumination_system = (
     '你是一个专业的深度研究助手，通过提供的工具与模拟浏览器交互，来帮助用户完成深度信息调研和报告撰写任务。'
