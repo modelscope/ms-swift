@@ -479,15 +479,10 @@ class MathTipsScheduler(MultiTurnScheduler):
 
 class GYMScheduler(RolloutScheduler):
 
-    def __init__(self,
-                 infer_engine: 'GRPOVllmEngine',
-                 gym_env: Optional[str] = None,
-                 context_manager_name: Optional[str] = None,
-                 max_turns: Optional[int] = None,
-                 **kwargs):
+    def __init__(self, infer_engine: 'GRPOVllmEngine', max_turns: Optional[int] = None, **kwargs):
         super().__init__(infer_engine, max_turns, **kwargs)
-        self.gym_env_name = gym_env
-        self.context_manager_name = context_manager_name
+        self.gym_env_name = kwargs.get('gym_env', None)
+        self.context_manager_name = kwargs.get('context_manager', None)
 
     async def _create_env(self, env_config: Dict) -> Env:
         """Create environment instance from configuration."""
@@ -586,17 +581,8 @@ class GYMScheduler(RolloutScheduler):
                     current_request.messages = messages
                     current_turn += 1
 
-            final_choice = ChatCompletionResponseChoice(
-                index=response_choice.index,
-                message=response_choice.message,
-                finish_reason=response_choice.finish_reason,
-                logprobs=response_choice.logprobs)
-
-            last_response = ChatCompletionResponse(
-                model=self.infer_engine.model_name, choices=[final_choice], usage=response.usage)
-
             return RolloutOutput(
-                response=last_response,
+                response=response,
                 messages=messages,
                 rollout_infos={
                     'num_turns': current_turn,
