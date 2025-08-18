@@ -923,15 +923,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with patch_profiling_context(self, reward_func_name):
                 # reward model
                 reward_kwargs = {'trainer_state': self.state}
-
+                if self.enable_multi_turn:
+                    reward_kwargs.update({'global_inputs': gather_object(inputs)})
                 if isinstance(reward_func, nn.Module):
                     output_reward_func = reward_model_plugin(inputs=inputs, **reward_kwargs)
                 # reward function
                 else:
                     # Repeat all input columns (but "messages" and "completion") to match the number of generations
                     reward_kwargs.update(RowPreprocessor.rows_to_batched(inputs))
-                    if self.enable_multi_turn:
-                        reward_kwargs.update({'global_inputs': gather_object(inputs)})
                     output_reward_func = reward_func(completions, **reward_kwargs)
                 output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
