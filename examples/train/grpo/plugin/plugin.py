@@ -743,7 +743,7 @@ class CustomizedRMPlugin:
         self.model = model
         self.template: Template = template
 
-    def __call__(self, inputs):
+    def __call__(self, inputs, **kwargs):
         batched_inputs = [self.template.encode(deepcopy(infer_request)) for infer_request in inputs]
         reward_inputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
 
@@ -782,7 +782,7 @@ class QwenLongPlugin(DefaultRMPlugin):
         """)  # noqa
         self.accuracy_orm = accuracy_orm
 
-    def __call__(self, inputs):
+    def __call__(self, inputs, **kwargs):
         completions = [example['messages'][-1]['content'] for example in inputs]
         ground_truths = [example['reward_model']['ground_truth'] for example in inputs]
         rm_inputs = self.prepare_rm_inputs(inputs, completions, ground_truths)
@@ -890,11 +890,11 @@ TO CUSTOMIZE MULTITURN SCHEDULER:
 """
 
 
-class ReToolScheduler(MultiTurnScheduler):
+class CustomizedScheduler(MultiTurnScheduler):
     pass
 
 
-multi_turns['retool'] = ReToolScheduler
+multi_turns['customized'] = CustomizedScheduler
 
 
 # register GYM env

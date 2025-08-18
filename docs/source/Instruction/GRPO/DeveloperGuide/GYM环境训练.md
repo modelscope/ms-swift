@@ -1,6 +1,6 @@
 # GYM环境训练
 
-注意：该 feature 需要使用 ms-swift>=3.7 且目前仅支持纯文本模型
+**注意** GYM环境训练逻辑已在 ms-swift 3.8 中进行重构，如果您的 ms-swift 版本低于该版本，请参考对应版本的文档。
 
 ## Gym接口
 
@@ -105,12 +105,17 @@ RolloutResponseChoice(
         messages=None)
 """
 ```
-在 `rollout` 命令中使用参数 `use_gym_env` 来指定使用gym作为训练的环境接口
+GYM环境训练可以视作一种特殊的多轮训练，区别在于使用GYM环境训练，奖励信息通过环境直接获取。
+
+在 `rollout` 命令中使用参数 `use_gym_env` 来指定使用gym作为训练的环境接口。我们提供了兼容GYM环境的多轮规划器参考实现，见[内置多轮调度器实现](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py)中的 GymScheduler 类
+
+
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
     --model xxx \
     --use_gym_env true \
+    --multi_turn_scheduler gym_scheduler \
     --max_turns xxx
 ```
 
@@ -133,14 +138,11 @@ swift rollout \
 ```json
 {"messages": [{"role": "system", "content": "你是个有用无害的助手"}, {"role": "user", "content": "告诉我明天的天气"}],"env_config":{"name":"custom_env","other_config":"xxxx"},"ctx_config":{"name":"custom_ctx","other_config":"xxxx"}}
 ```
-2. gym 环境目前仅兼容纯文本模型和 AsyncEngine
+2. 默认仅对最后一轮response进行训练，如果gym涉及到多轮response生成，使用参数`--loss_scale default`对所有轮次的response进行训练，具体参考[文档](./多轮训练.md#损失掩码)
 
-3. 默认仅对最后一轮response进行训练，如果gym涉及到多轮response生成，使用参数`--loss_scale default`对所有轮次的response进行训练，具体参考[文档](./多轮训练.md#损失掩码)
-
-4. 数据流程
+3. 数据流程
 整个gym数据流程如下:
 <img src="../../../../resources/gym_env.png" width="400" />
 
-
-5. 奖励日志
+4. 奖励日志
 由于gym的奖励是在step函数内计算完成，所以需要手动通过`info`返回日志，最终的记录会放在completions.jsonl中的`trajectory_infos`字段.

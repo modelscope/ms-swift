@@ -612,8 +612,9 @@ class GYMScheduler(RolloutScheduler):
                 await self._close_env_async(env)
 
 
+# TODO: tool calling examples
+
 multi_turns = {
-    'base_scheduler': RolloutScheduler,
     'math_tip_trick': MathTipsScheduler,
     'gym_scheduler': GYMScheduler,
     'thinking_tips_scheduler': ThinkingModelTipsScheduler,

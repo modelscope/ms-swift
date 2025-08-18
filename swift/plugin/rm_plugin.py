@@ -27,7 +27,7 @@ class DefaultRMPlugin:
         self.model = model
         self.template: Template = template
 
-    def __call__(self, inputs):
+    def __call__(self, inputs, **kwargs):
         batched_inputs = [self.template.encode(deepcopy(infer_request)) for infer_request in inputs]
         reward_inputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
 
@@ -65,7 +65,7 @@ class GenRMPlugin(DefaultRMPlugin):
             Reward: 0.85
         """)  # noqa
 
-    def __call__(self, inputs):
+    def __call__(self, inputs, **kwargs):
         """
         Compute reward scores for the provided inputs.
 
