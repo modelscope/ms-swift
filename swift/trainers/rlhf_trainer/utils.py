@@ -259,33 +259,66 @@ def load_pil_img(img) -> Image:
 
 
 def replace_assistant_response_with_ids(messages: 'Messages',
-                                        completion_ids: List[Union[int, List[int]]]) -> 'Messages':  # noqa
+                                        completion_ids: List[Union[int, List[int]]],
+                                        loss_mask: Optional[List[List[int]]] = None) -> 'Messages':  # noqa
     """
-    Replaces the content of assistant messages with the provided completion IDs.
+    Replace assistant messages in a conversation with token IDs (and optional loss masks).
 
-    This function processes messages in reverse order and replaces the content of
-    assistant messages with the given completion IDs. If completion_ids is a flat
-    list of integers, it will be treated as a single completion sequence.
+    This function traverses the messages in reverse order and replaces the content of
+    assistant-role messages with the given `completion_ids`. If `loss_mask` is provided,
+    each assistant message content will be replaced by a dictionary containing both the
+    token IDs and the corresponding loss mask.
 
     Args:
-        messages: List of message dictionaries containing conversation history.
-        completion_ids: Either:
-            - A single list of token IDs (e.g., [1, 2, 3])
-            - A list of completion sequences (e.g., [[1, 2], [3, 4]])
+        messages:
+            List of message dictionaries representing a conversation history.
+        completion_ids:
+            Either:
+              - A single list of token IDs, e.g. [1, 2, 3]
+              - A list of completion sequences, e.g. [[1, 2], [3, 4]]
+        loss_mask (optional):
+            Loss mask(s) aligned with `completion_ids`.
+            Must satisfy:
+              - Same outer length as `completion_ids`
+              - Each inner list has the same length as the corresponding completion_ids sequence
+            Example:
+              completion_ids = [[1, 2], [3, 4]]
+              loss_mask      = [[1, 1], [1, 0]]
 
     Returns:
-        The modified messages list with assistant responses replaced by token IDs.
+        The modified messages list, where assistant responses are replaced by:
+          - A list of token IDs if `loss_mask` is None
+          - A dict with keys:
+              - "input_ids": List[int]
+              - "loss_scale": List[int]
+            if `loss_mask` is provided.
 
     Example:
-        >>> messages = [{'role': 'user', 'content': 'Hello'},
-        ...            {'role': 'assistant', 'content': 'Hi there'}]
+        >>> messages = [
+        ...     {"role": "user", "content": "Hello"},
+        ...     {"role": "assistant", "content": "Hi there"}
+        ... ]
         >>> replace_assistant_response_with_ids(messages, [1, 2, 3])
         [{'role': 'user', 'content': 'Hello'},
          {'role': 'assistant', 'content': [1, 2, 3]}]
+
+        >>> replace_assistant_response_with_ids(messages,
+        ...     completion_ids=[[1, 2, 3]],
+        ...     loss_mask=[[1, 1, 0]])
+        [{'role': 'user', 'content': 'Hello'},
+         {'role': 'assistant', 'content': {'input_ids': [1, 2, 3], 'loss_scale': [1, 1, 0]}}]
     """
     # Normalize input to always be list of lists
     if isinstance(completion_ids[0], int):
         completion_ids = [completion_ids]
+    if loss_mask and isinstance(loss_mask[0], int):
+        loss_mask = [loss_mask]
+
+    if loss_mask:
+        assert (
+            len(completion_ids) == len(loss_mask)
+            and all(len(ids) == len(mask) for ids, mask in zip(completion_ids, loss_mask))
+        ), f'completion_ids and loss_mask must have the same length, but got {len(completion_ids)} and {len(loss_mask)}'
 
     remaining_completions = len(completion_ids)
     completion_index = 0
@@ -298,7 +331,14 @@ def replace_assistant_response_with_ids(messages: 'Messages',
             break
 
         # Assign completion IDs (starting from last)
-        message['content'] = completion_ids[-1 - completion_index]
+        if loss_mask:
+            message['content'] = {
+                'loss_scale': loss_mask[-1 - completion_index],
+                'input_ids': completion_ids[-1 - completion_index]
+            }
+        else:
+            message['content'] = completion_ids[-1 - completion_index]
+
         completion_index += 1
 
     return messages
