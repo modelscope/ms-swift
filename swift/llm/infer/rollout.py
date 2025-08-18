@@ -67,6 +67,13 @@ def get_rollout_engine_type(args: RolloutArguments, engine: GRPOVllmEngine):
         kwargs = {}
         if 'tokenizer' in list(inspect.signature(scheduler_cls.__init__).parameters):
             kwargs['tokenizer'] = engine.default_template.tokenizer
+        # gym kwargs
+        if args.use_gym_env:
+            kwargs.update({
+                'use_gym_env': args.use_gym_env,
+                'gym_env': args.gym_env,
+                'context_manager': args.context_manager,
+            })
 
         rollout_engine: RolloutScheduler = scheduler_cls(engine, args.max_turns, **kwargs)
         if not rollout_engine:
@@ -215,10 +222,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
             'torch_dtype': args.torch_dtype,
             'template': template,
             'use_async_engine': args.vllm_use_async_engine,
-            'max_turns': args.max_turns,
-            'use_gym_env': args.use_gym_env,
-            'gym_env': args.gym_env,
-            'context_manager': args.context_manager,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
         if infer_backend != 'vllm':

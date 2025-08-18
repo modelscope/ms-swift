@@ -5,6 +5,7 @@ from copy import deepcopy
 from typing import Any, List, Literal
 
 import requests
+from modelscope.hub.file_download import model_file_download
 from modelscope.hub.utils.utils import get_cache_dir
 from PIL import Image, ImageDraw, ImageFont
 
@@ -62,7 +63,6 @@ def draw_bbox(image: Image.Image,
               bbox: List[List[int]],
               norm_bbox: Literal['norm1000', 'none'] = 'norm1000'):
     bbox = deepcopy(bbox)
-    font_path = 'https://modelscope.cn/models/Qwen/Qwen-VL-Chat/resolve/master/SimSun.ttf'
     # norm bbox
     for i, box in enumerate(bbox):
         for i in range(len(box)):
@@ -82,7 +82,7 @@ def draw_bbox(image: Image.Image,
         color = color_mapping[box_ref]
         draw.rectangle([(left, top), (right, bottom)], outline=color, width=3)
     # draw text
-    file_path = download_file(font_path)
+    file_path = model_file_download('Qwen/Qwen-VL-Chat', 'SimSun.ttf')
     font = ImageFont.truetype(file_path, 20)
     for (left, top, _, _), box_ref in zip(bbox, ref):
         brightness = _calculate_brightness(

@@ -5,6 +5,7 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional, Union
 
 import torch
+from PIL import Image
 from tqdm.asyncio import tqdm_asyncio
 from vllm.outputs import RequestOutput
 
@@ -90,58 +91,6 @@ class GRPOVllmEngine(VllmEngine):
             template=template,
         )
 
-        self.max_turns = kwargs.get('max_turns')
-
-        # Get sampling controller configurations from kwargs
-        multi_turn_scheduler = kwargs.get('multi_turn_scheduler', None)
-        use_gym_env = kwargs.get('use_gym_env', False)
-        if use_gym_env:
-            self.gym_env = kwargs.get('gym_env', None)
-            self.context_manager = kwargs.get('context_manager', None)
-        # Ensure mutual exclusivity of sampling controllers
-        if use_gym_env and multi_turn_scheduler is not None:
-            raise ValueError('gym_env and multi_turn_scheduler are mutually exclusive sampling controllers')
-
-        self.use_gym_env = use_gym_env
-
-        # Initialize sampling controller
-        if use_gym_env:
-            self.multi_turn_scheduler = None
-        elif multi_turn_scheduler is not None:
-            if isinstance(multi_turn_scheduler, str):
-                assert multi_turn_scheduler in multi_turns
-                self.multi_turn_scheduler: MultiTurnScheduler = multi_turns[multi_turn_scheduler](
-                    template=template, max_turns=self.max_turns)
-            else:
-                assert isinstance(multi_turn_scheduler, MultiTurnScheduler)
-                self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_scheduler
-        else:
-            self.multi_turn_scheduler = None
-
-    def _create_env(self, env_config: Dict) -> Env:
-        """Create environment instance for gym sampling."""
-        env_name = env_config.get('name', None)
-        if not env_name:
-            env_name = self.gym_env
-        if env_name not in envs:
-            raise ValueError((f"Environment '{env_name}' not found in envs registry. "
-                              f'Available: {list(envs.keys())}'))
-        return envs[env_name](env_config)
-
-    def _create_context_manager(self, ctx_config: Dict) -> ContextManager:
-        """Create context manager for gym sampling."""
-        ctx_name = ctx_config.get('name', None)
-        if not ctx_name:
-            ctx_name = self.context_manager
-
-        if not ctx_name:
-            ctx_name = 'dummyContextManager'
-
-        if ctx_name not in context_managers:
-            raise ValueError((f"Context manager '{ctx_name}' not found in registry. "
-                              f'Available: {list(context_managers.keys())}'))
-        return context_managers[ctx_name](ctx_config)
-
     def infer(
         self,
         infer_requests: List[Union[InferRequest, Dict[str, Any]]],
@@ -208,7 +157,7 @@ class GRPOVllmEngine(VllmEngine):
         new_tasks = [_new_run(task) for task in tasks]
         return await self.batch_run(new_tasks)
 
-    def _create_chat_completion_response(self, result: 'RequestOutput', template: Template, request_config,
+    def _create_chat_completion_response(self, result, inputs, template: Template, request_config,
                                          request_id) -> ChatCompletionResponse:
         assert result is not None
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
@@ -219,10 +168,9 @@ class GRPOVllmEngine(VllmEngine):
             response = template.decode(output.token_ids)
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, request_config.top_logprobs)
             toolcall = self._get_toolcall(response, template)
-            choice_cls = ChatCompletionResponseChoice
 
             token_ids = template.skip_stop_tokens(output.token_ids) if request_config.return_details else None
-            choice = choice_cls(
+            choice = ChatCompletionResponseChoice(
                 index=output.index,
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
                 finish_reason=output.finish_reason,
@@ -230,6 +178,17 @@ class GRPOVllmEngine(VllmEngine):
                 token_ids=token_ids,
             )
             choices.append(choice)
-        prompt_token_ids = result.prompt_token_ids if request_config.return_details else None
+        prompt_token_ids = None
+        images_size = None
+        if request_config.return_details:
+            prompt_token_ids = result.prompt_token_ids
+            images = inputs['template_inputs'].images
+            if all(isinstance(image, Image.Image) for image in images):
+                images_size = [image.size for image in images]
         return ChatCompletionResponse(
-            model=self.model_name, choices=choices, usage=usage_info, id=request_id, prompt_token_ids=prompt_token_ids)
+            model=self.model_name,
+            choices=choices,
+            usage=usage_info,
+            id=request_id,
+            prompt_token_ids=prompt_token_ids,
+            images_size=images_size)

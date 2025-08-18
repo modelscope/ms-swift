@@ -13,6 +13,7 @@ from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, VisionConfig, p
 from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve import async_engine
 from packaging import version
+from PIL import Image
 from transformers import GenerationConfig
 from transformers.utils.versions import require_version
 
@@ -268,9 +269,19 @@ class LmdeployEngine(InferEngine):
                 logprobs=logprobs,
                 token_ids=token_ids)
         ]
-        prompt_token_ids = inputs['input_ids'] if request_config.return_details else None
+        prompt_token_ids = None
+        images_size = None
+        if request_config.return_details:
+            prompt_token_ids = inputs['input_ids']
+            images = inputs['template_inputs'].images
+            if all(isinstance(image, Image.Image) for image in images):
+                images_size = [image.size for image in images]
         return ChatCompletionResponse(
-            model=self.model_name, choices=choices, usage=usage_info, prompt_token_ids=prompt_token_ids)
+            model=self.model_name,
+            choices=choices,
+            usage=usage_info,
+            prompt_token_ids=prompt_token_ids,
+            images_size=images_size)
 
     async def infer_async(self,
                           infer_request: InferRequest,
@@ -287,7 +298,7 @@ class LmdeployEngine(InferEngine):
 
         loop = asyncio.get_running_loop()
         with torch.inference_mode():
-            inputs = await loop.run_in_executor(None, template.encode, infer_request)
+            inputs = await loop.run_in_executor(None, template.encode, infer_request, True)
         images = inputs.pop('images', None)
         if images:
             if version.parse(lmdeploy.__version__) >= version.parse('0.6.5'):
