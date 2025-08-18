@@ -172,6 +172,14 @@ def test_keye_vl():
     assert response == response2
 
 
+def test_ovis2_5():
+    pt_engine = PtEngine('AIDC-AI/Ovis2.5-2B')
+    messages = [{'role': 'user', 'content': '<video>Describe this video in detail.'}]
+    videos = ['baby.mp4']
+    response = _infer_model(pt_engine, messages=messages, videos=videos)
+    print(f'response: {response}')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -187,4 +195,5 @@ if __name__ == '__main__':
     # test_qwen2_5_vl()
     # test_qwen2_5_omni()
     # test_glm4_1v()  # bug now, wait model fix
-    test_keye_vl()
+    # test_keye_vl()
+    test_ovis2_5()
