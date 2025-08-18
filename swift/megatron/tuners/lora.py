@@ -12,6 +12,7 @@ from megatron.core.extensions.transformer_engine import (TEColumnParallelGrouped
                                                          TEGroupedLinear, TELayerNormColumnParallelLinear, TELinear,
                                                          TERowParallelGroupedLinear, TERowParallelLinear)
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
+from megatron.core.parallel_state import get_expert_tensor_parallel_world_size, get_tensor_model_parallel_world_size
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 from megatron.core.transformer.module import MegatronModule
 from packaging import version
@@ -51,8 +52,11 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         self.is_grouped = isinstance(base_layer, TEGroupedLinear)
         self.fan_in_fan_out = fan_in_fan_out
         self._active_adapter = adapter_name
-        self.tp_size = base_layer.tp_size
         self.is_expert = getattr(base_layer, 'is_expert', False)
+        if self.is_expert:
+            self.tp_size = get_expert_tensor_parallel_world_size()
+        else:
+            self.tp_size = get_tensor_model_parallel_world_size()
         self.update_layer(
             adapter_name,
             r,
