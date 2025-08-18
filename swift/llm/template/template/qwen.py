@@ -732,7 +732,7 @@ register_template(QwenTemplateMeta(
 ))
 
 
-class Ovis2_5Template(Template):
+class Ovis2_5Template(ThinkingTemplate):
     num_frames = 8
     use_model = True
     skip_prompt = False
