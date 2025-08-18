@@ -75,11 +75,8 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(batch['position_ids'])
             _broadcast(batch['loss_scale'])
         else:
-            batch['input_ids'] = None
-            batch['labels'] = None
-            batch['attention_mask'] = None
-            batch['position_ids'] = None
-            batch['loss_scale'] = None
+            for key in ('input_ids', 'labels', 'attention_mask', 'position_ids', 'loss_scale'):
+                batch[key] = None
 
     else:
         flags = torch.empty((4), dtype=torch.int64, device=torch.cuda.current_device())
@@ -125,11 +122,7 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(position_ids)  # compat packing & cp
             _broadcast(loss_scale)
         else:
-            input_ids = None
-            labels = None
-            attention_mask = None
-            position_ids = None
-            loss_scale = None
+            input_ids, labels, attention_mask, position_ids, loss_scale = (None, ) * 5
 
         batch = {
             'input_ids': input_ids,

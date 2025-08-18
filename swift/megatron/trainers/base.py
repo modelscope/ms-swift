@@ -81,11 +81,11 @@ class BaseMegatronTrainer(ABC):
                 logger.info(f'The training of Epoch {i} starts...')
             if is_training and args.max_epochs and i >= args.max_epochs - 1:
                 it = iter(iterable)
-                num_batches = args.global_batch_size // (args.micro_batch_size * args.data_parallel_size)
-                x = [next(it) for _ in range(num_batches - n_batch % num_batches)]
+                num_microbatches = args.global_batch_size // (args.micro_batch_size * args.data_parallel_size)
+                x = [next(it) for _ in range(num_microbatches - n_batch % num_microbatches)]
                 while True:
                     try:
-                        next_x = [next(it) for _ in range(num_batches)]
+                        next_x = [next(it) for _ in range(num_microbatches)]
                     except StopIteration:
                         break
                     yield from x
