@@ -2,7 +2,7 @@
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
-swift rlhf \
+nohup swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-72B-Instruct \
     --train_type lora \
@@ -39,4 +39,4 @@ swift rlhf \
     --move_model_batches 16 \
     --offload_optimizer true \
     --offload_model true \
-    --sleep_level 1
+    --sleep_level 1 > test_branch_4gpu_colocate_72b_after_reced.log 2>&1 &

@@ -5,7 +5,8 @@
 #   --model Qwen/Qwen2.5-3B-Instruct \
 #   --model_type qwen2_5\
 #   --max_turns 3\
-#   --use_gym_env true
+#   --multi_turn_scheduler gym_scheduler \
+#   --use_gym_env true \
 #   --gym_env math_env
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
@@ -17,7 +18,7 @@ swift rlhf \
     --use_vllm true \
     --vllm_mode server \
     --vllm_server_host 127.0.0.1 \
-    --vllm_server_port 8000 \
+    --vllm_server_port 8001 \
     --torch_dtype bfloat16 \
     --dataset AI-MO/NuminaMath-TIR#1000 \
     --split_dataset_ratio 0 \

@@ -503,22 +503,29 @@ class GYMScheduler(RolloutScheduler):
         if not ctx_name:
             ctx_name = 'dummyContextManager'
 
+        if ctx_name not in context_managers:
+            raise ValueError(f"Context manager '{ctx_name}' not found. Available: {list(context_managers.keys())}")
+
         return context_managers[ctx_name](ctx_config)
 
     async def _close_env_async(self, env: Env):
         """Safely close environment with async support."""
+        if env is None:
+            return
+
         try:
             if hasattr(env, 'close') and asyncio.iscoroutinefunction(env.close):
                 await env.close()
             elif hasattr(env, 'close'):
                 env.close()
-        except Exception:
-            # Handle any exceptions during environment closure
-            pass
+        except Exception as e:
+            # Log the exception but don't raise it to avoid masking other errors
+            import logging
+            logging.warning(f'Error closing environment: {e}')
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
-                  **kwargs) -> 'ChatCompletionResponse':
-        from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice
+                  **kwargs) -> 'RolloutOutput':
+        from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, RolloutOutput
         """
         Execute the gym environment-based rollout:
         1. Initialize environment and context manager
@@ -530,10 +537,12 @@ class GYMScheduler(RolloutScheduler):
         ctx_config = infer_request.data_dict.get('ctx_config', {})
 
         # Create environment and context manager
-        env = await self._create_env(env_config)
-        context_manager = await self._create_context_manager(ctx_config)
-
+        env = None
+        context_manager = None
         try:
+            env = await self._create_env(env_config)
+            context_manager = await self._create_context_manager(ctx_config)
+
             # Initialize environment
             observation, info, system_message = await env.reset(infer_request)
 
@@ -548,7 +557,7 @@ class GYMScheduler(RolloutScheduler):
             done = False
             total_reward = 0.0
             step_rewards = []
-            trajectory_id = f'{id(infer_request)}_{hash(str(infer_request))}'
+            trajectory_id = infer_request.uuid
             trajectory_info = [info]
 
             while not done and current_turn <= (self.max_turns or float('inf')):
@@ -584,10 +593,7 @@ class GYMScheduler(RolloutScheduler):
                 logprobs=response_choice.logprobs)
 
             last_response = ChatCompletionResponse(
-                model=self.infer_engine.model_name,
-                choices=[final_choice],
-                usage=response.usage,
-                id=f'gym_{trajectory_id}')
+                model=self.infer_engine.model_name, choices=[final_choice], usage=response.usage)
 
             return RolloutOutput(
                 response=last_response,
@@ -602,7 +608,8 @@ class GYMScheduler(RolloutScheduler):
 
         finally:
             # Ensure environment is properly closed
-            await self._close_env_async(env)
+            if env is not None:
+                await self._close_env_async(env)
 
 
 multi_turns = {
