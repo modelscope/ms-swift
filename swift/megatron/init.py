@@ -659,9 +659,9 @@ def _patch_peft_ModulesToSaveWrapper():
     from megatron.core.dist_checkpointing.mapping import ShardedStateDict
     from .utils import tuners_sharded_state_dict
 
-    ModulesToSaveWrapper = peft_module.ModulesToSaveWrapper
+    OriginModulesToSaveWrapper = peft_module.ModulesToSaveWrapper
 
-    class NewModulesToSaveWrapper(ModulesToSaveWrapper):
+    class ModulesToSaveWrapper(OriginModulesToSaveWrapper):
 
         def __init__(self, module_to_save, *args, **kwargs):
             tp_group = getattr(module_to_save, 'tp_group', None)
@@ -694,7 +694,7 @@ def _patch_peft_ModulesToSaveWrapper():
                         f'{prefix}modules_to_save.default.weight']
             return sharded_state_dict
 
-    peft_module.ModulesToSaveWrapper = NewModulesToSaveWrapper
+    peft_module.ModulesToSaveWrapper = ModulesToSaveWrapper
 
 
 def _patch_TransformerLayer():

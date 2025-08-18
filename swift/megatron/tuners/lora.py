@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Code borrowed from huggingface/peft
 import math
+from contextlib import contextmanager
 from typing import Any, List, Optional, Tuple
 
 import megatron.core
@@ -15,6 +16,7 @@ from megatron.core.models.common.embeddings.language_model_embedding import Lang
 from megatron.core.parallel_state import get_expert_tensor_parallel_world_size, get_tensor_model_parallel_world_size
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 from megatron.core.transformer.module import MegatronModule
+from megatron.core.transformer.moe.router import TopKRouter
 from packaging import version
 from peft.tuners.lora import model
 from peft.tuners.lora.layer import LoraLayer
@@ -102,7 +104,25 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
         if megatron_core_013:
             kwargs['tp_group'] = self.base_layer.tp_group
-        if self.is_parallel_a:
+        if isinstance(self.base_layer, TopKRouter):
+            router_shape = self.base_layer.weight.shape
+            lora_a = TELinear(
+                input_size=router_shape[1],
+                output_size=r,
+                bias=lora_bias,
+                parallel_mode=None,
+                skip_weight_param_allocation=False,
+                **kwargs,
+            )
+            lora_b = TELinear(
+                input_size=r,
+                output_size=router_shape[0],
+                bias=lora_bias,
+                parallel_mode=None,
+                skip_weight_param_allocation=False,
+                **kwargs,
+            )
+        elif self.is_parallel_a:
             self.in_features = self.in_features * self.tp_size
             if self.is_grouped:
                 lora_a = TERowParallelGroupedLinear(
@@ -229,6 +249,39 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             nn.init.zeros_(self.lora_embedding_A[adapter_name])
             nn.init.normal_(self.lora_embedding_B[adapter_name])
 
+    @contextmanager
+    def _patch_rouger_gating(self):
+        origin_gating = self.base_layer.__class__.gating
+
+        def gating(_self, x):
+            result = origin_gating(_self, x)
+            for active_adapter in self.active_adapters:
+                if active_adapter not in self.lora_A.keys():
+                    continue
+                lora_A = self.lora_A[active_adapter]
+                lora_B = self.lora_B[active_adapter]
+                dropout = self.lora_dropout[active_adapter]
+                scaling = self.scaling[active_adapter]
+                dtype = lora_A.weight.dtype
+                x = x.to(dtype)
+
+                lora_result = lora_A(dropout(x))
+                if isinstance(lora_result, tuple):
+                    lora_result = lora_result[0]
+                lora_result = lora_B(lora_result)
+                if isinstance(lora_result, tuple):
+                    lora_result = lora_result[0]
+                lora_result = lora_result * scaling
+
+                result = result + lora_result
+            return result
+
+        self.base_layer.__class__.gating = gating
+        try:
+            yield
+        finally:
+            self.base_layer.__class__.gating = origin_gating
+
     def forward(self, x: torch.Tensor, *args: Any, **kwargs: Any):
         previous_dtype = x.dtype
         if self.disable_adapters and self.merged:
@@ -243,9 +296,12 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 (result, x), bias = self.base_layer(x, *args, **kwargs)
         elif isinstance(self.base_layer, (TELinear, TEGroupedLinear)):
             result, bias = self.base_layer(x, *args, **kwargs)
+        elif isinstance(self.base_layer, TopKRouter):
+            with self._patch_rouger_gating():
+                result, bias = self.base_layer(x, *args, **kwargs)
         else:
             raise ValueError(f'Unsupported base layer type: {type(self.base_layer)}')
-        if not self.disable_adapters and not self.merged:
+        if not isinstance(self.base_layer, TopKRouter) and not self.disable_adapters and not self.merged:
             for active_adapter in self.active_adapters:
                 if active_adapter not in self.lora_A.keys():
                     continue
@@ -388,7 +444,7 @@ def dispatch_megatron(
     else:
         target_base_layer = target
 
-    linear_cls = (TELayerNormColumnParallelLinear, TELinear, TEGroupedLinear)
+    linear_cls = (TELayerNormColumnParallelLinear, TELinear, TEGroupedLinear, TopKRouter)
     if isinstance(target_base_layer, linear_cls):
         new_module = LoraParallelLinear(base_layer=target, adapter_name=adapter_name, **kwargs)
 
