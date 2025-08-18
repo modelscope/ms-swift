@@ -357,7 +357,10 @@ class MegatronArguments(ExtraMegatronArguments):
     def __post_init__(self):
         require_version('numpy<2.0', 'Please install numpy<2.0 by running: `pip install "numpy<2.0"`.')
         if self.train_type == 'lora':
-            require_version('peft>=0.12')
+            if self.num_experts is not None:
+                require_version('peft>=0.15')
+            else:
+                require_version('peft>=0.12')
         MegatronTunerMixin.__post_init__(self)
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self._set_default()
