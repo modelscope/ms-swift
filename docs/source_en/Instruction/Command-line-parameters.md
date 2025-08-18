@@ -745,6 +745,15 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 ### ovis1_6, ovis2
 - MAX_PARTITION: Default is 9, refer to [here](https://github.com/AIDC-AI/Ovis/blob/d248e34d755a95d24315c40e2489750a869c5dbc/ovis/model/modeling_ovis.py#L312)
 
+### ovis2_5
+
+The meanings of the following parameters can be found in the example code [here](https://modelscope.cn/models/AIDC-AI/Ovis2.5-2B).
+
+- MIX_PIXELS: int type, default is `448 * 448`.
+- MAX_PIXELS: int type, default is `1344 * 1792`. If OOM (out of memory) occurs, you can reduce this value.
+- VIDEO_MAX_PIXELS: int type, default is `896 * 896`.
+- NUM_FRAMES: default is 8. Used for video frame sampling.
+
 ### mplug_owl3, mplug_owl3_241101
 - MAX_NUM_FRAMES: Default is 16, refer to [here](https://modelscope.cn/models/iic/mPLUG-Owl3-7B-240728)
 

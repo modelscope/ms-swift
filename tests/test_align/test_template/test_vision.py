@@ -324,6 +324,14 @@ def test_ovis2():
                               'typical of a tabby pattern. Its ea')
 
 
+def test_ovis2_5():
+    pt_engine = PtEngine('AIDC-AI/Ovis2.5-2B')  # with flash_attn
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'Describe the image.'}])
+    assert response[:100] == ('<think>\n用户现在需要描述这张图片。首先看主体是一只小猫，风格是卡通或艺术化处理，'
+                              '毛发有模糊效果，显得柔和。颜色方面，小猫的毛色是灰白相间，有深色条纹，耳朵内侧粉色，'
+                              '眼睛大而圆，蓝色，瞳孔黑色，')
+
+
 def test_paligemma():
     pt_engine = PtEngine('AI-ModelScope/paligemma-3b-mix-224')
     response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'detect cat'}])
@@ -646,6 +654,7 @@ if __name__ == '__main__':
     # test_ovis1_6()
     # test_ovis1_6_llama3()
     # test_ovis2()
+    test_ovis2_5()
     # test_yi_vl()
     # test_deepseek_vl()
     # test_deepseek_janus()
@@ -690,4 +699,4 @@ if __name__ == '__main__':
     # test_gemma3n()
     # test_keye_vl()
     # test_dots_ocr()
-    test_glm4_5v()
+    # test_glm4_5v()
