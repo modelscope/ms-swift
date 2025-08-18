@@ -207,7 +207,7 @@ The table below introduces the models integrated with ms-swift:
 |[swift/Qwen3-32B-AWQ](https://modelscope.cn/models/swift/Qwen3-32B-AWQ)|qwen3|qwen3|transformers>=4.51|&#x2718;|-|-|
 |[Qwen/Qwen3-4B-Instruct-2507](https://modelscope.cn/models/Qwen/Qwen3-4B-Instruct-2507)|qwen3|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507)|
 |[Qwen/Qwen3-4B-Instruct-2507-FP8](https://modelscope.cn/models/Qwen/Qwen3-4B-Instruct-2507-FP8)|qwen3|qwen3|transformers>=4.51|&#x2718;|-|[Qwen/Qwen3-4B-Instruct-2507-FP8](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-FP8)|
-|[Qwen/Qwen3-4B-Thinking-2507](https://modelscope.cn/models/Qwen/Qwen3-4B-Thinking-2507)|qwen3_thinking|qwen3_thinking|transformers>=4.51|&#x2718;|-|[Qwen/Qwen3-4B-Thinking-2507](https://huggingface.co/Qwen/Qwen3-4B-Thinking-2507)|
+|[Qwen/Qwen3-4B-Thinking-2507](https://modelscope.cn/models/Qwen/Qwen3-4B-Thinking-2507)|qwen3_thinking|qwen3_thinking|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-4B-Thinking-2507](https://huggingface.co/Qwen/Qwen3-4B-Thinking-2507)|
 |[Qwen/Qwen3-4B-Thinking-2507-FP8](https://modelscope.cn/models/Qwen/Qwen3-4B-Thinking-2507-FP8)|qwen3_thinking|qwen3_thinking|transformers>=4.51|&#x2718;|-|[Qwen/Qwen3-4B-Thinking-2507-FP8](https://huggingface.co/Qwen/Qwen3-4B-Thinking-2507-FP8)|
 |[Qwen/Qwen3-30B-A3B-Base](https://modelscope.cn/models/Qwen/Qwen3-30B-A3B-Base)|qwen3_moe|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-30B-A3B-Base](https://huggingface.co/Qwen/Qwen3-30B-A3B-Base)|
 |[Qwen/Qwen3-30B-A3B](https://modelscope.cn/models/Qwen/Qwen3-30B-A3B)|qwen3_moe|qwen3|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-30B-A3B](https://huggingface.co/Qwen/Qwen3-30B-A3B)|

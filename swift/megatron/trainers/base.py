@@ -74,6 +74,7 @@ class BaseMegatronTrainer(ABC):
     def new_cyclic_iter(iterable):
         args = get_args()
         i = 0
+        n_batch = 0
         while True:
             is_training = getattr(args, 'is_training', False)
             if is_training:
@@ -81,7 +82,7 @@ class BaseMegatronTrainer(ABC):
             if is_training and args.max_epochs and i >= args.max_epochs - 1:
                 it = iter(iterable)
                 num_batches = args.global_batch_size // (args.micro_batch_size * args.data_parallel_size)
-                x = [next(it) for _ in range(num_batches)]
+                x = [next(it) for _ in range(num_batches - n_batch % num_batches)]
                 while True:
                     try:
                         next_x = [next(it) for _ in range(num_batches)]
@@ -94,6 +95,7 @@ class BaseMegatronTrainer(ABC):
                 yield from x
             else:
                 for x in iterable:
+                    n_batch += 1
                     yield x
             i += 1
 

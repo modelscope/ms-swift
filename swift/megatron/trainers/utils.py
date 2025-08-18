@@ -74,6 +74,12 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(batch['attention_mask'])
             _broadcast(batch['position_ids'])
             _broadcast(batch['loss_scale'])
+        else:
+            batch['input_ids'] = None
+            batch['labels'] = None
+            batch['attention_mask'] = None
+            batch['position_ids'] = None
+            batch['loss_scale'] = None
 
     else:
         flags = torch.empty((4), dtype=torch.int64, device=torch.cuda.current_device())
@@ -118,6 +124,12 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(attention_mask)
             _broadcast(position_ids)  # compat packing & cp
             _broadcast(loss_scale)
+        else:
+            input_ids = None
+            labels = None
+            attention_mask = None
+            position_ids = None
+            loss_scale = None
 
         batch = {
             'input_ids': input_ids,
@@ -189,16 +201,11 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
 
 def get_batch(data_iterator):
     """Generate a batch."""
-
-    # TODO: this is pretty hacky, find a better way
-    if (not mpu.is_pipeline_first_stage()) and (not mpu.is_pipeline_last_stage()):
-        return {key: None for key in ['input_ids', 'attention_mask', 'position_ids']}
-
     # get batches based on the TP rank you are on
     batch = get_batch_on_this_tp_rank(data_iterator)
     args = get_args()
     num_samples = batch.pop('num_samples')
-    if args.padding_free:
+    if args.padding_free and batch.get('position_ids') is not None:
         batch['packed_seq_params'] = get_packed_seq_params(batch['position_ids'])
         batch['packed_seq_params'].num_samples = num_samples
     # slice batch along sequence dimension for context parallelism
