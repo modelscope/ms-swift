@@ -231,7 +231,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.num_completions_to_print = args.num_completions_to_print
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
         self._logs = {
-            'image': deque(maxlen=args.generation_batch_size),
             'prompt': deque(maxlen=args.generation_batch_size),
             'completion': deque(maxlen=args.generation_batch_size),
             'rewards': defaultdict(lambda: deque(maxlen=args.generation_batch_size)),
@@ -240,8 +239,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.compute_entropy = self.args.log_entropy or self.top_entropy_quantile < 1.0
         if self.args.log_entropy:
             self._logs.update({'entropy': deque(maxlen=args.generation_batch_size)})
-        if 'solution' in self.train_dataset.column_names:
-            self._logs['solution'] = deque(maxlen=args.generation_batch_size)
         # Ensure each process receives a unique seed to prevent duplicate completions when generating with
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
@@ -272,7 +269,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
                 self.enable_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
                 if self.use_gym_env:
-                    self._logs['trajectory_infos'] = deque(maxlen=args.generation_batch_size)
                     self.reward_func_names = ['gym_reward']
 
             elif self.vllm_mode == 'colocate':
@@ -837,14 +833,31 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs[i]['advantages'] = advantage
 
         self._logs['advantages'].extend(total_advantages.tolist())
-        if any('images' in data and data['images'] is not None for data in inputs):
-            self._logs['image'].extend(gather_object([inp['images'] for inp in inputs]))
 
         batch_encoded_inputs = self._prepare_batch_inputs(inputs)
         # Log metrics
         messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
 
-        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func)
+        # Example: if you want to log extra data in the wandb / swanlab table,
+        #          add them to metrics_to_gather
+        # NOTE: every key you register must appear in ALL rollout outputs
+        #       to avoid potential communication / synchronization issues
+
+        metrics_to_gather = {}
+        if all('rollout_infos' in inp and 'num_turns' in inp['rollout_infos'] for inp in inputs):
+            metrics_to_gather['num_turns'] = [inp['rollout_infos']['num_turns'] for inp in inputs]
+
+        if all('rollout_infos' in inp and 'trajectory_info' in inp['rollout_infos'] for inp in inputs):
+            metrics_to_gather['trajectory_info'] = [inp['rollout_infos']['trajectory_info'] for inp in inputs]
+
+        if all('images' in data and data['images'] is not None for data in inputs):
+            metrics_to_gather['image'] = [inp['images'] for inp in inputs]
+
+        if all('solution' in inp for inp in inputs):
+            metrics_to_gather['solution'] = [inp['solution'] for inp in inputs]
+
+        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func,
+                          metrics_to_gather)
 
         return batch_encoded_inputs
 
@@ -871,7 +884,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # If using gym environment, extract rewards directly from inputs
         if self.use_gym_env:
-            local_rewards = torch.tensor([inp['total_reward'] for inp in inputs], dtype=torch.float32, device=device)
+            local_rewards = torch.tensor([inp['rollout_infos']['total_reward'] for inp in inputs],
+                                         dtype=torch.float32,
+                                         device=device)
             # For gym environment, there's only one total reward, so rewards_per_func is just local_rewards reshaped
             local_rewards_per_func = local_rewards.unsqueeze(1)  # shape: [num_examples, 1]
         else:
@@ -1110,10 +1125,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             List[DataType]: A list of prepared batch inputs, organized as [spg][bs]
         """
         template = self.template
-        if 'solution' in self._logs.keys():
-            solutions = [inp['solution'] for inp in inputs]
-            self._logs['solution'].extend(self._gather_and_flatten(solutions, flatten_level=0))
-
         gas_chunks = self.split_by_mini_batches(inputs)
         ga_batch_encoded_inputs = []
         for i, batch in enumerate(gas_chunks):
@@ -1161,7 +1172,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return ga_batch_encoded_inputs
 
-    def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func):
+    def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func, metrics_to_gather=None):
         mode = 'train' if self.model.training else 'eval'
         device = self.accelerator.device
 
@@ -1193,10 +1204,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
         self._logs['completion'].extend(valid_completions)
 
-        if self.use_gym_env:
-            trajectory_infos = [inp['trajectory_infos'] for inp in inputs]
-            trajectory_infos = self._gather_and_flatten(trajectory_infos, flatten_level=0)
-            self._logs['trajectory_infos'].extend(trajectory_infos)
+        if metrics_to_gather:
+            for key, value in metrics_to_gather.items():
+                logger.info(f'Logging {key}...')
+                if key not in self._logs:
+                    self._logs[key] = deque(maxlen=self.args.generation_batch_size)
+                self._logs[key].extend(self._gather_and_flatten(value, flatten_level=0))
 
         for i, name in enumerate(self.reward_func_names):
             self._logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
@@ -2005,8 +2018,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                    for k, v in self._logs['rewards'].items()},
                 'advantage': list(self._logs['advantages'])[:seen_nums],
             }
-            if self.use_gym_env:
-                table['trajectory_infos'] = list(self._logs['trajectory_infos'])[:seen_nums]
+            for key, value in self._logs.items():
+                if key not in table and key != 'image':
+                    table[key] = list(value)[:seen_nums]
+
             if self.args.log_entropy:
                 table.update({'entropy': list(self._logs['entropy'])[:seen_nums]})
 
@@ -2114,7 +2129,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for input_item in inputs:
             messages = input_item.get('messages')
             input_item['prompt_id'] = messages_to_prompt_id[json.dumps(messages)]
-            input_item['request_id'] = str(uuid.uuid4())  # Each request gets a unique ID
+            input_item['request_id'] = f'chatcmpl-{str(uuid.uuid4().hex)}'  # Each request gets a unique ID
 
         return inputs
 

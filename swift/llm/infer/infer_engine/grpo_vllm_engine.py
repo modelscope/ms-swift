@@ -1,20 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import asyncio
 import os
-from copy import deepcopy
 from typing import Any, Dict, List, Optional, Union
 
 import torch
 from PIL import Image
 from tqdm.asyncio import tqdm_asyncio
-from vllm.outputs import RequestOutput
 
-from swift.llm import InferRequest, RolloutInferRequest, Template, VllmEngine
-from swift.llm.infer.protocol import MultiModalRequestMixin
-from swift.plugin import Metric, multi_turns
-from swift.plugin.context_manager import ContextManager, context_managers
-from swift.plugin.env import Env, envs
-from swift.plugin.multi_turn import MultiTurnScheduler
+from swift.llm import InferRequest, Template, VllmEngine
+from swift.plugin import Metric
 from ..protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage, RequestConfig, RolloutOutput
 from .utils import AdapterRequest
 
