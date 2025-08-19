@@ -9,8 +9,8 @@ from typing import Dict, List, Optional
 import json
 import torch
 
-from swift.llm import PtEngine, RequestConfig, Template, to_device
-from swift.llm.infer.protocol import ChatCompletionResponse
+from swift.llm import PtEngine, RequestConfig, RolloutInferRequest, Template, to_device
+from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice
 from swift.plugin import ORM, orms, rm_plugins
 # register context manager(used in gym training)
 from swift.plugin.context_manager import ContextManager, context_managers
@@ -890,11 +890,96 @@ TO CUSTOMIZE MULTITURN SCHEDULER:
 """
 
 
-class CustomizedScheduler(MultiTurnScheduler):
-    pass
+class ToolCallScheduler(MultiTurnScheduler):
+    # A simple scheduler that supports tool calls by overriding the `step` method
+    # Tool parsing uses the ReAct format
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A simple tool registry. Extend or replace with your own tools as needed.
+        self.tools = {
+            'calculator': self._calculator_tool,
+        }
+
+    def _calculator_tool(self, expression: str) -> str:
+        """A very small sandboxed calculator."""
+        try:
+            # Allow only basic math symbols for safety.
+            allowed_chars = set('0123456789+-*/(). ')
+            if not all(c in allowed_chars for c in expression):
+                return 'Error: expression contains disallowed characters.'
+            result = eval(expression)
+            return f'Result: {result}'
+        except Exception as e:
+            return f'Calculation error: {e}'
+
+    def _extract_tool_calls(self, text: str):
+        """
+        Parse tool-call patterns using ReAct format from model output.
+        Format: Action: tool_name\nAction Input: parameters
+        """
+        import re
+
+        pattern = r'Action:\s*(\w+)\s*\nAction Input:\s*(.*?)(?=\n|$)'
+        matches = re.findall(pattern, text, re.DOTALL)
+        if not matches:
+            return None
+        return [{'tool': name.strip(), 'params': params.strip()} for name, params in matches]
+
+    def _execute_tools(self, tool_calls):
+        """Run each requested tool and collect its observation string."""
+        results = []
+        for call in tool_calls:
+            name, params = call['tool'], call['params']
+            if name in self.tools:
+                try:
+                    result = self.tools[name](params)
+                    results.append(result)
+                except Exception as e:
+                    results.append(f'tool error {e}')
+            else:
+                results.append(f'unknown tool {name}')
+        return results
+
+    def check_finished(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
+                       current_turn: int) -> bool:
+        completion = response_choice.message.content
+        tool_calls = self._extract_tool_calls(completion)
+        if tool_calls is None:
+            return True
+
+        return super().check_finished(infer_request, response_choice, current_turn)
+
+    def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
+             current_turn: int) -> Dict:
+        completion = response_choice.message.content
+        token_ids = response_choice.token_ids
+        loss_mask = [1] * len(token_ids)
+        tool_calls = self._extract_tool_calls(completion)
+        assert len(tool_calls) == 1, 'this scheduler is designed for one tool call per turn'
+        if len(tool_calls) > 1:
+            print()
+        tool_results = self._execute_tools(tool_calls)
+        # append tool result to the completion
+        infer_request.messages[-1]['content'] += (tool_results[0])
+
+        tokenizer = self.infer_engine.default_template.tokenizer
+        result_tokens = tokenizer.encode(tool_results[0], add_special_tokens=False)
+        token_ids.extend(result_tokens)
+        loss_mask.extend([0] * len(result_tokens))
+
+        return {
+            'infer_request': infer_request,
+            'response_token_ids': token_ids,
+            'response_loss_mask': loss_mask,
+            'rollout_infos': {
+                'tool_results': tool_results[0],
+                'num_turns': current_turn,
+            }
+        }
 
 
-multi_turns['customized'] = CustomizedScheduler
+multi_turns['tool_call_scheduler'] = ToolCallScheduler
 
 
 # register GYM env

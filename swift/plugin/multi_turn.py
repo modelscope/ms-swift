@@ -56,6 +56,7 @@ class RolloutScheduler(ABC):
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
                   **kwargs) -> 'RolloutOutput':
+        from swift.llm.infer.protocol import RolloutOutput
         response: 'ChatCompletionResponse' = await self.infer_engine.infer_async(infer_request, request_config,
                                                                                  **kwargs)
         response_token_ids = response.choices[0].token_ids
@@ -169,7 +170,7 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                     # Must return RolloutOutput or List[RolloutOutput]
                     ...
         """
-
+        from swift.llm.infer.protocol import RolloutOutput
         current_request = infer_request
         current_turn = 1
         rollout_infos = {}
@@ -188,8 +189,10 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
 
             # Update conversation history
             completion = response_choice.message.content
+            is_continuation = False
             if messages[-1]['role'] == 'assistant':
                 messages[-1]['content'] += completion
+                is_continuation = True
             else:
                 messages.append({'role': 'assistant', 'content': completion})
 
@@ -200,6 +203,13 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                 should_stop = should_stop or (current_turn >= self.max_turns)
 
             if should_stop:
+                if is_continuation and total_response_ids:
+                    # for continuation and total_response_ids is not empty
+                    # we need to extend the last turn's response_token_ids and response_loss_mask
+                    total_response_ids[-1].extend(response_choice.token_ids)
+                    if total_response_loss_mask:
+                        total_response_loss_mask[-1].extend([1] * len(response_choice.token_ids))
+
                 return RolloutOutput(
                     response=response,
                     messages=messages,
@@ -215,14 +225,20 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
             # Track response tokens and masks
             return_token_id = False
             if 'response_token_ids' in ret:
-                total_response_ids.append(ret['response_token_ids'])
+                if is_continuation and total_response_ids:
+                    total_response_ids[-1].extend(ret['response_token_ids'])
+                else:
+                    total_response_ids.append(ret['response_token_ids'])
                 return_token_id = True
 
             if 'response_loss_mask' in ret:
                 assert return_token_id, 'You must return response_token_ids if you want to return response_loss_mask'
                 assert len(ret['response_loss_mask']) == len(ret['response_token_ids']), \
                     'response_loss_mask must have the same length as response_token_ids'
-                total_response_loss_mask.append(ret['response_loss_mask'])
+                if is_continuation and total_response_loss_mask:
+                    total_response_loss_mask[-1].extend(ret['response_loss_mask'])
+                else:
+                    total_response_loss_mask.append(ret['response_loss_mask'])
 
             if 'rollout_infos' in ret:
                 rollout_infos = {**rollout_infos, **ret['rollout_infos']}
@@ -520,7 +536,7 @@ class GYMScheduler(RolloutScheduler):
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
                   **kwargs) -> 'RolloutOutput':
-        from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, RolloutOutput
+        from swift.llm.infer.protocol import RolloutOutput
         """
         Execute the gym environment-based rollout:
         1. Initialize environment and context manager
@@ -597,8 +613,6 @@ class GYMScheduler(RolloutScheduler):
             if env is not None:
                 await self._close_env_async(env)
 
-
-# TODO: tool calling examples
 
 multi_turns = {
     'math_tip_trick': MathTipsScheduler,

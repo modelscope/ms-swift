@@ -3,7 +3,7 @@
 # CUDA_VISIBLE_DEVICES=0 \
 # swift rollout \
 #     --model Qwen/Qwen3-1.7B \
-#     --use_async_engine true \
+#     --vllm_use_async_engine true \
 #     --multi_turn_scheduler thinking_tips_scheduler \
 #     --vllm_max_model_len 32768 \
 #     --vllm_gpu_memory_utilization 0.8 \

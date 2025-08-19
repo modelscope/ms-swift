@@ -75,7 +75,7 @@ def get_rollout_engine_type(args: RolloutArguments, engine: GRPOVllmEngine):
                 'context_manager': args.context_manager,
             })
 
-        rollout_engine: RolloutScheduler = scheduler_cls(engine, args.max_turns, **kwargs)
+        rollout_engine: RolloutScheduler = scheduler_cls(infer_engine=engine, max_turns=args.max_turns, **kwargs)
         if not rollout_engine:
             raise ValueError(f"Failed to initialize multi-turn scheduler '{args.multi_turn_scheduler}'.")
     else:

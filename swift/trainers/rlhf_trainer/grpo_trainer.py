@@ -1134,9 +1134,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with self._template_context(template):
                 for data in batch:
                     if 'response_token_ids' in data and data['response_token_ids']:
+                        loss_mask = None
+                        if 'response_loss_mask' in data and data['response_loss_mask']:
+                            loss_mask = data['response_loss_mask']
                         data['messages'] = replace_assistant_response_with_ids(data['messages'],
-                                                                               data['response_token_ids'])
-
+                                                                               data['response_token_ids'], loss_mask)
                 batch_encoded_inputs = [template.encode(data) for data in batch]
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
 
@@ -2018,10 +2020,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'completion': list(self._logs['completion'])[:seen_nums],
                 **{k: list(v)[:seen_nums]
                    for k, v in self._logs['rewards'].items()},
-                'advantage': list(self._logs['advantages'])[:seen_nums],
+                'advantages': list(self._logs['advantages'])[:seen_nums],
             }
             for key, value in self._logs.items():
-                if key not in table and key != 'image':
+                if key not in table and key not in ['image', 'rewards']:
                     table[key] = list(value)[:seen_nums]
 
             if self.args.log_entropy:

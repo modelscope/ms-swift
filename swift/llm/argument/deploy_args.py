@@ -107,7 +107,7 @@ class RolloutArguments(DeployArguments):
 
     def _set_default_engine_type(self):
         if self.vllm_use_async_engine is None:
-            if self.multi_turn_scheduler or self.use_gym_env:
+            if self.multi_turn_scheduler:
                 self.vllm_use_async_engine = True
             else:
                 self.vllm_use_async_engine = False
