@@ -1217,11 +1217,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if metrics_to_gather:
             for key, value in metrics_to_gather.items():
-                logger.info(f'Logging {key}...')
                 if key not in self._logs:
                     self._logs[key] = deque(maxlen=self.args.generation_batch_size)
                 self._logs[key].extend(self._gather_and_flatten(value, flatten_level=0))
-                logger.info(f'Logging {key} finished...')
 
         for i, name in enumerate(self.reward_func_names):
             self._logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
@@ -2484,12 +2482,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 step_result = self.multi_turn_scheduler.step(
                     self.inputs2requests([_input])[0], output.response.choices[0], current_turn)
 
-                if step_result['response_token_ids']:
+                if 'response_token_ids' in step_result and step_result['response_token_ids']:
                     rollout_outputs[index].response_token_ids.append(step_result['response_token_ids'])
-                    if step_result['response_loss_mask']:
+                    if 'response_loss_mask' in step_result and step_result['response_loss_mask']:
                         rollout_outputs[index].response_loss_mask.append(step_result['response_loss_mask'])
 
-                if step_result['rollout_infos']:
+                if 'rollout_infos' in step_result and step_result['rollout_infos']:
                     rollout_outputs[index].rollout_infos.update(step_result['rollout_infos'])
 
                 pending_input = {**asdict(step_result['infer_request']), 'index': index}

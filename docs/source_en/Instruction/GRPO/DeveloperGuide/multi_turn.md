@@ -176,6 +176,8 @@ Steps:
 - Read the `token_ids` attribute from `response_choice` to obtain the sequence.
 - Include `response_token_ids` in the dict returned by `step` / `run`; the trainer can then use them directly.
 
+For a concrete implementation, refer to the [ThinkingModelTipsScheduler class](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py)
+
 ### Loss mask
 
 When the environment or a tool call returns content that becomes part of the model response, you may want to mask it so the model is not penalised on externally generated tokens.
@@ -196,6 +198,7 @@ In `step` or `run`, set `response_loss_mask` to define a custom mask.
 This requires returning `response_token_ids`; the mask must be the same length.
 When `response_loss_mask` is provided, `loss_scale` is ignored.
 
+For how to return response_loss_mask, see the [ToolCallScheduler class](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py)
 ### Reward-function related tips
 
 **Accessing multi-turn information in a reward function**
