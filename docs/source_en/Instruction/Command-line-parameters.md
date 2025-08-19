@@ -444,7 +444,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - 🔥rlhf_type: Type of human alignment algorithm, supporting 'dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo' and 'gkd'. Default is 'dpo'.
 - ref_model: Required for full parameter training when using the dpo, kto, ppo or grpo algorithms. Default is None.
 - ref_adapters: Default is `[]`.
-  - Note: In "ms-swift>=3.8", you can set `--adapters sft_ckpt --ref_adapters sft_ckpt` during training to continue training from that LoRA, which is convenient for scenarios where DPO/KTO/GRPO follows LoRA SFT. For resuming training from a checkpoint in such scenarios, use `--resume_from_checkpoint dpo_ckpt --ref_adapters sft_ckpt`.
+  - Note: In "ms-swift>=3.8", you can set `--adapters sft_ckpt --ref_adapters sft_ckpt` during training to continue training from that LoRA, which is convenient for scenarios where DPO/KTO/GRPO follows LoRA SFT. For resuming training from a checkpoint in such scenarios, use `--resume_from_checkpoint rlhf_ckpt --ref_adapters sft_ckpt`.
 - ref_model_type: Same as model_type. Default is None.
 - ref_model_revision: Same as model_revision. Default is None.
 - 🔥beta: Coefficient for the KL regularization term. Default is `None`, meaning `simpo` algorithm defaults to `2.`, `grpo` algorithm defaults to `0.04`, `gkd` algorithm defaults to `0.5`, and other algorithms default to `0.1`. For more details, refer to the [documentation](./RLHF.md).
