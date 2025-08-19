@@ -2020,10 +2020,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'completion': list(self._logs['completion'])[:seen_nums],
                 **{k: list(v)[:seen_nums]
                    for k, v in self._logs['rewards'].items()},
-                'advantage': list(self._logs['advantages'])[:seen_nums],
+                'advantages': list(self._logs['advantages'])[:seen_nums],
             }
             for key, value in self._logs.items():
-                if key not in table and key != 'image':
+                if key not in table and key not in ['image', 'rewards']:
                     table[key] = list(value)[:seen_nums]
 
             if self.args.log_entropy:

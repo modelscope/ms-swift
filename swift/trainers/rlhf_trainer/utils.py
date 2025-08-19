@@ -334,7 +334,7 @@ def replace_assistant_response_with_ids(messages: 'Messages',
         if loss_mask:
             message['content'] = {
                 'loss_scale': loss_mask[-1 - completion_index],
-                'input_ids': completion_ids[-1 - completion_index]
+                'token_ids': completion_ids[-1 - completion_index]
             }
         else:
             message['content'] = completion_ids[-1 - completion_index]

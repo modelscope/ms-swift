@@ -56,6 +56,7 @@ class RolloutScheduler(ABC):
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
                   **kwargs) -> 'RolloutOutput':
+        from swift.llm.infer.protocol import RolloutOutput
         response: 'ChatCompletionResponse' = await self.infer_engine.infer_async(infer_request, request_config,
                                                                                  **kwargs)
         response_token_ids = response.choices[0].token_ids
@@ -169,7 +170,7 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                     # Must return RolloutOutput or List[RolloutOutput]
                     ...
         """
-
+        from swift.llm.infer.protocol import RolloutOutput
         current_request = infer_request
         current_turn = 1
         rollout_infos = {}
@@ -224,14 +225,20 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
             # Track response tokens and masks
             return_token_id = False
             if 'response_token_ids' in ret:
-                total_response_ids.append(ret['response_token_ids'])
+                if is_continuation and total_response_ids:
+                    total_response_ids[-1].extend(ret['response_token_ids'])
+                else:
+                    total_response_ids.append(ret['response_token_ids'])
                 return_token_id = True
 
             if 'response_loss_mask' in ret:
                 assert return_token_id, 'You must return response_token_ids if you want to return response_loss_mask'
                 assert len(ret['response_loss_mask']) == len(ret['response_token_ids']), \
                     'response_loss_mask must have the same length as response_token_ids'
-                total_response_loss_mask.append(ret['response_loss_mask'])
+                if is_continuation and total_response_loss_mask:
+                    total_response_loss_mask[-1].extend(ret['response_loss_mask'])
+                else:
+                    total_response_loss_mask.append(ret['response_loss_mask'])
 
             if 'rollout_infos' in ret:
                 rollout_infos = {**rollout_infos, **ret['rollout_infos']}
@@ -529,7 +536,7 @@ class GYMScheduler(RolloutScheduler):
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
                   **kwargs) -> 'RolloutOutput':
-        from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, RolloutOutput
+        from swift.llm.infer.protocol import RolloutOutput
         """
         Execute the gym environment-based rollout:
         1. Initialize environment and context manager
@@ -607,95 +614,8 @@ class GYMScheduler(RolloutScheduler):
                 await self._close_env_async(env)
 
 
-class ToolCallScheduler(MultiTurnScheduler):
-    """A simple scheduler that supports tool calls by overriding the ``step`` method."""
-
-    def __init__(self, *args, **kwargs):
-        infer_engine = kwargs.get('infer_engine', None)
-        if not infer_engine:
-            raise ValueError(
-                'please use server mode and set --multi_turn_scheduler tool_call_scheduler in swift rollout')
-        super().__init__(*args, **kwargs)
-        # A simple tool registry. Extend or replace with your own tools as needed.
-        self.tools = {
-            'calculator': self._calculator_tool,
-        }
-
-    def _calculator_tool(self, expression: str) -> str:
-        """A very small sandboxed calculator."""
-        try:
-            # Allow only basic math symbols for safety.
-            allowed_chars = set('0123456789+-*/(). ')
-            if not all(c in allowed_chars for c in expression):
-                return 'Error: expression contains disallowed characters.'
-            result = eval(expression)
-            return f'Result: {result}'
-        except Exception as e:
-            return f'Calculation error: {e}'
-
-    def _extract_tool_calls(self, text: str):
-        """
-        Parse tool-call patterns of the form
-        ``<tool>tool_name:arguments</tool>`` from model output.
-        """
-        import re
-
-        pattern = r'<tool>(\w+):([^<]*)</tool>'
-        matches = re.findall(pattern, text)
-        if not matches:
-            return None
-        return [{'tool': name, 'params': params.strip()} for name, params in matches]
-
-    def _execute_tools(self, tool_calls):
-        """Run each requested tool and collect its observation string."""
-        results = []
-        for call in tool_calls:
-            name, params = call['tool'], call['params']
-            if name in self.tools:
-                try:
-                    results.append(f'{self.tools[name](params)}')
-                except Exception as e:
-                    results.append(f'tool error {e}')
-            else:
-                results.append(f'unknown tool {name}')
-        return results
-
-    def check_finished(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
-                       current_turn: int) -> bool:
-        completion = response_choice.message.content
-        tool_calls = self._extract_tool_calls(completion)
-        if tool_calls is None:
-            return False
-
-        return super().check_finished(infer_request, response_choice, current_turn)
-
-    def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
-             current_turn: int) -> Dict:
-        completion = response_choice.message.content
-        token_ids = response_choice.token_ids
-        loss_mask = [1] * len(token_ids)
-        tool_calls = self._extract_tool_calls(completion)
-        assert len(tool_calls) == 1, 'this scheduler is designed for one tool call per turn'
-
-        tool_results = self._execute_tools(tool_calls)
-        infer_request.messages.append({'role': 'user', 'content': tool_results[0]})
-        result_tokens = self.infer_engine.template.tokenizer.encode(tool_results[0], add_special_tokens=False)
-        token_ids.extend(result_tokens)
-        loss_mask.extend([0] * len(result_tokens))
-
-        return {
-            'infer_request': infer_request,
-            'response_token_ids': token_ids,
-            'response_loss_mask': loss_mask,
-            'rollout_infos': {
-                'tool_results': tool_results[0]
-            }
-        }
-
-
 multi_turns = {
     'math_tip_trick': MathTipsScheduler,
     'gym_scheduler': GYMScheduler,
     'thinking_tips_scheduler': ThinkingModelTipsScheduler,
-    'tool_call_scheduler': ToolCallScheduler,
 }
