@@ -388,41 +388,40 @@ def _get_train_sampler_grpo(self, dataset=None, sp_instance=None):
 def old_policy_grpo(self, sp_instance):
     """Old policy for GRPO sequence parallel training"""
     # changes: `* sp_instance.sp_world_size`
-    return (self.num_iterations > 1
-            or self.args.steps_per_generation * sp_instance.sp_world_size > self.args.gradient_accumulation_steps)
+    return (self.num_iterations > 1 or self.args.gradient_accumulation_steps %
+            (self.args.steps_per_generation * sp_instance.sp_world_size) != 0)
 
 
-def split_by_mini_batches_grpo(self, inputs, advantages, sp_instance):
+def split_by_mini_batches_grpo(self, inputs, sp_instance):
     """Split by mini batches for GRPO sequence parallel training"""
-    inputs_len = len(inputs)
     output = [None] * sp_instance.sp_world_size
     # gather inputs within a sp group
     dist.all_gather_object(output, inputs, group=sp_instance.sp_group)
     output = [p for sublist in output for p in sublist]
     inputs = output
 
-    rank, local_rank, world_size, local_world_size = get_dist_setting()
-    start_rank = (rank // sp_instance.sp_world_size) * sp_instance.sp_world_size
-    process_slice = slice(
-        start_rank * inputs_len,
-        (start_rank + sp_instance.sp_world_size) * inputs_len,
-    )
-
-    advantages = advantages[process_slice]
-
     mode = 'train' if self.model.training else 'eval'
-    bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
     spg = self.args.steps_per_generation * sp_instance.sp_world_size if mode == 'train' else 1
+
     if mode == 'eval':
         # TODO only take the first bs rows, because eval does not support loop
+        bs = self.args.per_device_eval_batch_size
         inputs = inputs[:bs]
-        advantages = advantages[:bs]
-    assert len(inputs) == bs * spg, f'Expected {bs * spg} inputs, got {len(inputs)}'
-    spg_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(spg)]
-    # Split advantages by spg chunks
-    advantage_chunks = torch.chunk(advantages, spg)
+        spg = 1
 
-    return spg_chunks, advantage_chunks
+    # Use the new dynamic splitting logic
+    chunk_size: int = len(inputs) // spg
+    remainder: int = len(inputs) % spg
+    spg_chunks: List[DataType] = []
+
+    start_idx: int = 0
+    for i in range(spg):
+        current_chunk_size: int = chunk_size + (1 if i < remainder else 0)
+        end_idx: int = start_idx + current_chunk_size
+        spg_chunks.append(inputs[start_idx:end_idx])
+        start_idx = end_idx
+
+    return spg_chunks
 
 
 @contextmanager
