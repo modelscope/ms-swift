@@ -877,6 +877,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Extract prompt_ids for grouping
         prompt_ids = [inp['prompt_id'] for inp in inputs]
+        request_ids = [inp['request_id'] for inp in inputs]
 
         # If using gym environment, extract rewards directly from inputs
         if self.use_gym_env:
@@ -896,6 +897,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # gather objects
         total_rewards_per_func = gather_object(local_rewards_list)
         total_prompt_ids = gather_object(prompt_ids)
+        total_request_ids = gather_object(request_ids)
         total_rewards_per_func = torch.tensor(
             total_rewards_per_func, dtype=torch.float32, device=self.accelerator.device)
 
@@ -905,7 +907,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             total_rewards = (total_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
 
         # Compute advantages based on prompt_id grouping
-        total_advantages, rewards_std = self._compute_advantages(total_rewards, total_prompt_ids)
+        total_advantages, rewards_std = self._compute_advantages(total_rewards, total_prompt_ids, total_request_ids)
 
         return total_rewards_per_func, total_rewards, completions, total_advantages, rewards_std
 
@@ -920,7 +922,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # reward model
                 reward_kwargs = {'trainer_state': self.state}
                 if self.enable_multi_turn:
-                    reward_kwargs.update({'global_inputs': gather_object(inputs)})
+                    total_inputs = gather_object(inputs)
+                    inputs_by_request_id = self._group_inputs_by_request_id(total_inputs)
+                    reward_kwargs.update({'global_inputs': inputs_by_request_id})
                 if isinstance(reward_func, nn.Module):
                     output_reward_func = reward_model_plugin(inputs=inputs, **reward_kwargs)
                 # reward function
@@ -941,65 +945,92 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return rewards_per_func
 
-    def _compute_advantages(self, rewards: torch.Tensor, prompt_ids: List[str]) -> torch.Tensor:
+    def _compute_advantages(self, rewards: torch.Tensor, prompt_ids: List[str], request_ids: List[str]) -> torch.Tensor:
         """
-        Compute normalized advantages by grouping rewards based on prompt IDs.
+        Compute normalized advantages by grouping rewards based on request IDs.
 
         This method performs group-wise advantage computation where rewards are normalized
-        within each prompt group by subtracting the group mean. Optionally scales advantages
-        by group standard deviation for variance normalization.
+        within each prompt group by subtracting the group mean. Each request_id contributes
+        only once to the advantage computation.
 
         The computation process:
-        1. Groups rewards by unique prompt_id
-        2. Computes group-wise mean and standard deviation
-        3. Calculates advantages as (reward - group_mean)
-        4. Optionally normalizes by group standard deviation if scale_rewards is enabled
-        5. Tracks training/evaluation metrics for monitoring
+        1. Groups rewards by unique request_id and validates consistency
+        2. Creates a mapping from request_id to unique reward (each request_id contributes once)
+        3. Groups unique rewards by prompt_id for statistical computation
+        4. Calculates advantages as (reward - prompt_group_mean)
+        5. Optionally normalizes by prompt group standard deviation if scale_rewards is enabled
+        6. Fills advantages for all samples with same request_id
+        7. Tracks training/evaluation metrics for monitoring
 
         Args:
             rewards (torch.Tensor): Reward values from all processes with shape (num_examples,)
             prompt_ids (List[str]): Corresponding prompt identifiers with length num_examples
+            request_ids (List[str]): Corresponding request identifiers with length num_examples
 
         Returns:
             tuple: A tuple containing:
                 - advantages (torch.Tensor): Computed advantages with same shape as rewards
                 - rewards_std (torch.Tensor): Group standard deviations for each sample
         """
-        assert rewards.shape[0] == len(prompt_ids)
+        assert rewards.shape[0] == len(prompt_ids) == len(request_ids)
         mode = 'train' if self.model.training else 'eval'
         advantages = torch.zeros_like(rewards)
         # calculate rewards_std for dynamic_sampling
         rewards_std = torch.zeros_like(rewards)
 
-        # Group rewards by prompt_id
-        unique_prompt_ids = list(set(prompt_ids))
+        # Step 1: Group rewards by request_id and validate consistency
+        request_id_to_reward = {}
+        request_id_to_prompt_id = {}
+
+        for i, request_id in enumerate(request_ids):
+            if request_id not in request_id_to_reward:
+                request_id_to_reward[request_id] = rewards[i]
+                request_id_to_prompt_id[request_id] = prompt_ids[i]
+            else:
+                # Validate that same request_id has consistent rewards
+                if not torch.isclose(request_id_to_reward[request_id], rewards[i]):
+                    raise ValueError(f'Rewards for request_id {request_id} are inconsistent: '
+                                     f'{request_id_to_reward[request_id]} vs {rewards[i]}')
+
+        # Step 2: Group unique rewards by prompt_id for statistical computation
+        prompt_id_to_rewards = {}
+        for request_id, reward in request_id_to_reward.items():
+            prompt_id = request_id_to_prompt_id[request_id]
+            if prompt_id not in prompt_id_to_rewards:
+                prompt_id_to_rewards[prompt_id] = []
+            prompt_id_to_rewards[prompt_id].append(reward)
+
+        # Step 3: Compute prompt-level statistics
+        prompt_id_to_stats = {}
         group_rewards_mean = []
         group_rewards_std = []
 
-        for prompt_id in unique_prompt_ids:
-            # Find all samples with this prompt_id
-            indices = [i for i, pid in enumerate(prompt_ids) if pid == prompt_id]
-            if len(indices) == 0:
-                continue
+        for prompt_id, prompt_rewards in prompt_id_to_rewards.items():
+            prompt_rewards_tensor = torch.tensor(prompt_rewards, dtype=rewards.dtype, device=rewards.device)
+            prompt_mean = prompt_rewards_tensor.mean()
+            prompt_std = prompt_rewards_tensor.std()
+            prompt_id_to_stats[prompt_id] = (prompt_mean, prompt_std)
 
-            group_rewards = rewards[indices]
+            group_rewards_mean.append(prompt_mean)
+            group_rewards_std.append(prompt_std)
 
-            # Compute group statistics
-            group_mean = group_rewards.mean()
-            group_rewards_mean.append(group_mean)
-            group_advantages = group_rewards - group_mean
+        # Step 4: Calculate advantages for each request_id
+        for request_id, reward in request_id_to_reward.items():
+            prompt_id = request_id_to_prompt_id[request_id]
+            prompt_mean, prompt_std = prompt_id_to_stats[prompt_id]
 
-            group_std = group_rewards.std()
-            group_rewards_std.append(group_std)
-            rewards_std[indices] = group_std
+            # Calculate advantage for this request
+            request_advantage = reward - prompt_mean
 
             # Optional: scale by standard deviation
             if self.args.scale_rewards:
-                group_advantages /= (group_std + 1e-4)
+                request_advantage /= (prompt_std + 1e-4)
 
-            # Assign computed advantages back to original positions
-            for idx, advantage in zip(indices, group_advantages):
-                advantages[idx] = advantage
+            # Fill advantages for all samples with this request_id
+            for i, rid in enumerate(request_ids):
+                if rid == request_id:
+                    advantages[i] = request_advantage
+                    rewards_std[i] = prompt_std
 
         if group_rewards_mean:
             # compute metrics
@@ -2180,6 +2211,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.accelerator.is_main_process:
             all_outputs: List[RolloutOutput] = self._engine_infer(
                 infer_requests=all_requests, request_config=request_config)
+            all_outputs = self._sort_by_request_id(all_outputs)
         else:
             all_outputs = [None] * len(all_requests)
         # Handle async engine the outputs count may exceed inputs count
@@ -2579,3 +2611,53 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             except (TypeError, ValueError) as e:
                 raise RuntimeError(f'Cannot convert gathered+flattened data to tensor: {e}') from e
         return flat
+
+    def _sort_by_request_id(self, all_outputs: List[RolloutOutput]) -> List[RolloutOutput]:
+        """
+        Sort rollout outputs by request_id to group outputs with the same request_id together.
+
+        Args:
+            all_outputs: List of RolloutOutput objects
+
+        Returns:
+            List[RolloutOutput]: Sorted list where outputs with the same request_id are adjacent
+        """
+        # Extract request_ids from outputs
+        request_ids = [output.response.id for output in all_outputs]
+
+        # Create pairs of (request_id, output) for sorting
+        output_pairs = list(zip(request_ids, all_outputs))
+
+        # Sort by request_id
+        output_pairs.sort(key=lambda x: x[0])
+
+        # Extract sorted outputs
+        sorted_outputs = [output for _, output in output_pairs]
+
+        return sorted_outputs
+
+    def _group_inputs_by_request_id(self, inputs: DataType) -> Dict[str, List[Dict]]:
+        """
+        Group global inputs by request_id for multi-turn reward computation.
+
+        Args:
+            inputs: List of input dictionaries, each containing a 'request_id' field
+
+        Returns:
+            Dict[str, List[Dict]]: A dictionary where keys are request_ids and values are
+                                  lists of input dictionaries with the same request_id
+        """
+        inputs_by_request_id = {}
+
+        for input_data in inputs:
+            request_id = input_data.get('request_id')
+            if request_id is None:
+                # Skip inputs without request_id
+                continue
+
+            if request_id not in inputs_by_request_id:
+                inputs_by_request_id[request_id] = []
+
+            inputs_by_request_id[request_id].append(input_data)
+
+        return inputs_by_request_id
