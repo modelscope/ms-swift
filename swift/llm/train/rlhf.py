@@ -153,15 +153,15 @@ class SwiftRLHF(SwiftSft):
     @classmethod
     def prepare_model(cls, args, model, *, template=None, train_dataset=None, task_type=None):
         model = super().prepare_model(args, model, template=template, train_dataset=train_dataset, task_type=task_type)
-        if args.resume_from_checkpoint is None and args.adapters:
+        if args.ref_adapters:
             if args.train_type in extra_tuners:
                 tuner: Tuner = extra_tuners[args.train_type]
             else:
                 tuner = Swift
-            assert not args.adapters or len(args.adapters) == 1, f'args.adapters: {args.adapters}'
-            model = tuner.from_pretrained(model, args.adapters[0], adapter_name='ref_adapter')
+            assert len(args.ref_adapters) == 1, f'args.ref_adapters: {args.ref_adapters}'
+            model = tuner.from_pretrained(model, args.ref_adapters[0], adapter_name='ref_adapter')
             assert args.rlhf_type in {'dpo', 'kto',
-                                      'grpo'}, 'Currently, only DPO, KTO, and GRPO support `ref_adapter_name`.'
+                                      'grpo'}, 'Currently, only DPO, KTO, and GRPO support `ref_adapters`.'
             args.training_args.ref_adapter_name = 'ref_adapter'
         return model
 
