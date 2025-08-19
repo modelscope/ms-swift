@@ -51,25 +51,26 @@ class MegatronTunerMixin:
     lora_dtype: Literal['float16', 'bfloat16', 'float32', None] = None
     use_rslora: bool = False
 
+    @staticmethod
+    def load_tuner_config(adapter_load: Optional[str]) -> Dict[str, Any]:
+        res = {}
+        if adapter_load is None:
+            return res
+        args_path = os.path.join(adapter_load, 'args.json')
+        if os.path.exists(args_path):
+            with open(args_path, 'r', encoding='utf-8') as f:
+                old_args = json.load(f)
+            tuner_keys = list(f.name for f in fields(MegatronTunerMixin)) + ['load']
+            for key in tuner_keys:
+                old_value = old_args.get(key)
+                if old_value is not None:
+                    res[key] = old_value
+            res.pop('adapter_load', None)
+        return res
+
     def __post_init__(self):
         if self.freeze_parameters_ratio > 0 and self.pipeline_model_parallel_size > 1:
             raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
-
-        if self.adapter_load:
-            args_path = os.path.join(self.adapter_load, 'args.json')
-            if os.path.exists(args_path):
-                with open(args_path, 'r', encoding='utf-8') as f:
-                    old_args = json.load(f)
-                tuner_keys = list(f.name for f in fields(MegatronTunerMixin))
-                for key in tuner_keys:
-                    old_value = old_args.get(key)
-                    if old_value is not None:
-                        setattr(self, key, old_value)
-                if self.adapter_load is not None and hasattr(self, 'load'):
-                    old_value = old_args.get('load')
-                    if self.load is None and old_value is not None:
-                        logger.info(f'Setting args.load: {old_value}')
-                        self.load = old_value
 
 
 @dataclass

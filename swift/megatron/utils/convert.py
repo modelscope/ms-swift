@@ -202,12 +202,16 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     current_convert_kwargs = convert_kwargs.copy()
     if args.model_info.is_moe_model:
         current_convert_kwargs['moe_grouped_gemm'] = True
+    adapter_load = args.mcore_adapters[0] if args.mcore_adapters else None
+    adapter_config = MegatronArguments.load_tuner_config(adapter_load)
+    adapter_config['adapter_load'] = adapter_load
+    if args.mcore_model:
+        adapter_config['load'] = args.mcore_model
     megatron_args = MegatronArguments(
         **kwargs,
         **current_convert_kwargs,
-        load=args.mcore_model,
+        **adapter_config,
         save=args.output_dir if args.to_mcore else None,
-        adapter_load=args.mcore_adapters[0] if args.mcore_adapters else None,
         torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
