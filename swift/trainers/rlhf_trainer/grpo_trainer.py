@@ -2688,8 +2688,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Keep only entries whose request_id exists in the current inputs
         filtered_total_inputs = [
-            input_data for input_data in total_inputs
-            if input_data['request_id'] in current_request_ids
+            input_data for input_data in total_inputs if input_data['request_id'] in current_request_ids
         ]
 
         # Group inputs by request_id
