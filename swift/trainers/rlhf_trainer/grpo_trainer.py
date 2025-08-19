@@ -922,9 +922,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # reward model
                 reward_kwargs = {'trainer_state': self.state}
                 if self.enable_multi_turn:
-                    total_inputs = gather_object(inputs)
-                    inputs_by_request_id = self._group_inputs_by_request_id(total_inputs)
-                    reward_kwargs.update({'global_inputs': inputs_by_request_id})
+                    trajectory_inputs = self._get_trajectory_inputs(inputs)
+                    reward_kwargs.update({'trajectory_inputs': trajectory_inputs})
                 if isinstance(reward_func, nn.Module):
                     output_reward_func = reward_model_plugin(inputs=inputs, **reward_kwargs)
                 # reward function
@@ -2638,7 +2637,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _group_inputs_by_request_id(self, inputs: DataType) -> Dict[str, List[Dict]]:
         """
-        Group global inputs by request_id for multi-turn reward computation.
+        Group inputs by request_id for multi-turn reward computation.
 
         Args:
             inputs: List of input dictionaries, each containing a 'request_id' field
@@ -2659,5 +2658,41 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 inputs_by_request_id[request_id] = []
 
             inputs_by_request_id[request_id].append(input_data)
+
+        return inputs_by_request_id
+
+    def _get_trajectory_inputs(self, inputs: DataType) -> Dict[str, List[Dict]]:
+        """
+        Retrieve trajectory data corresponding to the request_ids present in the current inputs.
+
+        This method performs the following steps:
+        1. Extract the set of request_ids from the current inputs
+        2. Gather all inputs across processes
+        3. Filter out entries whose request_id is not present in the local inputs
+        4. Group the remaining inputs by request_id
+        5. Keep only trajectory data for request_ids found in the current inputs
+
+        Args:
+            inputs: The current batch of input data. Each item is a dictionary
+                containing at least the field 'request_id'.
+
+        Returns:
+            Dict[str, List[Dict]]: A mapping from request_id to the list of
+            corresponding input records (trajectory data).
+        """
+        # Collect request_id set from the current inputs
+        current_request_ids = {input_data['request_id'] for input_data in inputs}
+
+        # Gather all inputs across processes
+        total_inputs = gather_object(inputs)
+
+        # Keep only entries whose request_id exists in the current inputs
+        filtered_total_inputs = [
+            input_data for input_data in total_inputs
+            if input_data['request_id'] in current_request_ids
+        ]
+
+        # Group inputs by request_id
+        inputs_by_request_id = self._group_inputs_by_request_id(filtered_total_inputs)
 
         return inputs_by_request_id
