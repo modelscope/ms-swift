@@ -161,7 +161,8 @@ class SwiftRLHF(SwiftSft):
             assert not args.adapters or len(args.adapters) == 1, f'args.adapters: {args.adapters}'
             model = tuner.from_pretrained(
                 model, args.resume_from_checkpoint or args.adapters[0], is_trainable=True, adapter_name='ref_model')
-            assert args.rlhf_type in {'dpo', 'kto'}, 'Currently, only DPO and KTO support `ref_adapter_name`.'
+            assert args.rlhf_type in {'dpo', 'kto',
+                                      'grpo'}, 'Currently, only DPO、KTO and GRPO support `ref_adapter_name`.'
             args.training_args.ref_adapter_name = 'ref_model'
         return model
 
