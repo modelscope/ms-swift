@@ -39,13 +39,16 @@
 
 一、目标：清楚项目做什么、支持什么、怎么装。
 
-二、材料：README_CN.md
+二、材料：
+
+- README_CN.md 总览文档
+- setup.py 打包安装脚本
 
 三、动作：
 
 1、通读“简介/安装/快速开始/...”，记录涉及的关键词（LoRA/QLoRA、DPO/GRPO、vLLM/SGLang、EvalScope、Megatron等）。`DONE`
 
-2、本地安装可运行环境：
+2、本地安装可运行环境：`DONE`
 
 ```shell
 # 克隆与开发安装
@@ -61,7 +64,27 @@ pip install -r requirements/eval.txt -r requirements/swanlab.txt
 pre-commit install
 ```
 
-四、产出：能 import swift，了解项目模块全貌。
+3、阅读setup.py，结合AI工具进行详细注释。`DONE`
+
+四、产出：
+
+1、能 import swift，了解项目模块全貌
+
+2、详细注释后的steup.py
+
+
+
+## D2：docs/source
+
+一、目标：清楚具体怎么使用swift框架。
+
+二、材料：docs/source
+
+三、动作：
+
+1、GetStarted	`DONE`
+
+2、Instruction	`ING`
 
 
 
