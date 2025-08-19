@@ -95,6 +95,30 @@ def test_minimax_vl():
     assert len(res['input_ids']) == 5877
 
 
+def test_deepseek_v3_1():
+    tokenizer = get_model_tokenizer('deepseek-ai/DeepSeek-V3.1—Base', load_model=False)[1]
+    template = get_template(tokenizer.model_meta.template, tokenizer)
+    inputs = TemplateInputs(messages=[{
+        'role': 'system',
+        'content': '000'
+    }, {
+        'role': 'user',
+        'content': 'aaa'
+    }, {
+        'role': 'assistant',
+        'content': 'bbb'
+    }, {
+        'role': 'user',
+        'content': 'ccc'
+    }])
+    res = template.encode(inputs)
+    template.print_inputs(res)
+    template.template_backend = 'jinja'
+    res2 = template.encode(inputs)
+    template.print_inputs(res2)
+    assert res['input_ids'] == res2['input_ids']
+
+
 if __name__ == '__main__':
     # test_deepseek_v2_5()
     # test_qwen2_5_math_reward()
