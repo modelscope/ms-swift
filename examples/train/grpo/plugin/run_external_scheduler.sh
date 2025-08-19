@@ -1,4 +1,6 @@
+# This script require main branch ms-swift
 # This script is intended solely as a Tool Calling training example
+# The calculator tool implemented here can perform only basic arithmetic operations and may not be able to solve all math problems in the dataset.
 # Before running this script, please run the following `swift rollout` script first
 
 # CUDA_VISIBLE_DEVICES=0 \
@@ -9,7 +11,7 @@
 #     --multi_turn_scheduler tool_call_scheduler \
 #     --vllm_max_model_len 8192 \
 #     --vllm_gpu_memory_utilization 0.8 \
-#     --max_turns 3
+#     --max_turns 5
 
 SYSTEM_PROMPT='
 Answer the following questions as best you can. You have access to the following tools:

@@ -844,12 +844,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         #       to avoid potential communication / synchronization issues
 
         metrics_to_gather = {}
-        if all('rollout_infos' in inp and 'num_turns' in inp['rollout_infos'] for inp in inputs):
-            metrics_to_gather['num_turns'] = [inp['rollout_infos']['num_turns'] for inp in inputs]
-
-        if all('rollout_infos' in inp and 'trajectory_info' in inp['rollout_infos'] for inp in inputs):
-            metrics_to_gather['trajectory_info'] = [inp['rollout_infos']['trajectory_info'] for inp in inputs]
-
         if all('images' in data and data['images'] is not None for data in inputs):
             metrics_to_gather['image'] = [inp['images'] for inp in inputs]
 
@@ -1214,6 +1208,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if key not in self._logs:
                     self._logs[key] = deque(maxlen=self.args.generation_batch_size)
                 self._logs[key].extend(self._gather_and_flatten(value, flatten_level=0))
+                logger.info(f'Logging {key} finished...')
 
         for i, name in enumerate(self.reward_func_names):
             self._logs['rewards'][name].extend(rewards_per_func[:, i].tolist())

@@ -238,8 +238,6 @@ The trainer automatically detects and logs the following keys:
 
 - image: image inputs for vision models(wandb only).
 - solution: the solution column from the dataset.
-- num_turns: number of turns in multi-turn training.
-- trajectory_info: interaction details from a GYM environment.
 
 ## FAQ
 

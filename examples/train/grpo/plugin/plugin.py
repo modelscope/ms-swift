@@ -902,13 +902,16 @@ class ToolCallScheduler(MultiTurnScheduler):
         }
 
     def _calculator_tool(self, expression: str) -> str:
-        """A very small sandboxed calculator."""
+        # A very small sandboxed calculator
+        # The calculator tool implemented here can perform only basic arithmetic operations and
+        # may not be able to solve all math problems in the dataset.
+
         try:
             # Allow only basic math symbols for safety.
             allowed_chars = set('0123456789+-*/(). ')
             if not all(c in allowed_chars for c in expression):
                 return 'Error: expression contains disallowed characters.'
-            result = eval(expression)
+            result = eval(expression, {'__builtins__': None}, {})
             return f'Result: {result}'
         except Exception as e:
             return f'Calculation error: {e}'
@@ -920,7 +923,7 @@ class ToolCallScheduler(MultiTurnScheduler):
         """
         import re
 
-        pattern = r'Action:\s*(\w+)\s*\nAction Input:\s*(.*?)(?=\n|$)'
+        pattern = r'Action:\s*(.*?)\s*\nAction Input:\s*(.*?)(?:\n|$)'
         matches = re.findall(pattern, text, re.DOTALL)
         if not matches:
             return None
@@ -956,9 +959,7 @@ class ToolCallScheduler(MultiTurnScheduler):
         token_ids = response_choice.token_ids
         loss_mask = [1] * len(token_ids)
         tool_calls = self._extract_tool_calls(completion)
-        assert len(tool_calls) == 1, 'this scheduler is designed for one tool call per turn'
-        if len(tool_calls) > 1:
-            print()
+        # assert len(tool_calls) == 1, 'this scheduler is designed for one tool call per turn'
         tool_results = self._execute_tools(tool_calls)
         # append tool result to the completion
         infer_request.messages[-1]['content'] += (tool_results[0])
