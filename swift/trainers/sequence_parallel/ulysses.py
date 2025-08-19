@@ -270,8 +270,18 @@ class Ulysses(CommonSequenceParallel):
                     query = query.transpose(1, 2)
                     key = key.transpose(1, 2)
                     value = value.transpose(1, 2)
-                    return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query, key, value, *args,
-                                                                               **kwargs)[0]
+                    if self.rp_world_size > 1:
+                        from ring_flash_attn.zigzag_ring_flash_attn import (zigzag_ring_flash_attn_func,
+                                                                            llama3_flash_attn_varlen_func)
+                        output = zigzag_ring_flash_attn_func(query, key, value,
+                                                    causal=module.is_causal,
+                                                    dropout_p=kwargs.get('dropout', 0.0),
+                                                    softmax_scale=kwargs.get('scaling', 0.0),
+                                                    window_size=kwargs.get('sliding_window'))
+                        return output
+                    else:
+                        return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query, key,
+                                                                                   value, *args, **kwargs)[0]
 
                 dist_attn.local_attn = _attention
 
@@ -290,6 +300,8 @@ class Ulysses(CommonSequenceParallel):
                     query = query.transpose(1, 2)
                     key = key.transpose(1, 2)
                     value = value.transpose(1, 2)
+                    if self.rp_world_size > 1:
+                        raise NotImplementedError(f'SDPA does not support Ring attention!')
                     return ALL_ATTENTION_FUNCTIONS['sdpa_origin'](module, query, key, value, *args, **kwargs)[0]
 
                 dist_attn.local_attn = _attention

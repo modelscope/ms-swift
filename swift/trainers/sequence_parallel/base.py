@@ -51,9 +51,11 @@ class CommonSequenceParallel(SequenceParallel):
     def __init__(self):
         self.sp_world_size = None
         self.dp_world_size = None
+        self.rp_world_size = None
         self.model_dtype = None
         self.tokenizer = None
         self.device_mesh = None
+        self.num_heads = None
         self._inited = False
 
     def _pad_sp(self, tensor, padding_value, dim=-1):
@@ -142,16 +144,28 @@ class CommonSequenceParallel(SequenceParallel):
         """Return the sequence parallel world size"""
         return self.sp_world_size
 
+    def rp_world_size(self):
+        return self.rp_world_size
+
     def _init_device_mesh(self):
         """Initialize device mesh for sequence parallel"""
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         self.dp_world_size = world_size // self.sp_world_size
-
-        # Create device mesh: (dp_world_size, sp_world_size)
-        self.device_mesh = init_device_mesh(
-            get_device().split(':')[0],
-            mesh_shape=(self.dp_world_size, self.sp_world_size),
-            mesh_dim_names=['data', 'sequence'])
+        rp_world_size = self.sp_world_size // self.num_heads
+        if rp_world_size <= 1:
+            # Create device mesh: (dp_world_size, sp_world_size)
+            self.device_mesh = init_device_mesh(
+                get_device().split(':')[0],
+                mesh_shape=(self.dp_world_size, self.sp_world_size),
+                mesh_dim_names=('data', 'sequence'))
+        else:
+            self.sp_world_size = self.num_heads
+            self.rp_world_size = rp_world_size
+            # Create device mesh: (dp_world_size, rp_world_size, sp_world_size)
+            self.device_mesh = init_device_mesh(
+                get_device().split(':')[0],
+                mesh_shape=(self.dp_world_size, self.rp_world_size, self.sp_world_size),
+                mesh_dim_names=('data', 'ring', 'sequence'))
 
     @property
     def sp_group(self):
@@ -172,6 +186,16 @@ class CommonSequenceParallel(SequenceParallel):
     def dp_rank(self):
         """Return the data parallel rank"""
         return dist.get_rank(self.device_mesh['data'].get_group()) if self.device_mesh else 0
+
+    @property
+    def rp_group(self):
+        """Return the data parallel group"""
+        return self.device_mesh['ring'].get_group() if self.device_mesh else None
+
+    @property
+    def rp_rank(self):
+        """Return the data parallel rank"""
+        return dist.get_rank(self.device_mesh['ring'].get_group()) if self.device_mesh else 0
 
     def pad_and_split_extra_inputs(self, inputs):
         """Common input preparation function"""
