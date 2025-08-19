@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from typing import Any, List, Optional, Tuple
 
 import megatron.core
+import torch.nn.functional as F
 import torch
 import torch.nn as nn
 from megatron.core import parallel_state
@@ -243,6 +244,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
 
     @contextmanager
     def _patch_rouger_gating(self):
+        from megatron.core.transformer.moe.moe_utils import router_gating_linear
         origin_gating = self.base_layer.__class__.gating
 
         def gating(_self, x):
@@ -254,13 +256,12 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 lora_B = self.lora_B[active_adapter]
                 dropout = self.lora_dropout[active_adapter]
                 scaling = self.scaling[active_adapter]
-                dtype = lora_A.weight.dtype
-                x = x.to(dtype)
+                x = x.to(result.dtype)
 
-                lora_result = lora_A(dropout(x))
+                lora_result = F.linear(dropout(x), lora_A.weight.to(result.dtype))
                 if isinstance(lora_result, tuple):
                     lora_result = lora_result[0]
-                lora_result = lora_B(lora_result)
+                lora_result = F.linear(lora_result, lora_B.weight.to(result.dtype))
                 if isinstance(lora_result, tuple):
                     lora_result = lora_result[0]
                 lora_result = lora_result * scaling
