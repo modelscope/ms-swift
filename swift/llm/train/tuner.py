@@ -337,8 +337,7 @@ class TunerMixin:
                 else:
                     tuner = Swift
                 assert not args.adapters or len(args.adapters) == 1, f'args.adapters: {args.adapters}'
-                model = tuner.from_pretrained(
-                    model, args.resume_from_checkpoint or args.adapters[0], is_trainable=True)
+                model = tuner.from_pretrained(model, args.resume_from_checkpoint or args.adapters[0], is_trainable=True)
             else:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
