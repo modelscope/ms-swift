@@ -659,9 +659,9 @@ def _patch_peft_ModulesToSaveWrapper():
     from megatron.core.dist_checkpointing.mapping import ShardedStateDict
     from .utils import tuners_sharded_state_dict
 
-    ModulesToSaveWrapper = peft_module.ModulesToSaveWrapper
+    OriginModulesToSaveWrapper = peft_module.ModulesToSaveWrapper
 
-    class NewModulesToSaveWrapper(ModulesToSaveWrapper):
+    class ModulesToSaveWrapper(OriginModulesToSaveWrapper):
 
         def __init__(self, module_to_save, *args, **kwargs):
             tp_group = getattr(module_to_save, 'tp_group', None)
@@ -694,7 +694,7 @@ def _patch_peft_ModulesToSaveWrapper():
                         f'{prefix}modules_to_save.default.weight']
             return sharded_state_dict
 
-    peft_module.ModulesToSaveWrapper = NewModulesToSaveWrapper
+    peft_module.ModulesToSaveWrapper = ModulesToSaveWrapper
 
 
 def _patch_TransformerLayer():
@@ -790,9 +790,19 @@ def _patch_torch_FileSystemReader():
     FileSystemReader.read_data = read_data
 
 
+def _patch_TELinear():
+    from megatron.core.extensions.transformer_engine import TELinear
+    def __repr__(self):
+        return (
+            f"{type(self).__name__}(in_features={self.in_features}, "
+            f"out_features={self.out_features}, bias={self.use_bias}, TP={self.tp_size})"
+        )
+    TELinear.__repr__ = __repr__
+
 def _patch_megatron():
     _patch_flash_attn()
     _patch_transformer_engine()
+    _patch_TELinear()
     _patch__batched_p2p_ops()
     _patch_mla_attention()
     _patch_TEGroupedLinear()

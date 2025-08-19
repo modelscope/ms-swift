@@ -143,7 +143,8 @@ def prepare_adapter(args, model, adapters=None):
 
 def prepare_model_template(args, **kwargs):
     model, processor = args.get_model_processor(**kwargs)
-    model = prepare_adapter(args, model)
     template = args.get_template(processor)
-    update_generation_config_eos_token(model.generation_config, template)
+    if model is not None:
+        model = prepare_adapter(args, model)
+        update_generation_config_eos_token(model.generation_config, template)
     return model, template
