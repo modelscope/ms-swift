@@ -243,8 +243,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             nn.init.normal_(self.lora_embedding_B[adapter_name])
 
     @contextmanager
-    def _patch_rouger_gating(self):
-        from megatron.core.transformer.moe.moe_utils import router_gating_linear
+    def _patch_router_gating(self):
         origin_gating = self.base_layer.__class__.gating
 
         def gating(_self, x):
@@ -290,7 +289,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         elif isinstance(self.base_layer, (TELinear, TEGroupedLinear)):
             result, bias = self.base_layer(x, *args, **kwargs)
         elif isinstance(self.base_layer, TopKRouter):
-            with self._patch_rouger_gating():
+            with self._patch_router_gating():
                 result, bias = self.base_layer(x, *args, **kwargs)
         else:
             raise ValueError(f'Unsupported base layer type: {type(self.base_layer)}')
