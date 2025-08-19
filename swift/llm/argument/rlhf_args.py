@@ -148,6 +148,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                         self.loss_scale = 'last_round'
             else:
                 self.loss_scale = 'last_round'
+        if isinstance(self.ref_adapters, str):
+            self.ref_adapters = [self.ref_adapters]
         if self.rlhf_type == 'grpo' and self.beta == 0.0:
             self.ref_model = None
         elif self.rlhf_type in ['dpo', 'kto', 'ppo', 'grpo'] and self.train_type == 'full':
