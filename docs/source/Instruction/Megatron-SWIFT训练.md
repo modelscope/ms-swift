@@ -441,7 +441,6 @@ swift export \
 lora训练：
 - adapter_load: 加载adapter的权重路径，用于lora断点续训，默认为None。lora断点续训方式与全参数一致，请关注`--finetune`参数的含义。
 - ref_adapter_load: 加载ref_adapter的权重路径，默认为None。若你要使用SFT产生的LoRA权重进行DPO，请使用"ms-swift>=3.8"，并在训练时设置`--adapter_load sft_ckpt --ref_adapter_load sft_ckpt --finetune true`。若是此场景的断点续训，则设置`--adapter_load rlhf_ckpt --ref_adapter_load sft_ckpt --finetune false`。
-  - 注意：若你要使用SFT产生的LoRA权重进行DPO，请使用"ms-swift>=3.8"，并设置`--finetune true`。这将在训练中额外存储一份LoRA权重作为ref_adapter（若未设置`--finetune true`，则）。
 - 🔥target_modules: 指定lora模块的后缀，例如：你可以设置为`--target_modules linear_qkv linear_proj`。默认为`['all-linear']`，代表将所有的linear设置为target_modules。
   - 注意：若需要将所有的router设置为target_modules, 你可以额外设置`--target_modules all-router ...`，例如：`--target_modules all-router all-linear`。
 - 🔥target_regex: 指定lora模块的regex表达式，默认为`None`。如果该值传入，则target_modules参数失效。
