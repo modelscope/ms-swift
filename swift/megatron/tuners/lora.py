@@ -71,18 +71,8 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
 
         self.is_target_conv_1d_layer = False
 
-    def update_layer(
-        self,
-        adapter_name,
-        r,
-        *,
-        lora_alpha,
-        lora_dropout,
-        init_lora_weights,
-        use_rslora,
-        lora_bias,
-        **kwargs
-    ):
+    def update_layer(self, adapter_name, r, *, lora_alpha, lora_dropout, init_lora_weights, use_rslora, lora_bias,
+                     **kwargs):
         if r <= 0:
             raise ValueError(f'`r` should be a positive integer value but the value passed is {r}')
         self.r[adapter_name] = r
