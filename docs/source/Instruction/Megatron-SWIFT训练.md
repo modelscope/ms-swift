@@ -205,6 +205,16 @@ swift export \
 ```
 - 注意：`mcore_adapters`文件夹中包含`args.json`文件，转换过程中会读取文件中`mcore_model`和LoRA相关的参数信息，并将`mcore_model`和`mcore_adapters`进行merge-lora成完整权重，最终转换成HF格式权重。
 
+如果你只想merge-lora，而不希望转成HF格式权重，用于后续DPO训练，可以使用以下脚本：
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift export \
+    --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
+    --to_mcore true \
+    --torch_dtype bfloat16 \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-mcore \
+    --test_convert_precision true
+```
 
 ## Benchmark
 

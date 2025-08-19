@@ -7,6 +7,7 @@ from typing import Any, List, Optional, Tuple
 import megatron.core
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from megatron.core import parallel_state
 from megatron.core.dist_checkpointing.mapping import ShardedStateDict
 from megatron.core.extensions.transformer_engine import (TEColumnParallelGroupedLinear, TEColumnParallelLinear,
@@ -71,18 +72,8 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
 
         self.is_target_conv_1d_layer = False
 
-    def update_layer(
-        self,
-        adapter_name,
-        r,
-        *,
-        lora_alpha,
-        lora_dropout,
-        init_lora_weights,
-        use_rslora,
-        lora_bias,
-        **kwargs
-    ):
+    def update_layer(self, adapter_name, r, *, lora_alpha, lora_dropout, init_lora_weights, use_rslora, lora_bias,
+                     **kwargs):
         if r <= 0:
             raise ValueError(f'`r` should be a positive integer value but the value passed is {r}')
         self.r[adapter_name] = r
@@ -252,7 +243,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             nn.init.normal_(self.lora_embedding_B[adapter_name])
 
     @contextmanager
-    def _patch_rouger_gating(self):
+    def _patch_router_gating(self):
         origin_gating = self.base_layer.__class__.gating
 
         def gating(_self, x):
@@ -264,13 +255,12 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 lora_B = self.lora_B[active_adapter]
                 dropout = self.lora_dropout[active_adapter]
                 scaling = self.scaling[active_adapter]
-                dtype = lora_A.weight.dtype
-                x = x.to(dtype)
+                x = x.to(result.dtype)
 
-                lora_result = lora_A(dropout(x))
+                lora_result = F.linear(dropout(x), lora_A.weight.to(result.dtype))
                 if isinstance(lora_result, tuple):
                     lora_result = lora_result[0]
-                lora_result = lora_B(lora_result)
+                lora_result = F.linear(lora_result, lora_B.weight.to(result.dtype))
                 if isinstance(lora_result, tuple):
                     lora_result = lora_result[0]
                 lora_result = lora_result * scaling
@@ -299,7 +289,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         elif isinstance(self.base_layer, (TELinear, TEGroupedLinear)):
             result, bias = self.base_layer(x, *args, **kwargs)
         elif isinstance(self.base_layer, TopKRouter):
-            with self._patch_rouger_gating():
+            with self._patch_router_gating():
                 result, bias = self.base_layer(x, *args, **kwargs)
         else:
             raise ValueError(f'Unsupported base layer type: {type(self.base_layer)}')
