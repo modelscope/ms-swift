@@ -13,7 +13,7 @@ Hints:
 - 🔥tuner_backend: Options are 'peft', 'unsloth'. Default is 'peft'.
 - 🔥train_type: Options are: 'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'. Default is 'lora'.
 - 🔥adapters: A list used to specify the id/path of the adapter. Default is `[]`.
-  - Starting from "ms-swift>=3.8", you can set `--adapters` during training to continue training from an existing LoRA, enabling seamless transition from LoRA-based SFT to DPO/GRPO. Note: In this case, the reference model (ref_model) is the original base model. This behavior differs from first merging the LoRA weights and then performing DPO/GRPO, where the reference model is the merged model; as a result, the training outcomes may differ.
+  - In "ms-swift>=3.8", you can set `--adapters` during training to continue training after the LoRA, which is convenient for scenarios that follow LoRA SFT with DPO/KTO/GRPO. During training, an additional copy of LoRA weights will be saved as the `ref_adapter`.
 - external_plugins: A list of external plugin py files which will be registered into the plugin mappings，please check [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh). Default is `[]`.
 - seed: Default is 42.
 - model_kwargs: Additional parameters specific to the model that can be passed in. This list of parameters will log a message during training and inference for reference. For example, `--model_kwargs '{"fps_max_frames": 12}'`. Default is None.
@@ -237,7 +237,7 @@ Other important parameters:
 - 🔥lora_alpha: Default is `32`.
 - lora_dropout: Default is `0.05`.
 - lora_bias: Defaults to `'none'`. Possible values are 'none', 'all'. If you want to make all biases trainable, you can set it to `'all'`.
-- lora_dtype: Specifies the dtype type for the LoRA modules. Supported types are 'float16', 'bfloat16', 'float32'. The default is None, which follows the original model type.
+- lora_dtype: Specifies the data type (dtype) for the LoRA modules. Supported values are 'float16', 'bfloat16', 'float32'. Default is None, which follows the default behavior of PEFT.
 - 🔥use_dora: Defaults to `False`, indicating whether to use `DoRA`.
 - use_rslora: Defaults to `False`, indicating whether to use `RS-LoRA`.
 - 🔥lorap_lr_ratio: LoRA+ parameter, default value `None`, recommended values `10~16`. Specify this parameter when using LoRA to enable LoRA+.
