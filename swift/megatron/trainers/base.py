@@ -21,7 +21,7 @@ from megatron.training.checkpointing import load_checkpoint
 from packaging import version
 
 from swift.utils import JsonlWriter, deep_getattr, get_logger
-from ..utils import adapter_state_dict_context, copy_original_module_weight, prepare_mcore_model
+from ..utils import adapter_state_dict_context, copy_modules_to_save_weight, prepare_mcore_model
 from .utils import get_swift_datasets_provider
 
 logger = get_logger()
@@ -150,7 +150,7 @@ class BaseMegatronTrainer(ABC):
             state_dict_model = {}
             mapping = {}
             for k, v in sharded_state_dict['model'].items():
-                if 'lora_A' in k or 'lora_B' in k or 'original_module' in k:
+                if 'lora_A' in k or 'lora_B' in k or 'modules_to_save' in k:
                     continue
                 # lora
                 if '.base_layer' in k:
@@ -158,12 +158,12 @@ class BaseMegatronTrainer(ABC):
                     k = k.replace('.base_layer', '')
                     mapping[k] = origin_k
                     v.key = v.key.replace('.base_layer', '')
-                elif '.modules_to_save' in k:
+                elif '.original_module' in k:
                     # modules to save
                     origin_k = k
-                    k = k.replace('.modules_to_save.default', '')
+                    k = k.replace('.original_module', '')
                     mapping[k] = origin_k
-                    v.key = v.key.replace('.modules_to_save.default', '')
+                    v.key = v.key.replace('.original_module', '')
                 state_dict_model[k] = v
             sharded_state_dict['model'] = state_dict_model
             self._patch_merge_fn(state_dict_model)
@@ -207,15 +207,15 @@ class BaseMegatronTrainer(ABC):
         with self._patch_load_state_dict():
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
+        if args.initialize_embedding:
+            self._initialize_embedding(self.unwrapped_model)
+        if args.train_type != 'full' and args.modules_to_save:
+            copy_modules_to_save_weight(self.unwrapped_model)
         args = get_args()
         if args.adapter_load is not None:
             with adapter_state_dict_context():
                 args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
                     model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
-        if args.train_type != 'full' and args.modules_to_save:
-            copy_original_module_weight(self.unwrapped_model)
-        if args.initialize_embedding:
-            self._initialize_embedding(self.unwrapped_model)
         return model, optimizer, opt_param_scheduler
 
     @staticmethod

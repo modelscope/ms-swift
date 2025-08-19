@@ -65,6 +65,28 @@ def set_linear_is_expert(model):
             module.is_expert = True
 
 
+@contextmanager
+def _patch_deepcopy():
+    import copy
+    _origin_deepcopy = copy.deepcopy
+
+    def deepcopy(x, *args, **kwargs):
+        if getattr(x, 'tp_group', None) is not None:
+            origin_tp_group = x.tp_group
+            x.tp_group = None
+            res = _origin_deepcopy(x, *args, **kwargs)
+            res.tp_group = origin_tp_group
+            return res
+        else:
+            return _origin_deepcopy(x, *args, **kwargs)
+
+    copy.deepcopy = deepcopy
+    try:
+        yield
+    finally:
+        copy.deepcopy = _origin_deepcopy
+
+
 def prepare_adapter(model):
     from swift.tuners import LoraConfig, Swift
     args = get_args()
@@ -82,11 +104,13 @@ def prepare_adapter(model):
     }
     lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
     logger.info(f'lora_config: {lora_config}')
-    model = Swift.prepare_model(model, lora_config)
+    with _patch_deepcopy():
+        model = Swift.prepare_model(model, lora_config)
     if args.ref_adapter_load:
         lora_config = deepcopy(lora_config)
         lora_config.inference_mode = True
-        model.add_adapter('ref_adapter', lora_config)
+        with _patch_deepcopy():
+            model.add_adapter('ref_adapter', lora_config)
         model.base_model._cast_adapter_dtype(adapter_name='ref_adapter', autocast_adapter_dtype=True)
     return model
 
@@ -162,13 +186,13 @@ def tuners_sharded_state_dict(
     return sharded_state_dict
 
 
-def copy_original_module_weight(model):
+def copy_modules_to_save_weight(model):
     for module in model.modules():
-        if 'ModulesToSaveWrapper' in module.__class__.__name__ and hasattr(module, 'original_module'):
-            original_module = module.original_module
+        if module.__class__.__name__ == 'ModulesToSaveWrapper' and hasattr(module, 'modules_to_save'):
             modules_to_save = module.modules_to_save
-            if 'default' in modules_to_save:
-                original_module.load_state_dict(modules_to_save['default'].state_dict())
+            original_module = module.original_module
+            for k, module in modules_to_save.items():
+                module.load_state_dict(original_module.state_dict())
 
 
 def copy_ref_adapter_weight(model, ref_adapter_name: str):
