@@ -116,6 +116,8 @@ register_model(
             ModelGroup([
                 Model('LLM-Research/gemma-3-1b-pt', 'google/gemma-3-1b-pt'),
                 Model('LLM-Research/gemma-3-1b-it', 'google/gemma-3-1b-it'),
+                Model('google/gemma-3-270m', 'google/gemma-3-270m'),
+                Model('google/gemma-3-270m-it', 'google/gemma-3-270m-it'),
             ], ),
         ],
         TemplateType.gemma3_text,
