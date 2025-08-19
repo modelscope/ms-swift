@@ -1696,9 +1696,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
         should_chunk = self.enable_multi_turn and any(gather_object([batch_size > expected_bs]))
         if not should_chunk:
-            return self._get_per_token_logps_and_entropies_single(model, inputs, compute_entropy)
+            return self._get_per_token_logps_and_entropies_single(model, inputs, compute_entropy=compute_entropy)
         else:
-            return self._get_per_token_logps_and_entropies_chunked(model, inputs, compute_entropy)
+            return self._get_per_token_logps_and_entropies_chunked(model, inputs, compute_entropy=compute_entropy)
 
     def _get_per_token_logps_and_entropies_single(self,
                                                   model,
