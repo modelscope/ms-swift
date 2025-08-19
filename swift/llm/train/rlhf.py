@@ -3,13 +3,13 @@ import os
 from typing import List, Optional, Union
 
 from swift.llm import safe_snapshot_download
+from swift.plugin import Tuner, extra_tuners
+from swift.tuners import Swift
 from swift.utils import get_logger, get_model_parameter_info
 from ..argument import BaseArguments, RLHFArguments
 from ..model import HfConfigFactory
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft
-from swift.plugin import Tuner, extra_tuners
-from swift.tuners import Swift
 
 logger = get_logger()
 
@@ -161,7 +161,7 @@ class SwiftRLHF(SwiftSft):
             assert not args.adapters or len(args.adapters) == 1, f'args.adapters: {args.adapters}'
             model = tuner.from_pretrained(
                 model, args.resume_from_checkpoint or args.adapters[0], is_trainable=True, adapter_name='ref_model')
-            assert args.rlhf_type in {'dpo', 'kto'}, f'Currently, only DPO and KTO support `ref_adapter_name`.'
+            assert args.rlhf_type in {'dpo', 'kto'}, 'Currently, only DPO and KTO support `ref_adapter_name`.'
             args.training_args.ref_adapter_name = 'ref_model'
         return model
 
