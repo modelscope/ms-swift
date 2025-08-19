@@ -65,7 +65,7 @@ def set_linear_is_expert(model):
             module.is_expert = True
 
 
-def prepare_adapter(args, model):
+def prepare_adapter(model):
     from swift.tuners import LoraConfig, Swift
     args = get_args()
     set_linear_is_expert(model)
@@ -99,7 +99,7 @@ def prepare_mcore_model(model):
             activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
     elif args.train_type == 'lora':
         model.prepare_inputs_for_generation = None  # fix error
-        model = prepare_adapter(args, model)
+        model = prepare_adapter(model)
     logger.info(f'model: {model}')
     logger.info_if(
         f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(model)}',
