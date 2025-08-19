@@ -188,7 +188,7 @@ You can set the loss mask in two ways.
 
 ms-swift provides the `loss_scale` parameter to scale or mask parts of the response.
 For example, `--loss_scale last_round` zeroes out the loss for all but the last round.
-Custom `loss_scale` can also be implemented; see the [customisation guide](../../../Customization/插件化.md#定制化loss_scale).
+Custom `loss_scale` can also be implemented; see the [customisation guide](../../../Customization/Pluginization.md#customizing-loss-scale).
 
 > Note: In GRPO, `loss_scale` serves only as a mask; it does not scale the loss.
 
