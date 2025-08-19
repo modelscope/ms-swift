@@ -107,6 +107,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.trainers.rlhf_arguments import GRPOConfig
         args: GRPOConfig = kwargs['args']
         self.args = args
+        self.ref_adapter_name = getattr(args, 'ref_adapter_name', None)
+        self.model_adapter_name = None
         # for async generate
         self.train_queue = Queue()
         self.eval_queue = Queue()
@@ -844,12 +846,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         #       to avoid potential communication / synchronization issues
 
         metrics_to_gather = {}
-        if all('rollout_infos' in inp and 'num_turns' in inp['rollout_infos'] for inp in inputs):
-            metrics_to_gather['num_turns'] = [inp['rollout_infos']['num_turns'] for inp in inputs]
-
-        if all('rollout_infos' in inp and 'trajectory_info' in inp['rollout_infos'] for inp in inputs):
-            metrics_to_gather['trajectory_info'] = [inp['rollout_infos']['trajectory_info'] for inp in inputs]
-
         if all('images' in data and data['images'] is not None for data in inputs):
             metrics_to_gather['image'] = [inp['images'] for inp in inputs]
 
@@ -1116,6 +1112,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return spg_chunks
 
+    @contextmanager
+    def null_ref_context(self):
+        """Context manager for handling null reference model (that is, peft adapter manipulation)."""
+        with self.accelerator.unwrap_model(self.model).disable_adapter() if is_peft_model(
+                self.model) and not self.ref_adapter_name else nullcontext():
+            if self.ref_adapter_name:
+                self.model.set_adapter(self.ref_adapter_name)
+            yield
+            if self.ref_adapter_name:
+                self.model.set_adapter(self.model_adapter_name or 'default')
+
     def _prepare_batch_inputs(self, inputs: DataType) -> List[DataType]:
         """
         Prepare the final batch inputs with ref/old_policy logps and other fields for RL training.
@@ -1167,7 +1174,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     ref_per_token_logps = \
                         self._get_per_token_logps_and_entropies(self.ref_model, batch_encoded_inputs)[0]
                 else:
-                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                    with self.null_ref_context():
                         ref_per_token_logps = \
                             self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0]
                 batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
@@ -1210,7 +1217,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if metrics_to_gather:
             for key, value in metrics_to_gather.items():
-                logger.info(f'Logging {key}...')
                 if key not in self._logs:
                     self._logs[key] = deque(maxlen=self.args.generation_batch_size)
                 self._logs[key].extend(self._gather_and_flatten(value, flatten_level=0))
@@ -2476,12 +2482,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 step_result = self.multi_turn_scheduler.step(
                     self.inputs2requests([_input])[0], output.response.choices[0], current_turn)
 
-                if step_result['response_token_ids']:
+                if 'response_token_ids' in step_result and step_result['response_token_ids']:
                     rollout_outputs[index].response_token_ids.append(step_result['response_token_ids'])
-                    if step_result['response_loss_mask']:
+                    if 'response_loss_mask' in step_result and step_result['response_loss_mask']:
                         rollout_outputs[index].response_loss_mask.append(step_result['response_loss_mask'])
 
-                if step_result['rollout_infos']:
+                if 'rollout_infos' in step_result and step_result['rollout_infos']:
                     rollout_outputs[index].rollout_infos.update(step_result['rollout_infos'])
 
                 pending_input = {**asdict(step_result['infer_request']), 'index': index}

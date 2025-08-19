@@ -200,7 +200,7 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
             should_stop = self.check_finished(current_request, response_choice, current_turn)
 
             if self.max_turns:
-                should_stop = should_stop or (current_turn >= self.max_turns)
+                should_stop = should_stop or (current_turn > self.max_turns)
 
             if should_stop:
                 if is_continuation and total_response_ids:
@@ -295,7 +295,7 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
         """
         if response_choice.finish_reason == 'length':
             return True
-        if self.max_turns and current_turn >= self.max_turns:
+        if self.max_turns and current_turn > self.max_turns:
             return True
         return False
 

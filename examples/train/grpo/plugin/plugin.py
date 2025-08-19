@@ -4,7 +4,7 @@ import re
 import textwrap
 from collections import Counter
 from copy import deepcopy
-from typing import Dict, List, Optional
+from typing import Dict, List, Union
 
 import json
 import torch
@@ -893,7 +893,6 @@ TO CUSTOMIZE MULTITURN SCHEDULER:
 class ToolCallScheduler(MultiTurnScheduler):
     # A simple scheduler that supports tool calls by overriding the `step` method
     # Tool parsing uses the ReAct format
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # A simple tool registry. Extend or replace with your own tools as needed.
@@ -902,14 +901,73 @@ class ToolCallScheduler(MultiTurnScheduler):
         }
 
     def _calculator_tool(self, expression: str) -> str:
-        """A very small sandboxed calculator."""
+        # A very small sandboxed calculator
+        # The calculator tool implemented here can perform only basic arithmetic operations and
+        # may not be able to solve all math problems in the dataset.
+        import ast
+        import operator
+
+        def _evaluate_ast_node(node) -> Union[int, float]:
+            operators = {
+                ast.Add: operator.add,
+                ast.Sub: operator.sub,
+                ast.Mult: operator.mul,
+                ast.Div: operator.truediv,
+                ast.USub: operator.neg,
+                ast.UAdd: operator.pos,
+            }
+
+            if isinstance(node, ast.Constant):
+                if isinstance(node.value, (int, float)):
+                    return node.value
+                else:
+                    raise TypeError(f'Unsupported constant type: {type(node.value)}')
+
+            elif isinstance(node, ast.Num):
+                return node.n
+
+            elif isinstance(node, ast.BinOp):
+                left = _evaluate_ast_node(node.left)
+                right = _evaluate_ast_node(node.right)
+                op = operators.get(type(node.op))
+
+                if op is None:
+                    raise TypeError(f'Unsupported operation: {type(node.op).__name__}')
+
+                if isinstance(node.op, ast.Div) and right == 0:
+                    raise ZeroDivisionError('Division by zero')
+
+                return op(left, right)
+
+            elif isinstance(node, ast.UnaryOp):
+                operand = _evaluate_ast_node(node.operand)
+                op = operators.get(type(node.op))
+
+                if op is None:
+                    raise TypeError(f'Unsupported unary operation: {type(node.op).__name__}')
+
+                return op(operand)
+
+            else:
+                raise TypeError(f'Unsupported AST node type: {type(node).__name__}')
+
         try:
-            # Allow only basic math symbols for safety.
-            allowed_chars = set('0123456789+-*/(). ')
-            if not all(c in allowed_chars for c in expression):
+            expression = expression.strip().replace(' ', '')
+
+            if not re.match(r'^[0-9+\-*/().\s]+$', expression):
                 return 'Error: expression contains disallowed characters.'
-            result = eval(expression)
-            return f'Result: {result}'
+
+            if expression.count('(') != expression.count(')'):
+                return 'Error: unmatched parentheses.'
+
+            try:
+                result = ast.literal_eval(expression)
+                return f'Result: {result}'
+            except (ValueError, SyntaxError):
+                node = ast.parse(expression, mode='eval')
+                result = _evaluate_ast_node(node.body)
+                return f'Result: {result}'
+
         except Exception as e:
             return f'Calculation error: {e}'
 
@@ -920,7 +978,7 @@ class ToolCallScheduler(MultiTurnScheduler):
         """
         import re
 
-        pattern = r'Action:\s*(\w+)\s*\nAction Input:\s*(.*?)(?=\n|$)'
+        pattern = r'Action:\s*(.*?)\s*\nAction Input:\s*(.*?)(?:\n|$)'
         matches = re.findall(pattern, text, re.DOTALL)
         if not matches:
             return None
@@ -956,9 +1014,7 @@ class ToolCallScheduler(MultiTurnScheduler):
         token_ids = response_choice.token_ids
         loss_mask = [1] * len(token_ids)
         tool_calls = self._extract_tool_calls(completion)
-        assert len(tool_calls) == 1, 'this scheduler is designed for one tool call per turn'
-        if len(tool_calls) > 1:
-            print()
+        # assert len(tool_calls) == 1, 'this scheduler is designed for one tool call per turn'
         tool_results = self._execute_tools(tool_calls)
         # append tool result to the completion
         infer_request.messages[-1]['content'] += (tool_results[0])

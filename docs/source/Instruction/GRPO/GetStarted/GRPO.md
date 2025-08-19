@@ -241,8 +241,6 @@ swift rollout \
 默认自动检测
 - `image`：视觉数据集图像输入。(暂时只支持wandb)
 - `solution`：数据集中的 solution 列。
-- `num_turns`：多轮训练轮次。
-- `trajectory_info`：GYM环境交互信息。
 
 ## FAQ
 **1. 训练过程中 loss 等于0 / 接近0 / 小于0**

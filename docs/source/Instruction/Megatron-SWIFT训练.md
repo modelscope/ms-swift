@@ -54,7 +54,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | flash_attn    |        | 2.7.4.post1/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.51.3      |                    |
 | modelscope   | >=1.23       |             |                    |
-| peft         | >=0.11,<0.17 |             |      LoRA          |
+| peft         | >=0.11,<0.18 |             |      LoRA          |
 | trl          | >=0.15,<0.21 |       |      RLHF        |
 | deepspeed    | >=0.14       | 0.16.9      |                  |
 
@@ -205,6 +205,16 @@ swift export \
 ```
 - 注意：`mcore_adapters`文件夹中包含`args.json`文件，转换过程中会读取文件中`mcore_model`和LoRA相关的参数信息，并将`mcore_model`和`mcore_adapters`进行merge-lora成完整权重，最终转换成HF格式权重。
 
+如果你只想merge-lora，而不希望转成HF格式权重，用于后续DPO训练，可以使用以下脚本：
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift export \
+    --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
+    --to_mcore true \
+    --torch_dtype bfloat16 \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-mcore \
+    --test_convert_precision true
+```
 
 ## Benchmark
 
@@ -430,7 +440,8 @@ swift export \
 
 lora训练：
 - adapter_load: 加载adapter的权重路径，用于lora断点续训，默认为None。lora断点续训方式与全参数一致，请关注`--finetune`参数的含义。
-- 🔥target_modules: 指定lora模块的后缀, 默认为`['all-linear']`。
+- 🔥target_modules: 指定lora模块的后缀，例如：你可以设置为`--target_modules linear_qkv linear_proj`。默认为`['all-linear']`，代表将所有的linear设置为target_modules。
+  - 注意：若需要将所有的router设置为target_modules, 你可以额外设置`--target_modules all-router ...`，例如：`--target_modules all-router all-linear`。
 - 🔥target_regex: 指定lora模块的regex表达式，默认为`None`。如果该值传入，则target_modules参数失效。
 - 🔥modules_to_save: 在已附加tuner后，额外指定一部分原模型模块参与训练和存储。默认为`[]`。
 - 🔥lora_rank: 默认为`8`。

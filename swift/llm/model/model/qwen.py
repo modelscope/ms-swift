@@ -926,7 +926,7 @@ register_model(
         ],
         TemplateType.ovis1_6,
         get_model_tokenizer_ovis,
-        model_arch=ModelArch.ovis1_6,
+        model_arch=ModelArch.ovis,
         architectures=['Ovis'],
         tags=['vision'],
         requires=['transformers>=4.42'],
@@ -942,7 +942,7 @@ register_model(
         ],
         TemplateType.ovis1_6_llama3,
         get_model_tokenizer_ovis,
-        model_arch=ModelArch.ovis1_6,
+        model_arch=ModelArch.ovis,
         architectures=['Ovis'],
         tags=['vision'],
     ))
@@ -962,7 +962,40 @@ register_model(
         ],
         TemplateType.ovis2,
         get_model_tokenizer_ovis,
-        model_arch=ModelArch.ovis1_6,
+        model_arch=ModelArch.ovis,
+        architectures=['Ovis'],
+        tags=['vision'],
+        requires=['transformers>=4.46.2', 'moviepy<2'],
+    ))
+
+
+def get_model_tokenizer_ovis2_5(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
+    if model is not None:
+        model.visual_tokenizer.to(model.dtype)
+        model.vte.to(model.dtype)
+
+        func_list = ['generate', 'forward', 'get_input_embeddings']
+        use_submodel_func(model, 'llm', func_list)
+        embedding = model.get_input_embeddings()
+        patch_output_clone(embedding)
+        patch_get_input_embeddings(model.visual_tokenizer, 'vit.vision_model.embeddings.patch_embedding')
+
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.ovis2_5,
+        [
+            ModelGroup([
+                Model('AIDC-AI/Ovis2.5-2B', 'AIDC-AI/Ovis2.5-2B'),
+                Model('AIDC-AI/Ovis2.5-9B', 'AIDC-AI/Ovis2.5-9B'),
+            ]),
+        ],
+        TemplateType.ovis2_5,
+        get_model_tokenizer_ovis2_5,
+        model_arch=ModelArch.ovis,
         architectures=['Ovis'],
         tags=['vision'],
         requires=['transformers>=4.46.2', 'moviepy<2'],

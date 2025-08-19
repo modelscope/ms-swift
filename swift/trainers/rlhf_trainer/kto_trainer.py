@@ -35,7 +35,8 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
         else:
             self.loss_type = 'kto'
 
-        self.ref_adapter_name = None
+        self.ref_adapter_name = getattr(args, 'ref_adapter_name', None)
+        self.model_adapter_name = None
         # Not all losses require a KL calculation
         self.calculate_KL = True
         if self.loss_type in ['apo_zero_unpaired']:

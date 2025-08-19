@@ -1,4 +1,4 @@
-# exp: https://github.com/modelscope/ms-swift/pull/4380#issuecomment-2992240961
+# Before running this script, please run the following `swift rollout` script first
 
 # CUDA_VISIBLE_DEVICES=0 \
 # swift rollout \
@@ -11,7 +11,7 @@
 
 CUDA_VISIBLE_DEVICES=1,2,3 \
 NPROC_PER_NODE=3 \
-nohup swift rlhf \
+swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3-1.7B \
     --train_type full \
@@ -45,5 +45,4 @@ nohup swift rlhf \
     --top_entropy_quantile 0.2 \
     --num_iterations 1 \
     --report_to tensorboard swanlab\
-    --multi_turn_scheduler thinking_tips_scheduler \
-    --max_turns 3 > vllm_multi_turn.log 2>&1 &
+    --max_turns 3

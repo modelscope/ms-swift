@@ -374,10 +374,13 @@ class RolloutOutput(BaseModel):
     def mminfo_to_serializable(self):
         mm_keys = ['images', 'audios', 'videos']
 
-        for key, value in self.rollout_infos.items():
+        for key, values in self.rollout_infos.items():
             if key in mm_keys:
-                # Convert multimodal content to base64 for serialization
-                self.rollout_infos[key] = MultiModalRequestMixin.to_base64(value)
+                if not isinstance(values, list):
+                    values = [values]
+                for i, value in enumerate(values):
+                    values[i] = MultiModalRequestMixin.to_base64(value)
+                self.rollout_infos[key] = values
 
 
 @dataclass
