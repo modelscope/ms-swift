@@ -5,9 +5,9 @@ from contextlib import contextmanager
 from typing import Any, List, Optional, Tuple
 
 import megatron.core
-import torch.nn.functional as F
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from megatron.core import parallel_state
 from megatron.core.dist_checkpointing.mapping import ShardedStateDict
 from megatron.core.extensions.transformer_engine import (TEColumnParallelGroupedLinear, TEColumnParallelLinear,
