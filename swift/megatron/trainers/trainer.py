@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from functools import partial
+from typing import Optional
 
 import megatron.core
 import torch
@@ -21,27 +22,20 @@ logger = get_logger()
 class MegatronTrainer(BaseMegatronTrainer):
 
     # Code borrowed from NVIDIA/Megatron-LM
-    def loss_func(self, output_tensor: torch.Tensor, *, loss_mask: torch.Tensor):
-        """Loss function.
-
-        Args:
-            output_tensor (torch.Tensor): The tensor with the losses
-            loss_mask (torch.Tensor): Used to mask out some portions of the loss
-
-        Returns:
-            the loss scalar for this micro-batch
-            the number of non-padded tokens in this microbatch
-            a dict containing reporting metrics on the loss and number of tokens across
-                the data parallel ranks
-        """
+    def loss_func(self,
+                  output_tensor: torch.Tensor,
+                  *,
+                  labels: torch.Tensor,
+                  loss_scale: Optional[torch.Tensor] = None):
         args = get_args()
 
         losses = output_tensor.float()
         if args.enable_dft_loss:
             losses = losses * torch.exp(-losses.detach())
-        loss_mask = loss_mask.view(-1).float()  # or loss_scale
-        total_tokens = loss_mask.sum()
-        loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), total_tokens.view(1)])
+        if loss_scale is not None:
+            losses = losses * loss_scale
+        loss_mask = labels != -100
+        loss = torch.cat([torch.sum(losses * loss_mask).view(1), loss_mask.sum().view(1)])
 
         megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
         if args.context_parallel_size > 1 and not megatron_core_013:
@@ -111,9 +105,4 @@ class MegatronTrainer(BaseMegatronTrainer):
         with self.stimer:
             output_tensor = model(**data)
         labels = data.get('labels')
-        if loss_scale is None:
-            loss_mask = None if labels is None else (labels != -100).float()
-        else:
-            loss_scale[labels == -100] = 0
-            loss_mask = loss_scale
-        return output_tensor, partial(self.loss_func, loss_mask=loss_mask)
+        return output_tensor, partial(self.loss_func, labels=labels, loss_scale=loss_scale)

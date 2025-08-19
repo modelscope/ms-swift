@@ -30,7 +30,7 @@ It is recommended to perform SFT training on the preferred responses in your pre
 
 If you want to mix multiple losses (such as for [MPO](https://arxiv.org/abs/2411.10442) training), you can specify multiple loss_type values and set their weights via loss_weights.
 
-By setting the hyperparameter `rpo_alpha`, you can blend a certain proportion of SFT loss into the total loss to stabilize training. The default value is `1.`, which is equivalent to adding the 'sft' loss_type.
+By setting the hyperparameter `rpo_alpha`, a certain proportion of SFT loss can be mixed into the loss to improve training stability.
 
 Training script references:
 

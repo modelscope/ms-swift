@@ -432,6 +432,7 @@ def channel_loss_func(outputs,
                       trainer=None,
                       position_ids=None,
                       **kwargs) -> torch.Tensor:
+    from swift.trainers import per_token_loss_func
     channels = trainer.args.channels
     assert channels is not None, 'Please pass --channels as a hyperparameter.'
     assert sample_channels is not None, 'Data does not have channel field.'
@@ -750,7 +751,6 @@ def listwise_generative_reranker_loss(outputs,
 
 
 loss_mapping = {
-    'per_token_cross_entropy': per_token_loss_func,
     'channel_loss': channel_loss_func,
     # embedding
     'cosine_similarity': cosine_similarity_func,

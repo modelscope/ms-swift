@@ -51,7 +51,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 📝 Introduction
-🍲 ms-swift is an official framework provided by the ModelScope community for fine-tuning and deploying large language models and multi-modal large models. It currently supports the training (pre-training, fine-tuning, human alignment), inference, evaluation, quantization, and deployment of 500+ large models and 200+ multi-modal large models. These large language models (LLMs) include models such as Qwen3, Qwen3-MoE, Qwen2.5, InternLM3, GLM4, Mistral, DeepSeek-R1, Yi1.5, TeleChat2, Baichuan2, and Gemma2. The multi-modal LLMs include models such as Qwen2.5-VL, Qwen2-Audio, Llama4, Llava, InternVL3, MiniCPM-V-2.6, GLM4v, Xcomposer2.5, Yi-VL, DeepSeek-VL2, Phi3.5-Vision, and GOT-OCR2.
+🍲 ms-swift is an official framework provided by the ModelScope community for fine-tuning and deploying large language models and multi-modal large models. It currently supports the training (pre-training, fine-tuning, human alignment), inference, evaluation, quantization, and deployment of 500+ large models and 200+ multi-modal large models. These large language models (LLMs) include models such as Qwen3, Qwen3-MoE, Qwen2.5, InternLM3, GLM4.5, Mistral, DeepSeek-R1, Yi1.5, TeleChat2, Baichuan2, and Gemma2. The multi-modal LLMs include models such as Qwen2.5-VL, Qwen2-Audio, Llama4, Llava, InternVL3, MiniCPM-V-4, Ovis2.5, GLM4v, Xcomposer2.5, Yi-VL, DeepSeek-VL2, Phi3.5-Vision, and GOT-OCR2.
 
 🍔 Additionally, ms-swift incorporates the latest training technologies, including lightweight techniques such as LoRA, QLoRA, Llama-Pro, LongLoRA, GaLore, Q-GaLore, LoRA+, LISA, DoRA, FourierFt, ReFT, UnSloth, and Liger, as well as human alignment training methods like DPO, GRPO, RM, PPO, GKD, KTO, CPO, SimPO, and ORPO. ms-swift supports acceleration of inference, evaluation, and deployment modules using vLLM, SGLang and LMDeploy, and it supports model quantization with technologies like GPTQ, AWQ, and BNB. Furthermore, ms-swift offers a Gradio-based Web UI and a wealth of best practices.
 
@@ -126,13 +126,13 @@ Running Environment:
 | torch        | >=2.0        | 2.7.1               |                                           |
 | transformers | >=4.33       | 4.54.1              |                                           |
 | modelscope   | >=1.23       |                     |                                           |
-| peft         | >=0.11,<0.17 |                     |                                           |
+| peft         | >=0.11,<0.18 |                     |                                           |
 | flash_attn   |              | 2.7.4.post1/3.0.0b1 |                                           |
 | trl          | >=0.15,<0.21 | 0.20.0              | RLHF                                      |
 | deepspeed    | >=0.14       | 0.16.9              | Training                                  |
 | vllm         | >=0.5.1      | 0.10                | Inference/Deployment                      |
 | sglang       | >=0.4.6      | 0.4.9.post6         | Inference/Deployment                      |
-| lmdeploy     | >=0.5,<0.9   | 0.8                 | Inference/Deployment                      |
+| lmdeploy     | >=0.5   | 0.9.2                 | Inference/Deployment                      |
 | evalscope    | >=0.11       |                     | Evaluation                                |
 | gradio       |              | 5.32.1              | Web-UI/App                                |
 

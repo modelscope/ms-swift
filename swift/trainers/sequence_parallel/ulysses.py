@@ -260,7 +260,7 @@ class Ulysses(CommonSequenceParallel):
 
         def local_flash_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
                              dist_attn, **kwargs):
-            if module not in text_model.modules():
+            if module.__class__ not in [m.__class__ for m in text_model.modules()]:
                 return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query_states, key_states,
                                                                            value_states, attention_mask, *args,
                                                                            **kwargs)
@@ -281,7 +281,7 @@ class Ulysses(CommonSequenceParallel):
 
         def local_sdpa_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
                             dist_attn, **kwargs):
-            if module not in text_model.modules():
+            if module.__class__ not in [m.__class__ for m in text_model.modules()]:
                 return ALL_ATTENTION_FUNCTIONS['sdpa_origin'](module, query_states, key_states, value_states,
                                                               attention_mask, *args, **kwargs)
             if dist_attn.local_attn is None:

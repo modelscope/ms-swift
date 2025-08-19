@@ -112,6 +112,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.trainers.rlhf_arguments import GRPOConfig
         args: GRPOConfig = kwargs['args']
         self.args = args
+        self.ref_adapter_name = getattr(args, 'ref_adapter_name', None)
+        self.model_adapter_name = None
         # for async generate
         self.train_queue = Queue()
         self.eval_queue = Queue()
@@ -1162,6 +1164,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             return spg_chunks, advantage_chunks
 
+    @contextmanager
+    def null_ref_context(self):
+        """Context manager for handling null reference model (that is, peft adapter manipulation)."""
+        with self.accelerator.unwrap_model(self.model).disable_adapter() if is_peft_model(
+                self.model) and not self.ref_adapter_name else nullcontext():
+            if self.ref_adapter_name:
+                self.model.set_adapter(self.ref_adapter_name)
+            yield
+            if self.ref_adapter_name:
+                self.model.set_adapter(self.model_adapter_name or 'default')
+
     def _prepare_batch_inputs(self, inputs: InputsType, rewards: torch.Tensor) -> List[InputsType]:
         """
         Prepare the final batch inputs with advantages, ref/old_policy logps and other fields for RL training.
@@ -1222,7 +1235,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     ref_per_token_logps = \
                         self._get_per_token_logps_and_entropies(self.ref_model, batch_encoded_inputs)[0]
                 else:
-                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                    with self.null_ref_context():
                         ref_per_token_logps = \
                             self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0]
                 batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps

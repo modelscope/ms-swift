@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from .trainer_factory import TrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer, EmbeddingTrainer, RerankerTrainer
     from .mixin import SwiftMixin
+    from .utils import per_token_loss_func
 
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
@@ -38,6 +39,7 @@ else:
         'trainer_factory': ['TrainerFactory'],
         'trainers': ['Seq2SeqTrainer', 'Trainer', 'EmbeddingTrainer', 'RerankerTrainer'],
         'mixin': ['SwiftMixin'],
+        'utils': ['per_token_loss_func'],
     }
 
     import sys

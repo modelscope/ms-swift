@@ -166,12 +166,13 @@ Supervised Fine-tuning:
   - images: image, images.
   - videos: video, videos.
   - audios: audio, audios.
+- If you need to pass base64 data instead of file paths, here are sample examples: `"videos": ['data:video/mp4;base64,{base64_encoded}']`, `"images": ['data:image/jpg;base64,{base64_encoded}']`.
 
 The data format for RLHF and sequence classification of multimodal models can reference the format of pure text large models, with additional fields such as `images` added on top of that.
 
 #### Grounding
 
-For grounding (object detection) tasks, SWIFT supports two methods:
+For grounding (object detection) tasks, ms-swift supports two methods:
 
 1. Directly use the data format of the grounding task corresponding to the model. For example, the format for qwen2-vl is as follows:
 
@@ -187,7 +188,7 @@ When using this type of data, please note:
 - The handling of bounding box normalization varies across different models: for example, qwen2.5-vl uses absolute coordinates, while qwen2-vl and internvl2.5 require bounding box coordinates to be normalized to the thousandth scale.
   - Note: Qwen2.5-VL uses absolute coordinates, so you need to be careful with image resizing each time. If you use the dataset format from Option 1, you need to resize the images in advance (height and width must be multiples of 28) and scale the coordinates accordingly. If you use the dataset format from Option 2, ms-swift will handle image resizing for you. You can still use `MAX_PIXELS` or `--max_pixels` for image resizing (training only; for inference, you still need to handle image resizing yourself).
 
-1. Use SWIFT's grounding data format:
+2. Use ms-swift's grounding data format:
 
 ```
 {"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "<image>Describe the image."}, {"role": "assistant", "content": "<ref-object><bbox> and <ref-object><bbox> are playing on the beach"}], "images": ["/xxx/x.jpg"], "objects": {"ref": ["a dog", "a woman"], "bbox": [[331.5, 761.4, 853.5, 1594.8], [676.5, 685.8, 1099.5, 1427.4]]}}
@@ -202,6 +203,22 @@ The format will automatically convert the dataset format to the corresponding mo
   - Note: `<ref-object>` and `<bbox>` do not have a corresponding relationship; references and bounding boxes replace their own placeholders separately.
 - bbox_type: Optional values are 'real' and 'norm1'. The default is 'real', meaning the bbox represents the actual bounding box value. If set to 'norm1', the bbox is normalized to the range 0~1.
 - image_id: This parameter is only effective when bbox_type is 'real'. It indicates the index of the image corresponding to the bbox, used for scaling the bbox. The index starts from 0, and the default is 0 for all.
+
+Testing the final format of the grounding data in ms-swift format:
+```python
+import os
+os.environ["MAX_PIXELS"] = "1003520"
+from swift.llm import get_model_tokenizer, get_template
+
+_, tokenizer = get_model_tokenizer('Qwen/Qwen2.5-VL-7B-Instruct', load_model=False)
+template = get_template(tokenizer.model_meta.template, tokenizer)
+data = {...}
+template.set_mode('train')
+encoded = template.encode(data, return_template_inputs=True)
+print(f'[INPUT_IDS] {template.safe_decode(encoded["input_ids"])}\n')
+print(f'[LABELS] {template.safe_decode(encoded["labels"])}')
+print(f'images: {encoded["template_inputs"].images}')
+```
 
 ### Text-to-Image Format
 

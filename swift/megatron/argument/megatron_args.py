@@ -10,7 +10,7 @@ import torch
 from transformers.utils.versions import require_version
 
 from swift.llm.argument.base_args import to_abspath
-from swift.utils import get_logger, json_parse_to_dict
+from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
 logger = get_logger()
 
@@ -20,7 +20,7 @@ class RLHFMegatronArgumentsMixin:
     ref_load: Optional[str] = None
 
     beta: float = 0.1
-    rpo_alpha: float = 1.
+    rpo_alpha: Optional[float] = None
     reference_free: bool = False
     label_smoothing: float = 0.
     f_divergence_type: str = 'reverse_kl'
@@ -161,6 +161,7 @@ class MegatronArguments(ExtraMegatronArguments):
 
     # dist
     distributed_backend: Literal['nccl', 'gloo'] = 'nccl'
+    local_rank: Optional[int] = None
     use_distributed_optimizer: bool = True
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
@@ -274,6 +275,8 @@ class MegatronArguments(ExtraMegatronArguments):
     def _set_default(self):
         if self.mlp_padding_free and self.sequence_parallel:
             raise ValueError('mlp_padding_free is not compatible with sequence_parallel.')
+        if self.local_rank is None:
+            self.local_rank = get_dist_setting()[1]
         if self.lr is None:
             if self.train_type == 'full':
                 self.lr = 1e-5
@@ -355,7 +358,10 @@ class MegatronArguments(ExtraMegatronArguments):
     def __post_init__(self):
         require_version('numpy<2.0', 'Please install numpy<2.0 by running: `pip install "numpy<2.0"`.')
         if self.train_type == 'lora':
-            require_version('peft>=0.12')
+            if self.num_experts is not None:
+                require_version('peft>=0.15')
+            else:
+                require_version('peft>=0.12')
         MegatronTunerMixin.__post_init__(self)
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self._set_default()

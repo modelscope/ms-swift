@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
 from packaging import version
+from PIL import Image
 from tqdm import tqdm
 from transformers import GenerationConfig
 from transformers.utils import is_torch_npu_available
@@ -47,6 +48,7 @@ class VllmEngine(InferEngine):
         model_id_or_path: str,
         torch_dtype: Optional[torch.dtype] = None,
         *,
+        adapters: List[str] = None,
         use_async_engine: bool = False,
         model_type: Optional[str] = None,
         use_hf: Optional[bool] = None,
@@ -79,6 +81,13 @@ class VllmEngine(InferEngine):
     ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
+        if isinstance(adapters, str):
+            adapters = [adapters]
+        self.default_adapter_request = None
+        if isinstance(adapters, list) and adapters:
+            assert len(adapters) == 1, 'Only one adapter is supported for now.'
+            enable_lora = True
+            self.default_adapter_request = AdapterRequest('default', adapters[0])
         patch_vllm_memory_leak()
         self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
@@ -275,22 +284,29 @@ class VllmEngine(InferEngine):
             return True
         return version.parse(vllm_version) >= version.parse(base_version)
 
+    def _add_adapter(self, adapter_request: Optional[AdapterRequest] = None):
+        assert self.enable_lora, f'adapter_request: {adapter_request}, self.enable_lora: {self.enable_lora}'
+        from vllm.lora.request import LoRARequest
+        adapter_name = adapter_request.name
+        adapter_path = adapter_request.path
+        if adapter_name in self._adapters_pool:
+            lora_request = self._adapters_pool[adapter_name]
+        else:
+            lora_request = LoRARequest(
+                lora_name=adapter_name, lora_path=adapter_path, lora_int_id=len(self._adapters_pool) + 1)
+            self._adapters_pool[adapter_name] = lora_request
+        return lora_request
+
     def _add_request(self,
                      inputs: Dict[str, Any],
                      generation_config: SamplingParams,
                      request_id: str,
                      adapter_request: Optional[AdapterRequest] = None):
         kwargs = {}
-        if self.enable_lora and adapter_request:
-            from vllm.lora.request import LoRARequest
-            adapter_name = adapter_request.name
-            adapter_path = adapter_request.path
-            if adapter_name in self._adapters_pool:
-                kwargs['lora_request'] = self._adapters_pool[adapter_name]
-            else:
-                kwargs['lora_request'] = LoRARequest(
-                    lora_name=adapter_name, lora_path=adapter_path, lora_int_id=len(self._adapters_pool) + 1)
-                self._adapters_pool[adapter_name] = kwargs['lora_request']
+        adapter_request = adapter_request or self.default_adapter_request
+        if adapter_request:
+            kwargs['lora_request'] = self._add_adapter(adapter_request)
+
         input_ids = inputs['input_ids']
         if self._version_ge('0.4.3'):
             llm_inputs = {'prompt_token_ids': input_ids}
@@ -308,7 +324,11 @@ class VllmEngine(InferEngine):
                 llm_inputs['multi_modal_data'] = mm_data
             if self.task_type == 'embedding':
                 from vllm.pooling_params import PoolingParams
-                return self.engine.encode(llm_inputs, PoolingParams(), request_id)
+                if 'task' in inspect.signature(PoolingParams).parameters:
+                    pooling_params = PoolingParams(task='embed')
+                else:
+                    pooling_params = PoolingParams()
+                return self.engine.encode(llm_inputs, pooling_params, request_id)
             elif self.use_async_engine:
                 return self.engine.generate(llm_inputs, generation_config, request_id, **kwargs)
             else:
@@ -465,6 +485,7 @@ class VllmEngine(InferEngine):
     def _create_chat_completion_response(
         self,
         result,
+        inputs,
         template,
         request_config,
         request_id,
@@ -502,9 +523,20 @@ class VllmEngine(InferEngine):
                 logprobs=logprobs,
                 token_ids=token_ids)
             choices.append(choice)
-        prompt_token_ids = result.prompt_token_ids if request_config.return_details else None
+        prompt_token_ids = None
+        images_size = None
+        if request_config.return_details:
+            prompt_token_ids = result.prompt_token_ids
+            images = inputs['template_inputs'].images
+            if all(isinstance(image, Image.Image) for image in images):
+                images_size = [image.size for image in images]
         return ChatCompletionResponse(
-            model=self.model_name, choices=choices, usage=usage_info, id=request_id, prompt_token_ids=prompt_token_ids)
+            model=self.model_name,
+            choices=choices,
+            usage=usage_info,
+            id=request_id,
+            prompt_token_ids=prompt_token_ids,
+            images_size=images_size)
 
     async def _infer_full_async(
         self,
@@ -522,7 +554,7 @@ class VllmEngine(InferEngine):
         if self.task_type == 'embedding':
             return self._create_embedding_response(result, template, generation_config, request_id)
         else:
-            return self._create_chat_completion_response(result, template, request_config, request_id)
+            return self._create_chat_completion_response(result, inputs, template, request_config, request_id)
 
     def _batch_infer_stream(self, *args, **kwargs):
         if hasattr(self.engine, 'engine'):
@@ -607,8 +639,8 @@ class VllmEngine(InferEngine):
                 prog_bar.close()
                 outputs = [outputs[request_id] for request_id in request_id_list]
                 res = [
-                    self._create_chat_completion_response(result, template, request_config, request_id)
-                    for request_id, result in zip(request_id_list, outputs)
+                    self._create_chat_completion_response(result, inputs, template, request_config, request_id)
+                    for request_id, inputs, result in zip(request_id_list, batched_inputs, outputs)
                 ]
                 self._update_metrics(res, metrics)
                 return self._add_error_list(res, error_list)
@@ -631,7 +663,7 @@ class VllmEngine(InferEngine):
         template.set_mode('vllm')
         loop = asyncio.get_running_loop()
         with torch.inference_mode():
-            inputs = await loop.run_in_executor(None, template.encode, infer_request)
+            inputs = await loop.run_in_executor(None, template.encode, infer_request, True)
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)

@@ -13,7 +13,9 @@ from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, VisionConfig, p
 from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve import async_engine
 from packaging import version
+from PIL import Image
 from transformers import GenerationConfig
+from transformers.utils.versions import require_version
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
@@ -52,6 +54,7 @@ class LmdeployEngine(InferEngine):
         vision_batch_size: int = 1,  # max_batch_size in VisionConfig
         engine_kwargs: Optional[Dict[str, Any]] = None,
         template: Optional[Template] = None,
+        devices: Optional[List[int]] = None,
     ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
@@ -74,6 +77,7 @@ class LmdeployEngine(InferEngine):
             cache_max_entry_count=cache_max_entry_count,
             quant_policy=quant_policy,
             vision_batch_size=vision_batch_size,
+            devices=devices,
             **engine_kwargs)
 
         self.config.torch_dtype = torch_dtype or self.model_info.torch_dtype
@@ -87,11 +91,14 @@ class LmdeployEngine(InferEngine):
                                cache_max_entry_count: float = 0.8,
                                quant_policy: int = 0,
                                vision_batch_size: int = 1,
+                               devices: Optional[List[int]] = None,
                                **engine_kwargs):
         engine_kwargs['tp'] = tp
         engine_kwargs['session_len'] = session_len
         engine_kwargs['cache_max_entry_count'] = cache_max_entry_count
         engine_kwargs['quant_policy'] = quant_policy
+        if 'devices' in inspect.signature(TurbomindEngineConfig).parameters:
+            engine_kwargs['devices'] = devices
         backend_config = TurbomindEngineConfig(**engine_kwargs)
         backend_config = autoget_backend_config(self.model_dir, backend_config)
         self.backend_config = backend_config
@@ -100,6 +107,9 @@ class LmdeployEngine(InferEngine):
         pipeline_kwargs = {}
         is_multimodal = self.model_meta.is_multimodal
         if is_multimodal:
+            require_version(
+                'lmdeploy<0.9', 'LmdeployEngine will no longer maintain inference for '
+                'multimodal models in lmdeploy>=0.9.')
             vision_config = VisionConfig(max_batch_size=vision_batch_size)
             pipeline_kwargs['vision_config'] = vision_config
             logger.info(f'vision_config: {vision_config}')
@@ -259,9 +269,19 @@ class LmdeployEngine(InferEngine):
                 logprobs=logprobs,
                 token_ids=token_ids)
         ]
-        prompt_token_ids = inputs['input_ids'] if request_config.return_details else None
+        prompt_token_ids = None
+        images_size = None
+        if request_config.return_details:
+            prompt_token_ids = inputs['input_ids']
+            images = inputs['template_inputs'].images
+            if all(isinstance(image, Image.Image) for image in images):
+                images_size = [image.size for image in images]
         return ChatCompletionResponse(
-            model=self.model_name, choices=choices, usage=usage_info, prompt_token_ids=prompt_token_ids)
+            model=self.model_name,
+            choices=choices,
+            usage=usage_info,
+            prompt_token_ids=prompt_token_ids,
+            images_size=images_size)
 
     async def infer_async(self,
                           infer_request: InferRequest,
@@ -278,7 +298,7 @@ class LmdeployEngine(InferEngine):
 
         loop = asyncio.get_running_loop()
         with torch.inference_mode():
-            inputs = await loop.run_in_executor(None, template.encode, infer_request)
+            inputs = await loop.run_in_executor(None, template.encode, infer_request, True)
         images = inputs.pop('images', None)
         if images:
             if version.parse(lmdeploy.__version__) >= version.parse('0.6.5'):

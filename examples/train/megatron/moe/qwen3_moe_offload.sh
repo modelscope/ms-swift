@@ -35,4 +35,5 @@ megatron sft \
     --sequence_parallel true \
     --optimizer_cpu_offload true \
     --use_precision_aware_optimizer true \
+    --optimizer_offload_fraction 1 \
     --attention_backend flash

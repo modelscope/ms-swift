@@ -62,6 +62,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         self.is_peft_model = isinstance(model, PeftModel)
 
         self.ref_adapter_name = args.ref_adapter_name
+        self.model_adapter_name = None
         self.reference_free = args.reference_free
         self.use_weighting = False
 

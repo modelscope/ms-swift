@@ -37,9 +37,9 @@ export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 
 或者你也可以使用镜像：
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.0-modelscope1.28.2-swift3.7.1
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.0-modelscope1.28.2-swift3.7.1
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.0-modelscope1.28.2-swift3.7.1
 ```
 
 推荐运行环境：
@@ -54,7 +54,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | flash_attn    |        | 2.7.4.post1/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.51.3      |                    |
 | modelscope   | >=1.23       |             |                    |
-| peft         | >=0.11,<0.17 |             |      LoRA          |
+| peft         | >=0.11,<0.18 |             |      LoRA          |
 | trl          | >=0.15,<0.21 |       |      RLHF        |
 | deepspeed    | >=0.14       | 0.16.9      |                  |
 
@@ -205,6 +205,16 @@ swift export \
 ```
 - 注意：`mcore_adapters`文件夹中包含`args.json`文件，转换过程中会读取文件中`mcore_model`和LoRA相关的参数信息，并将`mcore_model`和`mcore_adapters`进行merge-lora成完整权重，最终转换成HF格式权重。
 
+如果你只想merge-lora，而不希望转成HF格式权重，用于后续DPO训练，可以使用以下脚本：
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift export \
+    --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
+    --to_mcore true \
+    --torch_dtype bfloat16 \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-mcore \
+    --test_convert_precision true
+```
 
 ## Benchmark
 
@@ -430,7 +440,8 @@ swift export \
 
 lora训练：
 - adapter_load: 加载adapter的权重路径，用于lora断点续训，默认为None。lora断点续训方式与全参数一致，请关注`--finetune`参数的含义。
-- 🔥target_modules: 指定lora模块的后缀, 默认为`['all-linear']`。
+- 🔥target_modules: 指定lora模块的后缀，例如：你可以设置为`--target_modules linear_qkv linear_proj`。默认为`['all-linear']`，代表将所有的linear设置为target_modules。
+  - 注意：若需要将所有的router设置为target_modules, 你可以额外设置`--target_modules all-router ...`，例如：`--target_modules all-router all-linear`。
 - 🔥target_regex: 指定lora模块的regex表达式，默认为`None`。如果该值传入，则target_modules参数失效。
 - 🔥modules_to_save: 在已附加tuner后，额外指定一部分原模型模块参与训练和存储。默认为`[]`。
 - 🔥lora_rank: 默认为`8`。
@@ -443,7 +454,8 @@ lora训练：
 **DPO参数**:
 - ref_load: ref_model的加载路径。默认为None，即设置为`load`。
 - beta: 含义与[TRL](https://huggingface.co/docs/trl/main/en/dpo_trainer#trl.DPOConfig)相同。控制与参考模型偏差程度的参数。beta值越高，表示与参考模型的偏差越小。对于 IPO 损失函数 (loss_type="ipo")，beta是[论文](https://huggingface.co/papers/2310.12036)中所指的正则化参数。默认为0.1。
-- rpo_alpha: 来自[RPO 论文](https://huggingface.co/papers/2404.19733)中的参数，用于控制损失函数中NLL项的权重（即SFT损失）。`loss = dpo_loss + rpo_alpha * nll_loss`。默认为1。
+- rpo_alpha: 来自[RPO 论文](https://huggingface.co/papers/2404.19733)中的参数，用于控制损失函数中NLL项的权重（即SFT损失），`loss = dpo_loss + rpo_alpha * sft_loss`，论文中推荐设置为`1.`。默认为`None`，即默认不引入sft_loss。
+  - 注意：在"ms-swift<3.8"，其默认值为`1.`。在"ms-swift>=3.8"该默认值修改为`None`。
 - reference_free: 是否忽略提供的参考模型，并隐式地使用一个对所有响应赋予相等概率的参考模型。默认为False。
 - label_smoothing: 默认为0.。
 - f_divergence_type: 默认为`reverse_kl`。可选值参考[TRL文档](https://huggingface.co/docs/trl/main/en/dpo_trainer)。

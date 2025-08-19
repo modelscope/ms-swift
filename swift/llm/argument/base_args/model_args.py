@@ -118,13 +118,18 @@ class ModelArguments:
             rope_scaling.pop('factor', None)
 
         # get origin_max_model_len
-        if rope_scaling and 'original_max_position_embeddings' in rope_scaling:
+        origin_max_model_len = None
+        if rope_scaling and rope_scaling.get('original_max_position_embeddings') is not None:
             origin_max_model_len = rope_scaling['original_max_position_embeddings']
-        elif self.model_info.rope_scaling and 'original_max_position_embeddings' in self.model_info.rope_scaling:
-            origin_max_model_len = self.model_info.rope_scaling['original_max_position_embeddings']
-        else:
+        elif self.model_info.rope_scaling:
+            if self.model_info.rope_scaling.get('original_max_position_embeddings') is not None:
+                origin_max_model_len = self.model_info.rope_scaling['original_max_position_embeddings']
+            elif self.model_info.rope_scaling.get('factor') is not None:
+                origin_max_model_len = self.model_info.max_model_len // self.model_info.rope_scaling['factor']
+        if origin_max_model_len is None:
             origin_max_model_len = self.model_info.max_model_len
         assert origin_max_model_len is not None, '`origin_max_model_len` from model config is not set'
+        rope_scaling['original_max_position_embeddings'] = origin_max_model_len
 
         if 'factor' not in rope_scaling:
             assert self.max_model_len is not None, '`max_model_len` or `rope_scaling_factor` is not set'
@@ -132,11 +137,10 @@ class ModelArguments:
         rope_model_len = int(origin_max_model_len * rope_scaling['factor'])
         if self.max_model_len is None:
             self.max_model_len = rope_model_len
-        else:
-            assert self.max_model_len <= rope_model_len, (
-                f'rope config ({rope_model_len} = {rope_scaling["factor"]} * '
-                f'{origin_max_model_len}) should be bigger than max_model_len '
-                f'from command line ({self.max_model_len})')
+        elif self.max_model_len > rope_model_len:
+            logger.warning(f'rope config ({rope_model_len} = {rope_scaling["factor"]} * '
+                           f'{origin_max_model_len}) should be bigger than max_model_len '
+                           f'from command line ({self.max_model_len})')
         self.rope_scaling = rope_scaling
         logger.info(f'Setting args.rope_scaling: {rope_scaling}')
         logger.info(f'Setting args.max_model_len: {self.max_model_len}')
