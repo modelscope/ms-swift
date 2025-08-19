@@ -792,12 +792,13 @@ def _patch_torch_FileSystemReader():
 
 def _patch_TELinear():
     from megatron.core.extensions.transformer_engine import TELinear
+
     def __repr__(self):
-        return (
-            f"{type(self).__name__}(in_features={self.in_features}, "
-            f"out_features={self.out_features}, bias={self.use_bias}, TP={self.tp_size})"
-        )
+        return (f'{type(self).__name__}(in_features={self.in_features}, '
+                f'out_features={self.out_features}, bias={self.use_bias}, TP={self.tp_size})')
+
     TELinear.__repr__ = __repr__
+
 
 def _patch_megatron():
     _patch_flash_attn()
