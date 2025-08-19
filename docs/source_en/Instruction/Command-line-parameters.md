@@ -237,7 +237,7 @@ Other important parameters:
 - 🔥lora_alpha: Default is `32`.
 - lora_dropout: Default is `0.05`.
 - lora_bias: Defaults to `'none'`. Possible values are 'none', 'all'. If you want to make all biases trainable, you can set it to `'all'`.
-- lora_dtype: Specifies the dtype type for the LoRA modules. Supported types are 'float16', 'bfloat16', 'float32'. The default is None, which follows the original model type.
+- lora_dtype: Specifies the data type (dtype) for the LoRA modules. Supported values are 'float16', 'bfloat16', 'float32'. Default is None, which follows the default behavior of PEFT.
 - 🔥use_dora: Defaults to `False`, indicating whether to use `DoRA`.
 - use_rslora: Defaults to `False`, indicating whether to use `RS-LoRA`.
 - 🔥lorap_lr_ratio: LoRA+ parameter, default value `None`, recommended values `10~16`. Specify this parameter when using LoRA to enable LoRA+.
