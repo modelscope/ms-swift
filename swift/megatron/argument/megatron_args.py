@@ -26,6 +26,8 @@ class RLHFMegatronArgumentsMixin:
     f_divergence_type: str = 'reverse_kl'
     loss_type: str = 'sigmoid'
 
+    ref_adapter_name: Optional[str] = None
+
 
 @dataclass
 class MegatronTunerMixin:

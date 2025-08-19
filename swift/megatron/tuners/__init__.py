@@ -1,2 +1,2 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from . import lora
+from .lora import LoraParallelLinear

@@ -159,10 +159,10 @@ class SwiftRLHF(SwiftSft):
             else:
                 tuner = Swift
             assert not args.adapters or len(args.adapters) == 1, f'args.adapters: {args.adapters}'
-            model = tuner.from_pretrained(model, args.adapters[0], adapter_name='ref_model')
+            model = tuner.from_pretrained(model, args.adapters[0], adapter_name='ref_adapter')
             assert args.rlhf_type in {'dpo', 'kto',
                                       'grpo'}, 'Currently, only DPO, KTO, and GRPO support `ref_adapter_name`.'
-            args.training_args.ref_adapter_name = 'ref_model'
+            args.training_args.ref_adapter_name = 'ref_adapter'
         return model
 
     def _prepare_template(self) -> None:

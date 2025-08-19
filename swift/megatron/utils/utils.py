@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
+from copy import deepcopy
 from typing import Optional, Tuple
 
 import torch.distributed as dist
@@ -83,7 +84,11 @@ def prepare_adapter(args, model):
     logger.info(f'lora_config: {lora_config}')
     model = Swift.prepare_model(model, lora_config)
     if getattr(args, 'rlhf_type', None) == 'dpo' and args.adapter_load and args.finetune:
-        model = Swift.prepare_model(model, lora_config, adapter_name='ref_model')
+        args.ref_adapter_name = 'ref_adapter'
+        lora_config = deepcopy(lora_config)
+        lora_config.inference_mode = True
+        model.add_adapter(args.ref_adapter_name, lora_config)
+        model.base_model._cast_adapter_dtype(adapter_name=args.ref_adapter_name, autocast_adapter_dtype=True)
     return model
 
 
@@ -165,3 +170,14 @@ def copy_original_module_weight(model):
             modules_to_save = module.modules_to_save
             if 'default' in modules_to_save:
                 original_module.load_state_dict(modules_to_save['default'].state_dict())
+
+
+def copy_ref_adapter_weight(model, ref_adapter_name: str):
+    from swift.megatron.tuners import LoraParallelLinear
+    for module in model.modules():
+        if not isinstance(module, LoraParallelLinear):
+            continue
+        for key in ['lora_A', 'lora_B', 'lora_embedding_A', 'lora_embedding_B']:
+            sub_module = getattr(module, key)
+            if 'default' in sub_module and ref_adapter_name in sub_module:
+                sub_module[ref_adapter_name].load_state_dict(sub_module['default'].state_dict())
