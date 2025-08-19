@@ -13,7 +13,7 @@ Hints:
 - 🔥tuner_backend: Options are 'peft', 'unsloth'. Default is 'peft'.
 - 🔥train_type: Options are: 'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'. Default is 'lora'.
 - 🔥adapters: A list used to specify the id/path of the adapter. Default is `[]`.
-  - Starting from "ms-swift>=3.8", you can set `--adapters` during training to continue training from an existing LoRA, enabling seamless transition from LoRA-based SFT to DPO/GRPO. Note: In this case, the reference model (ref_model) is the original base model. This behavior differs from first merging the LoRA weights and then performing DPO/GRPO, where the reference model is the merged model; as a result, the training outcomes may differ.
+  - In "ms-swift>=3.8", you can set `--adapters` during training to continue training after the LoRA, which is convenient for scenarios that follow LoRA SFT with DPO/KTO/GRPO. During training, an additional copy of LoRA weights will be saved as the `ref_adapter`.
 - external_plugins: A list of external plugin py files which will be registered into the plugin mappings，please check [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh). Default is `[]`.
 - seed: Default is 42.
 - model_kwargs: Additional parameters specific to the model that can be passed in. This list of parameters will log a message during training and inference for reference. For example, `--model_kwargs '{"fps_max_frames": 12}'`. Default is None.
