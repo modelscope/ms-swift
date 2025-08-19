@@ -150,11 +150,12 @@ class Ulysses(CommonSequenceParallel):
         self.split_in_forward = None
         self.causal_mask_func = None
 
-    def init_sequence_parallel(self, size):
+    def init_sequence_parallel(self, size, num_heads):
         if self._inited:
             return
         self._inited = True
         self.sp_world_size = size
+        self.num_heads = num_heads
         self._init_device_mesh()
 
         try:
