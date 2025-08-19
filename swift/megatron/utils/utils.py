@@ -83,12 +83,11 @@ def prepare_adapter(args, model):
     lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
     logger.info(f'lora_config: {lora_config}')
     model = Swift.prepare_model(model, lora_config)
-    if getattr(args, 'rlhf_type', None) == 'dpo' and args.adapter_load and args.finetune:
-        args.ref_adapter_name = 'ref_adapter'
+    if args.ref_adapter_load:
         lora_config = deepcopy(lora_config)
         lora_config.inference_mode = True
-        model.add_adapter(args.ref_adapter_name, lora_config)
-        model.base_model._cast_adapter_dtype(adapter_name=args.ref_adapter_name, autocast_adapter_dtype=True)
+        model.add_adapter('ref_adapter', lora_config)
+        model.base_model._cast_adapter_dtype(adapter_name='ref_adapter', autocast_adapter_dtype=True)
     return model
 
 

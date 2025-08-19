@@ -18,6 +18,7 @@ logger = get_logger()
 @dataclass
 class RLHFMegatronArgumentsMixin:
     ref_load: Optional[str] = None
+    ref_adapter_load: Optional[str] = None
 
     beta: float = 0.1
     rpo_alpha: Optional[float] = None
@@ -25,8 +26,6 @@ class RLHFMegatronArgumentsMixin:
     label_smoothing: float = 0.
     f_divergence_type: str = 'reverse_kl'
     loss_type: str = 'sigmoid'
-
-    ref_adapter_name: Optional[str] = None
 
 
 @dataclass

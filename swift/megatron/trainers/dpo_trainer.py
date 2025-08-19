@@ -54,8 +54,8 @@ class MegatronDPOTrainer(MegatronTrainer):
             self.ref_model = None
         model, optimizer, opt_param_scheduler = super().setup_model_and_optimizer(model_provider_func, model_type,
                                                                                   *_args, **kwargs)
-        if args.ref_adapter_name is not None:
-            copy_ref_adapter_weight(self.unwrapped_model, args.ref_adapter_name)
+        if args.ref_adapter_load is not None:
+            copy_ref_adapter_weight(self.unwrapped_model, 'ref_adapter')
         return model, optimizer, opt_param_scheduler
 
     @staticmethod
@@ -162,16 +162,16 @@ class MegatronDPOTrainer(MegatronTrainer):
             context = nullcontext()
             ref_model = unwrap_model(self.ref_model)
         else:
-            if args.ref_adapter_name is None:
+            if args.ref_adapter_load is None:
                 context = self.peft_model.disable_adapter()
             else:
                 context = nullcontext()
             ref_model = self.unwrapped_model
         with context:
-            if args.ref_adapter_name:
-                self.peft_model.set_adapter(args.ref_adapter_name)
+            if args.ref_adapter_load:
+                self.peft_model.set_adapter('ref_adapter')
             yield ref_model
-            if args.ref_adapter_name:
+            if args.ref_adapter_load:
                 self.peft_model.set_adapter('default')
 
     def _replace_data_iterator(self, data_iterator):
