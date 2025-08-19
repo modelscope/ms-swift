@@ -3,6 +3,8 @@ import os
 from typing import List, Optional, Union
 
 from swift.llm import safe_snapshot_download
+from swift.plugin import Tuner, extra_tuners
+from swift.tuners import Swift
 from swift.utils import get_logger, get_model_parameter_info
 from ..argument import BaseArguments, RLHFArguments
 from ..model import HfConfigFactory
@@ -147,6 +149,22 @@ class SwiftRLHF(SwiftSft):
                     self.reward_model = self.reward_model[0]
 
         super()._prepare_model_tokenizer()
+
+    @classmethod
+    def prepare_model(cls, args, model, *, template=None, train_dataset=None, task_type=None):
+        model = super().prepare_model(args, model, template=template, train_dataset=train_dataset, task_type=task_type)
+        if args.resume_from_checkpoint is None and args.adapters:
+            if args.train_type in extra_tuners:
+                tuner: Tuner = extra_tuners[args.train_type]
+            else:
+                tuner = Swift
+            assert not args.adapters or len(args.adapters) == 1, f'args.adapters: {args.adapters}'
+            model = tuner.from_pretrained(
+                model, args.resume_from_checkpoint or args.adapters[0], is_trainable=True, adapter_name='ref_model')
+            assert args.rlhf_type in {'dpo', 'kto',
+                                      'grpo'}, 'Currently, only DPO、KTO and GRPO support `ref_adapter_name`.'
+            args.training_args.ref_adapter_name = 'ref_model'
+        return model
 
     def _prepare_template(self) -> None:
         args = self.args
