@@ -295,3 +295,12 @@ def load_video_ovis2(video_path, num_frames):
         frames = [clip.get_frame(index / clip.fps) for index in sampled_indices]
         frames = [Image.fromarray(frame, mode='RGB') for frame in frames]
     return frames
+
+
+def load_video_ovis2_5(video_path, num_frames):
+    from moviepy.editor import VideoFileClip
+    with VideoFileClip(video_path) as clip:
+        total_frames = int(clip.fps * clip.duration)
+        indices = [int(i * total_frames / num_frames) for i in range(num_frames)]
+        frames = [Image.fromarray(clip.get_frame(t)) for t in (idx / clip.fps for idx in indices)]
+    return frames

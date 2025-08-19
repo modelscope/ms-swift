@@ -173,6 +173,8 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
                 task_type = 'SEQ_CLS'
             elif task_type == 'GENERATIVE_RERANKER':
                 task_type = 'CAUSAL_LM'
+            if args.target_parameters is not None:
+                lora_kwargs['target_parameters'] = args.target_parameters
             lora_config = LoraConfig(task_type=task_type, lora_dtype=args.lora_dtype, **lora_kwargs)
             if args.init_weights == 'lora-ga':
                 try:
@@ -334,10 +336,8 @@ class TunerMixin:
                     tuner: Tuner = extra_tuners[args.train_type]
                 else:
                     tuner = Swift
-                kwargs = {}
                 assert not args.adapters or len(args.adapters) == 1, f'args.adapters: {args.adapters}'
-                model = tuner.from_pretrained(
-                    model, args.resume_from_checkpoint or args.adapters[0], is_trainable=True, **kwargs)
+                model = tuner.from_pretrained(model, args.resume_from_checkpoint or args.adapters[0], is_trainable=True)
             else:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]

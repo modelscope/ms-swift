@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 import transformers
 from packaging import version
+from torch import nn
 
 from swift.llm import get_packed_seq_params, to_device, to_float_dtype
 from swift.utils import get_env_args, is_deepspeed_enabled
@@ -17,7 +18,7 @@ from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
-from ..vision_utils import load_audio, load_batch, load_video_ovis2
+from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta, ThinkingTemplate
 
@@ -728,6 +729,86 @@ class Ovis2Template(Ovis1_6Template):
 register_template(QwenTemplateMeta(
     MLLMTemplateType.ovis2,
     template_cls=Ovis2Template,
+))
+
+
+class Ovis2_5Template(ThinkingTemplate):
+    num_frames = 8
+    use_model = True
+    skip_prompt = False
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return [[-200], '\n']
+        elif media_type == 'video':
+            num_frames = get_env_args('num_frames', int, self.num_frames)
+            inputs.images = load_video_ovis2_5(inputs.videos[index], num_frames)
+            return [[-200], '\n']
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        min_pixels = get_env_args('min_pixels', int, 448 * 448)
+        max_pixels = get_env_args('max_pixels', int, 1344 * 1792)
+        video_max_pixels = get_env_args('video_max_pixels', int, 896 * 896)
+        encoded = super()._encode(inputs)
+        images = inputs.images
+        input_ids = encoded['input_ids']
+        visual_tokenizer = self.model.visual_tokenizer
+        idx_list = findall(input_ids, [-200])
+        if inputs.videos:
+            assert len(inputs.videos) == 1, 'only support single video'
+            encoded['pixel_values'], encoded['grid_thws'] = visual_tokenizer.preprocess(
+                video=inputs.images, min_pixels=min_pixels, max_pixels=video_max_pixels)
+            num_video_tokens = encoded['grid_thws'].prod(dim=-1)
+            num_video_tokens //= visual_tokenizer.vit.config.hidden_stride**2
+            num_video_tokens //= visual_tokenizer.vit.config.temporal_patch_size
+
+            def _get_new_tokens(i):
+                token_len = num_video_tokens[i].item()
+                return [-303] + [-300] * token_len + [-304]
+
+            input_ids, encoded['labels'], encoded['loss_scale'] = self._extend_tokens(
+                input_ids, encoded['labels'], encoded['loss_scale'], idx_list, _get_new_tokens)
+        elif images:
+            pixel_values, grid_thws = zip(
+                *(visual_tokenizer.preprocess(image=image, min_pixels=min_pixels, max_pixels=max_pixels)
+                  for image in images))
+            encoded['pixel_values'] = torch.cat(pixel_values, dim=0)
+            encoded['grid_thws'] = torch.cat(grid_thws, dim=0)
+
+            num_image_atoms = encoded['grid_thws'].prod(dim=-1)
+            num_image_atoms //= visual_tokenizer.vit.config.hidden_stride**2
+            num_image_atoms //= visual_tokenizer.vit.config.temporal_patch_size
+
+            def _get_new_tokens(i):
+                token_len = num_image_atoms[i].item()
+                return [-301] + [-300] * token_len + [-302]
+
+            input_ids, encoded['labels'], encoded['loss_scale'] = self._extend_tokens(
+                input_ids, encoded['labels'], encoded['loss_scale'], idx_list, _get_new_tokens)
+
+        encoded['input_ids'] = input_ids
+        return encoded
+
+    def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        inputs_embeds = model.merge_multimodal(
+            input_ids=inputs['input_ids'],
+            pixel_values=inputs.pop('pixel_values', None),
+            grid_thws=inputs.pop('grid_thws', None))
+        return {'inputs_embeds': inputs_embeds}
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
+        grid_thws = self.concat_tensor(batch, 'grid_thws', 0)
+        if grid_thws is not None:
+            res['grid_thws'] = grid_thws
+        return res
+
+
+register_template(QwenTemplateMeta(
+    MLLMTemplateType.ovis2_5,
+    template_cls=Ovis2_5Template,
+    default_system=None,
 ))
 
 

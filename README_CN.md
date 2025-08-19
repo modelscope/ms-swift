@@ -49,7 +49,7 @@
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 📝 简介
-🍲 ms-swift是魔搭社区提供的大模型与多模态大模型微调部署框架，现已支持500+大模型与200+多模态大模型的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中大模型包括：Qwen3、Qwen3-MoE、Qwen2.5、InternLM3、GLM4、Mistral、DeepSeek-R1、Yi1.5、TeleChat2、Baichuan2、Gemma2等模型，多模态大模型包括：Qwen2.5-VL、Qwen2-Audio、Llama4、Llava、InternVL3、MiniCPM-V-2.6、GLM4v、Xcomposer2.5、Yi-VL、DeepSeek-VL2、Phi3.5-Vision、GOT-OCR2等模型。
+🍲 ms-swift是魔搭社区提供的大模型与多模态大模型微调部署框架，现已支持500+大模型与200+多模态大模型的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中大模型包括：Qwen3、Qwen3-MoE、Qwen2.5、InternLM3、GLM4.5、Mistral、DeepSeek-R1、Yi1.5、TeleChat2、Baichuan2、Gemma2等模型，多模态大模型包括：Qwen2.5-VL、Qwen2-Audio、Llama4、Llava、InternVL3、MiniCPM-V-4、Ovis2.5、GLM4v、Xcomposer2.5、Yi-VL、DeepSeek-VL2、Phi3.5-Vision、GOT-OCR2等模型。
 
 🍔 除此之外，ms-swift汇集了最新的训练技术，包括LoRA、QLoRA、Llama-Pro、LongLoRA、GaLore、Q-GaLore、LoRA+、LISA、DoRA、FourierFt、ReFT、UnSloth、和Liger等轻量化训练技术，以及DPO、GRPO、RM、PPO、GKD、KTO、CPO、SimPO、ORPO等人类对齐训练方法。ms-swift支持使用vLLM、SGLang和LMDeploy对推理、评测和部署模块进行加速，并支持使用GPTQ、AWQ、BNB等技术对大模型进行量化。ms-swift还提供了基于Gradio的Web-UI界面及丰富的最佳实践。
 
@@ -122,7 +122,7 @@ pip install -e .
 | torch        | >=2.0        | 2.7.1               |                    |
 | transformers | >=4.33       | 4.54.1              |                    |
 | modelscope   | >=1.23       |                     |                    |
-| peft         | >=0.11,<0.17 |                     |                    |
+| peft         | >=0.11,<0.18 |                     |                    |
 | flash_attn   |              | 2.7.4.post1/3.0.0b1 |                    |
 | trl          | >=0.15,<0.21 | 0.20.0              | RLHF               |
 | deepspeed    | >=0.14       | 0.16.9              | 训练                 |

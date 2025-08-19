@@ -6,6 +6,7 @@ import torch.distributed as dist
 from megatron.core import mpu
 from megatron.core.extensions.transformer_engine import TEGroupedLinear, TELayerNormColumnParallelLinear, TELinear
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
+from megatron.core.transformer.moe.router import TopKRouter
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint, sharded_state_dict_default
 from megatron.training import checkpointing, get_args
 
@@ -24,6 +25,10 @@ def find_all_linears(model):
     return find_layers(model, _cond)
 
 
+def find_router(model):
+    return find_layers(model, lambda name, module: isinstance(module, TopKRouter))
+
+
 def find_embedding(model):
     return find_layers(model, lambda name, module: isinstance(module, LanguageModelEmbedding))
 
@@ -38,6 +43,9 @@ def get_target_modules(args, model):
     if 'all-embedding' in target_modules:
         target_modules.remove('all-embedding')
         target_modules += find_embedding(model)
+    if 'all-router' in target_modules:
+        target_modules.remove('all-router')
+        target_modules += find_router(model)
     return target_modules
 
 

@@ -108,6 +108,7 @@ class TunerArguments:
     # tuners
     target_modules: List[str] = field(default_factory=lambda: ['all-linear'])
     target_regex: Optional[str] = None
+    target_parameters: Optional[List[str]] = None
     # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
     modules_to_save: List[str] = field(default_factory=list)
 

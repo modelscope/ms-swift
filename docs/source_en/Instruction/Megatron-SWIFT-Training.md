@@ -56,7 +56,7 @@ Recommended Operating Environment:
 | flash_attn    |        | 2.7.4.post1/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.51.3      |                    |
 | modelscope   | >=1.23       |             |                    |
-| peft         | >=0.11,<0.17 |             |      LoRA          |
+| peft         | >=0.11,<0.18 |             |      LoRA          |
 | trl          | >=0.15,<0.21 |       |      RLHF        |
 | deepspeed    | >=0.14       | 0.16.9      |                  |
 
@@ -212,6 +212,18 @@ swift export \
 ```
 
 - Note: The `mcore_adapters` folder contains an `args.json` file. During the conversion process, parameters related to `mcore_model` and LoRA will be loaded from this file. The system will then perform a merge-lora operation between the `mcore_model` and `mcore_adapters` to obtain the complete model weights, and finally convert them into HuggingFace (HF) format.
+
+If you only want to merge the LoRA weights without converting them to Hugging Face format, for subsequent DPO training, you can use the following script:
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift export \
+    --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
+    --to_mcore true \
+    --torch_dtype bfloat16 \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-mcore \
+    --test_convert_precision true
+```
 
 ## Benchmark
 The speed comparison of full-parameter training for Dense/MoE models using `megatron sft` and `swift sft` on a single machine with eight A800 GPUs is shown below. The corresponding scripts can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/benchmark).
@@ -451,7 +463,8 @@ Full-parameter Training:
 LoRA Training:
 
 - adapter_load: The path to the adapter weights for loading, used for resuming LoRA training from a checkpoint. The default is None. The method for resuming LoRA training from a checkpoint is the same as for full-parameter training. Please pay attention to the meaning of the `--finetune` parameter.
-- 🔥target_modules: Suffixes of modules to apply LoRA to. Default is `['all-linear']`.
+- 🔥target_modules: Specifies the suffixes of modules to apply LoRA to. For example, you can set it as `--target_modules linear_qkv linear_proj`. The default is `['all-linear']`, which means all linear layers will be set as target modules.
+  - Note: If you want to set all router layers as target modules, you can specify `--target_modules all-router ...`. For example: `--target_modules all-router all-linear`.
 - 🔥target_regex: Regex expression to specify LoRA modules. Default is `None`. If this value is provided, the `target_modules` parameter will be ignored.
 - 🔥modules_to_save: After attaching a tuner, explicitly specifies additional original model modules to participate in training and storage. The default is `[]`.
 - 🔥lora_rank: Default is `8`.
