@@ -169,7 +169,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()
-    if hf_model.model_info.is_moe_model:
+    if args.model_info.is_moe_model:
         current_convert_kwargs['moe_grouped_gemm'] = True
     megatron_args = MegatronArguments(
         **kwargs, **current_convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
@@ -183,6 +183,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     megatron_model_meta.convert_hf2mcore(hf_model, mg_model)
     if args.test_convert_precision:
         test_convert_precision(hf_model, mg_model, template)
+    del hf_model
     logger.info('Successfully transferred HF model weights to MG model.')
     args.save_args()
     mg_save_checkpoint(1, [mg_model], None, None, 0)
@@ -191,12 +192,8 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
 def convert_mcore2hf(args: ExportArguments) -> None:
     from swift.megatron import prepare_mcore_model, adapter_state_dict_context
-    hf_model, template = prepare_model_template(args)
+    hf_model, template = prepare_model_template(args, load_model=args.to_hf)
     processor = template.processor
-    if args.thread_count is None:
-        checkpoint_size = sum(get_n_params_grads(hf_model)[0]) * torch.finfo(args.torch_dtype).bits // 8e9
-        args.thread_count = max(math.ceil(checkpoint_size / 10), 2)  # 10GB
-    patch_torch_dist_shard(args.thread_count)
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
@@ -204,12 +201,13 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()
-    if hf_model.model_info.is_moe_model:
+    if args.model_info.is_moe_model:
         current_convert_kwargs['moe_grouped_gemm'] = True
     megatron_args = MegatronArguments(
         **kwargs,
         **current_convert_kwargs,
         load=args.mcore_model,
+        save=args.output_dir if args.to_mcore else None,
         adapter_load=args.mcore_adapters[0] if args.mcore_adapters else None,
         torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
@@ -228,17 +226,28 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         logger.info('Merge LoRA...')
         mg_model = peft_model.merge_and_unload()
     logger.info('Megatron model created successfully.')
-    megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
-    if args.test_convert_precision:
-        test_convert_precision(hf_model, mg_model, template)
-    logger.info('Successfully transferred MG model weights to HF model.')
-    ckpt_dir = megatron_args.load if megatron_args.adapter_load is None else megatron_args.adapter_load
-    save_checkpoint(
-        hf_model,
-        processor,
-        args.output_dir,
-        safe_serialization=args.safe_serialization,
-        model_dirs=[ckpt_dir, args.model_dir],
-        max_shard_size=args.max_shard_size,
-        additional_saved_files=hf_model.model_meta.additional_saved_files)
-    logger.info(f'Successfully saved HF model weights in `{args.output_dir}`.')
+    if args.to_hf:
+        megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
+        if args.test_convert_precision:
+            test_convert_precision(hf_model, mg_model, template)
+        del mg_model
+        logger.info('Successfully transferred MG model weights to HF model.')
+        ckpt_dir = megatron_args.load if megatron_args.adapter_load is None else megatron_args.adapter_load
+        save_checkpoint(
+            hf_model,
+            processor,
+            args.output_dir,
+            safe_serialization=args.safe_serialization,
+            model_dirs=[ckpt_dir, args.model_dir],
+            max_shard_size=args.max_shard_size,
+            additional_saved_files=hf_model.model_meta.additional_saved_files)
+        logger.info(f'Successfully saved HF model weights in `{args.output_dir}`.')
+    elif args.to_mcore:
+        if args.thread_count is None:
+            checkpoint_size = sum(get_n_params_grads(mg_model)[0]) * torch.finfo(args.torch_dtype).bits // 8e9
+            args.thread_count = max(math.ceil(checkpoint_size / 10), 2)  # 10GB
+        patch_torch_dist_shard(args.thread_count)
+
+        args.save_args()
+        mg_save_checkpoint(1, [mg_model], None, None, 0)
+        logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')

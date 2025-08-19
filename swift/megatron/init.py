@@ -790,9 +790,20 @@ def _patch_torch_FileSystemReader():
     FileSystemReader.read_data = read_data
 
 
+def _patch_TELinear():
+    from megatron.core.extensions.transformer_engine import TELinear
+
+    def __repr__(self):
+        return (f'{type(self).__name__}(in_features={self.in_features}, '
+                f'out_features={self.out_features}, bias={self.use_bias}, TP={self.tp_size})')
+
+    TELinear.__repr__ = __repr__
+
+
 def _patch_megatron():
     _patch_flash_attn()
     _patch_transformer_engine()
+    _patch_TELinear()
     _patch__batched_p2p_ops()
     _patch_mla_attention()
     _patch_TEGroupedLinear()
