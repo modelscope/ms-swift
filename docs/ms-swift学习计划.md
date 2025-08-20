@@ -74,17 +74,43 @@ pre-commit install
 
 
 
-## D2：docs/source
+## D2：docs/source[GetStarted, Instructio]
 
 一、目标：清楚具体怎么使用swift框架。
 
-二、材料：docs/source
+二、材料：docs/source的[GetStarted, Instructio]部分
 
 三、动作：
 
 1、GetStarted	`DONE`
 
-2、Instruction	`ING`
+2、Instruction	`DONE`
+
+四、产出：注释、修改后的[GetStarted, Instructio]部分。
+
+
+
+## D3：BestPractices
+
+一、目标：按照最佳实验的教程，依次实操每一个任务。
+
+二、材料：docs/source的[BestPractices]部分 + 代码
+
+三、动作：
+
+1、Qwen3最佳实践
+
+2、快速训练VL模型
+
+四、产出：
+
+1、阅读完 Qwen3最佳实践，跑通 qwen3.ipynb	`DONE`
+
+
+
+
+
+
 
 
 

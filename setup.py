@@ -227,7 +227,7 @@ if __name__ == '__main__':
         # 指定长描述的内容类型为 Markdown
         long_description_content_type='text/markdown',
         # 作者信息
-        author='DAMO ModelScope teams',
+        author='DAMO + teams',
         # 作者联系邮箱
         author_email='contact@modelscope.cn',
         # 关键词，便于检索

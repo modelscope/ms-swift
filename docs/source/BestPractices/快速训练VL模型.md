@@ -179,7 +179,6 @@ swift sft \
 ```bash
 swift infer \
     --model /path/to/stage2_checkpoint
-
 ```
 
 ### 部署
