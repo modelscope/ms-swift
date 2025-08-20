@@ -1217,21 +1217,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for messages in messages_list:
             InferRequest.remove_response(messages)
             template_inputs, _ = StdTemplateInputs.from_dict({'messages': messages})
-            res_context_list, _, _ = self.template._swift_encode(template_inputs)
-
-            # check the type and convert
-            processed_context = []
-            for context in res_context_list:
-                if isinstance(context, str):
-                    processed_context.append(context)
-                elif isinstance(context, list) and all(isinstance(x, int) for x in context):
-                    # decode the token ID to text
-                    decoded_text = self.template.tokenizer.decode(context)
-                    processed_context.append(decoded_text)
-                else:
-                    # other type value ,just add to process_context
-                    processed_context.append(str(context))
-            prompts_text.append(''.join(processed_context))
+            res = self.template.encode(template_inputs)
+            prompts_text.append(self.template.safe_decode(res['input_ids']))
         return prompts_text
 
     @patch_profiling_decorator
