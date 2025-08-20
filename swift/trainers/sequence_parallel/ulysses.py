@@ -3,22 +3,12 @@ from typing import Any, Optional, Tuple
 
 import torch
 import torch.distributed as dist
-from packaging import version
+from torch.distributed import init_device_mesh
+from transformers import PreTrainedTokenizer
 
 from swift.llm import get_llm_model
-from .base import CommonSequenceParallel
 from .utils import GatherLoss
-
-assert version.parse(torch.__version__) >= version.parse('2.0.0')
-torch._dynamo.config.capture_dynamic_output_shape_ops = True
-
-torch_compile_options = {
-    'epilogue_fusion': True,
-    'max_autotune': False,
-    'shape_padding': True,
-    'trace.enabled': False,
-    'triton.cudagraphs': False,
-}
+from ...utils import get_dist_setting, get_device
 
 
 # Code borrowed from deepspeed, here is why:
@@ -143,21 +133,20 @@ class DistributedAttention(torch.nn.Module):
         return output
 
 
-class Ulysses(CommonSequenceParallel):
+class SequenceParallel:
 
     def __init__(self):
-        super().__init__()
-        self.split_in_forward = None
+        self.sp_world_size = None
+        self.dp_world_size = None
+        self.rp_world_size = None
+        self.world_size = None
+        self.model_dtype = None
+        self.tokenizer = None
+        self.device_mesh = None
+        self.num_heads = None
         self.causal_mask_func = None
 
-    def init_sequence_parallel(self, size, num_heads):
-        if self._inited:
-            return
-        self._inited = True
-        self.sp_world_size = size
-        self.num_heads = num_heads
-        self._init_device_mesh()
-
+    def _prepare_flash_attn(self, base_model: torch.nn.Module):
         try:
             from transformers import masking_utils
 
@@ -196,31 +185,6 @@ class Ulysses(CommonSequenceParallel):
 
             modeling_flash_attention_utils._flash_attention_forward = flash_attention_forward
 
-    def prepare_model(self, model, tokenizer):
-
-        def pre_forward_split_hook(_self, args, kwargs):
-            input_ids = kwargs.get('input_ids', None)
-            inputs_embeds = kwargs.get('inputs_embeds', None)
-            position_ids = kwargs['position_ids']
-            attention_mask = kwargs.get('attention_mask', None)
-            if hasattr(_self, 'language_model'):
-                embed_tokens = getattr(_self.language_model, 'embed_tokens', None)
-            else:
-                embed_tokens = getattr(_self, 'embed_tokens', None)
-            _input_ids, inputs_embeds, _, position_ids, attention_mask, _ = self.pad_and_split_inputs(
-                input_ids, inputs_embeds, None, position_ids, attention_mask, None, embed_tokens=embed_tokens)
-            kwargs['input_ids'] = _input_ids
-            kwargs['inputs_embeds'] = inputs_embeds
-            kwargs['position_ids'] = position_ids
-            kwargs['attention_mask'] = attention_mask
-            return args, kwargs
-
-        llm_model = get_llm_model(model)
-
-        if hasattr(llm_model, 'thinker'):
-            base_model = llm_model.thinker.model
-        else:
-            base_model = llm_model.model
         if hasattr(base_model, 'language_model'):
             text_model = base_model.language_model
             if hasattr(base_model.language_model, '_update_causal_mask'):
@@ -229,33 +193,6 @@ class Ulysses(CommonSequenceParallel):
             text_model = base_model
             if hasattr(base_model, '_update_causal_mask'):
                 self.causal_mask_func = base_model._update_causal_mask
-        base_model.register_forward_pre_hook(pre_forward_split_hook, with_kwargs=True)
-        base_model: torch.nn.Module
-
-        def moe_aux_loss_hook(module, args, kwargs, output):
-            router_logits = getattr(output, 'router_logits', None)
-            if router_logits is None:
-                return output
-
-            attention_mask = kwargs['attention_mask']
-            num_layers = len(router_logits)
-            sp_len = router_logits[0].shape[0]
-            if isinstance(router_logits, tuple):
-                compute_device = router_logits[0].device
-                router_logits = torch.cat([layer_gate.to(compute_device) for layer_gate in router_logits], dim=0)
-            router_logits, _ = GatherLoss.apply(router_logits, None, self.sp_group)
-            router_logits = router_logits.reshape(self.sp_world_size, num_layers, sp_len,
-                                                  -1).transpose(0, 1).reshape(num_layers, self.sp_world_size * sp_len,
-                                                                              -1)
-            if attention_mask is not None:
-                router_logits = router_logits[:, :attention_mask.shape[1], :]
-            output['router_logits'] = tuple([logit.squeeze() for logit in router_logits.split(1, dim=0)])
-            return output
-
-        if model.model_info.is_moe_model:
-            base_model.register_forward_hook(moe_aux_loss_hook, with_kwargs=True)
-        self.model_dtype = next(model.parameters()).dtype
-        self.tokenizer = tokenizer
 
         from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 
@@ -274,11 +211,11 @@ class Ulysses(CommonSequenceParallel):
                     if self.rp_world_size is not None and self.rp_world_size > 1:
                         from .zigzag_ring_flash_attn import zigzag_ring_flash_attn_func
                         output = zigzag_ring_flash_attn_func(query, key, value,
-                                                    causal=module.is_causal,
-                                                    dropout_p=kwargs.get('dropout', 0.0),
-                                                    softmax_scale=kwargs.get('scaling', 0.0),
-                                                    window_size=kwargs.get('sliding_window') or (-1, -1),
-                                                    group=self.rp_group)
+                                                             causal=module.is_causal,
+                                                             dropout_p=kwargs.get('dropout', 0.0),
+                                                             softmax_scale=kwargs.get('scaling', 0.0),
+                                                             window_size=kwargs.get('sliding_window') or (-1, -1),
+                                                             group=self.rp_group)
                         return output.transpose(1, 2)
                     else:
                         return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query, key,
@@ -318,3 +255,217 @@ class Ulysses(CommonSequenceParallel):
             ALL_ATTENTION_FUNCTIONS['sdpa'] = partial(
                 local_sdpa_attn, dist_attn=DistributedAttention(None, self.sp_group))
 
+    def _prepare_forward_hook(self, base_model: torch.nn.Module):
+
+        def pre_forward_split_hook(_self, args, kwargs):
+            input_ids = kwargs.get('input_ids', None)
+            inputs_embeds = kwargs.get('inputs_embeds', None)
+            position_ids = kwargs['position_ids']
+            attention_mask = kwargs.get('attention_mask', None)
+            if hasattr(_self, 'language_model'):
+                embed_tokens = getattr(_self.language_model, 'embed_tokens', None)
+            else:
+                embed_tokens = getattr(_self, 'embed_tokens', None)
+            input_ids, inputs_embeds, _, position_ids, attention_mask, _ = self.pad_and_split_inputs(
+                input_ids, inputs_embeds, None, position_ids, attention_mask, None, embed_tokens=embed_tokens)
+            kwargs['input_ids'] = input_ids
+            kwargs['inputs_embeds'] = inputs_embeds
+            kwargs['position_ids'] = position_ids
+            kwargs['attention_mask'] = attention_mask
+            return args, kwargs
+
+        base_model.register_forward_pre_hook(pre_forward_split_hook, with_kwargs=True)
+
+    def _prepare_moe_aux_loss(self, base_model: torch.nn.Module):
+        def moe_aux_loss_hook(module, args, kwargs, output):
+            router_logits = getattr(output, 'router_logits', None)
+            if router_logits is None:
+                return output
+
+            attention_mask = kwargs['attention_mask']
+            num_layers = len(router_logits)
+            sp_len = router_logits[0].shape[0]
+            if isinstance(router_logits, tuple):
+                compute_device = router_logits[0].device
+                router_logits = torch.cat([layer_gate.to(compute_device) for layer_gate in router_logits], dim=0)
+            router_logits, _ = GatherLoss.apply(router_logits, None, self.sp_group)
+            router_logits = router_logits.reshape(self.sp_world_size, num_layers, sp_len,
+                                                  -1).transpose(0, 1).reshape(num_layers, self.sp_world_size * sp_len,
+                                                                              -1)
+            if attention_mask is not None:
+                router_logits = router_logits[:, :attention_mask.shape[1], :]
+            output['router_logits'] = tuple([logit.squeeze() for logit in router_logits.split(1, dim=0)])
+            return output
+
+        base_model.register_forward_hook(moe_aux_loss_hook, with_kwargs=True)
+
+    def prepare(self, sp_size: int, model: torch.nn.Module, tokenizer: PreTrainedTokenizer):
+        if self.device_mesh is not None:
+            return
+        self.sp_world_size = sp_size
+        self.num_heads = model.config.num_key_value_heads
+        self._init_device_mesh()
+
+        llm_model = get_llm_model(model)
+
+        if hasattr(llm_model, 'thinker'):
+            base_model = llm_model.thinker.model
+        else:
+            base_model = llm_model.model
+
+        self._prepare_flash_attn(base_model)
+        self._prepare_forward_hook(base_model)
+        if model.model_info.is_moe_model:
+            self._prepare_moe_aux_loss(base_model)
+
+        self.model_dtype = next(model.parameters()).dtype
+        self.tokenizer = tokenizer
+
+    def _pad(self, tensor, padding_value, dim=-1):
+        """Pad tensor for sequence parallel"""
+        length = tensor.shape[dim]
+        if length % self.world_size == 0:
+            return tensor
+
+        pad_num = self.world_size - (length % self.world_size)
+        if not isinstance(padding_value, torch.Tensor):
+            # ids
+            pad_shape = ((*tensor.shape[:dim], pad_num, *tensor.shape[dim + 1:]) if dim != -1 else
+                         (*tensor.shape[:dim], pad_num))
+            pad = torch.full(pad_shape, padding_value, dtype=tensor.dtype, device=tensor.device)
+            tensor = torch.cat([tensor, pad], dim=dim)
+        else:
+            # For embeddings
+            tensor = torch.cat([tensor, padding_value.unsqueeze(0).repeat(tensor.shape[0], pad_num, 1)], dim=dim)
+        return tensor
+
+    def _split(self, input, dim: int):
+        """Split tensor for sequence parallel"""
+        if self.world_size == 1:
+            return input
+
+        input_dim = input.dim()
+        assert input_dim >= 2
+        batch_size, seq_len, *rest = input.shape
+
+        value_chunks = input.chunk(2 * self.rp_world_size, dim=dim)
+
+        local_value = torch.cat(
+            [value_chunks[self.rp_rank], value_chunks[2 * self.rp_world_size - self.rp_rank - 1]], dim=dim
+        ).chunk(self.sp_world_size, dim=dim)[self.sp_rank]
+
+        new_shape = [batch_size, seq_len // self.world_size] + rest
+        return local_value.reshape(new_shape).contiguous()
+
+    def pad_and_split_inputs(self,
+                             input_ids,
+                             input_embeds,
+                             labels,
+                             position_ids,
+                             attention_mask,
+                             loss_scale,
+                             embed_tokens=None):
+        """Common implementation for padding and splitting inputs"""
+        tokenizer = self.tokenizer
+        if input_ids is not None:
+            input_ids = self._pad(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
+        if input_embeds is not None:
+            pad_emb = torch.zeros(
+                (1, embed_tokens.weight.shape[-1])).to(embed_tokens.weight.device).to(embed_tokens.weight.dtype)
+            input_embeds = self._pad(input_embeds, padding_value=pad_emb, dim=1)
+        batch_size = input_ids.shape[
+            0] if input_ids is not None else input_embeds.shape[0] if input_embeds is not None else 1
+        if position_ids is not None:
+            position_ids = self._pad(position_ids, padding_value=0, dim=-1)
+        if (input_ids is not None or input_embeds is not None) and batch_size > 1:
+            inputs = input_ids if input_ids is not None else input_embeds
+            attn_shape = inputs.shape[1]  # The sequence length
+            if attention_mask is None:
+                attention_mask = torch.ones_like(position_ids)
+            attention_mask = self._pad(attention_mask, padding_value=0, dim=-1)
+            cache_position = torch.arange(0, attn_shape, device=inputs.device)
+            # pad attention mask to 4d to avoid calculation errors
+            if hasattr(self, 'causal_mask_func') and self.causal_mask_func is not None:
+                attention_mask = self.causal_mask_func(attention_mask, inputs.to(self.model_dtype), cache_position,
+                                                       None, None)
+        if input_ids is not None:
+            input_ids = self._split(input_ids, dim=1)
+        if input_embeds is not None:
+            input_embeds = self._split(input_embeds, dim=1)
+        if position_ids is not None:
+            position_ids = self._split(position_ids, dim=-1)
+        if labels is not None:
+            labels = self._pad(labels, padding_value=-100, dim=-1)
+            labels = torch.roll(labels, shifts=-1, dims=-1)
+            labels = self._split(labels, dim=-1)
+
+        if loss_scale is not None:
+            loss_scale = self._pad(loss_scale, padding_value=0., dim=-1)
+            loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1)
+            loss_scale = self._split(loss_scale, dim=-1)
+
+        return input_ids, input_embeds, labels, position_ids, attention_mask, loss_scale
+
+    def _init_device_mesh(self):
+        """Initialize device mesh for sequence parallel"""
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
+        self.dp_world_size = world_size // self.sp_world_size
+        rp_world_size = self.sp_world_size // self.num_heads
+        if rp_world_size <= 1:
+            # Create device mesh: (dp_world_size, sp_world_size)
+            self.device_mesh = init_device_mesh(
+                get_device().split(':')[0],
+                mesh_shape=(self.dp_world_size, self.sp_world_size),
+                mesh_dim_names=('data', 'sequence'))
+            self.rp_world_size = rp_world_size
+            self.world_size = self.sp_world_size
+        else:
+            self.sp_world_size = self.num_heads
+            self.rp_world_size = rp_world_size
+            self.world_size = self.rp_world_size * self.sp_world_size
+            # Create device mesh: (dp_world_size, rp_world_size, sp_world_size)
+            self.device_mesh = init_device_mesh(
+                get_device().split(':')[0],
+                mesh_shape=(self.dp_world_size, self.rp_world_size, self.sp_world_size),
+                mesh_dim_names=('data', 'ring', 'sequence'))
+
+    @property
+    def sp_group(self):
+        """Return the sequence parallel group"""
+        return self.device_mesh['sequence'].get_group() if self.device_mesh else None
+
+    @property
+    def sp_rank(self):
+        """Return the sequence parallel rank"""
+        return dist.get_rank(self.device_mesh['sequence'].get_group()) if self.device_mesh else 0
+
+    @property
+    def dp_group(self):
+        """Return the data parallel group"""
+        return self.device_mesh['data'].get_group() if self.device_mesh else None
+
+    @property
+    def dp_rank(self):
+        """Return the data parallel rank"""
+        return dist.get_rank(self.device_mesh['data'].get_group()) if self.device_mesh else 0
+
+    @property
+    def rp_group(self):
+        """Return the data parallel group"""
+        return self.device_mesh['ring'].get_group() if self.device_mesh else None
+
+    @property
+    def rp_rank(self):
+        """Return the data parallel rank"""
+        return dist.get_rank(self.device_mesh['ring'].get_group()) if self.device_mesh else 0
+
+    def pad_and_split_extra_inputs(self, inputs):
+        """Common input preparation function"""
+        if 'labels' in inputs:
+            labels = inputs['labels']
+            _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, None, None, None)
+            inputs['labels'] = labels
+        if 'loss_scale' in inputs:
+            loss_scale = inputs['loss_scale']
+            _, _, _, _, _, loss_scale = self.pad_and_split_inputs(None, None, None, None, None, loss_scale)
+            inputs['loss_scale'] = loss_scale
