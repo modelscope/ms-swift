@@ -15,7 +15,8 @@ swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3-1.7B \
     --train_type full \
-    --reward_funcs accuracy \
+    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --reward_funcs thinking_tips \
     --loss_scale last_round \
     --use_vllm true \
     --vllm_mode server \

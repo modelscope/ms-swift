@@ -36,59 +36,7 @@ TO CUSTOMIZE REWARD FUNCTION:
 """
 
 
-# Code borrowed from plugin/orm.py
-class MathAccuracy(ORM):
-
-    def __init__(self):
-        import importlib.util
-        assert importlib.util.find_spec('math_verify') is not None, (
-            "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
-
-    def __call__(self, completions, solution, **kwargs) -> List[float]:
-        from latex2sympy2_extended import NormalizationConfig
-        from math_verify import LatexExtractionConfig, parse, verify
-        rewards = []
-        for content, sol in zip(completions, solution):
-            gold_parsed = parse(sol, extraction_mode='first_match', extraction_config=[LatexExtractionConfig()])
-            if len(gold_parsed) != 0:
-                # We require the answer to be provided in correct latex (no malformed operators)
-                answer_parsed = parse(
-                    content,
-                    extraction_config=[
-                        LatexExtractionConfig(
-                            normalization_config=NormalizationConfig(
-                                nits=False,
-                                malformed_operators=False,
-                                basic_latex=True,
-                                equations=True,
-                                boxed=True,
-                                units=True,
-                            ),
-                            # Ensures that boxed is tried first
-                            boxed_match_priority=0,
-                            try_extract_without_anchor=False,
-                        )
-                    ],
-                    extraction_mode='first_match',
-                )
-                # Reward 1 if the content is the same as the ground truth, 0 otherwise
-                reward = float(verify(answer_parsed, gold_parsed))
-            else:
-                # If the gold solution is not parseable, we reward 1 to skip this example
-                reward = 1.0
-            rewards.append(reward)
-        return rewards
-
-
-class MathFormat(ORM):
-
-    def __call__(self, completions, **kwargs) -> List[float]:
-        """Reward function that checks if the completion has a specific format."""
-        pattern = r'^<think>.*?</think>\s*<answer>.*?</answer>(?![\s\S])'
-        matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
-        return [1.0 if match else 0.0 for match in matches]
-
-
+# For additional reward functions, refer to swift/plugin/orm.py.
 class CountdownORM(ORM):
 
     def __call__(self, completions, target, nums, **kwargs) -> List[float]:
@@ -141,6 +89,9 @@ class CountdownORM(ORM):
         return rewards
 
 
+orms['external_countdown'] = CountdownORM
+
+
 class MultiModalAccuracyORM(ORM):
 
     def __call__(self, completions, solution, **kwargs) -> List[float]:
@@ -183,6 +134,50 @@ class MultiModalAccuracyORM(ORM):
                     pass  # Keep reward as 0.0 if both methods fail
             rewards.append(reward)
         return rewards
+
+
+orms['external_r1v_acc'] = MultiModalAccuracyORM
+
+
+class MultiTurnThinkingTips(ORM):
+    """
+    A reward function example designed for use with the `ThinkingTipsScheduler`.
+
+    This class demonstrates how to handle reward computation when a single
+    training sample (or request) is split into multiple "turns" or steps.
+    Specifically, it computes the reward based on the **last turn** of each
+    multi-turn trajectory using a math accuracy function.
+
+    NOTE
+    ----
+    If you feed fragments of the *same* trajectory as independent samples, this
+    function **must return an identical reward for every fragment**
+    """
+
+    def __init__(self):
+        from swift.plugin.orm import MathAccuracy
+        self.acc_func = MathAccuracy()
+
+    def __call__(self, completions, **kwargs) -> List[float]:
+        trajectory_ids: List[str] = kwargs.get('request_id')
+
+        global_trajectorys: Dict[str, List[Dict]] = kwargs.get('trajectory_inputs')
+
+        rewards = []
+        for local_tra_id in trajectory_ids:
+            total_trajectory_inputs = global_trajectorys[local_tra_id]
+            # For reward calculation, we use the entire trajectory of this sample.
+            # Here, we specifically evaluate only the last turn.
+            last_turn_messages = total_trajectory_inputs[-1]['messages']
+            last_turn_completion = last_turn_messages[-1]['content']
+            last_turn_solution = total_trajectory_inputs[-1]['solution']
+            # Compute reward based on math accuracy for the final completion.
+            reward = self.acc_func([last_turn_completion], [last_turn_solution])[0]
+            rewards.append(reward)
+        return rewards
+
+
+orms['thinking_tips'] = MultiTurnThinkingTips
 
 
 # ref implementation: https://github.com/huggingface/open-r1/blob/main/src/open_r1/rewards.py
@@ -307,6 +302,9 @@ class CodeReward(ORM):
         return rewards
 
 
+orms['external_code_reward'] = CodeReward
+
+
 class CodeFormat(ORM):
 
     def __call__(self, completions, **kwargs) -> List[float]:
@@ -318,6 +316,9 @@ class CodeFormat(ORM):
             reward = 1.0 if match else 0.0
             rewards.append(reward)
         return rewards
+
+
+orms['external_code_format'] = CodeFormat
 
 
 class CodeRewardByJudge0(ORM):
@@ -453,6 +454,9 @@ class CodeRewardByJudge0(ORM):
         return rewards
 
 
+orms['external_code_reward_by_judge0'] = CodeRewardByJudge0
+
+
 # ref implementation: https://github.com/qiancheng0/ToolRL/blob/main/verl/utils/reward_score/rlla.py
 # arxiv paper: https://arxiv.org/abs/2504.13958
 # MAX1STEP30MAX3: enable Two stage reward Setting include Format and Correctness
@@ -519,6 +523,9 @@ class ToolUseFormatReward(ORM):
         return rewards
 
 
+orms['external_tooluse_format_reward'] = ToolUseFormatReward
+
+
 class ToolUseLengthReward(ORM):
 
     def __init__(self):
@@ -553,6 +560,9 @@ class ToolUseLengthReward(ORM):
             rewards.append(final_reward)
 
         return rewards
+
+
+orms['external_tooluse_length_reward'] = ToolUseLengthReward
 
 
 class ToolUseCorrectnessReward(ORM):
@@ -702,15 +712,6 @@ class ToolUseCorrectnessReward(ORM):
         return rewards
 
 
-orms['external_math_acc'] = MathAccuracy
-orms['external_math_format'] = MathFormat
-orms['external_countdown'] = CountdownORM
-orms['external_r1v_acc'] = MultiModalAccuracyORM
-orms['external_code_reward'] = CodeReward
-orms['external_code_format'] = CodeFormat
-orms['external_code_reward_by_judge0'] = CodeRewardByJudge0
-orms['external_tooluse_format_reward'] = ToolUseFormatReward
-orms['external_tooluse_length_reward'] = ToolUseLengthReward
 orms['external_tooluse_correct_reward'] = ToolUseCorrectnessReward
 """
 TO CUSTOMIZE REWARD MODEL:
@@ -872,21 +873,24 @@ rm_plugins['qwenlong'] = QwenLongPlugin
 TO CUSTOMIZE MULTITURN SCHEDULER:
     Step 1: Define a Scheduler Class
         Implement your custom scheduler with the following methods:
-            - step() (Required): Constructs the next round of the infer request.
-            - check_finished() (Optional): Determines whether the current round has finished,
+            - step (Required): Constructs the next round of the infer request.
+            - check_finished (Optional): Determines whether the current round has finished,
                 which defaults to ending when the inference result is truncated (over length) or
                 when the maximum number of rounds is reached.
-        Both methods accept
-            - the last turn's InferRequest/result
-            The current turn count
+            or override run method in MultiTurnScheduler class.
+
+        Both methods accept:
+            - the last turn's InferRequest/response_choice
+            - the current turn count
 
     Step 2: Add your scheduler to the multi_turns registry:
         multi_turns['my_scheduler'] = MyScheduler
 
     Step 3: Configure the Arguments
         Run the script with:
-        --external_plugins /path/to/plugin.py \
-        --multi_turn_scheduler my_scheduler
+        swift rollout \
+            --external_plugins /path/to/plugin.py \
+            --multi_turn_scheduler my_scheduler
 """
 
 

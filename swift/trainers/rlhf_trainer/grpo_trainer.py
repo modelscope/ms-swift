@@ -251,7 +251,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.vllm_use_async_engine = False
         self.enable_offload = False
         self.use_gym_env = False
-        self.enable_multi_turn = self.args.multi_turn_scheduler is not None
+        self.enable_server_multi_turn = self.args.multi_turn_scheduler is not None
         if self.use_vllm:
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
@@ -266,10 +266,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 else:
                     vllm_use_async_engine = [False]
                     use_gym_env = [False]
-                    enable_multi_turn = [self.enable_multi_turn]
+                    enable_multi_turn = [self.enable_server_multi_turn]
                 self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
                 self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
-                self.enable_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
+                self.enable_server_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
                 if self.use_gym_env:
                     self.reward_func_names = ['gym_reward']
 
@@ -921,7 +921,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with patch_profiling_context(self, reward_func_name):
                 # reward model
                 reward_kwargs = {'trainer_state': self.state}
-                if self.enable_multi_turn:
+                if self.enable_server_multi_turn:
                     trajectory_inputs = self._get_trajectory_inputs(inputs)
                     reward_kwargs.update({'trajectory_inputs': trajectory_inputs})
                 if isinstance(reward_func, nn.Module):
@@ -1295,7 +1295,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         batch_size = inputs['input_ids'].shape[0] if 'input_ids' in inputs else len(inputs.get('completion_mask', []))
         expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
 
-        should_chunk = self.enable_multi_turn and any(gather_object([batch_size > expected_bs]))
+        should_chunk = self.enable_server_multi_turn and any(gather_object([batch_size > expected_bs]))
         if not should_chunk:
             return self._compute_loss_single(model, inputs)
         else:
@@ -1493,29 +1493,27 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         losses, weights = [], []
         all_metrics_data = []
-
+        chunk_inputs = {}
         for chunk_idx in range(max_chunks):
             start_idx = chunk_idx * new_chunk_size
             end_idx = min(start_idx + new_chunk_size, batch_size)
 
-            if start_idx >= batch_size:
-                continue
-
-            # Create chunk inputs
-            chunk_inputs = {}
-            for key, value in inputs.items():
-                if isinstance(value, torch.Tensor):
-                    chunk_inputs[key] = value[start_idx:end_idx]
-                else:
-                    chunk_inputs[key] = value
+            if start_idx < batch_size:
+                # Create chunk inputs
+                for key, value in inputs.items():
+                    if isinstance(value, torch.Tensor):
+                        chunk_inputs[key] = value[start_idx:end_idx]
+                    else:
+                        chunk_inputs[key] = value
 
             # Compute loss and metrics for this chunk (without updating global metrics)
             chunk_loss, chunk_metrics_data = self._compute_loss_and_metrics(model, chunk_inputs)
             chunk_weight = end_idx - start_idx
 
-            losses.append(chunk_loss * chunk_weight)
-            weights.append(chunk_weight)
-            all_metrics_data.append((chunk_metrics_data, chunk_weight))
+            if start_idx < batch_size:
+                losses.append(chunk_loss * chunk_weight)
+                weights.append(chunk_weight)
+                all_metrics_data.append((chunk_metrics_data, chunk_weight))
 
         # Compute weighted average loss
         total_weight = sum(weights)
@@ -1693,7 +1691,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         batch_size = inputs['input_ids'].shape[0]
         mode = 'train' if self.model.training else 'eval'
         expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-        should_chunk = self.enable_multi_turn and any(gather_object([batch_size > expected_bs]))
+        should_chunk = self.enable_server_multi_turn and any(gather_object([batch_size > expected_bs]))
         if not should_chunk:
             return self._get_per_token_logps_and_entropies_single(model, inputs, compute_entropy=compute_entropy)
         else:
@@ -1789,23 +1787,26 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         all_logps, all_entropies = [], [] if compute_entropy else None
 
         # Process in chunks
+        chunk_inputs = {}
         for chunk_idx in range(max_chunks):
             start_idx = chunk_idx * new_chunk_size
             end_idx = min(start_idx + new_chunk_size, batch_size)
 
-            chunk_inputs = {}
-            for key, val in inputs.items():
-                if isinstance(val, torch.Tensor):
-                    chunk_inputs[key] = val[start_idx:end_idx]
-                else:
-                    chunk_inputs[key] = val
+            if start_idx < end_idx:
+                for key, val in inputs.items():
+                    # TODO: pixel values?
+                    if isinstance(val, torch.Tensor):
+                        chunk_inputs[key] = val[start_idx:end_idx]
+                    else:
+                        chunk_inputs[key] = val
 
             chunk_logps, chunk_entropies = self._get_per_token_logps_and_entropies_single(
                 model, chunk_inputs, compute_entropy)
 
-            all_logps.append(chunk_logps)
-            if compute_entropy and chunk_entropies is not None:
-                all_entropies.append(chunk_entropies)
+            if start_idx < end_idx:
+                all_logps.append(chunk_logps)
+                if compute_entropy and chunk_entropies is not None:
+                    all_entropies.append(chunk_entropies)
 
         # Concatenate results
         final_logps = torch.cat(all_logps, dim=0)
@@ -2398,7 +2399,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         Postprocess rollout outputs by merging them back into the input data structures.
 
-        Depending on the mode (async or sync), it either matches inputs by request_id
+        Depending on the mode(if enable_server_multi_turn), it either matches inputs by request_id
         or assumes a one-to-one correspondence.
         """
 
@@ -2435,28 +2436,26 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             return input_data
 
-        # Async engine mode: match by request_id
-        global_inputs = gather_object(inputs)
-        if self.vllm_use_async_engine:
-            results = []
-            id2inputs = {}
-            for input_data in global_inputs:
-                request_id = input_data['request_id']
-                if request_id not in id2inputs:
-                    id2inputs[request_id] = deepcopy(input_data)
-            for output in outputs:
-                request_id = output.response.id
-                assert request_id in id2inputs, f'Request ID {request_id} not found in inputs'
-                input_data = deepcopy(id2inputs[request_id])
-                results.append(merge_output_input_data(input_data, output))
-
-            return results
-        else:
-            # Sync mode: simple zip merge
+        if not self.enable_server_multi_turn:
             assert len(inputs) == len(outputs)
             return [
                 merge_output_input_data(deepcopy(input_data), output) for input_data, output in zip(inputs, outputs)
             ]
+
+        global_inputs = gather_object(inputs)
+        results = []
+        id2inputs = {}
+        for input_data in global_inputs:
+            request_id = input_data['request_id']
+            if request_id not in id2inputs:
+                id2inputs[request_id] = deepcopy(input_data)
+        for output in outputs:
+            request_id = output.response.id
+            assert request_id in id2inputs, f'Request ID {request_id} not found in inputs'
+            input_data = deepcopy(id2inputs[request_id])
+            results.append(merge_output_input_data(input_data, output))
+
+        return results
 
     def _sync_multi_turn_infer(self, inputs: DataType, first_turn_rollout_outputs: List[RolloutOutput],
                                request_config: RequestConfig) -> List[RolloutOutput]:
