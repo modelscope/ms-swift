@@ -159,6 +159,7 @@ class BaseMegatronTrainer(ABC):
                     v.key = v.key.replace('.base_layer', '')
                 elif '.modules_to_save' in k:
                     if '.modules_to_save.default' not in k:
+                        # e.g. ref_adapter
                         continue
                     # modules to save
                     origin_k = k
