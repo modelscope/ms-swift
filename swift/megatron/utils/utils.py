@@ -76,6 +76,7 @@ def _patch_deepcopy():
             origin_tp_group = x.tp_group
             x.tp_group = None
             res = _origin_deepcopy(x, *args, **kwargs)
+            x.tp_group = origin_tp_group
             res.tp_group = origin_tp_group
             return res
         else:
