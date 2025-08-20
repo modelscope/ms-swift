@@ -322,6 +322,9 @@ class VllmEngine(InferEngine):
                         mm_data = {key.rstrip('s'): media_data[0]}
             if mm_data:
                 llm_inputs['multi_modal_data'] = mm_data
+            mm_processor_kwargs = inputs.get('mm_processor_kwargs')
+            if mm_processor_kwargs:
+                llm_inputs['mm_processor_kwargs'] = mm_processor_kwargs
             if self.task_type == 'embedding':
                 from vllm.pooling_params import PoolingParams
                 if 'task' in inspect.signature(PoolingParams).parameters:
