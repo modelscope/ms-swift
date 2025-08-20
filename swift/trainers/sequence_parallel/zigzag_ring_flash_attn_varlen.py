@@ -7,18 +7,9 @@ from .utils import (
     RingComm,
     update_out_and_lse,
     get_default_args,
+    flatten_varlen_lse,
+    unflatten_varlen_lse,
 )
-
-try:
-    from .triton_utils import (
-        flatten_varlen_lse,
-        unflatten_varlen_lse,
-    )
-except:
-    from .utils import (
-        flatten_varlen_lse,
-        unflatten_varlen_lse,
-    )
 
 
 def get_half_index(cu_seqlens, *, front: bool):
