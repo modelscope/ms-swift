@@ -210,13 +210,13 @@ class SequenceParallel:
                     value = value.transpose(1, 2)
                     if self.rp_world_size is not None and self.rp_world_size > 1:
                         from .zigzag_ring_flash_attn import zigzag_ring_flash_attn_func
-                        output = zigzag_ring_flash_attn_func(query, key, value,
+                        output = zigzag_ring_flash_attn_func(query.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2),
                                                              causal=module.is_causal,
                                                              dropout_p=kwargs.get('dropout', 0.0),
                                                              softmax_scale=kwargs.get('scaling', 0.0),
                                                              window_size=kwargs.get('sliding_window') or (-1, -1),
                                                              group=self.rp_group)
-                        return output.transpose(1, 2)
+                        return output
                     else:
                         return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query, key,
                                                                                    value, *args, **kwargs)[0]
@@ -344,58 +344,76 @@ class SequenceParallel:
         if self.world_size == 1:
             return local_output
 
-        input_dim = local_output.dim()
-        assert input_dim >= 2
+        if self.rp_world_size > 1:
+            input_dim = local_output.dim()
+            assert input_dim >= 2
 
-        batch_size, local_seq_len, *rest = local_output.shape
+            batch_size, local_seq_len, *rest = local_output.shape
 
-        # Step 1: Gather from all sequence parallel ranks
-        # Each sp_rank has its own piece, we need to gather them first
-        gathered_sp = [torch.zeros_like(local_output) for _ in range(self.sp_world_size)]
-        torch.distributed.all_gather(gathered_sp, local_output, group=self.sp_group)
+            # Step 1: Gather from all sequence parallel ranks
+            # Each sp_rank has its own piece, we need to gather them first
+            gathered_sp = [torch.zeros_like(local_output) for _ in range(self.sp_world_size)]
+            torch.distributed.all_gather(gathered_sp, local_output.contiguous(), group=self.sp_group)
 
-        # Concatenate the sp pieces to form the complete chunk for this rp_rank
-        rp_chunk = torch.cat(gathered_sp, dim=dim)
+            # Concatenate the sp pieces to form the complete chunk for this rp_rank
+            rp_chunk = torch.cat(gathered_sp, dim=dim)
 
-        # Step 2: Gather all rp chunks
-        gathered_rp = [torch.zeros_like(rp_chunk) for _ in range(self.rp_world_size)]
-        torch.distributed.all_gather(gathered_rp, rp_chunk, group=self.rp_group)
+            # Step 2: Gather all rp chunks
+            gathered_rp = [torch.zeros_like(rp_chunk) for _ in range(self.rp_world_size)]
+            torch.distributed.all_gather(gathered_rp, rp_chunk, group=self.rp_group)
 
-        # Step 3: Reconstruct the original tensor by unfolding the Z-pattern
-        # We need to separate each rp chunk into two parts as per the original pattern
-        full_seq_len = local_seq_len * self.world_size
-        chunk_size = full_seq_len // (2 * self.rp_world_size)
+            # Step 3: Reconstruct the original tensor by unfolding the Z-pattern
+            # We need to separate each rp chunk into two parts as per the original pattern
+            full_seq_len = local_seq_len * self.world_size
+            chunk_size = full_seq_len // (2 * self.rp_world_size)
 
-        # Initialize the full output tensor
-        full_output = torch.zeros([batch_size, full_seq_len, *rest], device=local_output.device)
+            # Initialize the full output tensor
+            full_output = torch.zeros([batch_size, full_seq_len, *rest], device=local_output.device)
 
-        # Place each chunk in its correct position
-        for i in range(self.rp_world_size):
-            # In the original split, rank i got chunk[i] and chunk[2*rp_world_size-i-1]
-            # Now we need to place them back
-            full_output[:, i * chunk_size:(i + 1) * chunk_size] = gathered_rp[i][:, :chunk_size]
-            full_output[:, (2 * self.rp_world_size - i - 1) * chunk_size:(2 * self.rp_world_size - i) * chunk_size] = \
-            gathered_rp[i][:, chunk_size:]
+            # Place each chunk in its correct position
+            for i in range(self.rp_world_size):
+                # In the original split, rank i got chunk[i] and chunk[2*rp_world_size-i-1]
+                # Now we need to place them back
+                full_output[:, i * chunk_size:(i + 1) * chunk_size] = gathered_rp[i][:, :chunk_size]
+                full_output[:, (2 * self.rp_world_size - i - 1) * chunk_size:(2 * self.rp_world_size - i) * chunk_size] = \
+                gathered_rp[i][:, chunk_size:]
 
-        return full_output.contiguous()
+            return full_output.contiguous()
+        else:
+            gathered_sp = torch.empty((local_output.shape[0] * self.sp_world_size, local_output.shape[1]),
+                                       dtype=local_output.dtype,
+                                       device=local_output.device)
+            dist.all_gather_into_tensor(gathered_sp, local_output, group=self.sp_group)
+            gathered_sp = torch.cat(gathered_sp.split(local_output.shape[0], dim=0), dim=1)
+            return gathered_sp.contiguous()
 
     def _split(self, input, dim: int):
         """Split tensor for sequence parallel"""
         if self.world_size == 1:
             return input
 
-        input_dim = input.dim()
-        assert input_dim >= 2
-        batch_size, seq_len, *rest = input.shape
+        if self.rp_world_size > 1:
+            input_dim = input.dim()
+            assert input_dim >= 2
+            batch_size, seq_len, *rest = input.shape
 
-        value_chunks = input.chunk(2 * self.rp_world_size, dim=dim)
+            value_chunks = input.chunk(2 * self.rp_world_size, dim=dim)
 
-        local_value = torch.cat(
-            [value_chunks[self.rp_rank], value_chunks[2 * self.rp_world_size - self.rp_rank - 1]], dim=dim
-        ).chunk(self.sp_world_size, dim=dim)[self.sp_rank]
+            local_value = torch.cat(
+                [value_chunks[self.rp_rank], value_chunks[2 * self.rp_world_size - self.rp_rank - 1]], dim=dim
+            ).chunk(self.sp_world_size, dim=dim)[self.sp_rank]
 
-        new_shape = [batch_size, seq_len // self.world_size] + rest
-        return local_value.reshape(new_shape).contiguous()
+            new_shape = [batch_size, seq_len // self.world_size] + rest
+            return local_value.reshape(new_shape).contiguous()
+        else:
+            rank = self.sp_rank
+            dim_size = input.size(dim)
+            assert dim_size % self.sp_world_size == 0, (f'The dimension to split ({dim_size}) is not a multiple of '
+                                                        f'world size ({self.sp_world_size}), cannot split tensor evenly')
+
+            tensor_list = torch.split(input, dim_size // self.sp_world_size, dim=dim)
+            output = tensor_list[rank].contiguous()
+            return output
 
     def pad_and_split_inputs(self,
                              input_ids,
@@ -492,12 +510,12 @@ class SequenceParallel:
     @property
     def rp_group(self):
         """Return the data parallel group"""
-        return self.device_mesh['ring'].get_group() if self.device_mesh else None
+        return self.device_mesh['ring'].get_group() if self.device_mesh and 'ring' in self.device_mesh.mesh_dim_names else None
 
     @property
     def rp_rank(self):
         """Return the data parallel rank"""
-        return dist.get_rank(self.device_mesh['ring'].get_group()) if self.device_mesh else 0
+        return dist.get_rank(self.device_mesh['ring'].get_group()) if self.device_mesh and 'ring' in self.device_mesh.mesh_dim_names else -1
 
     def pad_and_split_extra_inputs(self, inputs):
         """Common input preparation function"""
