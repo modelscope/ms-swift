@@ -272,8 +272,7 @@ class Ulysses(CommonSequenceParallel):
                     key = key.transpose(1, 2)
                     value = value.transpose(1, 2)
                     if self.rp_world_size > 1:
-                        from ring_flash_attn.zigzag_ring_flash_attn import (zigzag_ring_flash_attn_func,
-                                                                            llama3_flash_attn_varlen_func)
+                        from .zigzag_ring_flash_attn import zigzag_ring_flash_attn_func
                         output = zigzag_ring_flash_attn_func(query, key, value,
                                                     causal=module.is_causal,
                                                     dropout_p=kwargs.get('dropout', 0.0),
