@@ -383,9 +383,4 @@ class TunerMixin:
                 queue_size=args.galore_queue_size,
             )
             args.training_args.galore_config = args.galore_config
-
-        if args.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            sequence_parallel.prepare_model(model, template.tokenizer)
-
         return model

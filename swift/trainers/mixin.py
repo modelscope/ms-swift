@@ -769,7 +769,7 @@ class SwiftMixin:
             labels_output = torch.empty((shape0 * sequence_parallel.sp_world_size, labels.shape[1]),
                                         dtype=labels.dtype,
                                         device=labels.device)
-            dist.all_gather_into_tensor(labels_output, labels, group=sequence_parallel.sp_group)
+            dist.all_gather_into_tensor(labels_output, labels.contiguous(), group=sequence_parallel.sp_group)
             labels_output = torch.cat(labels_output.split(shape0, dim=0), dim=1)
             # roll back to fit compute_acc
             labels_output = torch.roll(labels_output, shifts=1, dims=1)
