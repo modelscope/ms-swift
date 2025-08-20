@@ -166,9 +166,11 @@ class VllmEngine(InferEngine):
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
         if self.use_async_engine:
             engine_cls = AsyncEngineArgs
-            engine_kwargs['disable_log_requests'] = True
         else:
             engine_cls = EngineArgs
+        parameters = inspect.signature(engine_cls).parameters
+        if self.use_async_engine and 'disable_log_requests' in parameters:
+            engine_kwargs['disable_log_requests'] = True
         parameters = inspect.signature(engine_cls).parameters
         if 'enable_lora' in parameters and enable_lora:
             engine_kwargs['enable_lora'] = enable_lora
