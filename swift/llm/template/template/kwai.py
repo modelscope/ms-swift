@@ -44,7 +44,10 @@ class KeyeVLTemplate(Template):
             video, video_kwargs = fetch_video({'video': video}, return_video_sample_fps=True)
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
-            inputs.videos[index] = (video, video_kwargs)
+            inputs.videos[index] = video
+            if 'fps' not in inputs.mm_processor_kwargs:
+                inputs.mm_processor_kwargs['fps'] = []
+            inputs.mm_processor_kwargs['fps'].append(video_kwargs)
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -53,15 +56,12 @@ class KeyeVLTemplate(Template):
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
-
-        images = inputs.images
-        videos = [video[0] for video in inputs.videos]
-        fps = [video[1] for video in inputs.videos]
         for media_type in ['images', 'videos']:
-            if locals()[media_type]:
+            mm_data = getattr(inputs, media_type)
+            if mm_data:
                 if media_type == 'images':
                     media_token = self.image_token_id
-                    media_inputs = processor.image_processor(images=images, return_tensors='pt', do_resize=False)
+                    media_inputs = processor.image_processor(images=mm_data, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
                     kwargs = {}
@@ -70,9 +70,10 @@ class KeyeVLTemplate(Template):
                     else:
                         processor_func = processor.image_processor
                         kwargs['images'] = None
-                    media_inputs = processor_func(videos=videos, return_tensors='pt', do_resize=False, **kwargs)
+                    media_inputs = processor_func(videos=mm_data, return_tensors='pt', do_resize=False, **kwargs)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
+                    fps = inputs.mm_processor_kwargs['fps']
                     media_inputs['second_per_grid_ts'] = [
                         processor.image_processor.temporal_patch_size / tmp for tmp in fps
                     ]
