@@ -207,7 +207,7 @@ When `response_loss_mask` is provided, `loss_scale` is ignored.
 For how to return response_loss_mask, see the [ToolCallScheduler class](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py)
 ### Reward-function related tips
 
-**Accessing multi-turn information in a reward function**
+**Accessing multi-turn rollout information in a reward function**
 
 Return a `rollout_infos` object from `step` / `run`, then read it from `kwargs` in the reward function:
 
@@ -224,12 +224,7 @@ class RewardFunction():
         ...
 ```
 
-**Getting results of the same trajectory inside a reward function**
-
-Use `kwargs['global_inputs']` to access the full rollout result,
-match trajectories via `request_id`, and return rewards only for the data of the current process.
-
-### Accessing additional dataset information
+### Accessing additional dataset information in scheduler
 
 Set `--vllm_server_pass_dataset` on the training side to pass other dataset columns to the scheduler.
 They can be read from `infer_request.data_dict`.
