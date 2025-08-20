@@ -120,6 +120,9 @@ class RolloutArguments(DeployArguments):
         if self.vllm_reasoning_parser is not None:
             raise ValueError('vllm_reasoning_parser is not supported for Rollout, please unset it.')
 
+        if self.multi_turn_scheduler and not self.vllm_use_async_engine:
+            raise ValueError('please set vllm_use_async_engine to True with multi-turn scheduler.')
+
     def _check_device_count(self):
         local_device_count = get_device_count()
         required_device_count = self.vllm_data_parallel_size * self.vllm_tensor_parallel_size

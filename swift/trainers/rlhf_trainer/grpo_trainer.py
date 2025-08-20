@@ -691,15 +691,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Step 2: First-turn rollout
         rollout_outputs: List[RolloutOutput] = self._rollout(inputs, request_config, is_global_inputs)
 
-        # Step 3: Handle single-turn (no scheduler, no async engine)
-        if not self.multi_turn_scheduler and not self.vllm_use_async_engine:
+        # Step 3: Handle single-turn or server multi-turn
+        if not self.multi_turn_scheduler or self.enable_server_multi_turn:
             return self._postprocess_rollout_outputs(inputs, rollout_outputs)
 
-        # Step 4: Handle async engine (multi-turn handled inside the engine)
-        if self.vllm_use_async_engine:
-            return self._postprocess_rollout_outputs(inputs, rollout_outputs)
-
-        # Step 5: Handle multi-turn locally
+        # Step 4: Handle multi-turn colocate
         return self._sync_multi_turn_infer(inputs, rollout_outputs, request_config)
 
     def async_generate_rollout(self, all_inputs):
@@ -2215,7 +2211,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         else:
             all_outputs = [None] * len(all_requests)
         # Handle async engine the outputs count may exceed inputs count
-        if self.vllm_use_async_engine:
+        if self.enable_server_multi_turn:
             outputs_count = [len(all_outputs)] if self.accelerator.is_main_process else [0]
             outputs_count = gather_object(outputs_count)[0]  # Broadcast count to all processes
 
@@ -2228,7 +2224,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             all_outputs = broadcast_object_list(all_outputs, from_process=0)
 
             # Calculate slice for this process's outputs
-            if not self.vllm_use_async_engine and self.multi_turn_scheduler:
+            if not self.enable_server_multi_turn:
                 # Special handling for colocated + multi-turn inference with varying request counts
                 start_idx = sum(all_requests_lengths[:self.accelerator.process_index])
                 end_idx = start_idx + all_requests_lengths[self.accelerator.process_index]
