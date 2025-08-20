@@ -1231,7 +1231,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             InferRequest.remove_response(messages)
             template_inputs, _ = StdTemplateInputs.from_dict({'messages': messages})
             res = self.template.encode(template_inputs)
-            prompts_text.append(self.template.tokenizer.decode(res['input_ids']))
+            prompts_text.append(self.template.safe_decode(res['input_ids']))
         return prompts_text
 
     @patch_profiling_decorator
