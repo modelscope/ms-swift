@@ -112,7 +112,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # for async generate
         self.train_queue = Queue()
         self.eval_queue = Queue()
-
+        self.is_multimodal = model.model.model_meta.is_multimodal
         self.processing_class = kwargs.get('template').tokenizer
 
         if not isinstance(reward_funcs, list):
@@ -252,6 +252,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.enable_offload = False
         self.use_gym_env = False
         self.enable_server_multi_turn = self.args.multi_turn_scheduler is not None
+        # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
+        self.dynamic_num_samples = False
         if self.use_vllm:
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
@@ -892,8 +894,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # gather objects
         total_rewards_per_func = gather_object(local_rewards_list)
-        total_prompt_ids = gather_object(prompt_ids)
-        total_request_ids = gather_object(request_ids)
+        total_prompt_ids = None
+        total_request_ids = None
+        if self.dynamic_num_samples:
+            total_prompt_ids = gather_object(prompt_ids)
+            total_request_ids = gather_object(request_ids)
         total_rewards_per_func = torch.tensor(
             total_rewards_per_func, dtype=torch.float32, device=self.accelerator.device)
 
@@ -940,102 +945,148 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return rewards_per_func
 
-    def _compute_advantages(self, rewards: torch.Tensor, prompt_ids: List[str], request_ids: List[str]) -> torch.Tensor:
+    def _compute_advantages(self,
+                            rewards: torch.Tensor,
+                            prompt_ids: Optional[List[str]] = None,
+                            request_ids: Optional[List[str]] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Compute normalized advantages by grouping rewards based on request IDs.
+        Compute normalized advantages for policy gradient training.
 
-        This method performs group-wise advantage computation where rewards are normalized
-        within each prompt group by subtracting the group mean. Each request_id contributes
-        only once to the advantage computation.
+        There are two computation modes:
+        1. **Default grouped mode (no prompt_ids/request_ids provided):**
+        - Rewards are reshaped into groups of size `self.num_generations`.
+        - Advantages are computed as: advantage = reward - group_mean.
+        - Optionally normalized by group standard deviation if
+            `self.args.scale_rewards` is enabled.
+        - Assumes that rewards are ordered by prompt and that each prompt
+            has exactly `num_generations` completions.
 
-        The computation process:
-        1. Groups rewards by unique request_id and validates consistency
-        2. Creates a mapping from request_id to unique reward (each request_id contributes once)
-        3. Groups unique rewards by prompt_id for statistical computation
-        4. Calculates advantages as (reward - prompt_group_mean)
-        5. Optionally normalizes by prompt group standard deviation if scale_rewards is enabled
-        6. Fills advantages for all samples with same request_id
-        7. Tracks training/evaluation metrics for monitoring
+        2. **Request-aware mode (prompt_ids and request_ids provided):**
+        - Groups rewards by request_id and validates consistency (same request_id → same reward).
+        - Groups unique rewards by prompt_id to compute prompt-level statistics.
+        - Advantages are calculated as: advantage = reward - prompt_mean.
+        - If `self.args.scale_rewards` is enabled, advantages are normalized by
+            prompt-level standard deviation.
+        - Each request_id’s computed advantage is propagated to all its samples.
+
+        Additionally, this function logs metrics for monitoring training/evaluation.
 
         Args:
-            rewards (torch.Tensor): Reward values from all processes with shape (num_examples,)
-            prompt_ids (List[str]): Corresponding prompt identifiers with length num_examples
-            request_ids (List[str]): Corresponding request identifiers with length num_examples
+            rewards (torch.Tensor):
+                Reward values from all processes, shape (num_examples,).
+            prompt_ids (List[str], optional):
+                Prompt identifiers, required for request-aware mode.
+            request_ids (List[str], optional):
+                Request identifiers, required for request-aware mode.
 
         Returns:
-            tuple: A tuple containing:
-                - advantages (torch.Tensor): Computed advantages with same shape as rewards
-                - rewards_std (torch.Tensor): Group standard deviations for each sample
+            Tuple[torch.Tensor, torch.Tensor]:
+                - **advantages**: Computed advantages, same shape as `rewards`.
+                - **rewards_std**: Standard deviation used for each sample.
         """
-        assert rewards.shape[0] == len(prompt_ids) == len(request_ids)
+
         mode = 'train' if self.model.training else 'eval'
-        advantages = torch.zeros_like(rewards)
-        # calculate rewards_std for dynamic_sampling
-        rewards_std = torch.zeros_like(rewards)
 
-        # Step 1: Group rewards by request_id and validate consistency
-        request_id_to_reward = {}
-        request_id_to_prompt_id = {}
+        # --------------------------------------------------
+        # Case 1: Default grouped mode (no prompt/request IDs)
+        # --------------------------------------------------
+        if not prompt_ids or not request_ids:
+            grouped_rewards = rewards.view(-1, self.num_generations)
+            group_rewards_mean = grouped_rewards.mean(dim=1)
+            group_rewards_std = grouped_rewards.std(dim=1)
 
-        for i, request_id in enumerate(request_ids):
-            if request_id not in request_id_to_reward:
-                request_id_to_reward[request_id] = rewards[i]
-                request_id_to_prompt_id[request_id] = prompt_ids[i]
-            else:
-                # Validate that same request_id has consistent rewards
-                if not torch.isclose(request_id_to_reward[request_id], rewards[i]):
-                    raise ValueError(f'Rewards for request_id {request_id} are inconsistent: '
-                                     f'{request_id_to_reward[request_id]} vs {rewards[i]}')
+            # Broadcast to match original shape
+            group_rewards_mean = group_rewards_mean.repeat_interleave(self.num_generations)
+            group_rewards_std = group_rewards_std.repeat_interleave(self.num_generations)
 
-        # Step 2: Group unique rewards by prompt_id for statistical computation
-        prompt_id_to_rewards = {}
-        for request_id, reward in request_id_to_reward.items():
-            prompt_id = request_id_to_prompt_id[request_id]
-            if prompt_id not in prompt_id_to_rewards:
-                prompt_id_to_rewards[prompt_id] = []
-            prompt_id_to_rewards[prompt_id].append(reward)
-
-        # Step 3: Compute prompt-level statistics
-        prompt_id_to_stats = {}
-        group_rewards_mean = []
-        group_rewards_std = []
-
-        for prompt_id, prompt_rewards in prompt_id_to_rewards.items():
-            prompt_rewards_tensor = torch.tensor(prompt_rewards, dtype=rewards.dtype, device=rewards.device)
-            prompt_mean = prompt_rewards_tensor.mean()
-            prompt_std = prompt_rewards_tensor.std()
-            prompt_id_to_stats[prompt_id] = (prompt_mean, prompt_std)
-
-            group_rewards_mean.append(prompt_mean)
-            group_rewards_std.append(prompt_std)
-
-        # Step 4: Calculate advantages for each request_id
-        for request_id, reward in request_id_to_reward.items():
-            prompt_id = request_id_to_prompt_id[request_id]
-            prompt_mean, prompt_std = prompt_id_to_stats[prompt_id]
-
-            # Calculate advantage for this request
-            request_advantage = reward - prompt_mean
-
-            # Optional: scale by standard deviation
+            advantages = rewards - group_rewards_mean
             if self.args.scale_rewards:
-                request_advantage /= (prompt_std + 1e-4)
+                advantages = advantages / (group_rewards_std + 1e-4)
 
-            # Fill advantages for all samples with this request_id
-            for i, rid in enumerate(request_ids):
-                if rid == request_id:
-                    advantages[i] = request_advantage
-                    rewards_std[i] = prompt_std
-
-        if group_rewards_mean:
-            # compute metrics
-            group_rewards_mean = torch.stack(group_rewards_mean)
-            group_rewards_std = torch.stack(group_rewards_std)
+            rewards_std = group_rewards_std
             is_std_zero = torch.isclose(group_rewards_std, torch.zeros_like(group_rewards_std))
 
+            # Log metrics
             self._metrics[mode]['reward'].append(group_rewards_mean.mean().item())
             self._metrics[mode]['reward_std'].append(group_rewards_std.mean().item())
             self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
+            return advantages, rewards_std
+
+        # --------------------------------------------------
+        # Case 2: Request-aware mode:
+        #        for dynamic nums of samples in multi-turn scenario
+        #        (e.g. the num of rollout outputs is not equal to the num of rollout inputs)
+        # --------------------------------------------------
+        else:
+            assert rewards.shape[0] == len(prompt_ids) == len(request_ids)
+            mode = 'train' if self.model.training else 'eval'
+            advantages = torch.zeros_like(rewards)
+            # calculate rewards_std for dynamic_sampling
+            rewards_std = torch.zeros_like(rewards)
+
+            # Step 1: Group rewards by request_id and validate consistency
+            request_id_to_reward = {}
+            request_id_to_prompt_id = {}
+
+            for i, request_id in enumerate(request_ids):
+                if request_id not in request_id_to_reward:
+                    request_id_to_reward[request_id] = rewards[i]
+                    request_id_to_prompt_id[request_id] = prompt_ids[i]
+                else:
+                    # Validate that same request_id has consistent rewards
+                    if not torch.isclose(request_id_to_reward[request_id], rewards[i]):
+                        raise ValueError(f'Rewards for request_id {request_id} are inconsistent: '
+                                         f'{request_id_to_reward[request_id]} vs {rewards[i]}')
+
+            # Step 2: Group unique rewards by prompt_id for statistical computation
+            prompt_id_to_rewards = {}
+            for request_id, reward in request_id_to_reward.items():
+                prompt_id = request_id_to_prompt_id[request_id]
+                if prompt_id not in prompt_id_to_rewards:
+                    prompt_id_to_rewards[prompt_id] = []
+                prompt_id_to_rewards[prompt_id].append(reward)
+
+            # Step 3: Compute prompt-level statistics
+            prompt_id_to_stats = {}
+            group_rewards_mean = []
+            group_rewards_std = []
+
+            for prompt_id, prompt_rewards in prompt_id_to_rewards.items():
+                prompt_rewards_tensor = torch.tensor(prompt_rewards, dtype=rewards.dtype, device=rewards.device)
+                prompt_mean = prompt_rewards_tensor.mean()
+                prompt_std = prompt_rewards_tensor.std()
+                prompt_id_to_stats[prompt_id] = (prompt_mean, prompt_std)
+
+                group_rewards_mean.append(prompt_mean)
+                group_rewards_std.append(prompt_std)
+
+            # Step 4: Calculate advantages for each request_id
+            for request_id, reward in request_id_to_reward.items():
+                prompt_id = request_id_to_prompt_id[request_id]
+                prompt_mean, prompt_std = prompt_id_to_stats[prompt_id]
+
+                # Calculate advantage for this request
+                request_advantage = reward - prompt_mean
+
+                # Optional: scale by standard deviation
+                if self.args.scale_rewards:
+                    request_advantage /= (prompt_std + 1e-4)
+
+                # Fill advantages for all samples with this request_id
+                for i, rid in enumerate(request_ids):
+                    if rid == request_id:
+                        advantages[i] = request_advantage
+                        rewards_std[i] = prompt_std
+
+            if group_rewards_mean:
+                # compute metrics
+                group_rewards_mean = torch.stack(group_rewards_mean)
+                group_rewards_std = torch.stack(group_rewards_std)
+                is_std_zero = torch.isclose(group_rewards_std, torch.zeros_like(group_rewards_std))
+
+        self._metrics[mode]['reward'].append(group_rewards_mean.mean().item())
+        self._metrics[mode]['reward_std'].append(group_rewards_std.mean().item())
+        self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
 
         return advantages, rewards_std
 
@@ -1172,6 +1223,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             loss_mask = data['response_loss_mask']
                         data['messages'] = replace_assistant_response_with_ids(data['messages'],
                                                                                data['response_token_ids'], loss_mask)
+                # if self.dynamic_num_samples and self.is_multimodal:
+                if self.is_multimodal:  # FOR DEBUG
+                    batch_encoded_inputs['_origin_data'] = batch
                 batch_encoded_inputs = [template.encode(data) for data in batch]
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
 
@@ -1291,7 +1345,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         batch_size = inputs['input_ids'].shape[0] if 'input_ids' in inputs else len(inputs.get('completion_mask', []))
         expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
 
-        should_chunk = self.enable_server_multi_turn and any(gather_object([batch_size > expected_bs]))
+        should_chunk = self.dynamic_num_samples and any(gather_object([batch_size > expected_bs]))
         if not should_chunk:
             return self._compute_loss_single(model, inputs)
         else:
@@ -1684,14 +1738,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         to control memory usage.
         """
         # Check if we need to use memory-efficient batching
-        batch_size = inputs['input_ids'].shape[0]
-        mode = 'train' if self.model.training else 'eval'
-        expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
-        should_chunk = self.enable_server_multi_turn and any(gather_object([batch_size > expected_bs]))
-        if not should_chunk:
-            return self._get_per_token_logps_and_entropies_single(model, inputs, compute_entropy=compute_entropy)
-        else:
-            return self._get_per_token_logps_and_entropies_chunked(model, inputs, compute_entropy=compute_entropy)
+        # batch_size = inputs['input_ids'].shape[0]
+        # mode = 'train' if self.model.training else 'eval'
+        # expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size # noqa
+        # should_chunk = self.dynamic_num_samples and any(gather_object([batch_size > expected_bs]))
+        # if not should_chunk:
+        #     return self._get_per_token_logps_and_entropies_single(model, inputs, compute_entropy=compute_entropy)
+        # else:
+        return self._get_per_token_logps_and_entropies_chunked(model, inputs, compute_entropy=compute_entropy)
 
     def _get_per_token_logps_and_entropies_single(self,
                                                   model,
@@ -1706,8 +1760,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             parameters = inspect.signature(unwrapped_model.forward).parameters
         use_local_entropy = not hasattr(super(), '_get_per_token_logps_and_entropies') and compute_entropy
 
-        can_use_super = (not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters
-                         and not use_local_entropy)
+        can_use_super = (not self.is_multimodal and 'logits_to_keep' in parameters and not use_local_entropy)
 
         if can_use_super:
             # save memory
@@ -1770,6 +1823,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             Concatenated per-token entropies, or ``None`` if ``compute_entropy`` is
             ``False``.
         """
+
+        def get_chunked_inputs(inputs, start_idx, end_idx):
+            chunk_inputs = {}
+            if not self.is_multimodal:
+                # for LLM, slice the inputs
+                for key, val in inputs.items():
+                    if isinstance(val, torch.Tensor):
+                        chunk_inputs[key] = val[start_idx:end_idx]
+                    else:
+                        chunk_inputs[key] = val
+            else:
+                # for MLLM, re-encode to get mm-related inputs
+                origin_data = inputs['_origin_data'][start_idx:end_idx]
+                template = self.template
+                with self._template_context(template):
+                    chunk_inputs = [template.encode(data) for data in origin_data]
+                    chunk_inputs = to_device(template.data_collator(chunk_inputs), self.model.device)
+                return chunk_inputs
+
         batch_size = inputs['input_ids'].shape[0]
         mode = 'train' if self.model.training else 'eval'
         chunk_size = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
@@ -1789,12 +1861,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             end_idx = min(start_idx + new_chunk_size, batch_size)
 
             if start_idx < end_idx:
-                for key, val in inputs.items():
-                    # TODO: pixel values?
-                    if isinstance(val, torch.Tensor):
-                        chunk_inputs[key] = val[start_idx:end_idx]
-                    else:
-                        chunk_inputs[key] = val
+                chunk_inputs = get_chunked_inputs(inputs, start_idx, end_idx)
 
             chunk_logps, chunk_entropies = self._get_per_token_logps_and_entropies_single(
                 model, chunk_inputs, compute_entropy)
@@ -1815,7 +1882,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # unwrap the model to access the model.model
         if is_peft_model(unwrapped_model):
             unwrapped_model = unwrapped_model.base_model.model
-        if not unwrapped_model.model_meta.is_multimodal:
+        if not self.is_multimodal:
             last_hidden_state = unwrapped_model.model(
                 input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask']).last_hidden_state
         else:
@@ -2212,9 +2279,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             all_outputs = [None] * len(all_requests)
         # Handle async engine the outputs count may exceed inputs count
         if self.enable_server_multi_turn:
+            # reset to false before get the num of rollout outputs
+            self.dynamic_num_samples = False
             outputs_count = [len(all_outputs)] if self.accelerator.is_main_process else [0]
             outputs_count = gather_object(outputs_count)[0]  # Broadcast count to all processes
-
+            if outputs_count != len(all_requests):
+                self.dynamic_num_samples = True
             # Initialize empty outputs for non-main processes
             if not self.accelerator.is_main_process:
                 all_outputs = [None] * outputs_count
@@ -2224,7 +2294,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             all_outputs = broadcast_object_list(all_outputs, from_process=0)
 
             # Calculate slice for this process's outputs
-            if not self.enable_server_multi_turn:
+            if not self.enable_server_multi_turn or not self.dynamic_num_samples:
                 # Special handling for colocated + multi-turn inference with varying request counts
                 start_idx = sum(all_requests_lengths[:self.accelerator.process_index])
                 end_idx = start_idx + all_requests_lengths[self.accelerator.process_index]
@@ -2432,7 +2502,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             return input_data
 
-        if not self.enable_server_multi_turn:
+        if not self.dynamic_num_samples:
             assert len(inputs) == len(outputs)
             return [
                 merge_output_input_data(deepcopy(input_data), output) for input_data, output in zip(inputs, outputs)
