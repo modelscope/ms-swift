@@ -247,9 +247,7 @@ class Qwen2VLTemplate(Template):
                 video = video.to(torch.uint8)
             inputs.videos[index] = video
             if self.version == 'v2_5':
-                if 'fps' not in inputs.mm_processor_kwargs:
-                    inputs.mm_processor_kwargs['fps'] = []
-                inputs.mm_processor_kwargs['fps'].append(video_kwargs)
+                inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:

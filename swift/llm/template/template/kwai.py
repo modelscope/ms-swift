@@ -45,9 +45,7 @@ class KeyeVLTemplate(Template):
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
             inputs.videos[index] = video
-            if 'fps' not in inputs.mm_processor_kwargs:
-                inputs.mm_processor_kwargs['fps'] = []
-            inputs.mm_processor_kwargs['fps'].append(video_kwargs)
+            inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
