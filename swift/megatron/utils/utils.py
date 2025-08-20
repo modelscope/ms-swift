@@ -10,6 +10,7 @@ from megatron.core.models.common.embeddings.language_model_embedding import Lang
 from megatron.core.transformer.moe.router import TopKRouter
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint, sharded_state_dict_default
 from megatron.training import checkpointing, get_args
+from peft.utils.other import ModulesToSaveWrapper
 
 from swift.utils import activate_parameters, find_layers, freeze_parameters, get_logger, get_model_parameter_info
 
@@ -186,9 +187,9 @@ def tuners_sharded_state_dict(
     return sharded_state_dict
 
 
-def copy_modules_to_save_weight(model):
+def copy_original_module_weight(model):
     for module in model.modules():
-        if module.__class__.__name__ == 'ModulesToSaveWrapper' and hasattr(module, 'modules_to_save'):
+        if isinstance(module, ModulesToSaveWrapper) and hasattr(module, 'modules_to_save'):
             modules_to_save = module.modules_to_save
             original_module = module.original_module
             for k, module in modules_to_save.items():
@@ -198,9 +199,16 @@ def copy_modules_to_save_weight(model):
 def copy_ref_adapter_weight(model, ref_adapter_name: str):
     from swift.megatron.tuners import LoraParallelLinear
     for module in model.modules():
-        if not isinstance(module, LoraParallelLinear):
-            continue
-        for key in ['lora_A', 'lora_B', 'lora_embedding_A', 'lora_embedding_B']:
-            sub_module = getattr(module, key)
+        if isinstance(module, LoraParallelLinear):
+            for key in ['lora_A', 'lora_B']:
+                sub_module = getattr(module, key)
+                if 'default' in sub_module and ref_adapter_name in sub_module:
+                    sub_module[ref_adapter_name].load_state_dict(sub_module['default'].state_dict())
+            for key in ['lora_embedding_A', 'lora_embedding_B']:
+                sub_module = getattr(module, key)
+                if 'default' in sub_module and ref_adapter_name in sub_module:
+                    sub_module[ref_adapter_name].data.copy_(sub_module['default'])
+        elif isinstance(module, ModulesToSaveWrapper):
+            sub_module = module.modules_to_save
             if 'default' in sub_module and ref_adapter_name in sub_module:
                 sub_module[ref_adapter_name].load_state_dict(sub_module['default'].state_dict())
