@@ -929,8 +929,7 @@ class DataLoaderMixin:
     def get_train_dataloader(self, skip_batches=0):
         dataloader = None
         if self.template.sequence_parallel_size > 1:
-            dataloader = self.get_sp_dataloader(
-                self, self.train_dataset, self._train_batch_size, skip_batches=skip_batches)
+            dataloader = self.get_sp_dataloader(self.train_dataset, self._train_batch_size, skip_batches=skip_batches)
         if dataloader is None:
             # Higher efficiency
             if self.train_dataset is None:
