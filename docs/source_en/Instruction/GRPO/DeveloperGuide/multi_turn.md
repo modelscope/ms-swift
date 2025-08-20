@@ -166,6 +166,12 @@ For such cases override the `run` method in your scheduler to return the result 
 The built-in `ThinkingModelTipsScheduler` shows how to fully customise multi-turn inference by overriding `run()`.
 See the implementation in [multi_turn.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py).
 
+**NOTE**: In this scenario, the data for a single trajectory is split into multiple records. When computing rewards, you must assign the same reward to every record that belongs to the same trajectory.
+
+The complete trajectory can be accessed via `trajectory_inputs` in `kwargs`.
+
+For a concrete implementation, see the [MultiTurnThinkingTips class](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py)
+
 ### Returning response token IDs
 
 In the default workflow the scheduler returns text, the trainer re-encodes it to token IDs for training.
