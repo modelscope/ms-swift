@@ -247,6 +247,10 @@ register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))
 register_template(
     DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, template_cls=ThinkingTemplate, response_prefix='<think>\n'))
 
+# enable thinking: response_prefix='<think>'
+register_template(
+    DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v3_1, template_cls=ThinkingTemplate, response_prefix='</think>)'))
+
 
 class DeepseekVL2Template(DeepseekVLTemplate):
     image_placeholder = ['<image>\n']
