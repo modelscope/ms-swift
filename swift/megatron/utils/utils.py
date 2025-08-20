@@ -71,7 +71,7 @@ def _patch_deepcopy():
     import copy
     _origin_deepcopy = copy.deepcopy
 
-    def deepcopy(x, *args, **kwargs):
+    def new_deepcopy(x, *args, **kwargs):
         if getattr(x, 'tp_group', None) is not None:
             origin_tp_group = x.tp_group
             x.tp_group = None
@@ -81,7 +81,7 @@ def _patch_deepcopy():
         else:
             return _origin_deepcopy(x, *args, **kwargs)
 
-    copy.deepcopy = deepcopy
+    copy.deepcopy = new_deepcopy
     try:
         yield
     finally:
@@ -189,11 +189,10 @@ def tuners_sharded_state_dict(
 
 def copy_original_module_weight(model):
     for module in model.modules():
-        if isinstance(module, ModulesToSaveWrapper) and hasattr(module, 'modules_to_save'):
-            modules_to_save = module.modules_to_save
+        if isinstance(module, ModulesToSaveWrapper):
             original_module = module.original_module
-            for k, module in modules_to_save.items():
-                module.load_state_dict(original_module.state_dict())
+            default_module = module.modules_to_save['default']
+            original_module.load_state_dict(default_module.state_dict())
 
 
 def copy_ref_adapter_weight(model, ref_adapter_name: str):

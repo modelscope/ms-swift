@@ -7,7 +7,6 @@ from contextlib import contextmanager
 
 import megatron.core
 import torch
-import torch.distributed as dist
 import torch.nn
 from megatron.core import mpu
 from megatron.core.dist_checkpointing.mapping import ShardedTensorFactory
@@ -19,7 +18,6 @@ from megatron.core.utils import StragglerDetector
 from megatron.training import ft_integration, get_args, get_timers, is_last_rank, pretrain, print_rank_0, training
 from megatron.training.checkpointing import load_checkpoint
 from packaging import version
-from peft.utils.other import ModulesToSaveWrapper
 
 from swift.utils import JsonlWriter, deep_getattr, get_logger
 from ..utils import adapter_state_dict_context, copy_original_module_weight, prepare_mcore_model
