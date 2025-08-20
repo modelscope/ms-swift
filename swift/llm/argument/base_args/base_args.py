@@ -104,7 +104,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
 
     def _init_lazy_tokenize(self):
         if self.lazy_tokenize is None:
-            if self.model_meta.is_multimodal and not self.streaming and not self.packing:
+            if (self.model_meta is not None and self.model_meta.is_multimodal
+                    and not self.streaming and not self.packing):
                 self.lazy_tokenize = True
             else:
                 self.lazy_tokenize = False
@@ -172,7 +173,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
-        if self.max_length is None:
+        if self.max_length is None and self.model_info is not None:
             self.max_length = self.model_info.max_model_len
         if self.packing and self.packing_length is None:
             self.packing_length = self.max_length

@@ -166,7 +166,8 @@ class VllmEngine(InferEngine):
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
         if self.use_async_engine:
             engine_cls = AsyncEngineArgs
-            engine_kwargs['disable_log_requests'] = True
+            if 'disable_log_requests' in inspect.signature(AsyncEngineArgs.__init__).parameters:
+                engine_kwargs['disable_log_requests'] = True
         else:
             engine_cls = EngineArgs
         parameters = inspect.signature(engine_cls).parameters
