@@ -339,6 +339,46 @@ class SequenceParallel:
             tensor = torch.cat([tensor, padding_value.unsqueeze(0).repeat(tensor.shape[0], pad_num, 1)], dim=dim)
         return tensor
 
+    def _gather(self, local_output, dim: int):
+        """Gather tensor for sequence parallel - reverse of _split"""
+        if self.world_size == 1:
+            return local_output
+
+        input_dim = local_output.dim()
+        assert input_dim >= 2
+
+        batch_size, local_seq_len, *rest = local_output.shape
+
+        # Step 1: Gather from all sequence parallel ranks
+        # Each sp_rank has its own piece, we need to gather them first
+        gathered_sp = [torch.zeros_like(local_output) for _ in range(self.sp_world_size)]
+        torch.distributed.all_gather(gathered_sp, local_output, group=self.sp_group)
+
+        # Concatenate the sp pieces to form the complete chunk for this rp_rank
+        rp_chunk = torch.cat(gathered_sp, dim=dim)
+
+        # Step 2: Gather all rp chunks
+        gathered_rp = [torch.zeros_like(rp_chunk) for _ in range(self.rp_world_size)]
+        torch.distributed.all_gather(gathered_rp, rp_chunk, group=self.rp_group)
+
+        # Step 3: Reconstruct the original tensor by unfolding the Z-pattern
+        # We need to separate each rp chunk into two parts as per the original pattern
+        full_seq_len = local_seq_len * self.world_size
+        chunk_size = full_seq_len // (2 * self.rp_world_size)
+
+        # Initialize the full output tensor
+        full_output = torch.zeros([batch_size, full_seq_len, *rest], device=local_output.device)
+
+        # Place each chunk in its correct position
+        for i in range(self.rp_world_size):
+            # In the original split, rank i got chunk[i] and chunk[2*rp_world_size-i-1]
+            # Now we need to place them back
+            full_output[:, i * chunk_size:(i + 1) * chunk_size] = gathered_rp[i][:, :chunk_size]
+            full_output[:, (2 * self.rp_world_size - i - 1) * chunk_size:(2 * self.rp_world_size - i) * chunk_size] = \
+            gathered_rp[i][:, chunk_size:]
+
+        return full_output.contiguous()
+
     def _split(self, input, dim: int):
         """Split tensor for sequence parallel"""
         if self.world_size == 1:
