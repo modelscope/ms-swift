@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
+from copy import deepcopy
 from typing import Optional, Tuple
 
 import torch.distributed as dist
@@ -9,6 +10,7 @@ from megatron.core.models.common.embeddings.language_model_embedding import Lang
 from megatron.core.transformer.moe.router import TopKRouter
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint, sharded_state_dict_default
 from megatron.training import checkpointing, get_args
+from peft.utils.other import ModulesToSaveWrapper
 
 from swift.utils import activate_parameters, find_layers, freeze_parameters, get_logger, get_model_parameter_info
 
@@ -64,6 +66,29 @@ def set_linear_is_expert(model):
             module.is_expert = True
 
 
+@contextmanager
+def _patch_deepcopy():
+    import copy
+    _origin_deepcopy = copy.deepcopy
+
+    def new_deepcopy(x, *args, **kwargs):
+        if getattr(x, 'tp_group', None) is not None:
+            origin_tp_group = x.tp_group
+            x.tp_group = None
+            res = _origin_deepcopy(x, *args, **kwargs)
+            x.tp_group = origin_tp_group
+            res.tp_group = origin_tp_group
+            return res
+        else:
+            return _origin_deepcopy(x, *args, **kwargs)
+
+    copy.deepcopy = new_deepcopy
+    try:
+        yield
+    finally:
+        copy.deepcopy = _origin_deepcopy
+
+
 def prepare_adapter(model):
     from swift.tuners import LoraConfig, Swift
     args = get_args()
@@ -81,7 +106,15 @@ def prepare_adapter(model):
     }
     lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
     logger.info(f'lora_config: {lora_config}')
-    return Swift.prepare_model(model, lora_config)
+    with _patch_deepcopy():
+        model = Swift.prepare_model(model, lora_config)
+    if args.ref_adapter_load:
+        lora_config = deepcopy(lora_config)
+        lora_config.inference_mode = True
+        with _patch_deepcopy():
+            model.add_adapter('ref_adapter', lora_config)
+        model.base_model._cast_adapter_dtype(adapter_name='ref_adapter', autocast_adapter_dtype=True)
+    return model
 
 
 def prepare_mcore_model(model):
@@ -157,8 +190,25 @@ def tuners_sharded_state_dict(
 
 def copy_original_module_weight(model):
     for module in model.modules():
-        if 'ModulesToSaveWrapper' in module.__class__.__name__ and hasattr(module, 'original_module'):
+        if isinstance(module, ModulesToSaveWrapper):
             original_module = module.original_module
-            modules_to_save = module.modules_to_save
-            if 'default' in modules_to_save:
-                original_module.load_state_dict(modules_to_save['default'].state_dict())
+            default_module = module.modules_to_save['default']
+            original_module.load_state_dict(default_module.state_dict())
+
+
+def copy_ref_adapter_weight(model, ref_adapter_name: str):
+    from swift.megatron.tuners import LoraParallelLinear
+    for module in model.modules():
+        if isinstance(module, LoraParallelLinear):
+            for key in ['lora_A', 'lora_B']:
+                sub_module = getattr(module, key)
+                if 'default' in sub_module and ref_adapter_name in sub_module:
+                    sub_module[ref_adapter_name].load_state_dict(sub_module['default'].state_dict())
+            for key in ['lora_embedding_A', 'lora_embedding_B']:
+                sub_module = getattr(module, key)
+                if 'default' in sub_module and ref_adapter_name in sub_module:
+                    sub_module[ref_adapter_name].data.copy_(sub_module['default'])
+        elif isinstance(module, ModulesToSaveWrapper):
+            sub_module = module.modules_to_save
+            if 'default' in sub_module and ref_adapter_name in sub_module:
+                sub_module[ref_adapter_name].load_state_dict(sub_module['default'].state_dict())

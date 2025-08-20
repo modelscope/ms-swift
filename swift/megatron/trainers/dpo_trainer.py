@@ -13,6 +13,7 @@ from torch.distributed.nn import all_reduce
 
 from swift.trainers import DPOTrainer
 from swift.utils import get_current_device, get_logger
+from ..utils import copy_ref_adapter_weight
 from .trainer import MegatronTrainer
 from .utils import get_batch
 
@@ -51,7 +52,11 @@ class MegatronDPOTrainer(MegatronTrainer):
             self.ref_model.eval()
         else:
             self.ref_model = None
-        return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
+        model, optimizer, opt_param_scheduler = super().setup_model_and_optimizer(model_provider_func, model_type,
+                                                                                  *_args, **kwargs)
+        if args.ref_adapter_load is not None:
+            copy_ref_adapter_weight(self.unwrapped_model, 'ref_adapter')
+        return model, optimizer, opt_param_scheduler
 
     @staticmethod
     def _forward_step_helper(model, inputs):
@@ -157,10 +162,17 @@ class MegatronDPOTrainer(MegatronTrainer):
             context = nullcontext()
             ref_model = unwrap_model(self.ref_model)
         else:
-            context = self.peft_model.disable_adapter()
+            if args.ref_adapter_load is None:
+                context = self.peft_model.disable_adapter()
+            else:
+                context = nullcontext()
             ref_model = self.unwrapped_model
         with context:
+            if args.ref_adapter_load:
+                self.peft_model.set_adapter('ref_adapter')
             yield ref_model
+            if args.ref_adapter_load:
+                self.peft_model.set_adapter('default')
 
     def _replace_data_iterator(self, data_iterator):
         args = get_args()
