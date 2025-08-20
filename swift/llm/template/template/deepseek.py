@@ -249,7 +249,7 @@ register_template(
 
 # enable thinking: response_prefix='<think>'
 register_template(
-    DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v3_1, template_cls=ThinkingTemplate, response_prefix='</think>)'))
+    DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v3_1, template_cls=ThinkingTemplate, response_prefix='</think>'))
 
 
 class DeepseekVL2Template(DeepseekVLTemplate):

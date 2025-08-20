@@ -96,7 +96,7 @@ def test_minimax_vl():
 
 
 def test_deepseek_v3_1():
-    tokenizer = get_model_tokenizer('deepseek-ai/DeepSeek-V3.1—Base', load_model=False)[1]
+    tokenizer = get_model_tokenizer('deepseek-ai/DeepSeek-V3.1-Base', load_model=False)[1]
     template = get_template(tokenizer.model_meta.template, tokenizer)
     inputs = TemplateInputs(messages=[{
         'role': 'system',
