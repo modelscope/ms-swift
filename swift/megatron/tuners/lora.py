@@ -86,8 +86,6 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         self.lora_dropout[adapter_name] = lora_dropout_layer
 
         # lora needs to be forced to upgrade to 32-bit precision, otherwise it will overflow
-        origin_params_dtype = self.config.params_dtype
-        self.config.params_dtype = torch.float32
         kwargs = {
             'skip_bias_add': False,
             'init_method': self.config.init_method,
@@ -116,11 +114,11 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 **kwargs,
             )
         elif self.is_parallel_a:
-            self.in_features = self.in_features * self.tp_size
+            in_features = self.in_features * self.tp_size
             if self.is_grouped:
                 lora_a = TERowParallelGroupedLinear(
                     num_gemms=self.base_layer.num_gemms,
-                    input_size=self.in_features,
+                    input_size=in_features,
                     output_size=r,
                     bias=False,
                     **kwargs,
@@ -135,7 +133,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 )
             else:
                 lora_a = TERowParallelLinear(
-                    input_size=self.in_features,
+                    input_size=in_features,
                     output_size=r,
                     bias=False,
                     input_is_parallel=True,
@@ -151,7 +149,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 )
                 lora_a.parallel_mode = self.base_layer.parallel_mode  # fix moe_shared_expert_overlap
         else:
-            self.out_features = self.out_features * self.tp_size
+            out_features = self.out_features * self.tp_size
             if self.is_grouped:
                 lora_a = TEGroupedLinear(
                     num_gemms=self.base_layer.num_gemms,
@@ -163,7 +161,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 lora_b = TEColumnParallelGroupedLinear(
                     num_gemms=self.base_layer.num_gemms,
                     input_size=r,
-                    output_size=self.out_features,
+                    output_size=out_features,
                     bias=lora_bias,
                     **kwargs,
                 )
@@ -177,7 +175,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                     **kwargs)
                 lora_b = TEColumnParallelLinear(
                     input_size=r,
-                    output_size=self.out_features,
+                    output_size=out_features,
                     bias=lora_bias,
                     gather_output=False,
                     **kwargs,
@@ -189,7 +187,6 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 lora.ub_overlap_ag_dgrad = False
                 lora.ub_overlap_ag_fprop = False
                 lora.ub_overlap_rs_dgrad = False
-        self.config.params_dtype = origin_params_dtype
         self.lora_A[adapter_name] = lora_a
         self.lora_B[adapter_name] = lora_b
         if hasattr(self, 'lora_bias'):
@@ -201,13 +198,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         if init_lora_weights:
             self.reset_lora_parameters(adapter_name, init_lora_weights)
 
-        weight = getattr(self.get_base_layer(), 'weight', None)
-        if weight is not None:
-            # the layer is already completely initialized, this is an update
-            if weight.dtype.is_floating_point or weight.dtype.is_complex:
-                self.to(weight.device, dtype=weight.dtype)
-            else:
-                self.to(weight.device)
+        self._move_adapter_to_device_of_base_layer(adapter_name)
         self.set_adapter(self.active_adapters)
 
     def reset_lora_parameters(self, adapter_name, init_lora_weights):

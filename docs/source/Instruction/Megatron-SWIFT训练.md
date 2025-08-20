@@ -453,6 +453,7 @@ lora训练：
 
 **DPO参数**:
 - ref_load: ref_model的加载路径。默认为None，即设置为`load`。
+- ref_adapter_load: 加载ref_adapter的权重路径，默认为None。若你要使用SFT产生的LoRA权重进行DPO，请使用"ms-swift>=3.8"，并在训练时设置`--adapter_load sft_ckpt --ref_adapter_load sft_ckpt --finetune true`。若是此场景的断点续训，则设置`--adapter_load rlhf_ckpt --ref_adapter_load sft_ckpt --finetune false`。
 - beta: 含义与[TRL](https://huggingface.co/docs/trl/main/en/dpo_trainer#trl.DPOConfig)相同。控制与参考模型偏差程度的参数。beta值越高，表示与参考模型的偏差越小。对于 IPO 损失函数 (loss_type="ipo")，beta是[论文](https://huggingface.co/papers/2310.12036)中所指的正则化参数。默认为0.1。
 - rpo_alpha: 来自[RPO 论文](https://huggingface.co/papers/2404.19733)中的参数，用于控制损失函数中NLL项的权重（即SFT损失），`loss = dpo_loss + rpo_alpha * sft_loss`，论文中推荐设置为`1.`。默认为`None`，即默认不引入sft_loss。
   - 注意：在"ms-swift<3.8"，其默认值为`1.`。在"ms-swift>=3.8"该默认值修改为`None`。

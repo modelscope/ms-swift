@@ -7,7 +7,6 @@ from contextlib import contextmanager
 
 import megatron.core
 import torch
-import torch.distributed as dist
 import torch.nn
 from megatron.core import mpu
 from megatron.core.dist_checkpointing.mapping import ShardedTensorFactory
@@ -159,6 +158,9 @@ class BaseMegatronTrainer(ABC):
                     mapping[k] = origin_k
                     v.key = v.key.replace('.base_layer', '')
                 elif '.modules_to_save' in k:
+                    if '.modules_to_save.default' not in k:
+                        # e.g. ref_adapter
+                        continue
                     # modules to save
                     origin_k = k
                     k = k.replace('.modules_to_save.default', '')
@@ -208,14 +210,14 @@ class BaseMegatronTrainer(ABC):
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
         args = get_args()
+        if args.initialize_embedding:
+            self._initialize_embedding(self.unwrapped_model)
+        if args.train_type != 'full' and args.modules_to_save:
+            copy_original_module_weight(self.unwrapped_model)
         if args.adapter_load is not None:
             with adapter_state_dict_context():
                 args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
                     model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
-        if args.train_type != 'full' and args.modules_to_save:
-            copy_original_module_weight(self.unwrapped_model)
-        if args.initialize_embedding:
-            self._initialize_embedding(self.unwrapped_model)
         return model, optimizer, opt_param_scheduler
 
     @staticmethod
@@ -232,6 +234,7 @@ class BaseMegatronTrainer(ABC):
             num_to_initialize = initialize_mask.sum().item()
             if num_to_initialize == 0:
                 continue
+            logger.info_if(f'num_to_initialize: {num_to_initialize}', cond=mpu.get_data_parallel_rank() == 0)
             tensor = module.weight.new_empty(num_to_initialize, module.weight.shape[1])
             module.weight.data[initialize_mask] = init_method(tensor)
 

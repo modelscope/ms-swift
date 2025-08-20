@@ -38,6 +38,7 @@ pip install ms-swift==2.*
 
 ## 镜像
 
+docker可以查看[这里](https://github.com/modelscope/modelscope/blob/master/docker/build_image.py#L345)。
 ```
 # swift3.7.1
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.0-modelscope1.28.2-swift3.7.1
