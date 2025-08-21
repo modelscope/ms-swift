@@ -1223,11 +1223,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             loss_mask = data['response_loss_mask']
                         data['messages'] = replace_assistant_response_with_ids(data['messages'],
                                                                                data['response_token_ids'], loss_mask)
-                # if self.dynamic_num_samples and self.is_multimodal:
-                if self.is_multimodal:  # FOR DEBUG
-                    batch_encoded_inputs['_origin_data'] = batch
                 batch_encoded_inputs = [template.encode(data) for data in batch]
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
+                if self.dynamic_num_samples and self.is_multimodal:
+                    batch_encoded_inputs['_origin_data'] = batch
 
             # Process labels and masks
             labels = batch_encoded_inputs.pop('labels')
@@ -1737,15 +1736,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         When rollout count is larger than expected, we process in smaller batches
         to control memory usage.
         """
-        # Check if we need to use memory-efficient batching
-        # batch_size = inputs['input_ids'].shape[0]
-        # mode = 'train' if self.model.training else 'eval'
-        # expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size # noqa
-        # should_chunk = self.dynamic_num_samples and any(gather_object([batch_size > expected_bs]))
-        # if not should_chunk:
-        #     return self._get_per_token_logps_and_entropies_single(model, inputs, compute_entropy=compute_entropy)
-        # else:
-        return self._get_per_token_logps_and_entropies_chunked(model, inputs, compute_entropy=compute_entropy)
+        batch_size = inputs['input_ids'].shape[0]
+        mode = 'train' if self.model.training else 'eval'
+        expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size  # noqa
+        should_chunk = self.dynamic_num_samples and any(gather_object([batch_size > expected_bs]))
+        if not should_chunk:
+            return self._get_per_token_logps_and_entropies_single(model, inputs, compute_entropy=compute_entropy)
+        else:
+            return self._get_per_token_logps_and_entropies_chunked(model, inputs, compute_entropy=compute_entropy)
 
     def _get_per_token_logps_and_entropies_single(self,
                                                   model,
@@ -1840,6 +1838,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 with self._template_context(template):
                     chunk_inputs = [template.encode(data) for data in origin_data]
                     chunk_inputs = to_device(template.data_collator(chunk_inputs), self.model.device)
+                    chunk_inputs['logits_to_keep'] = inputs['logits_to_keep']
+                    chunk_inputs.pop('labels', None)
                 return chunk_inputs
 
         batch_size = inputs['input_ids'].shape[0]
