@@ -96,7 +96,7 @@ def test_minimax_vl():
 
 
 def test_deepseek_v3_1():
-    tokenizer = get_model_tokenizer('deepseek-ai/DeepSeek-V3.1-Base', load_model=False)[1]
+    tokenizer = get_model_tokenizer('deepseek-ai/DeepSeek-V3.1', load_model=False)[1]
     template = get_template(tokenizer.model_meta.template, tokenizer)
     inputs = TemplateInputs(messages=[{
         'role': 'system',
@@ -123,4 +123,5 @@ if __name__ == '__main__':
     # test_deepseek_v2_5()
     # test_qwen2_5_math_reward()
     # test_minimax()
-    test_minimax_vl()
+    # test_minimax_vl()
+    test_deepseek_v3_1()
