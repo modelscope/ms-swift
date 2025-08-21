@@ -818,31 +818,34 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs = self.resample_truncated_inputs(inputs)
 
         inputs = self._generate_completions(inputs)
-        total_rewards_per_func, total_rewards, completions, total_advantages, rewards_std = self._score_completions(
-            inputs)
+        total_advantages, rewards_std = self._score_completions(inputs)
         mode = 'train' if self.model.training else 'eval'
 
         if self.args.dynamic_sample and mode == 'train':
             # dynamic sampling for std=0 groups
-            inputs, total_rewards, total_rewards_per_func, completions, total_advantages = \
-                self._dynamic_sampling(inputs, total_rewards, total_rewards_per_func, completions, total_advantages, rewards_std) # noqa
+            inputs, total_advantages = self._dynamic_sampling(inputs, total_advantages, rewards_std)  # noqa
 
         local_advantages = self.get_even_process_data(total_advantages)
         assert len(local_advantages) == len(inputs)
         for i, advantage in enumerate(local_advantages):
             inputs[i]['advantages'] = advantage
-
+        # log metrics in inputs
         self._logs['advantages'].extend(total_advantages.tolist())
 
         batch_encoded_inputs = self._prepare_batch_inputs(inputs)
-        # Log metrics
-        messages = [inputs[i]['messages'][:-1] for i in range(len(inputs))]
+
+        # --- logs (prompts + completions) ---
+        messages = [inp['messages'][:-1] for inp in inputs]
+        completions = [inp['messages'][-1]['content'] for inp in inputs]
+        valid_messages = self._gather_and_flatten(messages, flatten_level=0)
+        valid_completions = self._gather_and_flatten(completions, flatten_level=0)
+        self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
+        self._logs['completion'].extend(valid_completions)
 
         # Example: if you want to log extra data in the wandb / swanlab table,
         #          add them to metrics_to_gather
         # NOTE: every key you register must appear in ALL rollout outputs
         #       to avoid potential communication / synchronization issues
-
         metrics_to_gather = {}
         if all('images' in data and data['images'] is not None for data in inputs):
             metrics_to_gather['image'] = [inp['images'] for inp in inputs]
@@ -850,13 +853,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if all('solution' in inp for inp in inputs):
             metrics_to_gather['solution'] = [inp['solution'] for inp in inputs]
 
-        self._log_metrics(batch_encoded_inputs, messages, completions, total_rewards, total_rewards_per_func,
-                          metrics_to_gather)
+        if metrics_to_gather:
+            for key, value in metrics_to_gather.items():
+                if key not in self._logs:
+                    self._logs[key] = deque(maxlen=self.args.generation_batch_size)
+                self._logs[key].extend(self._gather_and_flatten(value, flatten_level=0))
 
         return batch_encoded_inputs
 
-    def _score_completions(
-            self, inputs: DataType) -> Tuple[torch.Tensor, torch.Tensor, List[str], torch.Tensor, torch.Tensor]:
+    def _score_completions(self, inputs: DataType) -> Tuple[torch.Tensor, torch.Tensor]:
         """Score completions using all reward functions and compute advantages
 
         Args:
@@ -864,30 +869,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         Returns:
             Tuple containing:
-            - total_rewards_per_func: Tensor of shape (num_examples, num_reward_funcs) with individual rewards
-            - total_rewards: Tensor of shape (num_examples,) with weighted sum of rewards
-            - completions: List of generated completion strings
             - advantages: Tensor of shape (num_examples,) with computed advantages
             - rewards_std: Tensor of shape (num_examples,) with group standard deviations
         """
         device = self.accelerator.device
-        completions = [example['messages'][-1]['content'] for example in inputs]
-
-        # Extract prompt_ids for grouping
-        prompt_ids = [inp['prompt_id'] for inp in inputs]
-        request_ids = [inp['request_id'] for inp in inputs]
-
         # If using gym environment, extract rewards directly from inputs
         if self.use_gym_env:
-            local_rewards = torch.tensor([inp['rollout_infos']['total_reward'] for inp in inputs],
-                                         dtype=torch.float32,
-                                         device=device)
+            reward_from_gym = [inp['rollout_infos']['total_reward'] for inp in inputs]
             # For gym environment, there's only one total reward, so rewards_per_func is just local_rewards reshaped
-            local_rewards_per_func = local_rewards.unsqueeze(1)  # shape: [num_examples, 1]
+            local_rewards_per_func = torch.tensor(
+                reward_from_gym, dtype=torch.float32, device=device).unsqueeze(1)  # shape: [num_examples, 1]
         else:
             # Compute rewards using reward functions
-            local_rewards_per_func = self._compute_rewards_per_func(inputs, completions)
-            local_rewards = (local_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
+            local_rewards_per_func = self._compute_rewards_per_func(inputs)
 
         # Gather rewards and prompt_ids across processes with padding
         local_rewards_list = [row.tolist() for row in local_rewards_per_func]
@@ -897,26 +891,22 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         total_prompt_ids = None
         total_request_ids = None
         if self.dynamic_num_samples:
-            total_prompt_ids = gather_object(prompt_ids)
-            total_request_ids = gather_object(request_ids)
+            total_prompt_ids = gather_object([inp['prompt_id'] for inp in inputs])
+            total_request_ids = gather_object([inp['request_id'] for inp in inputs])
         total_rewards_per_func = torch.tensor(
             total_rewards_per_func, dtype=torch.float32, device=self.accelerator.device)
 
-        if self.use_gym_env:
-            total_rewards = total_rewards_per_func.squeeze(1)  # Recover from gathered data
-        else:
-            total_rewards = (total_rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
-
         # Compute advantages based on prompt_id grouping
-        total_advantages, rewards_std = self._compute_advantages(total_rewards, total_prompt_ids, total_request_ids)
+        total_advantages, total_rewards_std = self._compute_advantages(total_rewards_per_func, total_prompt_ids,
+                                                                       total_request_ids)
 
-        return total_rewards_per_func, total_rewards, completions, total_advantages, rewards_std
+        return total_advantages, total_rewards_std
 
-    def _compute_rewards_per_func(self, inputs: DataType, completions: List[str]) -> torch.Tensor:
+    def _compute_rewards_per_func(self, inputs: DataType) -> torch.Tensor:
         """Compute rewards using all reward functions"""
         device = self.accelerator.device
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
-
+        completions = [inp['messages'][-1]['content'] for inp in inputs]
         for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
                 zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
             with patch_profiling_context(self, reward_func_name):
@@ -946,151 +936,149 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return rewards_per_func
 
     def _compute_advantages(self,
-                            rewards: torch.Tensor,
+                            rewards_per_func: torch.Tensor,
                             prompt_ids: Optional[List[str]] = None,
                             request_ids: Optional[List[str]] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Compute normalized advantages for policy gradient training.
+        Compute advantages for policy gradient training.
 
-        There are two computation modes:
-        1. **Default grouped mode (no prompt_ids/request_ids provided):**
-        - Rewards are reshaped into groups of size `self.num_generations`.
-        - Advantages are computed as: advantage = reward - group_mean.
-        - Optionally normalized by group standard deviation if
-            `self.args.scale_rewards` is enabled.
-        - Assumes that rewards are ordered by prompt and that each prompt
-            has exactly `num_generations` completions.
-
-        2. **Request-aware mode (prompt_ids and request_ids provided):**
-        - Groups rewards by request_id and validates consistency (same request_id → same reward).
-        - Groups unique rewards by prompt_id to compute prompt-level statistics.
-        - Advantages are calculated as: advantage = reward - prompt_mean.
-        - If `self.args.scale_rewards` is enabled, advantages are normalized by
-            prompt-level standard deviation.
-        - Each request_id's computed advantage is propagated to all its samples.
-
-        Additionally, this function logs metrics for monitoring training/evaluation.
+        Supports two modes:
+        1. **Default grouped mode** (no prompt_ids / request_ids provided)
+        - Assumes rewards are grouped by prompt and each prompt has exactly
+            `self.num_generations` completions.
+        - Computes advantages relative to group mean.
+        2. **Request-aware mode** (multi-turn conversations, variable number of samples)
+        - Groups rewards by unique `request_id` and computes statistics per prompt.
+        - Handles dynamic sample sizes where multiple request_ids may share the same prompt.
 
         Args:
-            rewards (torch.Tensor):
-                Reward values from all processes, shape (num_examples,).
+            rewards_per_func (torch.Tensor):
+                Reward values for each reward function, shape `(N, num_reward_funcs)`.
             prompt_ids (List[str], optional):
-                Prompt identifiers, required for request-aware mode.
+                Prompt identifiers for each sample.
             request_ids (List[str], optional):
-                Request identifiers, required for request-aware mode.
+                Request identifiers for each sample.
 
         Returns:
             Tuple[torch.Tensor, torch.Tensor]:
-                - **advantages**: Computed advantages, same shape as `rewards`.
-                - **rewards_std**: Standard deviation used for each sample.
+                - **advantages**: Computed advantages, shape `(N,)`.
+                - **rewards_std**: Standard deviation used for normalization, shape `(N,)`.
         """
 
-        mode = 'train' if self.model.training else 'eval'
+        def normalize_advantages(advantages: torch.Tensor, rewards_std: torch.Tensor) -> torch.Tensor:
+            """Normalize advantages if configured; otherwise, return as-is."""
+            if self.args.scale_rewards:
+                return advantages / (rewards_std + 1e-4)
+            return advantages
+
+        def log_rewards_metrics(rewards: torch.Tensor, rewards_per_func_for_metrics: torch.Tensor):
+            """Log reward statistics for monitoring. Only log once per unique request_id."""
+            mode = 'train' if self.model.training else 'eval'
+            rewards_mean = rewards.mean().item()
+            rewards_std = rewards.std().item()
+            is_std_zero = torch.isclose(rewards.std(dim=0), torch.zeros_like(rewards.std(dim=0)))
+
+            self._metrics[mode]['reward'].append(rewards_mean)
+            self._metrics[mode]['reward_std'].append(rewards_std)
+            self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
+
+            # Log per-reward-function statistics using deduplicated rewards_per_func
+            for i, name in enumerate(self.reward_func_names):
+                col = rewards_per_func_for_metrics[:, i]
+                self._metrics[mode][f'rewards/{name}/mean'].append(torch.nanmean(col).item())
+                self._metrics[mode][f'rewards/{name}/std'].append(nanstd(col).item())
+
+        def log_rewards_all(rewards_per_func: torch.Tensor):
+            """Log all rewards for debugging."""
+            for i, name in enumerate(self.reward_func_names):
+                self._logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
+
+        # Step 0. Aggregate final reward using reward weights
+        device = self.accelerator.device
+        if not self.use_gym_env:
+            rewards = (rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
+        else:
+            rewards = rewards_per_func.squeeze(1)
 
         # --------------------------------------------------
-        # Case 1: Default grouped mode (no prompt/request IDs)
+        # Case 1: Default grouped mode
         # --------------------------------------------------
         if not prompt_ids or not request_ids:
             grouped_rewards = rewards.view(-1, self.num_generations)
             group_rewards_mean = grouped_rewards.mean(dim=1)
             group_rewards_std = grouped_rewards.std(dim=1)
 
-            # Broadcast to match original shape
+            # Broadcast stats back to the original shape
             group_rewards_mean = group_rewards_mean.repeat_interleave(self.num_generations)
             group_rewards_std = group_rewards_std.repeat_interleave(self.num_generations)
 
+            # Compute advantages relative to group mean
             advantages = rewards - group_rewards_mean
-            if self.args.scale_rewards:
-                advantages = advantages / (group_rewards_std + 1e-4)
+            advantages = normalize_advantages(advantages, group_rewards_std)
 
-            rewards_std = group_rewards_std
-            is_std_zero = torch.isclose(group_rewards_std, torch.zeros_like(group_rewards_std))
+            # Log metrics once per group
+            log_rewards_metrics(
+                rewards=grouped_rewards,
+                rewards_per_func_for_metrics=rewards_per_func.view(-1, self.num_generations,
+                                                                   rewards_per_func.size(-1))[:, 0])
 
-            # Log metrics
-            self._metrics[mode]['reward'].append(group_rewards_mean.mean().item())
-            self._metrics[mode]['reward_std'].append(group_rewards_std.mean().item())
-            self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
-            return advantages, rewards_std
+            # Log all rewards
+            log_rewards_all(rewards_per_func)
+
+            return advantages, group_rewards_std
 
         # --------------------------------------------------
-        # Case 2: Request-aware mode:
-        #        for dynamic nums of samples in multi-turn scenario
-        #        (e.g. the num of rollout outputs is not equal to the num of rollout inputs)
+        # Case 2: Request-aware mode
         # --------------------------------------------------
         else:
+            assert self.dynamic_num_samples
             assert rewards.shape[0] == len(prompt_ids) == len(request_ids)
-            mode = 'train' if self.model.training else 'eval'
-            advantages = torch.zeros_like(rewards)
-            # calculate rewards_std for dynamic_sampling
-            rewards_std = torch.zeros_like(rewards)
+            device = self.accelerator.device
 
-            # Step 1: Group rewards by request_id and validate consistency
-            request_id_to_reward = {}
-            request_id_to_prompt_id = {}
+            # Step 1. Deduplicate request_ids
+            unique_indices = self._get_last_indices(request_ids)
+            unique_request_ids = [request_ids[i] for i in unique_indices.cpu()]
+            unique_prompt_ids = [prompt_ids[i] for i in unique_indices.cpu()]
 
-            for i, request_id in enumerate(request_ids):
-                if request_id not in request_id_to_reward:
-                    request_id_to_reward[request_id] = rewards[i]
-                    request_id_to_prompt_id[request_id] = prompt_ids[i]
-                else:
-                    # Validate that same request_id has consistent rewards
-                    if not torch.isclose(request_id_to_reward[request_id], rewards[i]):
-                        raise ValueError(f'Rewards for request_id {request_id} are inconsistent: '
-                                         f'{request_id_to_reward[request_id]} vs {rewards[i]}')
+            # Step 2. Validate rewards consistency within the same request_id
+            for rid in set(request_ids):
+                idxs = [i for i, r in enumerate(request_ids) if r == rid]
+                if not torch.allclose(rewards[idxs], rewards[idxs[0]].expand(len(idxs)), atol=1e-6):
+                    raise ValueError(f'Inconsistent rewards detected for request_id={rid}.')
 
-            # Step 2: Group unique rewards by prompt_id for statistical computation
-            prompt_id_to_rewards = {}
-            for request_id, reward in request_id_to_reward.items():
-                prompt_id = request_id_to_prompt_id[request_id]
-                if prompt_id not in prompt_id_to_rewards:
-                    prompt_id_to_rewards[prompt_id] = []
-                prompt_id_to_rewards[prompt_id].append(reward)
+            # Step 3. Group rewards by prompt_id and compute prompt-level mean/std
+            unique_rewards = rewards[unique_indices]
+            prompt_to_indices = {}
+            for idx, pid in enumerate(unique_prompt_ids):
+                prompt_to_indices.setdefault(pid, []).append(idx)
 
-            # Step 3: Compute prompt-level statistics
-            prompt_id_to_stats = {}
-            group_rewards_mean = []
-            group_rewards_std = []
+            prompt_means = torch.zeros(len(unique_rewards), device=device)
+            prompt_stds = torch.zeros(len(unique_rewards), device=device)
+            for pid, idxs in prompt_to_indices.items():
+                idx_tensor = torch.tensor(idxs, device=device)
+                r_group = unique_rewards[idx_tensor]
+                prompt_means[idx_tensor] = r_group.mean()
+                prompt_stds[idx_tensor] = r_group.std()
 
-            for prompt_id, prompt_rewards in prompt_id_to_rewards.items():
-                prompt_rewards_tensor = torch.tensor(prompt_rewards, dtype=rewards.dtype, device=rewards.device)
-                prompt_mean = prompt_rewards_tensor.mean()
-                prompt_std = prompt_rewards_tensor.std()
-                prompt_id_to_stats[prompt_id] = (prompt_mean, prompt_std)
+            # Step 4. Compute advantages
+            request_advantages = unique_rewards - prompt_means
+            request_advantages = normalize_advantages(request_advantages, prompt_stds)
 
-                group_rewards_mean.append(prompt_mean)
-                group_rewards_std.append(prompt_std)
+            # Map advantages back to original order
+            rid_to_idx = {rid: idx for idx, rid in enumerate(unique_request_ids)}
+            indices_in_unique = torch.tensor([rid_to_idx[r] for r in request_ids], device=device)
+            advantages = request_advantages[indices_in_unique]
+            rewards_std = prompt_stds[indices_in_unique]
 
-            # Step 4: Calculate advantages for each request_id
-            for request_id, reward in request_id_to_reward.items():
-                prompt_id = request_id_to_prompt_id[request_id]
-                prompt_mean, prompt_std = prompt_id_to_stats[prompt_id]
+            # Step 5. Log metrics for unique request_ids
+            log_rewards_metrics(rewards=unique_rewards, rewards_per_func_for_metrics=rewards_per_func[unique_indices])
 
-                # Calculate advantage for this request
-                request_advantage = reward - prompt_mean
+            # Step 6. Log all rewards
+            log_rewards_all(rewards_per_func)
 
-                # Optional: scale by standard deviation
-                if self.args.scale_rewards:
-                    request_advantage /= (prompt_std + 1e-4)
+            return advantages, rewards_std
 
-                # Fill advantages for all samples with this request_id
-                for i, rid in enumerate(request_ids):
-                    if rid == request_id:
-                        advantages[i] = request_advantage
-                        rewards_std[i] = prompt_std
-
-            if group_rewards_mean:
-                # compute metrics
-                group_rewards_mean = torch.stack(group_rewards_mean)
-                group_rewards_std = torch.stack(group_rewards_std)
-                is_std_zero = torch.isclose(group_rewards_std, torch.zeros_like(group_rewards_std))
-
-        self._metrics[mode]['reward'].append(group_rewards_mean.mean().item())
-        self._metrics[mode]['reward_std'].append(group_rewards_std.mean().item())
-        self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
-
-        return advantages, rewards_std
-
-    def _dynamic_sampling(self, inputs, rewards, rewards_per_func, completions, advantages, rewards_std):
+    def _dynamic_sampling(self, inputs, advantages, rewards_std):
         """
         Perform dynamic sampling to replace samples with zero-reward-variance groups.
 
@@ -1099,34 +1087,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         Args:
             inputs: local input data samples
-            rewards: Tensor of rewards for global data samples
-            rewards_per_func: Rewards per function/model for global data samples
-            completions: Generated completions for local inputs
             advantages: Computed advantages for global data samples
-            rewards_std: Group standard deviations for each sample
+            rewards_std: Group standard deviations for global data samples
 
         Returns:
-            tuple: (inputs, rewards, rewards_per_func, completions, advantages)
-                   with zero-variance groups replaced by resampled data
+            tuple: (inputs, advantages) with zero-variance groups replaced by resampled data
         """
         # DAPO https://arxiv.org/abs/2503.14476
         # Replaces samples with zero-reward-variance groups (std=0)
         resample_count = 0
         valid_samples = []
-        valid_rewards = []
-        valid_rewards_per_func = []
-        valid_completions = []
         valid_advantages = []
-        origin_data = (inputs, rewards, rewards_per_func, completions, advantages)
+        origin_data = (inputs, advantages)
 
         while resample_count < self.args.max_resample_times:
             valid_mask = (rewards_std > 0)
             all_inputs = gather_object(inputs)
             valid_samples.extend([inp for inp, mask in zip(all_inputs, valid_mask) if mask])
-            valid_rewards.append(rewards[valid_mask])
-            valid_rewards_per_func.append(rewards_per_func[valid_mask])
-            valid_completions.extend(
-                [inp['messages'][-1]['content'] for inp, mask in zip(all_inputs, valid_mask) if mask])
             valid_advantages.append(advantages[valid_mask])
             if len(valid_samples) >= self.args.generation_batch_size:
                 break
@@ -1134,7 +1111,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs = next(self.dynamic_resample_iterator)
             inputs = Trainer._prepare_inputs(self, inputs)
             inputs = self._generate_completions(inputs)
-            rewards_per_func, rewards, completions, advantages, rewards_std = self._score_completions(inputs)
+            advantages, rewards_std = self._score_completions(inputs)
             resample_count += 1
 
         if len(valid_samples) >= self.args.generation_batch_size:
@@ -1143,15 +1120,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 (self.accelerator.process_index + 1) * len(inputs),
             )
             inputs = valid_samples[:self.args.generation_batch_size][process_slice]
-            rewards = torch.cat(valid_rewards)[:self.args.generation_batch_size]
-            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.args.generation_batch_size]
-            completions = valid_completions[:self.args.generation_batch_size][process_slice]
             advantages = torch.cat(valid_advantages)[:self.args.generation_batch_size]
         else:
             logger.warning(f'There are still std=0 groups present after {self.args.max_resample_times} retries.')
-            inputs, rewards, rewards_per_func, completions, advantages = origin_data
+            inputs, advantages = origin_data
 
-        return inputs, rewards, rewards_per_func, completions, advantages
+        return inputs, advantages
 
     def split_by_mini_batches(self, inputs: DataType) -> List[DataType]:
         """
@@ -1213,7 +1187,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         template = self.template
         gas_chunks = self.split_by_mini_batches(inputs)
         ga_batch_encoded_inputs = []
-        for i, batch in enumerate(gas_chunks):
+        for batch in gas_chunks:
             # Encode and process each batch (size=bs)
             with self._template_context(template):
                 for data in batch:
@@ -1260,48 +1234,32 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
-        return ga_batch_encoded_inputs
-
-    def _log_metrics(self, inputs, messages, completions, rewards, rewards_per_func, metrics_to_gather=None):
+        # --- log completion lengths ---
         mode = 'train' if self.model.training else 'eval'
         device = self.accelerator.device
-
-        # --- completion lengths ---
-        local_lengths = [inp['completion_mask'].sum(1).tolist() for inp in inputs]
+        local_lengths = [inp['completion_mask'].sum(1).tolist() for inp in ga_batch_encoded_inputs]
         total_lengths = self._gather_and_flatten(local_lengths, dtype=torch.float32, device=device, flatten_level=1)
 
         self._metrics[mode]['completions/mean_length'].append(total_lengths.mean().item())
         self._metrics[mode]['completions/min_length'].append(total_lengths.min().item())
         self._metrics[mode]['completions/max_length'].append(total_lengths.max().item())
+        # --- log clipped ratio ---
+        if self.dynamic_num_samples:
+            pass
+            # request_ids = gather_object([inp['request_id'] for inp in inputs])
 
-        # --- clipped ratio ---
-        local_trunc_masks = [inp['truncated_mask'].tolist() for inp in inputs]
+        local_trunc_masks = [inp['truncated_mask'].tolist() for inp in ga_batch_encoded_inputs]
         total_trunc_masks = self._gather_and_flatten(
             local_trunc_masks, dtype=torch.bool, device=device, flatten_level=1)
 
         clipped_ratio = total_trunc_masks.sum().item() / total_lengths.shape[0]
-        self._metrics[mode]['completions/clipped_ratio'].append(clipped_ratio)
+        self._metrics[mode]['completions/clipped_ratio'].append(clipped_ratio)  # TODO last_turn
+        if all('rollout_infos' in inp and 'num_turns' in inp['rollout_infos'] for inp in inputs):
+            num_turns = torch.tensor(
+                gather_object([inp['rollout_infos']['num_turns'] for inp in inputs]), device=device)
+            self._metrics[mode]['num_turns'].append(num_turns.mean().item())  # TODO:last_turn
 
-        # --- rewards ---
-        for i, name in enumerate(self.reward_func_names):
-            col = rewards_per_func[:, i]
-            self._metrics[mode][f'rewards/{name}/mean'].append(torch.nanmean(col).item())
-            self._metrics[mode][f'rewards/{name}/std'].append(nanstd(col).item())
-
-        # --- logs (prompts + completions) ---
-        valid_messages = self._gather_and_flatten(messages, flatten_level=0)
-        valid_completions = self._gather_and_flatten(completions, flatten_level=0)
-        self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
-        self._logs['completion'].extend(valid_completions)
-
-        if metrics_to_gather:
-            for key, value in metrics_to_gather.items():
-                if key not in self._logs:
-                    self._logs[key] = deque(maxlen=self.args.generation_batch_size)
-                self._logs[key].extend(self._gather_and_flatten(value, flatten_level=0))
-
-        for i, name in enumerate(self.reward_func_names):
-            self._logs['rewards'][name].extend(rewards_per_func[:, i].tolist())
+        return ga_batch_encoded_inputs
 
     def _apply_chat_template_to_messages_list(self, messages_list: DataType):
         prompts_text = []
@@ -2762,3 +2720,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         inputs_by_request_id = self._group_inputs_by_request_id(filtered_total_inputs)
 
         return inputs_by_request_id
+
+    def _get_last_indices(self, request_ids: List[str]) -> torch.Tensor:
+        seen = {}
+        for i, rid in enumerate(request_ids):
+            seen[rid] = i
+        return torch.tensor(list(seen.values()), dtype=torch.long, device=self.accelerator.device)
