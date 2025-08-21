@@ -215,7 +215,9 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                     messages=messages,
                     response_token_ids=total_response_ids,
                     response_loss_mask=total_response_loss_mask,
-                    rollout_infos=rollout_infos,
+                    rollout_infos={
+                        **rollout_infos, 'num_turns': current_turn
+                    },
                 )
 
             # Prepare next turn
