@@ -96,6 +96,10 @@ accelerator.save_model(
 
 保存完权重后，将原 Qwen2.5-VL-7B-Instruct 模型文件夹中除模型权重的文件(包括`model.safetensors.index.json`) 复制到新的模型权重文件夹中，并替换 config.json 为新修改的 config.json文件。
 
+> 上面这句话是指，模型权重的文件包括：model-00001-of-00005.safetensors等 + model.safetensors.index.json。
+>
+> 所以，需要拷贝的是，除开模型权重的文件之外的所有其它文件。
+
 ## 训练
 
 为简化流程，我们跳过预训练（pretrain），直接进入监督微调（SFT）。训练分为两个阶段：
@@ -196,7 +200,7 @@ swift deploy \
     --vllm_max_model_len 8192 \
     --max_new_tokens 2048 \
     --vllm_limit_mm_per_prompt '{"image": 5, "video": 2}' \
-    --served_model_name Qwen3-VL
+    --served_model_name Qwen3-VL \
 ```
 
 ### 评测

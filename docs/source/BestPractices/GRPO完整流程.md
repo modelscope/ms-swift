@@ -4,7 +4,7 @@
 
 ## 任务与数据集定义
 
-Coundown Game 的任务目标是根据给定的几个数字和加减乘除四种运算，得到目标数字，因此，我们定义数据集如下：
+Coundown Game 的任务目标是：`根据给定的几个数字和加减乘除四种运算，得到目标数字。`因此，我们定义数据集如下：
 ```python
 class CoundownTaskPreprocessor(ResponsePreprocessor):
 
@@ -29,7 +29,7 @@ register_dataset(
 ```
 通过 template， 使用 numbers 和 target 完成任务定义，并给到 query 字段供模型采样使用。同时，我们需要保留 nums 和 target 两个字段，用于后续的奖励函数计算。
 
-## 奖励函数定义：
+## 奖励函数定义
 本任务使用的奖励函数有两个，一个是 Deepseek-R1 中提到的格式奖励函数，另一是 Coundown Game 的准确性奖励函数。前者已经在swift中内置，通过 `--reward_funcs format` 可以直接使用，而后者需要我们自己定义，在这里我们使用 external_plugin 的方式定义准确性奖励函数，将代码放在`swift/examples/train/grpo/plugin/plugin.py`中。
 
 在这里，奖励函数的输入包括 completions、target 和 nums 三个字段，分别表示模型生成的文本、目标答案和可用的数字。每个都是list，支持多个 completion 同时计算。注意，在这里，除了 completions 之外的参数都是数据集中定义的字段透传而来，如果有任务上的变动，可以分别对数据集和奖励函数做对应的改变即可。
@@ -94,7 +94,7 @@ $$
 }
 $$
 
-### 训练参数：
+### 训练参数
 我们选取 Qwen2.5-3B-Instruct 作为基础模型进行训练，选取 Instruct 而不是基模的主要原因是可以更快地获取 format reward。我们在三卡 GPU 上进行实验，因此vllm的推理部署在最后一张卡上，而进程数设置为2，在剩下两张卡上进行梯度更新。
 
 由于任务较为简单，我们设置 max_completion_length 和 vllm_max_model_len 为1024，如果有更复杂的任务，可以适当加大模型输出长度，但请注意，**这两个参数越大，模型训练需要的显存越多，训练速度越慢，单个step的训练时间与max_completion_length呈现线性关系**。

@@ -5,11 +5,10 @@
 
 ## ClevrCount 任务
 ### 任务与数据集定义
-本任务从clevr_cogen_a_train数据集出发，模型的目标是输出图像中包含的物体数量，因此，我们定义数据集如下：
+本任务从clevr_cogen_a_train数据集出发，模型的目标是`输出图像中包含的物体数量`，因此，我们定义数据集如下：
 
 ```python
 class ClevrPreprocessor(ResponsePreprocessor):
-
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         query = row.get('query', '')
         query = f"""{query} Output the thinking process in <think> </think> and
@@ -30,7 +29,6 @@ register_dataset(
         ],
         preprocess_func=ClevrPreprocessor(),
         tags=['qa', 'math']))
-
 ```
 这里重新定义dataset preprocessor的目的是修改query。数据集示例样本如下，包含messages,images和solution字段，solution会送入后续的奖励函数中，而messages和images则会作为模型输入。
 - 注意：`{'role': 'assistant', 'content': '<answer> 3 </answer>'}`将会在GRPOTrainer中被移除，可以忽略。'solution'字段将会透传入ORM中。在自定义数据集时，'images'字段组织成`["image_path1", "image_path2"]`即可。
@@ -48,11 +46,11 @@ register_dataset(
 }
 ```
 
+### 奖励函数定义
 
-## 奖励函数定义：
-本任务使用的奖励函数有两个，一个是 Deepseek-R1 中提到的格式奖励函数，另一是 ClevrCount 的准确性奖励函数。前者已经在swift中内置，通过 `--reward_funcs format` 可以直接使用，而后者需要我们自己定义，在这里我们使用 external_plugin 的方式定义准确性奖励函数，将代码放在`swift/examples/train/grpo/plugin/plugin.py`中。
+本任务使用的奖励函数有两个，一个是 Deepseek-R1 中提到的`格式奖励函数`，另一是 ClevrCount 的`准确性奖励函数`。前者已经在swift中内置，通过 `--reward_funcs format` 可以直接使用，而后者需要我们自己定义，在这里我们使用 external_plugin 的方式定义准确性奖励函数，将代码放在`swift/examples/train/grpo/plugin/plugin.py`中。
 
-在这里，奖励函数的输入包括completions和solution两个字段，分别表示模型生成的文本和真值。每个都是list，支持多个completion同时计算。注意，在这里，solution字段是数据集中定义的字段透传而来，如果有任务上的变动，可以分别对数据集和奖励函数做对应的改变即可。
+在这里，奖励函数的输入包括`completions和solution`两个字段，分别表示模型生成的文本和真值。每个都是list，支持多个completion同时计算。注意，在这里，solution字段是数据集中定义的字段透传而来，如果有任务上的变动，可以分别对数据集和奖励函数做对应的改变即可。
 ```python
 
 class MultiModalAccuracyORM(ORM):
@@ -101,11 +99,13 @@ orms['external_r1v_acc'] = MultiModalAccuracyORM
 ```
 
 ### GRPO训练实验记录
-#### 训练参数：
+#### 训练参数
 我们选取 Qwen2.5-VL-3B-Instruct 作为基础模型进行训练，选取 Instruct 而不是基模的主要原因是可以更快地获取 format reward。我们在八卡 GPU 上进行实验。如果遇到vllm部署qwen2.5-vl报错，可以参考[issue](https://github.com/vllm-project/vllm/issues/13285)
 
 由于任务简单，我们设置max_completion_length为1024，奖励函数选择external_r1v_acc和format，学习率和beta分别设置为1e-6和0.001。其他设置如下所示，batch_size和num_generations的设置原则可以参考[GRPO完整流程](./GRPO完整流程.md)。
+
 首先拉起 external vLLM server
+
 ```bash
 CUDA_VISIBLE_DEVICES=6,7 \
 swift rollout \
@@ -181,7 +181,7 @@ step 400:
 ### 奖励函数
 由于也是数学题，同时，答案也处理成了最终结果，因此，我们直接使用以上定义过的`MultiModalAccuracyORM`奖励函数。
 ### GRPO训练实验记录
-#### 训练参数：
+#### 训练参数
 选取的模型和大部分超参数与上一个实验相似，主要有两点不同：
 1. SWIFT 已支持`--num_iteration`参数，单次rollout可以进行多次更新，这里设置为2。
 2. 在实验时发现，在数学问题中，训练可能会出现不稳定现象，导致模型训崩，具体表现为所有rewar迅速降低，loss、grad_norm和kl都迅速增大，后续也难以恢复正常状态。因此，这里设置`--max_grad_norm 0.5`，保证稳定训练，当然，这种现象的出现也有一定的随机性。
@@ -234,6 +234,7 @@ swift rlhf \
 #### 实验现象
 ![image.png](../../resources/grpo_geoqa.png)
 训练曲线如上图所示。
+
 1. 相比于Count任务，Geometric QA任务的难度明显更大，因此，Accuracy Reward收敛明显更慢，同时震荡幅度也明显更大。
 2. completion_length的变化趋势比较明显，最终收敛到250 token左右。
 3. reward基本收敛，标准差在一共1300个step时稳定在0.2左右。
@@ -303,6 +304,7 @@ swift rlhf \
 训练曲线如上图所示。
 一共8k数据，训练了1268个step，Accuracy Reward收敛到0.5左右，completion_length基本收敛到200token左右，reward_std最终在0.2左右震荡。
 以下是训练后的模型completition示例：
+
 ```
 User:
 "Based on the map, which state falls into the lowest percentage range of lots, and what is that percentage range?"

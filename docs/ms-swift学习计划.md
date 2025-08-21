@@ -98,77 +98,71 @@ pre-commit install
 
 三、动作：
 
-1、Qwen3最佳实践
+1、Qwen3最佳实践	`DONE`
 
-2、快速训练VL模型
+2、快速训练VL模型	`DONE`
+
+3、GRPO多模态训练	`ING-待训练`
+
+4、GRPO完整流程	`ING-待训练`
+
+5、GRPO代码训练	`ING-待训练`
+
+6、Embedding训练	`ING-待训练`
+
+7、Reranker训练	`ING-待训练`
+
+8、更多最佳实践	`ING-待训练`
 
 四、产出：
 
-1、阅读完 Qwen3最佳实践，跑通 qwen3.ipynb	`DONE`
+1、Qwen3最佳实践：阅读完 Qwen3最佳实践，跑通 qwen3.ipynb
+
+2、其它的阅读了文档和代码，但都待训练，留到后面进行。
+
+
+
+## D4：跑通核心示例
+
+一、目标：把最小闭环跑起来（训练/推理/评测/部署至少各一个）。
+
+二、材料：examples/
+
+三、动作：
+
+1、训练与推理：
+
+```
+\# 训练（示例取自 README 的 Quick Start，按需替换模型/数据集）
+
+swift sft \
+
+ --model Qwen/Qwen2.5-7B-Instruct \
+
+ --train_type lora \
+
+ --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#200' \
+
+ --num_train_epochs 1 --per_device_train_batch_size 1 \
+
+ --torch_dtype bfloat16
+```
+
+2、推理
+
+3、量化
+
+4、部署
+
+5、评测
+
+四、产出：保存日志/权重/评测结果与复现实验命令。
 
 
 
 
 
 
-
-
-
-### 第2天：工程脚手架与常用命令
-
-- 目标：学会用内置命令跑构建/测试/格式化，掌握自动化脚本。
-
-- 材料：Makefile、scripts/、.dev_scripts/、.pre-commit-config*.yaml
-
-- 动作：
-
-- 运行常用目标（查看帮助/格式化/测试/清理缓存）。
-
-- 理解本地开发脚本做了什么，安装本地 pre-commit 并试运行。
-
-- 产出：能用一条命令完成常见本地任务（如 fmt、lint、test）。
-
-### 第3天：跑通核心示例
-
-- 目标：把最小闭环跑起来（训练/推理/评测/部署至少各一个）。
-
-- 材料：examples/
-
-- 动作（按机器资源选择一个 7B 模型，先跑 CPU/小显存再扩展）：
-
-- 训练（SFT/LoRA）与推理：
-
-  bash
-
-  Apply
-
-  Run
-
-  \# 训练（示例取自 README 的 Quick Start，按需替换模型/数据集）
-
-  swift sft \
-
-   --model Qwen/Qwen2.5-7B-Instruct \
-
-   --train_type lora \
-
-   --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#200' \
-
-   --num_train_epochs 1 --per_device_train_batch_size 1 \
-
-   --torch_dtype bfloat16
-
-- 推理加速（任选其一）：
-
-- vLLM：参考 examples/infer/vllm/（若目录存在）或 README 链接；
-
-- SGLang：参考 examples/infer/sglang/ 与 README “--infer_backend sglang”。
-
-- 评测：按 README/docs/ 指引，用 EvalScope 跑一个数据集。
-
-- 部署：跑一个最小服务（vLLM/SGLang/LmDeploy 任一）。
-
-- 产出：保存日志/权重/评测结果与复现实验命令。
 
 ### 第4–5天：从入口到训练主线
 
