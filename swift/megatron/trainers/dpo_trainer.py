@@ -13,7 +13,6 @@ from torch.distributed.nn import all_reduce
 
 from swift.trainers import DPOTrainer
 from swift.utils import get_current_device, get_logger
-from ..utils import adapter_state_dict_context
 from .trainer import MegatronTrainer
 from .utils import get_batch
 
