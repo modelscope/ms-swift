@@ -210,10 +210,10 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                     logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
             if self.use_vllm:
                 # set vllm mode
-                if self.vllm_server_host is not None:
+                if self.vllm_server_host is not None or self.vllm_server_base_url is not None:
                     if self.vllm_mode != 'server':
                         self.vllm_mode = 'server'
-                        logger.warning('set vllm_mode to `server` since vllm_server_host is provided')
+                        logger.warning('set vllm_mode to `server` since vllm server host/base_url is provided')
                 else:
                     if self.vllm_mode != 'colocate':
                         self.vllm_mode = 'colocate'
