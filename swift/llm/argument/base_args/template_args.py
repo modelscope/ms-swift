@@ -47,7 +47,7 @@ class TemplateArguments:
     template_backend: Literal['swift', 'jinja'] = 'swift'
 
     def __post_init__(self):
-        if self.template is None and hasattr(self, 'model_meta'):
+        if self.template is None and getattr(self, 'model_meta', None):
             self.template = self.model_meta.template
         if self.use_chat_template is None:
             self.use_chat_template = True

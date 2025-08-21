@@ -86,8 +86,12 @@ class MeanMetric(Metric):
 
     def update(self, state: torch.Tensor):
         if isinstance(state, (torch.Tensor, np.ndarray)):
-            count = len(state)
-            state = state.sum().item()
+            if state.ndim == 0:
+                count = 1
+                state = state.item()
+            else:
+                count = state.shape[0]
+                state = state.sum().item()
         elif isinstance(state, (list, tuple)):
             count = len(state)
             state = sum(state)

@@ -58,10 +58,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._prepare_generation_config()
 
     def _prepare_template(self) -> None:
-        template = self.args.get_template(self.processor)
+        args = self.args
+        template = args.get_template(self.processor)
         template.set_mode('train')
         if template.use_model:
             template.model = self.model
+        if args.model_meta.is_multimodal and (args.padding_free or args.packing) and not template.support_padding_free:
+            raise ValueError(f'Template `{args.template}` does not support padding free or packing.')
         self.template = template
 
     def _get_dataset(self):

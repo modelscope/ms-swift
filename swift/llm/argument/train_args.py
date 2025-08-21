@@ -140,25 +140,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
                 raise ValueError(f'The "{feature}" feature requires a flash attention implementation. '
                                  'Please use one of: "flash_attn", "flash_attention_2", "flash_attention_3".')
 
-            if self.model_meta.is_multimodal:
-                supported_model_type = [
-                    'qwen2_vl',
-                    'qwen2_5_vl',
-                    'qwen2_5_omni',
-                    'qvq',
-                    'mimo_vl',
-                    'internvl',
-                    'internvl_phi3',
-                    'internvl2',
-                    'internvl2_phi3',
-                    'internvl2_5',
-                    'internvl3',
-                ]
-                if self.model_type not in supported_model_type:
-                    raise ValueError(
-                        f'Packing/padding_free is not supported for model_type `{self.model_type}`. '
-                        f'model_type of multimodal models that support packing/padding_free: {supported_model_type}.')
-
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)

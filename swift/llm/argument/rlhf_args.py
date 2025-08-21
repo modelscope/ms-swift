@@ -85,6 +85,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     """
     rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo', 'gkd'] = 'dpo'
     ref_model: Optional[str] = None
+    ref_adapters: List[str] = field(default_factory=list)
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     ref_model_revision: Optional[str] = None
@@ -147,6 +148,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                         self.loss_scale = 'last_round'
             else:
                 self.loss_scale = 'last_round'
+        if isinstance(self.ref_adapters, str):
+            self.ref_adapters = [self.ref_adapters]
         if self.rlhf_type == 'grpo' and self.beta == 0.0:
             self.ref_model = None
         elif self.rlhf_type in ['dpo', 'kto', 'ppo', 'grpo'] and self.train_type == 'full':
@@ -210,10 +213,10 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                     logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
             if self.use_vllm:
                 # set vllm mode
-                if self.vllm_server_host is not None:
+                if self.vllm_server_host is not None or self.vllm_server_base_url is not None:
                     if self.vllm_mode != 'server':
                         self.vllm_mode = 'server'
-                        logger.warning('set vllm_mode to `server` since vllm_server_host is provided')
+                        logger.warning('set vllm_mode to `server` since vllm server host/base_url is provided')
                 else:
                     if self.vllm_mode != 'colocate':
                         self.vllm_mode = 'colocate'
@@ -250,7 +253,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             self.num_labels = 1
 
     def _init_external_vllm(self):
-        if self.rlhf_type != 'grpo' or self.vllm_server_host is None:
+        if self.rlhf_type != 'grpo' or (self.vllm_server_host is None and self.vllm_server_base_url is None):
             return
         from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
         if is_master():
@@ -312,7 +315,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             assert is_liger_kernel_available(), (
                 'Please install/update liger-kernel by running: pip install -U liger-kernel')
         if self.vllm_mode == 'server':
-            assert not self.use_vllm or self.vllm_server_host is not None
+            assert not self.use_vllm or self.vllm_server_host is not None or self.vllm_server_base_url is not None
 
         if self.async_generate:
             assert self.vllm_mode == 'server', 'async generate require vllm_mode == server, '

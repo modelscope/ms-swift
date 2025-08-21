@@ -158,6 +158,7 @@ class StdTemplateInputs:
     rejected_images: List[Union[str, Image.Image]] = field(default_factory=list)
 
     margin: Optional[float] = None  # for reward modeling
+    mm_processor_kwargs: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         self.image_idx = 0

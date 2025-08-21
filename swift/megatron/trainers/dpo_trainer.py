@@ -157,10 +157,17 @@ class MegatronDPOTrainer(MegatronTrainer):
             context = nullcontext()
             ref_model = unwrap_model(self.ref_model)
         else:
-            context = self.peft_model.disable_adapter()
+            if args.ref_adapter_load is None:
+                context = self.peft_model.disable_adapter()
+            else:
+                context = nullcontext()
             ref_model = self.unwrapped_model
         with context:
+            if args.ref_adapter_load:
+                self.peft_model.set_adapter('ref_adapter')
             yield ref_model
+            if args.ref_adapter_load:
+                self.peft_model.set_adapter('default')
 
     def _replace_data_iterator(self, data_iterator):
         args = get_args()

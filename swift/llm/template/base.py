@@ -49,6 +49,7 @@ class Template(ProcessorMixin):
     skip_prompt = True
     use_model = False
     norm_bbox = 'norm1000'
+    support_padding_free = False  # It only takes effect for multimodal models.
 
     is_encoder_decoder = False
 
@@ -1181,7 +1182,10 @@ class Template(ProcessorMixin):
 
         if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
             encoded = Template._encode(self, inputs)
-            for key in ['images', 'audios', 'videos']:
+            keys = ['images', 'audios', 'videos']
+            if self.mode == 'vllm':
+                keys.append('mm_processor_kwargs')
+            for key in keys:
                 value = getattr(inputs, key)
                 if value:
                     encoded[key] = value
