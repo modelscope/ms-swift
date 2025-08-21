@@ -231,6 +231,7 @@ class Qwen2VLTemplate(Template):
     placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
     version = 'v2'
     use_model = True
+    support_padding_free = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -741,6 +742,7 @@ class Ovis2_5Template(ThinkingTemplate):
     num_frames = 8
     use_model = True
     skip_prompt = False
+    support_padding_free = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
