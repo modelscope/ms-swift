@@ -134,7 +134,6 @@ class BaseMegatronTrainer(ABC):
             if isinstance(v, ShardedTensorFactory) and 'apply_swiglu_sharded_factory' in v.merge_fn.__qualname__:
                 v.merge_fn = sh_ten_merge_fn
 
-
     def _load_adapter_base_checkpoint(self, *_args, **kwargs):
         adapter_name = kwargs.pop('adapter_name', None) or 'ref_adapter'
         from megatron.training import checkpointing
@@ -198,7 +197,6 @@ class BaseMegatronTrainer(ABC):
             v = state_dict.pop(k)
             state_dict[origin_k] = v
         return res
-
 
     @contextmanager
     def _patch_load_state_dict(self, load_base_checkpoint):
