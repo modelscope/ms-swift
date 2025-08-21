@@ -139,6 +139,12 @@ class BaseMegatronTrainer(ABC):
         from megatron.training import checkpointing
         origin__load_base_checkpoint = checkpointing._load_base_checkpoint
 
+        args = get_args()
+        origin_load_state_dict = torch.nn.Module.load_state_dict
+        origin_no_load_optim = args.no_load_optim
+        origin_no_load_rng = args.no_load_rng
+        origin_finetune = args.finetune
+
         def _load_base_checkpoint(*_args, **kwargs):
             sharded_state_dict = kwargs.get('sharded_state_dict')
             if sharded_state_dict is None:
@@ -176,20 +182,17 @@ class BaseMegatronTrainer(ABC):
                 state_dict[origin_k] = v
             return res
 
-        origin_load_state_dict = torch.nn.Module.load_state_dict
-
         def load_state_dict(self, state_dict, strict: bool = True, *args, **kwargs):
             strict = False
             return origin_load_state_dict(self, state_dict, strict, *args, **kwargs)
 
         checkpointing._load_base_checkpoint = _load_base_checkpoint
-        torch.nn.Module.load_state_dict = load_state_dict
 
-        args = get_args()
-        origin_no_load_optim = args.no_load_optim
-        origin_no_load_rng = args.no_load_rng
-        args.no_load_optim = True
-        args.no_load_rng = True
+        if args.train_type != 'full':
+            torch.nn.Module.load_state_dict = load_state_dict
+            args.no_load_optim = True
+            args.no_load_rng = True
+            args.finetune = True
 
         try:
             yield
@@ -198,6 +201,7 @@ class BaseMegatronTrainer(ABC):
             torch.nn.Module.load_state_dict = origin_load_state_dict
             args.no_load_optim = origin_no_load_optim
             args.no_load_rng = origin_no_load_rng
+            args.finetune = origin_finetune
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
