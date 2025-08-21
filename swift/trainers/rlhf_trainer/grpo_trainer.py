@@ -1840,7 +1840,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     chunk_inputs = to_device(template.data_collator(chunk_inputs), self.model.device)
                     chunk_inputs['logits_to_keep'] = inputs['logits_to_keep']
                     chunk_inputs.pop('labels', None)
-                return chunk_inputs
+            return chunk_inputs
 
         batch_size = inputs['input_ids'].shape[0]
         mode = 'train' if self.model.training else 'eval'
@@ -2274,7 +2274,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.accelerator.is_main_process:
             all_outputs: List[RolloutOutput] = self._engine_infer(
                 infer_requests=all_requests, request_config=request_config)
-            all_outputs = self._sort_by_request_id(all_outputs)
+            if len(all_outputs) != len(all_requests):
+                # dynamic num of samples, sort by request_id to group outputs with the same trajectory together
+                all_outputs = self._sort_by_request_id(all_outputs)
         else:
             all_outputs = [None] * len(all_requests)
         # Handle async engine the outputs count may exceed inputs count
