@@ -134,11 +134,11 @@ class MiniCPMVTemplate(Template):
         inputs_embeds, _ = model.get_vllm_embedding(inputs)
         return {'inputs_embeds': inputs_embeds}
 
-    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = {}
         for k in ['pixel_values', 'image_bound', 'tgt_sizes']:
             res[k] = self.gather_list(batch, k)
-        res.update(super()._data_collator_mm_data(batch))
+        res.update(super()._data_collator(batch, padding_to=padding_to))
         return res
 
 
@@ -156,7 +156,6 @@ register_template(Llama3TemplateMeta(
 
 
 class MiniCPMV2_6Template(MiniCPMVTemplate):
-    support_padding_free = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index,
                     inputs: StdTemplateInputs) -> List[Context]:
