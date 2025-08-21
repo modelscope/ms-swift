@@ -44,7 +44,7 @@ class ThinkingTemplate(Template):
         if self.no_think_prefix:
             for i, message in enumerate(messages):
                 if message['role'] == 'assistant' and isinstance(message['content'], str):
-                    if '</think>' not in message['content']:
+                    if not message['content'].startswith('<think>'):
                         message['content'] = self.no_think_prefix + message['content']
 
         # Only during inference or training, and only if the loss_scale is set to 'last_round',

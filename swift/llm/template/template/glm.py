@@ -231,7 +231,8 @@ register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_0414, template_cls=
 
 
 class GLM4_5Template(ThinkingTemplate):
-    no_think_prefix = '\n<think></think>'
+    no_think_prefix = '<think></think>\n'
+    history_think_prefix = '<think></think>\n'
 
 
 register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5Template))
