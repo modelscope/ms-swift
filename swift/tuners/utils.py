@@ -335,13 +335,13 @@ class SwiftAdapter:
     @classmethod
     def get_model_key_mapping(cls, model_type, config) -> ModelKeys:
 
-        if model_type in MODEL_ARCH_MAPPING.keys():
-            model_key_mapping = MODEL_ARCH_MAPPING[model_type]
+        if model_type.arch_name in MODEL_ARCH_MAPPING.keys():
+            model_key_mapping = MODEL_ARCH_MAPPING[model_type.arch_name]
         else:
             model_key_mapping = config.model_key_mapping
 
         if model_key_mapping is None:
-            raise ValueError(f'{model_type} is not defined in MODEL_KEYS_MAPPING, '
+            raise ValueError(f'{model_type.arch_name} is not defined in MODEL_KEYS_MAPPING, '
                              f'please consider pass the information through the config.model_key_mapping')
 
         if isinstance(model_key_mapping, dict):
