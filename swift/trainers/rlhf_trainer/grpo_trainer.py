@@ -967,7 +967,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         - Advantages are calculated as: advantage = reward - prompt_mean.
         - If `self.args.scale_rewards` is enabled, advantages are normalized by
             prompt-level standard deviation.
-        - Each request_id’s computed advantage is propagated to all its samples.
+        - Each request_id's computed advantage is propagated to all its samples.
 
         Additionally, this function logs metrics for monitoring training/evaluation.
 
