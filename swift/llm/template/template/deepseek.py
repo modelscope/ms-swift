@@ -244,8 +244,25 @@ class DeepseekV2_5TemplateMeta(TemplateMeta):
 
 register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))
 
+
+class DeepseekV3_1Template(Template):
+
+    def _swift_prepare_inputs(self, inputs):
+        super()._swift_prepare_inputs(inputs)
+        messages = inputs.messages
+        # Only during inference or training, and only if the loss_scale is set to 'last_round',
+        # will the previous 'think' entries be deleted.
+        if not self.is_training or self.loss_scale.name in {'last_round', 'last_round_with_ignore_empty_think'}:
+            for i, message in enumerate(messages):
+                # Delete the content before '</think>' in all assistant turns except the last round.
+                if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:
+                    if '</think>' in message['content']:
+                        message['content'] = '</think>' + message['content'].split('</think>', 1)[-1].strip()
+
+
 register_template(
-    DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, template_cls=ThinkingTemplate, response_prefix='<think>\n'))
+    DeepseekV2_5TemplateMeta(
+        LLMTemplateType.deepseek_r1, template_cls=DeepseekV3_1Template, response_prefix='<think>\n'))
 
 # enable thinking: response_prefix='<think>'
 register_template(
