@@ -128,6 +128,22 @@ register_model(
         requires=['transformers>=4.39.3'],
     ))
 
+register_model(
+    ModelMeta(
+        LLMModelType.deepseek_v3_1,
+        [
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-V3.1-Base', 'deepseek-ai/DeepSeek-V3.1-Base'),
+                Model('deepseek-ai/DeepSeek-V3.1', 'deepseek-ai/DeepSeek-V3.1'),
+            ]),
+        ],
+        TemplateType.deepseek_v3_1,
+        get_model_tokenizer_deepseek_moe,
+        architectures=['DeepseekV3ForCausalLM'],
+        model_arch=ModelArch.deepseek_v2,
+        requires=['transformers>=4.39.3'],
+    ))
+
 
 def _get_deepseek_vl(processor, llm_prefix, model_dir, *args, **kwargs):
     kwargs['tokenizer'] = processor.tokenizer

@@ -244,8 +244,19 @@ class DeepseekV2_5TemplateMeta(TemplateMeta):
 
 register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))
 
+
+class DeepseekV3_1Template(ThinkingTemplate):
+    no_think_prefix = '</think>'
+    history_think_prefix = '</think>'
+
+
 register_template(
     DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, template_cls=ThinkingTemplate, response_prefix='<think>\n'))
+
+# enable thinking: response_prefix='<think>'
+register_template(
+    DeepseekV2_5TemplateMeta(
+        LLMTemplateType.deepseek_v3_1, template_cls=DeepseekV3_1Template, response_prefix='</think>'))
 
 
 class DeepseekVL2Template(DeepseekVLTemplate):
