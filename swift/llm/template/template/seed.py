@@ -1,33 +1,26 @@
 import os
 import re
-from dataclasses import field, dataclass
-from typing import Optional, Type, List
+from dataclasses import dataclass, field
+from typing import List, Optional, Type
 
 from transformers.utils import strtobool
 
-from ..register import register_template, TemplateMeta, Template
-from ..utils import Context, Prompt, Word, findall
 from swift.llm.template.constant import LLMTemplateType
 from swift.llm.template.template.utils import ThinkingTemplate
 from swift.llm.template.template_inputs import StdTemplateInputs
+from ..register import Template, TemplateMeta, register_template
+from ..utils import Context, Prompt, Word, findall
 
 
 class SeedTemplate(ThinkingTemplate):
 
     @staticmethod
     def get_thinking_budget(inputs: StdTemplateInputs):
-        return inputs
+        return inputs.extra_kwargs.get('thinking_budget')
 
     @staticmethod
     def get_reflect_interval(inputs: StdTemplateInputs):
-        interval_mapping = {
-            0:      0,
-             512:    128,
-             1024:   256,
-             2048:   512,
-             4096:   512,
-             8192:   1024,
-             16384:  1024}
+        interval_mapping = {0: 0, 512: 128, 1024: 256, 2048: 512, 4096: 512, 8192: 1024, 16384: 1024}
         budget = SeedTemplate.get_thinking_budget(inputs)
         if budget is None:
             return None
@@ -36,7 +29,8 @@ class SeedTemplate(ThinkingTemplate):
         elif budget > 16384:
             return 1024
         else:
-            assert budget in interval_mapping.keys(), f'Supported thinking budget is {interval_mapping.keys()} or bigger.'
+            assert budget in interval_mapping.keys(
+            ), f'Supported thinking budget is {interval_mapping.keys()} or bigger.'
             return interval_mapping[budget]
 
     @staticmethod
@@ -53,7 +47,8 @@ class SeedTemplate(ThinkingTemplate):
             if current_tokens > 0 and current_tokens + sentence_tokens >= (insertion_count + 1) * interval:
                 # TODO this value may not be accurate
                 remaining_budget = total_budget - (insertion_count + 1) * interval
-                marker = f"<seed:cot_budget_reflect>I have used {(insertion_count + 1) * interval} tokens, and there are {remaining_budget} tokens remaining for use.</seed:cot_budget_reflect>"
+                marker = (f'<seed:cot_budget_reflect>I have used {(insertion_count + 1) * interval} tokens, '
+                          f'and there are {remaining_budget} tokens remaining for use.</seed:cot_budget_reflect>')
                 result.append(marker)
                 insertion_count += 1
 
@@ -61,7 +56,7 @@ class SeedTemplate(ThinkingTemplate):
             current_tokens += sentence_tokens
 
         return '\n'.join(result)
-    
+
     @staticmethod
     def _prepare_system(inputs):
         budget = SeedTemplate.get_thinking_budget(inputs)
@@ -69,11 +64,12 @@ class SeedTemplate(ThinkingTemplate):
         if budget is None:
             default_system = ''
         elif budget > 0:
-            default_system = ('You are an intelligent assistant with reflective ability. '
-                              'In the process of thinking and reasoning, you need to strictly follow the thinking budget, '
-                              f'which is {budget}. That is, you need to complete your thinking within {budget} tokens and start '
-                              f'answering the user\'s questions. You will reflect on your thinking process every {interval} tokens, '
-                              'stating how many tokens have been used and how many are left.\n')
+            default_system = (
+                'You are an intelligent assistant with reflective ability. '
+                'In the process of thinking and reasoning, you need to strictly follow the thinking budget, '
+                f'which is {budget}. That is, you need to complete your thinking within {budget} tokens and start '
+                f'answering the user\'s questions. You will reflect on your thinking process every {interval} tokens, '
+                'stating how many tokens have been used and how many are left.\n')
         else:
             default_system = ('You are an intelligent assistant that can answer questions in one step without the need '
                               'for reasoning and thinking, that is, your thinking budget is 0. Next, please skip the '
@@ -93,10 +89,12 @@ class SeedTemplate(ThinkingTemplate):
 
         if budget is not None and budget > 0 and interval is not None and interval > 0:
             for message in inputs.messages:
-                if message['role'] == 'assistant' and '<think>' in message['content'] and '</think>' in message['content']:
+                if message['role'] == 'assistant' and '<think>' in message['content'] and '</think>' in message[
+                        'content']:
                     pre_text, post_text = message['content'].split('<think>')
                     think, post_text = post_text.split('</think>')
-                    if '<seed:cot_budget_reflect>' not in message['content'] and strtobool(os.environ.get('SEED_USE_BUDGET_INTERVAL', 'false')):
+                    if '<seed:cot_budget_reflect>' not in message['content'] and strtobool(
+                            os.environ.get('SEED_USE_BUDGET_INTERVAL', 'false')):
                         think = self.insert_budget_markers(think, self.tokenizer, interval, budget)
                     message['content'] = pre_text + '<seed:think>' + think + '</seed:think>' + post_text
 
@@ -107,7 +105,7 @@ class SeedTemplate(ThinkingTemplate):
             res.append('<seed:think><seed:cot_budget_reflect>')
             res_loss_scale.append(res_loss_scale[-1])
         return res, res_loss_scale
-    
+
     def _jinja_encode(self, inputs: StdTemplateInputs):
         self._prepare_system(inputs)
         return super()._jinja_encode(inputs)

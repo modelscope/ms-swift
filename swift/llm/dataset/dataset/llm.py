@@ -920,3 +920,31 @@ register_dataset(
         ],
         dataset_name='self-cognition',
         tags=['chat', 'self-cognition', '🔥']))
+
+
+class ThinkingBudgetPreprocessor(MessagesPreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        row = super().preprocess(row)
+        messages = row['messages']
+        max_length = 0
+        for m in messages:
+            if m['role'] == 'assistant':
+                if '<think>' in m['content']:
+                    _, think = m['content'].split('<think>')
+                    think, _ = think.split('</think>')
+                    if len(think) > max_length:
+                        max_length = len(think)
+        # TODO not token length
+        row['thinking_budget'] = max_length
+        return row
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='swift/Chinese-Qwen3-235B-Thinking-2507-Distill-data-110k-SFT',
+        subsets=[
+            SubsetDataset(preprocess_func=MessagesPreprocessor()),
+            SubsetDataset('thinking_budget', preprocess_func=ThinkingBudgetPreprocessor()),
+        ],
+        tags=['🔥', 'distill', 'sft', 'cot', 'r1', 'thinking']))

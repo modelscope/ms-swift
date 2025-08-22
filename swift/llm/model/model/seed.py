@@ -1,12 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from swift.llm import TemplateType
-from ..register import get_model_tokenizer_with_flash_attn
 from swift.utils import get_logger
 from ..constant import LLMModelType
-from ..register import Model, ModelGroup, ModelMeta, register_model
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 
 logger = get_logger()
-
 
 register_model(
     ModelMeta(
