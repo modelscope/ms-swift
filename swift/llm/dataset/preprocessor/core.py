@@ -32,10 +32,7 @@ class RowPreprocessor:
         'objects',
         'channel',
         'margin',
-        'thinking_budget',
     ]
-
-    features = {}
 
     def __init__(self,
                  *,
@@ -269,16 +266,16 @@ class RowPreprocessor:
             dataset = dataset.select_columns(k_list)
         return dataset
 
+    @staticmethod
     @contextmanager
-    def _patch_arrow_writer(self):
+    def _patch_arrow_writer():
         # fix AI-ModelScope/ms_agent_for_agentfabric:all
         from datasets.arrow_writer import ArrowWriter
 
-        def _new_init(_self, schema=None, features=None, *args, **kwargs):
+        def _new_init(self, schema=None, features=None, *args, **kwargs):
 
             if features is not None:
                 features['messages'] = [{'role': Value(dtype='string'), 'content': Value(dtype='string')}]
-                features['messages'][0].update(self.features)
                 features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
                 features['objects'] = {
                     'ref': Sequence(feature=Value(dtype='string'), length=-1),
@@ -286,7 +283,7 @@ class RowPreprocessor:
                     'bbox_type': Value(dtype='string'),
                     'image_id': Sequence(feature=Value(dtype='int64'), length=-1),
                 }
-            ArrowWriter.__origin_init__(_self, schema, features, *args, **kwargs)
+            ArrowWriter.__origin_init__(self, schema, features, *args, **kwargs)
 
         ArrowWriter.__origin_init__ = ArrowWriter.__init__
         ArrowWriter.__init__ = _new_init

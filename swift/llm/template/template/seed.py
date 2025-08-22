@@ -6,16 +6,24 @@ from typing import List, Optional, Type
 from transformers.utils import strtobool
 
 from swift.llm.template.constant import LLMTemplateType
-from swift.llm.template.template.utils import ThinkingTemplate
 from swift.llm.template.template_inputs import StdTemplateInputs
 from ..register import Template, TemplateMeta, register_template
-from ..utils import Context, Prompt, Word, findall
+from ..utils import Prompt, Word
 
 
-class SeedTemplate(ThinkingTemplate):
+class SeedTemplate(Template):
 
-    @staticmethod
-    def get_thinking_budget(inputs: StdTemplateInputs):
+    def get_thinking_budget(self, inputs: StdTemplateInputs):
+
+        max_length = 0
+        for m in inputs.messages:
+            if m['role'] == 'assistant':
+                if '<think>' in m['content'] and '</think>' in m['content']:
+                    _, think = m['content'].split('<think>', maxsplit=1)
+                    think, _ = think.split('</think>', maxsplit=1)
+                    thinking_token_len = len(self.tokenizer(think))
+                    if thinking_token_len > max_length:
+                        max_length = thinking_token_len
 
         def convert_integer_v2(n):
             if n is None:
@@ -37,12 +45,11 @@ class SeedTemplate(ThinkingTemplate):
             else:
                 return n
 
-        return convert_integer_v2(inputs.extra_kwargs.get('thinking_budget'))
+        return convert_integer_v2(max_length)
 
-    @staticmethod
-    def get_reflect_interval(inputs: StdTemplateInputs):
+    def get_reflect_interval(self, inputs: StdTemplateInputs):
         interval_mapping = {0: 0, 512: 128, 1024: 256, 2048: 512, 4096: 512, 8192: 1024, 16384: 1024}
-        budget = SeedTemplate.get_thinking_budget(inputs)
+        budget = self.get_thinking_budget(inputs)
         if budget is None:
             return None
         elif budget <= 0:
@@ -56,32 +63,35 @@ class SeedTemplate(ThinkingTemplate):
 
     @staticmethod
     def insert_budget_markers(text: str, tokenizer, interval: int, total_budget: int) -> str:
-        sentences = re.split(r'(?<=[.!?。！？])\s+', text)
-        sentences = [s.strip() for s in sentences if s.strip()]
+        if total_budget > 0:
+            sentences = re.split(r'(?<=[.!?。！？])\s+', text)
+            sentences = [s.strip() for s in sentences if s.strip()]
 
-        result = []
-        current_tokens = 0
-        insertion_count = 0
+            result = []
+            current_tokens = 0
+            insertion_count = 0
 
-        for sentence in sentences:
-            sentence_tokens = len(tokenizer.encode(sentence))
-            if current_tokens > 0 and current_tokens + sentence_tokens >= (insertion_count + 1) * interval:
-                # TODO this value may not be accurate
-                remaining_budget = total_budget - (insertion_count + 1) * interval
-                marker = (f'<seed:cot_budget_reflect>I have used {(insertion_count + 1) * interval} tokens, '
-                          f'and there are {remaining_budget} tokens remaining for use.</seed:cot_budget_reflect>')
-                result.append(marker)
-                insertion_count += 1
+            for sentence in sentences:
+                sentence_tokens = len(tokenizer.encode(sentence))
+                if current_tokens > 0 and current_tokens + sentence_tokens >= (insertion_count + 1) * interval:
+                    # TODO this value may not be accurate
+                    remaining_budget = total_budget - (insertion_count + 1) * interval
+                    marker = (f'<seed:cot_budget_reflect>I have used {(insertion_count + 1) * interval} tokens, '
+                              f'and there are {remaining_budget} tokens remaining for use.</seed:cot_budget_reflect>')
+                    result.append(marker)
+                    insertion_count += 1
 
-            result.append(sentence)
-            current_tokens += sentence_tokens
+                result.append(sentence)
+                current_tokens += sentence_tokens
 
-        return '\n'.join(result)
+            return '\n'.join(result)
+        else:
+            return ('<seed:cot_budget_reflect>The current thinking budget is 0, so I will '
+                    'directly start answering the question.</seed:cot_budget_reflect>\n\n')
 
-    @staticmethod
-    def _prepare_system(inputs):
-        budget = SeedTemplate.get_thinking_budget(inputs)
-        interval = SeedTemplate.get_reflect_interval(inputs)
+    def _prepare_system(self, inputs):
+        budget = self.get_thinking_budget(inputs)
+        interval = self.get_reflect_interval(inputs)
         if budget is None:
             default_system = ''
         elif budget > 0:
@@ -106,18 +116,27 @@ class SeedTemplate(ThinkingTemplate):
         super()._swift_prepare_inputs(inputs)
         budget = self.get_thinking_budget(inputs)
         interval = self.get_reflect_interval(inputs)
-        self._prepare_system(inputs)
-
-        if budget is not None and budget > 0 and interval is not None and interval > 0:
-            for message in inputs.messages:
-                if message['role'] == 'assistant' and '<think>' in message['content'] and '</think>' in message[
-                        'content']:
-                    pre_text, post_text = message['content'].split('<think>')
-                    think, post_text = post_text.split('</think>')
-                    if '<seed:cot_budget_reflect>' not in message['content'] and strtobool(
-                            os.environ.get('SEED_USE_BUDGET_INTERVAL', 'false')):
-                        think = self.insert_budget_markers(think, self.tokenizer, interval, budget)
-                    message['content'] = pre_text + '<seed:think>' + think + '</seed:think>' + post_text
+        if strtobool(os.environ.get('SEED_USE_THINKING', 'true')):
+            self._prepare_system(inputs)
+            if budget is not None:
+                for message in inputs.messages:
+                    if message['role'] == 'assistant':
+                        if '<think>' in message['content'] and '</think>' in message['content']:
+                            pre_text, post_text = message['content'].split('<think>', maxsplit=1)
+                            think, post_text = post_text.split('</think>', maxsplit=1)
+                            if '<seed:cot_budget_reflect>' not in message['content'] and strtobool(
+                                    os.environ.get('SEED_USE_BUDGET_INTERVAL', 'false')):
+                                think = self.insert_budget_markers(think, self.tokenizer, interval, budget)
+                            message['content'] = pre_text + '<seed:think>' + think + '</seed:think>' + post_text
+                        elif budget > 0:
+                            message['content'] = message['content'].replace('<think>', '').replace('</think>', '')
+                            message['content'] = '<seed:think></seed:think>' + message['content']
+                        elif budget <= 0:
+                            message['content'] = message['content'].replace('<think>', '').replace('</think>', '')
+                            message['content'] = (
+                                '<seed:think><seed:cot_budget_reflect>The current thinking budget is 0, '
+                                'so I will directly start answering the question.'
+                                '</seed:cot_budget_reflect>\n\n</seed:think>') + message['content']
 
     def _simplify_context_list(self, context_list, loss_scale_list, inputs):
         res, res_loss_scale = super()._simplify_context_list(context_list, loss_scale_list, inputs)
