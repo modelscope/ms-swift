@@ -179,6 +179,18 @@ class Ulysses(CommonSequenceParallel):
 
             masking_utils.flash_attention_mask = flash_attention_mask
             masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['flash_attention_2'] = flash_attention_mask
+
+            def create_causal_mask(config, input_embeds, attention_mask, cache_position, *args, **kwargs):
+                input_embeds = torch.ones(
+                    (input_embeds.shape[0], input_embeds.shape[1] * self.sp_world_size, input_embeds.shape[2]),
+                    dtype=input_embeds.dtype,
+                    device=input_embeds.device)
+                cache_position = torch.arange(0, input_embeds.shape[1], device=input_embeds.device)
+                return masking_utils.origin_create_causal_mask(config, input_embeds, attention_mask, cache_position,
+                                                               *args, **kwargs)
+
+            masking_utils.origin_create_causal_mask = masking_utils.create_causal_mask
+            masking_utils.create_causal_mask = create_causal_mask
         except ImportError:
             pass
 
