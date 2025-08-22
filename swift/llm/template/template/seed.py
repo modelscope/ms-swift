@@ -14,33 +14,36 @@ from ..utils import Prompt, Word
 class SeedTemplate(Template):
 
     def get_thinking_budget(self, inputs: StdTemplateInputs):
-
-        max_length = 0
-        for m in inputs.messages:
-            if m['role'] == 'assistant':
-                if '<think>' in m['content'] and '</think>' in m['content']:
-                    _, think = m['content'].split('<think>', maxsplit=1)
-                    think, _ = think.split('</think>', maxsplit=1)
-                    thinking_token_len = len(self.tokenizer(think)['input_ids'])
-                    if thinking_token_len > max_length:
-                        max_length = thinking_token_len
+        thinking_budget = os.environ.get('THINKING_BUDGET')
+        if thinking_budget is not None:
+            max_length = int(thinking_budget)
+        else:
+            max_length = 0
+            for m in inputs.messages:
+                if m['role'] == 'assistant' and m['content']:
+                    if '<think>' in m['content'] and '</think>' in m['content']:
+                        _, think = m['content'].split('<think>', maxsplit=1)
+                        think, _ = think.split('</think>', maxsplit=1)
+                        thinking_token_len = len(self.tokenizer(think)['input_ids'])
+                        if thinking_token_len > max_length:
+                            max_length = thinking_token_len
 
         def convert_integer_v2(n):
             if n is None:
                 return None
             elif n <= 0:
                 return 0
-            elif n < 512:
+            elif n <= 512:
                 return 512
-            elif n < 1024:
+            elif n <= 1024:
                 return 1024
-            elif n < 2048:
+            elif n <= 2048:
                 return 2048
-            elif n < 4096:
+            elif n <= 4096:
                 return 4096
-            elif n < 8192:
+            elif n <= 8192:
                 return 8192
-            elif n < 16384:
+            elif n <= 16384:
                 return 16384
             else:
                 return n
@@ -73,10 +76,9 @@ class SeedTemplate(Template):
 
             for sentence in sentences:
                 sentence_tokens = len(tokenizer.encode(sentence))
-                if current_tokens > 0 and current_tokens + sentence_tokens >= (insertion_count + 1) * interval:
-                    # TODO this value may not be accurate
-                    remaining_budget = total_budget - (insertion_count + 1) * interval
-                    marker = (f'<seed:cot_budget_reflect>I have used {(insertion_count + 1) * interval} tokens, '
+                if current_tokens + sentence_tokens >= (insertion_count + 1) * interval:
+                    remaining_budget = total_budget - (current_tokens + sentence_tokens)
+                    marker = (f'<seed:cot_budget_reflect>I have used {current_tokens + sentence_tokens} tokens, '
                               f'and there are {remaining_budget} tokens remaining for use.</seed:cot_budget_reflect>')
                     result.append(marker)
                     insertion_count += 1
