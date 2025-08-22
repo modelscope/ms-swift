@@ -200,12 +200,12 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
         pixel_values = inputs.get('pixel_values')
         if pixel_values is not None:
             pixel_values = pixel_values.to(device=device)
-            vit_embeds = model.model.vision_tower.embeddings(pixel_values).to(device=device)
+            vit_embeds, _ = model.model.vision_tower.embeddings(pixel_values).to(device=device)
             selected = (input_ids == self.processor.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
             inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1])
         elif is_deepspeed_enabled():
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
-            vit_embeds = model.extract_feature(dummy_pixel_values).to(device=device)
+            vit_embeds, _ = model.model.vision_tower.embeddings(dummy_pixel_values).to(device=device)
             inputs_embeds += vit_embeds.mean() * 0.
         return {'inputs_embeds': inputs_embeds}
 

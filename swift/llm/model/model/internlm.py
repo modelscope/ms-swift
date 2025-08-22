@@ -7,7 +7,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_output_clone, patch_output_to_input_device
+from ..patcher import patch_output0_clone, patch_output_clone, patch_output_to_input_device
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_reward_model,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo, safe_snapshot_download, use_submodel_func
@@ -345,7 +345,7 @@ def get_model_tokenizer_interns1(model_dir: str,
     if model is not None:
         # use_submodel_func(model.model, 'language_model')
         patch_output_clone(model.model.language_model.get_input_embeddings())
-        patch_output_clone(model.model.vision_tower.get_input_embeddings())
+        patch_output0_clone(model.model.vision_tower.get_input_embeddings())
 
     return model, tokenizer
 

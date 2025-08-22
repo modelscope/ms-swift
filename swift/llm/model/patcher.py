@@ -60,6 +60,15 @@ def patch_output_clone(module: torch.nn.Module):
     module.register_forward_hook(_clone_hook)
 
 
+def patch_output0_clone(module: torch.nn.Module):
+    """Clone the output, to avoid the inplace problem"""
+
+    def _clone_hook(module, input, output):
+        return output[0].requires_grad_(True).clone()
+
+    module.register_forward_hook(_clone_hook)
+
+
 def patch_get_input_embeddings(model, embedding_keys: str):
 
     def get_input_embeddings(self) -> nn.Module:
