@@ -329,6 +329,40 @@ register_model(
         tags=['vision', 'video'],
     ))
 
+
+def get_model_tokenizer_interns1(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_multimodal(*args, **kwargs)
+    if model is not None:
+        base_model = model.model if 'AWQ' in model.__class__.__name__ else model
+        if hasattr(base_model.model, 'embed_tokens'):
+            embed_tokens = base_model.model.embed_tokens
+        else:
+            embed_tokens = base_model.model.language_model.embed_tokens
+        patch_output_clone(embed_tokens)
+        patch_output_to_input_device(embed_tokens)
+
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.interns1,
+        [
+            ModelGroup([
+                Model('Shanghai_AI_Laboratory/Intern-S1-mini', 'internlm/Intern-S1-mini'),
+                Model('Shanghai_AI_Laboratory/Intern-S1', 'internlm/Intern-S1'),
+                Model('Shanghai_AI_Laboratory/Intern-S1-mini-FP8', 'internlm/Intern-S1-mini-FP8'),
+                Model('Shanghai_AI_Laboratory/Intern-S1-FP8', 'internlm/Intern-S1-FP8'),
+            ]),
+        ],
+        TemplateType.interns1,
+        get_model_tokenizer_interns1,
+        architectures=['InternS1ForConditionalGeneration'],
+        model_arch=ModelArch.interns1,
+        requires=['transformers>=4.55.2', 'timm'],
+        tags=['vision', 'video'],
+    ))
+
 register_model(
     ModelMeta(
         MLLMModelType.xcomposer2_5,

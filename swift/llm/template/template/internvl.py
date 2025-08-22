@@ -13,7 +13,7 @@ from ..template_inputs import StdTemplateInputs
 from ..utils import Context, findall
 from ..vision_utils import load_video_internvl, transform_image
 from .microsoft import Phi3TemplateMeta
-from .utils import ChatmlTemplateMeta
+from .utils import ChatmlTemplateMeta, ThinkingTemplate
 
 
 class InternvlTemplate(Template):
@@ -173,3 +173,26 @@ register_template(
         MLLMTemplateType.internvl2_5,
         template_cls=Internvl2Template,
         default_system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。'))
+
+
+class InternS1Template(Internvl2Template, ThinkingTemplate):
+    InternS1DefaultThinkinngSystem = ('You are an expert reasoner with extensive experience in all areas. '
+                                      'You approach problems through systematic thinking and rigorous reasoning. '
+                                      'Your response should reflect deep understanding and precise logical thinking, '
+                                      'making your solution path and reasoning clear to others. '
+                                      'Please put your thinking process within <think>...</think> tags.')
+
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        if inputs.system is None:
+            messages = inputs.messages
+            last_turn_assistant = messages[-1]['role'] == 'assistant' and messages[-1]['content'] is not None
+            # enable thinking
+            if last_turn_assistant and messages[-1]['content'].startswith('<think>'):
+                inputs.system = self.InternS1DefaultThinkinngSystem
+
+        return super()._swift_encode(inputs)
+
+
+# disable_thinking: response_prefix=''
+register_template(
+    ChatmlTemplateMeta(MLLMTemplateType.interns1, template_cls=InternS1Template, response_prefix='<think>'))
