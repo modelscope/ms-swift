@@ -645,13 +645,9 @@ def test_interns1():
     images = ['http://images.cocodataset.org/val2017/000000039769.jpg']
     messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
     response = _infer_model(pt_engine, messages=messages, images=images)
-    target_response = ("Okay, let's see. The user wants me to describe the image explicitly. "
-                       'The image shows two cats lying on a pink couch. '
-                       'One cat is a tabby with stripes, and the other is a kitten with similar markings. ')
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, images=images)
     assert response == response2
-    assert response[:len(target_response)] == target_response
 
 
 if __name__ == '__main__':

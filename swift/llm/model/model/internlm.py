@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from functools import partial
+from types import MethodType
 from typing import Any, Dict
 
 import torch
@@ -352,7 +353,7 @@ def get_model_tokenizer_interns1(model_dir: str,
 
             def _clone_hook(module, input, output):
                 output = list(output)
-                output[0] = output[0].clone()
+                output[0] = output[0].requires_grad_(True).clone()
                 output = tuple(output)
                 return output
 
@@ -360,6 +361,17 @@ def get_model_tokenizer_interns1(model_dir: str,
 
         patch_output0_clone(model.model.vision_tower.get_input_embeddings())
 
+        def enable_input_require_grads(self):
+
+            def make_inputs_require_grads(module, input, output):
+                if isinstance(output, tuple):
+                    output[0].requires_grad_(True)
+                else:
+                    output.requires_grad_(True)
+
+            self._require_grads_hook = self[0].auto_model.embed_tokens.register_forward_hook(make_inputs_require_grads)
+
+        model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
     return model, processor
 
 
@@ -378,7 +390,7 @@ register_model(
         get_model_tokenizer_interns1,
         architectures=['InternS1ForConditionalGeneration'],
         model_arch=ModelArch.interns1,
-        requires=['transformers>=4.55.2', 'timm'],
+        requires=['transformers>=4.55.2'],
         tags=['vision', 'video'],
     ))
 

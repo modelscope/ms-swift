@@ -184,11 +184,8 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
                                       'Please put your thinking process within <think>...</think> tags.')
 
     def _swift_encode(self, inputs: StdTemplateInputs):
-        if inputs.system is None:
-            messages = inputs.messages
-            # enable thinking
-            if self.template_meta.response_prefix == '<think>' and messages[-1]['content'].startswith('<think>'):
-                inputs.system = self.InternS1DefaultThinkinngSystem
+        if inputs.system is None and self.template_meta.response_prefix == '<think>':
+            inputs.system = self.InternS1DefaultThinkinngSystem
 
         return super()._swift_encode(inputs)
 
