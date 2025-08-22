@@ -186,9 +186,8 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
     def _swift_encode(self, inputs: StdTemplateInputs):
         if inputs.system is None:
             messages = inputs.messages
-            last_turn_assistant = messages[-1]['role'] == 'assistant' and messages[-1]['content'] is not None
             # enable thinking
-            if last_turn_assistant and messages[-1]['content'].startswith('<think>'):
+            if self.template_meta.response_prefix == '<think>' and messages[-1]['content'].startswith('<think>'):
                 inputs.system = self.InternS1DefaultThinkinngSystem
 
         return super()._swift_encode(inputs)
@@ -238,7 +237,7 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
         if pixel_values is not None:
             pixel_values = pixel_values.to(device=device)
             vit_embeddings = model.model.vision_tower.embeddings
-            lm_embeddings = model.model.language_model.embeddings
+            lm_embeddings = model.model.language_model.get_input_embeddings()
             vit_embeds = vit_embeddings(pixel_values)[0].to(device=device)
             special_image_mask = inputs_embeds == lm_embeddings(
                 torch.tensor(self.image_token_id, dtype=torch.long, device=inputs_embeds.device))
