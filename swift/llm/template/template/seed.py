@@ -21,7 +21,7 @@ class SeedTemplate(Template):
                 if '<think>' in m['content'] and '</think>' in m['content']:
                     _, think = m['content'].split('<think>', maxsplit=1)
                     think, _ = think.split('</think>', maxsplit=1)
-                    thinking_token_len = len(self.tokenizer(think))
+                    thinking_token_len = len(self.tokenizer(think)['input_ids'])
                     if thinking_token_len > max_length:
                         max_length = thinking_token_len
 
@@ -114,9 +114,9 @@ class SeedTemplate(Template):
 
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         super()._swift_prepare_inputs(inputs)
-        budget = self.get_thinking_budget(inputs)
-        interval = self.get_reflect_interval(inputs)
         if strtobool(os.environ.get('SEED_USE_THINKING', 'true')):
+            budget = self.get_thinking_budget(inputs)
+            interval = self.get_reflect_interval(inputs)
             self._prepare_system(inputs)
             if budget is not None:
                 for message in inputs.messages:
@@ -164,7 +164,7 @@ class SeedTemplateMeta(TemplateMeta):
     default_system: Optional[str] = None
     response_prefix: str = ''
     stop_words: List[Word] = field(default_factory=lambda: ['<seed:eos>'])
-    agent_template: str = None
+    agent_template: str = 'react_en'
 
 
 register_template(SeedTemplateMeta(LLMTemplateType.seed_oss, default_system=None, template_cls=SeedTemplate))
