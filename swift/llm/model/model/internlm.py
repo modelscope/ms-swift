@@ -2,13 +2,14 @@
 from functools import partial
 from typing import Any, Dict
 
+import torch
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_output0_clone, patch_output_clone, patch_output_to_input_device
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_reward_model,
+from ..patcher import patch_output_clone, patch_output_to_input_device
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal, get_model_tokenizer_reward_model,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo, safe_snapshot_download, use_submodel_func
 
@@ -335,7 +336,7 @@ def get_model_tokenizer_interns1(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if model_info.quant_method == 'bnb' and kwargs.get('is_training'):
         # patch: bnb backward shape mismatch bug
@@ -345,9 +346,21 @@ def get_model_tokenizer_interns1(model_dir: str,
     if model is not None:
         # use_submodel_func(model.model, 'language_model')
         patch_output_clone(model.model.language_model.get_input_embeddings())
+
+        def patch_output0_clone(module: torch.nn.Module):
+            """Clone the output, to avoid the inplace problem"""
+
+            def _clone_hook(module, input, output):
+                output = list(output)
+                output[0] = output[0].clone()
+                output = tuple(output)
+                return output
+
+            module.register_forward_hook(_clone_hook)
+
         patch_output0_clone(model.model.vision_tower.get_input_embeddings())
 
-    return model, tokenizer
+    return model, processor
 
 
 register_model(

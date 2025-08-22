@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from functools import partial
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
 from torch import nn
@@ -192,6 +192,42 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
 
         return super()._swift_encode(inputs)
 
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        from transformers.image_utils import make_flat_list_of_images
+        import numpy as np
+        encoded = super(InternvlTemplate, self)._encode(inputs)
+        input_ids = encoded['input_ids']
+        idx_list = findall(input_ids, -100)
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
+        images = inputs.images
+        if images:
+            # InternS1Processor
+            images = make_flat_list_of_images(images)
+            image_inputs = self.processor.image_processor(images=images, crop_to_patches=True, return_tensors='pt')
+            image_num_patches = image_inputs.pop('num_patches')
+            pixel_values = image_inputs.pop('pixel_values')
+            image_num_patches_indices = np.cumsum(image_num_patches)
+            # has_video = bool(inputs.videos) # TODO:video
+        else:
+            pixel_values = None
+            image_num_patches_indices = []
+        assert len(image_num_patches_indices) == len(
+            idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
+
+        def _get_new_tokens(i):
+            start = image_num_patches_indices[i - 1] if i > 0 else 0
+            end = image_num_patches_indices[i]
+            image_seq_length = self.processor.image_seq_length
+            img_tokens: List[int] = self.processor.encode(
+                '<IMG_CONTEXT>', add_special_tokens=False) * image_seq_length * image_num_patches[start:end]
+            return img_tokens
+
+        encoded['input_ids'], encoded['labels'], encoded['loss_scale'] = self._extend_tokens(
+            input_ids, labels, loss_scale, idx_list, _get_new_tokens)
+        encoded['pixel_values'] = pixel_values
+        return encoded
+
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         embedding = model.get_input_embeddings()
         device = embedding.weight.device
@@ -200,12 +236,12 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
         pixel_values = inputs.get('pixel_values')
         if pixel_values is not None:
             pixel_values = pixel_values.to(device=device)
-            vit_embeds, _ = model.model.vision_tower.embeddings(pixel_values).to(device=device)
+            vit_embeds = model.model.vision_tower.embeddings(pixel_values)[0].to(device=device)
             selected = (input_ids == self.processor.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
             inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1])
         elif is_deepspeed_enabled():
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
-            vit_embeds, _ = model.model.vision_tower.embeddings(dummy_pixel_values).to(device=device)
+            vit_embeds = model.model.vision_tower.embeddings(dummy_pixel_values)[0].to(device=device)
             inputs_embeds += vit_embeds.mean() * 0.
         return {'inputs_embeds': inputs_embeds}
 
