@@ -236,9 +236,18 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
         pixel_values = inputs.get('pixel_values')
         if pixel_values is not None:
             pixel_values = pixel_values.to(device=device)
-            vit_embeds = model.model.vision_tower.embeddings(pixel_values)[0].to(device=device)
-            selected = (input_ids == self.processor.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
-            inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1])
+            embeddings = model.model.vision_tower.embeddings
+            vit_embeds = embeddings(pixel_values)[0].to(device=device)
+            special_image_mask = inputs_embeds == embeddings(
+                torch.tensor('<IMG_CONTEXT>', dtype=torch.long, device=inputs_embeds.device))
+            special_image_mask = special_image_mask.all(-1)
+            special_image_mask = special_image_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
+            image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
+            inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
+            image_features = model.model.get_image_features(
+                pixel_values, vision_feature_layer=-1, vision_feature_select_strategy='default')
+            image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
+            inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
         elif is_deepspeed_enabled():
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
             vit_embeds = model.model.vision_tower.embeddings(dummy_pixel_values)[0].to(device=device)
