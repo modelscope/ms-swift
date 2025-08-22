@@ -177,7 +177,13 @@ class StdTemplateInputs:
         all_keys = set(f.name for f in fields(StdTemplateInputs))
         extra_kwargs = {k: v for k, v in inputs.items() if k not in all_keys}
         return cls(
-            messages=messages, system=system, tools=tools, objects=objects, extra_kwargs=extra_kwargs, **kwargs, **media_kwargs)
+            messages=messages,
+            system=system,
+            tools=tools,
+            objects=objects,
+            extra_kwargs=extra_kwargs,
+            **kwargs,
+            **media_kwargs)
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
