@@ -317,6 +317,7 @@ register_template(
 class GptTemplate(Template):
 
     def _get_gpt_oss_prefix(self):
+        today = datetime.now().strftime('%Y-%m-%d')
         return ('<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\n'
                 f'Knowledge cutoff: 2024-06\nCurrent date: {today}\n\nReasoning: medium\n\n'
                 '# Valid channels: analysis, commentary, final. '
