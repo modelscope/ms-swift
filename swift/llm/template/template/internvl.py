@@ -198,6 +198,9 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
         images = inputs.images
+        if inputs.videos:
+            # TODO
+            raise NotImplementedError('Video is not supported yet.')
         if images:
             # InternS1Processor
             images = make_flat_list_of_images(images)
