@@ -386,8 +386,7 @@ def patch_attach_align_device_hook_on_blocks():
     origin_attach_align_device_hook_on_blocks = big_modeling.attach_align_device_hook_on_blocks
 
     def attach_align_device_hook_on_blocks(*args, **kwargs):
-        kwargs['offload'] = False
-        return origin_attach_align_device_hook_on_blocks(*args, **kwargs)
+        return
 
     big_modeling.attach_align_device_hook_on_blocks = attach_align_device_hook_on_blocks
     try:
