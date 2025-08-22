@@ -330,16 +330,21 @@ register_model(
     ))
 
 
-def get_model_tokenizer_interns1(*args, **kwargs):
-    model, tokenizer = get_model_tokenizer_multimodal(*args, **kwargs)
+def get_model_tokenizer_interns1(model_dir: str,
+                                 model_info: ModelInfo,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
+
+    if model_info.quant_method == 'bnb' and kwargs.get('is_training'):
+        # patch: bnb backward shape mismatch bug
+        if model is not None and model.model.language_model is not None:
+            model.model.language_model.output.state.force_no_igemmlt = True
+
     if model is not None:
-        base_model = model.model if 'AWQ' in model.__class__.__name__ else model
-        if hasattr(base_model.model, 'embed_tokens'):
-            embed_tokens = base_model.model.embed_tokens
-        else:
-            embed_tokens = base_model.model.language_model.embed_tokens
-        patch_output_clone(embed_tokens)
-        patch_output_to_input_device(embed_tokens)
+        use_submodel_func(model, 'model.language_model')
+        patch_output_clone(model.model.language_model.get_input_embeddings())
 
     return model, tokenizer
 
