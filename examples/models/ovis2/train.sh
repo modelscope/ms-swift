@@ -1,23 +1,25 @@
-# 28GiB
+# 17GiB
 
 pip install "transformers==4.51.*"
 
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model AIDC-AI/Ovis2-8B \
-    --dataset 'modelscope/coco_2014_caption:validation#20000' \
+    --model AIDC-AI/Ovis2.5-2B \
+    --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#20000' \
     --split_dataset_ratio 0.01 \
     --train_type lora \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 1 \
+    --per_device_train_batch_size 16 \
+    --per_device_eval_batch_size 16 \
+    --attn_impl flash_attn \
+    --padding_free true \
     --learning_rate 1e-4 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
     --freeze_vit true \
-    --gradient_accumulation_steps 16 \
+    --gradient_accumulation_steps 1 \
     --eval_steps 50 \
     --save_steps 50 \
     --save_total_limit 2 \

@@ -52,8 +52,12 @@ register_template(
     QwenTemplateMeta(
         LLMTemplateType.qwq, default_system=None, response_prefix='<think>\n', template_cls=ThinkingTemplate))
 
-# '<think>\n\n</think>\n\n'
-register_template(QwenTemplateMeta(LLMTemplateType.qwen3, default_system=None, template_cls=ThinkingTemplate))
+
+class Qwen3Template(ThinkingTemplate):
+    no_think_prefix = '<think>\n\n</think>\n\n'
+
+
+register_template(QwenTemplateMeta(LLMTemplateType.qwen3, default_system=None, template_cls=Qwen3Template))
 
 register_template(
     QwenTemplateMeta(
@@ -227,6 +231,7 @@ class Qwen2VLTemplate(Template):
     placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
     version = 'v2'
     use_model = True
+    support_padding_free = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -737,6 +742,7 @@ class Ovis2_5Template(ThinkingTemplate):
     num_frames = 8
     use_model = True
     skip_prompt = False
+    support_padding_free = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:

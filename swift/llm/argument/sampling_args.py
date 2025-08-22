@@ -56,6 +56,9 @@ class SamplingArguments(BaseArguments):
     def _init_model_info(self):
         if self.sampler_engine != 'client':
             return super()._init_model_info()
+        else:
+            self.model_info = None
+            self.model_meta = None
         self.task_type = 'causal_lm'
         return
 

@@ -49,6 +49,7 @@ class Template(ProcessorMixin):
     skip_prompt = True
     use_model = False
     norm_bbox = 'norm1000'
+    support_padding_free = False  # It only takes effect for multimodal models.
 
     is_encoder_decoder = False
 
@@ -484,12 +485,11 @@ class Template(ProcessorMixin):
         if isinstance(inputs, (InferRequest, TemplateInputs)):
             inputs = asdict(inputs)
 
-        extra_kwargs = {}
         if isinstance(inputs, dict):
             inputs = deepcopy(inputs)
             if self.task_type == 'causal_lm' and not self.is_training:
                 InferRequest.remove_response(inputs['messages'])
-            inputs, extra_kwargs = StdTemplateInputs.from_dict(inputs)
+            inputs = StdTemplateInputs.from_dict(inputs)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
         assert isinstance(inputs, StdTemplateInputs)
@@ -539,7 +539,7 @@ class Template(ProcessorMixin):
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         if not self.remove_unused_columns:
-            encoded['_extra_kwargs'] = extra_kwargs
+            encoded['_extra_kwargs'] = inputs.extra_kwargs
         return encoded
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:

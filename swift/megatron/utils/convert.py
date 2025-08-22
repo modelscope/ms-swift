@@ -143,6 +143,7 @@ convert_kwargs = {
     'no_save_rng': True,
     'no_load_optim': True,
     'no_load_rng': True,
+    'finetune': True,
     'attention_backend': 'unfused',
 }
 
@@ -219,6 +220,8 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
 
     mg_model = megatron_model_meta.model_provider()
+    if megatron_args.load is None:
+        raise ValueError('Please specify `--mcore_model`.')
     load_checkpoint([mg_model], None, None, strict=True)
     if megatron_args.adapter_load is not None:
         peft_model = prepare_mcore_model(mg_model)

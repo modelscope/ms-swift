@@ -134,70 +134,99 @@ class BaseMegatronTrainer(ABC):
             if isinstance(v, ShardedTensorFactory) and 'apply_swiglu_sharded_factory' in v.merge_fn.__qualname__:
                 v.merge_fn = sh_ten_merge_fn
 
-    @contextmanager
-    def _patch_load_state_dict(self):
+    def _load_adapter_base_checkpoint(self, *_args, **kwargs):
+        adapter_name = kwargs.pop('adapter_name', None) or 'ref_adapter'
         from megatron.training import checkpointing
-        origin__load_base_checkpoint = checkpointing._load_base_checkpoint
+        sharded_state_dict = kwargs.get('sharded_state_dict')
+        if sharded_state_dict is None:
+            return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
+        state_dict_model = {}
+        mapping = {}
+        for k, v in sharded_state_dict['model'].items():
+            if adapter_name not in k:
+                continue
+            # lora
+            origin_k = k
+            k = k.replace(f'.{adapter_name}.', '.default.')
+            mapping[k] = origin_k
+            v.key = v.key.replace(f'.{adapter_name}.', '.default.')
+            state_dict_model[k] = v
+        sharded_state_dict['model'] = state_dict_model
+        self._patch_merge_fn(state_dict_model)
+        res = checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
+        state_dict = res[0]['model']
+        for k, origin_k in mapping.items():
+            v = state_dict.pop(k)
+            state_dict[origin_k] = v
+        return res
 
-        def _load_base_checkpoint(*_args, **kwargs):
-            sharded_state_dict = kwargs.get('sharded_state_dict')
-            if sharded_state_dict is None:
-                return origin__load_base_checkpoint(*_args, **kwargs)
-            if self.args.train_type == 'full':
-                self._patch_merge_fn(sharded_state_dict['model'])
-                return origin__load_base_checkpoint(*_args, **kwargs)
-            state_dict_model = {}
-            mapping = {}
-            for k, v in sharded_state_dict['model'].items():
-                if 'lora_A' in k or 'lora_B' in k or 'original_module' in k:
+    def _load_base_checkpoint(self, *_args, **kwargs):
+        from megatron.training import checkpointing
+        sharded_state_dict = kwargs.get('sharded_state_dict')
+        if sharded_state_dict is None:
+            return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
+        if self.args.train_type == 'full':
+            self._patch_merge_fn(sharded_state_dict['model'])
+            return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
+        state_dict_model = {}
+        mapping = {}
+        for k, v in sharded_state_dict['model'].items():
+            if 'lora_A' in k or 'lora_B' in k or 'original_module' in k:
+                continue
+            # lora
+            if '.base_layer' in k:
+                origin_k = k
+                k = k.replace('.base_layer', '')
+                mapping[k] = origin_k
+                v.key = v.key.replace('.base_layer', '')
+            elif '.modules_to_save' in k:
+                if '.modules_to_save.default' not in k:
+                    # e.g. ref_adapter
                     continue
-                # lora
-                if '.base_layer' in k:
-                    origin_k = k
-                    k = k.replace('.base_layer', '')
-                    mapping[k] = origin_k
-                    v.key = v.key.replace('.base_layer', '')
-                elif '.modules_to_save' in k:
-                    if '.modules_to_save.default' not in k:
-                        # e.g. ref_adapter
-                        continue
-                    # modules to save
-                    origin_k = k
-                    k = k.replace('.modules_to_save.default', '')
-                    mapping[k] = origin_k
-                    v.key = v.key.replace('.modules_to_save.default', '')
-                state_dict_model[k] = v
-            sharded_state_dict['model'] = state_dict_model
-            self._patch_merge_fn(state_dict_model)
-            res = origin__load_base_checkpoint(*_args, **kwargs)
-            state_dict = res[0]['model']
-            for k, origin_k in mapping.items():
-                v = state_dict.pop(k)
-                state_dict[origin_k] = v
-            return res
+                # modules to save
+                origin_k = k
+                k = k.replace('.modules_to_save.default', '')
+                mapping[k] = origin_k
+                v.key = v.key.replace('.modules_to_save.default', '')
+            state_dict_model[k] = v
+        sharded_state_dict['model'] = state_dict_model
+        self._patch_merge_fn(state_dict_model)
+        res = checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
+        state_dict = res[0]['model']
+        for k, origin_k in mapping.items():
+            v = state_dict.pop(k)
+            state_dict[origin_k] = v
+        return res
 
+    @contextmanager
+    def _patch_load_state_dict(self, load_base_checkpoint):
+        from megatron.training import checkpointing
+        checkpointing.origin__load_base_checkpoint = checkpointing._load_base_checkpoint
+        checkpointing._load_base_checkpoint = load_base_checkpoint
+
+        args = get_args()
         origin_load_state_dict = torch.nn.Module.load_state_dict
+        origin_no_load_optim = args.no_load_optim
+        origin_no_load_rng = args.no_load_rng
+        origin_finetune = args.finetune
 
         def load_state_dict(self, state_dict, strict: bool = True, *args, **kwargs):
             strict = False
             return origin_load_state_dict(self, state_dict, strict, *args, **kwargs)
 
-        checkpointing._load_base_checkpoint = _load_base_checkpoint
-        torch.nn.Module.load_state_dict = load_state_dict
-
-        args = get_args()
-        origin_no_load_optim = args.no_load_optim
-        origin_no_load_rng = args.no_load_rng
-        args.no_load_optim = True
-        args.no_load_rng = True
-
+        if args.train_type != 'full':
+            torch.nn.Module.load_state_dict = load_state_dict
+            args.no_load_optim = True
+            args.no_load_rng = True
+            args.finetune = True
         try:
             yield
         finally:
-            checkpointing._load_base_checkpoint = origin__load_base_checkpoint
+            checkpointing._load_base_checkpoint = checkpointing.origin__load_base_checkpoint
             torch.nn.Module.load_state_dict = origin_load_state_dict
             args.no_load_optim = origin_no_load_optim
             args.no_load_rng = origin_no_load_rng
+            args.finetune = origin_finetune
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
@@ -206,7 +235,7 @@ class BaseMegatronTrainer(ABC):
             self.peft_model = prepare_mcore_model(self.unwrapped_model)
             return self.unwrapped_model
 
-        with self._patch_load_state_dict():
+        with self._patch_load_state_dict(self._load_base_checkpoint):
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
         args = get_args()
@@ -214,6 +243,10 @@ class BaseMegatronTrainer(ABC):
             self._initialize_embedding(self.unwrapped_model)
         if args.train_type != 'full' and args.modules_to_save:
             copy_original_module_weight(self.unwrapped_model)
+        if args.ref_adapter_load is not None:
+            with self._patch_load_state_dict(self._load_adapter_base_checkpoint):
+                args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
+                    model, optimizer, opt_param_scheduler, load_arg='ref_adapter_load', strict=False)
         if args.adapter_load is not None:
             with adapter_state_dict_context():
                 args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
