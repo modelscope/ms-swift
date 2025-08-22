@@ -192,7 +192,8 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
 def convert_mcore2hf(args: ExportArguments) -> None:
     from swift.megatron import prepare_mcore_model, adapter_state_dict_context
-    hf_model, template = prepare_model_template(args, load_model=args.to_hf, patch_offload=not args.test_convert_precision)
+    hf_model, template = prepare_model_template(
+        args, load_model=args.to_hf, patch_offload=not args.test_convert_precision)
     processor = template.processor
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
