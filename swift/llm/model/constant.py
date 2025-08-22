@@ -35,6 +35,7 @@ class LLMModelType:
     yi_coder = 'yi_coder'
     sus = 'sus'
     gpt_oss = 'gpt_oss'
+    seed_oss = 'seed_oss'
 
     codefuse_codellama = 'codefuse_codellama'
     mengzi3 = 'mengzi3'

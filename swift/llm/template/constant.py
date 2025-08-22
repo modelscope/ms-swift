@@ -29,6 +29,7 @@ class LLMTemplateType:
     yi_coder = 'yi_coder'
     sus = 'sus'
     gpt_oss = 'gpt_oss'
+    seed_oss = 'seed_oss'
 
     minimax = 'minimax'
     minimax_m1 = 'minimax_m1'

@@ -6,6 +6,7 @@ from typing import Optional
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
+from ..template_inputs import StdTemplateInputs
 from ..utils import Prompt
 from .llama import Llama3_2TemplateMeta
 from .qwen import Qwen2VLTemplate, QwenTemplateMeta
@@ -323,7 +324,7 @@ class GptTemplate(Template):
                 '# Valid channels: analysis, commentary, final. '
                 'Channel must be included for every message.<|end|>')
 
-    def _swift_prepare_inputs(self, inputs):
+    def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         super()._swift_prepare_inputs(inputs)
         messages = inputs.messages
         if inputs.system is None:
