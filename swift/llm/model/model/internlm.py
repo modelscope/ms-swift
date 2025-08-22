@@ -360,18 +360,22 @@ def get_model_tokenizer_interns1(model_dir: str,
             module.register_forward_hook(_clone_hook)
 
         patch_output0_clone(model.model.vision_tower.get_input_embeddings())
+        from transformers.modeling_utils import PreTrainedModel
+        if not hasattr(PreTrainedModel, '_old_enable_input_require_grads'):
+            old_enable_input_require_grads = PreTrainedModel.enable_input_require_grads
 
-        def enable_input_require_grads(self):
+            def patched_enable_input_require_grads(self):
 
-            def make_inputs_require_grads(module, input, output):
-                if isinstance(output, tuple):
-                    output[0].requires_grad_(True)
-                else:
-                    output.requires_grad_(True)
+                def make_inputs_require_grads(module, input, output):
+                    if isinstance(output, tuple):
+                        output[0].requires_grad_(True)
+                    else:
+                        output.requires_grad_(True)
 
-            self._require_grads_hook = self[0].auto_model.embed_tokens.register_forward_hook(make_inputs_require_grads)
+                self._require_grads_hook = self.get_input_embeddings().register_forward_hook(make_inputs_require_grads)
 
-        model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
+            PreTrainedModel.enable_input_require_grads = patched_enable_input_require_grads
+            PreTrainedModel._old_enable_input_require_grads = old_enable_input_require_grads
     return model, processor
 
 
