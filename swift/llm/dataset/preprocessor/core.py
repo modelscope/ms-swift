@@ -268,7 +268,7 @@ class RowPreprocessor:
 
             if features is not None:
                 features['messages'] = [{'role': Value(dtype='string'), 'content': Value(dtype='string')}]
-                features['messages'][0].extend(self.features)
+                features['messages'][0].update(self.features)
                 features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
                 features['objects'] = {
                     'ref': Sequence(feature=Value(dtype='string'), length=-1),

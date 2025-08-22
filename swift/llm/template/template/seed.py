@@ -5,8 +5,8 @@ from typing import Optional, Type, List
 
 from transformers.utils import strtobool
 
-from swift.llm import register_template, TemplateMeta, Template, Word
-from swift.llm.template import Prompt
+from ..register import register_template, TemplateMeta, Template
+from ..utils import Context, Prompt, Word, findall
 from swift.llm.template.constant import LLMTemplateType
 from swift.llm.template.template.utils import ThinkingTemplate
 from swift.llm.template.template_inputs import StdTemplateInputs
@@ -16,10 +16,7 @@ class SeedTemplate(ThinkingTemplate):
 
     @staticmethod
     def get_thinking_budget(inputs: StdTemplateInputs):
-        budget = None
-        if inputs.messages[0]['role'] == 'system':
-            budget = inputs.messages[0].get('thinking_budget')
-        return int(budget) if budget is not None else None
+        return inputs
 
     @staticmethod
     def get_reflect_interval(inputs: StdTemplateInputs):
@@ -64,40 +61,35 @@ class SeedTemplate(ThinkingTemplate):
             current_tokens += sentence_tokens
 
         return '\n'.join(result)
-
-    def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
-        super()._swift_prepare_inputs(inputs)
-        budget = self.get_thinking_budget(inputs)
-        interval = self.get_reflect_interval(inputs)
+    
+    @staticmethod
+    def _prepare_system(inputs):
+        budget = SeedTemplate.get_thinking_budget(inputs)
+        interval = SeedTemplate.get_reflect_interval(inputs)
         if budget is None:
             default_system = ''
         elif budget > 0:
             default_system = ('You are an intelligent assistant with reflective ability. '
                               'In the process of thinking and reasoning, you need to strictly follow the thinking budget, '
                               f'which is {budget}. That is, you need to complete your thinking within {budget} tokens and start '
-                              f'answering the user\')s questions. You will reflect on your thinking process every {interval} tokens, '
-                              'stating how many tokens have been used and how many are left.')
+                              f'answering the user\'s questions. You will reflect on your thinking process every {interval} tokens, '
+                              'stating how many tokens have been used and how many are left.\n')
         else:
             default_system = ('You are an intelligent assistant that can answer questions in one step without the need '
                               'for reasoning and thinking, that is, your thinking budget is 0. Next, please skip the '
-                              'thinking process and directly start answering the user\'s questions.')
+                              'thinking process and directly start answering the user\'s questions.\n')
 
-        if inputs.messages[0]['role'] == 'system':
-            if not default_system:
-                pass
-            elif not inputs.messages[0]['content']:
-                inputs.messages[0]['content'] = default_system
+        if default_system:
+            if inputs.system:
+                inputs.system = inputs.system + '<seed:eos><seed:bos>system\n' + default_system
             else:
-                inputs.messages[0]['content'] = (inputs.messages[0]['content'] +
-                                                 '<seed:eos><seed:bos>system\n' + default_system)
+                inputs.system = default_system
 
-            if not inputs.messages[0]['content']:
-                inputs.messages.pop(0)
-        else:
-            if not default_system:
-                pass
-            else:
-                inputs.messages.insert(0, {'content': default_system, 'role': 'system'})
+    def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
+        super()._swift_prepare_inputs(inputs)
+        budget = self.get_thinking_budget(inputs)
+        interval = self.get_reflect_interval(inputs)
+        self._prepare_system(inputs)
 
         if budget is not None and budget > 0 and interval is not None and interval > 0:
             for message in inputs.messages:
@@ -115,17 +107,21 @@ class SeedTemplate(ThinkingTemplate):
             res.append('<seed:think><seed:cot_budget_reflect>')
             res_loss_scale.append(res_loss_scale[-1])
         return res, res_loss_scale
+    
+    def _jinja_encode(self, inputs: StdTemplateInputs):
+        self._prepare_system(inputs)
+        return super()._jinja_encode(inputs)
 
 
 @dataclass
 class SeedTemplateMeta(TemplateMeta):
     template_type: str = 'seed'
-    prefix: Prompt = '<seed:bos>'
+    prefix: Prompt = field(default_factory=lambda: ['<seed:bos>'])
     prompt: Prompt = field(default_factory=lambda: ['<seed:bos>user\n{{QUERY}}<seed:eos><seed:bos>assistant\n'])
-    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<seed:bos>system\n{{system}}<seed:eos>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<seed:bos>system\n{{SYSTEM}}<seed:eos>'])
     auto_add_bos: bool = True
-    chat_sep: Optional[Prompt] = field(default_factory=lambda: [['<seed:eos>']])
-    suffix: Prompt = field(default_factory=lambda: [['<seed:eos>']])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<seed:eos>'])
+    suffix: Prompt = field(default_factory=lambda: ['<seed:eos>'])
     template_cls: Type[Template] = SeedTemplate
     default_system: Optional[str] = None
     response_prefix: str = ''
