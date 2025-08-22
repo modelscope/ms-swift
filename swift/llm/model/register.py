@@ -3,7 +3,7 @@ import math
 import os
 import platform
 import re
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
@@ -22,8 +22,9 @@ from transformers.utils.versions import require_version
 
 from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr
 from .constant import ModelType
-from .patcher import (get_lm_head_model, patch_automodel, patch_automodel_for_sequence_classification,
-                      patch_get_dynamic_module, patch_mp_ddp, patch_tp_plan)
+from .patcher import (get_lm_head_model, patch_attach_align_device_hook_on_blocks, patch_automodel,
+                      patch_automodel_for_sequence_classification, patch_get_dynamic_module, patch_mp_ddp,
+                      patch_tp_plan)
 from .utils import AttnImpl, HfConfigFactory, InitModelStrategy, ModelInfo, safe_snapshot_download
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
@@ -653,7 +654,9 @@ def get_model_tokenizer(
     kwargs['model_meta'] = model_meta
     kwargs['max_model_len'] = max_model_len
     kwargs['return_dummy_model'] = return_dummy_model
-    with patch_get_dynamic_module(), patch_tp_plan(load_model):
+    patch_offload = kwargs.pop('patch_offload', False)
+    patch_offload_context = patch_attach_align_device_hook_on_blocks() if patch_offload else nullcontext()
+    with patch_get_dynamic_module(), patch_tp_plan(load_model), patch_offload_context:
         model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):

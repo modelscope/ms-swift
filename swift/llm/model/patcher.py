@@ -378,3 +378,18 @@ def patch_tp_plan(load_model: bool):
     os.environ.pop('WORLD_SIZE')
     yield
     os.environ['WORLD_SIZE'] = WORLD_SIZE
+
+
+@contextmanager
+def patch_attach_align_device_hook_on_blocks():
+    from accelerate import big_modeling
+    origin_attach_align_device_hook_on_blocks = big_modeling.attach_align_device_hook_on_blocks
+
+    def attach_align_device_hook_on_blocks(*args, **kwargs):
+        return
+
+    big_modeling.attach_align_device_hook_on_blocks = attach_align_device_hook_on_blocks
+    try:
+        yield
+    finally:
+        big_modeling.attach_align_device_hook_on_blocks = origin_attach_align_device_hook_on_blocks
