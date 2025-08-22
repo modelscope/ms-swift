@@ -643,7 +643,8 @@ def test_glm4_5v():
 def test_interns1():
     pt_engine = PtEngine('Shanghai_AI_Laboratory/Intern-S1-mini')
     images = ['http://images.cocodataset.org/val2017/000000039769.jpg']
-    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'Please describe the image explicitly.'}])
+    messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
+    response = _infer_model(pt_engine, messages=messages, images=images)
     target_response = ("Okay, let's see. The user wants me to describe the image explicitly. "
                        'The image shows two cats lying on a pink couch. '
                        'One cat is a tabby with stripes, and the other is a kitten with similar markings. ')
@@ -667,7 +668,7 @@ if __name__ == '__main__':
     # test_ovis1_6()
     # test_ovis1_6_llama3()
     # test_ovis2()
-    test_ovis2_5()
+    # test_ovis2_5()
     # test_yi_vl()
     # test_deepseek_vl()
     # test_deepseek_janus()
@@ -713,3 +714,4 @@ if __name__ == '__main__':
     # test_keye_vl()
     # test_dots_ocr()
     # test_glm4_5v()
+    test_interns1()
