@@ -1243,21 +1243,33 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics[mode]['completions/mean_length'].append(total_lengths.mean().item())
         self._metrics[mode]['completions/min_length'].append(total_lengths.min().item())
         self._metrics[mode]['completions/max_length'].append(total_lengths.max().item())
-        # --- log clipped ratio ---
-        if self.dynamic_num_samples:
-            pass
-            # request_ids = gather_object([inp['request_id'] for inp in inputs])
 
-        local_trunc_masks = [inp['truncated_mask'].tolist() for inp in ga_batch_encoded_inputs]
+        # --- log completion clipped ratio ---
+        local_trunc_masks = [inp['truncated_mask'].tolist() for inp in inputs]
         total_trunc_masks = self._gather_and_flatten(
             local_trunc_masks, dtype=torch.bool, device=device, flatten_level=1)
 
-        clipped_ratio = total_trunc_masks.sum().item() / total_lengths.shape[0]
-        self._metrics[mode]['completions/clipped_ratio'].append(clipped_ratio)  # TODO last_turn
-        if all('rollout_infos' in inp and 'num_turns' in inp['rollout_infos'] for inp in inputs):
-            num_turns = torch.tensor(
-                gather_object([inp['rollout_infos']['num_turns'] for inp in inputs]), device=device)
-            self._metrics[mode]['num_turns'].append(num_turns.mean().item())  # TODO:last_turn
+        if not self.dynamic_num_samples:
+            clipped_ratio = total_trunc_masks.sum().item() / total_lengths.shape[0]
+            self._metrics[mode]['completions/clipped_ratio'].append(clipped_ratio)
+
+            if all('rollout_infos' in inp and 'num_turns' in inp['rollout_infos'] for inp in inputs):
+                num_turns = torch.tensor(
+                    gather_object([inp['rollout_infos']['num_turns'] for inp in inputs]), device=device)
+                self._metrics[mode]['num_turns'].append(num_turns.mean().item())
+        else:
+            request_ids = gather_object([inp['request_id'] for inp in inputs])
+            last_indices = self._get_last_indices(request_ids)
+
+            final_trunc_masks = total_trunc_masks[last_indices]
+            clipped_ratio = final_trunc_masks.sum().item() / final_trunc_masks.shape[0]
+            self._metrics[mode]['completions/clipped_ratio'].append(clipped_ratio)
+
+            if all('rollout_infos' in inp and 'num_turns' in inp['rollout_infos'] for inp in inputs):
+                num_turns_all = torch.tensor(
+                    gather_object([inp['rollout_infos']['num_turns'] for inp in inputs]), device=device)
+                final_num_turns = num_turns_all[last_indices]
+                self._metrics[mode]['num_turns'].append(final_num_turns.mean().item())
 
         return ga_batch_encoded_inputs
 
