@@ -44,7 +44,11 @@ class ThinkingTemplate(Template):
         if self.no_think_prefix:
             for i, message in enumerate(messages):
                 if message['role'] == 'assistant' and isinstance(message['content'], str):
-                    if not message['content'].startswith('<think>'):
+                    # During multi-turn SFT training/validation:
+                    # If the message has no <think> block and does not start with the no_think_prefix,
+                    # prepend the no_think_prefix to the content.
+                    prefix = ('<think>', self.no_think_prefix) if self.no_think_prefix else '<think>'
+                    if not message['content'].startswith(prefix):
                         message['content'] = self.no_think_prefix + message['content']
 
         # Only during inference or training, and only if the loss_scale is set to 'last_round',
