@@ -640,6 +640,16 @@ def test_glm4_5v():
     assert response == response2
 
 
+def test_interns1():
+    pt_engine = PtEngine('Shanghai_AI_Laboratory/Intern-S1-mini')
+    images = ['http://images.cocodataset.org/val2017/000000039769.jpg']
+    messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -654,7 +664,7 @@ if __name__ == '__main__':
     # test_ovis1_6()
     # test_ovis1_6_llama3()
     # test_ovis2()
-    test_ovis2_5()
+    # test_ovis2_5()
     # test_yi_vl()
     # test_deepseek_vl()
     # test_deepseek_janus()
@@ -700,3 +710,4 @@ if __name__ == '__main__':
     # test_keye_vl()
     # test_dots_ocr()
     # test_glm4_5v()
+    test_interns1()
