@@ -1,4 +1,10 @@
 # Before running this script, please run the following `swift rollout` script first
+# This script is a example for multi-turn training with dynamic num of rollout outputs
+# which means a trajectory of multi turn rollout is split into multiple data
+#       see details in thinking_tips_scheduler
+# NOTE: for same trajectory, the reward is supported to be the same,
+#       here we use the last turn data of each trajectory to compute accuracy reward
+#       see details in thinking_tips reward function
 
 # CUDA_VISIBLE_DEVICES=0 \
 # swift rollout \
@@ -46,5 +52,4 @@ swift rlhf \
     --importance_sampling_level sequence \
     --top_entropy_quantile 0.2 \
     --num_iterations 1 \
-    --report_to tensorboard swanlab\
-    --max_turns 3
+    --report_to tensorboard swanlab
