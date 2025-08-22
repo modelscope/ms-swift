@@ -112,7 +112,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # for async generate
         self.train_queue = Queue()
         self.eval_queue = Queue()
-        self.is_multimodal = model.model.model_meta.is_multimodal
+        self.is_multimodal = model.model_meta.is_multimodal
         self.processing_class = kwargs.get('template').tokenizer
 
         if not isinstance(reward_funcs, list):
@@ -812,6 +812,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return results
 
+    @patch_profiling_decorator
     def _generate_and_score_completions(self, inputs: DataType) -> DataType:
         # resample for overlong(> max_length) prompt data
         if self.template.truncation_strategy == 'raise':
@@ -834,33 +835,35 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         batch_encoded_inputs = self._prepare_batch_inputs(inputs)
 
-        # --- logs (prompts + completions) ---
-        messages = [inp['messages'][:-1] for inp in inputs]
-        completions = [inp['messages'][-1]['content'] for inp in inputs]
-        valid_messages = self._gather_and_flatten(messages, flatten_level=0)
-        valid_completions = self._gather_and_flatten(completions, flatten_level=0)
-        self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
-        self._logs['completion'].extend(valid_completions)
+        with patch_profiling_context(self, 'log_metrics'):
+            # --- logs (prompts + completions) ---
+            messages = [inp['messages'][:-1] for inp in inputs]
+            completions = [inp['messages'][-1]['content'] for inp in inputs]
+            valid_messages = self._gather_and_flatten(messages, flatten_level=0)
+            valid_completions = self._gather_and_flatten(completions, flatten_level=0)
+            self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
+            self._logs['completion'].extend(valid_completions)
 
-        # Example: if you want to log extra data in the wandb / swanlab table,
-        #          add them to metrics_to_gather
-        # NOTE: every key you register must appear in ALL rollout outputs
-        #       to avoid potential communication / synchronization issues
-        metrics_to_gather = {}
-        if all('images' in data and data['images'] is not None for data in inputs):
-            metrics_to_gather['image'] = [inp['images'] for inp in inputs]
+            # Example: if you want to log extra data in the wandb / swanlab table,
+            #          add them to metrics_to_gather
+            # NOTE: every key you register must appear in ALL rollout outputs
+            #       to avoid potential communication / synchronization issues
+            metrics_to_gather = {}
+            if all('images' in data and data['images'] is not None for data in inputs):
+                metrics_to_gather['image'] = [inp['images'] for inp in inputs]
 
-        if all('solution' in inp for inp in inputs):
-            metrics_to_gather['solution'] = [inp['solution'] for inp in inputs]
+            if all('solution' in inp for inp in inputs):
+                metrics_to_gather['solution'] = [inp['solution'] for inp in inputs]
 
-        if metrics_to_gather:
-            for key, value in metrics_to_gather.items():
-                if key not in self._logs:
-                    self._logs[key] = deque(maxlen=self.args.generation_batch_size)
-                self._logs[key].extend(self._gather_and_flatten(value, flatten_level=0))
+            if metrics_to_gather:
+                for key, value in metrics_to_gather.items():
+                    if key not in self._logs:
+                        self._logs[key] = deque(maxlen=self.args.generation_batch_size)
+                    self._logs[key].extend(self._gather_and_flatten(value, flatten_level=0))
 
         return batch_encoded_inputs
 
+    @patch_profiling_decorator
     def _score_completions(self, inputs: DataType) -> Tuple[torch.Tensor, torch.Tensor]:
         """Score completions using all reward functions and compute advantages
 
@@ -1078,6 +1081,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             return advantages, rewards_std
 
+    @patch_profiling_decorator
     def _dynamic_sampling(self, inputs, advantages, rewards_std):
         """
         Perform dynamic sampling to replace samples with zero-reward-variance groups.
@@ -1174,6 +1178,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.ref_adapter_name:
                 self.model.set_adapter(self.model_adapter_name or 'default')
 
+    @patch_profiling_decorator
     def _prepare_batch_inputs(self, inputs: DataType) -> List[DataType]:
         """
         Prepare the final batch inputs with ref/old_policy logps and other fields for RL training.
@@ -1245,7 +1250,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics[mode]['completions/max_length'].append(total_lengths.max().item())
 
         # --- log completion clipped ratio ---
-        local_trunc_masks = [inp['truncated_mask'].tolist() for inp in inputs]
+        local_trunc_masks = [inp['truncated_mask'].tolist() for inp in ga_batch_encoded_inputs]
         total_trunc_masks = self._gather_and_flatten(
             local_trunc_masks, dtype=torch.bool, device=device, flatten_level=1)
 
@@ -2030,6 +2035,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.engine.max_model_len = original_max_len
             del self.engine.set_grpo_max_model_len
 
+    @patch_profiling_decorator
     def resample_truncated_inputs(self, inputs: DataType, n_try_fetch: int = 10) -> DataType:
         template = self.template
         for i, data in enumerate(inputs):
