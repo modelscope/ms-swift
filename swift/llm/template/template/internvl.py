@@ -176,6 +176,7 @@ register_template(
 
 
 class InternS1Template(Internvl2Template, ThinkingTemplate):
+    image_token_id = 152957
     InternS1DefaultThinkinngSystem = ('You are an expert reasoner with extensive experience in all areas. '
                                       'You approach problems through systematic thinking and rigorous reasoning. '
                                       'Your response should reflect deep understanding and precise logical thinking, '
@@ -236,17 +237,18 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
         pixel_values = inputs.get('pixel_values')
         if pixel_values is not None:
             pixel_values = pixel_values.to(device=device)
-            embeddings = model.model.vision_tower.embeddings
-            vit_embeds = embeddings(pixel_values)[0].to(device=device)
-            special_image_mask = inputs_embeds == embeddings(
-                torch.tensor('<IMG_CONTEXT>', dtype=torch.long, device=inputs_embeds.device))
+            vit_embeddings = model.model.vision_tower.embeddings
+            lm_embeddings = model.model.language_model.embeddings
+            vit_embeds = vit_embeddings(pixel_values)[0].to(device=device)
+            special_image_mask = inputs_embeds == lm_embeddings(
+                torch.tensor(self.image_token_id, dtype=torch.long, device=inputs_embeds.device))
             special_image_mask = special_image_mask.all(-1)
             special_image_mask = special_image_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
-            image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
-            inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
             image_features = model.model.get_image_features(
                 pixel_values, vision_feature_layer=-1, vision_feature_select_strategy='default')
             image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
+            inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
+
             inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
         elif is_deepspeed_enabled():
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
