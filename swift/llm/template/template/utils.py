@@ -47,8 +47,7 @@ class ThinkingTemplate(Template):
                     # During multi-turn SFT training/validation:
                     # If the message has no <think> block and does not start with the no_think_prefix,
                     # prepend the no_think_prefix to the content.
-                    prefix = ('<think>', self.no_think_prefix) if self.no_think_prefix else '<think>'
-                    if not message['content'].startswith(prefix):
+                    if not message['content'].startswith(('<think>', self.no_think_prefix)):
                         message['content'] = self.no_think_prefix + message['content']
 
         # Only during inference or training, and only if the loss_scale is set to 'last_round',
