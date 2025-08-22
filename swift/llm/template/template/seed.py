@@ -16,7 +16,28 @@ class SeedTemplate(ThinkingTemplate):
 
     @staticmethod
     def get_thinking_budget(inputs: StdTemplateInputs):
-        return inputs.extra_kwargs.get('thinking_budget')
+
+        def convert_integer_v2(n):
+            if n is None:
+                return None
+            elif n <= 0:
+                return 0
+            elif n < 512:
+                return 512
+            elif n < 1024:
+                return 1024
+            elif n < 2048:
+                return 2048
+            elif n < 4096:
+                return 4096
+            elif n < 8192:
+                return 8192
+            elif n < 16384:
+                return 16384
+            else:
+                return n
+
+        return convert_integer_v2(inputs.extra_kwargs.get('thinking_budget'))
 
     @staticmethod
     def get_reflect_interval(inputs: StdTemplateInputs):

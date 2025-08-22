@@ -930,7 +930,7 @@ class ThinkingBudgetPreprocessor(MessagesPreprocessor):
         max_length = 0
         for m in messages:
             if m['role'] == 'assistant':
-                if '<think>' in m['content']:
+                if '<think>' in m['content'] and '</think>' in m['content']:
                     _, think = m['content'].split('<think>')
                     think, _ = think.split('</think>')
                     if len(think) > max_length:
