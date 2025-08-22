@@ -1014,7 +1014,7 @@ class Template(ProcessorMixin):
         answer_len = 1 if self.is_training else 0
         return [text], [1.], answer_len
 
-    def _get_system(self, inputs) -> Optional[str]:
+    def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
         template_meta = self.template_meta
         system = inputs.system
         tools = inputs.tools
@@ -1026,7 +1026,7 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
         return system
 
-    def _swift_prepare_inputs(self, inputs):
+    def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         messages = inputs.messages
         if len(messages) < 2:
             return
