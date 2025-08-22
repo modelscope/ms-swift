@@ -145,7 +145,7 @@ class SeedTemplateMeta(TemplateMeta):
     default_system: Optional[str] = None
     response_prefix: str = ''
     stop_words: List[Word] = field(default_factory=lambda: ['<seed:eos>'])
-    agent_template: str = 'react_en'
+    agent_template: str = None
 
 
 register_template(SeedTemplateMeta(LLMTemplateType.seed_oss, default_system=None, template_cls=SeedTemplate))
