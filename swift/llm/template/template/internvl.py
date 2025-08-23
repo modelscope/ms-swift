@@ -183,6 +183,15 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
                                       'making your solution path and reasoning clear to others. '
                                       'Please put your thinking process within <think>...</think> tags.')
 
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int, inputs: StdTemplateInputs) -> List[Context]:
+        assert media_type in ['image', 'video']
+        if media_type == 'video':
+            if self.mode == 'vllm':
+                return ['<video>']
+            else:
+                return [[-200]]
+        return super().replace_tag(media_type, index, inputs)
+
     def _swift_encode(self, inputs: StdTemplateInputs):
         if inputs.system is None and self.template_meta.response_prefix == '<think>':
             inputs.system = self.InternS1DefaultThinkinngSystem
@@ -190,7 +199,8 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
         return super()._swift_encode(inputs)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        from transformers.image_utils import make_flat_list_of_images
+        from transformers.image_utils import make_flat_list_of_images, concatenate_list
+        from transformers.video_utils import make_batched_videos
         import numpy as np
         encoded = super(InternvlTemplate, self)._encode(inputs)
         input_ids = encoded['input_ids']
@@ -198,17 +208,24 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
         images = inputs.images
-        if inputs.videos:
-            # TODO
-            raise NotImplementedError('Video is not supported yet.')
+        videos = inputs.videos
         if images:
             # InternS1Processor
             images = make_flat_list_of_images(images)
             image_inputs = self.processor.image_processor(images=images, crop_to_patches=True, return_tensors='pt')
             image_num_patches = image_inputs.pop('num_patches')
-            pixel_values = image_inputs.pop('pixel_values')
+            image_pixel_values = image_inputs.pop('pixel_values')
             image_num_patches_indices = np.cumsum(image_num_patches)
-            # has_video = bool(inputs.videos) # TODO:video
+        if videos:
+            videos = make_batched_videos(videos)
+            video_inputs = self.processor.video_processor(videos=videos, return_tensors='pt')
+            video_num_patches = video_inputs.pop('num_patches')
+            video_pixel_values = video_inputs.pop('pixel_values_videos')
+            num_frames_per_video = [len(video) for video in video_pixel_values]
+            video_num_patches = [1 for frames in num_frames_per_video for _ in range(frames)]
+            video_patch_indices = np.cumsum(num_frames_per_video)
+            video_num_patches_indices = np.cumsum(video_num_patches)
+            video_pixel_values = video_pixel_values.flatten(0, 1)
         else:
             pixel_values = None
             image_num_patches_indices = []
