@@ -1229,7 +1229,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         prompts_text = []
         for messages in messages_list:
             InferRequest.remove_response(messages)
-            template_inputs, _ = StdTemplateInputs.from_dict({'messages': messages})
+            template_inputs = StdTemplateInputs.from_dict({'messages': messages})
             res = self.template.encode(template_inputs)
             prompts_text.append(self.template.safe_decode(res['input_ids']))
         return prompts_text
