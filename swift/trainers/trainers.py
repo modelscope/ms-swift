@@ -337,7 +337,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         loss_kwargs = inputs.pop('loss_kwargs', {})
 
         if (self.label_smoother is not None or compute_loss_func is not None or loss_scale is not None
-                or self.args.enable_dft_loss) and 'labels' in inputs:
+                or self.args.enable_dft_loss or self.template.sequence_parallel_size > 1) and 'labels' in inputs:
             labels = inputs.pop('labels')
         outputs = model(**inputs)
         if getattr(outputs, 'aux_loss', None) is not None:
@@ -372,7 +372,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                                           num_items_in_batch=num_items_in_batch,
                                           sp_instance=sequence_parallel,
                                           enable_dft_loss=self.args.enable_dft_loss)
-            elif self.args.enable_dft_loss or loss_scale is not None or self.template.sequence_parallel_size > 1:
+            elif self.args.enable_dft_loss or loss_scale is not None:
                 loss_func = per_token_loss_func
                 outputs.loss = loss_func(
                     outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
