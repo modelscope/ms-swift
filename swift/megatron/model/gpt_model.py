@@ -11,6 +11,7 @@ from megatron.core.models.gpt import GPTModel as McoreGPTModel
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
+from megatron.training import get_args
 
 from swift.utils import get_logger
 from .rope import dynamic_rope_update, get_rope_inv_freq
@@ -91,6 +92,11 @@ class GPTModel(McoreGPTModel):
             logger.warning('`apply_rope_fusion` does not support `attention_scaling`. '
                            f'Setting `config.apply_rope_fusion`: {config.apply_rope_fusion}')
 
+        args = get_args()
+        self.visual = None
+        if args.megatron_model_meta.visual is not None:
+            self.visual = args.megatron_model_meta.visual(config)
+
     @contextmanager
     def _patch_apply_rotary_pos_emb(self):
         if self.attention_scaling == 1.:
@@ -118,6 +124,7 @@ class GPTModel(McoreGPTModel):
         attention_mask: torch.Tensor,
         decoder_input: torch.Tensor = None,
         labels: torch.Tensor = None,
+        multimodal_data: Optional[Dict[str, Any]] = None,
         inference_params: InferenceParams = None,
         packed_seq_params: PackedSeqParams = None,
         extra_block_kwargs: dict = None,
@@ -141,6 +148,8 @@ class GPTModel(McoreGPTModel):
             pass
         elif self.pre_process:
             decoder_input = self.embedding(input_ids=input_ids, position_ids=position_ids)
+            if self.visual is not None:
+                decoder_input = self.visual.get_inputs_embeds(decoder_input, multimodal_data)
         else:
             # intermediate stage of pipeline
             # decoder will get hidden_states from encoder.input_tensor

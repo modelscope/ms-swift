@@ -1,4 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from dataclasses import dataclass
+from typing import Any, Callable, Dict
+
+from torch import nn
+from transformers import PretrainedConfig
+
 from swift.llm import ModelType
 from ..constant import MegatronModelType
 from ..register import MegatronModelMeta, register_megatron_model
@@ -52,3 +58,11 @@ register_megatron_model(
         ModelType.glm4_5,
         ModelType.deepseek_v3_1,
     ], model_provider, convert_gpt_hf_config, convert_mcore2hf, convert_hf2mcore))
+
+
+@dataclass
+class GptMegatronModelMeta(MegatronModelMeta):
+    model_provider: Callable[[], nn.Module] = model_provider
+    convert_hf_config: Callable[[PretrainedConfig], Dict[str, Any]] = convert_gpt_hf_config
+    convert_mcore2hf: Callable[[nn.Module, nn.Module], None] = convert_mcore2hf
+    convert_hf2mcore: Callable[[nn.Module, nn.Module], None] = convert_hf2mcore
