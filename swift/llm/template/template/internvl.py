@@ -202,6 +202,7 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         from transformers.image_utils import make_flat_list_of_images, concatenate_list
         from transformers.video_utils import make_batched_videos
+        from swift.llm.template.vision_utils import load_video_hf
         import numpy as np
         encoded = super(InternvlTemplate, self)._encode(inputs)
         input_ids = encoded['input_ids']
@@ -230,9 +231,9 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
             image_num_patches_indices = np.cumsum(image_num_patches)
         if videos:
             video_idx_list = findall(input_ids, -200)
+            videos, _ = load_video_hf(videos)
             videos = make_batched_videos(videos)
             video_inputs = self.processor.video_processor(videos=videos, return_tensors='pt')
-            video_num_patches = video_inputs.pop('num_patches')
             video_pixel_values = video_inputs.pop('pixel_values_videos')
             num_frames_per_video = [len(video) for video in video_pixel_values]
             video_num_patches = [1 for frames in num_frames_per_video for _ in range(frames)]
@@ -269,7 +270,7 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
         if images and len(image_idx_list) > 0:
             assert len(image_num_patches_indices) == len(image_idx_list)
         if videos and len(video_idx_list) > 0:
-            assert len(video_num_patches_indices) == len(video_idx_list)
+            assert len(video_patch_indices) == len(video_idx_list)
 
         def _get_new_tokens(i):
             if is_image_list[i]:
@@ -283,7 +284,7 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
                     '<IMG_CONTEXT>', add_special_tokens=False) * image_seq_length * image_num_patches[image_idx]
             else:
                 # Find the corresponding video index
-                video_idx = sum(not is_image_list[:i])
+                video_idx = i - sum(is_image_list[:i])
                 current_patch = video_patch_indices[video_idx - 1] if video_idx > 0 else 0
                 end_patch = video_patch_indices[video_idx]
 
@@ -293,7 +294,7 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
                 image_seq_length = self.processor.image_seq_length
                 num_patches = list(video_num_patches[current_patch:end_patch])
                 video_prompt = '\n'.join(
-                    f"Frame{i + 1}: <img>{'<IMG_CONTEXT>' * self.image_seq_length * num_patches[i]}</img>"
+                    f"Frame{i + 1}: <img>{'<IMG_CONTEXT>' * image_seq_length * num_patches[i]}</img>"
                     for i in range(len(num_patches)))
                 img_tokens = self.processor.encode(video_prompt, add_special_tokens=False)
             return img_tokens
