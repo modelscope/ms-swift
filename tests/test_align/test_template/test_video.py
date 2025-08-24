@@ -195,7 +195,9 @@ def test_interns1():
     messages = [{'role': 'user', 'content': '<video>Describe this video in detail.'}]
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     response = _infer_model(pt_engine, messages=messages, videos=videos)
-    print(f'response: {response}')
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, videos=videos)
+    assert response == response2
 
 
 if __name__ == '__main__':
