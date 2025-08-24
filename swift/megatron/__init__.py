@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from .argument import MegatronTrainArguments, MegatronRLHFArguments
     from .model import MegatronModelType, MegatronModelMeta, get_megatron_model_meta, register_megatron_model
     from .trainers import MegatronTrainer, MegatronDPOTrainer
+    from .tuners import LoraParallelLinear
 else:
     _import_structure = {
         'train': ['megatron_sft_main', 'megatron_pt_main', 'megatron_rlhf_main'],
@@ -24,6 +25,7 @@ else:
         'argument': ['MegatronTrainArguments', 'MegatronRLHFArguments'],
         'model': ['MegatronModelType', 'MegatronModelMeta', 'get_megatron_model_meta', 'register_megatron_model'],
         'trainers': ['MegatronTrainer', 'MegatronDPOTrainer'],
+        'tuners': ['LoraParallelLinear'],
     }
 
     import sys

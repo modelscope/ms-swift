@@ -1,4 +1,7 @@
 # 2 * 60GiB, 2.7s/it
+# Note: The conversion script has no differences.
+# It will read the new_special_tokens parameter from args.json.
+
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \

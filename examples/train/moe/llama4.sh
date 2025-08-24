@@ -1,4 +1,5 @@
-# Manually select `target_modules` to avoid 'all-linear' selecting 'router'
+# If you don't want to train the router, set:
+# `--target_regex '^(language_model).*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$'`
 NPROC_PER_NODE=4 \
 USE_HF=1 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -14,7 +15,6 @@ swift sft \
     --learning_rate 1e-4 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --target_regex '^(language_model).*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$' \
     --router_aux_loss_coef 1e-3 \
     --freeze_vit true \
     --gradient_accumulation_steps 4 \

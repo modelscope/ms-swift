@@ -1,4 +1,5 @@
-# Manually select `target_modules` to avoid 'all-linear' selecting 'gate'
+# If you don't want to train the router, set:
+# `--target_modules q_proj k_proj v_proj o_proj gate_proj up_proj down_proj`
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
@@ -12,7 +13,6 @@ swift sft \
     --learning_rate 1e-4 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --target_modules q_proj k_proj v_proj o_proj gate_proj up_proj down_proj \
     --router_aux_loss_coef 1e-3 \
     --gradient_accumulation_steps 16 \
     --eval_steps 50 \

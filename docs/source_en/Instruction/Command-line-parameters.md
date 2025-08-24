@@ -95,10 +95,11 @@ Hints:
   - Megatron-SWIFT uses `padding_free` by default, i.e., `qkv_format='thd'`, and no additional configuration is required.
 - padding_side: Padding side when `batch_size>=2` during training. Options are 'left' and 'right', with 'right' as the default. (For inference with batch_size>=2, only left padding is applied.)
   - Note: PPO and GKD are set to 'left' by default.
-- loss_scale: Weight setting for the loss of training tokens. Default is `'default'`, which means that all responses (including history) are used with a weight of 1 in cross-entropy loss, and the loss from the corresponding `tool_response` in the agent_template is ignored. Possible values include: 'default', 'last_round', 'all', 'ignore_empty_think', and agent-specific options: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi'. For more details about the agent part, please refer to [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
+- loss_scale: Weight setting for the loss of training tokens. Default is `'default'`, which means that all responses (including history) are used with a weight of 1 in cross-entropy loss, and the loss from the corresponding `tool_response` in the agent_template is ignored. Possible values include: 'default', 'last_round', 'all', 'ignore_empty_think', 'last_round_with_ignore_empty_think', and agent-specific options: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi'. For more details about the agent part, please refer to [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
   - 'last_round': Only calculate the loss for the last round of response.
   - 'all': Calculate the loss for all tokens.
   - 'ignore_empty_think': On top of 'default', ignore the loss calculation for empty `'<think>\n\n</think>\n\n'`. See [this issue](https://github.com/modelscope/ms-swift/issues/4030) for more details.
+  - 'last_round_with_ignore_empty_think': Based on 'last_round', ignore the loss calculation for an empty `'<think>\n\n</think>\n\n'` block.
   - `'react'`, `'hermes'`, `'qwen'`: On top of `'default'`, set the loss weight of the `tool_call` part to 2.
 - sequence_parallel_size: Sequence parallelism size, default is 1. Currently supported in CPT/SFT/DPO/GRPO. The training script refers to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel/ulysses/sequence_parallel.sh).
 - response_prefix: The prefix character for the response, for example, setting the response_prefix to `'<think>\n'` for QwQ-32B. The default is None, and it is automatically set according to the model.
@@ -408,6 +409,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
   - Supported multimodal models reference: https://github.com/modelscope/ms-swift/blob/main/examples/train/packing/qwen2_5_vl.sh. Note: Please use "ms-swift>=3.6" and follow [this PR](https://github.com/modelscope/ms-swift/pull/4838).
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
 - lazy_tokenize: Whether to use lazy tokenization. If set to False, all dataset samples are tokenized before training (for multimodal models, this includes reading images from disk). This parameter defaults to False for LLM training, and True for MLLM training, to save memory.
+  - Note: If you want to perform image data augmentation, you need to set `lazy_tokenize` to True and modify the `encode` method in the Template class.
 - cached_dataset: Use a cached dataset (generated with `swift export --to_cached_dataset true ...`) during training to avoid GPU time spent on tokenizing large datasets. Default: `[]`.
   - Note: cached_dataset supports `--packing` but does not support `--lazy_tokenize` or `--streaming`.
 - use_logits_to_keep: Pass `logits_to_keep` in the `forward` method based on labels to reduce the computation and storage of unnecessary logits, thereby reducing memory usage and accelerating training. The default is `None`, which enables automatic selection.
@@ -443,8 +445,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 
 - 🔥rlhf_type: Type of human alignment algorithm, supporting 'dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo' and 'gkd'. Default is 'dpo'.
 - ref_model: Required for full parameter training when using the dpo, kto, ppo or grpo algorithms. Default is None.
-- ref_adapters: Default is `[]`.
-  - Note: In "ms-swift>=3.8", you can set `--adapters sft_ckpt --ref_adapters sft_ckpt` during training to continue training from that LoRA, which is convenient for scenarios where DPO/KTO/GRPO follows LoRA SFT. For resuming training from a checkpoint in such scenarios, use `--resume_from_checkpoint rlhf_ckpt --ref_adapters sft_ckpt`.
+- ref_adapters: Default is `[]`. If you want to use the LoRA weights generated from SFT for DPO/KTO/GRPO, please use "ms-swift>=3.8" and set `--adapters sft_ckpt --ref_adapters sft_ckpt`. For resuming training from a checkpoint in this scenario, set `--resume_from_checkpoint rlhf_ckpt --ref_adapters sft_ckpt`.
 - ref_model_type: Same as model_type. Default is None.
 - ref_model_revision: Same as model_revision. Default is None.
 - 🔥beta: Coefficient for the KL regularization term. Default is `None`, meaning `simpo` algorithm defaults to `2.`, `grpo` algorithm defaults to `0.04`, `gkd` algorithm defaults to `0.5`, and other algorithms default to `0.1`. For more details, refer to the [documentation](./RLHF.md).

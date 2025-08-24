@@ -35,6 +35,7 @@ class LLMModelType:
     yi_coder = 'yi_coder'
     sus = 'sus'
     gpt_oss = 'gpt_oss'
+    seed_oss = 'seed_oss'
 
     codefuse_codellama = 'codefuse_codellama'
     mengzi3 = 'mengzi3'
@@ -64,6 +65,7 @@ class LLMModelType:
     deepseek_v2_5 = 'deepseek_v2_5'
     deepseek_r1 = 'deepseek_r1'
     deepseek_r1_distill = 'deepseek_r1_distill'
+    deepseek_v3_1 = 'deepseek_v3_1'
 
     openbuddy_llama = 'openbuddy_llama'
     openbuddy_llama3 = 'openbuddy_llama3'
@@ -177,6 +179,7 @@ class MLLMModelType:
     internvl2_phi3 = 'internvl2_phi3'
     internvl2_5 = 'internvl2_5'
     internvl3 = 'internvl3'
+    interns1 = 'interns1'
     xcomposer2 = 'xcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
     xcomposer2_5 = 'xcomposer2_5'

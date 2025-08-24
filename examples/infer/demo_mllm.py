@@ -104,9 +104,10 @@ if __name__ == '__main__':
     infer_backend = 'pt'
 
     if infer_backend == 'pt':
-        model = 'Qwen/Qwen2-Audio-7B-Instruct'
+        # test env: transformers==4.55.2
+        model = 'Qwen/Qwen2.5-Omni-7B'
         mm_type = 'audio'
-        engine = PtEngine(model, max_batch_size=64)
+        engine = PtEngine(model, max_batch_size=64, attn_impl='flash_attention_2')
     elif infer_backend == 'vllm':
         # test env: vllm==0.8.5.post1, transformers==4.51.3
         # The meaning of environment variables can be found at:

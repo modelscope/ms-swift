@@ -4,6 +4,13 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --output_dir output/swift_test_bert_merged \
     --merge_lora true
 
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "Error: LoRA merge failed with exit code $EXIT_CODE"
+    exit $EXIT_CODE
+fi
+
 # gptq quantize
 CUDA_VISIBLE_DEVICES=0 swift export \
     --model output/swift_test_bert_merged \
@@ -12,6 +19,14 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --quant_bits 4 \
     --quant_method gptq \
     --max_length 512
+
+
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "Error: GPTQ quantization failed with exit code $EXIT_CODE"
+    exit $EXIT_CODE
+fi
 
 # infer
 CUDA_VISIBLE_DEVICES=0 swift infer \

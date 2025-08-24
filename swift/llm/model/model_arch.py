@@ -50,6 +50,7 @@ class MLLMModelArch:
 
     xcomposer = 'xcomposer'
     internvl = 'internvl'
+    interns1 = 'interns1'
     minicpmv = 'minicpmv'
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
@@ -388,6 +389,14 @@ register_model_arch(
         language_model='language_model',
         aligner='mlp1',
         vision_tower='vision_model',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.interns1,
+        language_model='model.language_model',
+        aligner='model.multi_modal_projector',
+        vision_tower='model.vision_tower',
     ))
 
 register_model_arch(

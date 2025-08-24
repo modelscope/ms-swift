@@ -82,12 +82,12 @@ def calculate_paired_metrics(embeddings, labels):
 
     return {
         'pearson_cosine': eval_pearson_cosine,
-        'pearson_euclidean': eval_pearson_manhattan,
-        'pearson_manhattan': eval_pearson_euclidean,
+        'pearson_euclidean': eval_pearson_euclidean,
+        'pearson_manhattan': eval_pearson_manhattan,
         'pearson_dot_product': eval_pearson_dot,
         'spearman_cosine': eval_spearman_cosine,
-        'spearman_euclidean': eval_spearman_manhattan,
-        'spearman_manhattan': eval_spearman_euclidean,
+        'spearman_euclidean': eval_spearman_euclidean,
+        'spearman_manhattan': eval_spearman_manhattan,
         'spearman_dot_product': eval_spearman_dot,
     }
 

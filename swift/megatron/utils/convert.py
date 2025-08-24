@@ -143,6 +143,7 @@ convert_kwargs = {
     'no_save_rng': True,
     'no_load_optim': True,
     'no_load_rng': True,
+    'finetune': True,
     'attention_backend': 'unfused',
 }
 
@@ -155,7 +156,7 @@ def _check_megatron_kwargs(kwargs):
 
 
 def convert_hf2mcore(args: ExportArguments) -> None:
-    hf_model, template = prepare_model_template(args)
+    hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
     processor = template.processor
     if args.thread_count is None:
         checkpoint_size = sum(get_n_params_grads(hf_model)[0]) * torch.finfo(args.torch_dtype).bits // 8e9
@@ -191,7 +192,8 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
 def convert_mcore2hf(args: ExportArguments) -> None:
     from swift.megatron import prepare_mcore_model, adapter_state_dict_context
-    hf_model, template = prepare_model_template(args, load_model=args.to_hf)
+    hf_model, template = prepare_model_template(
+        args, load_model=args.to_hf, patch_offload=not args.test_convert_precision)
     processor = template.processor
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
@@ -202,12 +204,16 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     current_convert_kwargs = convert_kwargs.copy()
     if args.model_info.is_moe_model:
         current_convert_kwargs['moe_grouped_gemm'] = True
+    adapter_load = args.mcore_adapters[0] if args.mcore_adapters else None
+    adapter_config = MegatronArguments.load_tuner_config(adapter_load)
+    adapter_config['adapter_load'] = adapter_load
+    if args.mcore_model:
+        adapter_config['load'] = args.mcore_model
     megatron_args = MegatronArguments(
         **kwargs,
         **current_convert_kwargs,
-        load=args.mcore_model,
+        **adapter_config,
         save=args.output_dir if args.to_mcore else None,
-        adapter_load=args.mcore_adapters[0] if args.mcore_adapters else None,
         torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
@@ -215,6 +221,8 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
 
     mg_model = megatron_model_meta.model_provider()
+    if megatron_args.load is None:
+        raise ValueError('Please specify `--mcore_model`.')
     load_checkpoint([mg_model], None, None, strict=True)
     if megatron_args.adapter_load is not None:
         peft_model = prepare_mcore_model(mg_model)

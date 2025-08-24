@@ -34,10 +34,22 @@ register_template(EmptyTemplateMeta(LLMTemplateType.dummy))
 
 class ThinkingTemplate(Template):
     with_answer = False
+    no_think_prefix = ''  # for hybrid thinking model
+    history_think_prefix = ''
 
     def _swift_prepare_inputs(self, inputs):
         super()._swift_prepare_inputs(inputs)
         messages = inputs.messages
+
+        if self.no_think_prefix:
+            for i, message in enumerate(messages):
+                if message['role'] == 'assistant' and isinstance(message['content'], str):
+                    # During multi-turn SFT training/validation:
+                    # If the message has no <think> block and does not start with the no_think_prefix,
+                    # prepend the no_think_prefix to the content.
+                    if not message['content'].startswith(('<think>', self.no_think_prefix)):
+                        message['content'] = self.no_think_prefix + message['content']
+
         # Only during inference or training, and only if the loss_scale is set to 'last_round',
         # will the previous 'think' entries be deleted.
         if not self.is_training or self.loss_scale.name in {'last_round', 'last_round_with_ignore_empty_think'}:
@@ -48,7 +60,8 @@ class ThinkingTemplate(Template):
                         message['content'] = message['content'].split('<answer>')[-1].rstrip().rstrip(
                             '</answer>').strip()
                     else:
-                        message['content'] = message['content'].split('</think>')[-1].strip()
+                        message['content'] = self.history_think_prefix + message['content'].split(
+                            '</think>')[-1].strip()
 
 
 class ThinkingWithAnswerTemplate(ThinkingTemplate):

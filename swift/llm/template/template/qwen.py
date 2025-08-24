@@ -52,8 +52,12 @@ register_template(
     QwenTemplateMeta(
         LLMTemplateType.qwq, default_system=None, response_prefix='<think>\n', template_cls=ThinkingTemplate))
 
-# '<think>\n\n</think>\n\n'
-register_template(QwenTemplateMeta(LLMTemplateType.qwen3, default_system=None, template_cls=ThinkingTemplate))
+
+class Qwen3Template(ThinkingTemplate):
+    no_think_prefix = '<think>\n\n</think>\n\n'
+
+
+register_template(QwenTemplateMeta(LLMTemplateType.qwen3, default_system=None, template_cls=Qwen3Template))
 
 register_template(
     QwenTemplateMeta(
@@ -227,6 +231,7 @@ class Qwen2VLTemplate(Template):
     placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
     version = 'v2'
     use_model = True
+    support_padding_free = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -245,7 +250,9 @@ class Qwen2VLTemplate(Template):
             video, video_kwargs = fetch_video({'video': video}, return_video_sample_fps=True)
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
-            inputs.videos[index] = (video, video_kwargs)
+            inputs.videos[index] = video
+            if self.version == 'v2_5':
+                inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
@@ -260,14 +267,12 @@ class Qwen2VLTemplate(Template):
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
-        images = inputs.images
-        videos = [video[0] for video in inputs.videos]
-        fps = [video[1] for video in inputs.videos]
         for media_type in ['images', 'videos']:
-            if locals()[media_type]:
+            mm_data = getattr(inputs, media_type)
+            if mm_data:
                 if media_type == 'images':
                     media_token = self.image_token_id
-                    media_inputs = processor.image_processor(images=images, return_tensors='pt', do_resize=False)
+                    media_inputs = processor.image_processor(images=mm_data, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
                     kwargs = {}
@@ -276,10 +281,11 @@ class Qwen2VLTemplate(Template):
                     else:
                         processor_func = processor.image_processor
                         kwargs['images'] = None
-                    media_inputs = processor_func(videos=videos, return_tensors='pt', do_resize=False, **kwargs)
+                    media_inputs = processor_func(videos=mm_data, return_tensors='pt', do_resize=False, **kwargs)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
                     if self.version == 'v2_5':
+                        fps = inputs.mm_processor_kwargs['fps']
                         media_inputs['second_per_grid_ts'] = [
                             processor.image_processor.temporal_patch_size / tmp for tmp in fps
                         ]
@@ -736,6 +742,7 @@ class Ovis2_5Template(ThinkingTemplate):
     num_frames = 8
     use_model = True
     skip_prompt = False
+    support_padding_free = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:

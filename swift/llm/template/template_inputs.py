@@ -112,6 +112,8 @@ class StdTemplateInputs:
     rejected_images: List[Union[str, Image.Image]] = field(default_factory=list)
 
     margin: Optional[float] = None  # for reward modeling
+    mm_processor_kwargs: Dict[str, Any] = field(default_factory=dict)
+    extra_kwargs: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         self.image_idx = 0
@@ -138,7 +140,7 @@ class StdTemplateInputs:
         return bool(self.images or self.audios or self.videos or self.objects)
 
     @classmethod
-    def from_dict(cls, inputs: Dict[str, Any]) -> Tuple['StdTemplateInputs', Dict[str, Any]]:
+    def from_dict(cls, inputs: Dict[str, Any]) -> 'StdTemplateInputs':
         kwargs = {}
         for key in ['rejected_response', 'label', 'channel', 'margin']:
             if key in inputs:
@@ -175,7 +177,13 @@ class StdTemplateInputs:
         all_keys = set(f.name for f in fields(StdTemplateInputs))
         extra_kwargs = {k: v for k, v in inputs.items() if k not in all_keys}
         return cls(
-            messages=messages, system=system, tools=tools, objects=objects, **kwargs, **media_kwargs), extra_kwargs
+            messages=messages,
+            system=system,
+            tools=tools,
+            objects=objects,
+            extra_kwargs=extra_kwargs,
+            **kwargs,
+            **media_kwargs)
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
