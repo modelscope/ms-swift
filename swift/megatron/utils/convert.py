@@ -3,6 +3,7 @@
 import math
 from contextlib import contextmanager
 from dataclasses import fields
+from typing import Any, Dict
 
 import torch
 import torch.nn as nn
@@ -12,7 +13,7 @@ from megatron.training.initialize import initialize_megatron
 from megatron.training.utils import get_ltor_masks_and_position_ids
 
 from swift.llm import ExportArguments, HfConfigFactory, prepare_model_template, save_checkpoint, to_device
-from swift.utils import get_logger, get_n_params_grads
+from swift.utils import deep_getattr, get_logger, get_n_params_grads
 from ..argument import MegatronArguments
 from ..model import get_megatron_model_meta
 from .patcher import patch_megatron_tokenizer, patch_torch_dist_shard
@@ -78,31 +79,64 @@ def _model_cpu_forward_context(modules, torch_dtype=None, device=None, share_emb
             hook.remove()
 
 
+def get_examples(is_multimodal: bool) -> Dict[str, Any]:
+    if is_multimodal:
+        data = {
+            'messages': [{
+                'role': 'user',
+                'content': '<image>describe the image.'
+            }, {
+                'role':
+                'assistant',
+                'content':
+                'The image depicts a close-up of a kitten with striking features. '
+                'The kitten has a white and gray coat with distinct black stripes, '
+                'particularly noticeable on its face and ears. Its eyes are large '
+                'and expressive, with a captivating blue hue that stands out against '
+                "the darker fur around them. The kitten's nose is small and pink, "
+                'and it has long, delicate whiskers extending from either side of its mouth. '
+                "The background is blurred, drawing attention to the kitten's face and "
+                'making it the focal point of the image. The overall impression is '
+                'one of cuteness and charm.'
+            }],
+            'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+        }
+    else:
+        data = {
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': 'Introduction to ms-swift.'
+                },
+                {
+                    'role':
+                    'assistant',
+                    'content':
+                    'ms-swift is an official framework provided by the ModelScope community for fine-tuning '
+                    'and deploying large language models and multi-modal large models.'
+                },
+            ]
+        }
+    return data
+
+
 def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float32):
     _test_params_sum(hf_model)
     _test_params_sum(mg_model)
 
     template.set_mode('train')
-    inputs = template.encode({
-        'messages': [
-            {
-                'role': 'user',
-                'content': 'Introduction to ms-swift.'
-            },
-            {
-                'role':
-                'assistant',
-                'content':
-                'ms-swift is an official framework provided by the ModelScope community for fine-tuning '
-                'and deploying large language models and multi-modal large models.'
-            },
-        ]
-    })
+    template.register_post_encode_hook([hf_model])
+    is_multimodal = template.model_meta.is_multimodal
+    inputs = get_examples(is_multimodal)
+    inputs = template.encode(inputs)
     inputs = to_device(template.data_collator([inputs]), 'cuda')
 
     HfConfigFactory.set_model_config_attr(hf_model, 'use_cache', False)
     share_embedding = mg_model.share_embeddings_and_output_weights
-    hf_modules = _find_modules(hf_model)
+    if is_multimodal:
+        _, inputs = template.pre_forward_hook(hf_model, None, inputs)
+    language_model = deep_getattr(hf_model, template.model_meta.model_arch.language_model[0])
+    hf_modules = _find_modules(language_model)
     with torch.inference_mode(), _model_cpu_forward_context(hf_modules, torch_dtype, share_embedding=share_embedding):
         hf_logits = hf_model(**inputs).logits
     hf_model = hf_model.to('cpu')
@@ -180,6 +214,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     extra_args = megatron_args.parse_to_megatron()
     extra_args['model_info'] = args.model_info
     extra_args['model_meta'] = args.model_meta
+    extra_args['megatron_model_meta'] = megatron_model_meta
     extra_args_provider = megatron_model_meta.extra_args_provider
     initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
 
