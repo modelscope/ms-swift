@@ -113,7 +113,9 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         ]
         for tool in tools:
             tool_descs.append(f'{json.dumps(tool, ensure_ascii=False)}')
-        tool_descs.append('</tools>\n\nFor each function call, output the function name and arguments within the following XML format:\n<tool_call>{function-name}\n<arg_key>{arg-key-1}</arg_key>\n<arg_value>{arg-value-1}</arg_value>\n<arg_key>{arg-key-2}</arg_key>\n<arg_value>{arg-value-2}</arg_value>\n...\n</tool_call>')
+        tool_descs.append(
+            '</tools>\n\nFor each function call, output the function name and arguments within the following XML format:\n<tool_call>{function-name}\n<arg_key>{arg-key-1}</arg_key>\n<arg_value>{arg-value-1}</arg_value>\n<arg_key>{arg-key-2}</arg_key>\n<arg_value>{arg-value-2}</arg_value>\n...\n</tool_call>'
+        )
         tool_descs = '\n'.join(tool_descs)
         if system.strip():
             tool_descs += '<|system|>\n' + system.strip()
@@ -130,7 +132,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         res = []
         for _, tool_message in enumerate(tool_messages):
             tool_content = tool_message['content']
-            res.append(f"\n<tool_response>\n{tool_content}\n</tool_response>")
+            res.append(f'\n<tool_response>\n{tool_content}\n</tool_response>')
         res.append('<|assistant|>\n')
         return assistant_content, res
 
@@ -139,7 +141,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         for message in tool_call_messages:
             tool_call = self._parse_tool_call(message['content'])
             tool_calls.append(f"<tool_call>{tool_call['name']}")
-            for arg_key, arg_value in tool_call["arguments"].items():
-                tool_calls.append(f"<arg_key>{arg_key}</arg_key>\n<arg_value>{arg_value}</arg_value>")
-            tool_calls.append("</tool_call>")
+            for arg_key, arg_value in tool_call['arguments'].items():
+                tool_calls.append(f'<arg_key>{arg_key}</arg_key>\n<arg_value>{arg_value}</arg_value>')
+            tool_calls.append('</tool_call>')
         return '\n'.join(tool_calls) + '<|observation|>'
