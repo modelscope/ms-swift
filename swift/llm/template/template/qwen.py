@@ -592,12 +592,14 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:
             return inputs
-        # TODO: audio
+
         input_ids = inputs['input_ids']
         pixel_values = inputs.get('pixel_values')
         pixel_values_videos = inputs.get('pixel_values_videos')
         image_grid_thw = inputs.get('image_grid_thw')
         video_grid_thw = inputs.get('video_grid_thw')
+        input_features = inputs.get('input_features')
+        feature_attention_mask = inputs.get('feature_attention_mask')
 
         base_model = self.get_base_model(model)
         inputs_embeds = base_model.thinker.model.embed_tokens(input_ids)
@@ -647,6 +649,18 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 video_mask = (input_ids == thinker_config.video_token_index).unsqueeze(-1).expand_as(inputs_embeds)
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
+
+        if input_features is None:
+            if is_deepspeed_enabled():
+                input_features = input_ids.new_zeros([1, 128, 128], dtype=dtype)
+                feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
+                audio_embeds = model.thinker.get_audio_features(input_features, feature_attention_mask)
+                inputs_embeds += audio_embeds.mean() * 0.
+        else:
+            audio_embeds = model.thinker.get_audio_features(input_features, feature_attention_mask)
+            audio_mask = (input_ids == thinker_config.audio_token_index).unsqueeze(-1).expand_as(inputs_embeds)
+            audio_embeds = audio_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+            inputs_embeds = inputs_embeds.masked_scatter(audio_mask, audio_embeds)
 
         return {'inputs_embeds': inputs_embeds}
 
