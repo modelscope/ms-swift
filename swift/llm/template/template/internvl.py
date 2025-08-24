@@ -301,7 +301,8 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
 
         encoded['input_ids'], encoded['labels'], encoded['loss_scale'] = self._extend_tokens(
             input_ids, labels, loss_scale, idx_list, _get_new_tokens)
-        encoded['pixel_values'] = concatenate_list(image_video_patches)
+        if images or videos:
+            encoded['pixel_values'] = concatenate_list(image_video_patches)
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
