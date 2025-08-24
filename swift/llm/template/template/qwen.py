@@ -615,7 +615,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 media_inputs = to_device(media_inputs, device)
                 pixel_values = media_inputs['pixel_values'].type(dtype)
                 image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
-                inputs_embeds += image_embeds.mean() * 0.
+                inputs_embeds = inputs_embeds + image_embeds.mean() * 0.
         else:
             if pixel_values is None:
                 pixel_values_mixed = pixel_values_videos
@@ -655,7 +655,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 input_features = input_ids.new_zeros([1, 128, 128], dtype=dtype)
                 feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
                 audio_embeds = model.thinker.get_audio_features(input_features, feature_attention_mask)
-                inputs_embeds += audio_embeds.mean() * 0.
+                inputs_embeds = inputs_embeds + audio_embeds.mean() * 0.
         else:
             audio_embeds = model.thinker.get_audio_features(input_features, feature_attention_mask)
             audio_mask = (input_ids == thinker_config.audio_token_index).unsqueeze(-1).expand_as(inputs_embeds)
