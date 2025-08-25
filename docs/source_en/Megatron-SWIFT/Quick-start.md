@@ -1,6 +1,6 @@
 # Quick Start
 
-SWIFT incorporates Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, context parallelism, and expert parallelism. It supports the pre-training and fine-tuning of models such as Qwen3, [Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/train/megatron/qwen3_moe.sh), Qwen2.5, Llama3, and the Deepseek-R1 series. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](./Supported-models-and-datasets.md).
+ms-swift incorporates Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, context parallelism, and expert parallelism. It supports the pre-training and fine-tuning of models such as Qwen3, [Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/qwen3_moe.sh), Qwen2.5, Llama3, Deepseek-R1 and GLM4.5 series. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md). We recommend using Megatron-SWIFT for MoE training; it can typically achieve a 10x speedup in training.
 
 ## Environment Setup
 
@@ -48,8 +48,8 @@ Recommended Operating Environment:
 |--------------|--------------|-------------|--------------------|
 | python       | >=3.9        | 3.10        |                    |
 | cuda         |              | cuda12      |                    |
-| torch        | >=2.0        | 2.6.0       |                    |
-| transformer_engine    | >=2.3       | 2.5      |                  |
+| torch        | >=2.0        | 2.6.0/2.7.1    |                    |
+| transformer_engine    | >=2.3       |         |                  |
 | apex |   |  0.1 | |
 | megatron_core    | >=0.12       | 0.13      |                  |
 | flash_attn    |        | 2.7.4.post1/3.0.0b1   |                  |
@@ -65,8 +65,8 @@ Recommended Operating Environment:
 This section introduces a quick start example for fine-tuning the self-awareness of the Qwen2.5-7B-Instruct model using two 80GiB A100 GPUs. The following best practices can be completed within 10 minutes.
 
 First, we need to convert the weights from HF (Hugging Face) format to Megatron format:
-- If OOM (Out of Memory) occurs, simply remove `CUDA_VISIBLE_DEVICES=0`; the system will automatically use multiple GPUs. If you encounter insufficient memory, please remove `--test_convert_precision true`.
-- The `--test_convert_precision true` flag can greatly increase conversion time for MoE models, so feel free to omit it if needed.
+- Multi-GPU weight conversion: Remove `CUDA_VISIBLE_DEVICES=0` to enable multi-GPU weight conversion.
+- Conversion precision test: `--test_convert_precision true` will test the conversion precision. For large MoE model conversions, this option takes longer and consumes more memory, so you may omit it as needed.
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -146,5 +146,27 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 ```
 
 - For pretraining, you can use `megatron pt` instead of `megatron sft`, which will use a generative template for training.
-- **More examples**: Including packing, multi-node training, 32K context, DPO, MoE models, and pre-training, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
-- The custom dataset format is the same as `ms-swift`. Refer to the [custom dataset documentation](../Customization/Custom-dataset.md).
+- Megatron-SWIFT uses the same dataset and template processing modules as ms-swift, thus supporting techniques such as packing, loss scale, and agent training. For custom dataset formats, please refer to the [Custom Dataset Documentation](../Customization/Custom-dataset.md).
+- **More Examples**: Including packing, multi-node training, 32K context length, DPO, MoE models, and pre-training, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/megatron).
+
+
+## Benchmark
+The training speed comparison for full-parameter dense models with 8K context length, using `megatron sft` and `swift sft`, under a single-node, eight-GPU A800 environment is as follows:
+
+**Dense** Qwen2.5-14B:
+
+
+|                  | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
+| ---------------- | ----------- | --------------- | --------------- |
+| Training Speed   | 9.04s/it    | 10.32s/it       | 10.56s/it       |
+| GPU Memory Usage | 8\*64GB      | 8\*80GB          | 8\*58GB          |
+
+
+The training speed comparison for full-parameter MoE models with 8K context length, using `megatron sft` and `swift sft`, under a two-node, 16-GPU A800 environment is as follows:
+
+**MoE** Qwen3-30B-A3B:
+
+|                  | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
+| ---------------- | ----------- | --------------- | --------------- |
+| Training Speed   | 9.6s/it    | -        | 91.2s/it       |
+| GPU Memory Usage | 16 * 60GiB  | OOM             | 16 * 80GiB      |

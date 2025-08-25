@@ -1,8 +1,24 @@
-## LoRA Training
+# LoRA Training
 
 Best practice reference for single-node 8xH20 LoRA training with Qwen3-235B-A22B-Instruct-250718: https://github.com/modelscope/ms-swift/pull/5033.
 
-Compared to full parameter tuning, LoRA training differs in both the training and MCore-to-HF conversion scripts:
+For environment setup, please refer to the [Quick Start Guide](./Quick-start.md) of Megatron-SWIFT.
+
+## Converting HF to Mcore
+
+The conversion process is the same as for full-parameter training. Use the following script:
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift export \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --to_mcore true \
+    --torch_dtype bfloat16 \
+    --output_dir Qwen2.5-7B-Instruct-mcore \
+    --test_convert_precision true
+```
+
+## LoRA Training
 
 Training Script:
 
@@ -45,9 +61,9 @@ megatron sft \
     --model_author swift \
     --model_name swift-robot
 ```
-- For LoRA training scripts of MoE models, please refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/lora).
+- For LoRA training scripts of MoE models, please refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/lora).
 
-MCore to HF Conversion Script:
+## Converting MCore to HF
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
@@ -59,7 +75,9 @@ swift export \
     --test_convert_precision true
 ```
 
-- Note: The `mcore_adapters` folder contains an `args.json` file. During the conversion process, parameters related to `mcore_model` and LoRA will be loaded from this file. The system will then perform a merge-lora operation between the `mcore_model` and `mcore_adapters` to obtain the complete model weights, and finally convert them into HuggingFace (HF) format.
+- Note: The `mcore_adapters` folder contains an `args.json` file. During the conversion process, parameters related to `mcore_model` and LoRA will be loaded from this file. The system will then perform a merge-lora operation between the `mcore_model` and `mcore_adapters` to obtain the complete model weights, and finally convert them into HuggingFace (HF) format. (Conversion of LoRA incremental weights is not supported for now)
+
+## Merge-LoRA
 
 If you only want to merge the LoRA weights without converting them to Hugging Face format, for subsequent DPO training, you can use the following script:
 
@@ -72,22 +90,3 @@ swift export \
     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-mcore \
     --test_convert_precision true
 ```
-
-
-## Benchmark
-The speed comparison of full-parameter training for Dense/MoE models using `megatron sft` and `swift sft` on a single machine with eight A800 GPUs is shown below. The corresponding scripts can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/benchmark).
-
-**Dense** Qwen2.5-14B:
-
-
-|                  | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
-| ---------------- | ----------- | --------------- | --------------- |
-| Training Speed   | 9.04s/it    | 10.32s/it       | 10.56s/it       |
-| GPU Memory Usage | 8\*64GB      | 8\*80GB          | 8\*58GB          |
-
-**MoE** Qwen1.5-MoE-A2.7B:
-
-|                  | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
-| ---------------- | ----------- | --------------- | --------------- |
-| Training Speed   | 2.95s/it    | 6.02s/it        | 24.30s/it       |
-| GPU Memory Usage | 8\*57GB      | 8\*72GB          | 8\*50GB          |

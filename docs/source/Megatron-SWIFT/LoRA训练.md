@@ -1,8 +1,23 @@
-## LoRA训练
+# LoRA训练
 
 Qwen3-235B-A22B-Instruct-250718 单机8卡H20 LoRA训练的最佳实践参考：[https://github.com/modelscope/ms-swift/pull/5033](https://github.com/modelscope/ms-swift/pull/5033)。
 
-相比全参数训练，LoRA训练在训练和MCore转换HF脚本有所区别：
+环境准备请参考Megatron-SWIFT的[快速开始文档](./快速开始.md)。
+
+## HF转换Mcore
+
+转换方式与全参数训练一致，脚本如下：
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift export \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --to_mcore true \
+    --torch_dtype bfloat16 \
+    --output_dir Qwen2.5-7B-Instruct-mcore \
+    --test_convert_precision true
+```
+
+## LoRA训练
 
 训练脚本：
 ```bash
@@ -44,9 +59,10 @@ megatron sft \
     --model_author swift \
     --model_name swift-robot
 ```
-- MoE模型的LoRA训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/lora)。
+- MoE模型的LoRA训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/lora)。
 
-MCore转换HF脚本：
+## MCore转换HF
+
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -56,9 +72,11 @@ swift export \
     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
     --test_convert_precision true
 ```
-- 注意：`mcore_adapters`文件夹中包含`args.json`文件，转换过程中会读取文件中`mcore_model`和LoRA相关的参数信息，并将`mcore_model`和`mcore_adapters`进行merge-lora成完整权重，最终转换成HF格式权重。
+- 注意：`mcore_adapters`文件夹中包含`args.json`文件，转换过程中会读取文件中`mcore_model`和LoRA相关的参数信息，并将`mcore_model`和`mcore_adapters`merge-lora成完整权重，最终转换成HF格式权重。（暂不支持LoRA增量权重的转换）
 
-如果你只想merge-lora，而不希望转成HF格式权重，用于后续DPO训练，可以使用以下脚本：
+## Merge-LoRA
+
+如果只想merge-lora，而不希望转成HF格式权重，用于后续DPO训练，可以使用以下脚本：
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
