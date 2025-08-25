@@ -1,3 +1,4 @@
+# Exp: https://github.com/modelscope/ms-swift/pull/5307#issuecomment-3219803922
 # Before running this script, please run the following `swift rollout` script first
 # This script is a example for multi-turn training with dynamic num of rollout outputs
 # which means a trajectory of multi turn rollout is split into multiple data
