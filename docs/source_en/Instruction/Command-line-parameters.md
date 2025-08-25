@@ -1,6 +1,6 @@
 # Command Line Parameters
 
-The introduction to command line parameters will cover base arguments, atomic arguments, and integrated arguments, and specific model arguments. The final list of arguments used in the command line is the integration arguments. Integrated arguments inherit from basic arguments and some atomic arguments. Specific model arguments are designed for specific models and can be set using `--model_kwargs'` or the environment variable. The introduction to the Megatron-SWIFT command-line arguments can be found in the [Megatron-SWIFT Training Documentation](./Megatron-SWIFT-Training.md).
+The introduction to command line parameters will cover base arguments, atomic arguments, and integrated arguments, and specific model arguments. The final list of arguments used in the command line is the integration arguments. Integrated arguments inherit from basic arguments and some atomic arguments. Specific model arguments are designed for specific models and can be set using `--model_kwargs'` or the environment variable. The introduction to the Megatron-SWIFT command-line arguments can be found in the [Megatron-SWIFT Training Documentation](../Megatron-SWIFT/Command-line-parameters.md).
 
 Hints:
 

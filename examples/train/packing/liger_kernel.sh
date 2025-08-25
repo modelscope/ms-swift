@@ -1,5 +1,5 @@
 # Env: 4 * A100
-# https://github.com/modelscope/ms-swift/blob/main/examples/train/megatron/long_text.sh
+# https://github.com/modelscope/ms-swift/blob/main/examples/megatron/long_text.sh
 # Max Length: 16K
 # GPU Memory: 4 * 42GB, Training Speed 10s/it
 NPROC_PER_NODE=4 \

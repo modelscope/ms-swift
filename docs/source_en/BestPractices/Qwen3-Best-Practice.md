@@ -331,7 +331,7 @@ Best practice reference for single-node 8xH20 LoRA training with Qwen3-235B-A22B
 
 ms-swift introduces Megatron parallelism techniques to accelerate CPT/SFT/DPO for large models. Supported models can be found in the [Supported Models and Datasets Document](../Instruction/Supported-models-and-datasets.md).
 
-For environment setup and conversion between HF and MCore model weights, refer to the [Megatron-SWIFT Training Documentation](../Instruction/Megatron-SWIFT-Training.md).
+For environment setup and conversion between HF and MCore model weights, refer to the [Megatron-SWIFT Training Documentation](../Megatron-SWIFT/Quick-start.md).
 
 We will use Alibaba Cloud DLC to launch training. The training environment consists of two nodes equipped with 8x 80GiB A800 GPUs each. For more information on multi-node launching, see [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node).
 
