@@ -1,6 +1,6 @@
 # GYM Environment Training
 
-Note: This feature requires ms-swift>=3.7 and currently only supports pure-text models.
+Note: The GYM environment training logic was refactored in ms-swift 3.8. If you are using an earlier version of ms-swift, please refer to the documentation for that specific version.
 
 ## Gym Interface
 
@@ -108,14 +108,20 @@ RolloutResponseChoice(
 """
 ```
 
-In the `rollout` command, use the parameter `use_gym_env` to specify the use of gym as the training environment interface.
+Training with a GYM environment can be considered a special form of multi-turn training, the difference being that reward signals are obtained directly from the environment.
+
+To enable this mode, add the use_gym_env argument to the rollout command, which instructs the system to use GYM as the training environment interface.
+We also provide a multi-turn planner example compatible with GYM; see the GymScheduler class in the [built-in multi-turn scheduler implementation](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py)
+
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
     --model xxx \
     --use_gym_env true \
+    --multi_turn_scheduler gym_scheduler \
     --max_turns xxx
 ```
+
 
 **Environment Selection**
 1. In the dataset, you need to specify it using the `name` key in the [`env_config`](#Notes) column. Place related initialization parameters in other keys.
@@ -134,13 +140,12 @@ Using the `external_plugins` parameter, we can register local `Env` and `Context
 ```json
 {"messages": [{"role": "system", "content": "You are a helpful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}],"env_config":{"name":"custom_env","other_config":"xxxx"},"ctx_config":{"name":"custom_ctx","other_config":"xxxx"}}
 ```
-2. The gym environment currently only supports LLM and AsyncEngine.
 
-3. By default, only the response from the last round is used for training. If the gym involves generating multi-turn responses, use the parameter `--loss_scale default` to train on the responses from all rounds. For more details, please refer to the [documentation](./multi_turn.md#loss-masking).
+2. By default, only the response from the last round is used for training. If the gym involves generating multi-turn responses, use the parameter `--loss_scale default` to train on the responses from all rounds. For more details, please refer to the [documentation](./multi_turn.md#loss-masking).
 
-4. Data Flow
+3. Data Flow
 The entire gym data flow is as follows:
 <img src="../../../../resources/gym_env.png" width="400" />
 
-5. Reward Logging
+4. Reward Logging
 Since the gym reward is calculated within the `step` function, you need to manually return the log via `info`. The final record will be placed in the `trajectory_infos` field of `completions.jsonl`.

@@ -28,7 +28,7 @@ logger = get_logger()
 
 Tool = Dict[str, Union[str, Dict]]
 History = List[Union[Tuple[str, str], List[str]]]
-Message = Dict[str, Union[str, List[Dict[str, Any]]]]
+Message = Dict[str, Union[str, List[Dict[str, Any]], List[int]]]
 Messages = List[Message]
 
 

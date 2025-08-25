@@ -1,77 +1,85 @@
-# Multi-Turn Rollout
+# Multi-turn Training
 
-Note: This feature requires ms-swift>=3.6
+**Note** The multi-turn training logic was refactored in ms-swift 3.8.
+If your ms-swift version is earlier than 3.8, please consult the documentation for that version.
 
-In reinforcement learning training scenarios, model sampling may require multiple rounds of interaction with the environment (e.g., tool calls, external API access, etc.). This interactive training requires the model to perform continuous reasoning based on environmental feedback. This document details how to customize multi-round training workflows in GRPO training.
+In reinforcement-learning scenarios, the model may need to interact with the environment over multiple turns (e.g., tool calls).
+This interactive training requires the model to carry out continuous reasoning based on the feedback from the environment.
+This document explains in detail how to customise the multi-turn training workflow in GRPO training.
 
-Based on how environmental feedback is inserted, multi-round interactions can be categorized into:
+The figure below shows a typical multi-turn training process, where the model may perform several rollout rounds that include environment interaction, tool calls, and so on:
 
-- New-round reasoning: Environmental feedback results serve as the query, and the model responds in a new dialogue turn.
-- Current-round continuation: Environmental feedback results are inserted into the model's current response, and the model continues writing subsequent content based on this.
-
-We can customize and set a multi-round sampling planner through the parameter `multi_turn_scheduler` to implement multi-round sampling logic:
-
-```
-    --multi_turn_scheduler xxx
-    --max_turns xxx
-```
+![Multi-turn example](../../../../resources/grpo_multi_turn.png)
 
 ## MultiTurnScheduler
-The multi-turn scheduler is the core component of multi-round training, and its workflow is shown in the following diagram:
+
+`MultiTurnScheduler` is an abstract base class that provides the default multi-turn dialogue-management logic.
+Its workflow is illustrated below:
 
 <img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/multiturn_pipeline.png" width="300" />
 
-The multi-turn scheduler primarily performs two functions:
-- Termination condition judgment: Determines whether the current round of reasoning should end via the `check_finished` method.
-- Reasoning request construction: Builds the request object for the next round of reasoning via the `step` method.
+The scheduler is responsible for two core functions:
+- **Termination check** — decide whether the current turn of inference should stop via `check_finished`.
+- **Inference request construction** — build the request object for the next turn via `step`.
 
-The abstract base class `MultiTurnScheduler` is implemented as follows:
+Key methods of the abstract base class `MultiTurnScheduler`:
+
 ```python
 class MultiTurnScheduler(ABC):
 
     def __init__(self, max_turns: Optional[int] = None, *args, **kwargs):
         self.max_turns = max_turns
 
-    @abstractmethod
-    def step(self, infer_request: 'RolloutInferRequest', result: 'RolloutResponseChoice',
-             current_turn: int) -> Union['RolloutInferRequest', Tuple['RolloutInferRequest', Dict]]:
-        pass
+    def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
+             current_turn: int) -> Dict:
+        """
+        Handle the transition between dialogue turns.
 
-    def check_finished(self, infer_request: 'RolloutInferRequest', result: 'RolloutResponseChoice',
+        Args:
+            infer_request: current inference request
+            response_choice: response of the current turn
+            current_turn: current turn index (starting from 1)
+
+        Returns:
+            Dict[str, Any]: a dict containing the result of this turn
+                - infer_request (required): the inference request for the next turn
+                - response_token_ids (optional): token IDs of each rollout response
+                - response_loss_mask (optional): loss mask of each rollout response
+                - rollout_infos (optional): extra information
+        """
+        raise NotImplementedError
+
+    def check_finished(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
                        current_turn: int) -> bool:
-        if result.finish_reason == 'length':
+        """
+        Default termination logic for multi-turn rollout.
+
+        Termination conditions:
+        1. The response is truncated (finish_reason == 'length').
+        2. The dialogue reaches the maximum number of turns (if max_turns is set).
+
+        Args:
+            infer_request: the inference request
+            response_choice: response choice containing finish_reason
+            current_turn: current turn index
+
+        Returns:
+            bool: True to stop, False to continue
+        """
+        if response_choice.finish_reason == 'length':
             return True
         if self.max_turns and current_turn >= self.max_turns:
             return True
         return False
 ```
 
-> If you want the reward function to access information from multi-turn interactions, please return an extra dict object in the `step` method. In the reward function, you can then access `multi_turn_infos` from `kwargs`.
+Arguments passed to `step` and `check_finished`:
+- **infer_request**: current inference request
+- **response_choice**: inference result of the current turn
+- **current_turn**: current turn index (starting from 1)
 
-```python
-class Scheduler():
-    def step(self, infer_request: 'RolloutInferRequest', result: 'RolloutResponseChoice',
-             current_turn: int) -> Union['RolloutInferRequest', Tuple['RolloutInferRequest', Dict]]:
-        ...
-        return infer_request, extra_dict
+<details><summary>Input example (click to expand)</summary>
 
-class RewardFunction():
-    def __call__(self, completions, **kwargs):
-        infos = kwargs.get('multi_turn_infos', {})
-        ...
-```
-
-
-The `step` and `check_finished` methods accept the following parameters:
-
-- infer_request: The reasoning request from the previous round, including:
-    - The `messages` key contains the interaction history (note: it already includes the current model reasoning result).
-    - Multimodal information, such as `images`.
-    - `data_dict` contains other columns from the dataset.
-- result: The reasoning result from the previous round.
-- current_turn: The current reasoning round (starting from 1).
-
-Example input parameters:
 ```python
 infer_request
 """
@@ -91,9 +99,9 @@ RolloutInferRequest(
         }
     )
 """
-result
+response_choice
 """
-RolloutResponseChoice(
+ChatCompletionResponseChoice(
     index=0,
     message=ChatMessage(
         role='assistant',
@@ -102,76 +110,121 @@ RolloutResponseChoice(
         logprobs=None,
         messages=None)
 """
-# result.messages will be copied at the end of multi-turn inference.
+# response_choice.messages will be copied at the end of multi-turn inference.
+```
+</details>
+
+<br>
+<br>
+
+The default `check_finished` logic stops inference in the following cases:
+- The model reply is truncated, i.e. exceeds `max_completion_length`.
+- The number of inference turns exceeds the specified maximum.
+
+For the full default multi-turn rollout logic, see the `run` method of the class.
+You can override `run` to implement a completely custom workflow.
+
+## Setting multi-turn parameters
+
+Specify the scheduler via `multi_turn_scheduler` in the `swift rollout` command:
+
+```bash
+swift rollout \
+    --model Qwen/Qwen3-1.7B \
+    --use_async_engine true \
+    --multi_turn_scheduler thinking_tips_scheduler \
+    --vllm_max_model_len 32768 \
+    --vllm_gpu_memory_utilization 0.8 \
+    --max_turns 3
 ```
 
-The default check_finished logic stops reasoning under two conditions:
+> With the `external_plugins` argument you can register your own local scheduler with ms-swift.
+> Refer to the [plugin code](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py).
 
-- The model's response is truncated, i.e., it exceeds `max_completion_length`.
-- The number of reasoning rounds exceeds the maximum allowed limit.
+A full multi-turn training script can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/external/vllm_multi_turn.sh).
 
-It is recommended to use AsyncEngine for efficient batch data asynchronous multi-round sampling (only supported in external server mode). AsyncEngine can reduce computational bubbles during multi-round reasoning (as shown in the diagram).
+For multi-turn rollout we use `AsyncEngine` to perform efficient batched asynchronous sampling.
+AsyncEngine reduces compute bubbles in multi-turn inference:
 
 <img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/asyncengine.png" width="400" />
 
-Use the `use_async_engine` parameter in the `rollout` command to specify the engine type:
-```bash
-CUDA_VISIBLE_DEVICES=0 \
-swift rollout \
-    --model xxx \
-    --use_async_engine true \
-    --multi_turn_scheduler xxx \
-    --max_turns xxx
-```
+Use the `use_async_engine` argument in the `rollout` command to specify the engine type (async is the default).
 
-Through the `external_plugins` parameter, we can register local multi-round planners into ms-swift. For specific implementation, refer to the [code](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py).
+## Advanced topics
 
-Multi-round training script references:
+### Customising the interaction logic
 
-- [server mode](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/external/vllm_multi_turn.sh)
-- [colocate mode](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/internal/vllm_multi_turn.sh)
+In the default logic we treat the whole multi-turn rollout as one trajectory when computing the loss.
+This assumes the model’s history is not modified during interaction.
 
-## Best Practices
+In some scenarios you may need to dynamically change the history during rollout (e.g., compressing context).
+In that case each turn should be treated as a separate trajectory.
 
-The [plugin code example](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py) provides two examples of multi-round planners, implementing two types of multi-round reasoning for prompting the model to rethink and provide answers in mathematical problems:
+A common scenario is for “thinking” models: during real inference the model keeps only the last reasoning step and discards previous ones.
 
-- New-round reasoning: Inserts a new round of dialogue to prompt the model that its answer is incorrect and needs rethinking (math_tip_trick_multi_turn).
-- Continuation: Backtracks to the model's thinking phase and adds a prompt indicating incorrect reasoning (math_tip_trick).
+For such cases override the `run` method in your scheduler to return the result for each rollout turn individually.
+The built-in `ThinkingModelTipsScheduler` shows how to fully customise multi-turn inference by overriding `run()`.
+See the implementation in [multi_turn.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py).
 
+**NOTE**: In this scenario, the data for a single trajectory is split into multiple records. When computing rewards, you must assign the same reward to every record that belongs to the same trajectory.
 
-## Notes
+The complete trajectory can be accessed via `trajectory_inputs` in `kwargs`.
 
-### Reward Function
+For a concrete implementation, see the [MultiTurnThinkingTips class](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py)
 
-Note that in the reward function, the `completions` parameter represents the model's response in the final round. If the reward function needs to calculate rewards based on the model's multi-round responses, it must retrieve the `messages` key to obtain the complete multi-round dialogue history.
+### Returning response token IDs
 
+In the default workflow the scheduler returns text, the trainer re-encodes it to token IDs for training.
+To avoid this extra encoding, have the scheduler return `response_token_ids` directly.
+
+Steps:
+
+- Read the `token_ids` attribute from `response_choice` to obtain the sequence.
+- Include `response_token_ids` in the dict returned by `step` / `run`; the trainer can then use them directly.
+
+For a concrete implementation, refer to the [ThinkingModelTipsScheduler class](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py)
+
+### Loss mask
+
+When the environment or a tool call returns content that becomes part of the model response, you may want to mask it so the model is not penalised on externally generated tokens.
+
+You can set the loss mask in two ways.
+
+**1. Using `loss_scale`**
+
+ms-swift provides the `loss_scale` parameter to scale or mask parts of the response.
+For example, `--loss_scale last_round` zeroes out the loss for all but the last round.
+Custom `loss_scale` can also be implemented; see the [customisation guide](../../../Customization/Pluginization.md#customizing-loss-scale).
+
+> Note: In GRPO, `loss_scale` serves only as a mask; it does not scale the loss.
+
+**2. Using `loss_mask`**
+
+In `step` or `run`, set `response_loss_mask` to define a custom mask.
+This requires returning `response_token_ids`; the mask must be the same length.
+When `response_loss_mask` is provided, `loss_scale` is ignored.
+
+For how to return response_loss_mask, see the [ToolCallScheduler class](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py)
+### Reward-function related tips
+
+**Accessing multi-turn rollout information in a reward function**
+
+Return a `rollout_infos` object from `step` / `run`, then read it from `kwargs` in the reward function:
 
 ```python
-class Reward(ORM):
+class Scheduler():
+    def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
+             current_turn: int) -> Dict:
+        ...
+        return {'infer_request': infer_request, 'rollout_infos': extra_dict}
 
-   def  __call__(completions, **kwargs):
-        print(kwargs.keys())
-        # dict_keys(['problem', 'solution', 'messages', 'is_truncated'])
-        messages = kwargs.get('messages')
+class RewardFunction():
+    def __call__(self, completions, **kwargs):
+        infos = kwargs.get('rollout_infos', {})
         ...
 ```
 
-## Loss Masking
-When tool calls or environment interaction results are returned and need to be included as part of the model's response, it is recommended to mask these inserted contents to ensure the model does not compute loss on externally generated content during training.
+### Accessing additional dataset information in scheduler
 
-This requires setting the loss_scale parameter to implement custom masking logic. For details, refer to the [Custom loss_scale Documentation](../../../Customization/Pluginization.md#customizing-loss-scale).
-
-Default loss_scale values:
-
-Multi-round training (i.e., when `multi_turn_scheduler` is set): loss_scale defaults to `default`, meaning training is performed on each round's response in messages.
-
-> If the dataset itself contains assistant responses, they will also be included in the calculation. To exclude these, a custom loss_scale is required.
-
-Single-round training: loss_scale defaults to `last_round`, computing loss only for the final round's response (rollout result).
-
-Note that loss_scale can be used to:
-
-1. Label tokens to be trained (0 means no training).
-2. Scale the training weight of tokens.
-
-However, GRPO currently does not support weight settings in loss_scale.
+Set `--vllm_server_pass_dataset` on the training side to pass other dataset columns to the scheduler.
+They can be read from `infer_request.data_dict`.

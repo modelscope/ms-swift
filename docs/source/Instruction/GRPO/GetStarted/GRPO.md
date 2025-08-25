@@ -234,7 +234,13 @@ swift rollout \
 - {reward_func_name}：特定奖励
 - entropy：entropy token 均值，在设置`log_entropy`时记录
 
-设置 `report_to wandb/swanlab` 将训练动态推送到对应的平台
+设置 `report_to wandb/swanlab` 将训练动态Table推送到对应的平台
+
+如果需要在Table中额外记录其他列，请在 `GRPOTrainer._generate_and_score_completions` 方法中，设置 metrics_to_gather 字典。
+
+默认自动检测
+- `image`：视觉数据集图像输入。(暂时只支持wandb)
+- `solution`：数据集中的 solution 列。
 
 ## FAQ
 **1. 训练过程中 loss 等于0 / 接近0 / 小于0**

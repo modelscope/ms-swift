@@ -549,8 +549,10 @@ class VllmEngine(InferEngine):
         generation_config: SamplingParams,
         adapter_request: Optional[AdapterRequest],
         request_config: RequestConfig,
+        request_id: Optional[str] = None,
     ) -> Union[ChatCompletionResponse, EmbeddingResponse]:
-        request_id = random_uuid()
+        if request_id is None:
+            request_id = random_uuid()
         result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
         result = None
         async for result in result_generator:
@@ -678,6 +680,9 @@ class VllmEngine(InferEngine):
             'adapter_request': adapter_request,
             'request_config': request_config,
         }
+        if hasattr(infer_request, 'uuid') and infer_request.uuid:
+            # RolloutInferRequest
+            kwargs.update({'request_id': infer_request.uuid})
         if pre_infer_hook:
             kwargs = pre_infer_hook(kwargs)
         if request_config.stream:

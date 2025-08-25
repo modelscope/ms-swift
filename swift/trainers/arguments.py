@@ -295,6 +295,7 @@ class GRPOArgumentsMixin(VllmArguments):
     multi_turn_scheduler: Optional[str] = None
     max_turns: Optional[int] = None
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
+    vllm_server_pass_dataset: bool = False
 
     # DAPO, https://arxiv.org/abs/2503.14476
     dynamic_sample: bool = False
