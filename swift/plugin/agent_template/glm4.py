@@ -109,13 +109,15 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
 
     def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
         tool_descs = [
-            '# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>'
+            '# Tools\n\nYou may call one or more functions to assist with the user query.\n\n'
+            'You are provided with function signatures within <tools></tools> XML tags:\n<tools>'
         ]
         for tool in tools:
             tool_descs.append(f'{json.dumps(tool, ensure_ascii=False)}')
-        tool_descs.append(
-            '</tools>\n\nFor each function call, output the function name and arguments within the following XML format:\n<tool_call>{function-name}\n<arg_key>{arg-key-1}</arg_key>\n<arg_value>{arg-value-1}</arg_value>\n<arg_key>{arg-key-2}</arg_key>\n<arg_value>{arg-value-2}</arg_value>\n...\n</tool_call>'
-        )
+        tool_descs.append('</tools>\n\nFor each function call, output the function name and arguments within '
+                          'the following XML format:\n<tool_call>{function-name}\n<arg_key>{arg-key-1}</arg_key>\n'
+                          '<arg_value>{arg-value-1}</arg_value>\n<arg_key>{arg-key-2}</arg_key>\n'
+                          '<arg_value>{arg-value-2}</arg_value>\n...\n</tool_call>')
         tool_descs = '\n'.join(tool_descs)
         if system.strip():
             tool_descs += '<|system|>\n' + system.strip()
