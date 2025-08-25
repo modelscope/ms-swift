@@ -652,6 +652,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
 
         if input_features is None:
             if is_deepspeed_enabled():
+                # Note: ZeRO-3 still results in hangs; for audio training, please use ZeRO-2.
                 input_features = input_ids.new_zeros([1, 128, 128], dtype=dtype)
                 feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
                 audio_embeds = model.thinker.get_audio_features(input_features, feature_attention_mask)
