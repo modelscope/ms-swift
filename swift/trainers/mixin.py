@@ -724,9 +724,12 @@ class SwiftMixin:
             self.log(logs)
 
         if self.args.eval_use_evalscope and self.control.should_evaluate:
-            self._evalscope_eval()
-            if not self.eval_dataset:
-                self.control.should_evaluate = False
+            try:
+                self._evalscope_eval()
+                if not self.eval_dataset:
+                    self.control.should_evaluate = False
+            except Exception as e:
+                logger.warning(f'Failed to call EvalScope evaluation function: {e}.')
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
 
     def create_loss_and_metric(self, args):
@@ -760,22 +763,23 @@ class SwiftMixin:
 
     @torch.no_grad()
     def _evalscope_eval(self):
-        from ..llm.eval.utils import EvalModel
+        from ..llm.eval.utils import EvalModel  # registry here
         from evalscope import TaskConfig, run_task
-        from evalscope.constants import EvalType
 
         self.model.eval()
-        max_batch_size = self.args.per_device_eval_batch_size
-        custom_model = EvalModel(
-            self.model, self.template, max_batch_size=max_batch_size, model_name=f'model-step{self.state.global_step}')
+
         task_config_kwargs = dict(
-            model=custom_model,
-            eval_type=EvalType.CUSTOM,
+            model=f'model-step{self.state.global_step}',
+            model_args=dict(
+                model=self.model,
+                template=self.template,
+            ),
+            eval_type='swift_custom',
             datasets=self.args.eval_dataset,
             dataset_args=self.args.eval_dataset_args,
             limit=self.args.eval_limit,
             work_dir=os.path.join(self.args.output_dir, 'eval'),
-            eval_batch_size=max_batch_size,
+            eval_batch_size=self.args.per_device_eval_batch_size,
             generation_config=self.args.eval_generation_config or {'max_tokens': 512},
         )
         task_config_kwargs.update(self.args.extra_eval_args or {})

@@ -9,7 +9,7 @@ kwargs = {
 
 
 def test_train_eval_loop():
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
     from swift.llm import sft_main, TrainArguments
     sft_main(
         TrainArguments(
@@ -26,7 +26,6 @@ def test_train_eval_loop():
                 'few_shot_num': 0
             }},
             eval_limit=10,
-            report_to=['wandb'],
             **kwargs))
 
 
