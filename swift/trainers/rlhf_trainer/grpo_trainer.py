@@ -1274,7 +1274,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 num_turns_all = torch.tensor(
                     gather_object([inp['rollout_infos']['num_turns'] for inp in inputs]), device=device)
                 final_num_turns = num_turns_all[last_indices]
-                self._metrics[mode]['num_turns'].append(final_num_turns.mean().item())
+                self._metrics[mode]['num_turns'].append(final_num_turns.float().mean().item())
 
         return ga_batch_encoded_inputs
 
@@ -1934,17 +1934,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         with patch_profiling_context(self, 'generate'):
             if self.vllm_mode == 'server':
-                return self.vllm_client.infer([asdict(req) for req in infer_requests],
-                                              asdict(request_config),
-                                              use_tqdm=use_tqdm)
+                res = self.vllm_client.infer([asdict(req) for req in infer_requests],
+                                             asdict(request_config),
+                                             use_tqdm=use_tqdm)
             else:
                 res = self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
-                if all(isinstance(r, RolloutOutput) for r in res):
-                    return res
-                else:
-                    # PT Eninge
-                    assert all(isinstance(r, ChatCompletionResponse) for r in res)
-                    return [RolloutOutput(response=r) for r in res]
+            if all(isinstance(r, RolloutOutput) for r in res):
+                return res
+            else:
+                assert all(isinstance(r, ChatCompletionResponse) for r in res)
+                return [RolloutOutput(response=r) for r in res]
 
     def old_policy(self):
         return self.num_iterations > 1 or self.args.gradient_accumulation_steps % self.args.steps_per_generation != 0

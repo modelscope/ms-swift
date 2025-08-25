@@ -185,7 +185,3 @@ class GRPOVllmEngine(VllmEngine):
             id=request_id,
             prompt_token_ids=prompt_token_ids,
             images_size=images_size)
-
-    async def _infer_full_async(self, *args, **kwargs):
-        response = await super()._infer_full_async(*args, **kwargs)
-        return RolloutOutput(response=response)

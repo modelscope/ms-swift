@@ -29,7 +29,50 @@ class RolloutScheduler(ABC):
                           request_config: 'RequestConfig',
                           *,
                           use_tqdm: Optional[bool] = None,
-                          **kwargs) -> List['ChatCompletionResponse']:
+                          **kwargs) -> List['RolloutOutput']:
+        """
+        Perform asynchronous batched inference for multiple rollout requests.
+
+        This method serves as the main entry point for multi-round training inference.
+        It executes the `run` method for each inference request concurrently and
+        aggregates the results into a single flattened list.
+
+        Each inference request can be either a `RolloutInferRequest` instance or a
+        dictionary that can be converted into one. The results from all requests are
+        collected asynchronously using the underlying inference engine.
+
+        Args:
+            infer_requests (List[Union[RolloutInferRequest, Dict[str, Any]]]):
+                A list of inference requests. Each request can be either:
+                    - A `RolloutInferRequest` object.
+                    - A dictionary containing the fields required to initialize a
+                    `RolloutInferRequest`.
+            request_config (RequestConfig):
+                Configuration object specifying inference settings. Must satisfy
+                `request_config.n == 1`, as only single-response generation is supported.
+            use_tqdm (Optional[bool], optional):
+                Whether to display a progress bar during batch inference.
+                If `None`, it defaults to `True` when there are multiple requests,
+                otherwise `False`.
+            **kwargs:
+                Additional arguments forwarded to the underlying `run` method.
+
+        Returns:
+            List[RolloutOutput]:
+                A list of RolloutOutput objects corresponding to the provided inference requests.
+
+        Raises:
+            AssertionError:
+                If `request_config.n` is not equal to `1`.
+
+        Notes:
+            - Internally, this method converts dict-based requests into
+            `RolloutInferRequest` instances.
+            - Uses `infer_engine._batch_infer_stream` to perform concurrent execution.
+            - The returned list is guaranteed to be flattened, even if individual
+            tasks return lists of responses.
+        """
+
         assert request_config.n == 1
 
         async def _infer_async_single(infer_request: Union['RolloutInferRequest', Dict[str, Any]],

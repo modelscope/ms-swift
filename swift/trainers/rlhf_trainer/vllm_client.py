@@ -10,12 +10,13 @@ from urllib.parse import urlparse
 import requests
 import torch
 from packaging import version
+from pydantic import ValidationError
 from requests import ConnectionError
 from torch import nn
 from transformers.utils import is_torch_cuda_available
 
 from swift.llm import AdapterRequest, RolloutInferRequest, Template
-from swift.llm.infer.protocol import RequestConfig, RolloutOutput
+from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig, RolloutOutput
 from swift.plugin import Metric
 from swift.utils import is_trl_available, is_vllm_ascend_available, is_vllm_available
 
@@ -149,7 +150,14 @@ class VLLMClient:
                     return
 
                 resp_data = response.json()
-                results[i] = [RolloutOutput.parse_obj(resp) for resp in resp_data]
+                parsed: List[Union[RolloutOutput, ChatCompletionResponse]] = []
+
+                for item in resp_data:
+                    try:
+                        parsed.append(RolloutOutput.model_validate(item))
+                    except ValidationError:
+                        parsed.append(ChatCompletionResponse(**item))
+                results[i] = parsed
             except Exception as e:
                 errors[i] = e
 
