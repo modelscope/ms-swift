@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from ast import Tuple
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional
 
@@ -241,7 +242,7 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
             video_num_patches_indices = np.cumsum(video_num_patches)
             video_pixel_values = video_pixel_values.flatten(0, 1)
 
-        def merge_and_sort(image_idx_list: List[int], video_idx_list: List[int]) -> List[int]:
+        def merge_and_sort(image_idx_list: List[int], video_idx_list: List[int]) -> tuple:
             """Merge and sort image and video index lists while preserving their relative order."""
             merged = []
             is_image_list = []
