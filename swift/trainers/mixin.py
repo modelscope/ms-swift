@@ -726,10 +726,11 @@ class SwiftMixin:
         if self.args.eval_use_evalscope and self.control.should_evaluate:
             try:
                 self._evalscope_eval()
-                if not self.eval_dataset:
-                    self.control.should_evaluate = False
             except Exception as e:
                 logger.warning(f'Failed to call EvalScope evaluation function: {e}.')
+
+            if not self.eval_dataset:
+                self.control.should_evaluate = False
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
 
     def create_loss_and_metric(self, args):
