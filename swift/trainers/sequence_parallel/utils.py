@@ -38,7 +38,7 @@ class GatherLoss(torch.autograd.Function):
     """Gather loss from sequence group"""
 
     @staticmethod
-    def forward(ctx, loss, labels, process_group, gather_idx=None):
+    def forward(ctx, loss, labels, sequence_parallel: 'SequenceParallel', gather_idx=None):
         """
         Args:
             loss: loss tensor after splitting
@@ -46,22 +46,16 @@ class GatherLoss(torch.autograd.Function):
             process_group: the sequence parallel group
             gather_idx: gather the tensors on this dim
         """
-        ctx.process_group = process_group
+        ctx.sequence_parallel = sequence_parallel
         # change from label.shape to loss, because label may be None
         shape0 = loss.shape[0]
         ctx.scatter_shape = loss.shape[gather_idx or 0]
         ctx.gather_idx = gather_idx or 0
-        world_size = dist.get_world_size(group=process_group)  # the sp world size
-        output = torch.empty((shape0 * world_size, *loss.shape[1:]), dtype=loss.dtype, device=loss.device)
-        # gather all from sp group
-        dist.all_gather_into_tensor(output, loss, group=process_group)
+        output = sequence_parallel._gather(loss, dim=1)
         if gather_idx is not None:
             output = torch.cat(output.split(shape0, dim=0), dim=gather_idx)
         if labels is not None:
-            labels_output = torch.empty((shape0 * world_size, *labels.shape[1:]),
-                                        dtype=labels.dtype,
-                                        device=labels.device)
-            dist.all_gather_into_tensor(labels_output, labels, group=process_group)
+            labels_output = sequence_parallel._gather(labels, dim=1)
             if gather_idx is not None:
                 labels_output = torch.cat(labels_output.split(shape0, dim=0), dim=gather_idx)
         else:
