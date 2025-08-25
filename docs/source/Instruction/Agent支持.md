@@ -192,8 +192,8 @@ loss_scale参数可用于调节模型输出部分在训练过程中的损失权�
 
 以 ReACT 格式为例，可通过 `--loss_scale react` 启用相应的 loss_scale 配置（配置文件详见 [react.json](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/react.json)）。该方式基于字符串精确匹配，配置中的字典映射需提供一个包含两个元素的列表，分别表示：当前匹配字符串本身的损失权重，
 从该字符串之后到下一个指定字符串之前的内容的损失权重。该设置的具体效果如下：
-- 'Action:' 和 'Action Input:' 对应内容的损失权重为 2；
-- 'Thought:' 和 'Final Answer:' 部分的损失权重为 1；
+- 'Action:' 和 'Action Input:' 字段自身及其后续内容的损失权重均为 2；
+- 'Thought:' 和 'Final Answer:' 字段自身及其后续内容的损失权重均为 1；
 - 'Observation:' 字段自身的权重为 2，但其后跟随的工具调用结果部分的损失权重为 0。
 
 2. 正则匹配示例：忽略空思维块

@@ -201,8 +201,8 @@ Take the ReACT format as an example. You can enable the corresponding `loss_scal
 
 The specific effects of this configuration are as follows:
 
-- The content following `'Action:'` and `'Action Input:'` has a loss weight of 2;
-- The sections `'Thought:'` and `'Final Answer:'` have a loss weight of 1;
+- The `'Action:'` and `'Action Input:'` keywords and their subsequent content both have a loss weight of 2;
+- The `'Thought:'` and `'Final Answer:'` keywords and their subsequent content both have a loss weight of 1;
 - The `'Observation:'` field itself has a loss weight of 2, but the subsequent tool call result content has a loss weight of 0.
 
 
