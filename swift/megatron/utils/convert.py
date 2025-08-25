@@ -156,7 +156,7 @@ def _check_megatron_kwargs(kwargs):
 
 
 def convert_hf2mcore(args: ExportArguments) -> None:
-    hf_model, template = prepare_model_template(args)
+    hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
     processor = template.processor
     if args.thread_count is None:
         checkpoint_size = sum(get_n_params_grads(hf_model)[0]) * torch.finfo(args.torch_dtype).bits // 8e9
@@ -192,7 +192,8 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
 def convert_mcore2hf(args: ExportArguments) -> None:
     from swift.megatron import prepare_mcore_model, adapter_state_dict_context
-    hf_model, template = prepare_model_template(args, load_model=args.to_hf)
+    hf_model, template = prepare_model_template(
+        args, load_model=args.to_hf, patch_offload=not args.test_convert_precision)
     processor = template.processor
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)

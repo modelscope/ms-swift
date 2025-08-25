@@ -485,12 +485,11 @@ class Template(ProcessorMixin):
         if isinstance(inputs, (InferRequest, TemplateInputs)):
             inputs = asdict(inputs)
 
-        extra_kwargs = {}
         if isinstance(inputs, dict):
             inputs = deepcopy(inputs)
             if self.task_type == 'causal_lm' and not self.is_training:
                 InferRequest.remove_response(inputs['messages'])
-            inputs, extra_kwargs = StdTemplateInputs.from_dict(inputs)
+            inputs = StdTemplateInputs.from_dict(inputs)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
         assert isinstance(inputs, StdTemplateInputs)
@@ -540,7 +539,7 @@ class Template(ProcessorMixin):
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         if not self.remove_unused_columns:
-            encoded['_extra_kwargs'] = extra_kwargs
+            encoded['_extra_kwargs'] = inputs.extra_kwargs
         return encoded
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1015,7 +1014,7 @@ class Template(ProcessorMixin):
         answer_len = 1 if self.is_training else 0
         return [text], [1.], answer_len
 
-    def _get_system(self, inputs) -> Optional[str]:
+    def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
         template_meta = self.template_meta
         system = inputs.system
         tools = inputs.tools
@@ -1027,7 +1026,7 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
         return system
 
-    def _swift_prepare_inputs(self, inputs):
+    def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         """
         Preprocesses the list of messages in the input by merging and formatting consecutive messages
         according to their roles.

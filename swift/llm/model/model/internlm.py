@@ -1,14 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from functools import partial
+from types import MethodType
 from typing import Any, Dict
 
+import torch
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_clone, patch_output_to_input_device
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_reward_model,
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal, get_model_tokenizer_reward_model,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo, safe_snapshot_download, use_submodel_func
 
@@ -326,6 +328,72 @@ register_model(
         architectures=['InternVLChatModel'],
         model_arch=ModelArch.internvl,
         requires=['transformers>=4.37.2', 'timm'],
+        tags=['vision', 'video'],
+    ))
+
+
+def get_model_tokenizer_interns1(model_dir: str,
+                                 model_info: ModelInfo,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
+    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
+
+    if model_info.quant_method == 'bnb' and kwargs.get('is_training'):
+        # patch: bnb backward shape mismatch bug
+        if model is not None and model.model.language_model is not None:
+            model.model.language_model.output.state.force_no_igemmlt = True
+
+    if model is not None:
+        patch_output_clone(model.model.language_model.get_input_embeddings())
+
+        def patch_output0_clone(module: torch.nn.Module):
+            """Clone the output, to avoid the inplace problem"""
+
+            def _clone_hook(module, input, output):
+                output = list(output)
+                output[0] = output[0].requires_grad_(True).clone()
+                output = tuple(output)
+                return output
+
+            module.register_forward_hook(_clone_hook)
+
+        patch_output0_clone(model.model.vision_tower.get_input_embeddings())
+        from transformers.modeling_utils import PreTrainedModel
+        if not hasattr(PreTrainedModel, '_old_enable_input_require_grads'):
+            old_enable_input_require_grads = PreTrainedModel.enable_input_require_grads
+
+            def patched_enable_input_require_grads(self):
+
+                def make_inputs_require_grads(module, input, output):
+                    if isinstance(output, tuple):
+                        output[0].requires_grad_(True)
+                    else:
+                        output.requires_grad_(True)
+
+                self._require_grads_hook = self.get_input_embeddings().register_forward_hook(make_inputs_require_grads)
+
+            PreTrainedModel.enable_input_require_grads = patched_enable_input_require_grads
+            PreTrainedModel._old_enable_input_require_grads = old_enable_input_require_grads
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.interns1,
+        [
+            ModelGroup([
+                Model('Shanghai_AI_Laboratory/Intern-S1-mini', 'internlm/Intern-S1-mini'),
+                Model('Shanghai_AI_Laboratory/Intern-S1', 'internlm/Intern-S1'),
+                Model('Shanghai_AI_Laboratory/Intern-S1-mini-FP8', 'internlm/Intern-S1-mini-FP8'),
+                Model('Shanghai_AI_Laboratory/Intern-S1-FP8', 'internlm/Intern-S1-FP8'),
+            ]),
+        ],
+        TemplateType.interns1,
+        get_model_tokenizer_interns1,
+        architectures=['InternS1ForConditionalGeneration'],
+        model_arch=ModelArch.interns1,
+        requires=['transformers>=4.55.2'],
         tags=['vision', 'video'],
     ))
 
