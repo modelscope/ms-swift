@@ -263,7 +263,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 hosts=self.vllm_server_host,
                 server_ports=self.vllm_server_port,
                 connection_timeout=self.vllm_server_timeout)
-            self.vllm_client.close_communicator()
             self.vllm_client.init_communicator(device=get_current_device())
             logger.info('Connected to vLLM server')
 
