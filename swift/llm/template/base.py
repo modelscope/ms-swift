@@ -1041,6 +1041,7 @@ class Template(ProcessorMixin):
                     i += 1
                 pre_message['content'], tool_content = self.agent_template._format_tool_responses(
                     pre_content, messages[i_start:i + 1])
+                # where tool_content is a List.
                 messages[i_start:i + 1] = [{'role': 'tool', 'content': tool_content}]
                 i = i_start + 1
             elif pre_role == 'assistant' and role == 'assistant' or pre_role == 'user' and role == 'user':
