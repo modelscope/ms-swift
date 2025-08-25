@@ -59,7 +59,8 @@ class ThinkingTemplate(Template):
                     if self.with_answer:
                         message['content'] = message['content'].split('<answer>')[-1].rstrip()
                         if message['content'].endswith('</answer>'):
-                            message['content'] = message['content'][:-len('</answer>')].strip()
+                            message['content'] = message['content'][:-len('</answer>')]
+                        message['content'] = message['content'].strip()
                     else:
                         message['content'] = self.history_think_prefix + message['content'].split(
                             '</think>')[-1].strip()
