@@ -45,8 +45,10 @@ class ThinkingTemplate(Template):
                 # Delete the content before '</think>' in all assistant turns except the last round.
                 if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:
                     if self.with_answer:
-                        message['content'] = message['content'].split('<answer>')[-1].rstrip().rstrip(
-                            '</answer>').strip()
+                        message['content'] = message['content'].split('<answer>')[-1].rstrip()
+                        if message['content'].endswith('</answer>'):
+                            message['content'] = message['content'][:-len('</answer>')]
+                        message['content'] = message['content'].strip()
                     else:
                         message['content'] = message['content'].split('</think>')[-1].strip()
 
