@@ -51,22 +51,18 @@ class GatherLoss(torch.autograd.Function):
         shape0 = loss.shape[0]
         ctx.scatter_shape = loss.shape[gather_idx or 0]
         ctx.gather_idx = gather_idx or 0
-        output = sequence_parallel._gather(loss, dim=1)
-        if gather_idx is not None:
-            output = torch.cat(output.split(shape0, dim=0), dim=gather_idx)
+        output = sequence_parallel._gather(loss, dim=ctx.gather_idx)
         if labels is not None:
-            labels_output = sequence_parallel._gather(labels, dim=1)
-            if gather_idx is not None:
-                labels_output = torch.cat(labels_output.split(shape0, dim=0), dim=gather_idx)
+            labels_output = sequence_parallel._gather(labels, dim=ctx.gather_idx)
         else:
             labels_output = None
         return output, labels_output
 
     @staticmethod
     def backward(ctx, *grad_output):
-        _grad = grad_output[0] * dist.get_world_size(group=ctx.process_group)
-        return _grad.split(
-            ctx.scatter_shape, dim=ctx.gather_idx)[dist.get_rank(ctx.process_group)].contiguous(), None, None, None
+        _grad = grad_output[0] * ctx.sequence_parallel.world_size
+        _grad = ctx.sequence_parallel._split(_grad, dim=ctx.gather_idx).contiguous()
+        return _grad, None, None, None
 
 
 class ChunkedCrossEntropyLoss(torch.autograd.Function):
@@ -125,6 +121,7 @@ def loss_scale_sp_func(outputs,
         logits = outputs
     device = logits.device
 
+    batch_size = logits.shape[0]
     logits = logits.view(-1, logits.shape[-1])
     labels = labels.flatten().to(device)
     sploss_parallel_size = int(os.environ.get('CELOSS_PARALLEL_SIZE', '0'))
@@ -140,7 +137,7 @@ def loss_scale_sp_func(outputs,
     if loss_scale is not None:
         loss_scale = loss_scale.flatten().to(device)
         loss = (loss_scale * loss)
-    loss, labels = GatherLoss.apply(loss, labels, sp_instance.sp_group)
+    loss, labels = GatherLoss.apply(loss.reshape(batch_size, -1), labels.reshape(batch_size, -1), sp_instance, 1)
     mask = (labels != -100)
     total_loss = loss[mask].sum()
     if num_items_in_batch is None:
