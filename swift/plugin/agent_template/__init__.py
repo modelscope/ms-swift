@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from .base import BaseAgentTemplate
 from .extra import ReactGRPOAgentTemplate
-from .glm4 import GLM4_0414AgentTemplate, GLM4AgentTemplate
+from .glm4 import GLM4_5AgentTemplate, GLM4_0414AgentTemplate, GLM4AgentTemplate
 from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate
 from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .mistral import MistralAgentTemplate
@@ -23,6 +23,7 @@ agent_templates = {
     'toolbench': ToolBenchAgentTemplate,  # ref: https://modelscope.cn/datasets/swift/ToolBench
     'glm4': GLM4AgentTemplate,
     'glm4_0414': GLM4_0414AgentTemplate,  # ref: https://modelscope.cn/models/ZhipuAI/GLM-4-9B-0414
+    'glm4_5': GLM4_5AgentTemplate,
     'llama3': Llama3AgentTemplate,
     'llama4': Llama4AgentTemplate,
     # extra
