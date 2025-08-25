@@ -165,11 +165,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
             from swift.trainers.sequence_parallel.utils import GatherLoss
             from swift.trainers.sequence_parallel import sequence_parallel
-            total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps,
-                                                                      loss_mask, sequence_parallel.sp_group, 1)
-            world_size = dist.get_world_size(group=sequence_parallel.sp_group)
-            total_mean_logits = mean_logits.new_empty((mean_logits.shape[0], mean_logits.shape[1] * world_size))
-            dist.all_gather_into_tensor(total_mean_logits, mean_logits, group=sequence_parallel.sp_group)
+            total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, 1)
+            total_mean_logits = sequence_parallel._gather(mean_logits, dim=1)
             return total_per_token_logps, total_mean_logits, total_loss_mask
 
     def training_step(self, model, inputs, *args, **kwargs):
