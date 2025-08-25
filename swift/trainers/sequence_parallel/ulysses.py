@@ -1,28 +1,14 @@
 from functools import partial
-from types import MethodType
 from typing import Any, Optional, Tuple
 
 import torch
 import torch.distributed as dist
-from packaging import version
+from torch.distributed import init_device_mesh
+from transformers import PreTrainedTokenizer
 
 from swift.llm import get_llm_model
-from .base import CommonSequenceParallel
-from .utils import (GatherLoss, SequenceParallelDispatcher, SequenceParallelSampler,
-                    _get_per_token_logps_and_entropies_grpo, _get_train_sampler_grpo, _prepare_inputs,
-                    _prepare_inputs_grpo, get_common_dataloader, get_per_token_logps, loss_scale_sp_func,
-                    old_policy_grpo, setup_compute_acc, split_by_mini_batches_grpo)
-
-assert version.parse(torch.__version__) >= version.parse('2.0.0')
-torch._dynamo.config.capture_dynamic_output_shape_ops = True
-
-torch_compile_options = {
-    'epilogue_fusion': True,
-    'max_autotune': False,
-    'shape_padding': True,
-    'trace.enabled': False,
-    'triton.cudagraphs': False,
-}
+from .utils import GatherLoss
+from ...utils import get_dist_setting, get_device
 
 
 # Code borrowed from deepspeed, here is why:
@@ -147,20 +133,22 @@ class DistributedAttention(torch.nn.Module):
         return output
 
 
-class Ulysses(CommonSequenceParallel):
+class SequenceParallel:
+
+    _global_inited: bool = False
 
     def __init__(self):
-        super().__init__()
-        self.split_in_forward = None
+        self.sp_world_size = None
+        self.dp_world_size = None
+        self.rp_world_size = None
+        self.world_size = None
+        self.model_dtype = None
+        self.tokenizer = None
+        self.device_mesh = None
+        self.num_heads = None
         self.causal_mask_func = None
 
-    def init_sequence_parallel(self, size):
-        if self._inited:
-            return
-        self._inited = True
-        self.sp_world_size = size
-        self._init_device_mesh()
-
+    def _prepare_flash_attn(self, base_model: torch.nn.Module):
         try:
             from transformers import masking_utils
 
@@ -194,6 +182,11 @@ class Ulysses(CommonSequenceParallel):
         except ImportError:
             pass
 
+        if hasattr(base_model, 'language_model'):
+            text_model = base_model.language_model
+        else:
+            text_model = base_model
+
         from transformers.modeling_flash_attention_utils import is_flash_attn_available
         if is_flash_attn_available():
             # TODO this works for multi-modal models like qwen2.5-vl
@@ -211,7 +204,67 @@ class Ulysses(CommonSequenceParallel):
 
             modeling_flash_attention_utils._flash_attention_forward = flash_attention_forward
 
-    def prepare_model(self, model, tokenizer):
+        from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
+
+        def local_flash_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
+                             dist_attn, **kwargs):
+            if module.__class__ not in [m.__class__ for m in text_model.modules()]:
+                return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query_states, key_states,
+                                                                           value_states, attention_mask, *args,
+                                                                           **kwargs)
+            if dist_attn.local_attn is None:
+
+                def _attention(query, key, value, *args, **kwargs):
+                    query = query.transpose(1, 2)
+                    key = key.transpose(1, 2)
+                    value = value.transpose(1, 2)
+                    if self.rp_world_size is not None and self.rp_world_size > 1:
+                        from .zigzag_ring_flash_attn import zigzag_ring_flash_attn_func
+                        output = zigzag_ring_flash_attn_func(query.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2),
+                                                             causal=module.is_causal,
+                                                             dropout_p=kwargs.get('dropout', 0.0),
+                                                             softmax_scale=kwargs.get('scaling', 0.0),
+                                                             window_size=kwargs.get('sliding_window') or (-1, -1),
+                                                             group=self.rp_group)
+                        return output
+                    else:
+                        return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query, key,
+                                                                                   value, *args, **kwargs)[0]
+
+                dist_attn.local_attn = _attention
+
+            return dist_attn(
+                query_states.transpose(1, 2), key_states.transpose(1, 2), value_states.transpose(1, 2), attention_mask,
+                *args, **kwargs), None
+
+        def local_sdpa_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
+                            dist_attn, **kwargs):
+            if module.__class__ not in [m.__class__ for m in text_model.modules()]:
+                return ALL_ATTENTION_FUNCTIONS['sdpa_origin'](module, query_states, key_states, value_states,
+                                                              attention_mask, *args, **kwargs)
+            if dist_attn.local_attn is None:
+
+                def _attention(query, key, value, *args, **kwargs):
+                    query = query.transpose(1, 2)
+                    key = key.transpose(1, 2)
+                    value = value.transpose(1, 2)
+                    if self.rp_world_size > 1:
+                        raise NotImplementedError(f'SDPA does not support Ring attention!')
+                    return ALL_ATTENTION_FUNCTIONS['sdpa_origin'](module, query, key, value, *args, **kwargs)[0]
+
+                dist_attn.local_attn = _attention
+            return dist_attn(
+                query_states.transpose(1, 2), key_states.transpose(1, 2), value_states.transpose(1, 2), attention_mask,
+                *args, **kwargs), None
+
+        ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'] = ALL_ATTENTION_FUNCTIONS['flash_attention_2']
+        ALL_ATTENTION_FUNCTIONS['sdpa_origin'] = ALL_ATTENTION_FUNCTIONS['sdpa']
+        ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = partial(
+            local_flash_attn, dist_attn=DistributedAttention(None, self.sp_group))
+        ALL_ATTENTION_FUNCTIONS['sdpa'] = partial(
+            local_sdpa_attn, dist_attn=DistributedAttention(None, self.sp_group))
+
+    def _prepare_forward_hook(self, base_model: torch.nn.Module):
 
         def pre_forward_split_hook(_self, args, kwargs):
             input_ids = kwargs.get('input_ids', None)
@@ -222,31 +275,17 @@ class Ulysses(CommonSequenceParallel):
                 embed_tokens = getattr(_self.language_model, 'embed_tokens', None)
             else:
                 embed_tokens = getattr(_self, 'embed_tokens', None)
-            _input_ids, inputs_embeds, _, position_ids, attention_mask, _ = self.pad_and_split_inputs(
+            input_ids, inputs_embeds, _, position_ids, attention_mask, _ = self.pad_and_split_inputs(
                 input_ids, inputs_embeds, None, position_ids, attention_mask, None, embed_tokens=embed_tokens)
-            kwargs['input_ids'] = _input_ids
+            kwargs['input_ids'] = input_ids
             kwargs['inputs_embeds'] = inputs_embeds
             kwargs['position_ids'] = position_ids
             kwargs['attention_mask'] = attention_mask
             return args, kwargs
 
-        llm_model = get_llm_model(model)
-
-        if hasattr(llm_model, 'thinker'):
-            base_model = llm_model.thinker.model
-        else:
-            base_model = llm_model.model
-        if hasattr(base_model, 'language_model'):
-            text_model = base_model.language_model
-            if hasattr(base_model.language_model, '_update_causal_mask'):
-                self.causal_mask_func = base_model.language_model._update_causal_mask
-        else:
-            text_model = base_model
-            if hasattr(base_model, '_update_causal_mask'):
-                self.causal_mask_func = base_model._update_causal_mask
         base_model.register_forward_pre_hook(pre_forward_split_hook, with_kwargs=True)
-        base_model: torch.nn.Module
 
+    def _prepare_moe_aux_loss(self, base_model: torch.nn.Module):
         def moe_aux_loss_hook(module, args, kwargs, output):
             router_logits = getattr(output, 'router_logits', None)
             if router_logits is None:
@@ -267,97 +306,254 @@ class Ulysses(CommonSequenceParallel):
             output['router_logits'] = tuple([logit.squeeze() for logit in router_logits.split(1, dim=0)])
             return output
 
+        base_model.register_forward_hook(moe_aux_loss_hook, with_kwargs=True)
+
+    def prepare(self, sp_size: int, model: torch.nn.Module, tokenizer: PreTrainedTokenizer):
+        if self.device_mesh is not None:
+            return
+        self.sp_world_size = sp_size
+        self.num_heads = model.config.num_key_value_heads
+
+        llm_model = get_llm_model(model)
+
+        if hasattr(llm_model, 'thinker'):
+            base_model = llm_model.thinker.model
+        else:
+            base_model = llm_model.model
+
+        if hasattr(base_model, 'language_model'):
+            if hasattr(base_model.language_model, '_update_causal_mask'):
+                self.causal_mask_func = base_model.language_model._update_causal_mask
+        else:
+            if hasattr(base_model, '_update_causal_mask'):
+                self.causal_mask_func = base_model._update_causal_mask
+
+        if not SequenceParallel._global_inited:
+            self._init_device_mesh()
+            self._prepare_flash_attn(base_model)
+            SequenceParallel._global_inited = True
+
+        self._prepare_forward_hook(base_model)
         if model.model_info.is_moe_model:
-            base_model.register_forward_hook(moe_aux_loss_hook, with_kwargs=True)
+            self._prepare_moe_aux_loss(base_model)
+
         self.model_dtype = next(model.parameters()).dtype
         self.tokenizer = tokenizer
 
-        from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
+    def _pad(self, tensor, padding_value, dim=-1):
+        """Pad tensor for sequence parallel"""
+        length = tensor.shape[dim]
+        if length % self.world_size == 0:
+            return tensor
 
-        def local_flash_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
-                             dist_attn, **kwargs):
-            if module.__class__ not in [m.__class__ for m in text_model.modules()]:
-                return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query_states, key_states,
-                                                                           value_states, attention_mask, *args,
-                                                                           **kwargs)
-            if dist_attn.local_attn is None:
+        pad_num = self.world_size - (length % self.world_size)
+        if not isinstance(padding_value, torch.Tensor):
+            # ids
+            pad_shape = ((*tensor.shape[:dim], pad_num, *tensor.shape[dim + 1:]) if dim != -1 else
+                         (*tensor.shape[:dim], pad_num))
+            pad = torch.full(pad_shape, padding_value, dtype=tensor.dtype, device=tensor.device)
+            tensor = torch.cat([tensor, pad], dim=dim)
+        else:
+            # For embeddings
+            tensor = torch.cat([tensor, padding_value.unsqueeze(0).repeat(tensor.shape[0], pad_num, 1)], dim=dim)
+        return tensor
 
-                def _attention(query, key, value, *args, **kwargs):
-                    query = query.transpose(1, 2)
-                    key = key.transpose(1, 2)
-                    value = value.transpose(1, 2)
-                    return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query, key, value, *args,
-                                                                               **kwargs)[0]
+    def _gather(self, local_output, dim: int):
+        """Gather tensor for sequence parallel - reverse of _split"""
+        if self.world_size == 1:
+            return local_output
 
-                dist_attn.local_attn = _attention
+        if self.rp_world_size > 1:
+            input_dim = local_output.dim()
+            assert input_dim >= 2
 
-            return dist_attn(
-                query_states.transpose(1, 2), key_states.transpose(1, 2), value_states.transpose(1, 2), attention_mask,
-                *args, **kwargs), None
+            batch_size, local_seq_len, *rest = local_output.shape
 
-        def local_sdpa_attn(module: torch.nn.Module, query_states, key_states, value_states, attention_mask, *args,
-                            dist_attn, **kwargs):
-            if module.__class__ not in [m.__class__ for m in text_model.modules()]:
-                return ALL_ATTENTION_FUNCTIONS['sdpa_origin'](module, query_states, key_states, value_states,
-                                                              attention_mask, *args, **kwargs)
-            if dist_attn.local_attn is None:
+            # Step 1: Gather from all sequence parallel ranks
+            # Each sp_rank has its own piece, we need to gather them first
+            gathered_sp = [torch.zeros_like(local_output) for _ in range(self.sp_world_size)]
+            torch.distributed.all_gather(gathered_sp, local_output.contiguous(), group=self.sp_group)
 
-                def _attention(query, key, value, *args, **kwargs):
-                    query = query.transpose(1, 2)
-                    key = key.transpose(1, 2)
-                    value = value.transpose(1, 2)
-                    return ALL_ATTENTION_FUNCTIONS['sdpa_origin'](module, query, key, value, *args, **kwargs)[0]
+            # Concatenate the sp pieces to form the complete chunk for this rp_rank
+            rp_chunk = torch.cat(gathered_sp, dim=dim)
 
-                dist_attn.local_attn = _attention
-            return dist_attn(
-                query_states.transpose(1, 2), key_states.transpose(1, 2), value_states.transpose(1, 2), attention_mask,
-                *args, **kwargs), None
+            # Step 2: Gather all rp chunks
+            gathered_rp = [torch.zeros_like(rp_chunk) for _ in range(self.rp_world_size)]
+            torch.distributed.all_gather(gathered_rp, rp_chunk, group=self.rp_group)
 
-        if 'flash_attention_2_origin' not in ALL_ATTENTION_FUNCTIONS:
-            ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'] = ALL_ATTENTION_FUNCTIONS['flash_attention_2']
-            ALL_ATTENTION_FUNCTIONS['sdpa_origin'] = ALL_ATTENTION_FUNCTIONS['sdpa']
-            ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = partial(
-                local_flash_attn, dist_attn=DistributedAttention(None, self.sp_group))
-            ALL_ATTENTION_FUNCTIONS['sdpa'] = partial(
-                local_sdpa_attn, dist_attn=DistributedAttention(None, self.sp_group))
+            # Step 3: Reconstruct the original tensor by unfolding the Z-pattern
+            # We need to separate each rp chunk into two parts as per the original pattern
+            full_seq_len = local_seq_len * self.world_size
+            chunk_size = full_seq_len // (2 * self.rp_world_size)
 
-    def get_dataloader(self, trainer, dataset, batch_size, skip_batches: int = 0):
-        return get_common_dataloader(
-            self,
-            trainer,
-            dataset,
-            batch_size,
-            SequenceParallelSampler,
-            SequenceParallelDispatcher,
-            skip_batches=skip_batches)
+            # Initialize the full output tensor
+            full_output = torch.zeros([batch_size, full_seq_len, *rest], device=local_output.device)
 
-    def prepare_trainer(self, trainer):
-        # TODO hack methods, not cool
-        if trainer.train_dataset is None:
-            raise ValueError('Trainer: training requires a train_dataset.')
+            # Place each chunk in its correct position
+            for i in range(self.rp_world_size):
+                # In the original split, rank i got chunk[i] and chunk[2*rp_world_size-i-1]
+                # Now we need to place them back
+                full_output[:, i * chunk_size:(i + 1) * chunk_size] = gathered_rp[i][:, :chunk_size]
+                full_output[:, (2 * self.rp_world_size - i - 1) * chunk_size:(2 * self.rp_world_size - i) * chunk_size] = \
+                gathered_rp[i][:, chunk_size:]
 
-        trainer.ulysses = self
-        if trainer.__class__.__name__ == 'Seq2SeqTrainer':
-            enable_dft_loss = trainer.args.enable_dft_loss
-            trainer._origin_prepare_inputs = trainer._prepare_inputs
-            trainer._prepare_inputs = MethodType(partial(_prepare_inputs, sp_instance=self), trainer)
-            trainer.compute_loss_func = partial(loss_scale_sp_func, sp_instance=self, enable_dft_loss=enable_dft_loss)
+            return full_output.contiguous()
+        else:
+            gathered_sp = torch.empty((local_output.shape[0] * self.sp_world_size, local_output.shape[1]),
+                                       dtype=local_output.dtype,
+                                       device=local_output.device)
+            dist.all_gather_into_tensor(gathered_sp, local_output, group=self.sp_group)
+            gathered_sp = torch.cat(gathered_sp.split(local_output.shape[0], dim=0), dim=dim)
+            return gathered_sp.contiguous()
 
-        elif trainer.__class__.__name__ == 'DPOTrainer':
-            trainer._origin_prepare_inputs = trainer._prepare_inputs
-            trainer._prepare_inputs = MethodType(partial(_prepare_inputs, sp_instance=self), trainer)
-            trainer.get_per_token_logps = partial(get_per_token_logps, sp_instance=self)
+    def _split(self, input, dim: int):
+        """Split tensor for sequence parallel"""
+        if self.world_size == 1:
+            return input
 
-        elif trainer.__class__.__name__ == 'GRPOTrainer':
-            import trl
-            assert version.parse(trl.__version__) >= version.parse('0.18.0')
-            trainer.ulysses = self
-            trainer.args.gradient_accumulation_steps = trainer.args.gradient_accumulation_steps * self.sp_world_size
-            trainer.old_policy = MethodType(partial(old_policy_grpo, sp_instance=self), trainer)
-            trainer._get_train_sampler = MethodType(partial(_get_train_sampler_grpo, sp_instance=self), trainer)
-            trainer._prepare_inputs = MethodType(partial(_prepare_inputs_grpo, sp_instance=self), trainer)
-            trainer._get_per_token_logps_and_entropies = MethodType(
-                partial(_get_per_token_logps_and_entropies_grpo, sp_instance=self), trainer)
-            trainer.split_by_mini_batches = MethodType(partial(split_by_mini_batches_grpo, sp_instance=self), trainer)
+        if self.rp_world_size > 1:
+            input_dim = input.dim()
+            assert input_dim >= 2
+            pre_dims = []
+            post_dims = []
+            seq_len = -1
+            if dim < 0:
+                dim = len(input) + dim
+            for idx, d in enumerate(input.shape):
+                if idx == dim:
+                    seq_len = d
+                elif idx < dim:
+                    pre_dims.append(d)
+                else:
+                    post_dims.append(d)
 
-        setup_compute_acc(self)
+            value_chunks = input.chunk(2 * self.rp_world_size, dim=dim)
+
+            local_value = torch.cat(
+                [value_chunks[self.rp_rank], value_chunks[2 * self.rp_world_size - self.rp_rank - 1]], dim=dim
+            ).chunk(self.sp_world_size, dim=dim)[self.sp_rank]
+
+            new_shape = pre_dims + [seq_len // self.world_size] + post_dims
+            return local_value.reshape(new_shape).contiguous()
+        else:
+            rank = self.sp_rank
+            dim_size = input.size(dim)
+            assert dim_size % self.sp_world_size == 0, (f'The dimension to split ({dim_size}) is not a multiple of '
+                                                        f'world size ({self.sp_world_size}), cannot split tensor evenly')
+
+            tensor_list = torch.split(input, dim_size // self.sp_world_size, dim=dim)
+            output = tensor_list[rank].contiguous()
+            return output
+
+    def pad_and_split_inputs(self,
+                             input_ids,
+                             input_embeds,
+                             labels,
+                             position_ids,
+                             attention_mask,
+                             loss_scale,
+                             embed_tokens=None):
+        """Common implementation for padding and splitting inputs"""
+        tokenizer = self.tokenizer
+        if input_ids is not None:
+            input_ids = self._pad(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
+        if input_embeds is not None:
+            pad_emb = torch.zeros(
+                (1, embed_tokens.weight.shape[-1])).to(embed_tokens.weight.device).to(embed_tokens.weight.dtype)
+            input_embeds = self._pad(input_embeds, padding_value=pad_emb, dim=1)
+        batch_size = input_ids.shape[
+            0] if input_ids is not None else input_embeds.shape[0] if input_embeds is not None else 1
+        if position_ids is not None:
+            position_ids = self._pad(position_ids, padding_value=0, dim=-1)
+        if (input_ids is not None or input_embeds is not None) and batch_size > 1:
+            inputs = input_ids if input_ids is not None else input_embeds
+            attn_shape = inputs.shape[1]  # The sequence length
+            if attention_mask is None:
+                attention_mask = torch.ones_like(position_ids)
+            attention_mask = self._pad(attention_mask, padding_value=0, dim=-1)
+            cache_position = torch.arange(0, attn_shape, device=inputs.device)
+            # pad attention mask to 4d to avoid calculation errors
+            if hasattr(self, 'causal_mask_func') and self.causal_mask_func is not None:
+                attention_mask = self.causal_mask_func(attention_mask, inputs.to(self.model_dtype), cache_position,
+                                                       None, None)
+        if input_ids is not None:
+            input_ids = self._split(input_ids, dim=1)
+        if input_embeds is not None:
+            input_embeds = self._split(input_embeds, dim=1)
+        if position_ids is not None:
+            position_ids = self._split(position_ids, dim=-1)
+        if labels is not None:
+            labels = self._pad(labels, padding_value=-100, dim=-1)
+            labels = torch.roll(labels, shifts=-1, dims=-1)
+            labels = self._split(labels, dim=-1)
+
+        if loss_scale is not None:
+            loss_scale = self._pad(loss_scale, padding_value=0., dim=-1)
+            loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1)
+            loss_scale = self._split(loss_scale, dim=-1)
+
+        return input_ids, input_embeds, labels, position_ids, attention_mask, loss_scale
+
+    def _init_device_mesh(self):
+        """Initialize device mesh for sequence parallel"""
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
+        self.dp_world_size = world_size // self.sp_world_size
+        rp_world_size = self.sp_world_size // self.num_heads
+        if rp_world_size <= 1:
+            # Create device mesh: (dp_world_size, sp_world_size)
+            self.device_mesh = init_device_mesh(
+                get_device().split(':')[0],
+                mesh_shape=(self.dp_world_size, self.sp_world_size),
+                mesh_dim_names=('data', 'sequence'))
+            self.rp_world_size = rp_world_size
+            self.world_size = self.sp_world_size
+        else:
+            self.sp_world_size = self.num_heads
+            self.rp_world_size = rp_world_size
+            self.world_size = self.rp_world_size * self.sp_world_size
+            # Create device mesh: (dp_world_size, rp_world_size, sp_world_size)
+            self.device_mesh = init_device_mesh(
+                get_device().split(':')[0],
+                mesh_shape=(self.dp_world_size, self.rp_world_size, self.sp_world_size),
+                mesh_dim_names=('data', 'ring', 'sequence'))
+
+    @property
+    def sp_group(self):
+        """Return the sequence parallel group"""
+        return self.device_mesh['sequence'].get_group() if self.device_mesh else None
+
+    @property
+    def sp_rank(self):
+        """Return the sequence parallel rank"""
+        return dist.get_rank(self.device_mesh['sequence'].get_group()) if self.device_mesh else 0
+
+    @property
+    def dp_group(self):
+        """Return the data parallel group"""
+        return self.device_mesh['data'].get_group() if self.device_mesh else None
+
+    @property
+    def dp_rank(self):
+        """Return the data parallel rank"""
+        return dist.get_rank(self.device_mesh['data'].get_group()) if self.device_mesh else 0
+
+    @property
+    def rp_group(self):
+        """Return the data parallel group"""
+        return self.device_mesh['ring'].get_group() if self.device_mesh and 'ring' in self.device_mesh.mesh_dim_names else None
+
+    @property
+    def rp_rank(self):
+        """Return the data parallel rank"""
+        return dist.get_rank(self.device_mesh['ring'].get_group()) if self.device_mesh and 'ring' in self.device_mesh.mesh_dim_names else -1
+
+    def pad_and_split_extra_inputs(self, inputs):
+        """Common input preparation function"""
+        if 'labels' in inputs:
+            labels = inputs['labels']
+            _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, None, None, None)
+            inputs['labels'] = labels
+        if 'loss_scale' in inputs:
+            loss_scale = inputs['loss_scale']
+            _, _, _, _, _, loss_scale = self.pad_and_split_inputs(None, None, None, None, None, loss_scale)
+            inputs['loss_scale'] = loss_scale

@@ -438,6 +438,7 @@ def channel_loss_func(outputs,
     assert sample_channels is not None, 'Data does not have channel field.'
 
     if outputs.loss is None:
+        from swift.trainers.utils import per_token_loss_func
         outputs.loss = per_token_loss_func(outputs, labels)
     token_loss = outputs.loss
     masks = torch.roll(labels, shifts=-1, dims=-1).view(-1) != -100

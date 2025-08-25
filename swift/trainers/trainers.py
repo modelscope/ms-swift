@@ -3,7 +3,7 @@
 import inspect
 import os
 from contextlib import contextmanager, nullcontext
-from functools import wraps
+from functools import wraps, partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -222,6 +222,10 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             self.infer_engine = PtEngine.from_model_template(
                 self.model, self.template, max_batch_size=self.args.per_device_eval_batch_size)
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            from swift.trainers.sequence_parallel.utils import loss_scale_sp_func
+            self.compute_loss_func = partial(loss_scale_sp_func, enable_dft_loss=self.args.enable_dft_loss)
 
     @staticmethod
     def _predict_data_collator(batch):
@@ -291,6 +295,10 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         from swift.llm import HfConfigFactory
         args = self.args
         inputs = super()._prepare_inputs(inputs)
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            sequence_parallel.pad_and_split_extra_inputs(inputs)
+
         loss_kwargs = {}
         compute_loss_func = self.compute_loss_func
 
@@ -308,7 +316,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             if position_ids is not None:
                 loss_kwargs['position_ids'] = position_ids
 
-        use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
+        use_logits_to_keep = self.get_use_logits_to_keep()
         if use_logits_to_keep:
             self.prepare_logits_to_keep(inputs)
             if args.tuner_backend == 'unsloth' and isinstance(inputs['logits_to_keep'], torch.Tensor):
@@ -333,7 +341,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         loss_kwargs = inputs.pop('loss_kwargs', {})
 
         if (self.label_smoother is not None or compute_loss_func is not None or loss_scale is not None
-                or self.args.enable_dft_loss) and 'labels' in inputs:
+                or self.args.enable_dft_loss or self.template.sequence_parallel_size > 1) and 'labels' in inputs:
             labels = inputs.pop('labels')
         outputs = model(**inputs)
         if getattr(outputs, 'aux_loss', None) is not None:
@@ -390,10 +398,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 aux_loss = outputs.get('aux_loss')
                 if aux_loss is not None:
                     loss = loss + self.args.router_aux_loss_coef * aux_loss.to(loss.device)
-
-        if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            loss = sequence_parallel.reduce_outputs(loss, labels)
 
         if getattr(self.args, 'average_tokens_across_devices',
                    False) and self.model_accepts_loss_kwargs and num_items_in_batch is not None:
