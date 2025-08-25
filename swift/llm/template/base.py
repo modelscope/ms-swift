@@ -1038,7 +1038,7 @@ class Template(ProcessorMixin):
             - Updates the messages list in-place for further processing.
 
         Args:
-            inputs: An object containing a 'messages' attribute, which is a list of dictionaries.
+            inputs: An StdTemplateInputs object which contains a 'messages' attribute, which is a list of dictionaries.
                     Each message dictionary should have at least the keys 'role' and 'content'.
 
         Returns:
