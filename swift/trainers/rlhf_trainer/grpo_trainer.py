@@ -846,7 +846,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     token_ids = completion
                 elif isinstance(completion, dict):
                     token_ids = completion['token_ids']
-                completions[i] = self.tokenizer.decode(token_ids)
+                completions[i] = self.processing_class.decode(token_ids)
             valid_messages = self._gather_and_flatten(messages, flatten_level=0)
             valid_completions = self._gather_and_flatten(completions, flatten_level=0)
             self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
@@ -856,15 +856,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             #          add them to metrics_to_gather
             # NOTE: every key you register must appear in ALL rollout outputs
             #       to avoid potential communication / synchronization issues
-            metrics_to_gather = {}
+            metrics_for_logs_to_gather = {}
             if all('images' in data and data['images'] is not None for data in inputs):
-                metrics_to_gather['image'] = [inp['images'] for inp in inputs]
+                metrics_for_logs_to_gather['image'] = [inp['images'] for inp in inputs]
 
             if all('solution' in inp for inp in inputs):
-                metrics_to_gather['solution'] = [inp['solution'] for inp in inputs]
+                metrics_for_logs_to_gather['solution'] = [inp['solution'] for inp in inputs]
 
-            if metrics_to_gather:
-                for key, value in metrics_to_gather.items():
+            if all('rollout_infos' in inp and 'num_turns' in inp['rollout_infos'] for inp in inputs):
+                metrics_for_logs_to_gather['num_turns'] = [inp['rollout_infos']['num_turns'] for inp in inputs]
+
+            if metrics_for_logs_to_gather:
+                for key, value in metrics_for_logs_to_gather.items():
                     if key not in self._logs:
                         self._logs[key] = deque(maxlen=self.args.generation_batch_size)
                     self._logs[key].extend(self._gather_and_flatten(value, flatten_level=0))
