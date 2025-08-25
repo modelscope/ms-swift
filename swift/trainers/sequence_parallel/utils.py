@@ -38,19 +38,17 @@ class GatherLoss(torch.autograd.Function):
     """Gather loss from sequence group"""
 
     @staticmethod
-    def forward(ctx, loss, labels, sequence_parallel: 'SequenceParallel', gather_idx=None):
+    def forward(ctx, loss, labels, gather_idx=None):
         """
         Args:
             loss: loss tensor after splitting
             labels: labels tensor after splitting
-            process_group: the sequence parallel group
             gather_idx: gather the tensors on this dim
         """
-        ctx.sequence_parallel = sequence_parallel
         # change from label.shape to loss, because label may be None
-        shape0 = loss.shape[0]
         ctx.scatter_shape = loss.shape[gather_idx or 0]
         ctx.gather_idx = gather_idx or 0
+        from swift.trainers.sequence_parallel import sequence_parallel
         output = sequence_parallel._gather(loss, dim=ctx.gather_idx)
         if labels is not None:
             labels_output = sequence_parallel._gather(labels, dim=ctx.gather_idx)
@@ -60,8 +58,9 @@ class GatherLoss(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, *grad_output):
-        _grad = grad_output[0] * ctx.sequence_parallel.world_size
-        _grad = ctx.sequence_parallel._split(_grad, dim=ctx.gather_idx).contiguous()
+        from swift.trainers.sequence_parallel import sequence_parallel
+        _grad = grad_output[0] * sequence_parallel.world_size
+        _grad = sequence_parallel._split(_grad, dim=ctx.gather_idx).contiguous()
         return _grad, None, None, None
 
 
@@ -111,7 +110,6 @@ def loss_scale_sp_func(outputs,
                        labels,
                        loss_scale=None,
                        num_items_in_batch=None,
-                       sp_instance=None,
                        enable_dft_loss=False,
                        **kwargs) -> torch.Tensor:
     """Common loss function for sequence parallel training"""
@@ -137,7 +135,7 @@ def loss_scale_sp_func(outputs,
     if loss_scale is not None:
         loss_scale = loss_scale.flatten().to(device)
         loss = (loss_scale * loss)
-    loss, labels = GatherLoss.apply(loss.reshape(batch_size, -1), labels.reshape(batch_size, -1), sp_instance, 1)
+    loss, labels = GatherLoss.apply(loss.reshape(batch_size, -1), labels.reshape(batch_size, -1), 1)
     mask = (labels != -100)
     total_loss = loss[mask].sum()
     if num_items_in_batch is None:

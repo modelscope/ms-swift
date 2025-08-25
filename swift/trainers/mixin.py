@@ -806,6 +806,9 @@ class SwiftMixin:
     def prepare_logits_to_keep(self, inputs):
         labels = inputs['labels']
         loss_scale = inputs.get('loss_scale')
+        if self.args.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            labels = sequence_parallel._gather(labels, dim=1)
         if labels.shape[0] == 1 and not is_mp():
             # device_map may encounter device mismatch issues.
             loss_mask = (labels != -100)[0]

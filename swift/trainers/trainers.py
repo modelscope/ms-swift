@@ -225,7 +225,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         if self.template.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
             from swift.trainers.sequence_parallel.utils import loss_scale_sp_func
-            self.compute_loss_func = partial(loss_scale_sp_func, sp_instance=sequence_parallel, enable_dft_loss=self.args.enable_dft_loss)
+            self.compute_loss_func = partial(loss_scale_sp_func, enable_dft_loss=self.args.enable_dft_loss)
 
     @staticmethod
     def _predict_data_collator(batch):

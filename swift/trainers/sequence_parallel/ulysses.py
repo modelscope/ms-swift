@@ -396,7 +396,7 @@ class SequenceParallel:
                                        dtype=local_output.dtype,
                                        device=local_output.device)
             dist.all_gather_into_tensor(gathered_sp, local_output, group=self.sp_group)
-            gathered_sp = torch.cat(gathered_sp.split(local_output.shape[0], dim=0), dim=1)
+            gathered_sp = torch.cat(gathered_sp.split(local_output.shape[0], dim=0), dim=dim)
             return gathered_sp.contiguous()
 
     def _split(self, input, dim: int):
