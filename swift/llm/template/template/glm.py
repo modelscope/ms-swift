@@ -239,15 +239,12 @@ class GLM4_5Template(ThinkingTemplate):
     no_think_prefix = '<think></think>\n'
     history_think_prefix = '<think></think>\n'
 
-    def _swift_encode(self, inputs: StdTemplateInputs):
-        res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
-        # When it's a tool_call, avoid generating <|observation|><|user|>
-        penultimate_content = res_context_list[-2] if len(res_context_list) >= 2 else None
-        if isinstance(penultimate_content,
-                      str) and penultimate_content.endswith('<|observation|>') and res_context_list[-1] == '<|user|>':
-            res_context_list = res_context_list[:-1]
-            answer_len -= 1
-        return res_context_list, loss_scale_list, answer_len
+    def _jinja_encode(self, inputs: StdTemplateInputs):
+        for message in inputs.messages:
+            if message['role'] == 'assistant' and isinstance(message['content'],
+                                                             str) and message['content'].endswith('<|observation|>'):
+                message['content'] = message['content'][:-len('<|observation|>')]
+        return super()._jinja_encode(inputs)
 
 
 register_template(GLM4_5TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5Template))

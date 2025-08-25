@@ -132,7 +132,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
         res = []
-        for _, tool_message in enumerate(tool_messages):
+        for tool_message in tool_messages:
             tool_content = tool_message['content']
             res.append(f'\n<tool_response>\n{tool_content}\n</tool_response>')
         res.append('<|assistant|>\n')
