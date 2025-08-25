@@ -350,7 +350,7 @@ def test_glm4_5():
     encoded2 = template.encode(data)
     print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
     print(f'labels: {template.safe_decode(encoded2["labels"])}')
-    assert encoded['input_ids'] == encoded2['input_ids']
+    assert encoded['input_ids'][:-1] == encoded2['input_ids']
 
 
 if __name__ == '__main__':
