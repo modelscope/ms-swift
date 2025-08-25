@@ -838,7 +838,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         with patch_profiling_context(self, 'log_metrics'):
             # --- logs (prompts + completions) ---
             messages = [inp['messages'][:-1] for inp in inputs]
-            completions = [inp['messages'][-1]['content'] for inp in inputs]
+            completions = [deepcopy(inp['messages'][-1]['content']) for inp in inputs]
+            for i, completion in enumerate(completions):
+                if isinstance(completion, str):
+                    continue
+                if isinstance(completion, list):
+                    token_ids = completion
+                elif isinstance(completion, dict):
+                    token_ids = completion['token_ids']
+                completions[i] = self.tokenizer.decode(token_ids)
             valid_messages = self._gather_and_flatten(messages, flatten_level=0)
             valid_completions = self._gather_and_flatten(completions, flatten_level=0)
             self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
@@ -976,9 +984,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         def log_rewards_metrics(rewards: torch.Tensor, rewards_per_func_for_metrics: torch.Tensor):
             """Log reward statistics for monitoring. Only log once per unique request_id."""
+            # rewards: [prompt_batch_size, self.num_generations]
+            # rewards_per_func_for_metrics: [prompt_batch_size*self.num_generations, self.num_reward_funcs]
             mode = 'train' if self.model.training else 'eval'
-            rewards_mean = rewards.mean().item()
-            rewards_std = rewards.std().item()
+            group_rewards = rewards.view(-1, self.num_generations)
+            rewards_mean = group_rewards.mean(-1).mean().item()
+            rewards_std = group_rewards.std(-1).mean().item()
             is_std_zero = torch.isclose(rewards.std(dim=0), torch.zeros_like(rewards.std(dim=0)))
 
             self._metrics[mode]['reward'].append(rewards_mean)
@@ -1020,10 +1031,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             advantages = normalize_advantages(advantages, group_rewards_std)
 
             # Log metrics once per group
-            log_rewards_metrics(
-                rewards=grouped_rewards,
-                rewards_per_func_for_metrics=rewards_per_func.view(-1, self.num_generations,
-                                                                   rewards_per_func.size(-1))[:, 0])
+            log_rewards_metrics(rewards=grouped_rewards, rewards_per_func_for_metrics=rewards_per_func)
 
             # Log all rewards
             log_rewards_all(rewards_per_func)
@@ -1261,7 +1269,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if all('rollout_infos' in inp and 'num_turns' in inp['rollout_infos'] for inp in inputs):
                 num_turns = torch.tensor(
                     gather_object([inp['rollout_infos']['num_turns'] for inp in inputs]), device=device)
-                self._metrics[mode]['num_turns'].append(num_turns.mean().item())
+                self._metrics[mode]['num_turns'].append(num_turns.float().mean().item())
         else:
             request_ids = gather_object([inp['request_id'] for inp in inputs])
             last_indices = self._get_last_indices(request_ids)
