@@ -414,7 +414,18 @@ class SequenceParallel:
         if self.rp_world_size > 1:
             input_dim = input.dim()
             assert input_dim >= 2
-            batch_size, seq_len, *rest = input.shape
+            pre_dims = []
+            post_dims = []
+            seq_len = -1
+            if dim < 0:
+                dim = len(input) + dim
+            for idx, d in enumerate(input.shape):
+                if idx == dim:
+                    seq_len = d
+                elif idx < dim:
+                    pre_dims.append(d)
+                else:
+                    post_dims.append(d)
 
             value_chunks = input.chunk(2 * self.rp_world_size, dim=dim)
 
@@ -422,7 +433,7 @@ class SequenceParallel:
                 [value_chunks[self.rp_rank], value_chunks[2 * self.rp_world_size - self.rp_rank - 1]], dim=dim
             ).chunk(self.sp_world_size, dim=dim)[self.sp_rank]
 
-            new_shape = [batch_size, seq_len // self.world_size] + rest
+            new_shape = pre_dims + [seq_len // self.world_size] + post_dims
             return local_value.reshape(new_shape).contiguous()
         else:
             rank = self.sp_rank

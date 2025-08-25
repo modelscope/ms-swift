@@ -167,7 +167,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             from swift.trainers.sequence_parallel import sequence_parallel
             total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, 1)
             total_mean_logits = sequence_parallel._gather(mean_logits, dim=1)
-            return total_per_token_logps, total_mean_logits, total_loss_mask.long()
+            total_loss_mask = total_loss_mask.bool()
+            total_per_token_logps[~total_loss_mask] = 0
+            return total_per_token_logps, total_mean_logits, total_loss_mask
 
     def training_step(self, model, inputs, *args, **kwargs):
         inputs['_position_ids'] = inputs.get('position_ids')
