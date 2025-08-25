@@ -1,4 +1,3 @@
-datasets==3.2.0
-evalscope>=0.16
+evalscope>=1.0.0
 evalscope[opencompass]
 evalscope[vlmeval]
