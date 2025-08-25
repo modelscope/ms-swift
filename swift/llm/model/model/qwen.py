@@ -601,7 +601,7 @@ register_model(
         ],
         TemplateType.qwen3_nothinking,
         get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3ForCausalLM'],
+        architectures=['Qwen3MoeForCausalLM'],
         requires=['transformers>=4.51'],
     ))
 
