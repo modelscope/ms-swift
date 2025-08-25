@@ -44,11 +44,6 @@ class EvalArguments(DeployArguments):
     # will directly use the URL for evaluation.
     eval_url: Optional[str] = None
 
-    def _init_eval_url(self):
-        # [compat]
-        if self.eval_url and 'chat/completions' in self.eval_url:
-            self.eval_url = self.eval_url.split('/chat/completions', 1)[0]
-
     def __post_init__(self):
         super().__post_init__()
         self._init_eval_url()
@@ -59,19 +54,24 @@ class EvalArguments(DeployArguments):
         self.eval_output_dir = to_abspath(self.eval_output_dir)
         logger.info(f'eval_output_dir: {self.eval_output_dir}')
 
+    def _init_eval_url(self):
+        # [compat]
+        if self.eval_url and 'chat/completions' in self.eval_url:
+            self.eval_url = self.eval_url.split('/chat/completions', 1)[0]
+
     @staticmethod
     def list_eval_dataset(eval_backend=None):
         from evalscope.constants import EvalBackend
-        from evalscope.benchmarks.benchmark import BENCHMARK_MAPPINGS
+        from evalscope.api.registry import BENCHMARK_REGISTRY
         from evalscope.backend.opencompass import OpenCompassBackendManager
         res = {
-            EvalBackend.NATIVE: list(BENCHMARK_MAPPINGS.keys()),
-            EvalBackend.OPEN_COMPASS: OpenCompassBackendManager.list_datasets(),
+            EvalBackend.NATIVE: list(sorted(BENCHMARK_REGISTRY.keys())),
+            EvalBackend.OPEN_COMPASS: sorted(OpenCompassBackendManager.list_datasets()),
         }
         try:
             from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
             vlm_datasets = VLMEvalKitBackendManager.list_supported_datasets()
-            res[EvalBackend.VLM_EVAL_KIT] = vlm_datasets
+            res[EvalBackend.VLM_EVAL_KIT] = sorted(vlm_datasets)
         except ImportError:
             # fix cv2 import error
             if eval_backend == 'VLMEvalKit':

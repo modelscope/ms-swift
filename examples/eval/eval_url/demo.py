@@ -9,6 +9,6 @@ if __name__ == '__main__':
     # In a real scenario, you can simply remove the deployed context.
     print(EvalArguments.list_eval_dataset())
     with run_deploy(
-            DeployArguments(model='Qwen/Qwen2.5-1.5B-Instruct', verbose=False, log_interval=-1, infer_backend='vllm'),
+            DeployArguments(model='Qwen/Qwen2.5-0.5B-Instruct', verbose=False, log_interval=-1, infer_backend='vllm'),
             return_url=True) as url:
-        eval_main(EvalArguments(model='Qwen2.5-1.5B-Instruct', eval_url=url, eval_dataset=['arc']))
+        eval_main(EvalArguments(model='Qwen2.5-0.5B-Instruct', eval_url=url, eval_dataset=['arc']))
