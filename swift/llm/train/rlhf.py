@@ -77,7 +77,7 @@ class SwiftRLHF(SwiftSft):
         if origin_key in {'ref', 'reward', 'teacher'}:
             if self.args.sequence_parallel_size > 1:
                 from swift.trainers.sequence_parallel import sequence_parallel
-                sequence_parallel.prepare_model(model, processor)
+                sequence_parallel.prepare(self.args.sequence_parallel_size, model, processor)
             model.requires_grad_(False).eval()
         else:
             model = self.prepare_model(args, model, task_type=task_type)
@@ -90,11 +90,6 @@ class SwiftRLHF(SwiftSft):
         return model, processor
 
     def _prepare_model_tokenizer(self):
-        if self.args.sequence_parallel_size > 1:
-            # Duplicate calling is allowd to promise this function will
-            # be called before model initializing.
-            from swift.trainers.sequence_parallel import sequence_parallel
-            sequence_parallel.init_sequence_parallel(self.args.sequence_parallel_size)
         # prepare ref/reward/value model
         args = self.args
         # Handle ref and value models

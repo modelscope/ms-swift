@@ -135,6 +135,8 @@ class DistributedAttention(torch.nn.Module):
 
 class SequenceParallel:
 
+    _global_inited: bool = False
+
     def __init__(self):
         self.sp_world_size = None
         self.dp_world_size = None
@@ -180,6 +182,11 @@ class SequenceParallel:
         except ImportError:
             pass
 
+        if hasattr(base_model, 'language_model'):
+            text_model = base_model.language_model
+        else:
+            text_model = base_model
+
         from transformers.modeling_flash_attention_utils import is_flash_attn_available
         if is_flash_attn_available():
             # TODO this works for multi-modal models like qwen2.5-vl
@@ -196,15 +203,6 @@ class SequenceParallel:
                                                     q_len * self.sp_world_size, *args, **kwargs)
 
             modeling_flash_attention_utils._flash_attention_forward = flash_attention_forward
-
-        if hasattr(base_model, 'language_model'):
-            text_model = base_model.language_model
-            if hasattr(base_model.language_model, '_update_causal_mask'):
-                self.causal_mask_func = base_model.language_model._update_causal_mask
-        else:
-            text_model = base_model
-            if hasattr(base_model, '_update_causal_mask'):
-                self.causal_mask_func = base_model._update_causal_mask
 
         from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 
@@ -259,13 +257,12 @@ class SequenceParallel:
                 query_states.transpose(1, 2), key_states.transpose(1, 2), value_states.transpose(1, 2), attention_mask,
                 *args, **kwargs), None
 
-        if 'flash_attention_2_origin' not in ALL_ATTENTION_FUNCTIONS:
-            ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'] = ALL_ATTENTION_FUNCTIONS['flash_attention_2']
-            ALL_ATTENTION_FUNCTIONS['sdpa_origin'] = ALL_ATTENTION_FUNCTIONS['sdpa']
-            ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = partial(
-                local_flash_attn, dist_attn=DistributedAttention(None, self.sp_group))
-            ALL_ATTENTION_FUNCTIONS['sdpa'] = partial(
-                local_sdpa_attn, dist_attn=DistributedAttention(None, self.sp_group))
+        ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'] = ALL_ATTENTION_FUNCTIONS['flash_attention_2']
+        ALL_ATTENTION_FUNCTIONS['sdpa_origin'] = ALL_ATTENTION_FUNCTIONS['sdpa']
+        ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = partial(
+            local_flash_attn, dist_attn=DistributedAttention(None, self.sp_group))
+        ALL_ATTENTION_FUNCTIONS['sdpa'] = partial(
+            local_sdpa_attn, dist_attn=DistributedAttention(None, self.sp_group))
 
     def _prepare_forward_hook(self, base_model: torch.nn.Module):
 
@@ -316,7 +313,6 @@ class SequenceParallel:
             return
         self.sp_world_size = sp_size
         self.num_heads = model.config.num_key_value_heads
-        self._init_device_mesh()
 
         llm_model = get_llm_model(model)
 
@@ -325,7 +321,18 @@ class SequenceParallel:
         else:
             base_model = llm_model.model
 
-        self._prepare_flash_attn(base_model)
+        if hasattr(base_model, 'language_model'):
+            if hasattr(base_model.language_model, '_update_causal_mask'):
+                self.causal_mask_func = base_model.language_model._update_causal_mask
+        else:
+            if hasattr(base_model, '_update_causal_mask'):
+                self.causal_mask_func = base_model._update_causal_mask
+
+        if not SequenceParallel._global_inited:
+            self._init_device_mesh()
+            self._prepare_flash_attn(base_model)
+            SequenceParallel._global_inited = True
+
         self._prepare_forward_hook(base_model)
         if model.model_info.is_moe_model:
             self._prepare_moe_aux_loss(base_model)
