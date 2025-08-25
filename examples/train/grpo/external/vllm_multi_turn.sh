@@ -16,8 +16,8 @@
 #     --vllm_gpu_memory_utilization 0.8 \
 #     --max_turns 3
 
-CUDA_VISIBLE_DEVICES=1,2,3 \
-NPROC_PER_NODE=3 \
+CUDA_VISIBLE_DEVICES=1,2 \
+NPROC_PER_NODE=2 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3-1.7B \
