@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import transformers
 from packaging import version
 from torch import nn
+from transformers.integrations import is_deepspeed_zero3_enabled
 
 from swift.llm import get_packed_seq_params, to_device, to_float_dtype
 from swift.utils import get_env_args, is_deepspeed_enabled
@@ -651,7 +652,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
 
         if input_features is None:
-            if is_deepspeed_enabled():
+            if is_deepspeed_enabled() and not is_deepspeed_zero3_enabled():
                 # Note: ZeRO-3 still results in hangs; for audio training, please use ZeRO-2.
                 input_features = input_ids.new_zeros([1, 128, 128], dtype=dtype)
                 feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
