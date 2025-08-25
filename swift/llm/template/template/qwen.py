@@ -64,6 +64,8 @@ register_template(
         LLMTemplateType.qwen3_thinking, default_system=None, response_prefix='<think>\n',
         template_cls=ThinkingTemplate))
 
+register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_system=None))
+
 
 class Qwen3RerankerTemplate(Template):
     instruction = 'Given a web search query, retrieve relevant passages that answer the query'
