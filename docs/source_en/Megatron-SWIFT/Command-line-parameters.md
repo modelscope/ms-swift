@@ -251,7 +251,9 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 - mlp_padding_free: The default is False. This is used for applying padding-free optimization to the MLP when padding_free is set to false. It allows for improved training speed and reduced memory usage while customizing the attention_mask.
 - 🔥packing: Whether to use sequence packing, defaults to False. Currently supports CPT/SFT/DPO.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
-- streaming: Stream reading and processing of the dataset, default is False. It is typically set to True when handling large datasets. For more information on streaming parameters, refer to the command-line parameters documentation.
+- streaming: Stream data loading and processing, default is False.
+  - Note: Since the length of a streaming dataset cannot be determined, the `--train_iters` parameter must be set. Also set the `max_epochs` parameter to ensure training exits after the specified number of epochs, and to validate and save the model weights accordingly.
+  - Note: Streaming datasets can skip preprocessing wait time by overlapping preprocessing with training. Preprocessing for streaming datasets is performed only on rank 0 and then synchronized to other processes via data distribution. This is generally less efficient than the data sharding approach used in non-streaming datasets. When the training world_size is large, preprocessing and data distribution can become a training bottleneck.
 - lazy_tokenize: Default is False. If this parameter is set to False, all dataset samples are tokenized before training (this avoids errors during training); if set to True, tokenization occurs during training (this saves memory).
 - cached_dataset: Use a cached dataset (generated with `swift export --to_cached_dataset true ...`) during training to avoid GPU time spent on tokenizing large datasets. Default: `[]`.
   - Note: cached_dataset supports `--packing` but does not support `--lazy_tokenize` or `--streaming`.
