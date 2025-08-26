@@ -187,6 +187,7 @@ class VllmArguments:
     vllm_use_async_engine: bool = False
     vllm_quantization: Optional[str] = None
     vllm_reasoning_parser: Optional[str] = None
+    vllm_disable_cascade_attn: bool = False
     # rollout
     vllm_data_parallel_size: int = 1
 
@@ -237,6 +238,7 @@ class VllmArguments:
             'use_async_engine': self.vllm_use_async_engine,
             'quantization': self.vllm_quantization,
             'reasoning_parser': self.vllm_reasoning_parser,
+            'disable_cascade_attn': self.vllm_disable_cascade_attn
         }
         if self.task_type == 'embedding':
             kwargs['task_type'] = 'embedding'

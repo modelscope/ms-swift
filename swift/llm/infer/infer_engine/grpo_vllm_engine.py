@@ -49,6 +49,7 @@ class GRPOVllmEngine(VllmEngine):
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         seed: Optional[int] = None,
         task_type: Optional[str] = None,
+        disable_cascade_attn: bool = False,
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
