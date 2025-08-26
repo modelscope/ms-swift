@@ -1604,9 +1604,10 @@ class Template(ProcessorMixin):
         res = {}
         if self.padding_free:
             assert len(batch) == 1, f'batch: {batch}'
-            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale']:
-                res[k] = [batch[0][k]]
-            res['channel'] = batch[0]['channel']
+            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel']:
+                v = batch[0].get(k)
+                if v is not None:
+                    res[k] = v if k == 'channel' else [v]
         else:
             inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
             input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
