@@ -355,6 +355,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - 🔥vllm_max_model_len: Default is `None`, meaning it will be read from `config.json`.
 - vllm_disable_custom_all_reduce: Disables the custom all-reduce kernel and falls back to NCCL. For stability, the default is `True`.
 - vllm_enforce_eager: Determines whether vllm uses PyTorch eager mode or constructs a CUDA graph, default is `False`. Setting it to True can save memory but may affect efficiency.
+- vllm_disable_cascade_attn: Whether to forcibly disable the V1 engine’s cascade-attention implementation to avoid potential numerical issues. Defaults to False; vLLM’s internal heuristics determine whether cascade attention is actually used.
 - 🔥vllm_limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--vllm_limit_mm_per_prompt '{"image": 5, "video": 2}'`.
 - vllm_max_lora_rank: Default is `16`. This is the parameter supported by vllm for lora.
 - vllm_quantization: vllm is able to quantize model with this argument，supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).

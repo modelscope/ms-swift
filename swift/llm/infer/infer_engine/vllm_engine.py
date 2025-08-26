@@ -122,6 +122,7 @@ class VllmEngine(InferEngine):
             enable_sleep_mode=enable_sleep_mode,
             quantization=quantization,
             task=task_type,
+            disable_cascade_attn=disable_cascade_attn,
             **engine_kwargs,
         )
         context = nullcontext()
@@ -188,6 +189,8 @@ class VllmEngine(InferEngine):
         for key in ['enable_expert_parallel', 'enable_sleep_mode', 'disable_cascade_attn']:
             if key in parameters:
                 engine_kwargs[key] = locals()[key]
+            else:
+                logger.warning(f'The current version of VLLM does not support `{key}`. Ignored.')
         for key in ['task', 'seed']:
             val = locals()[key]
             if val is not None:

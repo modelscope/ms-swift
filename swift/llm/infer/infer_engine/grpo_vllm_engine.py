@@ -81,6 +81,7 @@ class GRPOVllmEngine(VllmEngine):
             limit_mm_per_prompt=limit_mm_per_prompt,
             seed=seed,
             task_type=task_type,
+            disable_cascade_attn=disable_cascade_attn,
             enable_lora=enable_lora,
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,
