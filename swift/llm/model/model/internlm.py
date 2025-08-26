@@ -342,6 +342,63 @@ register_model(
         tags=['vision', 'video'],
     ))
 
+register_model(
+    ModelMeta(
+        MLLMModelType.internvl3_5,
+        [
+            # pretrain
+            ModelGroup([
+                Model('OpenGVLab/InternVL3_5-1B-Pretrained', 'OpenGVLab/InternVL3_5-1B-Pretrained'),
+                Model('OpenGVLab/InternVL3_5-2B-Pretrained', 'OpenGVLab/InternVL3_5-2B-Pretrained'),
+                Model('OpenGVLab/InternVL3_5-4B-Pretrained', 'OpenGVLab/InternVL3_5-4B-Pretrained'),
+                Model('OpenGVLab/InternVL3_5-8B-Pretrained', 'OpenGVLab/InternVL3_5-8B-Pretrained'),
+                Model('OpenGVLab/InternVL3_5-14B-Pretrained', 'OpenGVLab/InternVL3_5-14B-Pretrained'),
+                Model('OpenGVLab/InternVL3_5-38B-Pretrained', 'OpenGVLab/InternVL3_5-38B-Pretrained'),
+                Model('OpenGVLab/InternVL3_5-30B-A3B-Pretrained', 'OpenGVLab/InternVL3_5-30B-A3B-Pretrained'),
+                Model('OpenGVLab/InternVL3_5-241B-A28B-Pretrained', 'OpenGVLab/InternVL3_5-241B-A28B-Pretrained'),
+            ]),
+            # Instruct
+            ModelGroup([
+                Model('OpenGVLab/InternVL3_5-1B-Instruct', 'OpenGVLab/InternVL3_5-1B-Instruct'),
+                Model('OpenGVLab/InternVL3_5-2B-Instruct', 'OpenGVLab/InternVL3_5-2B-Instruct'),
+                Model('OpenGVLab/InternVL3_5-4B-Instruct', 'OpenGVLab/InternVL3_5-4B-Instruct'),
+                Model('OpenGVLab/InternVL3_5-8B-Instruct', 'OpenGVLab/InternVL3_5-8B-Instruct'),
+                Model('OpenGVLab/InternVL3_5-14B-Instruct', 'OpenGVLab/InternVL3_5-14B-Instruct'),
+                Model('OpenGVLab/InternVL3_5-38B-Instruct', 'OpenGVLab/InternVL3_5-38B-Instruct'),
+                Model('OpenGVLab/InternVL3_5-30B-A3B-Instruct', 'OpenGVLab/InternVL3_5-30B-A3B-Instruct'),
+                Model('OpenGVLab/InternVL3_5-241B-A28B-Instruct', 'OpenGVLab/InternVL3_5-241B-A28B-Instruct'),
+            ]),
+            # MPO
+            ModelGroup([
+                Model('OpenGVLab/InternVL3_5-1B-MPO', 'OpenGVLab/InternVL3_5-1B-MPO'),
+                Model('OpenGVLab/InternVL3_5-2B-MPO', 'OpenGVLab/InternVL3_5-2B-MPO'),
+                Model('OpenGVLab/InternVL3_5-4B-MPO', 'OpenGVLab/InternVL3_5-4B-MPO'),
+                Model('OpenGVLab/InternVL3_5-8B-MPO', 'OpenGVLab/InternVL3_5-8B-MPO'),
+                Model('OpenGVLab/InternVL3_5-14B-MPO', 'OpenGVLab/InternVL3_5-14B-MPO'),
+                Model('OpenGVLab/InternVL3_5-38B-MPO', 'OpenGVLab/InternVL3_5-38B-MPO'),
+                Model('OpenGVLab/InternVL3_5-30B-A3B-MPO', 'OpenGVLab/InternVL3_5-30B-A3B-MPO'),
+                Model('OpenGVLab/InternVL3_5-241B-A28B-MPO', 'OpenGVLab/InternVL3_5-241B-A28B-MPO'),
+            ]),
+            ModelGroup([
+                Model('OpenGVLab/InternVL3_5-1B', 'OpenGVLab/InternVL3_5-1B'),
+                Model('OpenGVLab/InternVL3_5-2B', 'OpenGVLab/InternVL3_5-2B'),
+                Model('OpenGVLab/InternVL3_5-4B', 'OpenGVLab/InternVL3_5-4B'),
+                Model('OpenGVLab/InternVL3_5-8B', 'OpenGVLab/InternVL3_5-8B'),
+                Model('OpenGVLab/InternVL3_5-14B', 'OpenGVLab/InternVL3_5-14B'),
+                Model('OpenGVLab/InternVL3_5-38B', 'OpenGVLab/InternVL3_5-38B'),
+                Model('OpenGVLab/InternVL3_5-30B-A3B', 'OpenGVLab/InternVL3_5-30B-A3B'),
+                Model('OpenGVLab/InternVL3_5-241B-A28B', 'OpenGVLab/InternVL3_5-241B-A28B'),
+                Model('OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview', 'OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview'),
+            ]),
+        ],
+        TemplateType.internvl3_5,
+        get_model_tokenizer_internvl,
+        architectures=['InternVLChatModel'],
+        model_arch=ModelArch.internvl,
+        requires=['transformers>=4.37.2', 'timm'],
+        tags=['vision', 'video'],
+    ))
+
 
 def get_model_tokenizer_interns1(model_dir: str,
                                  model_info: ModelInfo,
