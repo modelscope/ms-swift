@@ -115,13 +115,14 @@ class GPTModel(McoreGPTModel):
         self,
         input_ids: torch.Tensor,
         position_ids: torch.Tensor,
-        attention_mask: torch.Tensor,
+        attention_mask: torch.Tensor = None,
         decoder_input: torch.Tensor = None,
         labels: torch.Tensor = None,
         inference_params: InferenceParams = None,
         packed_seq_params: PackedSeqParams = None,
         extra_block_kwargs: dict = None,
         runtime_gather_output: Optional[bool] = None,
+        **kwargs,
     ) -> torch.Tensor:
         """Forward function of the GPT Model This function passes the input tensors
         through the embedding layer, and then the decoeder and finally into the post

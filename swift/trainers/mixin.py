@@ -682,9 +682,9 @@ class SwiftMixin:
         with self.hub.patch_hub():
             return super().push_to_hub(*args, **kwargs)
 
-    def log(self, logs: dict[str, float], *args, **kwargs) -> None:
-        mode = 'train' if self.model.training else 'eval'
-        metrics = self.custom_metrics[mode]
+    @staticmethod
+    def _compute_custom_metrics(metrics, key_prefix: str = ''):
+        logs = {}
         # Synchronize keys to avoid getting stuck.
         if dist.is_initialized():
             all_keys = [None] * dist.get_world_size()
@@ -694,8 +694,7 @@ class SwiftMixin:
                     metrics[key]
 
         for k, metric in sorted(metrics.items()):
-            if mode == 'eval':
-                k = f'eval_{k}'
+            k = f'{key_prefix}{k}'
             value = metric.compute()
             metric.reset()
             if isinstance(value, dict):
@@ -711,6 +710,13 @@ class SwiftMixin:
         for k in list(logs.keys()):
             if logs[k] is None:
                 logs.pop(k)
+        return logs
+
+    def log(self, logs: dict[str, float], *args, **kwargs) -> None:
+        mode = 'train' if self.model.training else 'eval'
+        metrics = self.custom_metrics[mode]
+        prefix = 'eval_' if mode == 'eval' else ''
+        logs.update(self._compute_custom_metrics(metrics, prefix))
         return super().log(logs, *args, **kwargs)
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):

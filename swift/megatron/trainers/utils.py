@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import torch
 from megatron.core import mpu
@@ -8,6 +8,8 @@ from megatron.core.utils import get_batch_on_this_cp_rank as mcore_get_batch_on_
 from megatron.training import get_args
 
 from swift.llm import get_packed_seq_params as _get_packed_seq_params
+from swift.llm import to_device
+from swift.utils import get_current_device
 
 
 def get_swift_datasets_provider(train_dataset, val_dataset):
@@ -29,109 +31,23 @@ def get_swift_datasets_provider(train_dataset, val_dataset):
 def get_batch_on_this_tp_rank(data_iterator):
     args = get_args()
 
-    def _broadcast(item):
-        if item is not None:
-            torch.distributed.broadcast(
-                item, mpu.get_tensor_model_parallel_src_rank(), group=mpu.get_tensor_model_parallel_group())
-
-    if mpu.get_tensor_model_parallel_rank() == 0:
-
-        data = next(data_iterator)
-        is_finished = data.pop('is_finished', False)
-        input_ids = data['input_ids']
-        seq_length = input_ids.shape[1]
-        has_loss_scale = 'loss_scale' in data
-        data['labels'] = torch.roll(data['labels'], -1, dims=-1)
-        if has_loss_scale:
-            data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
-        batch = {
-            'input_ids': input_ids.cuda(non_blocking=True),
-            'labels': data['labels'].cuda(non_blocking=True),
-            'attention_mask': None if 'attention_mask' not in data else data['attention_mask'].cuda(non_blocking=True),
-            'position_ids': data['position_ids'].cuda(non_blocking=True),
-            'loss_scale': None if not has_loss_scale else data['loss_scale'].cuda(non_blocking=True),
-            'num_samples': data['num_samples'],
-        }
-        flags = torch.tensor([seq_length, is_finished, has_loss_scale, data['num_samples']]).cuda(non_blocking=True)
-        _broadcast(flags)
-        if args.pipeline_model_parallel_size == 1:
-            _broadcast(batch['input_ids'])
-            _broadcast(batch['labels'])
-            _broadcast(batch['attention_mask'])
-            _broadcast(batch['position_ids'])
-            _broadcast(batch['loss_scale'])
-
-        elif mpu.is_pipeline_first_stage():
-            batch['labels'] = None
-            batch['loss_scale'] = None
-            _broadcast(batch['input_ids'])
-            _broadcast(batch['attention_mask'])
-            _broadcast(batch['position_ids'])
-
-        elif mpu.is_pipeline_last_stage():
-            batch['input_ids'] = None
-            _broadcast(batch['labels'])
-            _broadcast(batch['attention_mask'])
-            _broadcast(batch['position_ids'])
-            _broadcast(batch['loss_scale'])
-        else:
-            for key in ('input_ids', 'labels', 'attention_mask', 'position_ids', 'loss_scale'):
-                batch[key] = None
-
+    data = next(data_iterator)
+    is_finished = data.pop('is_finished', False)
+    data['labels'] = torch.roll(data['labels'], -1, dims=-1)
+    if 'loss_scale' in data:
+        data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
+    batch = to_device(data, get_current_device(), non_blocking=True)
+    if args.pipeline_model_parallel_size == 1:
+        pass
+    elif mpu.is_pipeline_first_stage():
+        batch['labels'] = None
+        batch['loss_scale'] = None
+    elif mpu.is_pipeline_last_stage():
+        batch['input_ids'] = None
     else:
-        flags = torch.empty((4), dtype=torch.int64, device=torch.cuda.current_device())
-        _broadcast(flags)
-        seq_length, is_finished, has_loss_scale, num_samples = flags.tolist()
-        if args.padding_free:
-            micro_batch_size = 1  # use qkv_format 'thd'
-            attention_mask = None
-        else:
-            micro_batch_size = args.micro_batch_size
-            attention_mask = torch.empty((micro_batch_size, 1, seq_length, seq_length),
-                                         dtype=torch.bool,
-                                         device=torch.cuda.current_device())
-        input_ids = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
-        labels = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
-        loss_scale = torch.empty(
-            (micro_batch_size,
-             seq_length), dtype=torch.float32, device=torch.cuda.current_device()) if has_loss_scale else None
-        position_ids = torch.empty((micro_batch_size, seq_length),
-                                   dtype=torch.int64,
-                                   device=torch.cuda.current_device())
+        for key in ('input_ids', 'labels', 'attention_mask', 'position_ids', 'loss_scale'):
+            batch[key] = None
 
-        if args.pipeline_model_parallel_size == 1:
-            _broadcast(input_ids)
-            _broadcast(labels)
-            _broadcast(attention_mask)
-            _broadcast(position_ids)
-            _broadcast(loss_scale)
-
-        elif mpu.is_pipeline_first_stage():
-            labels = None
-            loss_scale = None
-
-            _broadcast(input_ids)
-            _broadcast(attention_mask)
-            _broadcast(position_ids)
-
-        elif mpu.is_pipeline_last_stage():
-            input_ids = None
-
-            _broadcast(labels)
-            _broadcast(attention_mask)
-            _broadcast(position_ids)  # compat packing & cp
-            _broadcast(loss_scale)
-        else:
-            input_ids, labels, attention_mask, position_ids, loss_scale = (None, ) * 5
-
-        batch = {
-            'input_ids': input_ids,
-            'labels': labels,
-            'attention_mask': attention_mask,
-            'position_ids': position_ids,
-            'loss_scale': loss_scale,
-            'num_samples': num_samples,
-        }
     if is_finished:
         args.train_iters = args.curr_iteration + 1
 
