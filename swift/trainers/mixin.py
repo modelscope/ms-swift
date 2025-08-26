@@ -683,7 +683,7 @@ class SwiftMixin:
             return super().push_to_hub(*args, **kwargs)
 
     @staticmethod
-    def _compute_custom_metrics(metrics, key_prefix: str = ''):
+    def compute_custom_metrics(metrics, key_prefix: str = ''):
         logs = {}
         # Synchronize keys to avoid getting stuck.
         if dist.is_initialized():
@@ -716,7 +716,7 @@ class SwiftMixin:
         mode = 'train' if self.model.training else 'eval'
         metrics = self.custom_metrics[mode]
         prefix = 'eval_' if mode == 'eval' else ''
-        logs.update(self._compute_custom_metrics(metrics, prefix))
+        logs.update(self.compute_custom_metrics(metrics, prefix))
         return super().log(logs, *args, **kwargs)
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):

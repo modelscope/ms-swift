@@ -19,9 +19,8 @@ from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from megatron.core.utils import StragglerDetector
-from megatron.training import (ft_integration, get_args, get_one_logger, get_tensorboard_writer, get_timers,
-                               get_wandb_writer, is_last_rank, one_logger_utils, pretrain, print_rank_0,
-                               print_rank_last, training)
+from megatron.training import (ft_integration, get_args, get_tensorboard_writer, get_timers, get_wandb_writer,
+                               is_last_rank, one_logger_utils, pretrain, print_rank_0, print_rank_last, training)
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.training import num_floating_point_operations
@@ -417,7 +416,7 @@ class BaseMegatronTrainer(ABC):
 
         total_loss_dict.update({
             k: torch.tensor([v], device='cuda')
-            for k, v in SwiftMixin._compute_custom_metrics(self.custom_metrics['eval'], 'eval_')
+            for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics['eval'], 'eval_')
         })
         rerun_state_machine.set_mode(rerun_mode)
         if is_last_rank():
@@ -577,7 +576,7 @@ class BaseMegatronTrainer(ABC):
         if iteration % args.log_interval == 0 or iteration == 1:
             total_loss_dict.update({
                 k: torch.tensor([v * total_loss_dict[advanced_iters_key]], device='cuda')
-                for k, v in SwiftMixin._compute_custom_metrics(self.custom_metrics['train']).items()
+                for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics['train']).items()
             })
             origin_total_loss_dict = total_loss_dict.copy()
 
