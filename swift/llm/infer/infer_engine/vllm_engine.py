@@ -185,12 +185,12 @@ class VllmEngine(InferEngine):
             engine_kwargs['limit_mm_per_prompt'] = limit_mm_per_prompt
         else:
             assert not limit_mm_per_prompt, (
-                'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
+                'The current version of vLLM does not support `limit_mm_per_prompt`. Please upgrade vLLM.')
         for key in ['enable_expert_parallel', 'enable_sleep_mode', 'disable_cascade_attn']:
             if key in parameters:
                 engine_kwargs[key] = locals()[key]
             else:
-                logger.warning(f'The current version of VLLM does not support `{key}`. Ignored.')
+                logger.warning(f'The current version of vLLM does not support `{key}`. Ignored.')
         for key in ['task', 'seed']:
             val = locals()[key]
             if val is not None:
