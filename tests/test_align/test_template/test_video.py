@@ -234,4 +234,5 @@ if __name__ == '__main__':
     # test_keye_vl()
     # test_glm4_5v()
     # test_ovis2_5()
-    test_interns1()
+    # test_interns1()
+    test_internvl3_5()

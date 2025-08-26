@@ -152,6 +152,7 @@ class MLLMTemplateType:
     internvl2_phi3 = 'internvl2_phi3'
     internvl2_5 = 'internvl2_5'
     internvl3_5 = 'internvl3_5'
+    internvl3_5_gpt = 'internvl3_5_gpt'
     interns1 = 'interns1'
 
     xcomposer2 = 'ixcomposer2'
