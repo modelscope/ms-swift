@@ -65,6 +65,11 @@ class GLM4_0414TemplateMeta(GLM4TemplateMeta):
     agent_template: str = 'glm4_0414'
 
 
+@dataclass
+class GLM4_5TemplateMeta(GLM4_0414TemplateMeta):
+    agent_template: str = 'glm4_5'
+
+
 class GLM4_1VTemplateMeta(GLM4_0414TemplateMeta):
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>{{SYSTEM}}'])
 
@@ -234,8 +239,15 @@ class GLM4_5Template(ThinkingTemplate):
     no_think_prefix = '<think></think>\n'
     history_think_prefix = '<think></think>\n'
 
+    def _jinja_encode(self, inputs: StdTemplateInputs):
+        for message in inputs.messages:
+            if message['role'] == 'assistant' and isinstance(message['content'],
+                                                             str) and message['content'].endswith('<|observation|>'):
+                message['content'] = message['content'][:-len('<|observation|>')]
+        return super()._jinja_encode(inputs)
 
-register_template(GLM4_0414TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5Template))
+
+register_template(GLM4_5TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5Template))
 
 register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
 

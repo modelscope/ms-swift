@@ -75,7 +75,7 @@ class InferStats(Metric):
 
 class MeanMetric(Metric):
 
-    def __init__(self, nan_value=0, device=None):
+    def __init__(self, nan_value=0, device=None, group=None):
         super().__init__()
         self.nan_value = nan_value
         self.add_state('state', default=0.)
@@ -83,6 +83,7 @@ class MeanMetric(Metric):
         if device is None:
             device = get_current_device()
         self.device = device
+        self.group = group
 
     def update(self, state: torch.Tensor):
         if isinstance(state, (torch.Tensor, np.ndarray)):
@@ -102,12 +103,12 @@ class MeanMetric(Metric):
         self.count += count
 
     def compute(self):
+        if dist.is_initialized():
+            tensor = torch.tensor([self.state, self.count], device=self.device)
+            dist.all_reduce(tensor, op=dist.ReduceOp.SUM, group=self.group)
+            self.state, self.count = tensor[0].item(), int(tensor[1].item())
         if self.count == 0:
             value = self.nan_value
-        elif dist.is_initialized():
-            tensor = torch.tensor([self.state, self.count], device=self.device)
-            dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
-            value = (tensor[0] / tensor[1]).item()
         else:
             value = self.state / self.count
         return {

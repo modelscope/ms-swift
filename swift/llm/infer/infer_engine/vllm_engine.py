@@ -66,6 +66,7 @@ class VllmEngine(InferEngine):
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         seed: Optional[int] = None,
         task_type: Optional[str] = None,  # embedding
+        disable_cascade_attn: bool = False,
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -121,6 +122,7 @@ class VllmEngine(InferEngine):
             enable_sleep_mode=enable_sleep_mode,
             quantization=quantization,
             task=task_type,
+            disable_cascade_attn=disable_cascade_attn,
             **engine_kwargs,
         )
         context = nullcontext()
@@ -159,6 +161,7 @@ class VllmEngine(InferEngine):
         distributed_executor_backend: Optional[str] = None,
         enable_sleep_mode: bool = False,
         task: Optional[str] = None,
+        disable_cascade_attn: bool = False,
         **engine_kwargs,
     ) -> None:
         if task == 'embedding':
@@ -182,10 +185,12 @@ class VllmEngine(InferEngine):
             engine_kwargs['limit_mm_per_prompt'] = limit_mm_per_prompt
         else:
             assert not limit_mm_per_prompt, (
-                'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
-        for key in ['enable_expert_parallel', 'enable_sleep_mode']:
+                'The current version of vLLM does not support `limit_mm_per_prompt`. Please upgrade vLLM.')
+        for key in ['enable_expert_parallel', 'enable_sleep_mode', 'disable_cascade_attn']:
             if key in parameters:
                 engine_kwargs[key] = locals()[key]
+            else:
+                logger.warning(f'The current version of vLLM does not support `{key}`. Ignored.')
         for key in ['task', 'seed']:
             val = locals()[key]
             if val is not None:
@@ -549,8 +554,10 @@ class VllmEngine(InferEngine):
         generation_config: SamplingParams,
         adapter_request: Optional[AdapterRequest],
         request_config: RequestConfig,
+        request_id: Optional[str] = None,
     ) -> Union[ChatCompletionResponse, EmbeddingResponse]:
-        request_id = random_uuid()
+        if request_id is None:
+            request_id = random_uuid()
         result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
         result = None
         async for result in result_generator:
@@ -678,6 +685,9 @@ class VllmEngine(InferEngine):
             'adapter_request': adapter_request,
             'request_config': request_config,
         }
+        if hasattr(infer_request, 'uuid') and infer_request.uuid:
+            # RolloutInferRequest
+            kwargs.update({'request_id': infer_request.uuid})
         if pre_infer_hook:
             kwargs = pre_infer_hook(kwargs)
         if request_config.stream:

@@ -555,7 +555,7 @@ class Template(ProcessorMixin):
             elif key == 'length':
                 packed[key] = sum((x[key] for x in row))
             elif key == 'channel':
-                packed[key] = [x[key] for x in row]
+                packed[key] = [x.get(key) for x in row]
         if 'position_ids' not in packed:
             packed['position_ids'] = sum((list(range(x)) for x in length), start=[])
 
@@ -1014,7 +1014,7 @@ class Template(ProcessorMixin):
         answer_len = 1 if self.is_training else 0
         return [text], [1.], answer_len
 
-    def _get_system(self, inputs) -> Optional[str]:
+    def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
         template_meta = self.template_meta
         system = inputs.system
         tools = inputs.tools
@@ -1026,7 +1026,24 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
         return system
 
-    def _swift_prepare_inputs(self, inputs):
+    def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
+        """
+        Preprocesses the list of messages in the input by merging and formatting consecutive messages
+        according to their roles.
+
+        Specifically, this method:
+            - Merges consecutive messages from the same role ('assistant' or 'user') to prevent downstream errors.
+            - Detects consecutive tool-related messages following an assistant message, then formats and
+            combines them using `agent_template._format_tool_responses` for structured output.
+            - Updates the messages list in-place for further processing.
+
+        Args:
+            inputs: An StdTemplateInputs object which contains a 'messages' attribute, which is a list of dictionaries.
+                    Each message dictionary should have at least the keys 'role' and 'content'.
+
+        Returns:
+            None. The input messages list is updated in-place.
+        """
         messages = inputs.messages
         if len(messages) < 2:
             return
@@ -1041,6 +1058,7 @@ class Template(ProcessorMixin):
                     i += 1
                 pre_message['content'], tool_content = self.agent_template._format_tool_responses(
                     pre_content, messages[i_start:i + 1])
+                # where tool_content is a List.
                 messages[i_start:i + 1] = [{'role': 'tool', 'content': tool_content}]
                 i = i_start + 1
             elif pre_role == 'assistant' and role == 'assistant' or pre_role == 'user' and role == 'user':
@@ -1109,9 +1127,21 @@ class Template(ProcessorMixin):
             elif response is not None:
                 # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
+                # The GLM-4.5 assistant part (tool call) may end with <|observation|>,
+                # and here we avoid adding <|user|>.
+                response_content = response
+                if not isinstance(response_content, str):
+                    if isinstance(response, list):
+                        token_ids = response
+                    else:
+                        token_ids = response['token_ids']
+                    response_content = self.tokenizer.decode(token_ids[-20:])
+                endswith_stop_words = any(
+                    response_content.endswith(stop_word) for stop_word in template_meta.stop_words
+                    if isinstance(stop_word, str))
                 # self.is_training needed because we may want to continue generation from
                 # the current response
-                if self.is_training and not sep_token or self.task_type == 'embedding':
+                if self.is_training and not sep_token or self.task_type == 'embedding' and not endswith_stop_words:
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
             elif template_meta.response_prefix:
@@ -1200,6 +1230,7 @@ class Template(ProcessorMixin):
         return encoded
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        inputs.messages = deepcopy(inputs.messages)
         template_backend = self.template_backend
         if (self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training
                 and self.task_type != 'seq_cls'):
@@ -1579,24 +1610,21 @@ class Template(ProcessorMixin):
 
         res = {}
         if self.padding_free:
-            # only support llm
+            assert len(batch) == 1, f'batch: {batch}'
             for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel']:
-                v = self.gather_list(batch, k)
-                if v:
-                    if k == 'channel':
-                        res[k] = v
-                    else:
-                        res[k] = [v]
+                v = batch[0].get(k)
+                if v is not None:
+                    res[k] = v if k == 'channel' else [v]
         else:
             inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
             input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
-            channel = [b['channel'] for b in batch if b.get('channel') is not None]
+            channel = [b.get('channel') for b in batch]
 
             if inputs_embeds:
                 res['inputs_embeds'] = inputs_embeds
             if input_ids:
                 res['input_ids'] = input_ids
-            if channel:
+            if any(channel):
                 res['channel'] = channel
 
             for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:

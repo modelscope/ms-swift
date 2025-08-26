@@ -179,6 +179,18 @@ class Ulysses(CommonSequenceParallel):
 
             masking_utils.flash_attention_mask = flash_attention_mask
             masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['flash_attention_2'] = flash_attention_mask
+
+            def create_causal_mask(config, input_embeds, attention_mask, cache_position, *args, **kwargs):
+                input_embeds = torch.ones(
+                    (input_embeds.shape[0], input_embeds.shape[1] * self.sp_world_size, input_embeds.shape[2]),
+                    dtype=input_embeds.dtype,
+                    device=input_embeds.device)
+                cache_position = torch.arange(0, input_embeds.shape[1], device=input_embeds.device)
+                return masking_utils.origin_create_causal_mask(config, input_embeds, attention_mask, cache_position,
+                                                               *args, **kwargs)
+
+            masking_utils.origin_create_causal_mask = masking_utils.create_causal_mask
+            masking_utils.create_causal_mask = create_causal_mask
         except ImportError:
             pass
 
@@ -344,7 +356,7 @@ class Ulysses(CommonSequenceParallel):
             trainer.old_policy = MethodType(partial(old_policy_grpo, sp_instance=self), trainer)
             trainer._get_train_sampler = MethodType(partial(_get_train_sampler_grpo, sp_instance=self), trainer)
             trainer._prepare_inputs = MethodType(partial(_prepare_inputs_grpo, sp_instance=self), trainer)
-            trainer._get_per_token_logps_and_entropies = MethodType(
+            trainer._get_per_token_logps_and_entropies_single = MethodType(
                 partial(_get_per_token_logps_and_entropies_grpo, sp_instance=self), trainer)
             trainer.split_by_mini_batches = MethodType(partial(split_by_mini_batches_grpo, sp_instance=self), trainer)
 

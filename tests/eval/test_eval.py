@@ -1,8 +1,8 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 
-infer_backend = 'vllm'
+infer_backend = 'pt'
 
 
 def test_eval_native():
@@ -18,10 +18,7 @@ def test_eval_native():
                 'max_new_tokens': 128,
                 'temperature': 0.1
             },
-            extra_eval_args={
-                'stream': True,
-                'ignore_errors': True
-            },
+            extra_eval_args={'ignore_errors': False},
         ))
 
 
@@ -29,7 +26,7 @@ def test_eval_llm():
     from swift.llm import EvalArguments, eval_main
     eval_main(
         EvalArguments(
-            model='Qwen/Qwen2-7B-Instruct',
+            model='Qwen/Qwen2.5-0.5B-Instruct',
             eval_dataset='arc_c',
             infer_backend=infer_backend,
             eval_backend='OpenCompass',
@@ -60,7 +57,7 @@ def test_eval_url():
 
 
 if __name__ == '__main__':
-    # test_eval_llm()
-    test_eval_mllm()
+    test_eval_llm()
+    # test_eval_mllm()
     # test_eval_url()
     # test_eval_native()

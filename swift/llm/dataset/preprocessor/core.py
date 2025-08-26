@@ -21,8 +21,17 @@ logger = get_logger()
 
 class RowPreprocessor:
     standard_keys = [
-        'messages', 'rejected_response', 'rejected_images', 'label', 'images', 'videos', 'audios', 'tools', 'objects',
-        'channel', 'margin'
+        'messages',
+        'rejected_response',
+        'rejected_images',
+        'label',
+        'images',
+        'videos',
+        'audios',
+        'tools',
+        'objects',
+        'channel',
+        'margin',
     ]
 
     def __init__(self,

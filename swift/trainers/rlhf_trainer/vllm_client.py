@@ -9,15 +9,14 @@ from urllib.parse import urlparse
 
 import requests
 import torch
-from dacite import from_dict
 from packaging import version
+from pydantic import ValidationError
 from requests import ConnectionError
 from torch import nn
 from transformers.utils import is_torch_cuda_available
 
 from swift.llm import AdapterRequest, RolloutInferRequest, Template
-from swift.llm.infer.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, GymRolloutResponseChoice,
-                                      RequestConfig, RolloutResponseChoice)
+from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig, RolloutOutput
 from swift.plugin import Metric
 from swift.utils import is_trl_available, is_vllm_ascend_available, is_vllm_available
 
@@ -151,7 +150,14 @@ class VLLMClient:
                     return
 
                 resp_data = response.json()
-                results[i] = self.parse_resp_data(resp_data)
+                parsed: List[Union[RolloutOutput, ChatCompletionResponse]] = []
+
+                for item in resp_data:
+                    try:
+                        parsed.append(RolloutOutput.model_validate(item))
+                    except ValidationError:
+                        parsed.append(ChatCompletionResponse(**item))
+                results[i] = parsed
             except Exception as e:
                 errors[i] = e
 
@@ -267,8 +273,9 @@ class VLLMClient:
 
         result = response.json()
         self.use_async_engine = result['engine_type'] == 'AsyncLLMEngine'
+        self.enable_multi_turn = result.get('enable_multi_turn', False)
         self.use_gym_env = result.get('gym_env', False)
-        return result['engine_type']
+        return result
 
     def close_communicator(self):
         for i in range(self.num_servers):
@@ -278,19 +285,3 @@ class VLLMClient:
                     logger.warning(f'Server {i} close failed: {response.text}')
             except Exception as e:
                 logger.warning(f'Error closing server {i} communicator: {str(e)}')
-
-    def parse_resp_data(self, resp_data):
-        if self.use_gym_env:
-            choice_cls = GymRolloutResponseChoice
-        elif self.use_async_engine:
-            choice_cls = RolloutResponseChoice
-        else:
-            choice_cls = ChatCompletionResponseChoice
-        result = [
-            ChatCompletionResponse(
-                choices=[from_dict(data_class=choice_cls, data=c) for c in resp['choices']],
-                **{k: v
-                   for k, v in resp.items() if k != 'choices'}) for resp in resp_data
-        ]
-
-        return result
