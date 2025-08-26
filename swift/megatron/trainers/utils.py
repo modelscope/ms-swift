@@ -100,7 +100,7 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
         if packed_seq_params is None:
             return mcore_get_batch_on_this_cp_rank(batch)
         for key, val in batch.items():
-            if key == 'packed_seq_params':
+            if key in {'packed_seq_params', 'channel'}:
                 continue
             if val is not None:
                 batch[key] = _split_tokens(val, packed_seq_params.cu_seqlens_q)
