@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
 import collections
 import os
 import time

@@ -4,7 +4,7 @@ import inspect
 import os
 from contextlib import contextmanager, nullcontext
 from functools import wraps
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from peft import PeftModel
@@ -311,7 +311,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         labels = None
-        compute_loss_func = inputs.pop('compute_loss_func', None)
+        compute_loss_func: Callable = inputs.pop('compute_loss_func', None)
         loss_scale = inputs.pop('loss_scale', None)
         position_ids = inputs.pop('_position_ids', None)
         if position_ids is None:

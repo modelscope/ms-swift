@@ -2,14 +2,11 @@
 from functools import partial
 from typing import List, Optional
 
-import megatron.core
 import torch
-import torch.distributed as dist
 import torch.nn
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import get_rerun_state_machine
 from megatron.training import get_args, get_timers
-from packaging import version
 from torch.distributed.nn import all_reduce
 
 from swift.utils import get_logger
