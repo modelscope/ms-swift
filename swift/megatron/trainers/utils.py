@@ -75,7 +75,9 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(batch['position_ids'])
             _broadcast(batch['loss_scale'])
         else:
-            for key in ('input_ids', 'labels', 'attention_mask', 'position_ids', 'loss_scale'):
+            _broadcast(batch['attention_mask'])
+            _broadcast(batch['position_ids'])
+            for key in ('input_ids', 'labels', 'loss_scale'):
                 batch[key] = None
 
     else:
@@ -122,7 +124,9 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(position_ids)  # compat packing & cp
             _broadcast(loss_scale)
         else:
-            input_ids, labels, attention_mask, position_ids, loss_scale = (None, ) * 5
+            _broadcast(attention_mask)
+            _broadcast(position_ids)
+            input_ids, labels, loss_scale = (None, ) * 3
 
         batch = {
             'input_ids': input_ids,
