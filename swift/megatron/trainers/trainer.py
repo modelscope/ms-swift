@@ -1,15 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from functools import partial
-from typing import Optional
+from typing import List, Optional
 
-import megatron.core
 import torch
-import torch.distributed as dist
 import torch.nn
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import get_rerun_state_machine
 from megatron.training import get_args, get_timers
-from packaging import version
 from torch.distributed.nn import all_reduce
 
 from swift.utils import get_logger
@@ -26,19 +23,31 @@ class MegatronTrainer(BaseMegatronTrainer):
                   output_tensor: torch.Tensor,
                   *,
                   labels: torch.Tensor,
-                  loss_scale: Optional[torch.Tensor] = None):
+                  loss_scale: Optional[torch.Tensor] = None,
+                  channels: Optional[List[str]] = None,
+                  packed_seq_params=None):
         args = get_args()
 
         losses = output_tensor.float()
+        loss_mask = labels != -100
         if args.enable_dft_loss:
             losses = losses * torch.exp(-losses.detach())
         if loss_scale is not None:
             losses = losses * loss_scale
-        loss_mask = labels != -100
+        if args.enable_channel_loss and channels is not None:
+            assert losses.shape[0] == 1, 'only support padding_free'
+            mode = 'train' if self.unwrapped_model.training else 'eval'
+            metrics = self.custom_metrics[mode]
+            num_samples = packed_seq_params.num_samples
+            cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples + 1] // args.context_parallel_size
+            for i in range(cu_seqlens.shape[0] - 1):
+                channel = channels[i]
+                slice_ = slice(cu_seqlens[i], cu_seqlens[i + 1])
+                metrics[f'loss_{channel}'].update(losses[0, slice_][loss_mask[0, slice_]])
+
         loss = torch.cat([torch.sum(losses * loss_mask).view(1), loss_mask.sum().view(1)])
 
-        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
-        if args.context_parallel_size > 1 and not megatron_core_013:
+        if args.context_parallel_size > 1 and not self.megatron_core_013:
             loss = all_reduce(loss, group=mpu.get_context_parallel_group())
 
         # Check individual rank losses are not NaN prior to DP all-reduce.
@@ -76,7 +85,7 @@ class MegatronTrainer(BaseMegatronTrainer):
         # Reduce loss for logging.
         reporting_loss = loss.clone().detach()
         lm_loss = loss[0]
-        if not megatron_core_013:
+        if not self.megatron_core_013:
             # fix megatron-lm bug
             # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
             torch.distributed.all_reduce(reporting_loss, group=mpu.get_data_parallel_group())
@@ -102,7 +111,14 @@ class MegatronTrainer(BaseMegatronTrainer):
             data = get_batch(data_iterator)
         timers('batch-generator').stop()
         loss_scale = data.pop('loss_scale', None)
+        channels = data.pop('channel', None)
         with self.stimer:
             output_tensor = model(**data)
         labels = data.get('labels')
-        return output_tensor, partial(self.loss_func, labels=labels, loss_scale=loss_scale)
+        packed_seq_params = data.get('packed_seq_params')
+        return output_tensor, partial(
+            self.loss_func,
+            labels=labels,
+            loss_scale=loss_scale,
+            channels=channels,
+            packed_seq_params=packed_seq_params)

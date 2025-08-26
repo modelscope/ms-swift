@@ -36,6 +36,7 @@ class TrainArgumentsMixin:
     logging_steps: int = 5
     router_aux_loss_coef: float = 0.
     enable_dft_loss: bool = False  # https://arxiv.org/abs/2508.05629
+    enable_channel_loss: bool = False
 
     weight_decay: float = 0.1
     adam_beta2: float = 0.95
@@ -55,7 +56,6 @@ class TrainArgumentsMixin:
     aligner_lr: Optional[float] = None
     vit_lr: Optional[float] = None
     use_logits_to_keep: Optional[bool] = None
-    channels: List[str] = None
     ds3_gather_for_generation: bool = True
     resume_only_model: bool = False
 

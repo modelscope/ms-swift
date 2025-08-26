@@ -170,6 +170,9 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - router_aux_loss_coef: Sets the weight of the aux_loss when training MoE models; default is `0.`
   - Note: In ms-swift == 3.7.0, the default is None and the value is read from config.json; this behavior was changed starting with ms-swift >= 3.7.1.
 - enable_dft_loss: Whether to use [DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss in SFT training, default is False.
+- enable_channel_loss: Enable channel loss, default is `false`. You need to prepare a "channel" field in your dataset; ms-swift will compute and aggregate the loss grouped by this field. For dataset format, please refer to [channel loss](../Customization/Custom-dataset.md#channel-loss). Channel loss is compatible with techniques such as packing, padding-free, and loss scaling.
+  - Note: This parameter is newly added in "ms-swift>=3.8". If you want to use channel loss in "ms-swift<3.8", please refer to the v3.7 documentation.
+  - Note: This feature is currently not compatible with sequence parallelism and will be fixed later.
 - logging_dir: The path for TensorBoard logs. Defaults to None, which means it is set to `f'{self.output_dir}/runs'`.
 - predict_with_generate: Whether to use generative method during validation, default is False.
 - metric_for_best_model: Default is None, which means that when predict_with_generate is set to False, it is set to 'loss'; otherwise, it is set to 'rouge-l' (during PPO training, the default value is not set; in GRPO training, it is set to 'reward').
@@ -404,7 +407,6 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - add_version: Add directory to output_dir with `'<version>-<timestamp>'` to prevent weight overwrite, default is True.
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. If in an offline environment, please set to False.
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
-- channels: Set of channels included in the dataset. Defaults to None. Used in conjunction with `--loss_type channel_loss`. Refer to [this example](https://github.com/modelscope/ms-swift/blob/main/examples/train/plugins/channel_loss.sh) for more details.
 - 🔥packing: Whether to use sequence packing to improve computational efficiency. The default value is False. Currently supports CPT/SFT/DPO/KTO.
   - Note: When using packing, please combine it with `--attn_impl flash_attn` and ensure "transformers>=4.44". For details, see [this PR](https://github.com/huggingface/transformers/pull/31629).
   - Supported multimodal models reference: https://github.com/modelscope/ms-swift/blob/main/examples/train/packing/qwen2_5_vl.sh. Note: Please use "ms-swift>=3.6" and follow [this PR](https://github.com/modelscope/ms-swift/pull/4838).

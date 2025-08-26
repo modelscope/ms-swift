@@ -152,7 +152,7 @@ You can control this using the parameters `--freeze_vit`, `--freeze_aligner`, an
 It supports both mixed visual-text and pure text data.
 
 ### Q48: Can I plot loss curves for different datasets during fine-tuning?
-Channel loss is supported. Please refer to this [example](https://github.com/modelscope/ms-swift/blob/main/examples/train/plugins/channel_loss.sh).
+Channel loss is supported. Please refer to `--enable_channel_loss`.
 
 ### Q49: After model training, the responses have a lot of repeated content.
 Refer to the [Pre-training and Fine-tuning](https://swift.readthedocs.io/en/latest/Instruction/Pre-training-and-Fine-tuning.html). If you notice repetitions during training, try training for more epochs, cleaning the data, and conducting full parameter training, using RLHF to mitigate this issue.

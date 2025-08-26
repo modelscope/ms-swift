@@ -27,6 +27,8 @@ from peft.utils.other import transpose
 from swift.utils import get_current_device
 from ..utils import tuners_sharded_state_dict
 
+megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+
 
 class LoraParallelLinear(MegatronModule, LoraLayer):
 
@@ -92,7 +94,6 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             'config': self.config,
             'is_expert': self.is_expert,
         }
-        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
         if megatron_core_013:
             kwargs['tp_group'] = self.base_layer.tp_group
         if isinstance(self.base_layer, TopKRouter):
