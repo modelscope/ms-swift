@@ -1129,8 +1129,15 @@ class Template(ProcessorMixin):
                 context_list.append('{{RESPONSE}}')
                 # The GLM-4.5 assistant part (tool call) may end with <|observation|>,
                 # and here we avoid adding <|user|>.
+                response_content = response
+                if not isinstance(response_content, str):
+                    if isinstance(response, list):
+                        token_ids = response
+                    else:
+                        token_ids = response['token_ids']
+                    response_content = self.tokenizer.decode(token_ids)[:20]
                 endswith_stop_words = any(
-                    response.endswith(stop_word) for stop_word in template_meta.stop_words
+                    response_content.endswith(stop_word) for stop_word in template_meta.stop_words
                     if isinstance(stop_word, str))
                 # self.is_training needed because we may want to continue generation from
                 # the current response
