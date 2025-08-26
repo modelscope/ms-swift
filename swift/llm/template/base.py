@@ -1135,7 +1135,7 @@ class Template(ProcessorMixin):
                         token_ids = response
                     else:
                         token_ids = response['token_ids']
-                    response_content = self.tokenizer.decode(token_ids)[:20]
+                    response_content = self.tokenizer.decode(token_ids[-20:])
                 endswith_stop_words = any(
                     response_content.endswith(stop_word) for stop_word in template_meta.stop_words
                     if isinstance(stop_word, str))
