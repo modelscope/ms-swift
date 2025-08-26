@@ -417,7 +417,7 @@ class BaseMegatronTrainer(ABC):
 
         total_loss_dict.update({
             k: torch.tensor([v], device='cuda')
-            for k, v in SwiftMixin._compute_custom_metrics(self.custom_metrics['eval'], 'eval_')
+            for k, v in SwiftMixin._compute_custom_metrics(self.custom_metrics['eval'], 'eval_').items()
         })
         rerun_state_machine.set_mode(rerun_mode)
         if is_last_rank():
