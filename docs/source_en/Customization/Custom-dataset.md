@@ -61,6 +61,14 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 {"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}]}
 ```
 
+#### Channel Loss
+If you want to use channel loss, you need to set `--enable_channel_loss true` and add a "channel" field to your dataset. Channel loss is compatible with techniques such as packing and padding-free training.
+
+```jsonl
+{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}, {"role": "assistant", "content": "Tomorrow's weather will be sunny"}], "channel": "general"}
+{"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}], "channel": "math"}
+```
+
 ### RLHF
 
 #### DPO/ORPO/CPO/SimPO/RM
