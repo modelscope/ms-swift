@@ -247,6 +247,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 - add_version: Adds a directory `<version>-<timestamp>` to `save` to prevent overwriting weights, default is True.
 - padding_free: Flattens the data in a batch to avoid padding, thereby reducing memory usage and accelerating training. Default is True.
   - If you wish to customize the attention_mask, you can set `--padding_free false`.
+  - Note: The Megatron-SWIFT training feature prioritizes support for the padding-free format. Unless under special circumstances, please do not modify this value.
 - mlp_padding_free: The default is False. This is used for applying padding-free optimization to the MLP when padding_free is set to false. It allows for improved training speed and reduced memory usage while customizing the attention_mask.
 - 🔥packing: Whether to use sequence packing, defaults to False. Currently supports CPT/SFT/DPO.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
