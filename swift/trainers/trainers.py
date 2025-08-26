@@ -320,6 +320,9 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
 
         if (self.label_smoother is not None or compute_loss_func is not None or loss_scale is not None
                 or self.args.enable_dft_loss or self.args.enable_channel_loss) and 'labels' in inputs:
+            if self.args.use_liger_kernel:
+                logger.warning_once('The cross_entropy loss function defined in Liger Kernel will not '
+                                    'take effect, potentially leading to increased GPU memory consumption.')
             labels = inputs.pop('labels')
         outputs = model(**inputs)
         if getattr(outputs, 'aux_loss', None) is not None:
