@@ -45,7 +45,7 @@ def get_batch_on_this_tp_rank(data_iterator):
     elif mpu.is_pipeline_last_stage():
         batch['input_ids'] = None
     else:
-        for key in ('input_ids', 'labels', 'attention_mask', 'position_ids', 'loss_scale'):
+        for key in ('input_ids', 'labels', 'loss_scale'):
             batch[key] = None
 
     if is_finished:
