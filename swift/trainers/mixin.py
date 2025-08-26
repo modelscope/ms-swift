@@ -684,7 +684,16 @@ class SwiftMixin:
 
     def log(self, logs: dict[str, float], *args, **kwargs) -> None:
         mode = 'train' if self.model.training else 'eval'
-        for k, metric in self.custom_metrics[mode].items():
+        metrics = self.custom_metrics[mode]
+        # Synchronize keys to avoid getting stuck.
+        if dist.is_initialized():
+            all_keys = [None] * dist.get_world_size()
+            dist.all_gather_object(all_keys, list(metrics.keys()))
+            for key in set().union(*all_keys):
+                if key not in metrics:
+                    metrics[key]
+
+        for k, metric in sorted(metrics.items()):
             if mode == 'eval':
                 k = f'eval_{k}'
             value = metric.compute()

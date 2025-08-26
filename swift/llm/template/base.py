@@ -555,7 +555,7 @@ class Template(ProcessorMixin):
             elif key == 'length':
                 packed[key] = sum((x[key] for x in row))
             elif key == 'channel':
-                packed[key] = [x[key] for x in row]
+                packed[key] = [x.get(key) for x in row]
         if 'position_ids' not in packed:
             packed['position_ids'] = sum((list(range(x)) for x in length), start=[])
 
@@ -1603,24 +1603,20 @@ class Template(ProcessorMixin):
 
         res = {}
         if self.padding_free:
-            # only support llm
-            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel']:
-                v = self.gather_list(batch, k)
-                if v:
-                    if k == 'channel':
-                        res[k] = v
-                    else:
-                        res[k] = [v]
+            assert len(batch) == 1, f'batch: {batch}'
+            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale']:
+                res[k] = [batch[0][k]]
+            res['channel'] = batch[0]['channel']
         else:
             inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
             input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
-            channel = [b['channel'] for b in batch if b.get('channel') is not None]
+            channel = [b.get('channel') for b in batch]
 
             if inputs_embeds:
                 res['inputs_embeds'] = inputs_embeds
             if input_ids:
                 res['input_ids'] = input_ids
-            if channel:
+            if any(channel):
                 res['channel'] = channel
 
             for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
