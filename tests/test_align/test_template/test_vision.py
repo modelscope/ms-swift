@@ -627,6 +627,22 @@ def test_dots_ocr():
     assert response == response2
 
 
+def test_internvl3_5():
+    models = [
+        'OpenGVLab/InternVL3_5-1B', 'OpenGVLab/InternVL3_5-2B', 'OpenGVLab/InternVL3_5-4B', 'OpenGVLab/InternVL3_5-8B',
+        'OpenGVLab/InternVL3_5-14B', 'OpenGVLab/InternVL3_5-38B', 'OpenGVLab/InternVL3_5-30B-A3B',
+        'OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview'
+    ]
+    for model in models:
+        pt_engine = PtEngine(model)
+        images = ['http://images.cocodataset.org/val2017/000000039769.jpg']
+        messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
+        response = _infer_model(pt_engine, messages=messages, images=images)
+        pt_engine.default_template.template_backend = 'jinja'
+        response2 = _infer_model(pt_engine, messages=messages, images=images)
+        assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -641,7 +657,7 @@ if __name__ == '__main__':
     # test_ovis1_6()
     # test_ovis1_6_llama3()
     # test_ovis2()
-    test_ovis2_5()
+    # test_ovis2_5()
     # test_yi_vl()
     # test_deepseek_vl()
     # test_deepseek_janus()
@@ -686,3 +702,4 @@ if __name__ == '__main__':
     # test_gemma3n()
     # test_keye_vl()
     # test_dots_ocr()
+    test_internvl3_5()

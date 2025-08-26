@@ -12,6 +12,7 @@ from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, findall
 from ..vision_utils import load_video_internvl, transform_image
+from .llm import GptOssTemplateMeta, GptTemplate
 from .microsoft import Phi3TemplateMeta
 from .utils import ChatmlTemplateMeta
 
@@ -172,3 +173,12 @@ register_template(
         MLLMTemplateType.internvl2_5,
         template_cls=Internvl2Template,
         default_system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。'))
+
+register_template(ChatmlTemplateMeta(MLLMTemplateType.internvl3_5, template_cls=Internvl2Template))
+
+
+class Internvl3_5GPTTemplate(Internvl2Template, GptTemplate):
+    pass
+
+
+register_template(GptOssTemplateMeta(MLLMTemplateType.internvl3_5_gpt, template_cls=Internvl3_5GPTTemplate))

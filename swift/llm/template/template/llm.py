@@ -336,12 +336,12 @@ class GptTemplate(Template):
                     message['content'] = '<|channel|>final<|message|>' + message['content']
 
 
-register_template(
-    TemplateMeta(
-        LLMTemplateType.gpt_oss,
-        prefix=['{{SYSTEM}}'],
-        prompt=['<|start|>user<|message|>{{QUERY}}<|end|><|start|>assistant'],
-        chat_sep=['<|end|>'],
-        suffix=['<|return|>'],
-        template_cls=GptTemplate,
-    ))
+@dataclass
+class GptOssTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['{{SYSTEM}}'])
+    prompt: Prompt = field(default_factory=lambda: ['<|start|>user<|message|>{{QUERY}}<|end|><|start|>assistant'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|end|>'])
+    suffix: Prompt = field(default_factory=lambda: ['<|return|>'])
+
+
+register_template(GptOssTemplateMeta(LLMTemplateType.gpt_oss, template_cls=GptTemplate))

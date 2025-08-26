@@ -176,6 +176,8 @@ class MLLMModelType:
     internvl2_phi3 = 'internvl2_phi3'
     internvl2_5 = 'internvl2_5'
     internvl3 = 'internvl3'
+    internvl3_5 = 'internvl3_5'
+    internvl3_5_gpt = 'internvl3_5_gpt'
     xcomposer2 = 'xcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
     xcomposer2_5 = 'xcomposer2_5'
