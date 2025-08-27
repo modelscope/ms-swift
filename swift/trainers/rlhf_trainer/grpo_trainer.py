@@ -2055,7 +2055,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     template.encode(data)
                     inputs[i] = data
                     break
-                except MaxLengthError:
+                except Exception:
                     n_try += 1
                     if n_try > n_try_fetch:
                         raise RuntimeError('Failed to resample a valid data.',
