@@ -20,16 +20,10 @@ logger = get_logger()
 
 
 class RowPreprocessor:
-    standard_keys = [
-        'messages',
+    _pair_keys = ['messages', 'images', 'videos', 'audios', 'tools', 'objects']
+    standard_keys = _pair_keys + [f'rejected_{k}' for k in _pair_keys] + [
         'rejected_response',
-        'rejected_images',
         'label',
-        'images',
-        'videos',
-        'audios',
-        'tools',
-        'objects',
         'channel',
         'margin',
     ]
@@ -97,29 +91,6 @@ class RowPreprocessor:
                 continue
             elif isinstance(mm_data, str):
                 row[key] = [mm_data]
-
-    @staticmethod
-    def _check_rejected_response(row: Dict[str, Any]) -> None:
-        if 'rejected_messages' in row:
-            chosen_messages = row['messages']
-            rejected_messages = row['rejected_messages']
-            messages = []
-            rejected_response = None
-            for chosen_user, chosen_assistant, rejected_user, rejected_assistant in zip(
-                    chosen_messages[::2], chosen_messages[1::2], rejected_messages[::2], rejected_messages[1::2]):
-                assert chosen_user == rejected_user
-                messages.append(chosen_user)
-                messages.append(chosen_assistant)
-                if chosen_assistant != rejected_assistant:
-                    rejected_response = rejected_assistant['content']
-            row['messages'] = messages
-            row['rejected_response'] = rejected_response
-
-        if 'rejected_response' in row:
-            messages = row['messages']
-            rejected_response = row['rejected_response']
-            if rejected_response is None or rejected_response == messages[-1]['content']:
-                raise ValueError(f'rejected_response: {rejected_response}')
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         raise NotImplementedError

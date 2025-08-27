@@ -41,7 +41,7 @@ from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInfer
 from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
 from swift.llm.model.utils import get_llm_model
 from swift.llm.template.base import MaxLengthError
-from swift.llm.template.template_inputs import StdTemplateInputs
+from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import multi_turns, orms, rm_plugins
 from swift.plugin.multi_turn import MultiTurnScheduler
 from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_logger, is_swanlab_available,
@@ -1293,7 +1293,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         prompts_text = []
         for messages in messages_list:
             InferRequest.remove_response(messages)
-            template_inputs = StdTemplateInputs.from_dict({'messages': messages})
+            template_inputs = TemplateInputs.from_dict({'messages': messages})
             res = self.template.encode(template_inputs)
             prompts_text.append(self.template.safe_decode(res['input_ids']))
         return prompts_text

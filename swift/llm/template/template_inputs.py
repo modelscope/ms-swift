@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -130,16 +131,6 @@ class RolloutInferRequest(InferRequest):
 
 
 @dataclass
-class TemplateInputs(InferRequest):
-    """The training functionality has been added on top of the InferRequest.
-
-    objects: Used for grounding tasks in a general format.
-    """
-    rejected_response: Optional[str] = None
-    label: Optional[bool] = None
-
-
-@dataclass
 class StdTemplateInputs:
     # only user/tool/assistant
     messages: List[Dict[str, str]]
@@ -147,15 +138,13 @@ class StdTemplateInputs:
     system: Optional[str] = None
     tools: Optional[List[Tool]] = None
 
-    rejected_response: Optional[str] = None
     label: Optional[int] = None
     channel: Optional[str] = None
 
     images: List[Union[str, Image.Image]] = field(default_factory=list)
-    audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
+    audios: List[str] = field(default_factory=list)
     objects: Dict[str, List[Any]] = field(default_factory=dict)
-    rejected_images: List[Union[str, Image.Image]] = field(default_factory=list)
 
     margin: Optional[float] = None  # for reward modeling
     mm_processor_kwargs: Dict[str, Any] = field(default_factory=dict)
@@ -173,22 +162,12 @@ class StdTemplateInputs:
             self.videos = [self.videos]
         if self.audios and not isinstance(self.audios, (list, tuple)):
             self.audios = [self.audios]
-        if self.rejected_images and not isinstance(self.rejected_images, (list, tuple)):
-            self.rejected_images = [self.rejected_images]
-
-    def to_history(self):
-        if not self.messages:
-            return None
-        return messages_to_history(self.messages)
-
-    @property
-    def is_multimodal(self):
-        return bool(self.images or self.audios or self.videos or self.objects)
 
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any]) -> 'StdTemplateInputs':
+        inputs = deepcopy(inputs)
         kwargs = {}
-        for key in ['rejected_response', 'label', 'channel', 'margin']:
+        for key in ['label', 'channel', 'margin']:
             if key in inputs:
                 kwargs[key] = inputs[key]
         messages = inputs['messages']
@@ -233,7 +212,7 @@ class StdTemplateInputs:
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
-        res = {'images': [], 'audios': [], 'videos': [], 'rejected_images': []}
+        res = {'images': [], 'audios': [], 'videos': []}
         for message in messages:
             content = message['content']
             if isinstance(content, str):
@@ -260,3 +239,63 @@ class StdTemplateInputs:
                     res[f'{key}s'].append(value)
             message['content'] = new_content
         return res
+
+    def to_history(self):
+        if not self.messages:
+            return None
+        return messages_to_history(self.messages)
+
+    @property
+    def is_multimodal(self):
+        return bool(self.images or self.audios or self.videos or self.objects)
+
+
+@dataclass
+class TemplateInputs:
+    """The training functionality has been added on top of the InferRequest.
+
+    objects: Used for grounding tasks in a general format.
+    """
+    chosen: StdTemplateInputs
+    rejected: Optional[StdTemplateInputs] = None
+
+    def __post_init__(self):
+        for key in ['chosen', 'rejected']:
+            value = getattr(self, key, None)
+            if isinstance(value, dict):
+                value = StdTemplateInputs.from_dict(value)
+                setattr(self, key, value)
+
+    @staticmethod
+    def _use_rejected_messages(inputs: Dict[str, Any]):
+        if 'rejected_response' not in inputs:
+            return
+        assert 'rejected_messages' not in inputs
+        # Find the first round's 'assistant'.
+        messages = inputs['messages']
+        for i in range(len(messages), 0, -1):
+            message = messages[i - 1]
+            if message['role'] in {'user', 'tool', 'tool_response'}:
+                break
+        rejected_response = inputs.pop('rejected_response')
+        if isinstance(rejected_response, str):
+            # Check that the response is different from the rejected_response.
+            if len(messages[i:]) == 1:
+                response = messages[i]['content']
+                assert rejected_response != response, (f'rejected_response: {rejected_response}, response: {response}')
+            rejected_response = [{'role': 'assistant', 'content': rejected_response}]
+        assert isinstance(rejected_response, list), f'rejected_response: {rejected_response}'
+        inputs['rejected_messages'] = deepcopy(messages[:i]) + rejected_response
+
+    @classmethod
+    def from_dict(cls, inputs: Dict[str, Any]) -> 'TemplateInputs':
+        inputs = deepcopy(inputs)
+        cls._use_rejected_messages(inputs)
+        kwargs = {}
+        for prefix in ['chosen', 'rejected']:
+            startswith_rejected = prefix == 'rejected'
+            std_inputs = {k: v for k, v in inputs.items() if k.startswith('rejected') == startswith_rejected}
+            if std_inputs:
+                kwargs[prefix] = std_inputs
+
+        return cls(**kwargs)

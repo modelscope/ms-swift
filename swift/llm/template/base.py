@@ -489,21 +489,22 @@ class Template(ProcessorMixin):
             inputs = deepcopy(inputs)
             if self.task_type == 'causal_lm' and not self.is_training:
                 InferRequest.remove_response(inputs['messages'])
-            inputs = StdTemplateInputs.from_dict(inputs)
-        elif isinstance(inputs, StdTemplateInputs):
+            inputs = TemplateInputs.from_dict(inputs)
+        elif isinstance(inputs, TemplateInputs):
             inputs = deepcopy(inputs)
-        assert isinstance(inputs, StdTemplateInputs)
-        self._preprocess_inputs(inputs)
+        assert isinstance(inputs, TemplateInputs)
+        for key in ['chosen', 'rejected']:
+            self._preprocess_inputs(getattr(inputs, key))
 
         if self.task_type == 'causal_lm':
             if self.mode in {'train', 'pt', 'vllm', 'lmdeploy', 'sglang'}:
-                encoded = self._encode_truncated(inputs)
+                encoded = self._encode_truncated(inputs.chosen)
             elif self.mode == 'rlhf':
                 encoded = self._rlhf_encode(inputs)
             elif self.mode == 'kto':
-                encoded = self._kto_encode(inputs)
+                encoded = self._kto_encode(inputs.chosen)
             elif self.mode == 'gkd':
-                encoded = self._gkd_encode(inputs)
+                encoded = self._gkd_encode(inputs.chosen)
         elif self.task_type == 'seq_cls':
             if self.mode == 'rlhf':
                 encoded = self._rlhf_encode(inputs)
@@ -511,9 +512,9 @@ class Template(ProcessorMixin):
                     encoded.pop(f'{prefix}_labels', None)
                     encoded.pop(f'{prefix}_loss_scale', None)
             else:
-                encoded = self._seq_cls_encode(inputs)
+                encoded = self._seq_cls_encode(inputs.chosen)
         elif self.task_type == 'prm':
-            encoded = self._encode_truncated(inputs)
+            encoded = self._encode_truncated(inputs.chosen)
         elif self.task_type == 'embedding':
             encoded = self._embedding_encode(inputs)
         elif self.task_type in {'reranker', 'generative_reranker'}:
