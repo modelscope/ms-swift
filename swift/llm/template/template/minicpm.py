@@ -90,11 +90,15 @@ class MiniCPMVTemplate(Template):
         tgt_sizes = None
         slice_mode = getattr(self.config, 'slice_mode', False)
         if slice_mode:
-            image_processor = self.processor.image_processor
-            image_inputs = image_processor(images, return_tensors='pt').to(self.model_info.torch_dtype)
-            placeholder = image_processor.get_slice_image_placeholder(image_inputs.image_sizes[0][0])
-            pixel_values = image_inputs['pixel_values']
-            tgt_sizes = image_inputs['tgt_sizes']
+            if self.is_v2_5:
+                image_processor = self.processor.image_processor
+                image_inputs = image_processor(images, return_tensors='pt').to(self.model_info.torch_dtype)
+                placeholder = image_processor.get_slice_image_placeholder(image_inputs.image_sizes[0][0])
+                pixel_values = image_inputs['pixel_values']
+                tgt_sizes = image_inputs['tgt_sizes']
+            else:
+                images, placeholder = self.model.get_slice_image_placeholder(images[0], self.processor)
+                pixel_values = [[self.model.transform(img) for img in images]]
             placeholder += '\n'
             placeholder_id = self.processor.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])

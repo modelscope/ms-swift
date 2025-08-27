@@ -36,6 +36,7 @@ register_megatron_model(
         ModelType.mengzi3,
         ModelType.qwen3,
         ModelType.qwen3_thinking,
+        ModelType.qwen3_nothinking,
         ModelType.qwen2_moe,
         ModelType.qwen3_moe,
         ModelType.qwen3_moe_thinking,
