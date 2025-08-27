@@ -90,15 +90,11 @@ class MiniCPMVTemplate(Template):
         tgt_sizes = None
         slice_mode = getattr(self.config, 'slice_mode', False)
         if slice_mode:
-            if self.is_v2_5:
-                image_processor = self.processor.image_processor
-                image_inputs = image_processor(images, return_tensors='pt').to(self.model_info.torch_dtype)
-                placeholder = image_processor.get_slice_image_placeholder(image_inputs.image_sizes[0][0])
-                pixel_values = image_inputs['pixel_values']
-                tgt_sizes = image_inputs['tgt_sizes']
-            else:
-                images, placeholder = self.model.get_slice_image_placeholder(images[0], self.processor)
-                pixel_values = [[self.model.transform(img) for img in images]]
+            image_processor = self.processor.image_processor
+            image_inputs = image_processor(images, return_tensors='pt').to(self.model_info.torch_dtype)
+            placeholder = image_processor.get_slice_image_placeholder(image_inputs.image_sizes[0][0])
+            pixel_values = image_inputs['pixel_values']
+            tgt_sizes = image_inputs['tgt_sizes']
             placeholder += '\n'
             placeholder_id = self.processor.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
@@ -295,10 +291,16 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template, Qwen3Template):
         }
         return encoded
 
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = {}
+        for k in ['pixel_values', 'image_bound', 'tgt_sizes', 'temporal_ids']:
+            res[k] = self.gather_list(batch, k)
+        res.update(Template._data_collator(self, batch, padding_to=padding_to))
+        return res
 
-register_template(
-    ChatmlTemplateMeta(
-        MLLMTemplateType.minicpmv4_5,
-        template_cls=MiniCPMV4_5Template,
-        response_prefix='<think>\n\n</think>\n\n',
-    ))
+
+# enable_thinking: response_prefix='<think>\n',
+register_template(ChatmlTemplateMeta(
+    MLLMTemplateType.minicpmv4_5,
+    template_cls=MiniCPMV4_5Template,
+))
