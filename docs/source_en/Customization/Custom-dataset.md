@@ -64,7 +64,7 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 - You can control whether the loss is computed for specific parts of the model's response by adding the `"loss"` field. This field defaults to `None`. If `"loss"` is set to `true`, the corresponding content will contribute to the loss calculation (equivalent to a `loss_scale` of 1). If `"loss"` is set to `false`, the corresponding content will be excluded from loss computation. Note that this feature only takes effect for messages where `"role"` is `"assistant"`, and it has higher priority than the command-line argument `--loss_scale`. Example data format:
 
 ```jsonl
-{"messages": [{"role": "system", "content": "You are a helpful and harmless math calculator"}, {"role": "user", "content": "What is 1+1?"}, {"role": "assistant", "content": "It equals 3", "loss": false}, {"role": "user", "content": "Please recalculate"}, {"role": "assistant", "content": "It equals 2", "loss": true}]}
+{"messages": [{"role": "user", "content": "Hello!"}, {"role": "assistant", "content": "Hi, how can I help you?", "loss": false}, {"role": "user", "content": "What is 1+1?"}, {"role": "assistant", "content": "It equals 2", "loss": true}]}
 ```
 
 #### Channel Loss
