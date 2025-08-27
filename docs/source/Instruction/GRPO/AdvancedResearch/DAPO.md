@@ -74,7 +74,7 @@ R_{\text{length}}(L) =
 \begin{cases}
 0, & L \leq L_{\text{max}} - L_{\text{cache}} \\[10pt]
 \dfrac{(L_{\text{max}} - L_{\text{cache}}) - L}{L_{\text{cache}}}, & L_{\text{max}} - L_{\text{cache}} < L \leq L_{\text{max}} \\[10pt]
--1, & \text{if } L > L_{\text{max}}
+-1, &  L > L_{\text{max}}
 \end{cases}
 $$
 
