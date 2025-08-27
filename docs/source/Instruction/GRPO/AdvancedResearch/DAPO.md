@@ -72,13 +72,13 @@ DAPO 设计了三段式长度惩罚函数：
 $$
 R_{\text{length}}(L) =
 \begin{cases}
-0, & \text{if } L \leq L_{\text{cache}} \\[10pt]
--\dfrac{L - L_{\text{cache}}}{L_{\text{max}} - L_{\text{cache}}}, & \text{if } L_{\text{cache}} < L < L_{\text{max}} \\[10pt]
--1, & \text{if } L \geq L_{\text{max}}
+0, & L \leq L_{\text{max}} - L_{\text{cache}} \\[10pt]
+\dfrac{(L_{\text{max}} - L_{\text{cache}}) - L}{L_{\text{cache}}}, & L_{\text{max}} - L_{\text{cache}} < L \leq L_{\text{max}} \\[10pt]
+-1, &  L > L_{\text{max}}
 \end{cases}
 $$
 
-在长度位于(L_cache < L < L_max)区间时设置线性递增惩罚，在(L ≥ L_max)时设置最大惩罚(-1)
+在长度位于 $(L_{\text{max}} - L_{\text{cache}} < L \leq L_{\text{max}})$ 区间时设置线性递增惩罚，在 $(L > L_{\text{max}})$ 时设置最大惩罚(-1)
 
 
 使用参数
