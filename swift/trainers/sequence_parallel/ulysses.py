@@ -418,7 +418,7 @@ class SequenceParallel:
             post_dims = []
             seq_len = -1
             if dim < 0:
-                dim = len(input) + dim
+                dim = len(input.shape) + dim
             for idx, d in enumerate(input.shape):
                 if idx == dim:
                     seq_len = d
