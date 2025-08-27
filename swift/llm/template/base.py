@@ -309,6 +309,7 @@ class Template(ProcessorMixin):
                 new_tokens = get_new_tokens(i)
             except IndexError as e:
                 logger.warning(f'IndexError occurs in the _extend_tokens function: {e}.')
+                continue
             token_len = len(new_tokens)
             input_ids = input_ids[:idx + added_tokens_len] + new_tokens + input_ids[added_tokens_len + idx + 1:]
             if labels:
