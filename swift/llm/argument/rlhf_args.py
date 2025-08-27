@@ -107,6 +107,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     undesirable_weight: float = 1.0
     # PPO/GRPO/GKD
     temperature: float = 0.9
+    local_adapter_path: str = None
     # RM
     center_rewards_coefficient: Optional[float] = None
     # GKD

@@ -18,6 +18,9 @@ from threading import local
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
+import shutil
+from swift.llm.infer.infer_engine.utils import AdapterRequest
+
 import json
 import torch
 import torch.nn as nn
@@ -107,6 +110,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.trainers.rlhf_arguments import GRPOConfig
         args: GRPOConfig = kwargs['args']
         self.args = args
+        self.local_adapter_path = getattr(args, 'local_adapter_path', None)
+        self.enable_lora = True if self.local_adapter_path else False
+        self.update_adapter_count = 0
         self.ref_adapter_name = getattr(args, 'ref_adapter_name', None)
         self.model_adapter_name = None
         # for async generate
@@ -529,6 +535,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 max_model_len=self.args.vllm_max_model_len,
                 seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
                 template=self.template,
+                enable_lora = self.enable_lora,
                 distributed_executor_backend='external_launcher',
             )
         return engine
@@ -568,34 +575,48 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     parameter for name, parameter in self.model.named_parameters()
                     if not parameter_group or name in parameter_group
                 ]
-                with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
-                    self.model.merge_adapter()
-                    state_dict = self.model.state_dict()
-                    state_dict = {
-                        k.removeprefix('base_model.model.').replace('.base_layer', ''): v
-                        for k, v in state_dict.items()
-                    }
-                    state_dict = {k: v for k, v in state_dict.items() if self.model.prefix not in k}
-                    # When module to save, remove its prefix and discard the original module
-                    state_dict = {
-                        k.replace('modules_to_save.default.', ''): v
-                        for k, v in state_dict.items() if 'original_module' not in k
-                    }
-                    if parameter_group_no_lora:
-                        parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
-                        state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
-                    assert len(state_dict) > 0 and all(
-                        [state.shape != torch.Size([0]) for state in state_dict.values()])
+                # TODO save lora in local adapter path
+                if self.local_adapter_path:
+                    with gather_if_zero3(parameters):
+                        if self.accelerator.is_main_process:
+                            if os.path.exists(self.local_adapter_path):
+                                #　delete exists files
+                                shutil.rmtree(self.local_adapter_path)
+                                logger.info(f"step:{self.state.global_step}，deleta previous lora")
 
-                    if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-                        for name, param in state_dict.items():
-                            self.vllm_client.update_named_param(name, param)
-                    elif self.vllm_mode == 'colocate':
-                        llm_model = self.engine.inner_model
-                        llm_model.load_weights(state_dict.items())
-                    with patch_lora_unmerge(self.model):
-                        self.model.unmerge_adapter()
-                    del state_dict
+                            os.mkdir(self.local_adapter_path)
+                            self.update_adapter_count+=1
+                            self.model.save_pretrained(self.local_adapter_path,peft_format=True)
+                            logger.info(f"step:{self.state.global_step},save newest lora in local adapter path")
+                else:
+                    with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
+                        self.model.merge_adapter()
+                        state_dict = self.model.state_dict()
+                        state_dict = {
+                            k.removeprefix('base_model.model.').replace('.base_layer', ''): v
+                            for k, v in state_dict.items()
+                        }
+                        state_dict = {k: v for k, v in state_dict.items() if self.model.prefix not in k}
+                        # When module to save, remove its prefix and discard the original module
+                        state_dict = {
+                            k.replace('modules_to_save.default.', ''): v
+                            for k, v in state_dict.items() if 'original_module' not in k
+                        }
+                        if parameter_group_no_lora:
+                            parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
+                            state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
+                        assert len(state_dict) > 0 and all(
+                            [state.shape != torch.Size([0]) for state in state_dict.values()])
+
+                        if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+                            for name, param in state_dict.items():
+                                self.vllm_client.update_named_param(name, param)
+                        elif self.vllm_mode == 'colocate':
+                            llm_model = self.engine.inner_model
+                            llm_model.load_weights(state_dict.items())
+                        with patch_lora_unmerge(self.model):
+                            self.model.unmerge_adapter()
+                        del state_dict
         else:
             for name, param in self.model.named_parameters():
                 with gather_if_zero3([param]):
@@ -1949,7 +1970,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                              asdict(request_config),
                                              use_tqdm=use_tqdm)
             else:
-                res = self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
+                # use adapter_request path lora to vllm engine
+                if self.local_adapter_path:
+                    assert os.path.exists(self.local_adapter_path)
+                    tmp_name = "lora_"+str(self.state.global_step)
+                    # tmp_name = "lora_"+str(self.update_adapter_count)+"_"+str(self.state.global_step)
+                    adapter_request = AdapterRequest(tmp_name, self.local_adapter_path)
+                    if self.accelerator.is_main_process :
+                        logger.info(f"adapter_request info:{adapter_request}")
+                    res = self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm, adapter_request=adapter_request)
+                else:
+                    res = self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
             if all(isinstance(r, RolloutOutput) for r in res):
                 return res
             else:
