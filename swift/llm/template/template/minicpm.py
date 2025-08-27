@@ -240,7 +240,60 @@ register_template(ChatmlTemplateMeta(
 
 # '<|im_start|>user\n(<image>./</image>)\nWhat is the landform in the picture?<|im_end|>\n<|im_start|>assistant\n'
 class MiniCPMV4_5Template(MiniCPMV2_6Template, Qwen3Template):
-    pass
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = Template._encode(self, inputs)
+        images = inputs.images
+        use_video = bool(inputs.videos)
+        use_image_id = True
+        max_slice_nums = get_env_args('max_slice_nums', int, None)
+        video_max_slice_nums = get_env_args('video_max_slice_nums', int, 1)  # or 2
+        if use_video:
+            max_slice_nums = video_max_slice_nums
+            use_image_id = False
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
+        idx_list = findall(input_ids, -100)
+
+        image_processor = self.processor.image_processor
+        image_inputs = image_processor([images], return_tensors='pt',
+                                       max_slice_nums=max_slice_nums).to(self.model_info.torch_dtype)
+
+        def _get_new_tokens(i):
+            placeholder = image_processor.get_slice_image_placeholder(
+                image_inputs.image_sizes[0][i], image_idx=i, max_slice_nums=max_slice_nums, use_image_id=use_image_id)
+            placeholder += '\n'
+            return self.processor.encode(placeholder, add_special_tokens=False)
+
+        input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list, _get_new_tokens)
+
+        if inputs.images:
+            input_tensor_ids = torch.tensor(input_ids)
+            unk_token = self.processor.encode('<unk>', add_special_tokens=False)[0]
+            indices = (input_tensor_ids == unk_token).nonzero(as_tuple=True)[0].tolist()
+
+            ranges = []
+            start = indices[0]
+            for i in range(1, len(indices)):
+                if indices[i] != indices[i - 1] + 1:
+                    ranges.append([start, indices[i - 1] + 1])
+                    start = indices[i]
+            ranges.append([start, indices[-1] + 1])
+            image_bound = [torch.tensor(ranges)]
+        else:
+            image_bound = [[]]
+
+        encoded = {
+            'input_ids': input_ids,
+            'labels': labels,
+            'loss_scale': loss_scale,
+            'image_bound': image_bound,
+            'pixel_values': image_inputs['pixel_values'],
+            'tgt_sizes': image_inputs['tgt_sizes'],
+            'temporal_ids': image_inputs['temporal_ids'],
+        }
+        return encoded
 
 
 register_template(
