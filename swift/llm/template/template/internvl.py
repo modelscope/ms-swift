@@ -202,7 +202,12 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
                 return ['<video>']
             else:
                 return [[-200]]
-        return super().replace_tag(media_type, index, inputs)
+        else:
+            if self.mode == 'vllm':
+                return ['<IMG_CONTEXT>']
+            else:
+                return ['<img>', [-100], '</img>\n']
+        return super().replac_tag(media_type, index, inputs)
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         if inputs.system is None and self.template_meta.response_prefix == '<think>':
