@@ -265,6 +265,12 @@ class TemplateInputs:
             if isinstance(value, dict):
                 value = StdTemplateInputs.from_dict(value)
                 setattr(self, key, value)
+        # Fill empty entries in rejected with corresponding content from chosen.
+        if self.rejected is not None:
+            all_keys = set(f.name for f in fields(StdTemplateInputs))
+            for k in all_keys:
+                if getattr(self.rejected, k) is None:
+                    setattr(self.rejected, k, getattr(self.chosen, k))
 
     @staticmethod
     def _use_rejected_messages(inputs: Dict[str, Any]):

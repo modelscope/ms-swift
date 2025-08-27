@@ -169,7 +169,6 @@ class RowPreprocessor:
                 for r in row:
                     self._check_objects(r)
                     self._check_messages(r)
-                    self._check_rejected_response(r)
                     self._cast_mm_data(r)
             except Exception as e:
                 if strict:
