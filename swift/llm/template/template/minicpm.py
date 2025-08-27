@@ -236,3 +236,9 @@ register_template(ChatmlTemplateMeta(
     MLLMTemplateType.minicpmv4,
     template_cls=MiniCPMV2_6Template,
 ))
+
+# '<|im_start|>user\n(<image>./</image>)\nWhat is the landform in the picture?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n'
+register_template(ChatmlTemplateMeta(
+    MLLMTemplateType.minicpmv4_5,
+    template_cls=MiniCPMV2_6Template,
+))
