@@ -1,4 +1,4 @@
-# 采用Colocate模式进行GTPQ量化模型的GRPO训练
+# 采用Colocate模式进行GPTQ量化模型的GRPO训练
 
 ## 1. 问题和可能的解决方法
 

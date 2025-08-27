@@ -112,7 +112,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.args = args
         self.local_adapter_path = getattr(args, 'local_adapter_path', None)
         self.enable_lora = True if self.local_adapter_path else False
-        self.update_adapter_count = 0
         self.ref_adapter_name = getattr(args, 'ref_adapter_name', None)
         self.model_adapter_name = None
         # for async generate
@@ -580,12 +579,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     with gather_if_zero3(parameters):
                         if self.accelerator.is_main_process:
                             if os.path.exists(self.local_adapter_path):
-                                #　delete exists files
+                                #　delete existing files
                                 shutil.rmtree(self.local_adapter_path)
-                                logger.info(f"step:{self.state.global_step}，deleta previous lora")
+                                logger.info(f"step:{self.state.global_step}，deleted previous lora")
 
-                            os.mkdir(self.local_adapter_path)
-                            self.update_adapter_count+=1
+                            os.makedirs(self.local_adapter_path)
                             self.model.save_pretrained(self.local_adapter_path,peft_format=True)
                             logger.info(f"step:{self.state.global_step},save newest lora in local adapter path")
                 else:
@@ -1972,9 +1970,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:
                 # use adapter_request path lora to vllm engine
                 if self.local_adapter_path:
-                    assert os.path.exists(self.local_adapter_path)
+                    if not os.path.exists(self.local_adapter_path):
+                        raise FileNotFoundError(f'fpath: {self.local_adapter_path}')
                     tmp_name = "lora_"+str(self.state.global_step)
-                    # tmp_name = "lora_"+str(self.update_adapter_count)+"_"+str(self.state.global_step)
                     adapter_request = AdapterRequest(tmp_name, self.local_adapter_path)
                     if self.accelerator.is_main_process :
                         logger.info(f"adapter_request info:{adapter_request}")
