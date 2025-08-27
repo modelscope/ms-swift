@@ -2112,7 +2112,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 import pandas as pd
                 # Create a copy to avoid modifying the original table used by other loggers.
                 wandb_table = table.copy()
-                if self._logs['image']:
+                if 'image' in self._logs and self._logs['image']:
                     wandb_table['image'] = [
                         wandb.Image(load_pil_img(img)) if img is not None else None for img in self._logs['image']
                     ]
