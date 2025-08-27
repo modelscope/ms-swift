@@ -65,7 +65,7 @@ class RowPreprocessor:
         assert len(messages) > 0, f'messages: {messages}'
         # fix swift/SlimOrca
         for message in messages:
-            keys = set(message.keys()) - {'role', 'content'}
+            keys = set(message.keys()) - {'role', 'content', 'loss'}
             for key in keys:
                 message.pop(key)
 
@@ -275,7 +275,11 @@ class RowPreprocessor:
         def _new_init(self, schema=None, features=None, *args, **kwargs):
 
             if features is not None:
-                features['messages'] = [{'role': Value(dtype='string'), 'content': Value(dtype='string')}]
+                features['messages'] = [{
+                    'role': Value(dtype='string'),
+                    'content': Value(dtype='string'),
+                    'loss': Value(dtype='float64'),
+                }]
                 features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
                 features['objects'] = {
                     'ref': Sequence(feature=Value(dtype='string'), length=-1),

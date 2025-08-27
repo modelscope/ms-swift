@@ -54,10 +54,12 @@ class LossScale:
         n_round = len(messages) // 2
         for context, context_type in zip(context_list, context_types):
             is_last_round = i + 1 == n_round
+            query, loss = None, None
             if context_type == ContextType.RESPONSE:
                 query = messages[2 * i]['content']
+                # Currently, we only support applying loss/mask to the response part.
+                loss = messages[2 * i + 1].get('loss')
                 assert context == messages[2 * i + 1]['content']
-                kwargs = {'query': query}
                 i += 1
             if isinstance(context, dict) and 'loss_scale' in context:
                 new_context = [[token] for token in context['token_ids']]
@@ -65,7 +67,10 @@ class LossScale:
             else:
                 if isinstance(context, dict) and 'token_ids' in context:
                     context = context['token_ids']
-                new_context, loss_scale = self.get_loss_scale(context, context_type, is_last_round, **kwargs)
+                if context_type == ContextType.RESPONSE and loss is not None:
+                    new_context, loss_scale = [context], [float(loss)]
+                else:
+                    new_context, loss_scale = self.get_loss_scale(context, context_type, is_last_round, query=query)
             res_context_list += new_context
             res_loss_scale += loss_scale
         return res_context_list, res_loss_scale
