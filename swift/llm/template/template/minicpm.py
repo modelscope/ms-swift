@@ -234,7 +234,6 @@ register_template(ChatmlTemplateMeta(
 ))
 
 
-# '<|im_start|>user\n(<image>./</image>)\nWhat is the landform in the picture?<|im_end|>\n<|im_start|>assistant\n'
 class MiniCPMV4_5Template(MiniCPMV2_6Template, Qwen3Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
