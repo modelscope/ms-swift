@@ -745,11 +745,17 @@ class Ovis2_5Template(ThinkingTemplate):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
-            return [[-200], '\n']
+            if self.mode == 'vllm':
+                return ['<image>']
+            else:
+                return [[-200], '\n']
         elif media_type == 'video':
-            num_frames = get_env_args('num_frames', int, self.num_frames)
-            inputs.images = load_video_ovis2_5(inputs.videos[index], num_frames)
-            return [[-200], '\n']
+            if self.mode == 'vllm':
+                return ['<video>']
+            else:
+                num_frames = get_env_args('num_frames', int, self.num_frames)
+                inputs.images = load_video_ovis2_5(inputs.videos[index], num_frames)
+                return [[-200], '\n']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         min_pixels = get_env_args('min_pixels', int, 448 * 448)
