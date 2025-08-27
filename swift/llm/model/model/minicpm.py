@@ -177,6 +177,22 @@ register_model(
 
 register_model(
     ModelMeta(
+        MLLMModelType.minicpmv4_5,
+        [
+            ModelGroup([
+                Model('OpenBMB/MiniCPM-V-4_5', 'openbmb/MiniCPM-V-4_5'),
+            ], ),
+        ],
+        TemplateType.minicpmv4_5,
+        get_model_tokenizer_minicpmv_2_x,
+        architectures=['MiniCPMV'],
+        model_arch=ModelArch.minicpmv,
+        requires=['timm', 'transformers>=4.36', 'decord'],
+        tags=['vision', 'video'],
+    ))
+
+register_model(
+    ModelMeta(
         LLMModelType.minicpm,
         [
             ModelGroup([

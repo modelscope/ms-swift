@@ -60,13 +60,13 @@ DAPO designs a three-stage length penalty function:
 $$
 R_{\text{length}}(L) =
 \begin{cases}
-0, & \text{if } L \leq L_{\text{cache}} \\[10pt]
--\dfrac{L - L_{\text{cache}}}{L_{\text{max}} - L_{\text{cache}}}, & \text{if } L_{\text{cache}} < L < L_{\text{max}} \\[10pt]
--1, & \text{if } L \geq L_{\text{max}}
+0, & L \leq L_{\text{max}} - L_{\text{cache}} \\[10pt]
+\dfrac{(L_{\text{max}} - L_{\text{cache}}) - L}{L_{\text{cache}}}, & L_{\text{max}} - L_{\text{cache}} < L \leq L_{\text{max}} \\[10pt]
+-1, &  L > L_{\text{max}}
 \end{cases}
 $$
 
-When the length falls within the interval (L_cache < L < L_max), a linearly increasing penalty is applied. For lengths (L ≥ L_max), the maximum penalty (-1) is imposed.
+When the length falls within the interval $(L_{\text{max}} - L_{\text{cache}} < L \leq L_{\text{max}})$, a linearly increasing penalty is applied. For lengths $(L > L_{\text{max}})$, the maximum penalty (-1) is imposed.
 
 Parameters:
 - `reward_funcs soft_overlong` enables this reward function.

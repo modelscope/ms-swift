@@ -666,6 +666,16 @@ def test_internvl3_5():
         assert response == response2
 
 
+def test_minicpmv4_5():
+    pt_engine = PtEngine('OpenBMB/MiniCPM-V-4_5')
+    images = ['http://images.cocodataset.org/val2017/000000039769.jpg']
+    messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -727,4 +737,5 @@ if __name__ == '__main__':
     # test_dots_ocr()
     # test_glm4_5v()
     # test_interns1()
-    test_internvl3_5()
+    # test_internvl3_5()
+    test_minicpmv4_5()

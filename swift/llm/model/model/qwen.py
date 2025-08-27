@@ -990,7 +990,7 @@ def get_model_tokenizer_ovis2_5(*args, **kwargs):
         use_submodel_func(model, 'llm', func_list)
         embedding = model.get_input_embeddings()
         patch_output_clone(embedding)
-        patch_get_input_embeddings(model.visual_tokenizer, 'vit.vision_model.embeddings.patch_embedding')
+        patch_get_input_embeddings(model.visual_tokenizer.vit, 'vision_model.embeddings.patch_embedding')
 
     return model, tokenizer
 
@@ -1006,7 +1006,7 @@ register_model(
         ],
         TemplateType.ovis2_5,
         get_model_tokenizer_ovis2_5,
-        model_arch=ModelArch.ovis,
+        model_arch=ModelArch.ovis2_5,
         architectures=['Ovis'],
         tags=['vision'],
         requires=['transformers>=4.46.2', 'moviepy<2'],

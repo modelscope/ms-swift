@@ -216,6 +216,16 @@ def test_internvl3_5():
         assert response == response2
 
 
+def test_minicpmv4_5():
+    pt_engine = PtEngine('OpenBMB/MiniCPM-V-4_5')
+    messages = [{'role': 'user', 'content': '<video>Describe this video in detail.'}]
+    videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
+    response = _infer_model(pt_engine, messages=messages, videos=videos)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, videos=videos)
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -235,4 +245,5 @@ if __name__ == '__main__':
     # test_glm4_5v()
     # test_ovis2_5()
     # test_interns1()
-    test_internvl3_5()
+    # test_internvl3_5()
+    test_minicpmv4_5()
