@@ -14,7 +14,7 @@ from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
 from ..vision_utils import load_video_minicpmv_mplug_owl3
 from .llama import Llama3TemplateMeta
-from .qwen import Qwen2_5TemplateMeta, QwenTemplateMeta
+from .qwen import Qwen2_5TemplateMeta, Qwen3Template, QwenTemplateMeta
 from .utils import ChatmlTemplateMeta
 
 
@@ -237,8 +237,15 @@ register_template(ChatmlTemplateMeta(
     template_cls=MiniCPMV2_6Template,
 ))
 
-# '<|im_start|>user\n(<image>./</image>)\nWhat is the landform in the picture?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n'
-register_template(ChatmlTemplateMeta(
-    MLLMTemplateType.minicpmv4_5,
-    template_cls=MiniCPMV2_6Template,
-))
+
+# '<|im_start|>user\n(<image>./</image>)\nWhat is the landform in the picture?<|im_end|>\n<|im_start|>assistant\n'
+class MiniCPMV4_5Template(MiniCPMV2_6Template, Qwen3Template):
+    pass
+
+
+register_template(
+    ChatmlTemplateMeta(
+        MLLMTemplateType.minicpmv4_5,
+        template_cls=MiniCPMV4_5Template,
+        response_prefix='<think>\n\n</think>\n\n',
+    ))
