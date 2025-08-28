@@ -312,17 +312,12 @@ class TemplateInputs:
                 assert rejected_response != response, f'rejected_response: {rejected_response}, response: {response}'
             rejected_response = [{'role': 'assistant', 'content': rejected_response}]
         inputs['rejected_messages'] = deepcopy(messages[:idx]) + rejected_response
-        # Supplement additional key-value pairs
-        all_keys = [f.name for f in fields(StdTemplateInputs)]
-        for k in all_keys:
-            chosen_v = inputs.get(k)
-            rejected_v = inputs.get(f'rejected_{k}')
-            if chosen_v is not None and rejected_v is None:
-                inputs[f'rejected_{k}'] = chosen_v
 
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any]) -> 'TemplateInputs':
         inputs = deepcopy(inputs)
+
+        has_rejected_mssages = inputs.get('rejected_messages') is not None
         cls._compat_rejected_response(inputs)
         rejected_response = inputs.pop('rejected_response', None)
         kwargs = {}
@@ -339,5 +334,14 @@ class TemplateInputs:
                 kwargs[prefix] = std_inputs
         if rejected_response and 'chosen' in kwargs:
             kwargs['chosen']['rejected_response'] = rejected_response
+
+        if not has_rejected_mssages and kwargs.get('rejected') is not None:
+            chosen = kwargs['chosen']
+            rejected = kwargs['rejected']
+            # Supplement additional key-value pairs
+            for k, chosen_v in chosen.items():
+                rejected_v = rejected.get(k)
+                if chosen_v is not None and rejected_v is None:
+                    rejected[k] = chosen_v
 
         return cls(**kwargs)
