@@ -181,7 +181,7 @@ class StdTemplateInputs:
     def from_dict(cls, inputs: Dict[str, Any]) -> 'StdTemplateInputs':
         inputs = deepcopy(inputs)
         kwargs = {}
-        for key in ['label', 'channel', 'margin']:
+        for key in ['label', 'channel', 'margin', 'rejected_response']:
             if key in inputs:
                 kwargs[key] = inputs[key]
         messages = inputs['messages']
@@ -332,8 +332,6 @@ class TemplateInputs:
                 std_inputs = {k[len(f'{prefix}_'):]: v for k, v in inputs.items() if k.startswith(f'{prefix}_')}
             if std_inputs:
                 kwargs[prefix] = std_inputs
-        if rejected_response and 'chosen' in kwargs:
-            kwargs['chosen']['rejected_response'] = rejected_response
 
         if not has_rejected_mssages and kwargs.get('rejected') is not None:
             chosen = kwargs['chosen']
@@ -343,5 +341,7 @@ class TemplateInputs:
                 rejected_v = rejected.get(k)
                 if chosen_v is not None and rejected_v is None:
                     rejected[k] = chosen_v
+        if rejected_response and 'chosen' in kwargs:
+            kwargs['chosen']['rejected_response'] = rejected_response
 
         return cls(**kwargs)
