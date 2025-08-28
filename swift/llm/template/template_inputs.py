@@ -252,42 +252,72 @@ class StdTemplateInputs:
 
 @dataclass
 class TemplateInputs:
-    chosen: StdTemplateInputs
-    rejected: Optional[StdTemplateInputs] = None
+    chosen: List[StdTemplateInputs]  # or Dict[str, Any]
+    rejected: List[StdTemplateInputs] = field(default_factory=list)
 
     def __post_init__(self):
+        default_val = {}
+        all_keys = [f.name for f in fields(StdTemplateInputs)]
+        for k in all_keys:
+            val = getattr(self.chosen[0], k) if isinstance(self.chosen, list) else self.chosen.get(k)
+            if val is not None:
+                default_val[k] = val
+
         for key in ['chosen', 'rejected']:
-            value = getattr(self, key, None)
-            if isinstance(value, dict):
-                value = StdTemplateInputs.from_dict(value)
-                setattr(self, key, value)
-        # Fill empty entries in rejected with corresponding content from chosen.
-        if self.rejected is not None:
-            all_keys = set(f.name for f in fields(StdTemplateInputs))
-            for k in all_keys:
-                if getattr(self.rejected, k) is None:
-                    setattr(self.rejected, k, getattr(self.chosen, k))
+            value_dict = getattr(self, key, None)
+            if isinstance(value_dict, list):
+                continue
+            i = 0
+            res = []
+            while True:
+                suffix = '' if i == 0 else str(i)
+                if f'messages{suffix}' not in value_dict:
+                    break
+                d_val = deepcopy(default_val)
+                for k in all_keys:
+                    val = value_dict.get(f'{k}{suffix}')
+                    if val is not None:
+                        d_val[k] = val
+                res.append(StdTemplateInputs.from_dict(d_val))
+                i += 1
+            setattr(self, key, res)
+        assert isinstance(self.chosen, list), f'chosen: {self.chosen}'
+        assert isinstance(self.rejected, list), f'rejected: {self.rejected}'
 
     @staticmethod
     def _use_rejected_messages(inputs: Dict[str, Any]):
+        # rejected_response -> rejected_messages
         if 'rejected_response' not in inputs:
             return
-        assert 'rejected_messages' not in inputs
         # Find the first round's 'assistant'.
         messages = inputs['messages']
-        for i in range(len(messages), 0, -1):
-            message = messages[i - 1]
+        assert len(messages) > 0, f'messages: {messages}'
+        for idx in range(len(messages), 0, -1):
+            message = messages[idx - 1]
             if message['role'] in {'user', 'tool', 'tool_response'}:
                 break
-        rejected_response = inputs.pop('rejected_response')
-        if isinstance(rejected_response, str):
-            # Check that the response is different from the rejected_response.
-            if len(messages[i:]) == 1:
-                response = messages[i]['content']
-                assert rejected_response != response, (f'rejected_response: {rejected_response}, response: {response}')
-            rejected_response = [{'role': 'assistant', 'content': rejected_response}]
-        assert isinstance(rejected_response, list), f'rejected_response: {rejected_response}'
-        inputs['rejected_messages'] = deepcopy(messages[:i]) + rejected_response
+        rejected_response = inputs['rejected_response']
+        if isinstance(rejected_response, list) and rejected_response and isinstance(rejected_response[0], str):
+            for i, rejected in enumerate(rejected_response[1:], start=1):
+                inputs[f'rejected_response{i}'] = rejected
+            inputs[f'rejected_response'] = rejected_response[0]
+
+        i = 0
+        while True:
+            suffix = '' if i == 0 else str(i)
+            key = f'rejected_response{suffix}'
+            if key not in inputs:
+                break
+            value = inputs.pop(key)
+            if isinstance(value, str):
+                # Check that the response is different from the rejected_response.
+                if len(messages[i:]) == 1:
+                    response = messages[i]['content']
+                    assert value != response, (f'rejected_response: {value}, response: {response}')
+                value = [{'role': 'assistant', 'content': value}]
+            assert isinstance(value, list), f'rejected_messages: {value}'
+            inputs[f'rejected_messages{suffix}'] = deepcopy(messages[:idx]) + value
+            i += 1
 
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any]) -> 'TemplateInputs':

@@ -334,9 +334,10 @@ class Template(ProcessorMixin):
             return model
 
     def _rlhf_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
-        margin = inputs.chosen.margin
-        chosen_encoded = self._encode_truncated(inputs.chosen)
-        rejected_encoded = self._encode_truncated(inputs.rejected)
+        chosen = inputs.chosen[0]
+        margin = chosen.margin
+        chosen_encoded = self._encode_truncated(chosen)
+        rejected_encoded = self._encode_truncated(inputs.rejected[0])
 
         encoded = {}
         for prefix in ['chosen', 'rejected']:
@@ -349,7 +350,7 @@ class Template(ProcessorMixin):
 
     def _kto_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
         encoded = self._rlhf_encode(inputs)
-        encoded['label'] = bool(inputs.chosen.label)
+        encoded['label'] = bool(inputs.chosen[0].label)
         return encoded
 
     def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -362,10 +363,12 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _compat_rejected_response(inputs: TemplateInputs) -> StdTemplateInputs:
-        chosen = inputs.chosen
+        chosen = inputs.chosen[0]
         rejected_response = None
         if inputs.rejected:
-            rejected_response = inputs.rejected.messages
+            rejected_response = []
+            for rejected in inputs.rejected:
+                rejected_response.append(rejected.messages[-1]['content'])
         chosen.rejected_response = rejected_response
         return chosen
 
@@ -497,16 +500,14 @@ class Template(ProcessorMixin):
             inputs = asdict(inputs)
 
         if isinstance(inputs, dict):
-            inputs = TemplateInputs.from_dict(inputs)
             if self.task_type == 'causal_lm' and not self.is_training:
-                InferRequest.remove_response(inputs.chosen.messages)
+                InferRequest.remove_response(inputs['messages'])
+            inputs = TemplateInputs.from_dict(inputs)
         elif isinstance(inputs, TemplateInputs):
             inputs = deepcopy(inputs)
         assert isinstance(inputs, TemplateInputs)
-        for key in ['chosen', 'rejected']:
-            self._preprocess_inputs(getattr(inputs, key))
 
-        chosen = inputs.chosen
+        chosen = inputs.chosen[0]
         if self.task_type == 'causal_lm':
             if self.mode in {'train', 'pt', 'vllm', 'lmdeploy', 'sglang'}:
                 encoded = self._encode_truncated(chosen)
@@ -1196,6 +1197,7 @@ class Template(ProcessorMixin):
         return input_ids, labels, loss_mask
 
     def _encode_truncated(self, inputs: StdTemplateInputs):
+        self._preprocess_inputs(inputs)
         if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
             encoded = Template._encode(self, inputs)
             keys = ['images', 'audios', 'videos']
