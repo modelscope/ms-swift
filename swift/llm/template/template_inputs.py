@@ -163,6 +163,15 @@ class StdTemplateInputs:
         if self.audios and not isinstance(self.audios, (list, tuple)):
             self.audios = [self.audios]
 
+    def to_history(self):
+        if not self.messages:
+            return None
+        return messages_to_history(self.messages)
+
+    @property
+    def is_multimodal(self):
+        return bool(self.images or self.audios or self.videos or self.objects)
+
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any]) -> 'StdTemplateInputs':
         inputs = deepcopy(inputs)
@@ -240,22 +249,9 @@ class StdTemplateInputs:
             message['content'] = new_content
         return res
 
-    def to_history(self):
-        if not self.messages:
-            return None
-        return messages_to_history(self.messages)
-
-    @property
-    def is_multimodal(self):
-        return bool(self.images or self.audios or self.videos or self.objects)
-
 
 @dataclass
 class TemplateInputs:
-    """The training functionality has been added on top of the InferRequest.
-
-    objects: Used for grounding tasks in a general format.
-    """
     chosen: StdTemplateInputs
     rejected: Optional[StdTemplateInputs] = None
 
