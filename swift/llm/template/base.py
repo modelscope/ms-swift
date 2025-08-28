@@ -360,7 +360,18 @@ class Template(ProcessorMixin):
                 encoded.pop(k, None)
         return encoded
 
-    def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+    @staticmethod
+    def _compat_rejected_response(inputs: TemplateInputs) -> StdTemplateInputs:
+        chosen = inputs.chosen
+        rejected_response = None
+        if inputs.rejected:
+            rejected_response = inputs.rejected.messages
+        chosen.rejected_response = rejected_response
+        return chosen
+
+    def _embedding_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
+        # TODO: refactor
+        inputs = self._compat_rejected_response(inputs)
         _encoded = {}
         labels = []
         inference = len(inputs.messages) == 1
@@ -423,7 +434,9 @@ class Template(ProcessorMixin):
             _encoded.pop('labels', None)
         return _encoded
 
-    def _reranker_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+    def _reranker_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
+        # TODO: refactor
+        inputs = self._compat_rejected_response(inputs)
         _encoded = {}
         labels = []
 
