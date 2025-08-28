@@ -334,7 +334,7 @@ class Template(ProcessorMixin):
             return model
 
     def _rlhf_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
-        chosen = inputs.chosen[0]
+        chosen = inputs.chosen
         margin = chosen.margin
         chosen_encoded = self._encode_truncated(chosen)
         rejected_encoded = self._encode_truncated(inputs.rejected[0])
@@ -350,7 +350,7 @@ class Template(ProcessorMixin):
 
     def _kto_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
         encoded = self._rlhf_encode(inputs)
-        encoded['label'] = bool(inputs.chosen[0].label)
+        encoded['label'] = bool(inputs.chosen.label)
         return encoded
 
     def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -361,20 +361,8 @@ class Template(ProcessorMixin):
                 encoded.pop(k, None)
         return encoded
 
-    @staticmethod
-    def _compat_rejected_response(inputs: TemplateInputs) -> StdTemplateInputs:
-        chosen = inputs.chosen[0]
-        rejected_response = None
-        if inputs.rejected:
-            rejected_response = []
-            for rejected in inputs.rejected:
-                rejected_response.append(rejected.messages[-1]['content'])
-        chosen.rejected_response = rejected_response
-        return chosen
-
     def _embedding_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
-        # TODO: refactor
-        inputs = self._compat_rejected_response(inputs)
+        inputs = inputs.chosen  # TODO: refactor
         _encoded = {}
         labels = []
         inference = len(inputs.messages) == 1
@@ -438,8 +426,7 @@ class Template(ProcessorMixin):
         return _encoded
 
     def _reranker_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
-        # TODO: refactor
-        inputs = self._compat_rejected_response(inputs)
+        inputs = inputs.chosen  # TODO: refactor
         _encoded = {}
         labels = []
 
@@ -507,7 +494,7 @@ class Template(ProcessorMixin):
             inputs = deepcopy(inputs)
         assert isinstance(inputs, TemplateInputs)
 
-        chosen = inputs.chosen[0]
+        chosen = inputs.chosen
         if self.task_type == 'causal_lm':
             if self.mode in {'train', 'pt', 'vllm', 'lmdeploy', 'sglang'}:
                 encoded = self._encode_truncated(chosen)

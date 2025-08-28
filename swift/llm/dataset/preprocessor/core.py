@@ -3,6 +3,7 @@ import ast
 import os
 from collections import Counter
 from contextlib import contextmanager
+from itertools import chain
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -18,15 +19,18 @@ DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 logger = get_logger()
 
+_pair_keys = ['messages', 'images', 'videos', 'audios', 'tools', 'objects']
+
 
 class RowPreprocessor:
-    _pair_keys = ['messages', 'images', 'videos', 'audios', 'tools', 'objects']
-    standard_keys = _pair_keys + [f'rejected_{k}' for k in _pair_keys] + [
-        'rejected_response',
-        'label',
-        'channel',
-        'margin',
-    ]
+    standard_keys = _pair_keys + list(
+        chain.from_iterable([f'{prefix}_{k}' for k in _pair_keys]
+                            for prefix in ['rejected', 'positive', 'negative'])) + [
+                                'rejected_response',
+                                'label',
+                                'channel',
+                                'margin',
+                            ]
 
     def __init__(self,
                  *,
@@ -245,11 +249,18 @@ class RowPreprocessor:
         def _new_init(self, schema=None, features=None, *args, **kwargs):
 
             if features is not None:
+                messages_feature = [{
+                    'role': Value(dtype='string'),
+                    'content': Value(dtype='string'),
+                }]
                 features['messages'] = [{
                     'role': Value(dtype='string'),
                     'content': Value(dtype='string'),
                     'loss': Value(dtype='float64'),
                 }]
+                features['rejected_messages'] = messages_feature
+                features['positive_messages'] = [messages_feature]
+                features['negative_messages'] = [messages_feature]
                 features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
                 features['objects'] = {
                     'ref': Sequence(feature=Value(dtype='string'), length=-1),
