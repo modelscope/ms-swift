@@ -300,7 +300,7 @@ class TemplateInputs:
         if isinstance(rejected_response, list) and rejected_response and isinstance(rejected_response[0], str):
             for i, rejected in enumerate(rejected_response[1:], start=1):
                 inputs[f'rejected_response{i}'] = rejected
-            inputs[f'rejected_response'] = rejected_response[0]
+            inputs['rejected_response'] = rejected_response[0]
 
         i = 0
         while True:
