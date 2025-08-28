@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import json
 from PIL import Image
@@ -306,8 +306,8 @@ class TemplateInputs:
         assert isinstance(rejected_response, str), f'rejected_response: {rejected_response}'
         # Check that the response is different from the rejected_response.
         if isinstance(rejected_response, str):
-            if len(messages[i:]) == 1:
-                response = messages[i]['content']
+            if len(messages[idx:]) == 1:
+                response = messages[idx]['content']
                 assert rejected_response != response, (f'rejected_response: {rejected_response}, response: {response}')
             rejected_response = [{'role': 'assistant', 'content': rejected_response}]
         inputs['rejected_messages'] = deepcopy(messages[:idx]) + rejected_response

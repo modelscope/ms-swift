@@ -518,6 +518,8 @@ class Template(ProcessorMixin):
             encoded = self._embedding_encode(inputs)
         elif self.task_type in {'reranker', 'generative_reranker'}:
             encoded = self._reranker_encode(inputs)
+        else:
+            raise ValueError(f'task_type: {self.task_type} is not supported.')
 
         if chosen.channel is not None:
             encoded['channel'] = chosen.channel
@@ -1095,6 +1097,7 @@ class Template(ProcessorMixin):
             prefix = template_meta.system_prefix
         self._concat_context_list(prefix, res_context_list, res_context_types, system=system)
 
+        assert len(inputs.messages) > 0, f'inputs.messages: {inputs.messages}'
         n_round = len(inputs.messages) // 2
         for i, (query_message, response_message) in enumerate(zip(inputs.messages[::2], inputs.messages[1::2])):
             query_role, query = query_message['role'], query_message['content']
@@ -1414,6 +1417,8 @@ class Template(ProcessorMixin):
             res = self._embedding_data_collator(batch, padding_to=padding_to)
         elif self.task_type in {'reranker', 'generative_reranker'}:
             res = self._reranker_data_collator(batch, padding_to=padding_to)
+        else:
+            raise ValueError(f'task_type: {self.task_type} is not supported.')
         if not self.remove_unused_columns:
             extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]
             extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
