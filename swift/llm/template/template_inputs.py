@@ -165,7 +165,8 @@ class StdTemplateInputs:
         if self.audios and not isinstance(self.audios, (list, tuple)):
             self.audios = [self.audios]
         if self.rejected_response:
-            assert isinstance(self.rejected_response, list) and isinstance(self.rejected_response[0], str)
+            assert isinstance(self.rejected_response, list) and all(
+                isinstance(item, str) for item in self.rejected_response)
 
     def to_history(self):
         if not self.messages:

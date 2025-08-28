@@ -236,8 +236,6 @@ class Template(ProcessorMixin):
         self,
         inputs: StdTemplateInputs,
     ) -> None:
-        if inputs is None:
-            return
         self._preprocess_function_call(inputs)
         if self.model_meta.is_multimodal:
             self._replace_image_tags(inputs)
