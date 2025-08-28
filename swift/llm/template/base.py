@@ -337,7 +337,7 @@ class Template(ProcessorMixin):
         chosen = inputs.chosen
         margin = chosen.margin
         chosen_encoded = self._encode_truncated(chosen)
-        rejected_encoded = self._encode_truncated(inputs.rejected[0])
+        rejected_encoded = self._encode_truncated(inputs.rejected)
 
         encoded = {}
         for prefix in ['chosen', 'rejected']:
