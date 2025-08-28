@@ -299,8 +299,10 @@ class TemplateInputs:
         cls._use_rejected_messages(inputs)
         kwargs = {}
         for prefix in ['chosen', 'rejected']:
-            startswith_rejected = prefix == 'rejected'
-            std_inputs = {k: v for k, v in inputs.items() if k.startswith('rejected') == startswith_rejected}
+            if prefix == 'rejected':
+                std_inputs = {k[len('rejected_'):]: v for k, v in inputs.items() if k.startswith('rejected_')}
+            else:
+                std_inputs = {k: v for k, v in inputs.items() if not k.startswith('rejected_')}
             if std_inputs:
                 kwargs[prefix] = std_inputs
 

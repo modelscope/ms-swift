@@ -333,17 +333,10 @@ class Template(ProcessorMixin):
         else:
             return model
 
-    def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        margin = inputs.margin
-        chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
-
-        assert chosen_inputs.rejected_response or chosen_inputs.rejected_images, f'inputs: {inputs}'
-        if chosen_inputs.rejected_response:
-            rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
-        if chosen_inputs.rejected_images:
-            rejected_inputs.images = chosen_inputs.rejected_images
-        chosen_encoded = self._encode_truncated(chosen_inputs)
-        rejected_encoded = self._encode_truncated(rejected_inputs)
+    def _rlhf_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
+        margin = inputs.chosen.margin
+        chosen_encoded = self._encode_truncated(inputs.chosen)
+        rejected_encoded = self._encode_truncated(inputs.rejected)
 
         encoded = {}
         for prefix in ['chosen', 'rejected']:
@@ -354,10 +347,9 @@ class Template(ProcessorMixin):
             encoded['margin'] = float(margin)
         return encoded
 
-    def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        label, inputs.label = inputs.label, None
+    def _kto_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
         encoded = self._rlhf_encode(inputs)
-        encoded['label'] = bool(label)
+        encoded['label'] = bool(inputs.chosen.label)
         return encoded
 
     def _gkd_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -508,7 +500,7 @@ class Template(ProcessorMixin):
             elif self.mode == 'rlhf':
                 encoded = self._rlhf_encode(inputs)
             elif self.mode == 'kto':
-                encoded = self._kto_encode(chosen)
+                encoded = self._kto_encode(inputs)
             elif self.mode == 'gkd':
                 encoded = self._gkd_encode(chosen)
         elif self.task_type == 'seq_cls':
