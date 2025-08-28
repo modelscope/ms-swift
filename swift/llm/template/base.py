@@ -1143,7 +1143,7 @@ class Template(ProcessorMixin):
                     if isinstance(stop_word, str))
                 # self.is_training needed because we may want to continue generation from
                 # the current response
-                if self.is_training and not sep_token or self.task_type == 'embedding' and not endswith_stop_words:
+                if (self.is_training and not sep_token or self.task_type == 'embedding') and not endswith_stop_words:
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
             elif template_meta.response_prefix:
