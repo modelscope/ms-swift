@@ -1226,7 +1226,7 @@ class ClevrPreprocessor(ResponsePreprocessor):
 
 register_dataset(
     DatasetMeta(
-        ms_dataset_id='okwinds/clevr_cogen_a_train',
+        ms_dataset_id='AI-ModelScope/clevr_cogen_a_train',
         hf_dataset_id='leonardPKU/clevr_cogen_a_train',
         preprocess_func=ClevrPreprocessor(),
         tags=['qa', 'math', 'vision', 'grpo']))

@@ -6,7 +6,7 @@ binpacking
 charset_normalizer
 cpm_kernels
 dacite
-datasets>=3.0,<3.4
+datasets>=3.0,<4.0
 einops
 fastapi
 gradio>=3.40.0
