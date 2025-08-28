@@ -96,6 +96,15 @@ class RowPreprocessor:
             elif isinstance(mm_data, str):
                 row[key] = [mm_data]
 
+    @staticmethod
+    def _check_rejected_response(row: Dict[str, Any]) -> None:
+        if 'rejected_response' in row:
+            messages = row['messages']
+            rejected_response = row['rejected_response']
+            if (rejected_response is None
+                    or isinstance(rejected_response, str) and rejected_response == messages[-1]['content']):
+                raise ValueError(f'rejected_response: {rejected_response}')
+
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         raise NotImplementedError
 
@@ -172,6 +181,7 @@ class RowPreprocessor:
                     row = [row]
                 for r in row:
                     self._check_objects(r)
+                    self._check_rejected_response(r)
                     self._check_messages(r)
                     self._cast_mm_data(r)
             except Exception as e:
