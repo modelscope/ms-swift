@@ -308,7 +308,7 @@ class TemplateInputs:
         if isinstance(rejected_response, str):
             if len(messages[idx:]) == 1:
                 response = messages[idx]['content']
-                assert rejected_response != response, (f'rejected_response: {rejected_response}, response: {response}')
+                assert rejected_response != response, f'rejected_response: {rejected_response}, response: {response}'
             rejected_response = [{'role': 'assistant', 'content': rejected_response}]
         inputs['rejected_messages'] = deepcopy(messages[:idx]) + rejected_response
         # Supplement additional key-value pairs
