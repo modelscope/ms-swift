@@ -34,3 +34,4 @@ swift sft \
     --attn_impl flash_attn \
     --padding_free true \
     --save_only_model true
+    

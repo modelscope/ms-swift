@@ -78,7 +78,6 @@ swift deploy \
 | data_0.1.2_visual_toolbox_v2.parquet     | vstar                 | vl_agent.compute_score           | True (image_zoom_in_tool)  |
 | data_thinklite_reasoning_acc.parquet     | thinklite_eureka      | vl_agent.compute_score_math      | False           |
 
-
 **注意**：多模态大模型在处理图像输入时，可能会对图像进行预处理（例如受 max_pixels 参数限制的裁剪或缩放等操作）。当调用图像放大工具 image_zoom_in_tool 时，模型会根据输入图像输出裁剪后的 bbox。因此，在调用图像放大工具时，需要确保输入的是经过预处理后的图像。示例代码展示了 Qwen2.5-VL 系列模型的实现方式：
 
 ```python

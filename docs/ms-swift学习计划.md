@@ -130,23 +130,32 @@ pre-commit install
 
 三、动作：
 
-1、训练与推理：
+1、训练：train
 
-```
-\# 训练（示例取自 README 的 Quick Start，按需替换模型/数据集）
-
-swift sft \
-
- --model Qwen/Qwen2.5-7B-Instruct \
-
- --train_type lora \
-
- --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#200' \
-
- --num_train_epochs 1 --per_device_train_batch_size 1 \
-
- --torch_dtype bfloat16
-```
+| submodule             | status |
+| --------------------- | ------ |
+| tuners                | DONE   |
+| qlora                 | DONE   |
+| pretrain              | DONE   |
+| streaming             | DONE   |
+| think_model           | DONE   |
+| sequence_parallel     | DONE   |
+| seq_cls               | DONE   |
+| rlhf                  | DONE   |
+| rft                   | DONE   |
+| reranker              | DONE   |
+| qlora                 | DONE   |
+| predict_with_generate | DONE   |
+| plugins               | DONE   |
+| padding_free          | DONE   |
+| packing               | DONE   |
+| optimizer             | DONE   |
+| new_special_tokens    | DONE   |
+| multimodal            | DONE   |
+| multi-node            | DONE   |
+| multi-gpu             | DONE   |
+| moe                   | DONE   |
+| megatron              | ING    |
 
 2、推理
 

@@ -1,6 +1,6 @@
 # Instructions
 
-The example provides instructions for using SWIFT for training, inference, deployment, evaluation, and quantization. By default, the model will be downloaded from the ModelScope community.
+The example provides instructions for using SWIFT for `training, inference, deployment, evaluation, and quantization`. By default, the model will be downloaded from the ModelScope community.
 
 If you want to use the Huggingface community, you can change the command line like this:
 

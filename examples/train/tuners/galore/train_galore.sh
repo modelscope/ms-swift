@@ -15,4 +15,4 @@ swift sft \
     --model_author swift \
     --model_name swift-robot \
     --use_galore true \
-    --galore_optim_per_parameter true
+    --galore_optim_per_parameter true 
