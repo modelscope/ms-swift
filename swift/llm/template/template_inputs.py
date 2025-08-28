@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import json
 from PIL import Image
@@ -264,7 +264,7 @@ class TemplateInputs:
                 default_val[k] = val
 
         for key in ['chosen', 'rejected']:
-            value_dict = getattr(self, key, None)
+            value_dict = getattr(self, key)
             if isinstance(value_dict, list):
                 continue
             i = 0
@@ -311,9 +311,9 @@ class TemplateInputs:
             value = inputs.pop(key)
             if isinstance(value, str):
                 # Check that the response is different from the rejected_response.
-                if len(messages[i:]) == 1:
-                    response = messages[i]['content']
-                    assert value != response, (f'rejected_response: {value}, response: {response}')
+                if len(messages[idx:]) == 1:
+                    response = messages[idx]['content']
+                    assert value != response, f'rejected_response: {value}, response: {response}'
                 value = [{'role': 'assistant', 'content': value}]
             assert isinstance(value, list), f'rejected_messages: {value}'
             inputs[f'rejected_messages{suffix}'] = deepcopy(messages[:idx]) + value
