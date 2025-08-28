@@ -321,11 +321,11 @@ class VllmEngine(InferEngine):
                 media_data = inputs.get(key) or []
                 if media_data:
                     if self._version_ge('0.6'):
-                        mm_data = {key.rstrip('s'): media_data[0] if len(media_data) == 1 else media_data}
+                        mm_data[key.rstrip('s')] = media_data[0] if len(media_data) == 1 else media_data
                     else:
                         assert len(media_data) == 1, (
                             f'The current version of vllm only supports single {key}. Please upgrade to vllm >= 0.6.0')
-                        mm_data = {key.rstrip('s'): media_data[0]}
+                        mm_data[key.rstrip('s')] = media_data[0]
             if mm_data:
                 llm_inputs['multi_modal_data'] = mm_data
             mm_processor_kwargs = inputs.get('mm_processor_kwargs')
