@@ -263,12 +263,13 @@ class RowPreprocessor:
                     'role': Value(dtype='string'),
                     'content': Value(dtype='string'),
                 }]
-                features['messages'] = [{
+                messages_feature_with_loss = [{
                     'role': Value(dtype='string'),
                     'content': Value(dtype='string'),
                     'loss': Value(dtype='float64'),
                 }]
-                features['rejected_messages'] = messages_feature
+                features['messages'] = messages_feature_with_loss
+                features['rejected_messages'] = messages_feature_with_loss
                 features['positive_messages'] = [messages_feature]
                 features['negative_messages'] = [messages_feature]
                 features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
