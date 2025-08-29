@@ -232,6 +232,13 @@ class Template(ProcessorMixin):
             else:
                 i += 1
 
+    def _preprocess_inputs_reranker(
+        self,
+        inputs: StdTemplateInputs,
+    ) -> None:
+        # TODO: remove
+        return
+
     def _preprocess_inputs(
         self,
         inputs: StdTemplateInputs,
@@ -425,6 +432,7 @@ class Template(ProcessorMixin):
 
     def _reranker_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
         inputs = inputs.chosen  # TODO: refactor
+        self._preprocess_inputs_reranker(inputs)
         _encoded = {}
         labels = []
 

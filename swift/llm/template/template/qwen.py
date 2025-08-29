@@ -71,8 +71,8 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_sys
 class Qwen3RerankerTemplate(Template):
     instruction = 'Given a web search query, retrieve relevant passages that answer the query'
 
-    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
-        super()._preprocess_inputs(inputs)
+    def _preprocess_inputs_reranker(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs_reranker(inputs)
         query = inputs.messages[-2]['content']
         user_message = '<Instruct>: ' + self.instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: {doc}'
         inputs.messages[-2]['content'] = user_message
