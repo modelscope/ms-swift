@@ -10,13 +10,14 @@ import torch
 from transformers.utils.versions import require_version
 
 from swift.llm.argument.base_args import to_abspath
-from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
+from swift.utils import get_current_device, get_dist_setting, get_logger, is_master, json_parse_to_dict
 
 logger = get_logger()
 
 
 @dataclass
 class RLHFMegatronArgumentsMixin:
+    rlhf_type: Literal['dpo', 'grpo'] = 'dpo'
     ref_load: Optional[str] = None
     ref_adapter_load: Optional[str] = None
 
@@ -26,6 +27,141 @@ class RLHFMegatronArgumentsMixin:
     label_smoothing: float = 0.
     f_divergence_type: str = 'reverse_kl'
     loss_type: str = 'sigmoid'
+
+    # ===========================  GRPO  ===========================
+    # ───────────────────────────  Sampling  ───────────────────────────
+    epsilon: float = 0.2
+    epsilon_high: Optional[float] = None
+    delta: Optional[float] = None
+    top_k: int = 50
+    top_p: float = 0.9
+    repetition_penalty: float = 1.
+    # ───────────────────────────  VLLM  ───────────────────────────
+    use_vllm: bool = False
+    vllm_mode: Literal['server', 'colocate'] = 'colocate'
+    # ──────────────  Internal VLLM (colocate)  ──────────────
+    vllm_enable_prefix_caching: bool = True
+    vllm_gpu_memory_utilization: float = 0.9
+    vllm_tensor_parallel_size: int = 1
+    vllm_max_model_len: Optional[int] = None
+    vllm_enforce_eager: bool = False
+    vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
+    vllm_disable_cascade_attn: bool = False
+    sleep_level: Literal[0, 1, 2] = 0
+
+    # ──────────────  External VLLM (server)  ──────────────
+    vllm_server_base_url: Optional[List[str]] = None
+    vllm_server_host: Optional[List[str]] = None
+    vllm_server_port: List[int] = field(default_factory=lambda: [8000])
+    vllm_server_timeout: float = 240.0
+    vllm_client: Optional[object] = field(init=False, default=None)
+
+    # ───────────────────────────  Reward  ───────────────────────────
+    # see details in swift/plugin/orm.py
+    # cosine reward, https://arxiv.org/abs/2502.03373
+    cosine_min_len_value_wrong: float = -0.5  # r^w_0 in paper, Reward for wrong answers with zero completion length.
+    cosine_max_len_value_wrong: float = 0.0  # r^w_L in paper, Reward for wrong answers with max completion length.
+    cosine_min_len_value_correct: float = 1.0  # r^c_0 in paper, Reward for correct answers with zero completion length.
+    cosine_max_len_value_correct: float = 0.5  # r^c_L in paper, Reward for correct answers with max completion length.
+    cosine_max_len: Optional[int] = None  # Lmax in paper, default equal to max_completion_length
+    # repetition penalty, https://arxiv.org/abs/2502.03373
+    repetition_n_grams: int = 3
+    repetition_max_penalty: float = -1.0
+    # soft_overlong, https://arxiv.org/abs/2503.14476
+    soft_max_length: Optional[int] = None
+    soft_cache_length: Optional[int] = None
+
+    reward_model: Optional[List[str]] = None
+    reward_model_plugin: Optional[List[str]] = None
+
+    # ───────────────────────────  Not Supported Yet  ───────────────────────────
+    # sync ref model
+    sync_ref_model: bool = False
+    ref_model_sync_steps: int = 512
+    ref_model_mixup_alpha: float = 0.6
+
+    async_generate: bool = False
+
+    move_model_batches: Optional[int] = None
+    offload_optimizer: bool = False
+    offload_model: bool = False
+    gc_collect_after_offload: bool = False  # deprecated
+
+    # multi turn
+    multi_turn_func: Optional[str] = None  # deprecated
+    multi_turn_scheduler: Optional[str] = None
+    max_turns: Optional[int] = None
+    completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
+    vllm_server_pass_dataset: bool = False
+
+    # DAPO, https://arxiv.org/abs/2503.14476
+    dynamic_sample: bool = False
+    max_resample_times: int = 3
+    overlong_filter: bool = False
+
+    # Dr. GRPO, https://arxiv.org/abs/2503.20783
+    scale_rewards: bool = True
+
+    # entropy
+    log_entropy: bool = False
+    # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
+    top_entropy_quantile: float = 1.0
+
+    # GSPO https://www.arxiv.org/abs/2507.18071
+    importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
+
+    wandb_log_unique_prompts: Optional[bool] = None
+    generation_batch_size: Optional[int] = None
+    steps_per_generation: Optional[int] = None
+
+    num_iterations: int = 1
+
+    # dataset
+    dataset_shuffle: Optional[bool] = True
+
+    def __post_init__(self):
+        if self.rlhf_type == 'grpo':
+            self._init_grpo()
+        super().__post_init__()
+        if self.rlhf_type == 'grpo':
+            self._set_grpo_default()
+
+    def _set_grpo_default(self):
+        if self.beta is None:
+            self.beta = 0.04  # https://arxiv.org/abs/2402.03300
+
+    def _init_grpo(self):
+
+        def _init_external_vllm():
+            if self.rlhf_type != 'grpo' or (self.vllm_server_host is None and self.vllm_server_base_url is None):
+                return
+            from swift.trainers.rlhf_trainer.vllm_client import VLLMClient
+            if is_master():
+                logger.info('Start connecting to vLLM server')
+                self.vllm_client = VLLMClient(
+                    base_urls=self.vllm_server_base_url,
+                    hosts=self.vllm_server_host,
+                    server_ports=self.vllm_server_port,
+                    connection_timeout=self.vllm_server_timeout)
+                self.vllm_client.init_communicator(device=get_current_device())
+                logger.info('Connected to vLLM server')
+
+        def _check_not_supported():
+            # TODO: check
+            # bool
+            not_supported_args = [
+                'sync_ref_model',
+                'async_generate',
+            ]
+            for arg in not_supported_args:
+                if getattr(self, arg):
+                    raise ValueError(f'{arg} is not supported for Megatron-GRPO yet, please unset it.')
+            # else
+            if self.num_iterations > 1:
+                raise ValueError('num_iterations > 1 is not supported for Megatron-GRPO yet, please set it to 1.')
+
+        _init_external_vllm()
+        _check_not_supported()
 
 
 @dataclass

@@ -11,8 +11,8 @@ from megatron.training.checkpointing import load_checkpoint
 from megatron.training.utils import unwrap_model
 from torch.distributed.nn import all_reduce
 
-from swift.trainers import DPOTrainer
-from swift.utils import get_current_device, get_logger
+from swift.utils import get_current_device, get_logger, is_vllm_available
+from ..argument import MegatronRLHFArguments
 from .rlhf_base import MegatronRLHFTrainer
 from .trainer import MegatronTrainer
 from .utils import get_batch
@@ -20,25 +20,64 @@ from .utils import get_batch
 logger = get_logger()
 
 
-class DummyDPOTrainer(DPOTrainer):
-    # For reusing the dpo_loss function in TRL.
-    def __init__(self, args):
-        from trl.trainer import FDivergenceConstants
-        self.accelerator = namedtuple('Accelerator', ['device'])(device=get_current_device())
-        self.f_alpha_divergence_coef = 1.
-        self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: self.f_alpha_divergence_coef}
-        self.reference_free = args.reference_free
-        self.label_smoothing = args.label_smoothing
-        self.f_divergence_type = args.f_divergence_type
-        self.loss_type = args.loss_type
-        self.beta = args.beta
+class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
-
-class MegatronDPOTrainer(MegatronRLHFTrainer):
-
-    def __init__(self, args):
+    def __init__(self, args: MegatronRLHFArguments):
         super().__init__(args)
-        self.dummy_dpo_trainer = DummyDPOTrainer(args)
+        # TODO: init vllm
+        self.use_vllm = args.use_vllm
+        vllm_client = args.vllm_client
+        if self.use_vllm:
+            if not is_vllm_available():
+                raise ImportError('vLLM is not available and `use_vllm` is set to True. '
+                                  'Please install vLLM with `pip install vllm -U` to use it.')
+            if self.vllm_mode == 'server':
+                self.vllm_client: VLLMClient = vllm_client
+                if self.accelerator.is_main_process:
+                    self.vllm_client.get_engine_type()
+                    vllm_use_async_engine = [self.vllm_client.use_async_engine]
+                    use_gym_env = [self.vllm_client.use_gym_env]
+                    enable_multi_turn = [self.vllm_client.enable_multi_turn]
+                else:
+                    vllm_use_async_engine = [False]
+                    use_gym_env = [False]
+                    enable_multi_turn = [self.enable_server_multi_turn]
+                self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
+                self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
+                self.enable_server_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
+                if self.use_gym_env:
+                    self.reward_func_names = ['gym_reward']
+
+            elif self.vllm_mode == 'colocate':
+                if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:
+                    raise ValueError(
+                        f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}) must divide world size '
+                        f'({self.accelerator.num_processes}) evenly.')
+
+                if self.vllm_tensor_parallel_size > 1:
+                    # Create subgroups of ranks for TP, each group with `vllm_tensor_parallel_size` ranks.
+                    # For example, if world_size=8 and vllm_tensor_parallel_size=2 → groups: [0,1], [2,3], [4,5], [6,7]
+                    self.tp_group, _ = torch.distributed.new_subgroups_by_enumeration([
+                        list(range(i * self.vllm_tensor_parallel_size, (i + 1) * self.vllm_tensor_parallel_size))
+                        for i in range(self.accelerator.num_processes // self.vllm_tensor_parallel_size)
+                    ])
+                self.enable_offload = self.args.offload_model or self.args.offload_optimizer
+                context = self.offload_context if self.enable_offload else nullcontext
+
+                with context():
+                    self.engine = self.prepare_vllm(model)
+                    if self.args.sleep_level > 0:
+                        self.engine.engine.sleep(self.args.sleep_level)
+
+        else:
+            from swift.llm import PtEngine
+            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+
+    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
+        # prepare global batch data here
+        new_data_iterator = self._replace_data_iterator(data_iterator)
+        return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
+                                       config)
 
     def loss_func(self, output_tensor: torch.Tensor, *, ref_logps: torch.Tensor, labels: torch.Tensor,
                   packed_seq_params):

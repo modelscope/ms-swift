@@ -3,7 +3,7 @@ from typing import List, Optional, Union
 
 from swift.utils import get_logger
 from ..argument import MegatronRLHFArguments
-from ..trainers import MegatronDPOTrainer
+from ..trainers import MegatronDPOTrainer, MegatronGRPOTrainer
 from .sft import MegatronSft
 
 logger = get_logger()
@@ -17,6 +17,8 @@ class MegatronRLHF(MegatronSft):
         args = self.args
         if args.rlhf_type == 'dpo':
             trainer_cls = MegatronDPOTrainer
+        elif args.rlhf_type == 'grpo':
+            trainer_cls = MegatronGRPOTrainer
         else:
             raise ValueError(f'The current Megatron-SWIFT does not support rlhf_type: {args.rlhf_type}.')
         return trainer_cls(args)
