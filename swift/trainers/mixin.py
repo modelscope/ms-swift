@@ -764,7 +764,7 @@ class SwiftMixin:
             # roll back to fit compute_acc
             labels_output = torch.roll(labels_output, shifts=1, dims=1)
             preds = preds_output
-            labels = labels_output
+            labels = labels_output.int()
 
         metrics = compute_acc(
             preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
