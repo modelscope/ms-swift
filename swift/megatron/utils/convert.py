@@ -40,17 +40,23 @@ def _test_params_sum(model):
     logger.info(f'zero_count: {zero_count}')
 
 
-def _find_modules(model, recurse: bool = True):
+def _find_modules(model, recurse: bool = True, prefix='', ignore_modules=None):
+    ignore_modules = ignore_modules or []
+    for k in ignore_modules:
+        if prefix.startswith(k):
+            return []
+    else:
+        named_children = list(model.named_children())
+
     modules = []
-    children = list(model.children())
-    for module in children:
+    for n, module in named_children:
         if module.__class__ is nn.ModuleList:
-            modules += _find_modules(module, False)
+            modules += _find_modules(module, False, prefix=f'{prefix}{n}.', ignore_modules=ignore_modules)
         elif recurse:
-            modules += _find_modules(module)
+            modules += _find_modules(module, prefix=f'{prefix}{n}.', ignore_modules=ignore_modules)
         else:
             modules.append(module)
-    if not children:
+    if not named_children:
         modules.append(model)
     return modules
 
@@ -133,10 +139,10 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
 
     HfConfigFactory.set_model_config_attr(hf_model, 'use_cache', False)
     share_embedding = mg_model.share_embeddings_and_output_weights
-    if is_multimodal:
-        _, inputs = template.pre_forward_hook(hf_model, None, inputs)
-    language_model = deep_getattr(hf_model, template.model_meta.model_arch.language_model[0])
-    hf_modules = _find_modules(language_model)
+    model_arch = hf_model.model_meta.model_arch
+    ignore_modules = [] if model_arch is None else (model_arch.vision_tower + model_arch.aligner)
+
+    hf_modules = _find_modules(hf_model, ignore_modules=ignore_modules)
     with torch.inference_mode(), _model_cpu_forward_context(hf_modules, torch_dtype, share_embedding=share_embedding):
         hf_logits = hf_model(**inputs).logits
     hf_model = hf_model.to('cpu')
@@ -151,14 +157,14 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     # packed_seq_params = get_packed_seq_params(position_ids)
     # attention_mask = None
     mg_model.config.fp8 = None  # compat fp8
-    mg_modules = _find_modules(mg_model)
+    mg_modules = _find_modules(mg_model, ignore_modules=['visual'])
+    kwargs = {k: v for k, v in inputs.items() if k not in ['input_ids', 'attention_mask', 'labels']}
+    if 'position_ids' not in kwargs:
+        kwargs['position_ids'] = position_ids
     with torch.inference_mode(), _model_cpu_forward_context(
             mg_modules, mg_torch_dtype, 'cuda', share_embedding=share_embedding):
         mg_logits = mg_model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            packed_seq_params=packed_seq_params)
+            input_ids=input_ids, attention_mask=attention_mask, packed_seq_params=packed_seq_params, **kwargs)
 
     token_mean_diff = (mg_logits - hf_logits).abs().mean(dim=-1)
     mean_diff = token_mean_diff.mean().item()

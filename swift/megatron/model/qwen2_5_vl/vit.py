@@ -1,7 +1,7 @@
 from megatron.core.models.huggingface import HuggingFaceModule
 from megatron.training import get_args
 
-from swift.llm import get_model_tokenizer
+from swift.llm import get_model_tokenizer, to_device
 
 
 class Qwen2_5VL_Vit(HuggingFaceModule):
@@ -12,10 +12,59 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
         model_dir = args.model_info.model_dir
         model, _ = get_model_tokenizer(model_dir, return_dummy_model=True)
         self.model = model.visual
-        self.model.to_empty(device='cpu')
+        self.model_config = model.config
+        self.model.to_empty(device='cuda')
 
     def forward(self, *args, **kwargs):
         return self.model(*args, **kwargs)
 
-    def get_inputs_embeds(self, inputs_embeds, multimodal_data):
-        print()
+    def get_inputs_embeds(self, inputs_embeds, **kwargs):
+        input_ids = kwargs['input_ids']
+        pixel_values = kwargs.get('pixel_values')
+        pixel_values_videos = kwargs.get('pixel_values_videos')
+        image_grid_thw = kwargs.get('image_grid_thw')
+        video_grid_thw = kwargs.get('video_grid_thw')
+        dtype = self.model.dtype
+        if pixel_values is None and pixel_values_videos is None:  # plain-text
+            from PIL import Image
+            images = [Image.new('RGB', (32, 32), (0, 0, 0))]
+            media_inputs = self.processor.image_processor(images=images, return_tensors='pt')
+            device = input_ids.device
+            media_inputs = to_device(media_inputs, device)
+            pixel_values = media_inputs['pixel_values'].type(dtype)
+            image_embeds = self.model(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+            inputs_embeds += image_embeds.mean() * 0.
+        else:
+            if pixel_values is None:
+                pixel_values_mixed = pixel_values_videos
+                grid_thw = video_grid_thw
+            elif pixel_values_videos is None:
+                pixel_values_mixed = pixel_values
+                grid_thw = image_grid_thw
+            else:
+                pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
+                grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
+            pixel_values_mixed = pixel_values_mixed.type(dtype)
+            mixed_embeds = self.model(pixel_values_mixed, grid_thw=grid_thw)
+            if pixel_values is None:
+                image_embeds = None
+                video_embeds = mixed_embeds
+            elif pixel_values_videos is None:
+                image_embeds = mixed_embeds
+                video_embeds = None
+            else:
+                merge_length = self.processor.image_processor.merge_size**2
+                image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
+                image_embeds = mixed_embeds[:image_tokens]
+                video_embeds = mixed_embeds[image_tokens:]
+
+            if image_embeds is not None:
+                image_mask = (input_ids == self.model_config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
+
+            if video_embeds is not None:
+                video_mask = (input_ids == self.model_config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
+        return inputs_embeds

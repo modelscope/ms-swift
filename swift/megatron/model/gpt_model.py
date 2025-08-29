@@ -124,7 +124,6 @@ class GPTModel(McoreGPTModel):
         attention_mask: torch.Tensor = None,
         decoder_input: torch.Tensor = None,
         labels: torch.Tensor = None,
-        multimodal_data: Optional[Dict[str, Any]] = None,
         inference_params: InferenceParams = None,
         packed_seq_params: PackedSeqParams = None,
         extra_block_kwargs: dict = None,
@@ -150,7 +149,10 @@ class GPTModel(McoreGPTModel):
         elif self.pre_process:
             decoder_input = self.embedding(input_ids=input_ids, position_ids=position_ids)
             if self.visual is not None:
-                decoder_input = self.visual.get_inputs_embeds(decoder_input, multimodal_data)
+                kwargs.update({'input_ids': input_ids})
+                decoder_input = decoder_input.transpose(0, 1)
+                decoder_input = self.visual.get_inputs_embeds(decoder_input, **kwargs)
+                decoder_input = decoder_input.transpose(0, 1)
         else:
             # intermediate stage of pipeline
             # decoder will get hidden_states from encoder.input_tensor
