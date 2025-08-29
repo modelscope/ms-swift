@@ -247,6 +247,7 @@ class VllmArguments:
 
 @dataclass
 class GRPOArgumentsMixin(VllmArguments):
+    local_adapter_path: str = None
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
     delta: Optional[float] = None
