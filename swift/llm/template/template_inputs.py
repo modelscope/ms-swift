@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import json
 from PIL import Image
@@ -130,16 +131,6 @@ class RolloutInferRequest(InferRequest):
 
 
 @dataclass
-class TemplateInputs(InferRequest):
-    """The training functionality has been added on top of the InferRequest.
-
-    objects: Used for grounding tasks in a general format.
-    """
-    rejected_response: Optional[str] = None
-    label: Optional[bool] = None
-
-
-@dataclass
 class StdTemplateInputs:
     # only user/tool/assistant
     messages: List[Dict[str, str]]
@@ -147,19 +138,19 @@ class StdTemplateInputs:
     system: Optional[str] = None
     tools: Optional[List[Tool]] = None
 
-    rejected_response: Optional[str] = None
     label: Optional[int] = None
     channel: Optional[str] = None
 
     images: List[Union[str, Image.Image]] = field(default_factory=list)
-    audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
+    audios: List[str] = field(default_factory=list)
     objects: Dict[str, List[Any]] = field(default_factory=dict)
-    rejected_images: List[Union[str, Image.Image]] = field(default_factory=list)
 
     margin: Optional[float] = None  # for reward modeling
     mm_processor_kwargs: Dict[str, Any] = field(default_factory=dict)
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
+    # compat
+    rejected_response: Optional[List[str]] = None
 
     def __post_init__(self):
         self.image_idx = 0
@@ -173,8 +164,9 @@ class StdTemplateInputs:
             self.videos = [self.videos]
         if self.audios and not isinstance(self.audios, (list, tuple)):
             self.audios = [self.audios]
-        if self.rejected_images and not isinstance(self.rejected_images, (list, tuple)):
-            self.rejected_images = [self.rejected_images]
+        if self.rejected_response:
+            assert isinstance(self.rejected_response, list) and all(
+                isinstance(item, str) for item in self.rejected_response)
 
     def to_history(self):
         if not self.messages:
@@ -187,8 +179,9 @@ class StdTemplateInputs:
 
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any]) -> 'StdTemplateInputs':
+        inputs = deepcopy(inputs)
         kwargs = {}
-        for key in ['rejected_response', 'label', 'channel', 'margin']:
+        for key in ['label', 'channel', 'margin', 'rejected_response']:
             if key in inputs:
                 kwargs[key] = inputs[key]
         messages = inputs['messages']
@@ -233,7 +226,7 @@ class StdTemplateInputs:
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
-        res = {'images': [], 'audios': [], 'videos': [], 'rejected_images': []}
+        res = {'images': [], 'audios': [], 'videos': []}
         for message in messages:
             content = message['content']
             if isinstance(content, str):
@@ -260,3 +253,95 @@ class StdTemplateInputs:
                     res[f'{key}s'].append(value)
             message['content'] = new_content
         return res
+
+
+@dataclass
+class TemplateInputs:
+    chosen: StdTemplateInputs  # or Dict[str, Any]
+    rejected: Optional[StdTemplateInputs] = None
+    positive: List[StdTemplateInputs] = field(default_factory=list)  # or Dict[str, Any]
+    negative: List[StdTemplateInputs] = field(default_factory=list)
+
+    def __post_init__(self):
+        all_keys = set(f.name for f in fields(StdTemplateInputs))
+        for key in ['chosen', 'rejected', 'positive', 'negative']:
+            value_dict = getattr(self, key, None)
+            if not isinstance(value_dict, dict):
+                continue
+            if key in {'chosen', 'rejected'}:
+                kwargs = {}
+                for k in all_keys:
+                    val = value_dict.get(k)
+                    if val is None:
+                        continue
+                    kwargs[k] = val
+                setattr(self, key, StdTemplateInputs.from_dict(kwargs))
+            else:
+                res = []
+                for i in range(len(value_dict['messages'])):
+                    kwargs = {}
+                    for k in all_keys:
+                        val = value_dict.get(k)
+                        if val is None:
+                            continue
+                        kwargs[k] = val[i]
+                    res.append(StdTemplateInputs.from_dict(kwargs))
+                setattr(self, key, res)
+
+    @staticmethod
+    def _compat_rejected_response(inputs: Dict[str, Any]):
+        if 'rejected_response' not in inputs:
+            return
+        # Find the first round's 'assistant'.
+        messages = inputs['messages']
+        assert len(messages) > 0, f'messages: {messages}'
+        for idx in range(len(messages), 0, -1):
+            message = messages[idx - 1]
+            if message['role'] in {'user', 'tool', 'tool_response'}:
+                break
+
+        rejected_response = inputs.pop('rejected_response')
+        if isinstance(rejected_response, list) and rejected_response and isinstance(rejected_response[0], str):
+            inputs['rejected_response'] = rejected_response
+            return
+        assert isinstance(rejected_response, str), f'rejected_response: {rejected_response}'
+        # Check that the response is different from the rejected_response.
+        if isinstance(rejected_response, str):
+            if len(messages[idx:]) == 1:
+                response = messages[idx]['content']
+                assert rejected_response != response, f'rejected_response: {rejected_response}, response: {response}'
+            rejected_response = [{'role': 'assistant', 'content': rejected_response}]
+        inputs['rejected_messages'] = deepcopy(messages[:idx]) + rejected_response
+
+    @classmethod
+    def from_dict(cls, inputs: Dict[str, Any]) -> 'TemplateInputs':
+        inputs = deepcopy(inputs)
+
+        has_rejected_messages = inputs.get('rejected_messages') is not None
+        cls._compat_rejected_response(inputs)
+        rejected_response = inputs.pop('rejected_response', None)
+        kwargs = {}
+        non_chosen_keys = ['rejected', 'positive', 'negative']
+        for prefix in ['chosen'] + non_chosen_keys:
+            if prefix == 'chosen':
+                std_inputs = {
+                    k: v
+                    for k, v in inputs.items() if not any(k.startswith(f'{p}_') for p in non_chosen_keys)
+                }
+            else:
+                std_inputs = {k[len(f'{prefix}_'):]: v for k, v in inputs.items() if k.startswith(f'{prefix}_')}
+            if std_inputs:
+                kwargs[prefix] = std_inputs
+
+        if not has_rejected_messages and kwargs.get('rejected') is not None:
+            chosen = kwargs['chosen']
+            rejected = kwargs['rejected']
+            # Supplement additional key-value pairs
+            for k, chosen_v in chosen.items():
+                rejected_v = rejected.get(k)
+                if chosen_v is not None and rejected_v is None:
+                    rejected[k] = chosen_v
+        if rejected_response and 'chosen' in kwargs:
+            kwargs['chosen']['rejected_response'] = rejected_response
+
+        return cls(**kwargs)
