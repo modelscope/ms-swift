@@ -317,7 +317,7 @@ class TemplateInputs:
     def from_dict(cls, inputs: Dict[str, Any]) -> 'TemplateInputs':
         inputs = deepcopy(inputs)
 
-        has_rejected_mssages = inputs.get('rejected_messages') is not None
+        has_rejected_messages = inputs.get('rejected_messages') is not None
         cls._compat_rejected_response(inputs)
         rejected_response = inputs.pop('rejected_response', None)
         kwargs = {}
@@ -333,7 +333,7 @@ class TemplateInputs:
             if std_inputs:
                 kwargs[prefix] = std_inputs
 
-        if not has_rejected_mssages and kwargs.get('rejected') is not None:
+        if not has_rejected_messages and kwargs.get('rejected') is not None:
             chosen = kwargs['chosen']
             rejected = kwargs['rejected']
             # Supplement additional key-value pairs
