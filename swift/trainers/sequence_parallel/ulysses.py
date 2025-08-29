@@ -343,10 +343,14 @@ class SequenceParallel:
     def _pad(self, tensor, padding_value, dim=-1):
         """Pad tensor for sequence parallel"""
         length = tensor.shape[dim]
-        if length % self.world_size == 0:
+        if self.rp_world_size > 1:
+            world_size = self.world_size * 2
+        else:
+            world_size = self.world_size
+        if length % world_size == 0:
             return tensor
 
-        pad_num = self.world_size - (length % self.world_size)
+        pad_num = world_size - (length % world_size)
         if not isinstance(padding_value, torch.Tensor):
             # ids
             pad_shape = ((*tensor.shape[:dim], pad_num, *tensor.shape[dim + 1:]) if dim != -1 else

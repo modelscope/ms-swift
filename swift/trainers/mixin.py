@@ -839,21 +839,6 @@ class SwiftMixin:
             res_cu_seqlens[1:] -= position_ids.shape[0] + 1 - logits_to_keep
         return res_cu_seqlens
 
-    def get_batch_samples(self, *args, **kwargs):
-        res = super().get_batch_samples(*args, **kwargs)
-        from swift.trainers.sequence_parallel import sequence_parallel
-        if (self.template.sequence_parallel_size == 1 or 'Ulysses' == sequence_parallel.__class__.__name__
-                or 'RingAttention' == sequence_parallel.__class__.__name__):
-            # ulysses and ring attention split inputs in the model hook, so no need to gather num_items_in_batch
-            return res
-
-        batch_samples, num_items_in_batch = res
-        if num_items_in_batch is None:
-            num_items_in_batch = torch.tensor(0).to(args[2])
-        from swift.trainers.sequence_parallel import sequence_parallel
-        dist.all_reduce(num_items_in_batch, dist.ReduceOp.SUM, sequence_parallel.sp_group)
-        return batch_samples, num_items_in_batch
-
     @contextmanager
     def _patch_skip_first_batches(self):
         from transformers import trainer
