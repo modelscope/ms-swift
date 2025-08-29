@@ -23,7 +23,7 @@ class ClevrPreprocessor(ResponsePreprocessor):
 
 register_dataset(
     DatasetMeta(
-        ms_dataset_id='okwinds/clevr_cogen_a_train',
+        ms_dataset_id='AI-ModelScope/clevr_cogen_a_train',
         subsets=[
             SubsetDataset(
                 name='default',
@@ -139,7 +139,7 @@ swift rlhf \
     --vllm_server_port 8000 \
     --train_type full \
     --torch_dtype bfloat16 \
-    --dataset 'okwinds/clevr_cogen_a_train' \
+    --dataset 'AI-ModelScope/clevr_cogen_a_train' \
     --max_completion_length 1024 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 8 \

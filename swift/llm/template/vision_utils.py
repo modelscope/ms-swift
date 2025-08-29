@@ -112,6 +112,9 @@ def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
             content = requests.get(path, **request_kwargs).content
             res = BytesIO(content)
         elif os.path.exists(path) or (not path.startswith('data:') and len(path) <= 200):
+            ROOT_IMAGE_DIR = get_env_args('ROOT_IMAGE_DIR', str, None)
+            if ROOT_IMAGE_DIR is not None and not os.path.exists(path):
+                path = os.path.join(ROOT_IMAGE_DIR, path)
             path = os.path.abspath(os.path.expanduser(path))
             with open(path, 'rb') as f:
                 res = BytesIO(f.read())

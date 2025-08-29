@@ -61,8 +61,14 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 {"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}]}
 ```
 
+- You can control whether the loss is computed for specific parts of the model's response by adding the `"loss"` field (requires ms-swift >= 3.8). This field defaults to `None`. If `"loss"` is set to `true`, the corresponding content will contribute to the loss calculation (equivalent to a `loss_scale` of 1). If `"loss"` is set to `false`, the corresponding content will be excluded from loss computation. Note that this feature only takes effect for messages where `"role"` is `"assistant"`, and it has higher priority than the command-line argument `--loss_scale`. Example data format:
+
+```jsonl
+{"messages": [{"role": "user", "content": "Hello!"}, {"role": "assistant", "content": "Hi, how can I help you?", "loss": false}, {"role": "user", "content": "What is 1+1?"}, {"role": "assistant", "content": "It equals 2", "loss": true}]}
+```
+
 #### Channel Loss
-If you want to use channel loss, you need to set `--enable_channel_loss true` and add a "channel" field to your dataset. Channel loss is compatible with techniques such as packing and padding-free training.
+If you want to use channel loss, you need to set `--enable_channel_loss true` and add a "channel" field to your dataset. Channel loss is compatible with techniques such as packing, padding-free, and loss scaling.
 
 ```jsonl
 {"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}, {"role": "assistant", "content": "Tomorrow's weather will be sunny"}], "channel": "general"}
@@ -81,6 +87,20 @@ If you want to use channel loss, you need to set `--enable_channel_loss true` an
 The format of multimodal data should follow the specifications in [Multimodal Dataset](#multimodal), with additional columns such as `images` to represent other modality inputs. When it is necessary to associate different image information with preference data, the `rejected_images` field can be used to indicate the images related to the rejected responses. In the alignment dataset, at least one of `rejected_images` or `rejected_response` must be provided for each entry.
 
 > Note: RM additionally supports the margin column. For details, refer to the [RM documentation](../Instruction/RLHF.md#rm).
+
+Sure, you can also directly use `rejected_messages` instead of only providing `rejected_response` / `rejected_images` (requires ms-swift>=3.8), which offers greater flexibility (e.g., for multimodal or agent scenarios). In multimodal cases, if you use `rejected_messages`, you need to additionally provide fields such as `"rejected_images"`, `"rejected_audios"`, `"rejected_videos"`, etc. An example of the data format is as follows:
+
+```jsonl
+{"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a puppy."}], "rejected_images": ["kitten.png"]}
+{"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "rejected_images": ["puppy.png"]}
+```
+
+The above format is equivalent to:
+
+```jsonl
+{"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_response": "This is a puppy."}
+{"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_images": ["puppy.png"]}
+```
 
 #### KTO
 
