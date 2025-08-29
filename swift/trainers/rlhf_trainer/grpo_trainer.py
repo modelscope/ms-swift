@@ -350,7 +350,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.add_callback(AsyncGenerateCallback(self))
 
         if self.args.dynamic_sample or self.template.truncation_strategy == 'raise':
-            self.resample_dataset = deepcopy(self.train_dataset)
 
             def cyclic_iter(iterable):
                 while True:
@@ -814,9 +813,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @patch_profiling_decorator
     def _generate_and_score_completions(self, inputs: DataType) -> DataType:
-        # resample for overlong(> max_length) prompt data
+        # resample for encoding failed data when set truncation_strategy 'delete'
         if self.template.truncation_strategy == 'raise':
-            inputs = self.resample_truncated_inputs(inputs)
+            inputs = self.resample_encode_failed_inputs(inputs)
 
         inputs = self._generate_completions(inputs)
         total_advantages, rewards_std = self._score_completions(inputs)
@@ -2046,23 +2045,62 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             del self.engine.set_grpo_max_model_len
 
     @patch_profiling_decorator
-    def resample_truncated_inputs(self, inputs: DataType, n_try_fetch: int = 10) -> DataType:
+    def resample_encode_failed_inputs(self, inputs: DataType, n_try_fetch: int = 10) -> DataType:
+        """
+        Attempt to encode each input using the template. If encoding fails,
+        resample from a backup iterator until successful or until the maximum
+        number of retries is reached.
+
+        Args:
+            inputs (DataType): A list of input data samples, each containing a `messages` field.
+            n_try_fetch (int, optional): Maximum number of retries to fetch a new sample
+                when encoding fails. Defaults to 10.
+
+        Returns:
+            DataType: A list of successfully encoded input samples.
+
+        Raises:
+            RuntimeError: If encoding fails after `n_try_fetch` resampling attempts.
+        """
         template = self.template
+        last_messages = None
+        last_valid_data = None
+
         for i, data in enumerate(inputs):
+            # Skip samples with the same `messages` as the previous one.
+            # If the last sample was successfully encoded, reuse it.
+            if last_messages is not None and data['messages'] == last_messages:
+                if last_valid_data is not None:
+                    inputs[i] = last_valid_data
+                    continue
+
+            current_data = data
             n_try = 0
+
             while True:
                 try:
-                    template.encode(data)
-                    inputs[i] = data
+                    # Attempt to encode the current sample.
+                    template.encode(current_data)
+                    # If successful, store the result and update the last valid data.
+                    inputs[i] = current_data
+                    last_messages = current_data['messages']
+                    last_valid_data = current_data
                     break
+
                 except Exception as e:
-                    logger.warning(f'Encoding failed for one sample; initiating resample. {e}')
+                    # Encoding failed — attempt to resample a new input.
+                    logger.warning(f'Encoding failed for one sample; resampling a new input. {e}')
                     n_try += 1
+
+                    # Stop if the maximum retry limit is exceeded.
                     if n_try > n_try_fetch:
-                        raise RuntimeError('Failed to resample a valid data.',
-                                           'You can avoid this issue by increasing `max_length` or ',
-                                           'modifying the `truncation_strategy`.')
-                    data = next(self.truncated_resample_iterator)[0]
+                        raise RuntimeError('Failed to obtain a valid sample after multiple attempts. '
+                                           'Consider increasing `max_length` or adjusting the '
+                                           '`truncation_strategy` to avoid excessive truncation.')
+
+                    # Fetch a new sample from the resampling iterator.
+                    current_data = next(self.truncated_resample_iterator)[0]
+
         return inputs
 
     def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
