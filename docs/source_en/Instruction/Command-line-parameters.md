@@ -798,3 +798,4 @@ The meanings of the following parameters can be found in the example code [here]
 - LOG_LEVEL: The log level, default is 'INFO'. You can set it to 'WARNING', 'ERROR', etc.
 - SWIFT_DEBUG: When set to '1', the PtEngine will print the contents of input_ids and generate_ids during `engine.infer(...)`.
 - VLLM_USE_V1: Used to switch between V0 and V1 versions of vLLM.
+- ROOT_IMAGE_DIR: (ms-swift>=3.8) The root directory for image (multimodal) resources. By setting this parameter, relative paths in the dataset can be interpreted relative to `ROOT_IMAGE_DIR`. By default, paths are relative to the current working directory.
