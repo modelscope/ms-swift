@@ -791,9 +791,7 @@ class SwiftMixin:
         try:
             task_config_kwargs = dict(
                 model=f'model-step{self.state.global_step}',
-                model_args=dict(
-                    model_ref=model_key,
-                ),
+                model_args=dict(model_ref=model_key, ),
                 eval_type='swift_custom',
                 datasets=self.args.eval_dataset,
                 dataset_args=self.args.eval_dataset_args,
