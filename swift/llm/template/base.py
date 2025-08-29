@@ -1081,6 +1081,7 @@ class Template(ProcessorMixin):
         if n_round > 1 and not self.template_meta.support_multi_round:
             logger.warning_once(
                 'The template does not support multi-round chat. Only use the last round of the conversation.')
+            # TODO: Multimodal models may encounter image mismatch issues.
             inputs.messages = inputs.messages[-2:]
 
         res_context_list: List[Context] = []
