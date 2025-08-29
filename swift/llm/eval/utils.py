@@ -21,6 +21,22 @@ from evalscope.models.utils.openai import chat_choices_from_openai
 from ..infer import PtEngine, RequestConfig
 from ..template import InferRequest
 
+# Lightweight in-process registry to avoid putting heavyweight torch model objects
+# into evalscope taskConfig, which may causing OOM.
+_EVAL_MODEL_REGISTRY: Dict[str, Tuple[Any, Any]] = {}
+
+
+def register_eval_model(key: str, model: Any, template: Any) -> None:
+    _EVAL_MODEL_REGISTRY[key] = (model, template)
+
+
+def get_eval_model(key: str) -> Tuple[Optional[Any], Optional[Any]]:
+    return _EVAL_MODEL_REGISTRY.get(key, (None, None))
+
+
+def unregister_eval_model(key: str) -> None:
+    _EVAL_MODEL_REGISTRY.pop(key, None)
+
 
 @dataclass
 class BatchInferInput:
@@ -97,8 +113,13 @@ class EvalModel(ModelAPI):
             return value
 
         # Extract required model parameters
-        self.model = collect_model_arg('model')  # model path or identifier
-        self.template = collect_model_arg('template')  # conversation template
+        # Prefer lightweight registry reference to avoid passing torch model directly.
+        model_ref = collect_model_arg('model_ref')
+        if model_ref is not None:
+            self.model, self.template = get_eval_model(model_ref)
+        else:
+            self.model = collect_model_arg('model')  # torch model object or path/id
+            self.template = collect_model_arg('template')  # conversation template
 
         # Initialize the inference engine with batch support
         self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=self.config.batch_size)
