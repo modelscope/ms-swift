@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from argparse import ArgumentParser
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Type
 
 import torch.nn as nn
 from transformers import PretrainedConfig
@@ -20,6 +20,7 @@ class MegatronModelMeta:
     convert_hf_config: Callable[[PretrainedConfig], Dict[str, Any]]
     convert_mcore2hf: Callable[[nn.Module, nn.Module], None]
     convert_hf2mcore: Callable[[nn.Module, nn.Module], None]
+    visual: Optional[Type[nn.Module]] = None
 
     extra_args_provider: Optional[Callable[[ArgumentParser], ArgumentParser]] = None
 
