@@ -161,7 +161,7 @@ class Template(ProcessorMixin):
             with torch.device('meta'):
                 self.dummy_model = get_model_tokenizer(self.model_info.model_dir, return_dummy_model=True)[0]
 
-    def get_model(self):
+    def _get_model(self):
         if self.model is not None:
             return self.model
         return self.dummy_model
