@@ -475,8 +475,6 @@ class PtEngine(InferEngine):
         request_config = deepcopy(request_config)
         if template is None:
             template = self.default_template
-        if template.use_model:
-            template.model = self.model
 
         if self.model_info.task_type == 'causal_lm':
             template.set_mode('pt')
