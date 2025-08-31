@@ -185,7 +185,8 @@ class MegatronArguments(ExtraMegatronArguments):
     group_query_attention: Optional[bool] = None
     num_query_groups: Optional[int] = None
     max_position_embeddings: Optional[int] = None
-    position_embedding_type: Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none'] = 'rope'
+    position_embedding_type: Optional[Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none']] = None
+    mrope_section: Optional[List[int]] = None
     rotary_base: Optional[int] = None
     rotary_percent: float = 1.
     rotary_interleaved: Optional[bool] = None
@@ -380,6 +381,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.eval_interval = self.save_interval
         if self.seq_length is None:
             self.seq_length = self.max_position_embeddings
+        if self.position_embedding_type is None:
+            self.position_embedding_type = 'rope'
         if self.tensorboard_dir is None and self.save is not None:
             self.tensorboard_dir = f'{self.save}/runs'
         self._init_moe()

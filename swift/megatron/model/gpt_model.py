@@ -183,6 +183,13 @@ class GPTModel(McoreGPTModel):
                     rotary_seq_len,
                     packed_seq=packed_seq_params is not None and packed_seq_params.qkv_format == 'thd',
                 )
+        elif self.position_embedding_type in 'mrope':
+            if self.training or not self.config.flash_decode:
+                rotary_pos_emb = self.rotary_pos_emb(position_ids, self.mrope_section)
+            else:
+                # Flash decoding uses precomputed cos and sin for RoPE
+                raise NotImplementedError('Flash decoding uses precomputed cos and sin for RoPE, not implmented in '
+                                          'MultimodalRotaryEmbedding yet.')
         if ((self.config.enable_cuda_graph or self.config.flash_decode) and rotary_pos_cos is not None
                 and inference_params):
             sequence_len_offset = torch.tensor(

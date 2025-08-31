@@ -1,19 +1,39 @@
+from contextlib import contextmanager
+
+import torch
 from megatron.core.models.huggingface import HuggingFaceModule
 from megatron.training import get_args
 
 from swift.llm import get_model_tokenizer, to_device
 
 
+@contextmanager
+def patch_device_map_meta(model_cls):
+    __origin_init__ = model_cls.__init__
+
+    def __init__(self, *args, **kwargs):
+        with torch.device('meta'):
+            __origin_init__(self, *args, **kwargs)
+
+    model_cls.__init__ = __init__
+    try:
+        yield
+    finally:
+        model_cls.__init__ = __origin_init__
+
+
 class Qwen2_5VL_Vit(HuggingFaceModule):
 
     def __init__(self, config):
+        from transformers.models.qwen2_5_vl import Qwen2_5_VLTextModel
         super().__init__(config)
         args = get_args()
         model_dir = args.model_info.model_dir
-        model, _ = get_model_tokenizer(model_dir, return_dummy_model=True)
-        self.model = model.visual
+        kwargs = {'attn_impl': 'flash_attn'} if args.attention_backend.name == 'flash' else {}
+        with patch_device_map_meta(Qwen2_5_VLTextModel):
+            model, _ = get_model_tokenizer(model_dir, args.torch_dtype, return_dummy_model=True, **kwargs)
+        self.model = model.visual.to('cuda')
         self.model_config = model.config
-        self.model.to_empty(device='cuda')
 
     def forward(self, *args, **kwargs):
         return self.model(*args, **kwargs)
