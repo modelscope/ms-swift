@@ -163,7 +163,7 @@ class Template(ProcessorMixin):
 
     def get_model(self):
         if self.model is not None:
-            return self.Model
+            return self.model
         return self.dummy_model
 
     @staticmethod
