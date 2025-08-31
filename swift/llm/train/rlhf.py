@@ -140,6 +140,8 @@ class SwiftRLHF(SwiftSft):
 
                     if args.rlhf_type == 'grpo':
                         reward_template = self.args.get_template(processor, processor.model_meta.template)
+                        if reward_template.use_model:
+                            reward_template.model = model
                         self.reward_template.append(reward_template)
                 args.reward_model = rms  # Restore original value
                 if args.rlhf_type != 'grpo' and self.reward_model:

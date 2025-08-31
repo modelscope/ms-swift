@@ -61,6 +61,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
         template = args.get_template(self.processor)
         template.set_mode('train')
+        if template.use_model:
+            template.model = self.model
         if args.model_meta.is_multimodal and (args.padding_free or args.packing) and not template.support_padding_free:
             raise ValueError(f'Template `{args.template}` does not support padding free or packing.')
         self.template = template
@@ -303,6 +305,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             return datasets
 
         origin_template_model = template.model
+        template.model = None  # Avoid serializing the model.
         for i, dataset in enumerate(datasets):
             if dataset is None:
                 continue
@@ -319,6 +322,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     strict=args.strict,
                     batch_size=batch_size)
             datasets[i] = dataset
+        template.model = origin_template_model
 
         return datasets
 

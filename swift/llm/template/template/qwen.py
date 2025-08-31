@@ -842,7 +842,7 @@ class Ovis2_5Template(ThinkingTemplate):
         encoded = super()._encode(inputs)
         images = inputs.images
         input_ids = encoded['input_ids']
-        visual_tokenizer = self.model.visual_tokenizer
+        visual_tokenizer = self.get_model().visual_tokenizer
         idx_list = findall(input_ids, [-200])
         if inputs.videos:
             assert len(inputs.videos) == 1, 'only support single video'
