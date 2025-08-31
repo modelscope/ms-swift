@@ -258,7 +258,16 @@ class BaseMegatronTrainer(ABC):
             with adapter_state_dict_context():
                 args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
                     model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
+        if args.model_meta.is_multimodal:
+            self._prepare_vit_gradient_checkpointing()
         return model, optimizer, opt_param_scheduler
+
+    def _prepare_vit_gradient_checkpointing(self):
+        visual = self.unwrapped_model.visual.model
+        args = get_args()
+        if args.vit_gradient_checkpointing:
+            visual.gradient_checkpointing_enable(**(args.gradient_checkpointing_kwargs or {}))
+            visual.enable_input_require_grads()
 
     @staticmethod
     def _initialize_embedding(model):

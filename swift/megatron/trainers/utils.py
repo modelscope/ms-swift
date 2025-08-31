@@ -118,5 +118,8 @@ def get_batch(data_iterator):
         batch['packed_seq_params'] = get_packed_seq_params(batch['position_ids'])
         batch['packed_seq_params'].num_samples = num_samples
     # slice batch along sequence dimension for context parallelism
+    position_ids = batch.get('real_position_ids')
+    if position_ids is not None:
+        batch['position_ids'] = position_ids
     batch = get_batch_on_this_cp_rank(batch)
     return batch

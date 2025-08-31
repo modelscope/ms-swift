@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, Literal, Optional
 
 import torch
-from megatron.core import InferenceParams
+from megatron.core import InferenceParams, mpu
 from megatron.core.config_logger import has_config_logger_enabled, log_config_to_disk
 from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 from megatron.core.models.gpt import GPTModel as McoreGPTModel
@@ -144,11 +144,15 @@ class GPTModel(McoreGPTModel):
         # Otherwise, apply embedding layer on input_ids and position_ids to get decoder_input.
 
         # Decoder embedding.
+        args = get_args()
         if decoder_input is not None:
             pass
         elif self.pre_process:
             decoder_input = self.embedding(input_ids=input_ids, position_ids=position_ids)
             if self.visual is not None:
+                if args.tensor_model_parallel_size > 1 and args.sequence_parallel:
+                    input_ids = input_ids.chunk(
+                        args.tensor_model_parallel_size, dim=-1)[mpu.get_tensor_model_parallel_rank()]
                 kwargs.update({'input_ids': input_ids})
                 decoder_input = decoder_input.transpose(0, 1)
                 decoder_input = self.visual.get_inputs_embeds(decoder_input, **kwargs)

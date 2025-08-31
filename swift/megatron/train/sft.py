@@ -3,6 +3,8 @@ import os
 from functools import partial
 from typing import List, Optional, Union
 
+import torch
+
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
@@ -24,12 +26,17 @@ class MegatronSft(SwiftSft):
         self.train_msg = {}
         super(SwiftSft, self).__init__(args)
         args = self.args
-        _, self.processor = args.get_model_processor(load_model=False)
+        if args.model_meta.is_multimodal:
+            kwargs = {'return_dummy_model': True}
+        else:
+            kwargs = {'load_model': False}
+        with torch.device('meta'):
+            self.model, self.processor = args.get_model_processor(**kwargs)
         self._prepare_template()
         patch_megatron_tokenizer(self.processor)
+        args.save_args(args.save)
         args.init_model_args(self.processor, self.processor.model_info.config)
         self.template.use_megatron = True
-        args.save_args(args.save)
         self.trainer = self.prepare_trainer()
 
     def _get_data_collator(self):

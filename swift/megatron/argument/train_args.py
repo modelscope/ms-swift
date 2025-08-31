@@ -28,6 +28,9 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
                 setattr(self, k, v)
         MegatronArguments.__post_init__(self)
         self.extra_args = self.parse_to_megatron()
+        self.extra_args['model_info'] = self.model_info
+        self.extra_args['model_meta'] = self.model_meta
+        self.extra_args['megatron_model_meta'] = self.megatron_model_meta
 
     def _init_save(self):
         init_process_group(backend=self.ddp_backend, timeout=self.ddp_timeout)

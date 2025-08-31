@@ -94,6 +94,10 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     partial_rotary_factor: Optional[float] = None
     use_shared_expert_gate: Optional[bool] = None
 
+    # visual
+    vit_gradient_checkpointing: bool = True
+    gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
+
 
 @dataclass
 class MegatronArguments(ExtraMegatronArguments):
@@ -377,6 +381,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.rope_scaling = json_parse_to_dict(self.rope_scaling)
             if 'type' in self.rope_scaling and 'rope_type' not in self.rope_scaling:
                 self.rope_scaling['rope_type'] = self.rope_scaling['type']
+        if self.gradient_checkpointing_kwargs is not None:
+            self.gradient_checkpointing_kwargs = json_parse_to_dict(self.gradient_checkpointing_kwargs)
         if self.eval_interval is None:
             self.eval_interval = self.save_interval
         if self.seq_length is None:
