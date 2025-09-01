@@ -9,7 +9,7 @@ from transformers import PretrainedConfig
 from ..gpt.config import convert_gpt_hf_config
 from ..mm_gpt_model import MultimodalGPTModel
 from ..model_provider import model_provider as model_provider_func
-from ..register import MegatronModelMeta, register_megatron_model
+from ..register import MegatronModelMeta
 
 
 @contextmanager

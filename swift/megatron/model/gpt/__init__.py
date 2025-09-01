@@ -1,10 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, Type
-
-from torch import nn
-from transformers import PretrainedConfig
-
 from swift.llm import ModelType
 from ..constant import MegatronModelType
 from ..gpt_model import GPTModel

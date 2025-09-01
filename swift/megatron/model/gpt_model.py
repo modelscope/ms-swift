@@ -4,14 +4,13 @@ from contextlib import contextmanager
 from typing import Any, Dict, Literal, Optional
 
 import torch
-from megatron.core import InferenceParams, mpu
+from megatron.core import InferenceParams
 from megatron.core.config_logger import has_config_logger_enabled, log_config_to_disk
 from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 from megatron.core.models.gpt import GPTModel as McoreGPTModel
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.training import get_args
 
 from swift.utils import get_logger
 from .rope import dynamic_rope_update, get_rope_inv_freq
