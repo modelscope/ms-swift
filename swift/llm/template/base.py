@@ -156,14 +156,14 @@ class Template(ProcessorMixin):
             if isinstance(token, str):
                 self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
         self.template_meta.init(tokenizer)
-        if self.use_model:
-            from swift.llm import get_model_tokenizer
-            with torch.device('meta'):
-                self.dummy_model = get_model_tokenizer(self.model_info.model_dir, return_dummy_model=True)[0]
 
     def _get_model(self):
         if self.model is not None:
             return self.model
+        if self.dummy_model is None:
+            from swift.llm import get_model_tokenizer
+            with torch.device('meta'):
+                self.dummy_model = get_model_tokenizer(self.model_info.model_dir, return_dummy_model=True)[0]
         return self.dummy_model
 
     @staticmethod
