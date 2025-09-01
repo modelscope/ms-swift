@@ -2,6 +2,7 @@ import torch
 from megatron.core import InferenceParams, mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.module import MegatronModule
+from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.training import get_args
 
@@ -46,7 +47,7 @@ class MultimodalGPTModel(MegatronModule):
         if decoder_input is not None:
             pass
         elif self.pre_process:
-            decoder_input = self.embedding(input_ids=input_ids, position_ids=position_ids)
+            decoder_input = self.language_model.embedding(input_ids=input_ids, position_ids=position_ids)
             if self.visual is not None:
                 if args.tensor_model_parallel_size > 1 and args.sequence_parallel:
                     input_ids = input_ids.chunk(
@@ -59,7 +60,7 @@ class MultimodalGPTModel(MegatronModule):
             # intermediate stage of pipeline
             # decoder will get hidden_states from encoder.input_tensor
             decoder_input = None
-        return self.model(
+        return self.language_model(
             input_ids=input_ids,
             position_ids=position_ids,
             attention_mask=attention_mask,
@@ -68,3 +69,6 @@ class MultimodalGPTModel(MegatronModule):
             inference_params=inference_params,
             packed_seq_params=packed_seq_params,
         )
+
+    def set_input_tensor(self, input_tensor: torch.Tensor) -> None:
+        return self.language_model.set_input_tensor(input_tensor)
