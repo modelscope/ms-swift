@@ -1,7 +1,6 @@
 import torch
 from megatron.core.models.huggingface import HuggingFaceModule
-from megatron.training import get_args
-
+from megatron.training import get_args, get_tokenizer
 from swift.llm import ModelType, get_model_tokenizer, to_device
 from ..constant import MegatronModelType
 from ..gpt.hf2mcore import set_layer_state as set_layer_state_hf2mcore
@@ -50,6 +49,7 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
             model, _ = get_model_tokenizer(model_dir, args.torch_dtype, return_dummy_model=True, **kwargs)
         self.model = model.visual.to('cuda')
         self.model_config = model.config
+        self.processor = get_tokenizer()
 
     def forward(self, *args, **kwargs):
         return self.model(*args, **kwargs)

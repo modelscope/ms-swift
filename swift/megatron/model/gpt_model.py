@@ -177,7 +177,7 @@ class GPTModel(McoreGPTModel):
                 rotary_pos_emb = self.rotary_pos_emb(position_ids, self.mrope_section)
             else:
                 # Flash decoding uses precomputed cos and sin for RoPE
-                raise NotImplementedError('Flash decoding uses precomputed cos and sin for RoPE, not implmented in '
+                raise NotImplementedError('Flash decoding uses precomputed cos and sin for RoPE, not implemented in '
                                           'MultimodalRotaryEmbedding yet.')
         if ((self.config.enable_cuda_graph or self.config.flash_decode) and rotary_pos_cos is not None
                 and inference_params):
