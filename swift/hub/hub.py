@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import List, Literal, Optional, Union
 
 import huggingface_hub
+import modelscope
 from huggingface_hub import RepoUrl
 from huggingface_hub.hf_api import api, future_compatible
+from packaging import version
 from requests.exceptions import HTTPError
 from transformers import trainer
 from transformers.utils import strtobool
@@ -292,6 +294,9 @@ class MSHub(HubOperation):
         cls.try_login(token)
         if revision is None or revision == 'main':
             revision = 'master'
+        load_kwargs = {}
+        if version.parse(modelscope.__version__) >= version.parse('1.29.1'):
+            load_kwargs['trust_remote_code'] = True
         with ms_logger_context(logging.ERROR):
             return MsDataset.load(
                 dataset_id,
@@ -300,6 +305,7 @@ class MSHub(HubOperation):
                 version=revision,
                 download_mode=download_mode,
                 use_streaming=streaming,
+                **load_kwargs,
             )
 
     @classmethod
