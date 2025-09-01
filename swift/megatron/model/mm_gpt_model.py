@@ -26,6 +26,7 @@ class MultimodalGPTModel(MegatronModule):
         self.language_model = GPTModel(config, transformer_layer_spec, vocab_size, max_sequence_length, pre_process,
                                        post_process, *args, **kwargs)
 
+        self.share_embeddings_and_output_weights = self.language_model.share_embeddings_and_output_weights
         args = get_args()
         self.visual = None
         if args.megatron_model_meta.visual_cls is not None:
