@@ -230,6 +230,7 @@ class GLM4_1VTemplate(Template):
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        # TODO: check video
         if not self.is_training:
             return inputs
         input_ids = inputs['input_ids']
