@@ -521,18 +521,17 @@ def _patch_TELinear():
 def _patch_mrope():
     from megatron.core.models.common.embeddings.rotary_pos_embedding import (MultimodalRotaryEmbedding)
     from megatron.core import parallel_state
-    from megatron.core.models.common.embeddings.rope_utils import get_pos_emb_on_this_cp_rank
+    from megatron.core.models.common.embeddings.rope_utils import (get_pos_emb_on_this_cp_rank,
+                                                                   _apply_rotary_pos_emb_bshd)
+    from megatron.core.models.common.embeddings import rope_utils
+    from megatron.training import get_args
 
     def forward(self,
-                max_seq_len: int,
+                position_ids,
                 mrope_section: List[int],
                 offset: int = 0,
                 packed_seq: bool = False) -> torch.Tensor:
-        if self.inv_freq.device.type == 'cpu':
-            # move `inv_freq` to GPU once at the first micro-batch forward pass
-            self.inv_freq = self.inv_freq.to(device=torch.cuda.current_device())
-
-        seq = (torch.arange(max_seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype) + offset)
+        seq = position_ids.to(device=self.inv_freq.device, dtype=self.inv_freq.dtype)
 
         if self.seq_len_interpolation_factor is not None:
             seq *= 1 / self.seq_len_interpolation_factor
@@ -566,6 +565,59 @@ def _patch_mrope():
         return emb
 
     MultimodalRotaryEmbedding.forward = forward
+    _origin_apply_rotary_pos_emb_thd = rope_utils._apply_rotary_pos_emb_thd
+
+    def _apply_rotary_pos_emb_thd(
+        t: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        freqs: torch.Tensor,
+        rotary_interleaved: bool = False,
+        multi_latent_attention: bool = False,
+        mscale: float = 1.0,
+        cp_group: torch.distributed.ProcessGroup = None,
+    ) -> torch.Tensor:
+        """A baseline implementation of applying RoPE for `thd` format.
+
+        Args:
+            t (Tensor): Input tensor T is of shape [t, h, d]
+            cu_seqlens(Tensor):  Cumulative sum of sequence lengths in a batch for `t`,
+            with shape [b + 1] and dtype torch.int32.
+            freqs (Tensor): Rotary Positional embedding tensor freq is of shape [max_s, 1, 1, d]
+            cp_group (torch.distributed.ProcessGroup): The context parallel group
+
+        Returns:
+            Tensor: Shape [t, h, d]. The input tensor after applying RoPE.
+        """
+        args = get_args()
+        if args.position_embedding_type != 'mrope':
+            return _origin_apply_rotary_pos_emb_thd(
+                t,
+                cu_seqlens,
+                freqs,
+                rotary_interleaved=config.rotary_interleaved,
+                multi_latent_attention=config.multi_latent_attention,
+                mscale=mscale,
+                cp_group=cp_group,
+            )
+
+        if cp_group is None:
+            raise ValueError('cp_group must be provided for THD format RoPE')
+        cp_size = cp_group.size()
+        cp_rank = cp_group.rank()
+        cu_seqlens = cu_seqlens // cp_size
+        seqlens = (cu_seqlens[1:] - cu_seqlens[:-1]).tolist()
+
+        return torch.cat([
+            _apply_rotary_pos_emb_bshd(
+                x.unsqueeze(1),
+                f,
+                rotary_interleaved=rotary_interleaved,
+                multi_latent_attention=multi_latent_attention,
+                mscale=mscale,
+            ) for x, f in zip(torch.split(t, seqlens), torch.split(freqs, seqlens))
+        ]).squeeze(1)
+
+    rope_utils._apply_rotary_pos_emb_thd = _apply_rotary_pos_emb_thd
 
 
 def _patch_megatron():

@@ -86,7 +86,7 @@ class GPTModel(McoreGPTModel):
         new_inv_freq, self.attention_scaling = get_rope_inv_freq()
         self.rotary_pos_emb.inv_freq = new_inv_freq.to(self.rotary_pos_emb.inv_freq.device)
 
-        if self.attention_scaling != 1 and config.apply_rope_fusion:
+        if (self.attention_scaling != 1 or position_embedding_type == 'mrope') and config.apply_rope_fusion:
             config.apply_rope_fusion = False
             logger.warning('`apply_rope_fusion` does not support `attention_scaling`. '
                            f'Setting `config.apply_rope_fusion`: {config.apply_rope_fusion}')
@@ -162,18 +162,23 @@ class GPTModel(McoreGPTModel):
                     self.rotary_pos_emb.get_cos_sin(inference_params.max_sequence_length),
                 )
             else:
-                rotary_seq_len = self.rotary_pos_emb.get_rotary_seq_len(inference_params, self.decoder, decoder_input,
-                                                                        self.config, packed_seq_params)
+                rotary_seq_len = RotaryEmbedding.get_rotary_seq_len(self, inference_params, self.decoder, decoder_input,
+                                                                    self.config, packed_seq_params)
                 if self.hf_rope_scaling is not None:
                     attention_scaling = dynamic_rope_update(self, self.rotary_pos_emb.inv_freq, rotary_seq_len)
                     if attention_scaling is not None:
                         self.attention_scaling = attention_scaling
-                kwargs = {mrope_section: self.mrope_section} if self.position_embedding_type == 'mrope' else {}
-                rotary_pos_emb = self.rotary_pos_emb(
-                    rotary_seq_len,
-                    packed_seq=packed_seq_params is not None and packed_seq_params.qkv_format == 'thd',
-                    **kwargs,
-                )
+                if self.position_embedding_type == 'mrope':
+                    rotary_pos_emb = self.rotary_pos_emb(
+                        position_ids,
+                        mrope_section=self.mrope_section,
+                        packed_seq=packed_seq_params is not None and packed_seq_params.qkv_format == 'thd',
+                    )
+                else:
+                    rotary_pos_emb = self.rotary_pos_emb(
+                        rotary_seq_len,
+                        packed_seq=packed_seq_params is not None and packed_seq_params.qkv_format == 'thd',
+                    )
         if ((self.config.enable_cuda_graph or self.config.flash_decode) and rotary_pos_cos is not None
                 and inference_params):
             sequence_len_offset = torch.tensor(
