@@ -828,7 +828,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.args.dynamic_sample and mode == 'train':
             # dynamic sampling for std=0 groups
             inputs, total_rewards_per_func = self._dynamic_sampling(inputs, total_rewards_per_func)  # noqa
-        # Compute advantages based on prompt_id grouping
         total_advantages = self._compute_advantages(inputs, total_rewards_per_func)
 
         local_advantages = self.get_even_process_data(total_advantages)
