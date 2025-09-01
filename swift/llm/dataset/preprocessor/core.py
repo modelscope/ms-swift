@@ -40,6 +40,7 @@ class RowPreprocessor:
                  traceback_limit: int = 10) -> None:
         self.columns = columns or {}
         self.origin_columns = self.columns.copy()  # Higher priority and raise Error
+        self._version = 'v1'
         images_keys = ['images', 'image']
         audios_keys = ['audios', 'audio']
         videos_keys = ['videos', 'video']
