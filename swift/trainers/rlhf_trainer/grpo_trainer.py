@@ -1139,7 +1139,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             group_rewards_std = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations)
             return group_rewards_std
         else:
-            # TODO
             prompt_ids = gather_object([inp['prompt_id'] for inp in inputs])
             request_ids = gather_object([inp['request_id'] for inp in inputs])
             device = self.accelerator.device
