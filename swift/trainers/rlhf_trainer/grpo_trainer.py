@@ -1002,10 +1002,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Step 0. Aggregate final reward using reward weights
         device = self.accelerator.device
-        # if not self.use_gym_env:
         rewards = (rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
-        # else:
-        #     rewards = rewards_per_func.squeeze(1)
 
         # --------------------------------------------------
         # Case 1: Default grouped mode
@@ -1137,8 +1134,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         device = self.accelerator.device
         # if not self.use_gym_env:
         rewards = (rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
-        # else:
-        #     rewards = rewards_per_func.squeeze(1)
 
         if not self.dynamic_num_samples:
             grouped_rewards = rewards.view(-1, self.num_generations)
