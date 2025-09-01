@@ -59,7 +59,8 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer, GRPOTrainer):
         # TODO: reward model
         # TODO: multi turn scheduler(colocate multi turn)
 
-        self.num_generations = args.num_generations
+        self.num_generations = args.num_generations  # G in the GRPO paper
+        self.mini_batch_size = args.mini_batch_size
         self.temperature = args.temperature
         self.vllm_mode = args.vllm_mode
         self.vllm_gpu_memory_utilization = args.vllm_gpu_memory_utilization  # only applies to colocation mode

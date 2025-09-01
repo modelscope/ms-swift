@@ -29,6 +29,10 @@ class RLHFMegatronArgumentsMixin:
     loss_type: str = 'sigmoid'
 
     # ===========================  GRPO  ===========================
+    num_generations: int = 8
+    mini_batch_size: int = 4
+    max_completion_length: int = 512
+
     # ───────────────────────────  Sampling  ───────────────────────────
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
@@ -167,8 +171,6 @@ class RLHFMegatronArgumentsMixin:
 
         _init_external_vllm()
         _check_not_supported()
-        if self.use_vllm:
-            set_default_ddp_config()
         if self.async_generate or not self.use_vllm:
             self.sleep_level = 0
         self.remove_unused_columns = False
