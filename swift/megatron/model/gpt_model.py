@@ -187,7 +187,7 @@ class GPTModel(McoreGPTModel):
                     rotary_seq_len,
                     packed_seq=packed_seq_params is not None and packed_seq_params.qkv_format == 'thd',
                 )
-        elif self.position_embedding_type in 'mrope':
+        elif self.position_embedding_type == 'mrope':
             if self.training or not self.config.flash_decode:
                 rotary_pos_emb = self.rotary_pos_emb(position_ids, self.mrope_section)
             else:

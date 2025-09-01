@@ -9,12 +9,21 @@ from swift.llm import ModelType
 from ..constant import MegatronModelType
 from ..register import MegatronModelMeta, register_megatron_model
 from .config import convert_gpt_hf_config
-from .hf2mcore import convert_hf2mcore
-from .mcore2hf import convert_mcore2hf
-from .model import model_provider
+from .hf2mcore import convert_hf2mcore as convert_hf2mcore_gpt
+from .mcore2hf import convert_mcore2hf as convert_mcore2hf_gpt
+from .model import model_provider as gpt_model_provider
+
+
+@dataclass
+class GPTMegatronModelMeta(MegatronModelMeta):
+    model_provider: Callable[[], nn.Module] = gpt_model_provider
+    convert_hf_config: Callable[[PretrainedConfig], Dict[str, Any]] = convert_gpt_hf_config
+    convert_mcore2hf: Callable[[nn.Module, nn.Module], None] = convert_mcore2hf_gpt
+    convert_hf2mcore: Callable[[nn.Module, nn.Module], None] = convert_hf2mcore_gpt
+
 
 register_megatron_model(
-    MegatronModelMeta(MegatronModelType.gpt, [
+    GPTMegatronModelMeta(MegatronModelType.gpt, [
         ModelType.qwen2,
         ModelType.qwen2_5,
         ModelType.qwq,
@@ -58,12 +67,4 @@ register_megatron_model(
         ModelType.ernie,
         ModelType.glm4_5,
         ModelType.deepseek_v3_1,
-    ], model_provider, convert_gpt_hf_config, convert_mcore2hf, convert_hf2mcore))
-
-
-@dataclass
-class GptMegatronModelMeta(MegatronModelMeta):
-    model_provider: Callable[[], nn.Module] = model_provider
-    convert_hf_config: Callable[[PretrainedConfig], Dict[str, Any]] = convert_gpt_hf_config
-    convert_mcore2hf: Callable[[nn.Module, nn.Module], None] = convert_mcore2hf
-    convert_hf2mcore: Callable[[nn.Module, nn.Module], None] = convert_hf2mcore
+    ]))

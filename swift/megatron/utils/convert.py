@@ -13,7 +13,7 @@ from megatron.training.initialize import initialize_megatron
 from megatron.training.utils import get_ltor_masks_and_position_ids
 
 from swift.llm import ExportArguments, HfConfigFactory, prepare_model_template, save_checkpoint, to_device
-from swift.utils import deep_getattr, get_logger, get_n_params_grads
+from swift.utils import get_logger, get_n_params_grads
 from ..argument import MegatronArguments
 from ..model import get_megatron_model_meta
 from .patcher import patch_megatron_tokenizer, patch_torch_dist_shard
@@ -145,7 +145,7 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     hf_modules = _find_modules(hf_model, ignore_modules=ignore_modules)
     with torch.inference_mode(), _model_cpu_forward_context(hf_modules, torch_dtype, share_embedding=share_embedding):
         hf_logits = hf_model(**inputs).logits
-    hf_model = hf_model.to('cpu')
+    hf_model.to('cpu')
 
     input_ids = inputs['input_ids']
     attention_mask, _, position_ids = get_ltor_masks_and_position_ids(input_ids, -100, True, True, True)
