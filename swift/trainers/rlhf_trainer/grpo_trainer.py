@@ -946,7 +946,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _compute_advantages(self, inputs: DataType, rewards_per_func: torch.Tensor) -> torch.Tensor:
         """
-        Compute advantages for policy gradient training.
+        Compute advantages for RL training.
 
         Supports two modes:
         1. **Default grouped mode** (no prompt_ids / request_ids provided)
@@ -1131,7 +1131,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def compute_std(self, inputs: DataType, rewards_per_func: torch.Tensor) -> torch.Tensor:
         """Compute the standard deviation of the rewards per function."""
         device = self.accelerator.device
-        # if not self.use_gym_env:
         rewards = (rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
 
         if not self.dynamic_num_samples:
