@@ -92,11 +92,6 @@ class GPTModel(McoreGPTModel):
             logger.warning('`apply_rope_fusion` does not support `attention_scaling`. '
                            f'Setting `config.apply_rope_fusion`: {config.apply_rope_fusion}')
 
-        args = get_args()
-        self.visual = None
-        if args.megatron_model_meta.visual is not None:
-            self.visual = args.megatron_model_meta.visual(config)
-
     @contextmanager
     def _patch_apply_rotary_pos_emb(self):
         if self.attention_scaling == 1.:
@@ -144,19 +139,10 @@ class GPTModel(McoreGPTModel):
         # Otherwise, apply embedding layer on input_ids and position_ids to get decoder_input.
 
         # Decoder embedding.
-        args = get_args()
         if decoder_input is not None:
             pass
         elif self.pre_process:
             decoder_input = self.embedding(input_ids=input_ids, position_ids=position_ids)
-            if self.visual is not None:
-                if args.tensor_model_parallel_size > 1 and args.sequence_parallel:
-                    input_ids = input_ids.chunk(
-                        args.tensor_model_parallel_size, dim=-1)[mpu.get_tensor_model_parallel_rank()]
-                kwargs.update({'input_ids': input_ids})
-                decoder_input = decoder_input.transpose(0, 1)
-                decoder_input = self.visual.get_inputs_embeds(decoder_input, **kwargs)
-                decoder_input = decoder_input.transpose(0, 1)
         else:
             # intermediate stage of pipeline
             # decoder will get hidden_states from encoder.input_tensor

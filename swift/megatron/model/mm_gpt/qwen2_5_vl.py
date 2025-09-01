@@ -1,28 +1,44 @@
-from contextlib import contextmanager
-
 import torch
 from megatron.core.models.huggingface import HuggingFaceModule
 from megatron.training import get_args
 
-from swift.llm import get_model_tokenizer, to_device
+from swift.llm import ModelType, get_model_tokenizer, to_device
+from ..constant import MegatronModelType
+from ..gpt.hf2mcore import set_layer_state as set_layer_state_hf2mcore
+from ..gpt.mcore2hf import set_layer_state as set_layer_state_mcore2hf
+from ..register import MegatronModelMeta, register_megatron_model
+from .utils import MMGPTMegatronModelMeta, patch_device_map_meta
 
 
-@contextmanager
-def patch_device_map_meta(model_cls):
-    __origin_init__ = model_cls.__init__
+def convert_hf2mcore_qwen2_5_vl(hf_model, mg_model):
+    language_model = hf_model.model.language_model
+    mg_language_model = mg_model.language_model
+    args = get_args()
+    mg_language_model.embedding.word_embeddings.weight.data.copy_(language_model.embed_tokens.weight)
+    if args.untie_embeddings_and_output_weights:
+        mg_language_model.output_layer.weight.data.copy_(hf_model.lm_head.weight)
+    mg_language_model.decoder.final_layernorm.weight.data.copy_(language_model.norm.weight)
+    for layer_idx in range(args.num_layers):
+        set_layer_state_hf2mcore(args, mg_language_model, language_model, layer_idx)
+    mg_model.visual.model.load_state_dict(hf_model.model.visual.state_dict())
 
-    def __init__(self, *args, **kwargs):
-        with torch.device('meta'):
-            __origin_init__(self, *args, **kwargs)
 
-    model_cls.__init__ = __init__
-    try:
-        yield
-    finally:
-        model_cls.__init__ = __origin_init__
+def convert_mcore2hf_qwen2_5_vl(hf_model, mg_model):
+    language_model = hf_model.model.language_model
+    mg_language_model = mg_model.language_model
+    args = get_args()
+    language_model.embed_tokens.weight.data.copy_(mg_language_model.embedding.word_embeddings.weight)
+    if args.untie_embeddings_and_output_weights:
+        hf_model.lm_head.weight.data.copy_(mg_language_model.output_layer.weight)
+    language_model.norm.weight.data.copy_(mg_language_model.decoder.final_layernorm.weight)
+    for layer_idx in range(args.num_layers):
+        set_layer_state_mcore2hf(args, mg_language_model, language_model, layer_idx)
+    hf_model.model.visual.load_state_dict(mg_model.visual.model.state_dict())
 
 
 class Qwen2_5VL_Vit(HuggingFaceModule):
+    vision_tower = ['model']
+    aligner = ['model.merger']
 
     def __init__(self, config):
         from transformers.models.qwen2_5_vl import Qwen2_5_VLTextModel
@@ -88,3 +104,13 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
         return inputs_embeds
+
+
+register_megatron_model(
+    MMGPTMegatronModelMeta(
+        MegatronModelType.qwen2_5_vl, [
+            ModelType.qwen2_5_vl,
+        ],
+        convert_hf2mcore=convert_hf2mcore_qwen2_5_vl,
+        convert_mcore2hf=convert_mcore2hf_qwen2_5_vl,
+        visual_cls=Qwen2_5VL_Vit))

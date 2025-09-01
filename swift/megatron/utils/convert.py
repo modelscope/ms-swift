@@ -138,7 +138,8 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     inputs = to_device(template.data_collator([inputs]), 'cuda')
 
     HfConfigFactory.set_model_config_attr(hf_model, 'use_cache', False)
-    share_embedding = mg_model.share_embeddings_and_output_weights
+    mg_language_model = mg_model.language_model if is_multimodal else mg_model
+    share_embedding = mg_language_model.share_embeddings_and_output_weights
     model_arch = hf_model.model_meta.model_arch
     ignore_modules = [] if model_arch is None else (model_arch.vision_tower + model_arch.aligner)
 
@@ -156,8 +157,8 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     # mg_torch_dtype = None
     # packed_seq_params = get_packed_seq_params(position_ids)
     # attention_mask = None
-    mg_model.config.fp8 = None  # compat fp8
-    mg_modules = _find_modules(mg_model, ignore_modules=['visual'])
+    mg_language_model.config.fp8 = None  # compat fp8
+    mg_modules = _find_modules(mg_language_model, ignore_modules=['visual'])
     kwargs = {k: v for k, v in inputs.items() if k not in ['input_ids', 'attention_mask', 'labels']}
     if 'position_ids' not in kwargs:
         kwargs['position_ids'] = position_ids

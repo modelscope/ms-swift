@@ -16,11 +16,13 @@ class MegatronModelMeta:
     megatron_model_type: str
     model_types: List[str]
 
-    model_provider: Callable[[], nn.Module]
-    convert_hf_config: Callable[[PretrainedConfig], Dict[str, Any]]
     convert_mcore2hf: Callable[[nn.Module, nn.Module], None]
     convert_hf2mcore: Callable[[nn.Module, nn.Module], None]
-    visual: Optional[Type[nn.Module]] = None
+
+    model_cls: Type[nn.Module]
+    model_provider: Callable[[], nn.Module]
+    convert_hf_config: Callable[[PretrainedConfig], Dict[str, Any]]
+    visual_cls: Optional[Type[nn.Module]] = None
 
     extra_args_provider: Optional[Callable[[ArgumentParser], ArgumentParser]] = None
 

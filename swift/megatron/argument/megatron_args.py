@@ -31,6 +31,9 @@ class RLHFMegatronArgumentsMixin:
 @dataclass
 class MegatronTunerMixin:
     train_type: Literal['lora', 'full'] = 'full'
+    freeze_llm: bool = False
+    freeze_vit: bool = True
+    freeze_aligner: bool = True
     # full
     freeze_parameters: List[str] = field(default_factory=list)
     freeze_parameters_regex: Optional[str] = None
