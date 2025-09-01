@@ -65,22 +65,41 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
 
 
 def _split_tokens(tokens, cu_seqlens):
-    assert tokens.shape[0] == 1, f'tokens.shape: {tokens.shape}'
+    assert tokens.shape[-2] == 1, f'tokens.shape: {tokens.shape}'  # [..., 1, L]
     new_tokens = []
     cp_size = mpu.get_context_parallel_world_size()
     cp_rank = mpu.get_context_parallel_rank()
     for i in range(cu_seqlens.shape[0] - 1):
-        val = tokens[:, cu_seqlens[i]:cu_seqlens[i + 1]]
+        val = tokens[..., cu_seqlens[i]:cu_seqlens[i + 1]]
         val = val.view(
-            tokens.shape[0],
+            *tokens.shape[:-1],
             2 * cp_size,
-            val.shape[1] // (2 * cp_size),
+            val.shape[-1] // (2 * cp_size),
         )
         index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device='cpu',
                              pin_memory=True).cuda(non_blocking=True)
-        val = val.index_select(1, index)
-        new_tokens.append(val.view(tokens.shape[0], -1))
-    return torch.cat(new_tokens, dim=1)
+        val = val.index_select(-2, index)
+        new_tokens.append(val.view(*tokens.shape[:-1], -1))
+    return torch.cat(new_tokens, dim=-1)
+
+
+def _split_tokens_decoder_input(tokens, cu_seqlens):
+    assert tokens.shape[1] == 1, f'tokens.shape: {tokens.shape}'  # [L, 1, E]
+    new_tokens = []
+    cp_size = mpu.get_context_parallel_world_size()
+    cp_rank = mpu.get_context_parallel_rank()
+    for i in range(cu_seqlens.shape[0] - 1):
+        val = tokens[cu_seqlens[i]:cu_seqlens[i + 1], ...]
+        val = val.view(
+            2 * cp_size,
+            val.shape[0] // (2 * cp_size),
+            *tokens.shape[1:],
+        )
+        index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device='cpu',
+                             pin_memory=True).cuda(non_blocking=True)
+        val = val.index_select(0, index)
+        new_tokens.append(val.view(-1, *tokens.shape[1:]))
+    return torch.cat(new_tokens, dim=0)
 
 
 def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
@@ -96,14 +115,23 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
     # that we can get balanced workload among GPUs in a context parallel group.
     cp_size = mpu.get_context_parallel_world_size()
     if cp_size > 1:
+        args = get_args()
+        keys = ['labels', 'attention_mask', 'position_ids', 'loss_scale']
+        if args.model_meta.is_multimodal:
+            keys.append('decoder_input')
+        else:
+            keys.append('input_ids')
         packed_seq_params = batch.get('packed_seq_params')
         if packed_seq_params is None:
             return mcore_get_batch_on_this_cp_rank(batch)
         for key, val in batch.items():
-            if key in {'packed_seq_params', 'channel'}:
+            if key not in keys:
                 continue
             if val is not None:
-                batch[key] = _split_tokens(val, packed_seq_params.cu_seqlens_q)
+                if key == 'decoder_input':
+                    batch[key] = _split_tokens_decoder_input(val, packed_seq_params.cu_seqlens_q)
+                else:
+                    batch[key] = _split_tokens(val, packed_seq_params.cu_seqlens_q)
 
     return batch
 
@@ -118,7 +146,7 @@ def get_batch(data_iterator):
         batch['packed_seq_params'] = get_packed_seq_params(batch['position_ids'])
         batch['packed_seq_params'].num_samples = num_samples
     # slice batch along sequence dimension for context parallelism
-    position_ids = batch.get('real_position_ids')  # fix Qwen2.5-VL
+    position_ids = batch.pop('real_position_ids', None)  # fix Qwen2.5-VL
     if position_ids is not None:
         batch['position_ids'] = position_ids
     batch = get_batch_on_this_cp_rank(batch)

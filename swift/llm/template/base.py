@@ -1216,7 +1216,7 @@ class Template(ProcessorMixin):
                     encoded[key] = value
         else:
             encoded = self._encode(inputs)
-
+        self._handle_megatron_cp(encoded)  # TODO: fix cp_size & cached_dataset
         input_ids = encoded.get('input_ids')
         labels = encoded.get('labels')
         loss_scale = encoded.get('loss_scale')
@@ -1276,7 +1276,6 @@ class Template(ProcessorMixin):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        self._handle_megatron_cp(encoded)  # TODO: fix cp_size & cached_dataset
         if encoded.get('labels') is not None:
             encoded['labels'][0] = -100
         if encoded.get('loss_scale') is not None:

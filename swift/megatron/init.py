@@ -518,6 +518,56 @@ def _patch_TELinear():
     TELinear.__repr__ = __repr__
 
 
+def _patch_mrope():
+    from megatron.core.models.common.embeddings.rotary_pos_embedding import (MultimodalRotaryEmbedding)
+    from megatron.core import parallel_state
+    from megatron.core.models.common.embeddings.rope_utils import get_pos_emb_on_this_cp_rank
+
+    def forward(self,
+                max_seq_len: int,
+                mrope_section: List[int],
+                offset: int = 0,
+                packed_seq: bool = False) -> torch.Tensor:
+        if self.inv_freq.device.type == 'cpu':
+            # move `inv_freq` to GPU once at the first micro-batch forward pass
+            self.inv_freq = self.inv_freq.to(device=torch.cuda.current_device())
+
+        seq = (torch.arange(max_seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype) + offset)
+
+        if self.seq_len_interpolation_factor is not None:
+            seq *= 1 / self.seq_len_interpolation_factor
+
+        # shape (3, bs, dim, 1)
+        inv_freq_expanded = self.inv_freq[None, None, :, None].expand(3, seq.shape[1], -1, 1)
+        # shape (3, bs, 1, seq_length)
+        seq_expanded = seq[:, :, None, :].float()
+        # shape (3, bs, seq_length, dim)
+        freqs = (inv_freq_expanded @ seq_expanded).transpose(2, 3)
+        # first part even vector components, second part odd vector components,
+        #  2 * dim in dimension size
+        if not self.rotary_interleaved:
+            emb = torch.cat((freqs, freqs), dim=-1)  # shape (3, bs, seq_length, 2 * dim)
+        else:
+            bs = freqs.shape[1]
+            emb = torch.stack((freqs.view(3, bs, -1, 1), freqs.view(3, bs, -1, 1)),
+                              dim=-1).view(3, bs, freqs.shape[0], -1)
+
+        # generate freqs with mrope_section
+        # shape (bs, seq_length, 2 * dim)
+        mrope_section = mrope_section * 2
+        emb = torch.cat([m[i % 3] for i, m in enumerate(emb.split(mrope_section, dim=-1))], dim=-1)
+
+        # shape (seq_length, bs, 1, 2 * dim)
+        emb = emb[..., None, :].transpose(0, 1).contiguous()
+        if parallel_state.get_context_parallel_world_size() > 1 and not packed_seq:
+            # slice rotary_pos_emb along sequence dimension and select the parition of the current
+            # CP rank
+            emb = get_pos_emb_on_this_cp_rank(emb, 0, parallel_state.get_context_parallel_group())
+        return emb
+
+    MultimodalRotaryEmbedding.forward = forward
+
+
 def _patch_megatron():
     _patch_flash_attn()
     _patch_transformer_engine()
@@ -527,6 +577,7 @@ def _patch_megatron():
     _patch_TEGroupedLinear()
     _patch_TransformerLayer()
     _patch_compile_helpers()
+    _patch_mrope()
     from swift.megatron import tuners  # patch lora
     try:
         _patch_torch_FileSystemReader()

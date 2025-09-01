@@ -44,6 +44,7 @@ class MultimodalGPTModel(MegatronModule):
         packed_seq_params: PackedSeqParams = None,
         **kwargs,
     ) -> torch.Tensor:
+        from ..trainers.utils import get_batch_on_this_cp_rank
         args = get_args()
         if decoder_input is not None:
             pass
@@ -54,9 +55,11 @@ class MultimodalGPTModel(MegatronModule):
                     input_ids = input_ids.chunk(
                         args.tensor_model_parallel_size, dim=-1)[mpu.get_tensor_model_parallel_rank()]
                 kwargs.update({'input_ids': input_ids})
-                decoder_input = decoder_input.transpose(0, 1)
                 decoder_input = self.visual.get_inputs_embeds(decoder_input, **kwargs)
-                decoder_input = decoder_input.transpose(0, 1)
+                decoder_input = get_batch_on_this_cp_rank({
+                    'decoder_input': decoder_input,
+                    'packed_seq_params': packed_seq_params
+                })['decoder_input']
         else:
             # intermediate stage of pipeline
             # decoder will get hidden_states from encoder.input_tensor

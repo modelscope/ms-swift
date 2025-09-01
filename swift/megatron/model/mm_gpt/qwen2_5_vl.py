@@ -95,6 +95,7 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
                 image_embeds = mixed_embeds[:image_tokens]
                 video_embeds = mixed_embeds[image_tokens:]
 
+            input_ids = input_ids.transpose(0, 1)
             if image_embeds is not None:
                 image_mask = (input_ids == self.model_config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
