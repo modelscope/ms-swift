@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from .gkd_trainer import GKDTrainer
     from .rlhf_mixin import RLHFTrainerMixin
     from .utils import patch_lora_merge, patch_lora_unmerge, round_robin, _ForwardRedirection
+    from .vllm_client import VLLMClient
 else:
     _import_structure = {
         'cpo_trainer': ['CPOTrainer'],
@@ -26,6 +27,7 @@ else:
         'gkd_trainer': ['GKDTrainer'],
         'rlhf_mixin': ['RLHFTrainerMixin'],
         'utils': ['patch_lora_merge', 'patch_lora_unmerge', 'round_robin', '_ForwardRedirection'],
+        'vllm_client': ['VLLMClient'],
     }
 
     import sys

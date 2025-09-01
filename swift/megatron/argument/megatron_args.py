@@ -57,6 +57,8 @@ class RLHFMegatronArgumentsMixin:
     vllm_client: Optional[object] = field(init=False, default=None)
 
     # ───────────────────────────  Reward  ───────────────────────────
+    reward_funcs: List[str] = field(default_factory=list)
+    reward_weights: List[float] = None
     # see details in swift/plugin/orm.py
     # cosine reward, https://arxiv.org/abs/2502.03373
     cosine_min_len_value_wrong: float = -0.5  # r^w_0 in paper, Reward for wrong answers with zero completion length.
@@ -75,6 +77,9 @@ class RLHFMegatronArgumentsMixin:
     reward_model_plugin: Optional[List[str]] = None
 
     # ───────────────────────────  Not Supported Yet  ───────────────────────────
+    # reward model
+    reward_model: Optional[List[str]] = None
+    reward_model_plugin: Optional[List[str]] = None
     # sync ref model
     sync_ref_model: bool = False
     ref_model_sync_steps: int = 512
@@ -162,6 +167,41 @@ class RLHFMegatronArgumentsMixin:
 
         _init_external_vllm()
         _check_not_supported()
+        if self.use_vllm:
+            set_default_ddp_config()
+        if self.async_generate or not self.use_vllm:
+            self.sleep_level = 0
+        self.remove_unused_columns = False
+        logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
+        if self.truncation_strategy is None:
+            self.truncation_strategy = 'left'
+        assert self.truncation_strategy in ['left', 'delete'
+                                            ], ("GRPO requires `truncation_strategy 'left' or 'delete'`, "
+                                                f"Current value: `truncation_strategy='{self.truncation_strategy}'`."
+                                                )  # noqa
+        if self.beta is None:
+            self.beta = 0.04  # https://arxiv.org/abs/2402.03300
+        if self.async_generate:
+            logger.info('Using async mode. This is a approximate version which '
+                        'will use the old weights to generate responses to accelerate. '
+                        'This will ignore the `CLIP` of advantages, if you found the training '
+                        'is unstable, you may consider using --async_generate false.')
+        if 'soft_overlong' in self.reward_funcs:
+            assert self.soft_cache_length is not None, \
+                'The soft_cache_length must be set when using soft overlong rewards.'
+            if self.soft_max_length is None:
+                self.soft_max_length = self.max_completion_length
+                logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
+        if self.use_vllm:
+            # set vllm mode
+            if self.vllm_server_host is not None or self.vllm_server_base_url is not None:
+                if self.vllm_mode != 'server':
+                    self.vllm_mode = 'server'
+                    logger.warning('set vllm_mode to `server` since vllm server host/base_url is provided')
+            else:
+                if self.vllm_mode != 'colocate':
+                    self.vllm_mode = 'colocate'
+                    logger.warning('set vllm_mode to `colocate` since vllm_server_host is not provided')
 
 
 @dataclass

@@ -1,9 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 from collections import namedtuple
 from contextlib import contextmanager, nullcontext
 from functools import partial
 
 import torch
+from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
 from megatron.core import mpu
 from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
 from megatron.training import get_args, get_model, training
@@ -11,6 +13,8 @@ from megatron.training.checkpointing import load_checkpoint
 from megatron.training.utils import unwrap_model
 from torch.distributed.nn import all_reduce
 
+from swift.plugin import orms
+from swift.trainers.rlhf_trainer import GRPOTrainer, VLLMClient
 from swift.utils import get_current_device, get_logger, is_vllm_available
 from ..argument import MegatronRLHFArguments
 from .rlhf_base import MegatronRLHFTrainer
@@ -20,11 +24,48 @@ from .utils import get_batch
 logger = get_logger()
 
 
-class MegatronGRPOTrainer(MegatronRLHFTrainer):
+class MegatronGRPOTrainer(MegatronRLHFTrainer, GRPOTrainer):
 
     def __init__(self, args: MegatronRLHFArguments):
-        super().__init__(args)
+        MegatronRLHFTrainer().__init__(args)
         # TODO: init vllm
+        self.args = args
+        self.processing_class = self.processor
+        reward_funcs = args.reward_funcs
+        if not isinstance(reward_funcs, list):
+            reward_funcs = [reward_funcs]
+        if reward_funcs:
+            for i, reward_func in enumerate(reward_funcs):
+                if reward_func in orms:
+                    reward_func_class = orms[reward_func]
+                    reward_func_args = list(inspect.signature(reward_func_class.__init__).parameters)
+                    reward_func_kwargs = {
+                        key: getattr(args, key)
+                        for key in reward_func_args if key not in ['self', 'args', 'kwargs'] and hasattr(args, key)
+                    }
+                    if 'tokenizer' in reward_func_args:
+                        reward_func_kwargs['tokenizer'] = self.processing_class
+                    reward_funcs[i] = reward_func_class(**reward_func_kwargs)
+                elif not callable(reward_func):
+                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.plugin')
+        self.reward_funcs = reward_funcs
+        self.reward_func_names = []
+        for reward_func in reward_funcs:
+            if inspect.isfunction(reward_func):
+                reward_func_name = reward_func.__name__
+            else:
+                reward_func_name = reward_func.__class__.__name__
+            self.reward_func_names.append(reward_func_name)
+        # TODO: reward model
+        # TODO: multi turn scheduler(colocate multi turn)
+
+        self.num_generations = args.num_generations
+        self.temperature = args.temperature
+        self.vllm_mode = args.vllm_mode
+        self.vllm_gpu_memory_utilization = args.vllm_gpu_memory_utilization  # only applies to colocation mode
+        self.vllm_tensor_parallel_size = args.vllm_tensor_parallel_size  # only applies to colocation mode
+        self.loss_type = args.loss_type
+        self.max_completion_length = args.max_completion_length
         self.use_vllm = args.use_vllm
         vllm_client = args.vllm_client
         if self.use_vllm:
@@ -61,13 +102,13 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer):
                         list(range(i * self.vllm_tensor_parallel_size, (i + 1) * self.vllm_tensor_parallel_size))
                         for i in range(self.accelerator.num_processes // self.vllm_tensor_parallel_size)
                     ])
-                self.enable_offload = self.args.offload_model or self.args.offload_optimizer
+                self.enable_offload = args.offload_model or args.offload_optimizer
                 context = self.offload_context if self.enable_offload else nullcontext
 
                 with context():
-                    self.engine = self.prepare_vllm(model)
+                    self.engine = self.prepare_vllm(self.unwrapped_model)
                     if self.args.sleep_level > 0:
-                        self.engine.engine.sleep(self.args.sleep_level)
+                        self.engine.engine.sleep(args.sleep_level)
 
         else:
             from swift.llm import PtEngine
