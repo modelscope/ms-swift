@@ -603,7 +603,6 @@ def _patch_mrope():
         if cp_group is None:
             raise ValueError('cp_group must be provided for THD format RoPE')
         cp_size = cp_group.size()
-        cp_rank = cp_group.rank()
         cu_seqlens = cu_seqlens // cp_size
         seqlens = (cu_seqlens[1:] - cu_seqlens[:-1]).tolist()
 
