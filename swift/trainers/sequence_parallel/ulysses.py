@@ -119,16 +119,8 @@ class DistributedAttention(torch.nn.Module):
         query_layer = _SeqAllToAll.apply(self.spg, query, self.scatter_idx, self.gather_idx)
         key_layer = _SeqAllToAll.apply(self.spg, key, self.scatter_idx, self.gather_idx)
         value_layer = _SeqAllToAll.apply(self.spg, value, self.scatter_idx, self.gather_idx)
-        position_ids = kwargs.pop('position_ids', None)
-        if position_ids is not None:
-            shape0 = position_ids.shape[0]
-            position_ids_output = torch.empty((shape0 * dist.get_world_size(self.spg), position_ids.shape[1]),
-                                              dtype=position_ids.dtype,
-                                              device=position_ids.device)
-            dist.all_gather_into_tensor(position_ids_output, position_ids, group=self.spg)
-            position_ids = torch.cat(position_ids_output.split(shape0, dim=0), dim=1)
         context_layer = self.local_attn(
-            query_layer, key_layer, value_layer, attention_mask, *args, position_ids=position_ids, **kwargs)
+            query_layer, key_layer, value_layer, attention_mask, *args, **kwargs)
         output = _SeqAllToAll.apply(self.spg, context_layer, self.gather_idx, self.scatter_idx)
         return output
 
@@ -219,13 +211,27 @@ class SequenceParallel:
                     key = key.transpose(1, 2)
                     value = value.transpose(1, 2)
                     if self.rp_world_size is not None and self.rp_world_size > 1:
-                        from .zigzag_ring_flash_attn import zigzag_ring_flash_attn_func
-                        output = zigzag_ring_flash_attn_func(query.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2),
-                                                             causal=module.is_causal,
-                                                             dropout_p=kwargs.get('dropout', 0.0),
-                                                             softmax_scale=kwargs.get('scaling', 0.0),
-                                                             window_size=kwargs.get('sliding_window') or (-1, -1),
-                                                             group=self.rp_group)
+                        from .zigzag_ring_flash_attn_varlen import zigzag_ring_flash_attn_varlen_func
+                        position_ids = kwargs['position_ids']
+                        position_ids = self._pad(position_ids, -1, position_ids=position_ids)
+                        cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids)
+                        max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
+                        position_ids = self._split(position_ids, dim=1, position_ids=position_ids)
+                        mask = position_ids != -1
+                        query = query.transpose(1, 2)
+                        key = key.transpose(1, 2)
+                        value = value.transpose(1, 2)
+                        query, key, value = self._pad_qkv(query, key, value, mask)
+                        output = zigzag_ring_flash_attn_varlen_func(query,
+                                                                    key,
+                                                                    value,
+                                                                    cu_seqlens=cu_seqlens,
+                                                                    max_seqlen=max_seqlen,
+                                                                     causal=module.is_causal,
+                                                                     dropout_p=kwargs.get('dropout', 0.0),
+                                                                     softmax_scale=kwargs.get('scaling', 0.0),
+                                                                     window_size=kwargs.get('sliding_window') or (-1, -1),
+                                                                     group=self.rp_group)
                         return output
                     else:
                         return ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'](module, query, key,
@@ -340,38 +346,54 @@ class SequenceParallel:
         self.model_dtype = next(model.parameters()).dtype
         self.tokenizer = tokenizer
 
-    def _pad(self, tensor, padding_value, dim=-1):
+    def _pad_qkv(self, query, key, value, mask):
+        query = query * mask
+        value = query * mask
+        mask = (~mask) * -1e5
+        key = key + mask
+        return query, key, value
+
+    def _pad(self, tensor, padding_value, position_ids=None):
         """Pad tensor for sequence parallel"""
-        length = tensor.shape[dim]
+        dim = 1
         if self.rp_world_size > 1:
             world_size = self.world_size * 2
         else:
             world_size = self.world_size
-        if length % world_size == 0:
+
+        def _do_pad(tensor):
+            length = tensor.shape[dim]
+            pad_num = world_size - (length % world_size)
+            if pad_num == 0:
+                return tensor
+            if not isinstance(padding_value, torch.Tensor):
+                # ids
+                pad_shape = ((*tensor.shape[:dim], pad_num, *tensor.shape[dim + 1:]) if dim != -1 else
+                             (*tensor.shape[:dim], pad_num))
+                pad = torch.full(pad_shape, padding_value, dtype=tensor.dtype, device=tensor.device)
+                tensor = torch.cat([tensor, pad], dim=dim)
+            else:
+                # For embeddings
+                tensor = torch.cat([tensor, padding_value.unsqueeze(0).repeat(tensor.shape[0], pad_num, 1)], dim=dim)
             return tensor
 
-        pad_num = world_size - (length % world_size)
-        if not isinstance(padding_value, torch.Tensor):
-            # ids
-            pad_shape = ((*tensor.shape[:dim], pad_num, *tensor.shape[dim + 1:]) if dim != -1 else
-                         (*tensor.shape[:dim], pad_num))
-            pad = torch.full(pad_shape, padding_value, dtype=tensor.dtype, device=tensor.device)
-            tensor = torch.cat([tensor, pad], dim=dim)
-        else:
-            # For embeddings
-            tensor = torch.cat([tensor, padding_value.unsqueeze(0).repeat(tensor.shape[0], pad_num, 1)], dim=dim)
-        return tensor
+        if position_ids is not None and self.rp_world_size > 1:
+            cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids)
+            all_tensors = []
+            for i in range(len(cu_seqlens) - 1):
+                all_tensors.append(_do_pad(tensor[:, cu_seqlens[i]:cu_seqlens[i + 1]]))
+            tensor = torch.cat(all_tensors, dim=dim)
 
-    def _gather(self, local_output, dim: int):
+        return _do_pad(tensor)
+
+    def _gather(self, local_output, dim: int, position_ids=None):
         """Gather tensor for sequence parallel - reverse of _split"""
         if self.world_size == 1:
             return local_output
 
         if self.rp_world_size > 1:
             input_dim = local_output.dim()
-            assert input_dim >= 2
-
-            batch_size, local_seq_len, *rest = local_output.shape
+            assert input_dim >= 2 and local_output.shape[0] == 1
 
             # Step 1: Gather from all sequence parallel ranks
             # Each sp_rank has its own piece, we need to gather them first
@@ -385,22 +407,27 @@ class SequenceParallel:
             gathered_rp = [torch.zeros_like(rp_chunk) for _ in range(self.rp_world_size)]
             torch.distributed.all_gather(gathered_rp, rp_chunk, group=self.rp_group)
 
-            # Step 3: Reconstruct the original tensor by unfolding the Z-pattern
-            # We need to separate each rp chunk into two parts as per the original pattern
-            full_seq_len = local_seq_len * self.world_size
-            chunk_size = full_seq_len // (2 * self.rp_world_size)
+            cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids)
+            all_tensor_length = []
+            for i in range(len(cu_seqlens) - 1):
+                length = cu_seqlens[i + 1] - cu_seqlens[i]
+                padding_length = ((length // (self.world_size * 2)) + 1) * (self.world_size * 2)
+                all_tensor_length.append(padding_length)
 
-            # Initialize the full output tensor
-            full_output = torch.zeros([batch_size, full_seq_len, *rest], device=local_output.device)
-
-            # Place each chunk in its correct position
-            for i in range(self.rp_world_size):
-                # In the original split, rank i got chunk[i] and chunk[2*rp_world_size-i-1]
-                # Now we need to place them back
-                full_output[:, i * chunk_size:(i + 1) * chunk_size] = gathered_rp[i][:, :chunk_size]
-                full_output[:, (2 * self.rp_world_size - i - 1) * chunk_size:(2 * self.rp_world_size - i) * chunk_size] = \
-                gathered_rp[i][:, chunk_size:]
-
+            full_output = torch.zeros([sum(all_tensor_length), *local_output.shape[2:]], device=local_output.device)
+            for idx_rp, rp_tensor in enumerate(gathered_rp): # rp world size
+                accumulated_length = 0
+                for idx_seq, length in enumerate(all_tensor_length): # sequence number
+                    local_length = length // self.rp_world_size
+                    local_tensor = rp_tensor[:, accumulated_length: local_length]
+                    chunk_size = length // 2
+                    left_idx = accumulated_length * self.rp_world_size + idx_rp * chunk_size
+                    right_idx = accumulated_length * self.rp_world_size + (idx_rp + 1) * chunk_size
+                    full_output[:, left_idx:right_idx] = local_tensor[:, :chunk_size]
+                    left_idx = accumulated_length * self.rp_world_size + (2 * self.rp_world_size - idx_rp - 1) * chunk_size
+                    right_idx = accumulated_length * self.rp_world_size + (2 * self.rp_world_size - idx_rp) * chunk_size
+                    full_output[:,left_idx:right_idx] = local_tensor[:, chunk_size:]
+                    accumulated_length += local_length
             return full_output.contiguous()
         else:
             gathered_sp = torch.empty((local_output.shape[0] * self.sp_world_size, local_output.shape[1]),
@@ -410,35 +437,40 @@ class SequenceParallel:
             gathered_sp = torch.cat(gathered_sp.split(local_output.shape[0], dim=0), dim=dim)
             return gathered_sp.contiguous()
 
-    def _split(self, input, dim: int):
+    @staticmethod
+    def get_cu_seqlens_from_position_ids(position_ids: torch.LongTensor):
+        seq_start_indices = torch.where(position_ids == 0)[0]
+        seq_end_indices = torch.cat([seq_start_indices[1:], torch.tensor([len(position_ids)], device=position_ids.device)])
+        seq_lengths = seq_end_indices - seq_start_indices
+        cu_seqlens = torch.cumsum(torch.cat([torch.tensor([0], device=position_ids.device), seq_lengths]), dim=0)
+        return cu_seqlens
+
+    def _split_packed(self, value, cu_seqlens):
+        local_values = []
+        for i in range(len(cu_seqlens) - 1):
+            start, end = cu_seqlens[i], cu_seqlens[i + 1]
+            local_value = value[start:end].chunk(2 * self.rp_world_size, dim=0)
+            local_values.extend(
+                [
+                    local_value[self.rp_rank].detach().clone(),
+                    local_value[2 * self.rp_world_size - 1 - self.rp_rank].detach().clone(),
+                ]
+            )
+        return torch.cat(local_values, dim=0).contiguous()
+
+    def _split(self, input, dim: int, position_ids=None):
         """Split tensor for sequence parallel"""
         if self.world_size == 1:
             return input
 
         if self.rp_world_size > 1:
             input_dim = input.dim()
-            assert input_dim >= 2
-            pre_dims = []
-            post_dims = []
-            seq_len = -1
-            if dim < 0:
-                dim = len(input.shape) + dim
-            for idx, d in enumerate(input.shape):
-                if idx == dim:
-                    seq_len = d
-                elif idx < dim:
-                    pre_dims.append(d)
-                else:
-                    post_dims.append(d)
-
-            value_chunks = input.chunk(2 * self.rp_world_size, dim=dim)
-
-            local_value = torch.cat(
-                [value_chunks[self.rp_rank], value_chunks[2 * self.rp_world_size - self.rp_rank - 1]], dim=dim
-            ).chunk(self.sp_world_size, dim=dim)[self.sp_rank]
-
-            new_shape = pre_dims + [seq_len // self.world_size] + post_dims
-            return local_value.reshape(new_shape).contiguous()
+            assert input_dim >= 2 and input.shape[0] == 1
+            cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids)
+            assert torch.all(cu_seqlens % (2 * self.rp_world_size) == 0)
+            value_chunks = self._split_packed(input, cu_seqlens)
+            local_value = value_chunks.chunk(self.sp_world_size, dim=dim)[self.sp_rank].contiguous()
+            return local_value
         else:
             rank = self.sp_rank
             dim_size = input.size(dim)
@@ -459,22 +491,24 @@ class SequenceParallel:
                              embed_tokens=None):
         """Common implementation for padding and splitting inputs"""
         tokenizer = self.tokenizer
+        origin_position_ids = position_ids.clone()
         if input_ids is not None:
-            input_ids = self._pad(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
+            input_ids = self._pad(input_ids, padding_value=tokenizer.pad_token_id, position_ids=origin_position_ids)
         if input_embeds is not None:
             pad_emb = torch.zeros(
                 (1, embed_tokens.weight.shape[-1])).to(embed_tokens.weight.device).to(embed_tokens.weight.dtype)
-            input_embeds = self._pad(input_embeds, padding_value=pad_emb, dim=1)
+            input_embeds = self._pad(input_embeds, padding_value=pad_emb, position_ids=origin_position_ids)
         batch_size = input_ids.shape[
             0] if input_ids is not None else input_embeds.shape[0] if input_embeds is not None else 1
         if position_ids is not None:
-            position_ids = self._pad(position_ids, padding_value=0, dim=-1)
+            position_ids = self._pad(position_ids, padding_value=-1)
         if (input_ids is not None or input_embeds is not None) and batch_size > 1:
+            # not padding_free, so not ring-attention
             inputs = input_ids if input_ids is not None else input_embeds
             attn_shape = inputs.shape[1]  # The sequence length
             if attention_mask is None:
                 attention_mask = torch.ones_like(position_ids)
-            attention_mask = self._pad(attention_mask, padding_value=0, dim=-1)
+            attention_mask = self._pad(attention_mask, padding_value=0)
             cache_position = torch.arange(0, attn_shape, device=inputs.device)
             # pad attention mask to 4d to avoid calculation errors
             if hasattr(self, 'causal_mask_func') and self.causal_mask_func is not None:
@@ -484,19 +518,17 @@ class SequenceParallel:
             input_ids = self._split(input_ids, dim=1)
         if input_embeds is not None:
             input_embeds = self._split(input_embeds, dim=1)
-        if position_ids is not None:
-            position_ids = self._split(position_ids, dim=-1)
         if labels is not None:
-            labels = self._pad(labels, padding_value=-100, dim=-1)
+            labels = self._pad(labels, padding_value=-100, position_ids=origin_position_ids)
             labels = torch.roll(labels, shifts=-1, dims=-1)
             labels = self._split(labels, dim=-1)
 
         if loss_scale is not None:
-            loss_scale = self._pad(loss_scale, padding_value=0., dim=-1)
+            loss_scale = self._pad(loss_scale, padding_value=0., position_ids=origin_position_ids)
             loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1)
             loss_scale = self._split(loss_scale, dim=-1)
 
-        return input_ids, input_embeds, labels, position_ids, attention_mask, loss_scale
+        return input_ids, input_embeds, labels, origin_position_ids, attention_mask, loss_scale
 
     def _init_device_mesh(self):
         """Initialize device mesh for sequence parallel"""
