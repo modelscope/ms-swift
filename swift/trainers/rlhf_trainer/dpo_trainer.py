@@ -143,7 +143,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             num_examples = labels.shape[0] // 2
             if not is_ref_model:
                 output['nll_loss'] = -origin_per_token_logps[:num_examples][loss_mask[:num_examples]].mean()
-            # Compute response lengths based on loss_mask
             if self.args.ld_alpha is not None and not is_ref_model:
                 completion_lengths = loss_mask.sum(dim=1)
 
