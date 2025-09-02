@@ -294,8 +294,10 @@ def patch_automodel(model_info, model_meta, automodel_class, return_dummy_model,
         if hasattr(cls, '_tp_plan'):  # fix tp_plan
             cls._tp_plan = cls._tp_plan or {}
         if return_dummy_model:
-            with torch.device('meta'):
-                model = cls(copy.deepcopy(kwargs['config']))
+            origin_torch_dtype = torch.get_default_dtype()
+            torch.set_default_dtype(kwargs['config'].torch_dtype)
+            model = cls(copy.deepcopy(kwargs['config']))
+            torch.set_default_dtype(origin_torch_dtype)
         else:
             model = from_pretrained(cls, *args, **kwargs)
         return model

@@ -251,7 +251,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.vllm_use_async_engine = False
         self.enable_offload = False
         self.use_gym_env = False
-        self.enable_server_multi_turn = self.args.multi_turn_scheduler is not None
+        self.enable_server_multi_turn = False
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
         self.dynamic_num_samples = False
         if self.use_vllm:
@@ -308,9 +308,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if len(args.reward_weights) != len(reward_funcs):
                 raise ValueError(f'Number of reward weights ({len(args.reward_weights)}) must match number of reward '
                                  f'functions ({len(reward_funcs)})')
-            self.reward_weights = torch.tensor(args.reward_weights, dtype=torch.float32)
+            self.reward_weights = torch.tensor(args.reward_weights, dtype=torch.float32).to(self.accelerator.device)
         else:
-            self.reward_weights = torch.ones(len(reward_funcs), dtype=torch.float32)
+            self.reward_weights = torch.ones(
+                len(self.reward_func_names), dtype=torch.float32).to(self.accelerator.device)
         self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
         self.request_config = RequestConfig(
             n=1,
@@ -725,6 +726,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _prefetch(self, dataloader: DataLoader):
         inputs = next(iter(dataloader))
+        if self.template.truncation_strategy == 'raise':
+            inputs = self.resample_encode_failed_inputs(inputs)
+        inputs = self._preprocess_inputs(inputs)
         all_inputs = gather_object(inputs)
         if self.state.global_step != self._last_loaded_step:
             self._move_model_to_vllm(skip_async_check=True)
@@ -818,12 +822,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs = self.resample_encode_failed_inputs(inputs)
 
         inputs = self._generate_completions(inputs)
-        total_advantages, rewards_std = self._score_completions(inputs)
+        total_rewards_per_func = self._score_completions(inputs)
         mode = 'train' if self.model.training else 'eval'
 
         if self.args.dynamic_sample and mode == 'train':
             # dynamic sampling for std=0 groups
-            inputs, total_advantages = self._dynamic_sampling(inputs, total_advantages, rewards_std)  # noqa
+            inputs, total_rewards_per_func = self._dynamic_sampling(inputs, total_rewards_per_func)  # noqa
+        total_advantages = self._compute_advantages(inputs, total_rewards_per_func)
 
         local_advantages = self.get_even_process_data(total_advantages)
         assert len(local_advantages) == len(inputs)
@@ -874,16 +879,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return batch_encoded_inputs
 
     @patch_profiling_decorator
-    def _score_completions(self, inputs: DataType) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Score completions using all reward functions and compute advantages
+    def _score_completions(self, inputs: DataType) -> torch.Tensor:
+        """Score completions using all reward functions.
 
         Args:
             inputs: List of input examples, each containing a 'messages' list with conversation history
 
         Returns:
-            Tuple containing:
-            - advantages: Tensor of shape (num_examples,) with computed advantages
-            - rewards_std: Tensor of shape (num_examples,) with group standard deviations
+            rewards_per_func: Tensor of shape (num_examples, num_reward_funcs) with all reward values
         """
         device = self.accelerator.device
         # If using gym environment, extract rewards directly from inputs
@@ -896,24 +899,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Compute rewards using reward functions
             local_rewards_per_func = self._compute_rewards_per_func(inputs)
 
-        # Gather rewards and prompt_ids across processes with padding
-        local_rewards_list = [row.tolist() for row in local_rewards_per_func]
+        # gather rewards
+        if not self.dynamic_num_samples:
+            total_rewards_per_func = gather(local_rewards_per_func)
+        else:
+            # gather_object to avoid shape mismatch
+            local_rewards_list = [row.tolist() for row in local_rewards_per_func]
+            total_rewards_per_func = gather_object(local_rewards_list)
+            total_rewards_per_func = torch.tensor(
+                total_rewards_per_func, dtype=torch.float32, device=self.accelerator.device)
 
-        # gather objects
-        total_rewards_per_func = gather_object(local_rewards_list)
-        total_prompt_ids = None
-        total_request_ids = None
-        if self.dynamic_num_samples:
-            total_prompt_ids = gather_object([inp['prompt_id'] for inp in inputs])
-            total_request_ids = gather_object([inp['request_id'] for inp in inputs])
-        total_rewards_per_func = torch.tensor(
-            total_rewards_per_func, dtype=torch.float32, device=self.accelerator.device)
-
-        # Compute advantages based on prompt_id grouping
-        total_advantages, total_rewards_std = self._compute_advantages(total_rewards_per_func, total_prompt_ids,
-                                                                       total_request_ids)
-
-        return total_advantages, total_rewards_std
+        return total_rewards_per_func
 
     def _compute_rewards_per_func(self, inputs: DataType) -> torch.Tensor:
         """Compute rewards using all reward functions"""
@@ -948,12 +944,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return rewards_per_func
 
-    def _compute_advantages(self,
-                            rewards_per_func: torch.Tensor,
-                            prompt_ids: Optional[List[str]] = None,
-                            request_ids: Optional[List[str]] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _compute_advantages(self, inputs: DataType, rewards_per_func: torch.Tensor) -> torch.Tensor:
         """
-        Compute advantages for policy gradient training.
+        Compute advantages for RL training.
 
         Supports two modes:
         1. **Default grouped mode** (no prompt_ids / request_ids provided)
@@ -965,17 +958,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         - Handles dynamic sample sizes where multiple request_ids may share the same prompt.
 
         Args:
+            inputs (DataType):
+                Input data samples.
             rewards_per_func (torch.Tensor):
                 Reward values for each reward function, shape `(N, num_reward_funcs)`.
-            prompt_ids (List[str], optional):
-                Prompt identifiers for each sample.
-            request_ids (List[str], optional):
-                Request identifiers for each sample.
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor]:
-                - **advantages**: Computed advantages, shape `(N,)`.
-                - **rewards_std**: Standard deviation used for normalization, shape `(N,)`.
+            **advantages** (torch.Tensor):
+                Computed advantages, shape `(N,)`.
         """
 
         def normalize_advantages(advantages: torch.Tensor, rewards_std: torch.Tensor) -> torch.Tensor:
@@ -1011,15 +1001,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Step 0. Aggregate final reward using reward weights
         device = self.accelerator.device
-        if not self.use_gym_env:
-            rewards = (rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
-        else:
-            rewards = rewards_per_func.squeeze(1)
+        rewards = (rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
 
         # --------------------------------------------------
         # Case 1: Default grouped mode
         # --------------------------------------------------
-        if not prompt_ids or not request_ids:
+        if not self.dynamic_num_samples:
             grouped_rewards = rewards.view(-1, self.num_generations)
             group_rewards_mean = grouped_rewards.mean(dim=1)
             group_rewards_std = grouped_rewards.std(dim=1)
@@ -1038,13 +1025,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Log all rewards
             log_rewards_all(rewards_per_func)
 
-            return advantages, group_rewards_std
+            return advantages
 
         # --------------------------------------------------
         # Case 2: Request-aware mode
         # --------------------------------------------------
         else:
-            assert self.dynamic_num_samples
+            prompt_ids = gather_object([inp['prompt_id'] for inp in inputs])
+            request_ids = gather_object([inp['request_id'] for inp in inputs])
             assert rewards.shape[0] == len(prompt_ids) == len(request_ids)
             device = self.accelerator.device
 
@@ -1081,7 +1069,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             rid_to_idx = {rid: idx for idx, rid in enumerate(unique_request_ids)}
             indices_in_unique = torch.tensor([rid_to_idx[r] for r in request_ids], device=device)
             advantages = request_advantages[indices_in_unique]
-            rewards_std = prompt_stds[indices_in_unique]
 
             # Step 5. Log metrics for unique request_ids
             log_rewards_metrics(rewards=unique_rewards, rewards_per_func_for_metrics=rewards_per_func[unique_indices])
@@ -1089,10 +1076,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Step 6. Log all rewards
             log_rewards_all(rewards_per_func)
 
-            return advantages, rewards_std
+            return advantages
 
     @patch_profiling_decorator
-    def _dynamic_sampling(self, inputs, advantages, rewards_std):
+    def _dynamic_sampling(self, inputs, rewards_per_func):
         """
         Perform dynamic sampling to replace samples with zero-reward-variance groups.
 
@@ -1101,31 +1088,31 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         Args:
             inputs: local input data samples
-            advantages: Computed advantages for global data samples
-            rewards_std: Group standard deviations for global data samples
+            rewards_per_func: reward per function for global data samples
 
         Returns:
-            tuple: (inputs, advantages) with zero-variance groups replaced by resampled data
+            tuple: (inputs, rewards_per_func) with zero-variance groups replaced by resampled data
         """
         # DAPO https://arxiv.org/abs/2503.14476
         # Replaces samples with zero-reward-variance groups (std=0)
         resample_count = 0
         valid_samples = []
-        valid_advantages = []
-        origin_data = (inputs, advantages)
+        valid_rewards_per_func = []
+        origin_data = (inputs, rewards_per_func)
 
         while resample_count < self.args.max_resample_times:
+            rewards_std = self.compute_std(inputs, rewards_per_func)
             valid_mask = (rewards_std > 0)
             all_inputs = gather_object(inputs)
             valid_samples.extend([inp for inp, mask in zip(all_inputs, valid_mask) if mask])
-            valid_advantages.append(advantages[valid_mask])
+            valid_rewards_per_func.append(rewards_per_func[valid_mask])
             if len(valid_samples) >= self.args.generation_batch_size:
                 break
 
             inputs = next(self.dynamic_resample_iterator)
             inputs = Trainer._prepare_inputs(self, inputs)
             inputs = self._generate_completions(inputs)
-            advantages, rewards_std = self._score_completions(inputs)
+            rewards_per_func = self._score_completions(inputs)
             resample_count += 1
 
         if len(valid_samples) >= self.args.generation_batch_size:
@@ -1134,12 +1121,45 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 (self.accelerator.process_index + 1) * len(inputs),
             )
             inputs = valid_samples[:self.args.generation_batch_size][process_slice]
-            advantages = torch.cat(valid_advantages)[:self.args.generation_batch_size]
+            rewards_per_func = torch.cat(valid_rewards_per_func)[:self.args.generation_batch_size]
         else:
             logger.warning(f'There are still std=0 groups present after {self.args.max_resample_times} retries.')
-            inputs, advantages = origin_data
+            inputs, rewards_per_func = origin_data
 
-        return inputs, advantages
+        return inputs, rewards_per_func
+
+    def compute_std(self, inputs: DataType, rewards_per_func: torch.Tensor) -> torch.Tensor:
+        """Compute the standard deviation of the rewards per function."""
+        device = self.accelerator.device
+        rewards = (rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
+
+        if not self.dynamic_num_samples:
+            grouped_rewards = rewards.view(-1, self.num_generations)
+            group_rewards_std = grouped_rewards.std(dim=1).repeat_interleave(self.num_generations)
+            return group_rewards_std
+        else:
+            prompt_ids = gather_object([inp['prompt_id'] for inp in inputs])
+            request_ids = gather_object([inp['request_id'] for inp in inputs])
+            device = self.accelerator.device
+            unique_indices = self._get_last_indices(request_ids)
+            unique_request_ids = [request_ids[i] for i in unique_indices.cpu()]
+            unique_prompt_ids = [prompt_ids[i] for i in unique_indices.cpu()]
+
+            unique_rewards = rewards[unique_indices]
+            prompt_to_indices = {}
+            for idx, pid in enumerate(unique_prompt_ids):
+                prompt_to_indices.setdefault(pid, []).append(idx)
+
+            prompt_stds = torch.zeros(len(unique_rewards), device=device)
+            for pid, idxs in prompt_to_indices.items():
+                idx_tensor = torch.tensor(idxs, device=device)
+                r_group = unique_rewards[idx_tensor]
+                prompt_stds[idx_tensor] = r_group.std()
+            rid_to_idx = {rid: idx for idx, rid in enumerate(unique_request_ids)}
+            indices_in_unique = torch.tensor([rid_to_idx[r] for r in request_ids], device=device)
+            rewards_std = prompt_stds[indices_in_unique]
+
+            return rewards_std
 
     def split_by_mini_batches(self, inputs: DataType) -> List[DataType]:
         """
@@ -2299,6 +2319,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs_count = gather_object(outputs_count)[0]  # Broadcast count to all processes
             if outputs_count != len(all_requests):
                 self.dynamic_num_samples = True
+                if self.args.dynamic_sample:
+                    logger.warning('Mismatch between returned samples and requests detected. '
+                                   'With --dynamic_sample enabled, only the last valid sample of each '
+                                   f'{self.args.generation_batch_size}-sized batch will be kept; '
+                                   'some requests may therefore be dropped.')
             # Initialize empty outputs for non-main processes
             if not self.accelerator.is_main_process:
                 all_outputs = [None] * outputs_count
@@ -2320,7 +2345,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         else:
             # For global inputs, only main process keeps outputs
-            outputs = outputs if self.accelerator.is_main_process else []
+            outputs = all_outputs if self.accelerator.is_main_process else []
 
         return outputs
 
@@ -2517,6 +2542,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return input_data
 
         if not self.dynamic_num_samples:
+            if self.async_generate and not outputs:
+                # In async generation, only the main process receives outputs; non-main ranks get an empty list.
+                return outputs
             assert len(inputs) == len(outputs)
             return [
                 merge_output_input_data(deepcopy(input_data), output) for input_data, output in zip(inputs, outputs)

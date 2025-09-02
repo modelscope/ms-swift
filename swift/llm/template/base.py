@@ -90,6 +90,7 @@ class Template(ProcessorMixin):
         self._version = 'v3'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
         self.model = None
+        self.dummy_model = None
 
         if not use_chat_template:
             template_meta = template_meta.to_generate_template_meta()
@@ -155,6 +156,15 @@ class Template(ProcessorMixin):
             if isinstance(token, str):
                 self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
         self.template_meta.init(tokenizer)
+
+    def _get_model(self):
+        if self.model is not None:
+            return self.model
+        if self.dummy_model is None:
+            from swift.llm import get_model_tokenizer
+            with torch.device('meta'):
+                self.dummy_model = get_model_tokenizer(self.model_info.model_dir, return_dummy_model=True)[0]
+        return self.dummy_model
 
     @staticmethod
     def _load_image(image, load_images: bool):
