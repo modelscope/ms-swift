@@ -141,7 +141,7 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     mg_language_model = mg_model.language_model if is_multimodal else mg_model
     share_embedding = mg_language_model.share_embeddings_and_output_weights
     model_arch = hf_model.model_meta.model_arch
-    ignore_modules = [] if model_arch is None else (model_arch.vision_tower + model_arch.aligner)
+    ignore_modules = (model_arch.vision_tower + model_arch.aligner) if is_multimodal else []
 
     hf_modules = _find_modules(hf_model, ignore_modules=ignore_modules)
     with torch.inference_mode(), _model_cpu_forward_context(hf_modules, torch_dtype, share_embedding=share_embedding):
