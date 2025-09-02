@@ -526,10 +526,7 @@ def _patch_mrope():
     from megatron.core.models.common.embeddings import rope_utils
     from megatron.training import get_args
 
-    def forward(self,
-                position_ids,
-                mrope_section: List[int],
-                packed_seq: bool = False) -> torch.Tensor:
+    def forward(self, position_ids, mrope_section: List[int], packed_seq: bool = False) -> torch.Tensor:
         seq = position_ids.to(device=self.inv_freq.device, dtype=self.inv_freq.dtype)
 
         if self.seq_len_interpolation_factor is not None:
