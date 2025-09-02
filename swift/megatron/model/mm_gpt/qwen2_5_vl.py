@@ -6,7 +6,7 @@ from swift.llm import ModelType, get_model_tokenizer, to_device
 from ..constant import MegatronModelType
 from ..gpt.hf2mcore import set_layer_state as set_layer_state_hf2mcore
 from ..gpt.mcore2hf import set_layer_state as set_layer_state_mcore2hf
-from ..register import MegatronModelMeta, register_megatron_model
+from ..register import register_megatron_model
 from .utils import MMGPTMegatronModelMeta, patch_device_map_meta
 
 

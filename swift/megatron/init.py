@@ -519,7 +519,7 @@ def _patch_TELinear():
 
 
 def _patch_mrope():
-    from megatron.core.models.common.embeddings.rotary_pos_embedding import (MultimodalRotaryEmbedding)
+    from megatron.core.models.common.embeddings.rotary_pos_embedding import MultimodalRotaryEmbedding
     from megatron.core import parallel_state
     from megatron.core.models.common.embeddings.rope_utils import (get_pos_emb_on_this_cp_rank,
                                                                    _apply_rotary_pos_emb_bshd)
@@ -529,7 +529,6 @@ def _patch_mrope():
     def forward(self,
                 position_ids,
                 mrope_section: List[int],
-                offset: int = 0,
                 packed_seq: bool = False) -> torch.Tensor:
         seq = position_ids.to(device=self.inv_freq.device, dtype=self.inv_freq.dtype)
 
@@ -594,8 +593,8 @@ def _patch_mrope():
                 t,
                 cu_seqlens,
                 freqs,
-                rotary_interleaved=config.rotary_interleaved,
-                multi_latent_attention=config.multi_latent_attention,
+                rotary_interleaved=rotary_interleaved,
+                multi_latent_attention=multi_latent_attention,
                 mscale=mscale,
                 cp_group=cp_group,
             )
