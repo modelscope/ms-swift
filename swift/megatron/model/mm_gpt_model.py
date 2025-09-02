@@ -1,6 +1,9 @@
+from contextlib import contextmanager
+
 import torch
-from megatron.core import InferenceParams, mpu
+from megatron.core import InferenceParams
 from megatron.core.packed_seq_params import PackedSeqParams
+from megatron.core.tensor_parallel import VocabParallelEmbedding, scatter_to_sequence_parallel_region
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -32,6 +35,28 @@ class MultimodalGPTModel(MegatronModule):
         if args.megatron_model_meta.visual_cls is not None:
             self.visual = args.megatron_model_meta.visual_cls(config)
 
+    @contextmanager
+    def _patch_word_embeddings(self, kwargs):
+        origin_forward = VocabParallelEmbedding.forward
+
+        def forward(_self, input_):
+            reduce_scatter_embeddings = _self.reduce_scatter_embeddings
+            _self.reduce_scatter_embeddings = False
+            res = origin_forward(_self, input_)
+            _self.reduce_scatter_embeddings = reduce_scatter_embeddings
+            if self.visual is not None:
+                res = self.visual.get_inputs_embeds(res, **kwargs)
+            if reduce_scatter_embeddings:
+                res = res.transpose(0, 1).contiguous()
+                res = scatter_to_sequence_parallel_region(res, group=_self.tp_group)
+            return res
+
+        VocabParallelEmbedding.forward = forward
+        try:
+            yield
+        finally:
+            VocabParallelEmbedding.forward = origin_forward
+
     # Code borrowed from NVIDIA/Megatron-LM
     def forward(
         self,
@@ -44,18 +69,13 @@ class MultimodalGPTModel(MegatronModule):
         packed_seq_params: PackedSeqParams = None,
         **kwargs,
     ) -> torch.Tensor:
-        from ..trainers.utils import get_batch_on_this_cp_rank
-        args = get_args()
         if decoder_input is not None:
             pass
         elif self.pre_process:
-            decoder_input = self.language_model.embedding(input_ids=input_ids, position_ids=position_ids)
-            if self.visual is not None:
-                if args.tensor_model_parallel_size > 1 and args.sequence_parallel:
-                    input_ids = input_ids.chunk(
-                        args.tensor_model_parallel_size, dim=-1)[mpu.get_tensor_model_parallel_rank()]
-                kwargs.update({'input_ids': input_ids})
-                decoder_input = self.visual.get_inputs_embeds(decoder_input, **kwargs)
+            from ..trainers.utils import get_batch_on_this_cp_rank
+            kwargs.update({'input_ids': input_ids})
+            with self._patch_word_embeddings(kwargs):
+                decoder_input = self.language_model.embedding(input_ids=input_ids, position_ids=position_ids)
                 decoder_input = get_batch_on_this_cp_rank({
                     'decoder_input': decoder_input,
                     'packed_seq_params': packed_seq_params

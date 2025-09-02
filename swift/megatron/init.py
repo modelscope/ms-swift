@@ -648,6 +648,8 @@ def _patch_megatron():
 
 def init_megatron_env() -> None:
     if 'MEGATRON_LM_PATH' not in os.environ:
+        # TODO: Synchronization issues may occur in DDP scenarios
+        # if the distributed environment has not been initialized.
         os.environ['MEGATRON_LM_PATH'] = git_clone_github(
             'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.13.0')
     with safe_ddp_context(hash_id='megatron-lm'):

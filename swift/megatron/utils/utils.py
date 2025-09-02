@@ -61,9 +61,9 @@ def get_multimodal_target_regex(
     for module in modules:
         rejected_modules = []
         if not freeze_vit:
-            for aligner in aligner:
-                if aligner.startswith(f'{module}.'):
-                    rejected_modules.append(aligner)
+            for _aligner in aligner:
+                if _aligner.startswith(f'{module}.'):
+                    rejected_modules.append(_aligner)
 
         sub_module = deep_getattr(model, module)
         target_modules = find_all_linears(sub_module)

@@ -70,7 +70,7 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
             media_inputs = to_device(media_inputs, device)
             pixel_values = media_inputs['pixel_values'].type(dtype)
             image_embeds = self.model(pixel_values, grid_thw=media_inputs['image_grid_thw'])
-            inputs_embeds += image_embeds.mean() * 0.
+            inputs_embeds = inputs_embeds + image_embeds.mean() * 0.
         else:
             if pixel_values is None:
                 pixel_values_mixed = pixel_values_videos
@@ -95,7 +95,6 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
                 image_embeds = mixed_embeds[:image_tokens]
                 video_embeds = mixed_embeds[image_tokens:]
 
-            input_ids = input_ids.transpose(0, 1)
             if image_embeds is not None:
                 image_mask = (input_ids == self.model_config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)

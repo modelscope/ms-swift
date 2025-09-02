@@ -1625,7 +1625,7 @@ class Template(ProcessorMixin):
         res = {}
         if self.padding_free:
             assert len(batch) == 1, f'batch: {batch}'
-            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel']:
+            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel', 'real_position_ids']:
                 v = batch[0].get(k)
                 if v is not None:
                     res[k] = v if k == 'channel' else [v]
@@ -1647,9 +1647,10 @@ class Template(ProcessorMixin):
                     res[key] = val
 
         keys = [
-            'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'
+            'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids',
+            'real_position_ids'
         ]
-        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]
+        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0, 0.]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
@@ -1676,10 +1677,14 @@ class Template(ProcessorMixin):
             if self.padding_free:
                 cp_size = self.sequence_parallel_size
                 if cp_size > 1:
-                    padding_len = padding_to - seq_lens[0]
-                    position_ids = res['position_ids'][0].tolist()
-                    position_ids += list(range(cp_size * 2)) * (padding_len // (cp_size * 2))
-                    res['position_ids'] = [torch.tensor(position_ids)]
+                    for key in ['position_ids', 'real_position_ids']:
+                        padding_len = padding_to - seq_lens[0]
+                        position_ids = res[key][0]
+                        extended_position_ids = torch.arange(cp_size * 2).repeat(padding_len // (cp_size * 2))
+                        if position_ids.ndim == 3:  # compat mrope
+                            extended_position_ids = extended_position_ids[None,
+                                                                          None, :].expand(position_ids.shape[0], 1, -1)
+                        res[key] = [torch.concat([position_ids, extended_position_ids], dim=-1)]
             else:
                 seq_len = max(seq_lens) if padding_to is None else padding_to
                 res['attention_mask'] = torch.tril(torch.ones(
@@ -1693,13 +1698,16 @@ class Template(ProcessorMixin):
                 continue
             if self.use_megatron and not self.padding_free and key == 'attention_mask':
                 continue
-            if padding_to is not None and not (self.padding_free and key == 'position_ids'
+            if padding_to is not None and not (self.padding_free and key in {'position_ids', 'real_position_ids'}
                                                and self.sequence_parallel_size > 1):
                 padding_len = padding_to - seq_lens[0]
                 if padding_len > 0:
                     res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
                                         'constant', pad_value)
-            res[key] = self._pad_sequence(res[key], pad_value)
+            if key == 'real_position_ids':
+                res[key] = torch.concat(res[key], dim=-1)
+            else:
+                res[key] = self._pad_sequence(res[key], pad_value)
 
         # multimodal
         res.update(self._data_collator_mm_data(batch))
