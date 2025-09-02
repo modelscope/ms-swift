@@ -251,7 +251,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.vllm_use_async_engine = False
         self.enable_offload = False
         self.use_gym_env = False
-        self.enable_server_multi_turn = self.args.multi_turn_scheduler is not None
+        self.enable_server_multi_turn = False
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
         self.dynamic_num_samples = False
         if self.use_vllm:
