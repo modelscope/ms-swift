@@ -11,7 +11,10 @@ from .utils import MMGPTMegatronModelMeta, patch_device_map_meta
 
 
 def convert_hf2mcore_qwen2_5_vl(hf_model, mg_model):
-    language_model = hf_model.model.language_model
+    language_model = hf_model.model
+    if hasattr(language_model, 'language_model'):
+        language_model = language_model.language_model
+    visual = hf_model.visual if hasattr(hf_model, 'visual') else hf_model.model.visual
     mg_language_model = mg_model.language_model
     args = get_args()
     mg_language_model.embedding.word_embeddings.weight.data.copy_(language_model.embed_tokens.weight)
@@ -20,11 +23,14 @@ def convert_hf2mcore_qwen2_5_vl(hf_model, mg_model):
     mg_language_model.decoder.final_layernorm.weight.data.copy_(language_model.norm.weight)
     for layer_idx in range(args.num_layers):
         set_layer_state_hf2mcore(args, mg_language_model, language_model, layer_idx)
-    mg_model.visual.model.load_state_dict(hf_model.model.visual.state_dict())
+    mg_model.visual.model.load_state_dict(visual.state_dict())
 
 
 def convert_mcore2hf_qwen2_5_vl(hf_model, mg_model):
-    language_model = hf_model.model.language_model
+    language_model = hf_model.model
+    if hasattr(language_model, 'language_model'):
+        language_model = language_model.language_model
+    visual = hf_model.visual if hasattr(hf_model, 'visual') else hf_model.model.visual
     mg_language_model = mg_model.language_model
     args = get_args()
     language_model.embed_tokens.weight.data.copy_(mg_language_model.embedding.word_embeddings.weight)
@@ -33,7 +39,7 @@ def convert_mcore2hf_qwen2_5_vl(hf_model, mg_model):
     language_model.norm.weight.data.copy_(mg_language_model.decoder.final_layernorm.weight)
     for layer_idx in range(args.num_layers):
         set_layer_state_mcore2hf(args, mg_language_model, language_model, layer_idx)
-    hf_model.model.visual.load_state_dict(mg_model.visual.model.state_dict())
+    visual.load_state_dict(mg_model.visual.model.state_dict())
 
 
 class Qwen2_5VL_Vit(HuggingFaceModule):
@@ -41,7 +47,10 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
     aligner = ['model.merger']
 
     def __init__(self, config):
-        from transformers.models.qwen2_5_vl import Qwen2_5_VLTextModel
+        try:
+            from transformers.models.qwen2_5_vl import Qwen2_5_VLTextModel
+        except ImportError:
+            from transformers.models.qwen2_5_vl import Qwen2_5_VLModel as Qwen2_5_VLTextModel
         super().__init__(config)
         args = get_args()
         model_dir = args.model_info.model_dir
