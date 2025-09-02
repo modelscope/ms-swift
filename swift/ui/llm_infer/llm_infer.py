@@ -345,6 +345,18 @@ class LLMInfer(BaseUI):
         return None
 
     @classmethod
+    def parse_text(cls, messages):
+        prepared_msgs = []
+        for message in messages:
+            if isinstance(message, tuple):
+                query = message[0].replace('<', '&lt;').replace('>', '&gt;').replace('*', '&ast;')
+                response = message[1].replace('<', '&lt;').replace('>', '&gt;').replace('*', '&ast;')
+                prepared_msgs.append((query, response))
+            else:
+                prepared_msgs.append(message)
+        return prepared_msgs
+
+    @classmethod
     def send_message(cls, running_task, template_type, prompt: str, image, video, audio, infer_request: InferRequest,
                      infer_model_type, system, max_new_tokens, temperature, top_k, top_p, repetition_penalty):
 
@@ -367,8 +379,10 @@ class LLMInfer(BaseUI):
                 infer_request.messages[-1]['medias'].append(media)
 
         if not prompt:
-            yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(
-                value=None), gr.update(value=None), infer_request
+            chatbot_content = cls._replace_tag_with_media(infer_request)
+            chatbot_content = cls.parse_text(chatbot_content)
+            yield '', chatbot_content, gr.update(value=None), gr.update(value=None), gr.update(
+                value=None), infer_request
             return
         else:
             infer_request.messages[-1]['content'] = infer_request.messages[-1]['content'] + prompt
@@ -407,5 +421,7 @@ class LLMInfer(BaseUI):
                 continue
             stream_resp_with_history += chunk.choices[0].delta.content if chat else chunk.choices[0].text
             infer_request.messages[-1]['content'] = stream_resp_with_history
-            yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(
-                value=None), gr.update(value=None), infer_request
+            chatbot_content = cls._replace_tag_with_media(infer_request)
+            chatbot_content = cls.parse_text(chatbot_content)
+            yield '', chatbot_content, gr.update(value=None), gr.update(value=None), gr.update(
+                value=None), infer_request
