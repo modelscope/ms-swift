@@ -66,6 +66,8 @@ def get_multimodal_target_regex(
                     rejected_modules.append(_aligner)
 
         sub_module = deep_getattr(model, module)
+        if sub_module is None:
+            continue
         target_modules = find_all_linears(sub_module)
         if not target_modules:
             continue

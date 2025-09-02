@@ -264,7 +264,10 @@ class BaseMegatronTrainer(ABC):
         return model, optimizer, opt_param_scheduler
 
     def _prepare_vit_gradient_checkpointing(self):
-        visual = self.unwrapped_model.visual.model
+        visual = self.unwrapped_model.visual
+        if visual is None:
+            return
+        visual = visual.model
         args = get_args()
         if args.vit_gradient_checkpointing:
             visual.gradient_checkpointing_enable(**(args.gradient_checkpointing_kwargs or {}))

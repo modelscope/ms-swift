@@ -129,7 +129,7 @@ swift export \
 ```
 
 
-Finally, we perform inference using the generated Hugging Face format weights:
+Finally, we use the generated Hugging Face format weights to perform inference on the validation set:
 ```shell
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0 \

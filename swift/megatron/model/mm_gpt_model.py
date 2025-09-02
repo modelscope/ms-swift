@@ -32,7 +32,7 @@ class MultimodalGPTModel(MegatronModule):
         self.share_embeddings_and_output_weights = self.language_model.share_embeddings_and_output_weights
         args = get_args()
         self.visual = None
-        if args.megatron_model_meta.visual_cls is not None:
+        if pre_process and args.megatron_model_meta.visual_cls is not None:
             self.visual = args.megatron_model_meta.visual_cls(config)
 
     @contextmanager
