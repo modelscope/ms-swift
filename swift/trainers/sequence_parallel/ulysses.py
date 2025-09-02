@@ -1,6 +1,6 @@
 from functools import partial
 from typing import Any, Optional, Tuple
-
+import math
 import torch
 import torch.distributed as dist
 from torch.distributed import init_device_mesh
@@ -418,7 +418,7 @@ class SequenceParallel:
             all_tensor_length = []
             for i in range(len(cu_seqlens) - 1):
                 length = cu_seqlens[i + 1] - cu_seqlens[i]
-                padding_length = ((length // (self.world_size * 2)) + 1) * (self.world_size * 2)
+                padding_length = math.ceil(length / (self.world_size * 2)) * (self.world_size * 2)
                 all_tensor_length.append(padding_length)
 
             full_output = torch.zeros([sum(all_tensor_length), *local_output.shape[2:]], device=local_output.device)
@@ -426,16 +426,20 @@ class SequenceParallel:
                 accumulated_length = 0
                 for idx_seq, length in enumerate(all_tensor_length): # sequence number
                     local_length = length // self.rp_world_size
-                    local_tensor = rp_tensor[:, accumulated_length: local_length]
-                    chunk_size = length // 2
+                    local_tensor = rp_tensor[:, accumulated_length: local_length+accumulated_length]
+                    chunk_size = local_length // 2
                     left_idx = accumulated_length * self.rp_world_size + idx_rp * chunk_size
                     right_idx = accumulated_length * self.rp_world_size + (idx_rp + 1) * chunk_size
-                    full_output[:, left_idx:right_idx] = local_tensor[:, :chunk_size]
+                    full_output[left_idx:right_idx] = local_tensor[:, :chunk_size]
                     left_idx = accumulated_length * self.rp_world_size + (2 * self.rp_world_size - idx_rp - 1) * chunk_size
                     right_idx = accumulated_length * self.rp_world_size + (2 * self.rp_world_size - idx_rp) * chunk_size
-                    full_output[:,left_idx:right_idx] = local_tensor[:, chunk_size:]
+                    full_output[left_idx:right_idx] = local_tensor[:, chunk_size:]
                     accumulated_length += local_length
-            return full_output.contiguous()
+            
+            mask = position_ids >= 0
+            full_output = full_output
+            full_output = full_output[mask.squeeze(0)]
+            return full_output.unsqueeze(0).contiguous()
         else:
             gathered_sp = torch.empty((local_output.shape[0] * self.sp_world_size, local_output.shape[1]),
                                        dtype=local_output.dtype,

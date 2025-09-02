@@ -35,7 +35,7 @@ class GatherLoss(torch.autograd.Function):
     """Gather loss from sequence group"""
 
     @staticmethod
-    def forward(ctx, loss, labels, gather_idx=None):
+    def forward(ctx, loss, labels, gather_idx=None, position_ids=None):
         """
         Args:
             loss: loss tensor after splitting
@@ -45,10 +45,11 @@ class GatherLoss(torch.autograd.Function):
         # change from label.shape to loss, because label may be None
         ctx.scatter_shape = loss.shape[gather_idx or 0]
         ctx.gather_idx = gather_idx or 0
+        ctx.position_ids = position_ids
         from swift.trainers.sequence_parallel import sequence_parallel
-        output = sequence_parallel._gather(loss, dim=ctx.gather_idx)
+        output = sequence_parallel._gather(loss, dim=ctx.gather_idx, position_ids=position_ids)
         if labels is not None:
-            labels_output = sequence_parallel._gather(labels, dim=ctx.gather_idx)
+            labels_output = sequence_parallel._gather(labels, dim=ctx.gather_idx, position_ids=position_ids)
         else:
             labels_output = None
         return output, labels_output
@@ -57,7 +58,8 @@ class GatherLoss(torch.autograd.Function):
     def backward(ctx, *grad_output):
         from swift.trainers.sequence_parallel import sequence_parallel
         _grad = grad_output[0] * sequence_parallel.world_size
-        _grad = sequence_parallel._split(_grad, dim=ctx.gather_idx).contiguous()
+        _grad = sequence_parallel._pad(_grad, padding_value=0., position_ids=ctx.position_ids[ctx.position_ids>=0].unsqueeze(0))
+        _grad = sequence_parallel._split(_grad, dim=ctx.gather_idx, position_ids=ctx.position_ids).contiguous()
         return _grad, None, None, None
 
 
@@ -132,7 +134,10 @@ def loss_scale_sp_func(outputs,
     if loss_scale is not None:
         loss_scale = loss_scale.flatten().to(device)
         loss = (loss_scale * loss)
-    loss, labels = GatherLoss.apply(loss.reshape(batch_size, -1), labels.reshape(batch_size, -1), 1)
+    from swift.trainers.sequence_parallel import sequence_parallel
+    position_ids = sequence_parallel.extra_kwargs.get('origin_position_ids')
+    position_ids = sequence_parallel._pad(position_ids, padding_value=-1, position_ids=position_ids)
+    loss, labels = GatherLoss.apply(loss.reshape(batch_size, -1), labels.reshape(batch_size, -1), 1, position_ids)
     mask = (labels != -100)
     total_loss = loss[mask].sum()
     if num_items_in_batch is None:

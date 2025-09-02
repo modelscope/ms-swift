@@ -759,8 +759,15 @@ class SwiftMixin:
                 labels = torch.from_numpy(labels).to(get_current_device())
             if labels.shape[1] > preds.shape[1]:
                 _, _, labels, _, _, _ = sequence_parallel.pad_and_split_inputs(None, None, labels, None, None, None)
-            preds_output = sequence_parallel._gather(preds, dim=1)
-            labels_output = sequence_parallel._gather(labels, dim=1)
+            
+            if sequence_parallel.rp_world_size > 1:
+                from swift.trainers.sequence_parallel import sequence_parallel
+                position_ids = sequence_parallel.extra_kwargs.get('origin_position_ids')
+                position_ids = sequence_parallel._pad(position_ids, padding_value=-1, position_ids=position_ids)
+            else:
+                position_ids = None
+            preds_output = sequence_parallel._gather(preds, dim=1, position_ids=position_ids)
+            labels_output = sequence_parallel._gather(labels, dim=1, position_ids=position_ids)
             # roll back to fit compute_acc
             labels_output = torch.roll(labels_output, shifts=1, dims=1)
             preds = preds_output
