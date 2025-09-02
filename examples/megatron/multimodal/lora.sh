@@ -5,7 +5,7 @@ MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --load Qwen2.5-VL-7B-Instruct-mcore \
-    --dataset 'AI-ModelScope/LaTeX_OCR' \
+    --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \

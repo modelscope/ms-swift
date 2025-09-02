@@ -45,17 +45,26 @@ def convert_mcore2hf_qwen2_5_vl(hf_model, mg_model):
 class Qwen2_5VL_Vit(HuggingFaceModule):
     vision_tower = ['model']
     aligner = ['model.merger']
+    version = 'v2_5'
 
     def __init__(self, config):
-        try:
-            from transformers.models.qwen2_5_vl import Qwen2_5_VLTextModel
-        except ImportError:
-            from transformers.models.qwen2_5_vl import Qwen2_5_VLModel as Qwen2_5_VLTextModel
+        if self.version == 'v2_5':
+            try:
+                from transformers.models.qwen2_5_vl import Qwen2_5_VLTextModel
+            except ImportError:
+                from transformers.models.qwen2_5_vl import Qwen2_5_VLModel as Qwen2_5_VLTextModel
+            context = patch_device_map_meta(Qwen2_5_VLTextModel)
+        elif self.version == 'v2':
+            try:
+                from transformers.models.qwen2_vl import Qwen2VLTextModel
+            except ImportError:
+                from transformers.models.qwen2_vl import Qwen2VLModel as Qwen2VLTextModel
+            context = patch_device_map_meta(Qwen2VLTextModel)
         super().__init__(config)
         args = get_args()
         model_dir = args.model_info.model_dir
         kwargs = {'attn_impl': 'flash_attn'} if args.attention_backend.name == 'flash' else {}
-        with patch_device_map_meta(Qwen2_5_VLTextModel):
+        with context:
             model, _ = get_model_tokenizer(model_dir, args.torch_dtype, return_dummy_model=True, **kwargs)
         self.model = model.visual.to('cuda')
         self.model_config = model.config
@@ -116,6 +125,10 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
         return inputs_embeds
 
 
+class Qwen2VL_Vit(Qwen2_5VL_Vit):
+    version = 'v2'
+
+
 register_megatron_model(
     MMGPTMegatronModelMeta(
         MegatronModelType.qwen2_5_vl, [
@@ -124,3 +137,12 @@ register_megatron_model(
         convert_hf2mcore=convert_hf2mcore_qwen2_5_vl,
         convert_mcore2hf=convert_mcore2hf_qwen2_5_vl,
         visual_cls=Qwen2_5VL_Vit))
+
+register_megatron_model(
+    MMGPTMegatronModelMeta(
+        MegatronModelType.qwen2_vl, [
+            ModelType.qwen2_vl,
+        ],
+        convert_hf2mcore=convert_hf2mcore_qwen2_5_vl,
+        convert_mcore2hf=convert_mcore2hf_qwen2_5_vl,
+        visual_cls=Qwen2VL_Vit))

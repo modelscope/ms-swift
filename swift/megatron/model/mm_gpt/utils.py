@@ -21,10 +21,20 @@ def patch_device_map_meta(model_cls):
             __origin_init__(self, *args, **kwargs)
 
     model_cls.__init__ = __init__
+
+    from transformers import PreTrainedModel
+    _origin_initialize_weight = PreTrainedModel._initialize_weights
+
+    def _initialize_weight(self, *args, **kwargs):
+        return
+
+    PreTrainedModel._initialize_weights = _initialize_weight
+
     try:
         yield
     finally:
         model_cls.__init__ = __origin_init__
+        PreTrainedModel._initialize_weights = _origin_initialize_weight
 
 
 @dataclass
