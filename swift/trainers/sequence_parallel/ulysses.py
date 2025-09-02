@@ -104,24 +104,29 @@ class DistributedAttention(torch.nn.Module):
     def __init__(
         self,
         local_attention,
-        sequence_process_group: dist.ProcessGroup,
+        sequence_parallel,
         scatter_idx: int = 2,
         gather_idx: int = 1,
     ) -> None:
         super(DistributedAttention, self).__init__()
         self.local_attn = local_attention
-        self.spg = sequence_process_group
+        self.sequence_parallel = sequence_parallel
         self.scatter_idx = scatter_idx
         self.gather_idx = gather_idx
 
     def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, attention_mask: torch.Tensor,
                 *args: Any, **kwargs) -> torch.Tensor:
-        query_layer = _SeqAllToAll.apply(self.spg, query, self.scatter_idx, self.gather_idx)
-        key_layer = _SeqAllToAll.apply(self.spg, key, self.scatter_idx, self.gather_idx)
-        value_layer = _SeqAllToAll.apply(self.spg, value, self.scatter_idx, self.gather_idx)
+        query_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, query, self.scatter_idx, self.gather_idx)
+        key_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, key, self.scatter_idx, self.gather_idx)
+        value_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, value, self.scatter_idx, self.gather_idx)
+        position_ids = kwargs.pop('position_ids', None)
+        if position_ids is not None:
+            position_ids = self.sequence_parallel.extra_kwargs['origin_position_ids']
+            position_ids = self.sequence_parallel._pad(position_ids, padding_value=-1, position_ids=position_ids)
+
         context_layer = self.local_attn(
-            query_layer, key_layer, value_layer, attention_mask, *args, **kwargs)
-        output = _SeqAllToAll.apply(self.spg, context_layer, self.gather_idx, self.scatter_idx)
+            query_layer, key_layer, value_layer, attention_mask, *args, position_ids=position_ids, **kwargs)
+        output = _SeqAllToAll.apply(self.sequence_parallel.sp_group, context_layer, self.gather_idx, self.scatter_idx)
         return output
 
 
@@ -139,6 +144,7 @@ class SequenceParallel:
         self.device_mesh = None
         self.num_heads = None
         self.causal_mask_func = None
+        self.extra_kwargs = {}
 
     def _prepare_flash_attn(self, base_model: torch.nn.Module):
         try:
@@ -186,7 +192,7 @@ class SequenceParallel:
             # more works for maintaining.
             from transformers import modeling_flash_attention_utils
             from transformers.modeling_flash_attention_utils import _flash_attention_forward
-            _distributed_flash_attention = DistributedAttention(_flash_attention_forward, self.sp_group)
+            _distributed_flash_attention = DistributedAttention(_flash_attention_forward, self)
 
             def flash_attention_forward(query_states: torch.Tensor, key_states: torch.Tensor,
                                         value_states: torch.Tensor, attention_mask: Optional[torch.Tensor], q_len,
@@ -213,10 +219,10 @@ class SequenceParallel:
                     if self.rp_world_size is not None and self.rp_world_size > 1:
                         from .zigzag_ring_flash_attn_varlen import zigzag_ring_flash_attn_varlen_func
                         position_ids = kwargs['position_ids']
-                        position_ids = self._pad(position_ids, -1, position_ids=position_ids)
-                        cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids)
+                        cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids).to(torch.int32)
                         max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
-                        position_ids = self._split(position_ids, dim=1, position_ids=position_ids)
+                        position_ids = self._split_packed(position_ids, cu_seqlens)
+                        # position_ids = self._split(position_ids, dim=1, position_ids=position_ids)
                         mask = position_ids != -1
                         query = query.transpose(1, 2)
                         key = key.transpose(1, 2)
@@ -266,9 +272,9 @@ class SequenceParallel:
         ALL_ATTENTION_FUNCTIONS['flash_attention_2_origin'] = ALL_ATTENTION_FUNCTIONS['flash_attention_2']
         ALL_ATTENTION_FUNCTIONS['sdpa_origin'] = ALL_ATTENTION_FUNCTIONS['sdpa']
         ALL_ATTENTION_FUNCTIONS['flash_attention_2'] = partial(
-            local_flash_attn, dist_attn=DistributedAttention(None, self.sp_group))
+            local_flash_attn, dist_attn=DistributedAttention(None, self))
         ALL_ATTENTION_FUNCTIONS['sdpa'] = partial(
-            local_sdpa_attn, dist_attn=DistributedAttention(None, self.sp_group))
+            local_sdpa_attn, dist_attn=DistributedAttention(None, self))
 
     def _prepare_forward_hook(self, base_model: torch.nn.Module):
 
@@ -347,10 +353,11 @@ class SequenceParallel:
         self.tokenizer = tokenizer
 
     def _pad_qkv(self, query, key, value, mask):
+        mask = mask.unsqueeze(2).unsqueeze(3)
         query = query * mask
-        value = query * mask
+        value = value * mask
         mask = (~mask) * -1e5
-        key = key + mask
+        key = key + mask.to(key.dtype)
         return query, key, value
 
     def _pad(self, tensor, padding_value, position_ids=None):
@@ -439,6 +446,7 @@ class SequenceParallel:
 
     @staticmethod
     def get_cu_seqlens_from_position_ids(position_ids: torch.LongTensor):
+        position_ids = position_ids[0]
         seq_start_indices = torch.where(position_ids == 0)[0]
         seq_end_indices = torch.cat([seq_start_indices[1:], torch.tensor([len(position_ids)], device=position_ids.device)])
         seq_lengths = seq_end_indices - seq_start_indices
@@ -449,14 +457,14 @@ class SequenceParallel:
         local_values = []
         for i in range(len(cu_seqlens) - 1):
             start, end = cu_seqlens[i], cu_seqlens[i + 1]
-            local_value = value[start:end].chunk(2 * self.rp_world_size, dim=0)
+            local_value = value[:, start:end].chunk(2 * self.rp_world_size, dim=1)
             local_values.extend(
                 [
                     local_value[self.rp_rank].detach().clone(),
                     local_value[2 * self.rp_world_size - 1 - self.rp_rank].detach().clone(),
                 ]
             )
-        return torch.cat(local_values, dim=0).contiguous()
+        return torch.cat(local_values, dim=1).contiguous()
 
     def _split(self, input, dim: int, position_ids=None):
         """Split tensor for sequence parallel"""
@@ -491,7 +499,10 @@ class SequenceParallel:
                              embed_tokens=None):
         """Common implementation for padding and splitting inputs"""
         tokenizer = self.tokenizer
-        origin_position_ids = position_ids.clone()
+        origin_position_ids = None
+        if position_ids is not None:
+            origin_position_ids = position_ids.clone()
+            self.extra_kwargs['origin_position_ids'] = origin_position_ids
         if input_ids is not None:
             input_ids = self._pad(input_ids, padding_value=tokenizer.pad_token_id, position_ids=origin_position_ids)
         if input_embeds is not None:
@@ -501,7 +512,7 @@ class SequenceParallel:
         batch_size = input_ids.shape[
             0] if input_ids is not None else input_embeds.shape[0] if input_embeds is not None else 1
         if position_ids is not None:
-            position_ids = self._pad(position_ids, padding_value=-1)
+            position_ids = self._pad(position_ids, padding_value=-1, position_ids=origin_position_ids)
         if (input_ids is not None or input_embeds is not None) and batch_size > 1:
             # not padding_free, so not ring-attention
             inputs = input_ids if input_ids is not None else input_embeds
@@ -515,20 +526,23 @@ class SequenceParallel:
                 attention_mask = self.causal_mask_func(attention_mask, inputs.to(self.model_dtype), cache_position,
                                                        None, None)
         if input_ids is not None:
-            input_ids = self._split(input_ids, dim=1)
+            input_ids = self._split(input_ids, dim=1, position_ids=position_ids)
         if input_embeds is not None:
-            input_embeds = self._split(input_embeds, dim=1)
+            input_embeds = self._split(input_embeds, dim=1, position_ids=position_ids)
         if labels is not None:
             labels = self._pad(labels, padding_value=-100, position_ids=origin_position_ids)
             labels = torch.roll(labels, shifts=-1, dims=-1)
-            labels = self._split(labels, dim=-1)
+            labels = self._split(labels, dim=-1, position_ids=position_ids)
 
         if loss_scale is not None:
             loss_scale = self._pad(loss_scale, padding_value=0., position_ids=origin_position_ids)
             loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1)
-            loss_scale = self._split(loss_scale, dim=-1)
+            loss_scale = self._split(loss_scale, dim=-1, position_ids=position_ids)
+        
+        if position_ids is not None:
+            position_ids = self._split(position_ids, dim=1, position_ids=position_ids)
 
-        return input_ids, input_embeds, labels, origin_position_ids, attention_mask, loss_scale
+        return input_ids, input_embeds, labels, position_ids, attention_mask, loss_scale
 
     def _init_device_mesh(self):
         """Initialize device mesh for sequence parallel"""
@@ -587,9 +601,9 @@ class SequenceParallel:
         """Common input preparation function"""
         if 'labels' in inputs:
             labels = inputs['labels']
-            _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, None, None, None)
+            _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, inputs.get('position_ids'), None, None)
             inputs['labels'] = labels
         if 'loss_scale' in inputs:
             loss_scale = inputs['loss_scale']
-            _, _, _, _, _, loss_scale = self.pad_and_split_inputs(None, None, None, None, None, loss_scale)
+            _, _, _, _, _, loss_scale = self.pad_and_split_inputs(None, None, None, inputs.get('position_ids'), None, loss_scale)
             inputs['loss_scale'] = loss_scale

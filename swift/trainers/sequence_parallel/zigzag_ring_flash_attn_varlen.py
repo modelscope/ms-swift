@@ -1,6 +1,7 @@
 import inspect
 from functools import cache
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
 from flash_attn.flash_attn_interface import (
     _flash_attn_varlen_forward,
@@ -61,7 +62,7 @@ def get_half_lse(lse, cu_seqlens, *, front: bool):
     return new_lse
 
 
-def update_out_and_lse(out, block_out, lse, block_lse):
+def update_out_and_lse(out, lse, block_out, block_lse):
     if out is None:
         out = block_out.to(torch.float32)
         lse = block_lse.transpose(-2, -1).unsqueeze(dim=-1)
@@ -229,7 +230,12 @@ def zigzag_ring_flash_attn_varlen_forward(
 ):
     assert causal == True, "zigzag ring is meaningless for causal=False"
     comm = RingComm(process_group)
+    q = q.squeeze(0)
+    k = k.squeeze(0)
+    v = v.squeeze(0)
     q1 = q[half_index1]
+    cu_seqlens = cu_seqlens // comm.world_size
+    max_seqlen = max_seqlen // comm.world_size
     out = None
     lse = None
     next_k, next_v = None, None
@@ -258,7 +264,7 @@ def zigzag_ring_flash_attn_varlen_forward(
 
     out = out.to(q.dtype)
     lse = lse.squeeze(dim=-1).transpose(0, 1)
-    return out, lse
+    return out.unsqueeze(0), lse.unsqueeze(0)
 
 
 def zigzag_ring_flash_attn_varlen_backward(
@@ -280,6 +286,7 @@ def zigzag_ring_flash_attn_varlen_backward(
     alibi_slopes=None,
     deterministic=False,
 ):
+    raise
     assert causal == True, "zigzag ring is meaningless for causal=False"
     kv_comm = RingComm(process_group)
     d_kv_comm = RingComm(process_group)
@@ -422,8 +429,9 @@ class ZigZagRingFlashAttnVarlenFunc(torch.autograd.Function):
         assert alibi_slopes is None
         k = k.contiguous()
         v = v.contiguous()
-        half_index0 = get_half_index(cu_seqlens, front=True)
-        half_index1 = get_half_index(cu_seqlens, front=False)
+        rp_world_size = dist.get_world_size(group)
+        half_index0 = get_half_index(cu_seqlens // rp_world_size, front=True)
+        half_index1 = get_half_index(cu_seqlens // rp_world_size, front=False)
         out, softmax_lse = zigzag_ring_flash_attn_varlen_forward(
             group,
             q,
