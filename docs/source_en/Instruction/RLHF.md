@@ -25,6 +25,8 @@ Hyperparameters:
 - beta: KL regularization coefficient. A larger value imposes a stronger penalty for deviating from the reference model. Default is 0.1.
 - loss_type: Variant of the DPO algorithm. You can find the available options in the [documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer#loss-functions). Default is 'sigmoid'.
 - (Optional) loss_weights: Weights for mixing multiple loss functions.
+- (Optional) ld_alpha: From the [LD-DPO paper](https://arxiv.org/abs/2409.06411). Applies a weight α < 1 to the log-probabilities of tokens that lie beyond the shared prefix of the chosen and rejected responses, thereby mitigating length bias.
+- (Optional) discopop_tau: Temperature parameter τ from the [DiscoPOP paper](https://arxiv.org/abs/2406.08414) used to scale the log-ratio before the sigmoid modulation. Default 0.05; only active when loss_type is discopop.
 
 It is recommended to perform SFT training on the preferred responses in your preference dataset before starting DPO training. This helps ensure that the data distribution better matches the requirements of the DPO algorithm.
 
