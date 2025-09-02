@@ -134,7 +134,7 @@ Finally, we use the generated Hugging Face format weights to perform inference o
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
+    --model megatron_output/Qwen2.5-VL-7B-Instruct/vx-xxx-hf \
     --attn_impl flash_attn \
     --stream true \
     --load_data_args true \
