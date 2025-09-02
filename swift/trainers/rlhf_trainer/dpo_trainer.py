@@ -115,11 +115,23 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         output = {}
         if self.template.padding_free:
             cu_seqlens = self.get_cu_seqlens(position_ids, batch.get('logits_to_keep'))
-            all_logps = per_token_logps.new_zeros((cu_seqlens.shape[0] - 1, ))
+            num_examples = (cu_seqlens.shape[0] - 1) // 2
+            all_logps = per_token_logps.new_zeros((num_examples * 2, ))
+            completion_lengths = (cu_seqlens[1:] - cu_seqlens[:-1])
+            chosen_lengths = completion_lengths[:num_examples]
+            rejected_lengths = completion_lengths[num_examples:]
+            public_lengths = torch.min(chosen_lengths, rejected_lengths)  # l_p in the paper
+
             for i in range(cu_seqlens.shape[0] - 1):
                 start, end = cu_seqlens[i], cu_seqlens[i + 1]
-                all_logps[i] = per_token_logps[:, start:end].sum()
-            num_examples = all_logps.shape[0] // 2
+                length = end - start
+                public_length = public_lengths[i % num_examples]
+                if self.args.ld_alpha is not None and not is_ref_model and length > public_length:
+                    front_logps = per_token_logps[:, start:start + public_length].sum()
+                    rear_logps = per_token_logps[:, start + public_length:end].sum()
+                    all_logps[i] = front_logps + self.args.ld_alpha * rear_logps
+                else:
+                    all_logps[i] = per_token_logps[:, start:end].sum()
             num_tokens = cu_seqlens[num_examples]
             if not is_ref_model:
                 output['nll_loss'] = -origin_per_token_logps[:, :num_tokens][loss_mask[:, :num_tokens]].mean()
@@ -128,10 +140,31 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['mean_chosen_logits'] = mean_all_logits[:, :num_tokens][loss_mask[:, :num_tokens]].mean()
             output['mean_rejected_logits'] = mean_all_logits[:, num_tokens:][loss_mask[:, num_tokens:]].mean()
         else:
-            all_logps = per_token_logps.sum(-1)
             num_examples = labels.shape[0] // 2
             if not is_ref_model:
                 output['nll_loss'] = -origin_per_token_logps[:num_examples][loss_mask[:num_examples]].mean()
+            if self.args.ld_alpha is not None and not is_ref_model:
+                completion_lengths = loss_mask.sum(dim=1)
+
+                chosen_lengths = completion_lengths[:num_examples]
+                rejected_lengths = completion_lengths[num_examples:]
+                public_lengths = torch.min(chosen_lengths, rejected_lengths)  # l_p in the paper
+                public_lengths = torch.cat([public_lengths, public_lengths], dim=0)
+
+                seq_len = per_token_logps.size(1)
+                position_ids = torch.arange(seq_len, device=per_token_logps.device).expand_as(per_token_logps)
+
+                ld_mask = position_ids < public_lengths.unsqueeze(1)
+                mask = position_ids < completion_lengths.unsqueeze(1)
+
+                front_mask = (ld_mask & mask).float()
+                rear_mask = (~ld_mask & mask).float()
+                front_logps = (per_token_logps * front_mask).sum(dim=1)
+                rear_logps = (per_token_logps * rear_mask).sum(dim=1)
+
+                all_logps = front_logps + self.args.ld_alpha * rear_logps
+            else:
+                all_logps = per_token_logps.sum(-1)
             output['chosen_logps'] = all_logps[:num_examples]
             output['rejected_logps'] = all_logps[num_examples:]
             output['mean_chosen_logits'] = mean_all_logits[:num_examples][loss_mask[:num_examples]].mean()

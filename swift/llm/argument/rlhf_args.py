@@ -96,6 +96,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     loss_scale: Optional[str] = None  # 'last_round'
     # DPO
     rpo_alpha: Optional[float] = None
+    ld_alpha: Optional[float] = None  # α parameter from the LD-DPO paper
+    discopop_tau: float = 0.05  # τ/temperature parameter from the DiscoPOP paper
     loss_type: Optional[List[str]] = None
     loss_weights: Optional[List[float]] = None
     # CPO
