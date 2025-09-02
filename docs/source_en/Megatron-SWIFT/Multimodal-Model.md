@@ -1,6 +1,6 @@
 # Multimodal Models
 
-ms-swift introduces Megatron's parallelization techniques to accelerate the training of large multimodal models. Currently, it supports pretraining and fine-tuning for models such as Qwen2.5-VL. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md).
+ms-swift introduces Megatron's parallelization techniques to accelerate the training of large multimodal models. Currently, it supports CPT/SFT/DPO for models such as Qwen2.5-VL. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md).
 
 For environment setup, please refer to the Megatron-SWIFT [Quick Start guide](./Quick-start.md).
 

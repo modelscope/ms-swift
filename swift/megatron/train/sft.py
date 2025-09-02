@@ -63,8 +63,6 @@ class MegatronSft(SwiftSft):
             if val_dataset is not None:
                 val_dataset = build_streaming_dataloader(args, val_dataset, data_collator)
 
-        logging_path = os.path.join(args.save, 'logging.jsonl')
-        logger.info(f'The logging file will be saved in: {logging_path}')
         try:
             self.trainer.train(train_dataset, val_dataset, data_collator)
         finally:
