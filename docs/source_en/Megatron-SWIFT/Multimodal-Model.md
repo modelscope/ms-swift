@@ -1,14 +1,14 @@
-# 多模态模型
+# Multimodal Models
 
-ms-swift引入了Megatron的并行技术来加速多模态大模型的训练。目前支持Qwen2.5-VL等模型的预训练和微调。完整支持的模型可以参考[支持的模型与数据集文档](../Instruction/支持的模型和数据集.md)。
+ms-swift introduces Megatron's parallelization techniques to accelerate the training of large multimodal models. Currently, it supports pretraining and fine-tuning for models such as Qwen2.5-VL. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md).
 
-环境准备请参考Megatron-SWIFT的[快速开始文档](./快速开始.md)。
+For environment setup, please refer to the Megatron-SWIFT [Quick Start guide](./Quick-start.md).
 
-## Dense模型 Full/LoRA
+## Dense Model Full/LoRA Fine-tuning
 
-这里介绍使用2卡80GiB A100对Qwen2.5-VL-7B-Instruct模型进行Latex-OCR的微调，分别使用全参数和LoRA的方式，以下最佳实践可以在10分钟内完成。
+This section demonstrates fine-tuning the Qwen2.5-VL-7B-Instruct model on the LaTeX-OCR task using two 80GiB A100 GPUs, with both full-parameter fine-tuning and LoRA. The best practices described below can be completed within 10 minutes.
 
-首先，我们需要将HF格式的权重转为Megatron格式：
+First, we need to convert the model weights from Hugging Face format to Megatron format:
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -21,7 +21,7 @@ swift export \
 
 ### Full
 
-全参数训练脚本如下：
+The full-parameter training script is as follows:
 ```shell
 # 2 * 72GiB; 4.1s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
@@ -59,8 +59,10 @@ megatron sft \
     --dataset_num_proc 8
 ```
 
-将全参数保存的Megatron格式权重转为HF格式：
-- 注意：`--mcore_model`请指向`iter_xxx`的上级目录。默认会使用`latest_checkpointed_iteration.txt`中对应的checkpoint。
+Convert Megatron-format weights saved with full parameters to Hugging Face format:
+
+- Note: `--mcore_model` should point to the parent directory of `iter_xxx`. By default, the checkpoint specified in `latest_checkpointed_iteration.txt` will be used.
+
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -73,7 +75,7 @@ swift export \
 
 ### LoRA
 
-LoRA训练脚本如下：
+The LoRA training script is as follows:
 ```shell
 # 2 * 15GiB; 3.8s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
@@ -115,7 +117,7 @@ megatron sft \
     --dataset_num_proc 8
 ```
 
-将LoRA保存的增量权重进行Merge-LoRA并转为HF格式：
+Merge the LoRA-saved incremental weights and convert them to Hugging Face format:
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
@@ -127,7 +129,7 @@ swift export \
 ```
 
 
-最后，我们对生成的HF格式权重进行推理：
+Finally, we perform inference using the generated Hugging Face format weights:
 ```shell
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0 \
@@ -140,7 +142,7 @@ swift infer \
     --max_new_tokens 512
 ```
 
-推理结果如下：
+The inference results are as follows:
 ```
 [QUERY] Using LaTeX to perform OCR on the image.
 [LABELS] \forall x \in X , ( \alpha f ) ( x ) = \alpha f ( x )
