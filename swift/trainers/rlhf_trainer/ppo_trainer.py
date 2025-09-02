@@ -39,7 +39,7 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
             new_kwargs = {
                 k: v
                 for k, v in kwargs.items()
-                if k in ['train_dataset', 'data_collator', 'reward_model', 'value_model', 'eval_dataset']
+                if k in ['train_dataset', 'data_collator', 'reward_model', 'value_model', 'eval_dataset', 'callbacks']
             }
             parameters = inspect.signature(ppo_trainer_init).parameters
             if 'config' in parameters:
