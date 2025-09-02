@@ -2345,7 +2345,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         else:
             # For global inputs, only main process keeps outputs
-            outputs = outputs if self.accelerator.is_main_process else []
+            outputs = all_outputs if self.accelerator.is_main_process else []
 
         return outputs
 
@@ -2542,6 +2542,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return input_data
 
         if not self.dynamic_num_samples:
+            if self.async_generate and not outputs:
+                # In async generation, only the main process receives outputs; non-main ranks get an empty list.
+                return outputs
             assert len(inputs) == len(outputs)
             return [
                 merge_output_input_data(deepcopy(input_data), output) for input_data, output in zip(inputs, outputs)
