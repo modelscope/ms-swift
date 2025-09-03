@@ -1,7 +1,6 @@
 import torch
-from megatron.training import get_args, get_tokenizer
 
-from swift.llm import ModelType, to_device
+from swift.llm import ModelType
 from ..constant import MegatronModelType
 from ..gpt.hf2mcore import convert_hf2mcore
 from ..gpt.mcore2hf import convert_mcore2hf
