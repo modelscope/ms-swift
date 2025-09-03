@@ -6,7 +6,7 @@ from ..constant import MegatronModelType
 from ..gpt.hf2mcore import set_layer_state as set_layer_state_hf2mcore
 from ..gpt.mcore2hf import set_layer_state as set_layer_state_mcore2hf
 from ..register import register_megatron_model
-from .utils import HuggingFaceModule, MMGPTMegatronModelMeta, patch_device_map_meta
+from .utils import HuggingFaceModule, MMGPTMegatronModelMeta
 
 
 def convert_hf2mcore_qwen2_5_vl(hf_model, mg_model):
