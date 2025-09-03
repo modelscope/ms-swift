@@ -77,7 +77,7 @@ swift export \
 
 The LoRA training script is as follows:
 ```shell
-# 2 * 15GiB; 3.8s/it
+# 2 * 23GiB; 2.3s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 MAX_PIXELS=1003520 \
@@ -89,7 +89,7 @@ megatron sft \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
-    --tensor_model_parallel_size 2 \
+    --tensor_model_parallel_size 1 \
     --sequence_parallel true \
     --freeze_llm false \
     --freeze_vit true \

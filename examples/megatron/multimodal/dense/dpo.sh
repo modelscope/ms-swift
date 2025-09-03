@@ -1,17 +1,14 @@
-# 2 * 23GiB; 16s/it
+# 4 * 60GiB 14s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-NPROC_PER_NODE=2 \
+NPROC_PER_NODE=4 \
 MAX_PIXELS=1003520 \
-CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron rlhf \
     --rlhf_type dpo \
     --load Qwen2.5-VL-7B-Instruct-mcore \
     --dataset 'swift/RLAIF-V-Dataset#20000' \
-    --train_type lora \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --target_modules all-linear \
-    --tensor_model_parallel_size 2 \
+    --train_type full \
+    --tensor_model_parallel_size 4 \
     --sequence_parallel true \
     --freeze_llm false \
     --freeze_vit true \
@@ -25,12 +22,12 @@ megatron rlhf \
     --recompute_num_layers 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
-    --lr 1e-4 \
+    --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
-    --min_lr 1e-5 \
+    --min_lr 1e-6 \
     --max_epochs 1 \
     --save megatron_output/Qwen2.5-VL-7B-Instruct \
-    --save_interval 100 \
+    --save_interval 200 \
     --vit_gradient_checkpointing true \
     --max_length 8192 \
     --num_workers 4 \
