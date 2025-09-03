@@ -142,6 +142,9 @@ def test_qwen2_5_omni():
     _test_model('Qwen/Qwen2.5-Omni-7B')
 
 
+def test_internvl3():
+    _test_model('OpenGVLab/InternVL3-1B', attn_impl='sdpa')
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -169,4 +172,5 @@ if __name__ == '__main__':
     # test_glm4_5()
     # test_qwen2_5_vl()
     # test_qwen2_vl()
-    test_qwen2_5_omni()
+    # test_qwen2_5_omni()
+    test_internvl3()
