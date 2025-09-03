@@ -700,7 +700,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return self._postprocess_rollout_outputs(inputs, rollout_outputs)
 
         # Step 4: Handle multi-turn colocate
-        return self._sync_multi_turn_infer(inputs, rollout_outputs, request_config)
+        return self._colocate_multi_turn_infer(inputs, rollout_outputs, request_config)
 
     def async_generate_rollout(self, all_inputs):
         current_queue = self._queue
@@ -2447,7 +2447,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for data in inputs:
             # Extract required metadata fields
             request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data}
-            request_data['uuid'] = data['request_id']  # Use unique request_id for vLLM
+            if 'uuid' not in request_data:
+                request_data['uuid'] = data['request_id']  # Use unique request_id for vLLM
             # Preserve additional fields for multi-turn async scenarios
             if self.args.vllm_server_pass_dataset:
                 # data_dict is already concatenated inside async engine
@@ -2567,80 +2568,109 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return results
 
-    def _sync_multi_turn_infer(self, inputs: DataType, first_turn_rollout_outputs: List[RolloutOutput],
-                               request_config: RequestConfig) -> List[RolloutOutput]:
+    def _colocate_multi_turn_infer(self, inputs: DataType, first_turn_rollout_outputs: List[RolloutOutput],
+                                   request_config: RequestConfig) -> List[RolloutOutput]:
         """
-        Handles multi-turn inference when not using async engine.
+        Handles multi-turn inference under colocate mode.
 
         This method iteratively rolls out turns until all dialogues are finished
         according to the multi_turn_scheduler.
         """
         orig_size = len(inputs)
-        rollout_outputs: List[RolloutOutput] = [None] * orig_size  # Preallocate to preserve order
-
+        # Preallocate to preserve order
+        rollout_outputs: List[RolloutOutput] = [None] * orig_size
+        rollout_infos = [{} for _ in range(orig_size)]
+        response_token_ids = [[] for _ in range(orig_size)]
+        response_loss_mask = [[] for _ in range(orig_size)]
+        is_continuations = [False] * orig_size
         # Attach index to inputs for tracking
-        for i, input_data in enumerate(inputs):
-            input_data['index'] = i
-
+        requests = self.inputs2requests(inputs)
+        index_to_infer = list(range(orig_size))
         current_turn = 1
         outputs = first_turn_rollout_outputs
         while True:
-            has_local_data = bool(len(inputs) > 0)
+            has_local_data = bool(len(index_to_infer) > 0)
             has_global_data = gather_object([has_local_data])
             if not any(has_global_data):
                 break
-
-            for i, output in enumerate(outputs):
-                input_data = deepcopy(inputs[i])
-                if output and output.messages:
-                    messages = output.messages
+            assert len(index_to_infer) == len(outputs)
+            for index, output in zip(index_to_infer, outputs):
+                messages = requests[index].messages
+                if messages[-1]['content'] is None:
+                    # for continuation, we add dummy response, remove here
+                    remove_response(messages)
+                # Get model response
+                response = output.response
+                response_choice = response.choices[0]
+                # Update conversation history
+                completion = response_choice.message.content
+                is_continuation = is_continuations[index] = False
+                if messages[-1]['role'] == 'assistant':
+                    messages[-1]['content'] += completion
+                    is_continuation = is_continuations[index] = True
                 else:
-                    response = output.response
-                    choice = response.choices[0]
-                    messages = input_data['messages']
-                    if (current_turn == 1 or not messages[-1]['content'] or messages[-1]['content'] == '<None>'):
-                        remove_response(messages)
-                    messages.append({'role': 'assistant', 'content': choice.message.content})
+                    messages.append({'role': 'assistant', 'content': completion})
 
-                input_data['messages'] = messages
-                index = input_data['index']
-                rollout_outputs[index] = output
-                rollout_outputs[index].messages = messages
-
+            current_requests = [requests[index] for index in index_to_infer]
             # Determine which dialogues are finished
             should_stops = [
                 self.multi_turn_scheduler.check_finished(req, output.response.choices[0], current_turn)
-                for req, output in zip(self.inputs2requests(inputs), outputs)
+                for req, output in zip(current_requests, outputs)
             ]
 
             # Prepare pending inputs for next turn
-            pending_inputs = []
-            for stop, _input, output in zip(should_stops, inputs, outputs):
+            next_turn_index_to_infer = []
+            for stop, index, output in zip(should_stops, index_to_infer, outputs):
+                if self.args.max_turns:
+                    stop = stop or (current_turn >= self.args.max_turns)
                 if stop:
+                    rollout_outputs[index] = RolloutOutput(
+                        response=output.response,
+                        messages=requests[index].messages,
+                        response_token_ids=response_token_ids[index],
+                        response_loss_mask=response_loss_mask[index],
+                        rollout_infos={
+                            **rollout_infos[index], 'num_turns': current_turn
+                        })
                     continue
-                index = _input['index']
-                step_result = self.multi_turn_scheduler.step(
-                    self.inputs2requests([_input])[0], output.response.choices[0], current_turn)
+                is_continuation = is_continuations[index]
+                step_result = self.multi_turn_scheduler.step(requests[index], output.response.choices[0], current_turn)
+                current_request: RolloutInferRequest = step_result['infer_request']
+                # Track response tokens and masks
+                return_token_id = False
+                if 'response_token_ids' in step_result:
+                    if is_continuation and response_token_ids[index]:
+                        response_token_ids[index][-1].extend(step_result['response_token_ids'])
+                    else:
+                        response_token_ids[index].append(step_result['response_token_ids'])
+                    return_token_id = True
+                if 'response_loss_mask' in step_result:
+                    assert return_token_id, 'You must return response_token_ids with response_loss_mask return'
+                    assert len(step_result['response_loss_mask']) == len(step_result['response_token_ids']), \
+                        'response_loss_mask must have the same length as response_token_ids'
+                    if is_continuation and response_loss_mask[index]:
+                        response_loss_mask[index][-1].extend(step_result['response_loss_mask'])
+                    else:
+                        response_loss_mask[index].append(step_result['response_loss_mask'])
 
-                if 'response_token_ids' in step_result and step_result['response_token_ids']:
-                    rollout_outputs[index].response_token_ids.append(step_result['response_token_ids'])
-                    if 'response_loss_mask' in step_result and step_result['response_loss_mask']:
-                        rollout_outputs[index].response_loss_mask.append(step_result['response_loss_mask'])
+                if 'rollout_infos' in step_result:
+                    # Always overwrite the rollout info for this step.
+                    # If you need to keep all step-wise details, switch to append or merge instead.
+                    rollout_infos[index].update(step_result['rollout_infos'])
+                if current_request.messages[-1]['role'] == 'assistant':
+                    # for continuation, we add dummy response, add here
+                    current_request.messages.append({'role': 'assistant', 'content': None})
 
-                if 'rollout_infos' in step_result and step_result['rollout_infos']:
-                    rollout_outputs[index].rollout_infos.update(step_result['rollout_infos'])
-
-                pending_input = {**asdict(step_result['infer_request']), 'index': index}
-                pending_inputs.append(pending_input)
-
-            inputs = pending_inputs
+                requests[index] = current_request
+                next_turn_index_to_infer.append(index)
             current_turn += 1
-
+            infer_requests = [requests[index] for index in next_turn_index_to_infer]
             # Rollout for the next turn
-            outputs = self._rollout(inputs if has_local_data else [], request_config)
+            outputs = self._rollout(infer_requests if has_local_data else [], request_config)
+            index_to_infer = next_turn_index_to_infer
 
         assert all(o is not None for o in rollout_outputs)
-        return rollout_outputs
+        return self._postprocess_rollout_outputs(inputs, rollout_outputs)
 
     def get_even_process_data(self, global_data: List[T]) -> List[T]:
         """
