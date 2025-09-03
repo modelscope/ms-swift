@@ -179,9 +179,7 @@ class MegatronDPOTrainer(MegatronTrainer):
         return iter(res)
 
     def forward_step(self, data_iterator, model):
-        with torch.no_grad():
-            data = next(data_iterator)
-
+        data = next(data_iterator)
         ref_logps = data.pop('logps')
         with self.stimer:
             output_tensor = model(**data)

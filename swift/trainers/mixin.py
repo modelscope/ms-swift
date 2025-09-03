@@ -839,7 +839,7 @@ class SwiftMixin:
                 start, end = cu_seqlens[i], cu_seqlens[i + 1]
                 res_cu_seqlens[i + 1:] -= (~logits_to_keep[start:end]).sum()
         elif isinstance(logits_to_keep, int):
-            res_cu_seqlens[1:] -= position_ids.shape[0] + 1 - logits_to_keep
+            res_cu_seqlens[1:] -= position_ids.shape[-1] + 1 - logits_to_keep
         return res_cu_seqlens
 
     def get_batch_samples(self, *args, **kwargs):

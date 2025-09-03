@@ -242,10 +242,11 @@ class BaseMegatronTrainer(ABC):
             self.peft_model = prepare_mcore_model(self.unwrapped_model)
             return self.unwrapped_model
 
+        args = get_args()
+        self._init_multimodal_full(args)
         with self._patch_load_state_dict(self._load_base_checkpoint):
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
-        args = get_args()
         if args.initialize_embedding:
             self._initialize_embedding(self.unwrapped_model)
         if args.train_type != 'full' and args.modules_to_save:
@@ -258,7 +259,19 @@ class BaseMegatronTrainer(ABC):
             with adapter_state_dict_context():
                 args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
                     model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
+        if args.model_meta.is_multimodal:
+            self._prepare_vit_gradient_checkpointing()
         return model, optimizer, opt_param_scheduler
+
+    def _prepare_vit_gradient_checkpointing(self):
+        visual = self.unwrapped_model.visual
+        if visual is None:
+            return
+        visual = visual.model
+        args = get_args()
+        if args.vit_gradient_checkpointing:
+            visual.gradient_checkpointing_enable(**(args.gradient_checkpointing_kwargs or {}))
+            visual.enable_input_require_grads()
 
     @staticmethod
     def _initialize_embedding(model):
@@ -701,6 +714,25 @@ class BaseMegatronTrainer(ABC):
         # patch save_checkpoint
         self._origin_save_checkpoint = training.save_checkpoint
         training.save_checkpoint = self.save_checkpoint
+
+    @staticmethod
+    def _init_multimodal_full(args):
+        visual_cls = args.megatron_model_meta.visual_cls
+        if args.train_type == 'full' and args.model_meta.is_multimodal and visual_cls is not None:
+            vision_tower = [f'visual.{vit}' for vit in visual_cls.vision_tower]
+            aligner = [f'visual.{_aligner}' for _aligner in visual_cls.aligner]
+            if args.freeze_llm:
+                args.freeze_parameters.append('language_model')
+            if args.freeze_vit:
+                args.freeze_parameters += vision_tower
+            if args.freeze_aligner:
+                args.freeze_parameters += aligner
+            else:
+                args.trainable_parameters += aligner
+            if args.freeze_parameters:
+                logger.info(f'freeze_parameters: {args.freeze_parameters}')
+            if args.trainable_parameters:
+                logger.info(f'additional trainable_parameters: {args.trainable_parameters}')
 
     def train(self, train_dataset, val_dataset, data_collator):
         args = self.args

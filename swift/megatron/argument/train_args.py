@@ -17,7 +17,6 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
     add_version: bool = True
 
     def init_model_args(self, tokenizer, config):
-        self.megatron_model_meta = get_megatron_model_meta(self.model_type)
         kwargs = self.megatron_model_meta.convert_hf_config(config)
         if self.new_special_tokens and kwargs['padded_vocab_size'] < len(tokenizer):
             kwargs['padded_vocab_size'] = math.ceil(len(tokenizer) / 128) * 128
@@ -28,6 +27,9 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
                 setattr(self, k, v)
         MegatronArguments.__post_init__(self)
         self.extra_args = self.parse_to_megatron()
+        self.extra_args['model_info'] = self.model_info
+        self.extra_args['model_meta'] = self.model_meta
+        self.extra_args['megatron_model_meta'] = self.megatron_model_meta
 
     def _init_save(self):
         init_process_group(backend=self.ddp_backend, timeout=self.ddp_timeout)
@@ -46,6 +48,7 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
             self.padding_free = True
         self.load = to_abspath(self.load, check_path_exist=True)
         BaseArguments.__post_init__(self)
+        self.megatron_model_meta = get_megatron_model_meta(self.model_type)
         if len(self.dataset) == 0 and len(self.cached_dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, self.cached_dataset: {self.cached_dataset}. '
                              'Please input the training dataset.')
