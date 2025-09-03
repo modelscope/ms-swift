@@ -12,7 +12,7 @@ from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoin
 from megatron.training.initialize import initialize_megatron
 from megatron.training.utils import get_ltor_masks_and_position_ids
 
-from swift.llm import ExportArguments, HfConfigFactory, deep_getattr, prepare_model_template, save_checkpoint, to_device
+from swift.llm import ExportArguments, HfConfigFactory, prepare_model_template, save_checkpoint, to_device
 from swift.utils import get_logger, get_n_params_grads
 from ..argument import MegatronArguments
 from ..model import get_megatron_model_meta
