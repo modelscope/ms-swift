@@ -84,6 +84,16 @@ def get_default_args(func):
         return _get_default_args(func._init_fn)
 
 
+def squeeze_batch(*t):
+    tensors = []
+    for sub in t:
+        if sub.shape[0] == 1:
+            tensors.append(sub.squeeze(0))
+        else:
+            tensors.append(sub)
+    return tuple(tensors)
+
+
 def forward(q, k, v, causal, cu_seqlens, max_seqlen, block_seq_len, dropout_p, softmax_scale, alibi_slopes, window_size):
     seqlen_q = q.shape[0]
     seqlen_kv = k.shape[0]
@@ -180,7 +190,7 @@ def lse_grad(out, block_out, lse, block_lse, sig, grad_out, grad_lse):
     # wrt out
     grad_out_input = grad_out * (1 - sig)
 
-# wrt block_out
+    # wrt block_out
     grad_block_out = grad_out * sig
 
     # wrt lse (注意 sum over last dim)
@@ -279,11 +289,8 @@ def zigzag_ring_flash_attn_varlen_backward(
     next_k, next_v = None, None
     dk_comm_buffer, dv_comm_buffer = None, None
 
-    dout = dout.squeeze(0)
-    # dout1 = dout[half_index1]
+    dout, q, k, v, out, softmax_lse = squeeze_batch(dout, q, k, v, out, softmax_lse)
     q1 = q[half_index1]
-    # out1 = out[half_index1]
-    # softmax_lse1 = get_half_lse(softmax_lse, cu_seqlens, front=False)
     block_seq_len = q.shape[0] // 2
 
     # repeatly allocating buffer may be slow...
@@ -312,7 +319,7 @@ def zigzag_ring_flash_attn_varlen_backward(
                 fout[half_index1], flse[half_index1], block_out, block_lse
             )
 
-        block_lse = block_lse.transpose(-2, -1).unsqueeze(dim=-1)
+        block_lse = block_lse.transpose(0, 1).unsqueeze(-1)
         if fout is not None and block_out.shape[0] * 2 == fout.shape[0]:
             block_out = torch.cat((torch.zeros_like(block_out).to(block_out.dtype).to(block_out.device), block_out))
             block_lse = torch.cat((torch.zeros_like(block_lse).to(block_lse.dtype).to(block_lse.device), block_lse))
@@ -324,7 +331,7 @@ def zigzag_ring_flash_attn_varlen_backward(
             k, v = next_k, next_v
 
     current_dout = dout
-    current_dlse = torch.zeros_like(softmax_lse.transpose(1, 2).unsqueeze(-1))
+    current_dlse = torch.zeros_like(softmax_lse.transpose(0, 1).unsqueeze(-1))
     block_gradients = {}
 
     for i in reversed(range(len(out_lse))):
@@ -332,8 +339,8 @@ def zigzag_ring_flash_attn_varlen_backward(
             continue
         stored_out, stored_lse, stored_block_out, stored_block_lse, stored_sig = out_lse[i]
         grad_out_input, grad_lse_input, grad_block_out, grad_block_lse = lse_grad(stored_out,
-                                                                                  stored_lse,
                                                                                   stored_block_out,
+                                                                                  stored_lse,
                                                                                   stored_block_lse,
                                                                                   stored_sig,
                                                                                   current_dout,
@@ -377,7 +384,10 @@ def zigzag_ring_flash_attn_varlen_backward(
                 dq[half_index1] += dq_buffer[:block_seq_len]
 
             d_kv_comm.wait()
-            dk_comm_buffer, dv_comm_buffer = dk, dv
+            # dk_comm_buffer, dv_comm_buffer = dk, dv
+
+            dk_comm_buffer = torch.empty_like(dk)
+            dv_comm_buffer = torch.empty_like(dv)
             dk, dv = next_dk, next_dv
 
             if step <= kv_comm.rank:
@@ -477,9 +487,9 @@ class ZigZagRingFlashAttnVarlenFunc(torch.autograd.Function):
         dq, dk, dv = zigzag_ring_flash_attn_varlen_backward(
             ctx.group,
             dout,
-            q.squeeze(0),
-            k.squeeze(0),
-            v.squeeze(0),
+            q,
+            k,
+            v,
             out,
             softmax_lse,
             cu_seqlens,
