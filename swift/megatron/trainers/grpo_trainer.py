@@ -27,10 +27,11 @@ logger = get_logger()
 class MegatronGRPOTrainer(MegatronRLHFTrainer, GRPOTrainer):
 
     def __init__(self, args: MegatronRLHFArguments):
-        MegatronRLHFTrainer().__init__(args)
+        MegatronRLHFTrainer().__init__(self, args)
         # TODO: init vllm
         self.args = args
         self.processing_class = self.processor
+        # set up reward funcs
         reward_funcs = args.reward_funcs
         if not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
@@ -58,62 +59,21 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer, GRPOTrainer):
             self.reward_func_names.append(reward_func_name)
         # TODO: reward model
         # TODO: multi turn scheduler(colocate multi turn)
-
+        self._prepare_rollout_engine
         self.num_generations = args.num_generations  # G in the GRPO paper
-        self.mini_batch_size = args.mini_batch_size
         self.temperature = args.temperature
-        self.vllm_mode = args.vllm_mode
-        self.vllm_gpu_memory_utilization = args.vllm_gpu_memory_utilization  # only applies to colocation mode
-        self.vllm_tensor_parallel_size = args.vllm_tensor_parallel_size  # only applies to colocation mode
         self.loss_type = args.loss_type
         self.max_completion_length = args.max_completion_length
-        self.use_vllm = args.use_vllm
-        vllm_client = args.vllm_client
-        if self.use_vllm:
-            if not is_vllm_available():
-                raise ImportError('vLLM is not available and `use_vllm` is set to True. '
-                                  'Please install vLLM with `pip install vllm -U` to use it.')
-            if self.vllm_mode == 'server':
-                self.vllm_client: VLLMClient = vllm_client
-                if self.accelerator.is_main_process:
-                    self.vllm_client.get_engine_type()
-                    vllm_use_async_engine = [self.vllm_client.use_async_engine]
-                    use_gym_env = [self.vllm_client.use_gym_env]
-                    enable_multi_turn = [self.vllm_client.enable_multi_turn]
-                else:
-                    vllm_use_async_engine = [False]
-                    use_gym_env = [False]
-                    enable_multi_turn = [self.enable_server_multi_turn]
-                self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
-                self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
-                self.enable_server_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
-                if self.use_gym_env:
-                    self.reward_func_names = ['gym_reward']
-
-            elif self.vllm_mode == 'colocate':
-                if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:
-                    raise ValueError(
-                        f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}) must divide world size '
-                        f'({self.accelerator.num_processes}) evenly.')
-
-                if self.vllm_tensor_parallel_size > 1:
-                    # Create subgroups of ranks for TP, each group with `vllm_tensor_parallel_size` ranks.
-                    # For example, if world_size=8 and vllm_tensor_parallel_size=2 → groups: [0,1], [2,3], [4,5], [6,7]
-                    self.tp_group, _ = torch.distributed.new_subgroups_by_enumeration([
-                        list(range(i * self.vllm_tensor_parallel_size, (i + 1) * self.vllm_tensor_parallel_size))
-                        for i in range(self.accelerator.num_processes // self.vllm_tensor_parallel_size)
-                    ])
-                self.enable_offload = args.offload_model or args.offload_optimizer
-                context = self.offload_context if self.enable_offload else nullcontext
-
-                with context():
-                    self.engine = self.prepare_vllm(self.unwrapped_model)
-                    if self.args.sleep_level > 0:
-                        self.engine.engine.sleep(args.sleep_level)
-
-        else:
-            from swift.llm import PtEngine
-            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+        self.epsilon_low = args.epsilon
+        self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
+        self.top_entropy_quantile = args.top_entropy_quantile
+        self.importance_sampling_level = args.importance_sampling_level
+        self.enable_offload = False
+        self.use_gym_env = False
+        # batch size
+        self.global_batch_size = args.global_batch_size
+        self.mini_batch_size = args.mini_batch_size
+        self.micro_batch_size = args.micro_batch_size
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         # prepare global batch data here
@@ -173,6 +133,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer, GRPOTrainer):
         return iter(res)
 
     def forward_step(self, data_iterator, model):
+
         with torch.no_grad():
             data = next(data_iterator)
 

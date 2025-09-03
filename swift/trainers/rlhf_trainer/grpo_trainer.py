@@ -176,24 +176,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.num_generations = args.num_generations
         self.temperature = args.temperature
-        self.vllm_mode = args.vllm_mode
-        self.vllm_gpu_memory_utilization = args.vllm_gpu_memory_utilization  # only applies to colocation mode
-        self.vllm_tensor_parallel_size = args.vllm_tensor_parallel_size  # only applies to colocation mode
         self.loss_type = args.loss_type
         self.max_completion_length = args.max_completion_length
         self.completion_length_limit_scope = args.completion_length_limit_scope
         model.warnings_issued['estimate_tokens'] = True
-
         kwargs['data_collator'] = identity_data_collator  # No data collation is needed in GRPO
         self.shuffle_dataset = args.dataset_shuffle
-
-        self.use_vllm = args.use_vllm
-        self.async_generate = args.async_generate
-        vllm_client = kwargs.pop('vllm_client')  # for external vllm
-
         self.model_kwarg_keys = (
             inspect.signature(model.forward).parameters.keys() if not hasattr(model, 'get_base_model') else
             inspect.signature(model.get_base_model().forward).parameters.keys())
+        self.vllm_client = kwargs.pop('vllm_client')
 
         super().__init__(model, ref_model, *_args, **kwargs)
         if self.args.eval_strategy != 'no':
@@ -247,59 +239,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
         if is_peft_model(self.model):
             self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
-        self.use_fast_infer = self.use_vllm  # whether to use the PT backend
-        self.vllm_use_async_engine = False
-        self.enable_offload = False
-        self.use_gym_env = False
-        self.enable_server_multi_turn = False
-        # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
-        self.dynamic_num_samples = False
-        if self.use_vllm:
-            if not is_vllm_available():
-                raise ImportError('vLLM is not available and `use_vllm` is set to True. '
-                                  'Please install vLLM with `pip install vllm -U` to use it.')
-            if self.vllm_mode == 'server':
-                self.vllm_client: VLLMClient = vllm_client
-                if self.accelerator.is_main_process:
-                    self.vllm_client.get_engine_type()
-                    vllm_use_async_engine = [self.vllm_client.use_async_engine]
-                    use_gym_env = [self.vllm_client.use_gym_env]
-                    enable_multi_turn = [self.vllm_client.enable_multi_turn]
-                else:
-                    vllm_use_async_engine = [False]
-                    use_gym_env = [False]
-                    enable_multi_turn = [self.enable_server_multi_turn]
-                self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
-                self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
-                self.enable_server_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
-                if self.use_gym_env:
-                    self.reward_func_names = ['gym_reward']
-
-            elif self.vllm_mode == 'colocate':
-                if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:
-                    raise ValueError(
-                        f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}) must divide world size '
-                        f'({self.accelerator.num_processes}) evenly.')
-
-                if self.vllm_tensor_parallel_size > 1:
-                    # Create subgroups of ranks for TP, each group with `vllm_tensor_parallel_size` ranks.
-                    # For example, if world_size=8 and vllm_tensor_parallel_size=2 → groups: [0,1], [2,3], [4,5], [6,7]
-                    self.tp_group, _ = torch.distributed.new_subgroups_by_enumeration([
-                        list(range(i * self.vllm_tensor_parallel_size, (i + 1) * self.vllm_tensor_parallel_size))
-                        for i in range(self.accelerator.num_processes // self.vllm_tensor_parallel_size)
-                    ])
-                self.enable_offload = self.args.offload_model or self.args.offload_optimizer
-                context = self.offload_context if self.enable_offload else nullcontext
-
-                with context():
-                    self.engine = self.prepare_vllm(model)
-                    if self.args.sleep_level > 0:
-                        self.engine.engine.sleep(self.args.sleep_level)
-
-        else:
-            from swift.llm import PtEngine
-            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
-
+        self._prepare_rollout_engine()
         if not self.reward_funcs and not self.use_gym_env:
             raise ValueError('You must specify reward_funcs or reward_model')
 
@@ -2808,3 +2748,64 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, rid in enumerate(request_ids):
             seen[rid] = i
         return torch.tensor(list(seen.values()), dtype=torch.long, device=self.accelerator.device)
+
+    def _prepare_rollout_engine(self, model):
+        args = self.args
+        self.vllm_mode = args.vllm_mode
+        self.vllm_gpu_memory_utilization = args.vllm_gpu_memory_utilization  # only applies to colocation mode
+        self.vllm_tensor_parallel_size = args.vllm_tensor_parallel_size  # only applies to colocation mode
+        self.use_vllm = args.use_vllm
+        self.async_generate = args.async_generate
+        vllm_client = getattr(args, 'vllm_client') or getattr(self, 'vllm_client')  # for external vllm
+        self.use_fast_infer = self.use_vllm  # whether to use the PT backend
+        self.vllm_use_async_engine = False
+        self.enable_offload = False
+        self.use_gym_env = False
+        self.enable_server_multi_turn = False
+        # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
+        self.dynamic_num_samples = False
+        if self.use_vllm:
+            if not is_vllm_available():
+                raise ImportError('vLLM is not available and `use_vllm` is set to True. '
+                                  'Please install vLLM with `pip install vllm -U` to use it.')
+            if self.vllm_mode == 'server':
+                self.vllm_client: VLLMClient = vllm_client
+                if self.accelerator.is_main_process:
+                    self.vllm_client.get_engine_type()
+                    vllm_use_async_engine = [self.vllm_client.use_async_engine]
+                    use_gym_env = [self.vllm_client.use_gym_env]
+                    enable_multi_turn = [self.vllm_client.enable_multi_turn]
+                else:
+                    vllm_use_async_engine = [False]
+                    use_gym_env = [False]
+                    enable_multi_turn = [self.enable_server_multi_turn]
+                self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
+                self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
+                self.enable_server_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
+                if self.use_gym_env:
+                    self.reward_func_names = ['gym_reward']
+
+            elif self.vllm_mode == 'colocate':
+                if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:
+                    raise ValueError(
+                        f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}) must divide world size '
+                        f'({self.accelerator.num_processes}) evenly.')
+
+                if self.vllm_tensor_parallel_size > 1:
+                    # Create subgroups of ranks for TP, each group with `vllm_tensor_parallel_size` ranks.
+                    # For example, if world_size=8 and vllm_tensor_parallel_size=2 → groups: [0,1], [2,3], [4,5], [6,7]
+                    self.tp_group, _ = torch.distributed.new_subgroups_by_enumeration([
+                        list(range(i * self.vllm_tensor_parallel_size, (i + 1) * self.vllm_tensor_parallel_size))
+                        for i in range(self.accelerator.num_processes // self.vllm_tensor_parallel_size)
+                    ])
+                self.enable_offload = self.args.offload_model or self.args.offload_optimizer
+                context = self.offload_context if self.enable_offload else nullcontext
+
+                with context():
+                    self.engine = self.prepare_vllm(model)
+                    if self.args.sleep_level > 0:
+                        self.engine.engine.sleep(self.args.sleep_level)
+
+        else:
+            from swift.llm import PtEngine
+            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
