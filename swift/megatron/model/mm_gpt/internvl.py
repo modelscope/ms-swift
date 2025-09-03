@@ -16,12 +16,10 @@ def convert_hf2mcore_internvl3(hf_model, mg_model):
     mg_model.visual.mlp1.load_state_dict(hf_model.mlp1.state_dict())
 
 
-
 def convert_mcore2hf_internvl3(hf_model, mg_model):
     convert_mcore2hf(hf_model.language_model, mg_model.language_model)
     hf_model.vision_model.load_state_dict(mg_model.visual.vision_model.state_dict())
     hf_model.mlp1.load_state_dict(mg_model.visual.mlp1.state_dict())
-
 
 
 class Internvl3Vit(HuggingFaceModule):
@@ -30,10 +28,11 @@ class Internvl3Vit(HuggingFaceModule):
     aligner = ['mlp1']
 
     def __init__(self, config):
-        from transformers.models import Qwen2ForCausalLM
+        from transformers.models.qwen2 import Qwen2ForCausalLM
         super().__init__(config, Qwen2ForCausalLM)
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
+        model = self._hf_model[0]
         input_ids = kwargs['input_ids']
         pixel_values = kwargs.get('pixel_values')
         if pixel_values is None:
@@ -43,7 +42,7 @@ class Internvl3Vit(HuggingFaceModule):
         else:
             vit_embeds = model.extract_feature(pixel_values)
             selected = (input_ids == self.processor.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
-            inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1])
+            inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1]).to(dtype=inputs_embeds.dtype)
         return inputs_embeds
 
 

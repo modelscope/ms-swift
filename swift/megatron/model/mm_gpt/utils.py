@@ -7,7 +7,7 @@ import torch
 from megatron.core.models.huggingface import HuggingFaceModule as _HuggingFaceModule
 from megatron.training import get_args, get_tokenizer
 from torch import nn
-from transformers import PretrainedConfig
+from transformers import PretrainedConfig, PreTrainedModel
 from transformers.utils import ContextManagers
 
 from swift.llm import deep_getattr, get_model_tokenizer
@@ -20,7 +20,6 @@ from ..register import MegatronModelMeta
 @contextmanager
 def patch_hf_initialize_weight():
 
-    from transformers import PreTrainedModel
     _origin_initialize_weight = PreTrainedModel._initialize_weights
 
     def _initialize_weight(self, *args, **kwargs):
@@ -68,14 +67,14 @@ class HuggingFaceModule(_HuggingFaceModule, ABC):
         if not isinstance(ignore_init_model_cls, list):
             ignore_init_model_cls = [ignore_init_model_cls]
         context_list = [patch_device_map_meta(model_cls) for model_cls in ignore_init_model_cls]
-        if context_list:
-            context_list.append(patch_hf_initialize_weight())
+        context_list.append(patch_hf_initialize_weight())
         with ContextManagers(context_list):
             model, _ = get_model_tokenizer(model_dir, args.torch_dtype, return_dummy_model=True, **kwargs)
         self.model_config = model.config
         self.processor = get_tokenizer()
         for hf_prefix, mg_prefix in self.module_mapping.items():
             setattr(self, mg_prefix, deep_getattr(model, hf_prefix))
+        self._hf_model = [model]
         self.prepare_model(model)
         self.to('cuda')
 

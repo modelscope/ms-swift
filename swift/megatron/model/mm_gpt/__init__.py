@@ -1,1 +1,1 @@
-from . import qwen, internvl
+from . import internvl, qwen

@@ -127,6 +127,8 @@ def get_examples(is_multimodal: bool) -> Dict[str, Any]:
 
 
 def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float32):
+    hf_model.eval()
+    mg_model.eval()
     _test_params_sum(hf_model)
     _test_params_sum(mg_model)
 
@@ -226,7 +228,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     logger.info('Megatron model created successfully.')
     megatron_model_meta.convert_hf2mcore(hf_model, mg_model)
     if args.test_convert_precision:
-        test_convert_precision(hf_model, mg_model, template)
+        test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
     del hf_model
     logger.info('Successfully transferred HF model weights to MG model.')
     args.save_args()
@@ -281,7 +283,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     if args.to_hf:
         megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
         if args.test_convert_precision:
-            test_convert_precision(hf_model, mg_model, template)
+            test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
         del mg_model
         logger.info('Successfully transferred MG model weights to HF model.')
         ckpt_dir = megatron_args.load if megatron_args.adapter_load is None else megatron_args.adapter_load
