@@ -147,6 +147,14 @@ def test_internvl3():
     # _test_model('OpenGVLab/InternVL3-1B')
 
 
+def test_internvl3_5():
+    _test_model('OpenGVLab/InternVL3_5-1B')
+
+
+def test_internvl3_5_moe():
+    _test_model('OpenGVLab/InternVL3_5-30B-A3B')
+
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -175,4 +183,6 @@ if __name__ == '__main__':
     # test_qwen2_5_vl()
     # test_qwen2_vl()
     # test_qwen2_5_omni()
-    test_internvl3()
+    # test_internvl3()
+    # test_internvl3_5()
+    test_internvl3_5_moe()
