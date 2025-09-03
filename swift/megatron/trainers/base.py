@@ -267,11 +267,12 @@ class BaseMegatronTrainer(ABC):
         visual = self.unwrapped_model.visual
         if visual is None:
             return
-        visual = visual.model
         args = get_args()
-        if args.vit_gradient_checkpointing:
-            visual.gradient_checkpointing_enable(**(args.gradient_checkpointing_kwargs or {}))
-            visual.enable_input_require_grads()
+        for vision_tower in visual.vision_tower:
+            module = deep_getattr(visual, vision_tower)
+            if args.vit_gradient_checkpointing:
+                module.gradient_checkpointing_enable(**(args.gradient_checkpointing_kwargs or {}))
+                module.enable_input_require_grads()
 
     @staticmethod
     def _initialize_embedding(model):

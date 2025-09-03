@@ -141,8 +141,6 @@ register_megatron_model(
 class Qwen2_5Omni_Vit(HuggingFaceModule):
     module_mapping = {
         'thinker': 'thinker',
-        'talker': 'talker',
-        'token2wav': 'token2wav',
     }
     vision_tower = ['thinker.audio_tower', 'thinker.visual']
     aligner = ['thinker.audio_tower.proj', 'thinker.visual.merger']
@@ -235,8 +233,6 @@ def convert_hf2mcore_qwen2_5_omni(hf_model, mg_model):
         set_layer_state_hf2mcore(args, mg_language_model, language_model, layer_idx)
     mg_model.visual.thinker.visual.load_state_dict(hf_model.thinker.visual.state_dict())
     mg_model.visual.thinker.audio_tower.load_state_dict(hf_model.thinker.audio_tower.state_dict())
-    mg_model.visual.talker.load_state_dict(hf_model.talker.state_dict())
-    mg_model.visual.token2wav.load_state_dict(hf_model.token2wav.state_dict())
 
 
 def convert_mcore2hf_qwen2_5_omni(hf_model, mg_model):
@@ -251,8 +247,6 @@ def convert_mcore2hf_qwen2_5_omni(hf_model, mg_model):
         set_layer_state_mcore2hf(args, mg_language_model, language_model, layer_idx)
     hf_model.thinker.visual.load_state_dict(mg_model.visual.thinker.visual.state_dict())
     hf_model.thinker.audio_tower.load_state_dict(mg_model.visual.thinker.audio_tower.state_dict())
-    hf_model.talker.load_state_dict(mg_model.visual.talker.state_dict())
-    hf_model.token2wav.load_state_dict(mg_model.visual.token2wav.state_dict())
 
 
 register_megatron_model(

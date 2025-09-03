@@ -137,6 +137,11 @@ def test_qwen2_vl():
     _test_model('Qwen/Qwen2-VL-7B-Instruct')
 
 
+def test_qwen2_5_omni():
+    os.environ['MAX_PIXELS'] = str(1280 * 28 * 28)
+    _test_model('Qwen/Qwen2.5-Omni-7B')
+
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -162,5 +167,6 @@ if __name__ == '__main__':
     # test_hunyuan()
     # test_ernie()
     # test_glm4_5()
-    test_qwen2_5_vl()
+    # test_qwen2_5_vl()
     # test_qwen2_vl()
+    test_qwen2_5_omni()
