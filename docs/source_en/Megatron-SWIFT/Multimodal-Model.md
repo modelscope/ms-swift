@@ -1,10 +1,10 @@
 # Multimodal Models
 
-ms-swift introduces Megatron's parallelization techniques to accelerate the training of large multimodal models. Currently, it supports CPT/SFT/DPO for models such as Qwen2.5-VL. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md).
+ms-swift introduces Megatron's parallelization techniques to accelerate the training of large multimodal models. Currently, it supports CPT/SFT/DPO for models such as Qwen2.5-VL, Qwen2.5-Omni. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md).
 
 For environment setup, please refer to the Megatron-SWIFT [Quick Start guide](./Quick-start.md).
 
-## Dense Model Full/LoRA Fine-tuning
+## Dense Model
 
 This section demonstrates fine-tuning the Qwen2.5-VL-7B-Instruct model on the LaTeX-OCR task using two 80GiB A100 GPUs, with both full-parameter fine-tuning and LoRA. The best practices described below can be completed within 10 minutes.
 

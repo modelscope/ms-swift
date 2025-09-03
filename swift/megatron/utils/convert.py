@@ -206,10 +206,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    config = processor.model_info.config
-    if args.model_meta.is_multimodal and hasattr(config, 'text_config'):
-        config = config.text_config
-    kwargs = megatron_model_meta.convert_hf_config(config)
+    kwargs = megatron_model_meta.convert_hf_config(hf_model.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()
@@ -245,10 +242,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    config = processor.model_info.config
-    if args.model_meta.is_multimodal and hasattr(config, 'text_config'):
-        config = config.text_config
-    kwargs = megatron_model_meta.convert_hf_config(config)
+    kwargs = megatron_model_meta.convert_hf_config(hf_model.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()
