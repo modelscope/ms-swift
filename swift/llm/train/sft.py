@@ -124,10 +124,17 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         train_dataset = DatasetLoader._concat_datasets(train_datasets)
         val_dataset = DatasetLoader._concat_datasets(val_datasets)
         is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
-        predict_with_generate = getattr(args, 'predict_with_generate', False)
         datasets = [train_dataset, val_dataset]
         if is_grpo:
             return datasets
+        datasets = self._post_process_datasets(datasets)
+
+        return datasets
+
+    def _post_process_datasets(self, datasets: List) -> List:
+        args = self.args
+        predict_with_generate = getattr(args, 'predict_with_generate', False)
+
         template = self.template
         for i, dataset in enumerate(datasets):
             if dataset is None:
@@ -159,7 +166,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def run(self):
         args = self.args
         train_dataset, val_dataset = self._prepare_dataset()
-
+        if hasattr(args, 'chord_sft_dataset') and args.chord_sft_dataset:
+            # chord_sft_dataset = self._prepare_chord_dataset()
+            pass
         if args.task_type == 'seq_cls':
             args.problem_type = args.problem_type or getattr(self.model.config, 'problem_type', None)
             logger.info(f'args.problem_type: {args.problem_type}')
