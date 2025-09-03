@@ -153,6 +153,7 @@ class Qwen2_5Omni_Vit(HuggingFaceModule):
 
     def prepare_model(self, hf_model):
         self.thinker.model = None
+        self.thinker.lm_head = None
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
         input_ids = kwargs['input_ids']
