@@ -6,6 +6,7 @@ from typing import List, Optional, Union
 import torch
 
 from swift.llm.train import SwiftSft
+from swift.llm import TEMPLATE_MAPPING
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
 from ..trainers import MegatronTrainer
@@ -26,7 +27,8 @@ class MegatronSft(SwiftSft):
         self.train_msg = {}
         super(SwiftSft, self).__init__(args)
         args = self.args
-        if args.model_meta.is_multimodal:
+        template_cls = TEMPLATE_MAPPING[args.template].template_cls
+        if args.model_meta.is_multimodal and template_cls and template_cls.use_model:
             kwargs = {'return_dummy_model': True}
         else:
             kwargs = {'load_model': False}

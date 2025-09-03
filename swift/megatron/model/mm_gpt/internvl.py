@@ -48,12 +48,13 @@ class Internvl3Vit(HuggingFaceModule):
         input_ids = kwargs['input_ids']
         pixel_values = kwargs.get('pixel_values')
         if pixel_values is None:
-            dummy_pixel_values = torch.zeros((1, 3, 32, 32), dtype=inputs_embeds.dtype)
+            dummy_pixel_values = torch.zeros((1, 3, 32, 32), dtype=self.vision_model.dtype, device=inputs_embeds.device)
             vit_embeds = model.extract_feature(dummy_pixel_values)
-            inputs_embeds += vit_embeds.mean() * 0.
+            inputs_embeds = inputs_embeds + vit_embeds.mean() * 0.
         else:
             vit_embeds = model.extract_feature(pixel_values)
             selected = (input_ids == self.processor.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
+            inputs_embeds = inputs_embeds.clone()
             inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1]).to(dtype=inputs_embeds.dtype)
         return inputs_embeds
 
