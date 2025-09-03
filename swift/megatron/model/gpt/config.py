@@ -39,7 +39,9 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
             res['rotary_interleaved'] = True
         elif architectures == 'Glm4MoeForCausalLM':
             res['moe_router_score_function'] = 'sigmoid'
-        elif architectures in {'Qwen2VLForConditionalGeneration', 'Qwen2_5_VLForConditionalGeneration'}:
+        elif architectures in {
+                'Qwen2VLForConditionalGeneration', 'Qwen2_5_VLForConditionalGeneration', 'Qwen2_5OmniModel'
+        }:
             res['position_embedding_type'] = 'mrope'
             res['mrope_section'] = res['rope_scaling']['mrope_section']
     if first_k_dense_replace is not None:

@@ -3,3 +3,4 @@ class MegatronModelType:
     gpt = 'gpt'
     qwen2_vl = 'qwen2_vl'
     qwen2_5_vl = 'qwen2_5_vl'
+    qwen2_5_omni = 'qwen2_5_omni'

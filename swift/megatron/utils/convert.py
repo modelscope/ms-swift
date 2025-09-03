@@ -12,7 +12,7 @@ from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoin
 from megatron.training.initialize import initialize_megatron
 from megatron.training.utils import get_ltor_masks_and_position_ids
 
-from swift.llm import ExportArguments, HfConfigFactory, prepare_model_template, save_checkpoint, to_device
+from swift.llm import ExportArguments, HfConfigFactory, deep_getattr, prepare_model_template, save_checkpoint, to_device
 from swift.utils import get_logger, get_n_params_grads
 from ..argument import MegatronArguments
 from ..model import get_megatron_model_meta
@@ -206,9 +206,10 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    config = processor.model_info.config
-    if args.model_meta.is_multimodal and hasattr(config, 'text_config'):
-        config = config.text_config
+    language_model = hf_model
+    if args.model_meta.is_multimodal:
+        language_model = deep_getattr(hf_model, args.model_meta.model_arch.language_model[0])
+    config = language_model.config
     kwargs = megatron_model_meta.convert_hf_config(config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
@@ -245,9 +246,10 @@ def convert_mcore2hf(args: ExportArguments) -> None:
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    config = processor.model_info.config
-    if args.model_meta.is_multimodal and hasattr(config, 'text_config'):
-        config = config.text_config
+    language_model = hf_model
+    if args.model_meta.is_multimodal:
+        language_model = deep_getattr(hf_model, args.model_meta.model_arch.language_model[0])
+    config = language_model.config
     kwargs = megatron_model_meta.convert_hf_config(config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
