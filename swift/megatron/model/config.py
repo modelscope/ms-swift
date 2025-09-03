@@ -66,7 +66,7 @@ def convert_hf_config(config, ignore_keys=None) -> Dict[str, Any]:
                         megatron_config['multi_latent_attention'] = True
                     megatron_config[k] = hf_v
                 break
-    for key in ['text_config', 'thinker_config']:
+    for key in ['text_config', 'llm_config', 'thinker_config']:
         if hasattr(config, key):
             megatron_config.update(convert_hf_config(getattr(config, key), ['architectures']))
     # compat llama3
