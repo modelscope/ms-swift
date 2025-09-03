@@ -22,7 +22,7 @@ def convert_hf2mcore_qwen2_5_vl(hf_model, mg_model):
     mg_language_model.decoder.final_layernorm.weight.data.copy_(language_model.norm.weight)
     for layer_idx in range(args.num_layers):
         set_layer_state_hf2mcore(args, mg_language_model, language_model, layer_idx)
-    mg_model.visual.model.load_state_dict(visual.state_dict())
+    mg_model.visual.visual.load_state_dict(visual.state_dict())
 
 
 def convert_mcore2hf_qwen2_5_vl(hf_model, mg_model):
@@ -38,7 +38,7 @@ def convert_mcore2hf_qwen2_5_vl(hf_model, mg_model):
     language_model.norm.weight.data.copy_(mg_language_model.decoder.final_layernorm.weight)
     for layer_idx in range(args.num_layers):
         set_layer_state_mcore2hf(args, mg_language_model, language_model, layer_idx)
-    visual.load_state_dict(mg_model.visual.model.state_dict())
+    visual.load_state_dict(mg_model.visual.visual.state_dict())
 
 
 class Qwen2_5VL_Vit(HuggingFaceModule):
@@ -68,7 +68,7 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
         pixel_values_videos = kwargs.get('pixel_values_videos')
         image_grid_thw = kwargs.get('image_grid_thw')
         video_grid_thw = kwargs.get('video_grid_thw')
-        dtype = self.model.dtype
+        dtype = self.visual.dtype
         if pixel_values is None and pixel_values_videos is None:  # plain-text
             from PIL import Image
             images = [Image.new('RGB', (32, 32), (0, 0, 0))]
@@ -76,7 +76,7 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
             device = input_ids.device
             media_inputs = to_device(media_inputs, device)
             pixel_values = media_inputs['pixel_values'].type(dtype)
-            image_embeds = self.model(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+            image_embeds = self.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
             inputs_embeds = inputs_embeds + image_embeds.mean() * 0.
         else:
             if pixel_values is None:
@@ -89,7 +89,7 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
                 pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
                 grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
             pixel_values_mixed = pixel_values_mixed.type(dtype)
-            mixed_embeds = self.model(pixel_values_mixed, grid_thw=grid_thw)
+            mixed_embeds = self.visual(pixel_values_mixed, grid_thw=grid_thw)
             if pixel_values is None:
                 image_embeds = None
                 video_embeds = mixed_embeds
