@@ -528,6 +528,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 enable_sleep_mode=self.args.sleep_level > 0,
                 max_model_len=self.args.vllm_max_model_len,
                 seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
+                disable_cascade_attn=self.args.vllm_disable_cascade_attn,
+                load_format='dummy',
                 template=self.template,
                 distributed_executor_backend='external_launcher',
             )
