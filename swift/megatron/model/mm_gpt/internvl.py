@@ -28,8 +28,20 @@ class Internvl3Vit(HuggingFaceModule):
     aligner = ['mlp1']
 
     def __init__(self, config):
+        model_cls = []
         from transformers.models.qwen2 import Qwen2ForCausalLM
-        super().__init__(config, Qwen2ForCausalLM)
+        model_cls.append(Qwen2ForCausalLM)
+        try:
+            from transformers.models import Qwen3ForCausalLM
+            model_cls.append(Qwen3ForCausalLM)
+        except ImportError:
+            pass
+        try:
+            from transformers.models import Qwen3MoeForCausalLM
+            model_cls.append(Qwen3MoeForCausalLM)
+        except ImportError:
+            pass
+        super().__init__(config, model_cls)
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
         model = self._hf_model[0]
@@ -50,6 +62,7 @@ register_megatron_model(
     MMGPTMegatronModelMeta(
         MegatronModelType.internvl3, [
             ModelType.internvl3,
+            ModelType.internvl3_5,
         ],
         convert_hf2mcore=convert_hf2mcore_internvl3,
         convert_mcore2hf=convert_mcore2hf_internvl3,

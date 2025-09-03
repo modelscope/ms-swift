@@ -43,12 +43,9 @@ config_mapping = {
 }
 
 
-def convert_hf_config(config, ignore_keys=None) -> Dict[str, Any]:
-    ignore_keys = ignore_keys or []
+def convert_hf_config(config, _internal_call=False) -> Dict[str, Any]:
     megatron_config = {}
     for k, hf_keys in config_mapping.items():
-        if k in ignore_keys:
-            continue
         for hf_k in hf_keys:
             if hasattr(config, hf_k):
                 hf_v = getattr(config, hf_k)
@@ -64,11 +61,14 @@ def convert_hf_config(config, ignore_keys=None) -> Dict[str, Any]:
                 else:
                     if k == 'kv_lora_rank':
                         megatron_config['multi_latent_attention'] = True
+                    elif k == 'architectures':
+                        if _internal_call:
+                            k = 'llm_architectures'
                     megatron_config[k] = hf_v
                 break
     for key in ['text_config', 'llm_config', 'thinker_config']:
         if hasattr(config, key):
-            megatron_config.update(convert_hf_config(getattr(config, key), ['architectures']))
+            megatron_config.update(convert_hf_config(getattr(config, key), _internal_call=True))
     # compat llama3
     if getattr(config, 'rope_scaling', None) is not None:
         if isinstance(config.rope_scaling, int):
