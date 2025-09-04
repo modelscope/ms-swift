@@ -242,9 +242,10 @@ class DatasetLoader:
             use_hf = True
             dataset_str = f'Use local folder, dataset_dir: {dataset_id}'
             # The dataset downloaded from modelscope will have an additional dataset_infos.json file.
-            dataset_infos_path = os.path.join(dataset_id, 'dataset_infos.json')
-            if os.path.isfile(dataset_infos_path):
-                os.rename(dataset_infos_path, f'{dataset_infos_path}_bak')
+            with safe_ddp_context('dataset_infos_rename'):
+                dataset_infos_path = os.path.join(dataset_id, 'dataset_infos.json')
+                if os.path.isfile(dataset_infos_path):
+                    os.rename(dataset_infos_path, f'{dataset_infos_path}_bak')
         elif dataset_id.startswith('/'):
             raise ValueError(f'The local path does not exist, dataset_id: `{dataset_id}`. '
                              f'os.path.exists(dataset_id): {os.path.exists(dataset_id)}')
