@@ -59,7 +59,6 @@ class GatherLoss(torch.autograd.Function):
         from swift.trainers.sequence_parallel import sequence_parallel
         _grad = grad_output[0] * sequence_parallel.world_size
         if sequence_parallel.rp_world_size > 1:
-            _grad = sequence_parallel._pad(_grad, padding_value=0., position_ids=ctx.position_ids[ctx.position_ids>=0].unsqueeze(0))
             _grad = sequence_parallel._split(_grad, dim=ctx.gather_idx, position_ids=ctx.position_ids).contiguous()
         else:
             _grad = _grad.split(ctx.scatter_shape, dim=ctx.gather_idx)[dist.get_rank(sequence_parallel.sp_group)].contiguous()
@@ -139,8 +138,12 @@ def loss_scale_sp_func(outputs,
         loss = (loss_scale * loss)
     from swift.trainers.sequence_parallel import sequence_parallel
     position_ids = sequence_parallel.extra_kwargs.get('origin_position_ids')
-    position_ids = sequence_parallel._pad(position_ids, padding_value=-1, position_ids=position_ids)
     loss, labels = GatherLoss.apply(loss.reshape(batch_size, -1), labels.reshape(batch_size, -1), 1, position_ids)
+    if position_ids is not None and position_ids.min() == -1:
+        _pos_mask = position_ids >= 0
+        loss = loss[_pos_mask].contiguous()
+        labels = labels[_pos_mask].contiguous()
+
     mask = (labels != -100)
     total_loss = loss[mask].sum()
     if num_items_in_batch is None:

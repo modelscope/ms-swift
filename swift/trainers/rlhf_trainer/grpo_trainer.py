@@ -1661,11 +1661,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         _padding_labels = torch.zeros((labels.shape[0], left_padding_len), device=labels.device, dtype=labels.dtype)
         labels_padded = torch.cat((_padding_labels, labels_kept), dim=1)
-        per_token_logps, _ = GatherLoss.apply(per_token_logps_padded, labels_padded, sequence_parallel.sp_group, 1)
+        position_ids = sequence_parallel.extra_kwargs.get('origin_position_ids')
+        per_token_logps, _ = GatherLoss.apply(per_token_logps_padded, labels_padded, 1, position_ids)
         if compute_entropy:
             entropies = entropy_from_logits(logits_kept)
             entropies_padded = torch.cat((_padding_logps, entropies), dim=1)
-            entropies, _ = GatherLoss.apply(entropies_padded, labels_padded, sequence_parallel.sp_group, 1)
+            entropies, _ = GatherLoss.apply(entropies_padded, labels_padded, sequence_parallel.sp_group, 1, position_ids)
+
+        if position_ids is not None and position_ids.min() == -1:
+            _pos_mask = position_ids >= 0
+            per_token_logps = per_token_logps[_pos_mask].contiguous()
+            entropies = entropies[_pos_mask].contiguous()
 
         if padding_size > 0:
             per_token_logps = per_token_logps[:, :-padding_size]

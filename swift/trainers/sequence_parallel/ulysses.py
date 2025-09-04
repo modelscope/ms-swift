@@ -122,7 +122,6 @@ class DistributedAttention(torch.nn.Module):
         position_ids = kwargs.pop('position_ids', None)
         if position_ids is not None:
             position_ids = self.sequence_parallel.extra_kwargs['origin_position_ids']
-            position_ids = self.sequence_parallel._pad(position_ids, padding_value=-1, position_ids=position_ids)
 
         context_layer = self.local_attn(
             query_layer, key_layer, value_layer, attention_mask, *args, position_ids=position_ids, **kwargs)
@@ -391,6 +390,8 @@ class SequenceParallel:
                     sub_tensor = tensor[:, cu_seqlens[i]:cu_seqlens[i + 1]]
                 elif dim == -1:
                     sub_tensor = tensor[..., cu_seqlens[i]:cu_seqlens[i + 1]]
+                else:
+                    raise NotImplementedError()
                 all_tensors.append(_do_pad(sub_tensor))
             tensor = torch.cat(all_tensors, dim=dim)
 
@@ -476,6 +477,8 @@ class SequenceParallel:
                 sub_value = value[:, start:end]
             elif dim == -1:
                 sub_value = value[..., start:end]
+            else:
+                raise NotImplementedError()
             local_value = sub_value.chunk(2 * self.rp_world_size, dim=dim)
             local_values.extend(
                 [
