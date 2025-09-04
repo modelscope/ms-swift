@@ -137,7 +137,9 @@ def loss_scale_sp_func(outputs,
         loss_scale = loss_scale.flatten().to(device)
         loss = (loss_scale * loss)
     from swift.trainers.sequence_parallel import sequence_parallel
-    position_ids = sequence_parallel.extra_kwargs.get('origin_position_ids')
+    position_ids = sequence_parallel.extra_kwargs.get('_position_ids')
+    if position_ids is not None:
+        position_ids = sequence_parallel._pad(position_ids, padding_value=-1, position_ids=position_ids)
     loss, labels = GatherLoss.apply(loss.reshape(batch_size, -1), labels.reshape(batch_size, -1), 1, position_ids)
     if position_ids is not None and position_ids.min() == -1:
         _pos_mask = position_ids >= 0
