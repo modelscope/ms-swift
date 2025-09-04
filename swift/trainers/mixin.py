@@ -757,9 +757,8 @@ class SwiftMixin:
                 preds = torch.from_numpy(preds).to(get_current_device())
             if isinstance(labels, np.ndarray):
                 labels = torch.from_numpy(labels).to(get_current_device())
-            if labels.shape[1] > preds.shape[1]:
-                _, _, labels, _, _, _ = sequence_parallel.pad_and_split_inputs(None, None, labels, None, None, None)
-            
+            assert labels.shape[1] == preds.shape[1]
+
             if sequence_parallel.rp_world_size > 1:
                 from swift.trainers.sequence_parallel import sequence_parallel
                 position_ids = sequence_parallel.extra_kwargs.get('origin_position_ids')

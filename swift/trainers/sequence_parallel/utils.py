@@ -58,8 +58,11 @@ class GatherLoss(torch.autograd.Function):
     def backward(ctx, *grad_output):
         from swift.trainers.sequence_parallel import sequence_parallel
         _grad = grad_output[0] * sequence_parallel.world_size
-        _grad = sequence_parallel._pad(_grad, padding_value=0., position_ids=ctx.position_ids[ctx.position_ids>=0].unsqueeze(0))
-        _grad = sequence_parallel._split(_grad, dim=ctx.gather_idx, position_ids=ctx.position_ids).contiguous()
+        if sequence_parallel.rp_world_size > 1:
+            _grad = sequence_parallel._pad(_grad, padding_value=0., position_ids=ctx.position_ids[ctx.position_ids>=0].unsqueeze(0))
+            _grad = sequence_parallel._split(_grad, dim=ctx.gather_idx, position_ids=ctx.position_ids).contiguous()
+        else:
+            _grad = _grad.split(ctx.scatter_shape, dim=ctx.gather_idx)[dist.get_rank(sequence_parallel.sp_group)].contiguous()
         return _grad, None, None, None
 
 
