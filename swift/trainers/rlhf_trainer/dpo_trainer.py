@@ -210,7 +210,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                 total_loss_mask = total_loss_mask[_pos_mask].contiguous()
 
             total_loss_mask = total_loss_mask.bool()
-            total_per_token_logps = total_per_token_logps * (~total_loss_mask)
+            total_per_token_logps = total_per_token_logps * (total_loss_mask)
 
             if total_per_token_logps.dim() == 1:
                 total_per_token_logps = total_per_token_logps.unsqueeze(0)
