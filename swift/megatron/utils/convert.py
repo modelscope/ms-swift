@@ -178,6 +178,8 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     mg_tokens = mg_logits.argmax(-1)
     print(f'hf_tokens: {hf_tokens[0].tolist()}\nmg_tokens: {mg_tokens[0].tolist()}')
     print(f'token_diff: {(hf_tokens != mg_tokens).sum().item()}')
+    loss_mask = (torch.roll(inputs['labels'], -1) != -100)
+    print(f'token_diff (with loss): {(hf_tokens[loss_mask] != mg_tokens[loss_mask]).sum().item()}')
 
 
 convert_kwargs = {
