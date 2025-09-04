@@ -17,6 +17,7 @@ from queue import Queue
 from threading import local
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+import math
 
 import json
 import torch
@@ -194,7 +195,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.model_kwarg_keys = (
             inspect.signature(model.forward).parameters.keys() if not hasattr(model, 'get_base_model') else
             inspect.signature(model.get_base_model().forward).parameters.keys())
-
+        chord_sft_dataset = kwargs.pop('chord_sft_dataset', None)
+        if chord_sft_dataset is not None:
+            self._make_chord_sft_dataset(chord_sft_dataset)
         super().__init__(model, ref_model, *_args, **kwargs)
         if self.args.eval_strategy != 'no':
             total_eval_batch_size = self.args.per_device_eval_batch_size * \
@@ -1483,6 +1486,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'high_clip_max': nanmax(gathered_high_clip).item(),
             'region_clip_mean': gathered_clip_ratio.nanmean().item()
         }
+        if self.chord_sft_iterator is not None:
+            loss, metrics_data = self._compute_chord_loss(grpo_loss=loss, metrics_data=metrics_data)
 
         return loss, metrics_data
 
@@ -2810,3 +2815,60 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, rid in enumerate(request_ids):
             seen[rid] = i
         return torch.tensor(list(seen.values()), dtype=torch.long, device=self.accelerator.device)
+
+    def _make_chord_sft_dataset(self, chord_sft_dataset):
+        from torch.utils.data import RandomSampler
+        self.chord_sft_dataset = chord_sft_dataset
+        self.chord_sft_iterator = None
+        if self.chord_sft_dataset:
+            def cyclic_iter(iterable):
+                while True:
+                    for x in chord_sft_dataset:
+                        yield x
+
+            chord_sft_dataloader = self._get_dataloader(
+                    dataset=chord_sft_dataset,
+                    description="Training",
+                    batch_size=self.args.chord_sft_per_device_train_batch_size,
+                    sampler_fn=RandomSampler(chord_sft_dataset),
+                    is_training=True,
+                )
+            self.chord_sft_iterator = cyclic_iter(chord_sft_dataloader)
+
+    def _compute_chord_loss(self, grpo_loss: torch.Tensor, metrics_data: Dict[str, Any]) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        # code borrowed from Trinity-RFT
+        def mu_schedule_function(
+            global_step: int, mu_warmup_steps: int, mu_decay_steps: int, mu_peak: float, mu_valley: float
+        ) -> float:
+            """
+            Computes a cosine decay schedule with a warmup phase for the mu parameter.
+            """
+            # Warmup
+            if global_step < mu_warmup_steps:
+                return (global_step / mu_warmup_steps) * mu_peak
+
+            # Decay
+            if global_step >= (mu_warmup_steps + mu_decay_steps):
+                return mu_valley
+
+            adjusted_step = global_step - mu_warmup_steps
+            cosine_decay = 0.5 * (1 + math.cos(math.pi * adjusted_step / mu_decay_steps))
+            decayed_mu = (mu_peak - mu_valley) * cosine_decay + mu_valley
+            return decayed_mu
+        
+        current_step = self.state.global_step
+        mu = mu_schedule_function(
+            current_step, self.args.chord_mu_warmup_steps, self.args.chord_mu_decay_steps, self.args.chord_mu_peak, self.args.chord_mu_valley
+        )
+        sft_inputs = next(self.chord_sft_iterator)
+        labels = sft_inputs.pop('labels')
+        outputs = self.model(**sft_inputs)
+
+        chord_sft_loss = self.chord_sft_loss_fn(
+            logprob=logprob,
+            action_mask=action_mask,
+            **kwargs,
+        )
+        chord_sft_loss = chord_sft_loss * mu
+        chord_sft_metrics = {k: v * mu for k, v in chord_sft_metrics.items()}
+        return chord_sft_loss, chord_sft_metrics

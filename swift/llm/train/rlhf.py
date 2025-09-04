@@ -181,6 +181,25 @@ class SwiftRLHF(SwiftSft):
             train_dataset, val_dataset = prepare_kto_dataset(args, train_dataset, val_dataset)
         return train_dataset, val_dataset
 
+    def _prepare_chord_sft_dataset(self):
+        from ..dataset import load_dataset
+        from swift.llm.dataset.loader import DatasetLoader
+
+        # prepare expert sft dataset for chord
+        args = self.args
+        assert hasattr(args, 'chord_sft_dataset') and args.chord_sft_dataset
+        dataset_kwargs = args.get_dataset_kwargs()
+        chord_sft_datasets = []
+        # TODO: validatition
+        chord_sft_dataset, _ = load_dataset(
+            args.chord_sft_dataset, split_dataset_ratio=0, shuffle=args.dataset_shuffle, **dataset_kwargs)
+        chord_sft_dataset, _ = self._encode_dataset(chord_sft_dataset, None, pre_process=True)
+        chord_sft_datasets.append(chord_sft_dataset)
+        chord_sft_dataset = DatasetLoader._concat_datasets(chord_sft_datasets)
+        datasets = [chord_sft_dataset, None]
+        datasets = self._post_process_datasets(datasets)
+        return datasets
+
     def _get_trainer_kwargs(self):
         trainer_kwargs = {}
         for key in ['ref', 'reward', 'value', 'teacher']:
@@ -193,6 +212,8 @@ class SwiftRLHF(SwiftSft):
         if self.args.rlhf_type == 'grpo':
             trainer_kwargs['reward_funcs'] = self.args.reward_funcs
             trainer_kwargs['vllm_client'] = self.args.vllm_client
+            if self.args.chord_sft_dataset:
+                trainer_kwargs['chord_sft_dataset'], _ = self._prepare_chord_sft_dataset()
         return trainer_kwargs
 
 

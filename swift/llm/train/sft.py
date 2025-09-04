@@ -112,18 +112,18 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_dataset(self):
         args = self.args
+        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
         if args.cached_dataset:
             train_datasets, val_datasets = self._get_cached_dataset()
         else:
             train_datasets, val_datasets = [], []
         if args.dataset:
             train_dataset, val_dataset = self._get_dataset()
-            train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
+            train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset, pre_process=not is_grpo)
             train_datasets.append(train_dataset)
             val_datasets.append(val_dataset)
         train_dataset = DatasetLoader._concat_datasets(train_datasets)
         val_dataset = DatasetLoader._concat_datasets(val_datasets)
-        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
         datasets = [train_dataset, val_dataset]
         if is_grpo:
             return datasets
@@ -166,9 +166,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def run(self):
         args = self.args
         train_dataset, val_dataset = self._prepare_dataset()
-        if hasattr(args, 'chord_sft_dataset') and args.chord_sft_dataset:
-            # chord_sft_dataset = self._prepare_chord_dataset()
-            pass
+
         if args.task_type == 'seq_cls':
             args.problem_type = args.problem_type or getattr(self.model.config, 'problem_type', None)
             logger.info(f'args.problem_type: {args.problem_type}')
@@ -302,15 +300,14 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             if val_dataset is not None and not predict_with_generate:
                 self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
 
-    def _encode_dataset(self, train_dataset, val_dataset):
+    def _encode_dataset(self, train_dataset, val_dataset, pre_process=True):
         template = self.template
         args = self.args
         self._save_val_dataset(val_dataset)
 
-        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
         predict_with_generate = getattr(args, 'predict_with_generate', False)
         datasets = [train_dataset, val_dataset]
-        if is_grpo:
+        if not pre_process:
             return datasets
 
         origin_template_model = template.model
