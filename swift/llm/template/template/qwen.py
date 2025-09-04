@@ -314,10 +314,8 @@ class Qwen2VLTemplate(Template):
         text_position_ids = inputs['position_ids']
         inputs['position_ids'] = inputs.pop('real_position_ids')
         transformers_version = version.parse(transformers.__version__)
-        transformers_ge_453 = transformers_version >= version.parse('4.53')
-        transformers_ge_456 = transformers_version >= version.parse('4.56')
-        if transformers_ge_453:
-            if transformers_ge_456:
+        if transformers_version >= version.parse('4.53'):
+            if transformers_version >= version.parse('4.56'):
                 inputs['position_ids'] = torch.concat([text_position_ids[None], inputs['position_ids']], dim=0)
             else:
                 inputs.update(get_packed_seq_params(text_position_ids))
