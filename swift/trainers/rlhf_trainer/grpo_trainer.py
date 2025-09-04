@@ -1254,7 +1254,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 torch.stack([data['advantages'] for data in batch])
             })
 
-            with torch.no_grad():
+            with torch.inference_mode():
                 batch_encoded_inputs['old_per_token_logps'] = (
                     self._get_per_token_logps_and_entropies(self.model, batch_encoded_inputs)[0]
                     if self.old_policy() else None)

@@ -461,7 +461,7 @@ class PtEngine(InferEngine):
             return await queue.get()
 
     # Ensure `template._post_encode` has no gradient.
-    @torch.no_grad()
+    @torch.inference_mode()
     def _infer(
         self,
         infer_requests: List[InferRequest],
