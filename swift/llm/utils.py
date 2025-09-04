@@ -28,7 +28,7 @@ logger = get_logger()
 
 Tool = Dict[str, Union[str, Dict]]
 History = List[Union[Tuple[str, str], List[str]]]
-Message = Dict[str, Union[str, List[Dict[str, Any]]]]
+Message = Dict[str, Union[str, List[Dict[str, Any]], List[int], None]]
 Messages = List[Message]
 
 
@@ -61,14 +61,14 @@ def to_float_dtype(data: Any, dtype: torch.dtype) -> Any:
         return data
 
 
-def to_device(data: Any, device: Union[str, torch.device, int]) -> Any:
+def to_device(data: Any, device: Union[str, torch.device, int], non_blocking: bool = False) -> Any:
     """Move inputs to a device"""
     if isinstance(data, Mapping):
-        return type(data)({k: to_device(v, device) for k, v in data.items()})
+        return type(data)({k: to_device(v, device, non_blocking) for k, v in data.items()})
     elif isinstance(data, (tuple, list)):
-        return type(data)(to_device(v, device) for v in data)
+        return type(data)(to_device(v, device, non_blocking) for v in data)
     elif isinstance(data, torch.Tensor):
-        return data.to(device=device)
+        return data.to(device=device, non_blocking=non_blocking)
     else:
         return data
 

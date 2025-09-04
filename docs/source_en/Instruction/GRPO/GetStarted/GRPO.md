@@ -230,7 +230,14 @@ If `log_completions` is set, the training dynamics will be saved in the output d
 - {reward_func_name}: The specific reward(s).
 - entropy: The average token entropy (recorded if `log_entropy` is set).
 
-Setting `report_to wandb/swanlab` will send training dynamics to the respective platform.
+Setting `report_to wandb/swanlab` will send training dynamics table to the respective platform.
+
+If you want to log extra columns in the Table, populate the `metrics_to_gather` dictionary inside `GRPOTrainer._generate_and_score_completions`.
+
+The trainer automatically detects and logs the following keys:
+
+- image: image inputs for vision models(wandb only).
+- solution: the solution column from the dataset.
 
 ## FAQ
 

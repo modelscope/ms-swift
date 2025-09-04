@@ -22,6 +22,7 @@ from trl.scripts.vllm_serve import WeightSyncWorkerExtension
 
 from swift.llm import RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
+from swift.plugin.multi_turn import RolloutScheduler, multi_turns
 from swift.utils import get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
@@ -42,7 +43,6 @@ Usage:
         --vllm_tensor_parallel_size xxx \
         --vllm_data_parallel_size xxx \
         --vllm_use_async_engine true/false \
-        --use_gym_env true/false \
         --other_vllm_arguments
 
 Note:
@@ -58,6 +58,31 @@ def safe_set_start_method():
         multiprocessing.set_start_method('spawn')
 
 
+def get_rollout_engine_type(args: RolloutArguments, engine: GRPOVllmEngine):
+    if args.multi_turn_scheduler:
+        if args.multi_turn_scheduler not in multi_turns:
+            raise ValueError(f"Multi-turn scheduler '{args.multi_turn_scheduler}' not found in multi_turns.")
+        scheduler_cls = multi_turns[args.multi_turn_scheduler]
+
+        kwargs = {}
+        if 'tokenizer' in list(inspect.signature(scheduler_cls.__init__).parameters):
+            kwargs['tokenizer'] = engine.default_template.tokenizer
+        # gym kwargs
+        if args.use_gym_env:
+            kwargs.update({
+                'use_gym_env': args.use_gym_env,
+                'gym_env': args.gym_env,
+                'context_manager': args.context_manager,
+            })
+
+        rollout_engine: RolloutScheduler = scheduler_cls(infer_engine=engine, max_turns=args.max_turns, **kwargs)
+        if not rollout_engine:
+            raise ValueError(f"Failed to initialize multi-turn scheduler '{args.multi_turn_scheduler}'.")
+    else:
+        rollout_engine = engine
+    return rollout_engine
+
+
 def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
     # Set required environment variables for DP to work with vLLM
     args._import_external_plugins()
@@ -66,6 +91,7 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
     os.environ['VLLM_DP_SIZE'] = str(args.vllm_data_parallel_size)
     os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
     engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(None))
+    rollout_engine = get_rollout_engine_type(args, engine)
     # Send ready signal to parent process
     connection.send({'status': 'ready'})
 
@@ -81,7 +107,7 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
         if command['type'] in ['call', 'fire_and_forget']:
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
-            method = getattr(engine, method_name, None) or getattr(engine.engine, method_name, None)
+            method = getattr(rollout_engine, method_name, None) or getattr(rollout_engine.engine, method_name, None)
             result = method(*args, **kwargs)
             if command['type'] == 'call':
                 connection.send(result)
@@ -91,7 +117,12 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
 
 async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int,
                            connection: Connection) -> None:
-    engine = SwiftRolloutDeploy.get_infer_engine(args)
+    # Set required environment variables for DP to work with vLLM
+    args._import_external_plugins()
+    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(None))
+
+    rollout_engine = get_rollout_engine_type(args, engine)
+
     # Send ready signal to parent process
     connection.send({'status': 'ready'})
 
@@ -108,7 +139,7 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
             import traceback
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
-            method = getattr(engine, method_name, None) or getattr(engine.engine, method_name, None)
+            method = getattr(rollout_engine, method_name, None) or getattr(rollout_engine.engine, method_name, None)
             try:
                 result = await method(*args, **kwargs)
             except Exception:
@@ -122,8 +153,6 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
 
 
 def llm_worker_entry(*args, **kwargs):
-    rollout_args: RolloutArguments = args[0]
-    rollout_args._import_external_plugins()
     asyncio.run(async_llm_worker(*args, **kwargs))
 
 
@@ -193,11 +222,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
             'torch_dtype': args.torch_dtype,
             'template': template,
             'use_async_engine': args.vllm_use_async_engine,
-            'multi_turn_scheduler': args.multi_turn_scheduler,
-            'max_turns': args.max_turns,
-            'use_gym_env': args.use_gym_env,
-            'gym_env': args.gym_env,
-            'context_manager': args.context_manager,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
         if infer_backend != 'vllm':
@@ -208,6 +232,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         engine_kwargs = kwargs.get('engine_kwargs', {})
         # for RL rollout model weight sync
         engine_kwargs.update({'worker_extension_cls': 'trl.scripts.vllm_serve.WeightSyncWorkerExtension'})
+        engine_kwargs['load_format'] = 'dummy'
         if args.vllm_use_async_engine and args.vllm_data_parallel_size > 1:
             engine_kwargs['data_parallel_size'] = args.vllm_data_parallel_size
         kwargs['engine_kwargs'] = engine_kwargs
@@ -297,14 +322,31 @@ class SwiftRolloutDeploy(SwiftPipeline):
 
     async def get_engine_type(self):
         """
-        Health check endpoint to verify that the server is running.
+        Return a dictionary describing the runtime engine configuration.
+
+        The returned object contains three keys:
+        - engine_type (str): Either 'AsyncLLMEngine' or 'LLMEngine', indicating
+        whether the asynchronous or synchronous engine is in use.
+        - gym_env (bool, optional): Present and True **only when**
+        ``use_async_engine`` and ``use_gym_env`` are both True.
+        - enable_multi_turn (bool): True if multi-turn scheduling is enabled
+        via ``args.multi_turn_scheduler``, otherwise False.
+
+        Returns
+        -------
+        dict
+            A concise specification of the current engine setup.
         """
+        enable_multi_turn = False
+        if self.args.multi_turn_scheduler:
+            enable_multi_turn = True
+
         if self.use_async_engine:
             if self.use_gym_env:
-                return {'engine_type': 'AsyncLLMEngine', 'gym_env': True}
-            return {'engine_type': 'AsyncLLMEngine'}
+                return {'engine_type': 'AsyncLLMEngine', 'gym_env': True, 'enable_multi_turn': True}
+            return {'engine_type': 'AsyncLLMEngine', 'enable_multi_turn': enable_multi_turn}
         else:
-            return {'engine_type': 'LLMEngine'}
+            return {'engine_type': 'LLMEngine', 'enable_multi_turn': enable_multi_turn}
 
     async def close_communicator(self):
         """
@@ -335,7 +377,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
             if request_config.seed:
                 request_config.seed += i * len(requests)
             kwargs = {'infer_requests': requests, 'request_config': request_config, 'use_tqdm': use_tqdm}
-            method = 'async_infer' if self.use_async_engine else 'infer'
+            method = 'infer' if not self.use_async_engine else 'async_infer'
             connection.send({'type': 'call', 'method': method, 'kwargs': kwargs})
 
         all_outputs = [connection.recv() for connection in self.connections]

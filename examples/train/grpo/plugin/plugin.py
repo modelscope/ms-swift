@@ -4,13 +4,13 @@ import re
 import textwrap
 from collections import Counter
 from copy import deepcopy
-from typing import Dict, List, Optional
+from typing import Dict, List, Union
 
 import json
 import torch
 
-from swift.llm import PtEngine, RequestConfig, Template, to_device
-from swift.llm.infer.protocol import ChatCompletionResponse
+from swift.llm import PtEngine, RequestConfig, RolloutInferRequest, Template, to_device
+from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice
 from swift.plugin import ORM, orms, rm_plugins
 # register context manager(used in gym training)
 from swift.plugin.context_manager import ContextManager, context_managers
@@ -36,59 +36,7 @@ TO CUSTOMIZE REWARD FUNCTION:
 """
 
 
-# Code borrowed from plugin/orm.py
-class MathAccuracy(ORM):
-
-    def __init__(self):
-        import importlib.util
-        assert importlib.util.find_spec('math_verify') is not None, (
-            "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
-
-    def __call__(self, completions, solution, **kwargs) -> List[float]:
-        from latex2sympy2_extended import NormalizationConfig
-        from math_verify import LatexExtractionConfig, parse, verify
-        rewards = []
-        for content, sol in zip(completions, solution):
-            gold_parsed = parse(sol, extraction_mode='first_match', extraction_config=[LatexExtractionConfig()])
-            if len(gold_parsed) != 0:
-                # We require the answer to be provided in correct latex (no malformed operators)
-                answer_parsed = parse(
-                    content,
-                    extraction_config=[
-                        LatexExtractionConfig(
-                            normalization_config=NormalizationConfig(
-                                nits=False,
-                                malformed_operators=False,
-                                basic_latex=True,
-                                equations=True,
-                                boxed=True,
-                                units=True,
-                            ),
-                            # Ensures that boxed is tried first
-                            boxed_match_priority=0,
-                            try_extract_without_anchor=False,
-                        )
-                    ],
-                    extraction_mode='first_match',
-                )
-                # Reward 1 if the content is the same as the ground truth, 0 otherwise
-                reward = float(verify(answer_parsed, gold_parsed))
-            else:
-                # If the gold solution is not parseable, we reward 1 to skip this example
-                reward = 1.0
-            rewards.append(reward)
-        return rewards
-
-
-class MathFormat(ORM):
-
-    def __call__(self, completions, **kwargs) -> List[float]:
-        """Reward function that checks if the completion has a specific format."""
-        pattern = r'^<think>.*?</think>\s*<answer>.*?</answer>(?![\s\S])'
-        matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
-        return [1.0 if match else 0.0 for match in matches]
-
-
+# For additional reward functions, refer to swift/plugin/orm.py.
 class CountdownORM(ORM):
 
     def __call__(self, completions, target, nums, **kwargs) -> List[float]:
@@ -141,6 +89,9 @@ class CountdownORM(ORM):
         return rewards
 
 
+orms['external_countdown'] = CountdownORM
+
+
 class MultiModalAccuracyORM(ORM):
 
     def __call__(self, completions, solution, **kwargs) -> List[float]:
@@ -183,6 +134,50 @@ class MultiModalAccuracyORM(ORM):
                     pass  # Keep reward as 0.0 if both methods fail
             rewards.append(reward)
         return rewards
+
+
+orms['external_r1v_acc'] = MultiModalAccuracyORM
+
+
+class MultiTurnThinkingTips(ORM):
+    """
+    A reward function example designed for use with the `ThinkingTipsScheduler`.
+
+    This class demonstrates how to handle reward computation when a single
+    training sample (or request) is split into multiple "turns" or steps.
+    Specifically, it computes the reward based on the **last turn** of each
+    multi-turn trajectory using a math accuracy function.
+
+    NOTE
+    ----
+    If you feed fragments of the *same* trajectory as independent samples, this
+    function **must return an identical reward for every fragment**
+    """
+
+    def __init__(self):
+        from swift.plugin.orm import MathAccuracy
+        self.acc_func = MathAccuracy()
+
+    def __call__(self, completions, **kwargs) -> List[float]:
+        trajectory_ids: List[str] = kwargs.get('request_id')
+
+        global_trajectorys: Dict[str, List[Dict]] = kwargs.get('trajectory_inputs')
+
+        rewards = []
+        for local_tra_id in trajectory_ids:
+            total_trajectory_inputs = global_trajectorys[local_tra_id]
+            # For reward calculation, we use the entire trajectory of this sample.
+            # Here, we specifically evaluate only the last turn.
+            last_turn_messages = total_trajectory_inputs[-1]['messages']
+            last_turn_completion = last_turn_messages[-1]['content']
+            last_turn_solution = total_trajectory_inputs[-1]['solution']
+            # Compute reward based on math accuracy for the final completion.
+            reward = self.acc_func([last_turn_completion], [last_turn_solution])[0]
+            rewards.append(reward)
+        return rewards
+
+
+orms['thinking_tips'] = MultiTurnThinkingTips
 
 
 # ref implementation: https://github.com/huggingface/open-r1/blob/main/src/open_r1/rewards.py
@@ -307,6 +302,9 @@ class CodeReward(ORM):
         return rewards
 
 
+orms['external_code_reward'] = CodeReward
+
+
 class CodeFormat(ORM):
 
     def __call__(self, completions, **kwargs) -> List[float]:
@@ -318,6 +316,9 @@ class CodeFormat(ORM):
             reward = 1.0 if match else 0.0
             rewards.append(reward)
         return rewards
+
+
+orms['external_code_format'] = CodeFormat
 
 
 class CodeRewardByJudge0(ORM):
@@ -453,6 +454,9 @@ class CodeRewardByJudge0(ORM):
         return rewards
 
 
+orms['external_code_reward_by_judge0'] = CodeRewardByJudge0
+
+
 # ref implementation: https://github.com/qiancheng0/ToolRL/blob/main/verl/utils/reward_score/rlla.py
 # arxiv paper: https://arxiv.org/abs/2504.13958
 # MAX1STEP30MAX3: enable Two stage reward Setting include Format and Correctness
@@ -519,6 +523,9 @@ class ToolUseFormatReward(ORM):
         return rewards
 
 
+orms['external_tooluse_format_reward'] = ToolUseFormatReward
+
+
 class ToolUseLengthReward(ORM):
 
     def __init__(self):
@@ -553,6 +560,9 @@ class ToolUseLengthReward(ORM):
             rewards.append(final_reward)
 
         return rewards
+
+
+orms['external_tooluse_length_reward'] = ToolUseLengthReward
 
 
 class ToolUseCorrectnessReward(ORM):
@@ -702,15 +712,6 @@ class ToolUseCorrectnessReward(ORM):
         return rewards
 
 
-orms['external_math_acc'] = MathAccuracy
-orms['external_math_format'] = MathFormat
-orms['external_countdown'] = CountdownORM
-orms['external_r1v_acc'] = MultiModalAccuracyORM
-orms['external_code_reward'] = CodeReward
-orms['external_code_format'] = CodeFormat
-orms['external_code_reward_by_judge0'] = CodeRewardByJudge0
-orms['external_tooluse_format_reward'] = ToolUseFormatReward
-orms['external_tooluse_length_reward'] = ToolUseLengthReward
 orms['external_tooluse_correct_reward'] = ToolUseCorrectnessReward
 """
 TO CUSTOMIZE REWARD MODEL:
@@ -743,7 +744,7 @@ class CustomizedRMPlugin:
         self.model = model
         self.template: Template = template
 
-    def __call__(self, inputs):
+    def __call__(self, inputs, **kwargs):
         batched_inputs = [self.template.encode(deepcopy(infer_request)) for infer_request in inputs]
         reward_inputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
 
@@ -782,7 +783,7 @@ class QwenLongPlugin(DefaultRMPlugin):
         """)  # noqa
         self.accuracy_orm = accuracy_orm
 
-    def __call__(self, inputs):
+    def __call__(self, inputs, **kwargs):
         completions = [example['messages'][-1]['content'] for example in inputs]
         ground_truths = [example['reward_model']['ground_truth'] for example in inputs]
         rm_inputs = self.prepare_rm_inputs(inputs, completions, ground_truths)
@@ -872,29 +873,173 @@ rm_plugins['qwenlong'] = QwenLongPlugin
 TO CUSTOMIZE MULTITURN SCHEDULER:
     Step 1: Define a Scheduler Class
         Implement your custom scheduler with the following methods:
-            - step() (Required): Constructs the next round of the infer request.
-            - check_finished() (Optional): Determines whether the current round has finished,
+            - step (Required): Constructs the next round of the infer request.
+            - check_finished (Optional): Determines whether the current round has finished,
                 which defaults to ending when the inference result is truncated (over length) or
                 when the maximum number of rounds is reached.
-        Both methods accept
-            - the last turn's InferRequest/result
-            The current turn count
+            or override run method in MultiTurnScheduler class.
+
+        Both methods accept:
+            - the last turn's InferRequest/response_choice
+            - the current turn count
 
     Step 2: Add your scheduler to the multi_turns registry:
         multi_turns['my_scheduler'] = MyScheduler
 
     Step 3: Configure the Arguments
         Run the script with:
-        --external_plugins /path/to/plugin.py \
-        --multi_turn_scheduler my_scheduler
+        swift rollout \
+            --external_plugins /path/to/plugin.py \
+            --multi_turn_scheduler my_scheduler
 """
 
 
-class ReToolScheduler(MultiTurnScheduler):
-    pass
+class ToolCallScheduler(MultiTurnScheduler):
+    # A simple scheduler that supports tool calls by overriding the `step` method
+    # Tool parsing uses the ReAct format
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A simple tool registry. Extend or replace with your own tools as needed.
+        self.tools = {
+            'calculator': self._calculator_tool,
+        }
+
+    def _calculator_tool(self, expression: str) -> str:
+        # A very small sandboxed calculator
+        # The calculator tool implemented here can perform only basic arithmetic operations and
+        # may not be able to solve all math problems in the dataset.
+        import ast
+        import operator
+
+        def _evaluate_ast_node(node) -> Union[int, float]:
+            operators = {
+                ast.Add: operator.add,
+                ast.Sub: operator.sub,
+                ast.Mult: operator.mul,
+                ast.Div: operator.truediv,
+                ast.USub: operator.neg,
+                ast.UAdd: operator.pos,
+            }
+
+            if isinstance(node, ast.Constant):
+                if isinstance(node.value, (int, float)):
+                    return node.value
+                else:
+                    raise TypeError(f'Unsupported constant type: {type(node.value)}')
+
+            elif isinstance(node, ast.Num):
+                return node.n
+
+            elif isinstance(node, ast.BinOp):
+                left = _evaluate_ast_node(node.left)
+                right = _evaluate_ast_node(node.right)
+                op = operators.get(type(node.op))
+
+                if op is None:
+                    raise TypeError(f'Unsupported operation: {type(node.op).__name__}')
+
+                if isinstance(node.op, ast.Div) and right == 0:
+                    raise ZeroDivisionError('Division by zero')
+
+                return op(left, right)
+
+            elif isinstance(node, ast.UnaryOp):
+                operand = _evaluate_ast_node(node.operand)
+                op = operators.get(type(node.op))
+
+                if op is None:
+                    raise TypeError(f'Unsupported unary operation: {type(node.op).__name__}')
+
+                return op(operand)
+
+            else:
+                raise TypeError(f'Unsupported AST node type: {type(node).__name__}')
+
+        try:
+            expression = expression.strip().replace(' ', '')
+
+            if not re.match(r'^[0-9+\-*/().\s]+$', expression):
+                return 'Error: expression contains disallowed characters.'
+
+            if expression.count('(') != expression.count(')'):
+                return 'Error: unmatched parentheses.'
+
+            try:
+                result = ast.literal_eval(expression)
+                return f'Result: {result}'
+            except (ValueError, SyntaxError):
+                node = ast.parse(expression, mode='eval')
+                result = _evaluate_ast_node(node.body)
+                return f'Result: {result}'
+
+        except Exception as e:
+            return f'Calculation error: {e}'
+
+    def _extract_tool_calls(self, text: str):
+        """
+        Parse tool-call patterns using ReAct format from model output.
+        Format: Action: tool_name\nAction Input: parameters
+        """
+        import re
+
+        pattern = r'Action:\s*(.*?)\s*\nAction Input:\s*(.*?)(?:\n|$)'
+        matches = re.findall(pattern, text, re.DOTALL)
+        if not matches:
+            return None
+        return [{'tool': name.strip(), 'params': params.strip()} for name, params in matches]
+
+    def _execute_tools(self, tool_calls):
+        """Run each requested tool and collect its observation string."""
+        results = []
+        for call in tool_calls:
+            name, params = call['tool'], call['params']
+            if name in self.tools:
+                try:
+                    result = self.tools[name](params)
+                    results.append(result)
+                except Exception as e:
+                    results.append(f'tool error {e}')
+            else:
+                results.append(f'unknown tool {name}')
+        return results
+
+    def check_finished(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
+                       current_turn: int) -> bool:
+        completion = response_choice.message.content
+        tool_calls = self._extract_tool_calls(completion)
+        if tool_calls is None:
+            return True
+
+        return super().check_finished(infer_request, response_choice, current_turn)
+
+    def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
+             current_turn: int) -> Dict:
+        completion = response_choice.message.content
+        token_ids = response_choice.token_ids
+        loss_mask = [1] * len(token_ids)
+        tool_calls = self._extract_tool_calls(completion)
+        # assert len(tool_calls) == 1, 'this scheduler is designed for one tool call per turn'
+        tool_results = self._execute_tools(tool_calls)
+        # append tool result to the completion
+        infer_request.messages[-1]['content'] += (tool_results[0])
+
+        tokenizer = self.infer_engine.default_template.tokenizer
+        result_tokens = tokenizer.encode(tool_results[0], add_special_tokens=False)
+        token_ids.extend(result_tokens)
+        loss_mask.extend([0] * len(result_tokens))
+
+        return {
+            'infer_request': infer_request,
+            'response_token_ids': token_ids,
+            'response_loss_mask': loss_mask,
+            'rollout_infos': {
+                'tool_results': tool_results[0],
+                'num_turns': current_turn,
+            }
+        }
 
 
-multi_turns['retool'] = ReToolScheduler
+multi_turns['tool_call_scheduler'] = ToolCallScheduler
 
 
 # register GYM env

@@ -186,11 +186,23 @@ tools = [{
 
 ## loss_scale的使用
 
-loss_scale可以对模型输出部分的训练损失权重进行调节。例如在ReACT格式中，可以设置`--loss_scale react`（loss_scale配置文件书写在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/react.json)），该参数起到的作用是：
+loss_scale参数可用于调节模型输出部分在训练过程中的损失权重。目前支持两种配置方式：字符串精确匹配和正则表达式匹配。
 
-'Thought:'和'Final Answer:'部分权重为1，'Action:'和'Action Input:'部分权重为2，'Observation:'字段本身权重为2，'Observation:'后面的工具调用结果权重为0。
+1. 字符串匹配示例：ReACT 格式
 
-具体的loss_scale插件设计，请参考[插件化](../Customization/插件化.md)文档.
+以 ReACT 格式为例，可通过 `--loss_scale react` 启用相应的 loss_scale 配置（配置文件详见 [react.json](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/react.json)）。该方式基于字符串精确匹配，配置中的字典映射需提供一个包含两个元素的列表，分别表示：当前匹配字符串本身的损失权重，
+从该字符串之后到下一个指定字符串之前的内容的损失权重。该设置的具体效果如下：
+- 'Action:' 和 'Action Input:' 字段自身及其后续内容的损失权重均为 2；
+- 'Thought:' 和 'Final Answer:' 字段自身及其后续内容的损失权重均为 1；
+- 'Observation:' 字段自身的权重为 2，但其后跟随的工具调用结果部分的损失权重为 0。
+
+2. 正则匹配示例：忽略空思维块
+
+在训练推理模型时，我们可能需要忽略数据集中存在的形如 `<think>\n\n</think>\n\n`的空思维标记损失计算。此时可使用 `--loss_scale ignore_empty_think`（配置文件详见 [ignore_empty_think.json](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/ignore_empty_think.json)）。该配置采用正则表达式匹配方式，字典映射的列表只需指定一个值，表示匹配内容的损失权重。该设置的具体效果如下：
+
+- 所有与正则表达式`<think>\\s*</think>\\s*`匹配的字符串，loss_scale为0，即不计算损失。
+
+更多的loss_scale插件设计，请参考[插件化](../Customization/插件化.md)文档.
 
 
 ## 训练

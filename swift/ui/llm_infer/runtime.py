@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import collections
 import os.path
+import re
 import subprocess
 import sys
 import time
@@ -274,6 +275,10 @@ class Runtime(BaseUI):
             if e.elem_id in all_args:
                 if isinstance(e, gr.Dropdown) and e.multiselect:
                     arg = all_args[e.elem_id].split(' ')
+                elif isinstance(e, gr.Slider) and re.fullmatch(cls.int_regex, all_args[e.elem_id]):
+                    arg = int(all_args[e.elem_id])
+                elif isinstance(e, gr.Slider) and re.fullmatch(cls.float_regex, all_args[e.elem_id]):
+                    arg = float(all_args[e.elem_id])
                 else:
                     if e.elem_id == 'model':
                         if is_custom_path:

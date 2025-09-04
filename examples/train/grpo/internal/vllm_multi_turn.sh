@@ -1,3 +1,6 @@
+# It's recommended to use server mode for multi-turn training
+# Colocate multi-turn does not support rollouts with dynamic rollout outputs
+
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 swift rlhf \
@@ -36,5 +39,5 @@ swift rlhf \
     --offload_optimizer true \
     --offload_model true \
     --sleep_level 1 \
-    --multi_turn_scheduler math_tip_trick_multi_turn \
+    --multi_turn_scheduler math_tip_trick \
     --max_turns 3

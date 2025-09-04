@@ -3,6 +3,9 @@ import os
 from functools import partial
 from typing import List, Optional, Union
 
+import torch
+
+from swift.llm import TEMPLATE_MAPPING
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
@@ -24,12 +27,18 @@ class MegatronSft(SwiftSft):
         self.train_msg = {}
         super(SwiftSft, self).__init__(args)
         args = self.args
-        _, self.processor = args.get_model_processor(load_model=False)
-        patch_megatron_tokenizer(self.processor)
-        args.init_model_args(self.processor, self.processor.model_info.config)
+        template_cls = TEMPLATE_MAPPING[args.template].template_cls
+        if args.model_meta.is_multimodal and template_cls and template_cls.use_model:
+            kwargs = {'return_dummy_model': True}
+        else:
+            kwargs = {'load_model': False}
+        with torch.device('meta'):
+            self.model, self.processor = args.get_model_processor(**kwargs)
         self._prepare_template()
-        self.template.use_megatron = True
+        patch_megatron_tokenizer(self.processor)
         args.save_args(args.save)
+        args.init_model_args(self.processor, self.processor.model_info.config)
+        self.template.use_megatron = True
         self.trainer = self.prepare_trainer()
 
     def _get_data_collator(self):
@@ -56,8 +65,6 @@ class MegatronSft(SwiftSft):
             if val_dataset is not None:
                 val_dataset = build_streaming_dataloader(args, val_dataset, data_collator)
 
-        logging_path = os.path.join(args.save, 'logging.jsonl')
-        logger.info(f'The logging file will be saved in: {logging_path}')
         try:
             self.trainer.train(train_dataset, val_dataset, data_collator)
         finally:

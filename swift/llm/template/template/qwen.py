@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import transformers
 from packaging import version
 from torch import nn
+from transformers.integrations import is_deepspeed_zero3_enabled
 
 from swift.llm import get_packed_seq_params, to_device, to_float_dtype
 from swift.utils import get_env_args, is_deepspeed_enabled
@@ -64,12 +65,14 @@ register_template(
         LLMTemplateType.qwen3_thinking, default_system=None, response_prefix='<think>\n',
         template_cls=ThinkingTemplate))
 
+register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_system=None))
+
 
 class Qwen3RerankerTemplate(Template):
     instruction = 'Given a web search query, retrieve relevant passages that answer the query'
 
-    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
-        super()._preprocess_inputs(inputs)
+    def _preprocess_inputs_reranker(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs_reranker(inputs)
         query = inputs.messages[-2]['content']
         user_message = '<Instruct>: ' + self.instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: {doc}'
         inputs.messages[-2]['content'] = user_message
@@ -421,9 +424,7 @@ class Qwen2VLTemplate(Template):
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
-        if self.padding_free:
-            res['real_position_ids'] = self.concat_tensor(batch, 'real_position_ids', -1)
-        elif self.is_training:
+        if not self.padding_free and self.is_training:
             res['position_ids'] = self._get_position_ids(res)
         return res
 
@@ -590,7 +591,80 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        return Template._post_encode(self, model, inputs)
+        if not self.is_training:
+            return inputs
+
+        input_ids = inputs['input_ids']
+        pixel_values = inputs.get('pixel_values')
+        pixel_values_videos = inputs.get('pixel_values_videos')
+        image_grid_thw = inputs.get('image_grid_thw')
+        video_grid_thw = inputs.get('video_grid_thw')
+        input_features = inputs.get('input_features')
+        feature_attention_mask = inputs.get('feature_attention_mask')
+
+        base_model = self.get_base_model(model)
+        inputs_embeds = base_model.thinker.model.embed_tokens(input_ids)
+        visual = model.thinker.visual
+        dtype = visual.dtype
+        thinker_config = model.config.thinker_config
+        if pixel_values is None and pixel_values_videos is None:  # plain-text
+            if is_deepspeed_enabled():
+                from PIL import Image
+                images = [Image.new('RGB', (32, 32), (0, 0, 0))]
+                media_inputs = self.processor.image_processor(images=images, return_tensors='pt')
+                device = input_ids.device
+                media_inputs = to_device(media_inputs, device)
+                pixel_values = media_inputs['pixel_values'].type(dtype)
+                image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+                inputs_embeds = inputs_embeds + image_embeds.mean() * 0.
+        else:
+            if pixel_values is None:
+                pixel_values_mixed = pixel_values_videos
+                grid_thw = video_grid_thw
+            elif pixel_values_videos is None:
+                pixel_values_mixed = pixel_values
+                grid_thw = image_grid_thw
+            else:
+                pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
+                grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
+            pixel_values_mixed = pixel_values_mixed.type(dtype)
+            mixed_embeds = visual(pixel_values_mixed, grid_thw=grid_thw)
+            if pixel_values is None:
+                image_embeds = None
+                video_embeds = mixed_embeds
+            elif pixel_values_videos is None:
+                image_embeds = mixed_embeds
+                video_embeds = None
+            else:
+                merge_length = self.processor.image_processor.merge_size**2
+                image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
+                image_embeds = mixed_embeds[:image_tokens]
+                video_embeds = mixed_embeds[image_tokens:]
+
+            if image_embeds is not None:
+                image_mask = (input_ids == thinker_config.image_token_index).unsqueeze(-1).expand_as(inputs_embeds)
+                image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
+
+            if video_embeds is not None:
+                video_mask = (input_ids == thinker_config.video_token_index).unsqueeze(-1).expand_as(inputs_embeds)
+                video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
+
+        if input_features is None:
+            if is_deepspeed_enabled() and not is_deepspeed_zero3_enabled():
+                # Note: ZeRO-3 still results in hangs; for audio training, please use ZeRO-2.
+                input_features = input_ids.new_zeros([1, 128, 128], dtype=dtype)
+                feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
+                audio_embeds = model.thinker.get_audio_features(input_features, feature_attention_mask)
+                inputs_embeds = inputs_embeds + audio_embeds.mean() * 0.
+        else:
+            audio_embeds = model.thinker.get_audio_features(input_features, feature_attention_mask)
+            audio_mask = (input_ids == thinker_config.audio_token_index).unsqueeze(-1).expand_as(inputs_embeds)
+            audio_embeds = audio_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+            inputs_embeds = inputs_embeds.masked_scatter(audio_mask, audio_embeds)
+
+        return {'inputs_embeds': inputs_embeds}
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
         feature_attention_mask = inputs.get('feature_attention_mask')
@@ -747,11 +821,17 @@ class Ovis2_5Template(ThinkingTemplate):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
-            return [[-200], '\n']
+            if self.mode == 'vllm':
+                return ['<image>']
+            else:
+                return [[-200], '\n']
         elif media_type == 'video':
-            num_frames = get_env_args('num_frames', int, self.num_frames)
-            inputs.images = load_video_ovis2_5(inputs.videos[index], num_frames)
-            return [[-200], '\n']
+            if self.mode == 'vllm':
+                return ['<video>']
+            else:
+                num_frames = get_env_args('num_frames', int, self.num_frames)
+                inputs.images = load_video_ovis2_5(inputs.videos[index], num_frames)
+                return [[-200], '\n']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         min_pixels = get_env_args('min_pixels', int, 448 * 448)
@@ -760,7 +840,7 @@ class Ovis2_5Template(ThinkingTemplate):
         encoded = super()._encode(inputs)
         images = inputs.images
         input_ids = encoded['input_ids']
-        visual_tokenizer = self.model.visual_tokenizer
+        visual_tokenizer = self._get_model().visual_tokenizer
         idx_list = findall(input_ids, [-200])
         if inputs.videos:
             assert len(inputs.videos) == 1, 'only support single video'

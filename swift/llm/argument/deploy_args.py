@@ -107,7 +107,7 @@ class RolloutArguments(DeployArguments):
 
     def _set_default_engine_type(self):
         if self.vllm_use_async_engine is None:
-            if self.multi_turn_scheduler or self.use_gym_env:
+            if self.multi_turn_scheduler:
                 self.vllm_use_async_engine = True
             else:
                 self.vllm_use_async_engine = False
@@ -119,6 +119,9 @@ class RolloutArguments(DeployArguments):
 
         if self.vllm_reasoning_parser is not None:
             raise ValueError('vllm_reasoning_parser is not supported for Rollout, please unset it.')
+
+        if self.multi_turn_scheduler and not self.vllm_use_async_engine:
+            raise ValueError('please set vllm_use_async_engine to True with multi-turn scheduler.')
 
     def _check_device_count(self):
         local_device_count = get_device_count()

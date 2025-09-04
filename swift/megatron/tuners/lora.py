@@ -27,6 +27,8 @@ from peft.utils.other import transpose
 from swift.utils import get_current_device
 from ..utils import tuners_sharded_state_dict
 
+megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+
 
 class LoraParallelLinear(MegatronModule, LoraLayer):
 
@@ -92,7 +94,6 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             'config': self.config,
             'is_expert': self.is_expert,
         }
-        megatron_core_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
         if megatron_core_013:
             kwargs['tp_group'] = self.base_layer.tp_group
         if isinstance(self.base_layer, TopKRouter):
@@ -181,6 +182,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                     **kwargs,
                 )
                 lora_b.parallel_mode = self.base_layer.parallel_mode  # fix moe_shared_expert_overlap
+        # https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/core/transformer/moe/shared_experts.py#L93
         for lora in [lora_a, lora_b]:
             if isinstance(lora, (TERowParallelLinear, TEColumnParallelLinear)) and lora.parallel_mode is None:
                 lora.ub_overlap_rs_fprop = False

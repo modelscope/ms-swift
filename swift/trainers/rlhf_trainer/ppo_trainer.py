@@ -62,10 +62,7 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
         super().train()
 
     def _save_checkpoint(self, *args, **kwargs):
-        if version.parse(transformers.__version__) >= version.parse('4.47'):
-            metrics = kwargs.pop('metrics', None)
-            trial = kwargs.get('trial')
-            self._determine_best_metric(metrics=metrics, trial=trial)
+        kwargs.pop('metrics', None)
         return super()._save_checkpoint(*args, **kwargs)
 
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):

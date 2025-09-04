@@ -40,10 +40,10 @@ pip install ms-swift==2.*
 
 docker可以查看[这里](https://github.com/modelscope/modelscope/blob/master/docker/build_image.py#L345)。
 ```
-# swift3.7.1
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.0-modelscope1.28.2-swift3.7.1
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.0-modelscope1.28.2-swift3.7.1
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.0-modelscope1.28.2-swift3.7.1
+# swift3.7.2
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.0-modelscope1.28.2-swift3.7.2
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.0-modelscope1.28.2-swift3.7.2
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.0-modelscope1.28.2-swift3.7.2
 
 # swift3.6.4
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.4.0-py310-torch2.6.0-vllm0.8.5.post1-modelscope1.28.1-swift3.6.4
@@ -94,7 +94,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | python       | >=3.9        | 3.10                |                    |
 | cuda         |              | cuda12              | 使用cpu、npu、mps则无需安装 |
 | torch        | >=2.0        | 2.7.1               |                    |
-| transformers | >=4.33       | 4.54.1              |                    |
+| transformers | >=4.33       | 4.55.4              |                    |
 | modelscope   | >=1.23       |                     |                    |
 | peft         | >=0.11,<0.18 |                     |                    |
 | flash_attn   |              | 2.7.4.post1/3.0.0b1 |                    |

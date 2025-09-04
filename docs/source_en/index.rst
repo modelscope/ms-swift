@@ -22,7 +22,6 @@ Swift DOCUMENTATION
    Instruction/GRPO/index.rst
    Instruction/RLHF.md
    Instruction/Inference-and-deployment.md
-   Instruction/Megatron-SWIFT-Training.md
    Instruction/Sample.md
    Instruction/Evaluation.md
    Instruction/Export-and-push.md
@@ -31,6 +30,15 @@ Swift DOCUMENTATION
    Instruction/Supported-models-and-datasets.md
    Instruction/Use-tuners.md
    Instruction/Frequently-asked-questions.md
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Megatron-SWIFT
+
+   Megatron-SWIFT/Quick-start.md
+   Megatron-SWIFT/Command-line-parameters.md
+   Megatron-SWIFT/LoRA-Training.md
+   Megatron-SWIFT/Multimodal-Model.md
 
 
 .. toctree::

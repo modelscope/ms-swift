@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from ast import Tuple
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional
 
@@ -12,6 +13,7 @@ from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, findall
 from ..vision_utils import load_video_internvl, transform_image
+from .llm import GptOssTemplateMeta, GptTemplate
 from .microsoft import Phi3TemplateMeta
 from .utils import ChatmlTemplateMeta, ThinkingTemplate
 
@@ -76,7 +78,7 @@ class InternvlTemplate(Template):
             pixel_values = pixel_values.to(device=device)
             vit_embeds = model.extract_feature(pixel_values).to(device=device)
             selected = (input_ids == self.processor.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
-            inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1])
+            inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1]).to(dtype=inputs_embeds.dtype)
         elif is_deepspeed_enabled():
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
             vit_embeds = model.extract_feature(dummy_pixel_values).to(device=device)
@@ -174,6 +176,15 @@ register_template(
         template_cls=Internvl2Template,
         default_system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。'))
 
+register_template(ChatmlTemplateMeta(MLLMTemplateType.internvl3_5, template_cls=Internvl2Template))
+
+
+class Internvl3_5GPTTemplate(Internvl2Template, GptTemplate):
+    pass
+
+
+register_template(GptOssTemplateMeta(MLLMTemplateType.internvl3_5_gpt, template_cls=Internvl3_5GPTTemplate))
+
 
 class InternS1Template(Internvl2Template, ThinkingTemplate):
     image_token_id = 152957
@@ -183,6 +194,20 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
                                       'making your solution path and reasoning clear to others. '
                                       'Please put your thinking process within <think>...</think> tags.')
 
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        assert media_type in ['image', 'video']
+        if media_type == 'video':
+            if self.mode == 'vllm':
+                return ['<video>']
+            else:
+                return [[-200]]
+        else:
+            if self.mode == 'vllm':
+                return ['<IMG_CONTEXT>']
+            else:
+                return ['<img>', [-100], '</img>\n']
+
     def _swift_encode(self, inputs: StdTemplateInputs):
         if inputs.system is None and self.template_meta.response_prefix == '<think>':
             inputs.system = self.InternS1DefaultThinkinngSystem
@@ -190,42 +215,109 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
         return super()._swift_encode(inputs)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        from transformers.image_utils import make_flat_list_of_images
+        from transformers.image_utils import make_flat_list_of_images, concatenate_list
+        from transformers.video_utils import make_batched_videos
+        from swift.llm.template.vision_utils import load_video_hf
         import numpy as np
         encoded = super(InternvlTemplate, self)._encode(inputs)
         input_ids = encoded['input_ids']
-        idx_list = findall(input_ids, -100)
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
         images = inputs.images
-        if inputs.videos:
-            # TODO
-            raise NotImplementedError('Video is not supported yet.')
+        videos = inputs.videos
+        image_num_patches_indices = np.array([0])
+        video_num_patches_indices = np.array([0])
+        video_patch_indices = np.array([0])
+        image_num_patches = []
+        video_num_patches = []
+        image_video_patches = []
+        image_idx_list = []
+        video_idx_list = []
+        image_pixel_values = None
+        video_pixel_values = None
+
         if images:
             # InternS1Processor
+            image_idx_list = findall(input_ids, -100)
             images = make_flat_list_of_images(images)
             image_inputs = self.processor.image_processor(images=images, crop_to_patches=True, return_tensors='pt')
             image_num_patches = image_inputs.pop('num_patches')
-            pixel_values = image_inputs.pop('pixel_values')
+            image_pixel_values = image_inputs.pop('pixel_values')
             image_num_patches_indices = np.cumsum(image_num_patches)
-            # has_video = bool(inputs.videos) # TODO:video
-        else:
-            pixel_values = None
-            image_num_patches_indices = []
-        assert len(image_num_patches_indices) == len(
-            idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
+        if videos:
+            video_idx_list = findall(input_ids, -200)
+            videos, _ = load_video_hf(videos)
+            videos = make_batched_videos(videos)
+            video_inputs = self.processor.video_processor(videos=videos, return_tensors='pt')
+            video_pixel_values = video_inputs.pop('pixel_values_videos')
+            num_frames_per_video = [len(video) for video in video_pixel_values]
+            video_num_patches = [1 for frames in num_frames_per_video for _ in range(frames)]
+            video_patch_indices = np.cumsum(num_frames_per_video)
+            video_num_patches_indices = np.cumsum(video_num_patches)
+            video_pixel_values = video_pixel_values.flatten(0, 1)
+
+        def merge_and_sort(image_idx_list: List[int], video_idx_list: List[int]) -> tuple:
+            """Merge and sort image and video index lists while preserving their relative order."""
+            merged = []
+            is_image_list = []
+            i, j = 0, 0
+
+            while i < len(image_idx_list) and j < len(video_idx_list):
+                if image_idx_list[i] < video_idx_list[j]:
+                    merged.append(image_idx_list[i])
+                    i += 1
+                    is_image_list.append(True)
+                else:
+                    merged.append(video_idx_list[j])
+                    j += 1
+                    is_image_list.append(False)
+            # Add remaining elements
+            merged.extend(image_idx_list[i:])
+            is_image_list.extend([True] * (len(image_idx_list) - i))
+            merged.extend(video_idx_list[j:])
+            is_image_list.extend([False] * (len(video_idx_list) - j))
+            return merged, is_image_list
+
+        # Merge and sort the index lists
+        idx_list, is_image_list = merge_and_sort(image_idx_list, video_idx_list)
+
+        # Validate the lengths
+        if images and len(image_idx_list) > 0:
+            assert len(image_num_patches_indices) == len(image_idx_list)
+        if videos and len(video_idx_list) > 0:
+            assert len(video_patch_indices) == len(video_idx_list)
 
         def _get_new_tokens(i):
-            start = image_num_patches_indices[i - 1] if i > 0 else 0
-            end = image_num_patches_indices[i]
-            image_seq_length = self.processor.image_seq_length
-            img_tokens: List[int] = self.processor.encode(
-                '<IMG_CONTEXT>', add_special_tokens=False) * image_seq_length * image_num_patches[start:end]
+            if is_image_list[i]:
+                # Find the corresponding image index
+                image_idx = sum(is_image_list[:i])
+                start = image_num_patches_indices[image_idx - 1] if image_idx > 0 else 0
+                end = image_num_patches_indices[image_idx]
+                image_seq_length = self.processor.image_seq_length
+                image_video_patches.append(image_pixel_values[start:end])
+                img_tokens: List[int] = self.processor.encode(
+                    '<IMG_CONTEXT>', add_special_tokens=False) * image_seq_length * image_num_patches[image_idx]
+            else:
+                # Find the corresponding video index
+                video_idx = i - sum(is_image_list[:i])
+                current_patch = video_patch_indices[video_idx - 1] if video_idx > 0 else 0
+                end_patch = video_patch_indices[video_idx]
+
+                start = video_num_patches_indices[current_patch] if video_idx > 0 else 0
+                end = video_num_patches_indices[end_patch - 1]
+                image_video_patches.append(video_pixel_values[start:end])
+                image_seq_length = self.processor.image_seq_length
+                num_patches = list(video_num_patches[current_patch:end_patch])
+                video_prompt = '\n'.join(
+                    f"Frame{i + 1}: <img>{'<IMG_CONTEXT>' * image_seq_length * num_patches[i]}</img>"
+                    for i in range(len(num_patches)))
+                img_tokens = self.processor.encode(video_prompt, add_special_tokens=False)
             return img_tokens
 
         encoded['input_ids'], encoded['labels'], encoded['loss_scale'] = self._extend_tokens(
             input_ids, labels, loss_scale, idx_list, _get_new_tokens)
-        encoded['pixel_values'] = pixel_values
+        if images or videos:
+            encoded['pixel_values'] = concatenate_list(image_video_patches)
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -246,8 +338,6 @@ class InternS1Template(Internvl2Template, ThinkingTemplate):
             image_features = model.model.get_image_features(
                 pixel_values, vision_feature_layer=-1, vision_feature_select_strategy='default')
             image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
-            inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
-
             inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
         elif is_deepspeed_enabled():
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)

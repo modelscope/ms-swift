@@ -14,6 +14,7 @@ class LLMModelType:
     qwq = 'qwq'
     qwen3 = 'qwen3'
     qwen3_thinking = 'qwen3_thinking'
+    qwen3_nothinking = 'qwen3_nothinking'
     qwen3_moe = 'qwen3_moe'
     qwen3_moe_thinking = 'qwen3_moe_thinking'
     qwen3_emb = 'qwen3_emb'
@@ -179,6 +180,8 @@ class MLLMModelType:
     internvl2_phi3 = 'internvl2_phi3'
     internvl2_5 = 'internvl2_5'
     internvl3 = 'internvl3'
+    internvl3_5 = 'internvl3_5'
+    internvl3_5_gpt = 'internvl3_5_gpt'
     interns1 = 'interns1'
     xcomposer2 = 'xcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
@@ -218,6 +221,7 @@ class MLLMModelType:
     minicpmv2_6 = 'minicpmv2_6'
     minicpmo2_6 = 'minicpmo2_6'
     minicpmv4 = 'minicpmv4'
+    minicpmv4_5 = 'minicpmv4_5'
 
     minimax_vl = 'minimax_vl'
 

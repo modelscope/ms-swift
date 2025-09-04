@@ -680,11 +680,19 @@ class SwiftMixin:
         with self.hub.patch_hub():
             return super().push_to_hub(*args, **kwargs)
 
-    def log(self, logs: dict[str, float], *args, **kwargs) -> None:
-        mode = 'train' if self.model.training else 'eval'
-        for k, metric in self.custom_metrics[mode].items():
-            if mode == 'eval':
-                k = f'eval_{k}'
+    @staticmethod
+    def compute_custom_metrics(metrics, key_prefix: str = ''):
+        logs = {}
+        # Synchronize keys to avoid getting stuck.
+        if dist.is_initialized():
+            all_keys = [None] * dist.get_world_size()
+            dist.all_gather_object(all_keys, list(metrics.keys()))
+            for key in set().union(*all_keys):
+                if key not in metrics:
+                    metrics[key]
+
+        for k, metric in sorted(metrics.items()):
+            k = f'{key_prefix}{k}'
             value = metric.compute()
             metric.reset()
             if isinstance(value, dict):
@@ -700,6 +708,13 @@ class SwiftMixin:
         for k in list(logs.keys()):
             if logs[k] is None:
                 logs.pop(k)
+        return logs
+
+    def log(self, logs: dict[str, float], *args, **kwargs) -> None:
+        mode = 'train' if self.model.training else 'eval'
+        metrics = self.custom_metrics[mode]
+        prefix = 'eval_' if mode == 'eval' else ''
+        logs.update(self.compute_custom_metrics(metrics, prefix))
         return super().log(logs, *args, **kwargs)
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
@@ -722,7 +737,11 @@ class SwiftMixin:
             self.log(logs)
 
         if self.args.eval_use_evalscope and self.control.should_evaluate:
-            self._evalscope_eval()
+            try:
+                self._evalscope_eval()
+            except Exception as e:
+                logger.warning(f'Failed to call EvalScope evaluation function: {e}.')
+
             if not self.eval_dataset:
                 self.control.should_evaluate = False
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
@@ -780,22 +799,23 @@ class SwiftMixin:
 
     @torch.no_grad()
     def _evalscope_eval(self):
-        from ..llm.eval.utils import EvalModel
+        from ..llm.eval.utils import EvalModel  # registry here
         from evalscope import TaskConfig, run_task
-        from evalscope.constants import EvalType
 
         self.model.eval()
-        max_batch_size = self.args.per_device_eval_batch_size
-        custom_model = EvalModel(
-            self.model, self.template, max_batch_size=max_batch_size, model_name=f'model-step{self.state.global_step}')
+
         task_config_kwargs = dict(
-            model=custom_model,
-            eval_type=EvalType.CUSTOM,
+            model=f'model-step{self.state.global_step}',
+            model_args=dict(
+                model=self.model,
+                template=self.template,
+            ),
+            eval_type='swift_custom',
             datasets=self.args.eval_dataset,
             dataset_args=self.args.eval_dataset_args,
             limit=self.args.eval_limit,
             work_dir=os.path.join(self.args.output_dir, 'eval'),
-            eval_batch_size=max_batch_size,
+            eval_batch_size=self.args.per_device_eval_batch_size,
             generation_config=self.args.eval_generation_config or {'max_tokens': 512},
         )
         task_config_kwargs.update(self.args.extra_eval_args or {})
@@ -842,7 +862,7 @@ class SwiftMixin:
                 start, end = cu_seqlens[i], cu_seqlens[i + 1]
                 res_cu_seqlens[i + 1:] -= (~logits_to_keep[start:end]).sum()
         elif isinstance(logits_to_keep, int):
-            res_cu_seqlens[1:] -= position_ids.shape[0] + 1 - logits_to_keep
+            res_cu_seqlens[1:] -= position_ids.shape[-1] + 1 - logits_to_keep
         return res_cu_seqlens
 
     @contextmanager

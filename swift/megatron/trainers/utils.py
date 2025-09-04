@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import torch
 from megatron.core import mpu
@@ -8,6 +8,8 @@ from megatron.core.utils import get_batch_on_this_cp_rank as mcore_get_batch_on_
 from megatron.training import get_args
 
 from swift.llm import get_packed_seq_params as _get_packed_seq_params
+from swift.llm import to_device
+from swift.utils import get_current_device
 
 
 def get_swift_datasets_provider(train_dataset, val_dataset):
@@ -29,109 +31,23 @@ def get_swift_datasets_provider(train_dataset, val_dataset):
 def get_batch_on_this_tp_rank(data_iterator):
     args = get_args()
 
-    def _broadcast(item):
-        if item is not None:
-            torch.distributed.broadcast(
-                item, mpu.get_tensor_model_parallel_src_rank(), group=mpu.get_tensor_model_parallel_group())
-
-    if mpu.get_tensor_model_parallel_rank() == 0:
-
-        data = next(data_iterator)
-        is_finished = data.pop('is_finished', False)
-        input_ids = data['input_ids']
-        seq_length = input_ids.shape[1]
-        has_loss_scale = 'loss_scale' in data
-        data['labels'] = torch.roll(data['labels'], -1, dims=-1)
-        if has_loss_scale:
-            data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
-        batch = {
-            'input_ids': input_ids.cuda(non_blocking=True),
-            'labels': data['labels'].cuda(non_blocking=True),
-            'attention_mask': None if 'attention_mask' not in data else data['attention_mask'].cuda(non_blocking=True),
-            'position_ids': data['position_ids'].cuda(non_blocking=True),
-            'loss_scale': None if not has_loss_scale else data['loss_scale'].cuda(non_blocking=True),
-            'num_samples': data['num_samples'],
-        }
-        flags = torch.tensor([seq_length, is_finished, has_loss_scale, data['num_samples']]).cuda(non_blocking=True)
-        _broadcast(flags)
-        if args.pipeline_model_parallel_size == 1:
-            _broadcast(batch['input_ids'])
-            _broadcast(batch['labels'])
-            _broadcast(batch['attention_mask'])
-            _broadcast(batch['position_ids'])
-            _broadcast(batch['loss_scale'])
-
-        elif mpu.is_pipeline_first_stage():
-            batch['labels'] = None
-            batch['loss_scale'] = None
-            _broadcast(batch['input_ids'])
-            _broadcast(batch['attention_mask'])
-            _broadcast(batch['position_ids'])
-
-        elif mpu.is_pipeline_last_stage():
-            batch['input_ids'] = None
-            _broadcast(batch['labels'])
-            _broadcast(batch['attention_mask'])
-            _broadcast(batch['position_ids'])
-            _broadcast(batch['loss_scale'])
-        else:
-            for key in ('input_ids', 'labels', 'attention_mask', 'position_ids', 'loss_scale'):
-                batch[key] = None
-
+    data = next(data_iterator)
+    is_finished = data.pop('is_finished', False)
+    data['labels'] = torch.roll(data['labels'], -1, dims=-1)
+    if 'loss_scale' in data:
+        data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
+    batch = to_device(data, 'cuda', non_blocking=True)
+    if args.pipeline_model_parallel_size == 1:
+        pass
+    elif mpu.is_pipeline_first_stage():
+        batch['labels'] = None
+        batch['loss_scale'] = None
+    elif mpu.is_pipeline_last_stage():
+        batch['input_ids'] = None
     else:
-        flags = torch.empty((4), dtype=torch.int64, device=torch.cuda.current_device())
-        _broadcast(flags)
-        seq_length, is_finished, has_loss_scale, num_samples = flags.tolist()
-        if args.padding_free:
-            micro_batch_size = 1  # use qkv_format 'thd'
-            attention_mask = None
-        else:
-            micro_batch_size = args.micro_batch_size
-            attention_mask = torch.empty((micro_batch_size, 1, seq_length, seq_length),
-                                         dtype=torch.bool,
-                                         device=torch.cuda.current_device())
-        input_ids = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
-        labels = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
-        loss_scale = torch.empty(
-            (micro_batch_size,
-             seq_length), dtype=torch.float32, device=torch.cuda.current_device()) if has_loss_scale else None
-        position_ids = torch.empty((micro_batch_size, seq_length),
-                                   dtype=torch.int64,
-                                   device=torch.cuda.current_device())
+        for key in ('input_ids', 'labels', 'loss_scale'):
+            batch[key] = None
 
-        if args.pipeline_model_parallel_size == 1:
-            _broadcast(input_ids)
-            _broadcast(labels)
-            _broadcast(attention_mask)
-            _broadcast(position_ids)
-            _broadcast(loss_scale)
-
-        elif mpu.is_pipeline_first_stage():
-            labels = None
-            loss_scale = None
-
-            _broadcast(input_ids)
-            _broadcast(attention_mask)
-            _broadcast(position_ids)
-
-        elif mpu.is_pipeline_last_stage():
-            input_ids = None
-
-            _broadcast(labels)
-            _broadcast(attention_mask)
-            _broadcast(position_ids)  # compat packing & cp
-            _broadcast(loss_scale)
-        else:
-            input_ids, labels, attention_mask, position_ids, loss_scale = (None, ) * 5
-
-        batch = {
-            'input_ids': input_ids,
-            'labels': labels,
-            'attention_mask': attention_mask,
-            'position_ids': position_ids,
-            'loss_scale': loss_scale,
-            'num_samples': num_samples,
-        }
     if is_finished:
         args.train_iters = args.curr_iteration + 1
 
@@ -149,22 +65,41 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
 
 
 def _split_tokens(tokens, cu_seqlens):
-    assert tokens.shape[0] == 1, f'tokens.shape: {tokens.shape}'
+    assert tokens.shape[-2] == 1, f'tokens.shape: {tokens.shape}'  # [..., 1, L]
     new_tokens = []
     cp_size = mpu.get_context_parallel_world_size()
     cp_rank = mpu.get_context_parallel_rank()
     for i in range(cu_seqlens.shape[0] - 1):
-        val = tokens[:, cu_seqlens[i]:cu_seqlens[i + 1]]
+        val = tokens[..., cu_seqlens[i]:cu_seqlens[i + 1]]
         val = val.view(
-            tokens.shape[0],
+            *tokens.shape[:-1],
             2 * cp_size,
-            val.shape[1] // (2 * cp_size),
+            val.shape[-1] // (2 * cp_size),
         )
         index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device='cpu',
                              pin_memory=True).cuda(non_blocking=True)
-        val = val.index_select(1, index)
-        new_tokens.append(val.view(tokens.shape[0], -1))
-    return torch.cat(new_tokens, dim=1)
+        val = val.index_select(-2, index)
+        new_tokens.append(val.view(*tokens.shape[:-1], -1))
+    return torch.cat(new_tokens, dim=-1)
+
+
+def _split_tokens_decoder_input(tokens, cu_seqlens):
+    assert tokens.shape[1] == 1, f'tokens.shape: {tokens.shape}'  # [L, 1, E]
+    new_tokens = []
+    cp_size = mpu.get_context_parallel_world_size()
+    cp_rank = mpu.get_context_parallel_rank()
+    for i in range(cu_seqlens.shape[0] - 1):
+        val = tokens[cu_seqlens[i]:cu_seqlens[i + 1], ...]
+        val = val.view(
+            2 * cp_size,
+            val.shape[0] // (2 * cp_size),
+            *tokens.shape[1:],
+        )
+        index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device='cpu',
+                             pin_memory=True).cuda(non_blocking=True)
+        val = val.index_select(0, index)
+        new_tokens.append(val.view(-1, *tokens.shape[1:]))
+    return torch.cat(new_tokens, dim=0)
 
 
 def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
@@ -180,14 +115,23 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
     # that we can get balanced workload among GPUs in a context parallel group.
     cp_size = mpu.get_context_parallel_world_size()
     if cp_size > 1:
+        args = get_args()
+        keys = ['labels', 'attention_mask', 'position_ids', 'loss_scale']
+        if args.model_meta.is_multimodal:
+            keys.append('decoder_input')
+        else:
+            keys.append('input_ids')
         packed_seq_params = batch.get('packed_seq_params')
         if packed_seq_params is None:
             return mcore_get_batch_on_this_cp_rank(batch)
         for key, val in batch.items():
-            if key == 'packed_seq_params':
+            if key not in keys:
                 continue
             if val is not None:
-                batch[key] = _split_tokens(val, packed_seq_params.cu_seqlens_q)
+                if key == 'decoder_input':
+                    batch[key] = _split_tokens_decoder_input(val, packed_seq_params.cu_seqlens_q)
+                else:
+                    batch[key] = _split_tokens(val, packed_seq_params.cu_seqlens_q)
 
     return batch
 
@@ -202,5 +146,8 @@ def get_batch(data_iterator):
         batch['packed_seq_params'] = get_packed_seq_params(batch['position_ids'])
         batch['packed_seq_params'].num_samples = num_samples
     # slice batch along sequence dimension for context parallelism
+    position_ids = batch.pop('real_position_ids', None)  # fix Qwen2.5-VL
+    if position_ids is not None:
+        batch['position_ids'] = position_ids
     batch = get_batch_on_this_cp_rank(batch)
     return batch

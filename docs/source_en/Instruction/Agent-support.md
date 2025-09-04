@@ -190,14 +190,32 @@ tools = [{
 
 ## Usage of loss_scale
 
-`loss_scale` can be used to adjust the training loss weight for the model's output section. For example, in the ReACT format, you can set `--loss_scale react` (the loss_scale configuration file is written [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/react.json)). The role of this parameter is as follows:
+The `loss_scale` parameter can be used to adjust the loss weights for different parts of the model output during training. Currently, two configuration methods are supported: exact string matching and regular expression (regex) matching.
 
-- The weight for the 'Thought:' and 'Final Answer:' sections is 1.
-- The weight for the 'Action:' and 'Action Input:' sections is 2.
-- The weight for the 'Observation:' field itself is 2.
-- The weight for the tool invocation results following the 'Observation:' field is 0.
+1. String Matching Example: ReACT Format
 
-For the detailed design of the `loss_scale` plugin, please refer to the [Plugin-based Architecture](../Customization/Pluginization.md)documentation.
+Take the ReACT format as an example. You can enable the corresponding `loss_scale` configuration via `--loss_scale react` (see configuration file [react.json](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/react.json)). This method relies on exact string matching. The dictionary mapping in the configuration must provide a list of two elements, representing:
+
+- The loss weight for the matched string itself,
+- The loss weight for content following the matched string, up to (but not including) the next specified string.
+
+The specific effects of this configuration are as follows:
+
+- The `'Action:'` and `'Action Input:'` keywords and their subsequent content both have a loss weight of 2;
+- The `'Thought:'` and `'Final Answer:'` keywords and their subsequent content both have a loss weight of 1;
+- The `'Observation:'` field itself has a loss weight of 2, but the subsequent tool call result content has a loss weight of 0.
+
+
+2. Regular Expression Matching Example: Ignoring Empty Thought Blocks
+
+When training reasoning models, it may be necessary to exclude loss computation for empty thought blocks in the dataset, such as sequences like `<think>\n\n</think>\n\n`.
+
+In such cases, use `--loss_scale ignore_empty_think` (see configuration file [ignore_empty_think.json](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/ignore_empty_think.json)). This configuration uses regular expression matching, where the dictionary mapping only needs to specify a single value—the loss weight for the matched content.
+
+The specific effect of this setting is:
+- Any string matching the regular expression `<think>\\s*</think>\\s*` is assigned a `loss_scale` of 0, meaning no loss is computed for these segments.
+
+For more `loss_scale` plugin designs, please refer to the [Pluginization](../Customization/Pluginization.md) documentation.
 
 ## Training
 

@@ -75,18 +75,19 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🎁 2025.09.02: Megatron-SWIFT now supports multimodal model training. Documentation can be found [here](./docs/source_en/Megatron-SWIFT/Multimodal-Model.md).
 - 🎁 2025.08.12: Support [Dynamic Fine-Tuning](https://arxiv.org/abs/2508.05629)(DFT) in SFT training, use parameter `--enable_dft_loss true`. Training scripts can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/full/dft.sh).
 - 🎁 2025.07.12: Deployment(pt/vLLM/SGLang) of Embedding models is supported, check [here](examples/deploy/embedding/client.py).
-- 🎁 2025.07.09: Megatron-SWIFT supports LoRA training. Compared to ms-swift, it achieves significant speedup on MoE models. Training scripts can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/megatron/lora).
+- 🎁 2025.07.09: Megatron-SWIFT supports LoRA training. Compared to ms-swift, it achieves significant speedup on MoE models. Training scripts can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/lora).
 - 🎁 2025.06.23: Fine-tuning of reranker models is supported. Training scripts can be found here: [Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh).
 - 🎁 2025.06.18: Support for accelerating the ms-swift [inference](https://github.com/modelscope/ms-swift/blob/main/examples/infer/sglang), deployment, evaluation, and UI modules using the [sglang](https://github.com/sgl-project/sglang) inference acceleration engine. Simply set `--infer_backend sglang` to enable it.
 - 🎁 2025.06.15: Support for GKD training on both pure text large models and multimodal models. Training scripts can be found here: [Pure Text](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/gkd), [Multimodal](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/gkd).
-- 🎁 2025.06.11: Support for using Megatron parallelism techniques for RLHF training. The training script can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/rlhf).
+- 🎁 2025.06.11: Support for using Megatron parallelism techniques for RLHF training. The training script can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf).
 - 🎁 2025.05.29: Support sequence parallel in pt, sft, dpo and grpo, check script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/long_text).
 - 🎁 2025.05.11: GRPO now supports custom processing logic for reward models. See the GenRM example [here](./docs/source_en/Instruction/GRPO/DeveloperGuide/reward_model.md).
 - 🎁 2025.04.15: The ms-swift paper has been accepted by AAAI 2025. You can find the paper at [this link](https://ojs.aaai.org/index.php/AAAI/article/view/35383).
 - 🎁 2025.03.23: Multi-round GRPO is now supported for training multi-turn dialogue scenarios (e.g., agent tool calling). Please refer to the [doc](./docs/source_en/Instruction/GRPO/DeveloperGuide/multi_turn.md).
-- 🎁 2025.03.16: Support for Megatron's parallel training techniques is now available. Please see the [Megatron-SWIFT training documentation](https://swift.readthedocs.io/en/latest/Instruction/Megatron-SWIFT-Training.html).
+- 🎁 2025.03.16: Support for Megatron's parallel training techniques is now available. Please see the [Megatron-SWIFT training documentation](https://swift.readthedocs.io/en/latest/Megatron-SWIFT/Quick-start.md).
 - 🎁 2025.03.15: Fine-tuning of embedding models for both pure text and multimodal models is supported. Please check the [training script](examples/train/embedding).
 - 🎁 2025.03.05: The hybrid mode for GRPO is supported, with a script for training a 72B model on 4 GPUs (4*80G) available [here](examples/train/grpo/internal/vllm_72b_4gpu.sh). Tensor parallelism with vllm is also supported, with the training script available [here](examples/train/grpo/internal).
 - 🎁 2025.02.21: The GRPO algorithm now supports LMDeploy, with the training script available [here](examples/train/grpo/internal/full_lmdeploy.sh). Additionally, the performance of the GRPO algorithm has been tested, achieving a training speed increase of up to 300% using various tricks. Please check the WanDB table [here](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz).
@@ -124,7 +125,7 @@ Running Environment:
 | python       | >=3.9        | 3.10                |                                           |
 | cuda         |              | cuda12              | No need to install if using CPU, NPU, MPS |
 | torch        | >=2.0        | 2.7.1               |                                           |
-| transformers | >=4.33       | 4.54.1              |                                           |
+| transformers | >=4.33       | 4.55.4              |                                           |
 | modelscope   | >=1.23       |                     |                                           |
 | peft         | >=0.11,<0.18 |                     |                                           |
 | flash_attn   |              | 2.7.4.post1/3.0.0b1 |                                           |

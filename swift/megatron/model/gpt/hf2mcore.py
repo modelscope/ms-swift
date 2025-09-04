@@ -91,7 +91,7 @@ def set_mlp_state(args, mg_mlp, hf_mlp):
 
 def set_layer_state(args, mg_model, hf_model, layer_idx):
     mg_layer = mg_model.decoder.layers[layer_idx]
-    hf_layer = hf_model.model.layers[layer_idx]
+    hf_layer = hf_model.layers[layer_idx]
     if args.multi_latent_attention:
         set_mla_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
         mg_layer.input_layernorm.weight.data.copy_(hf_layer.input_layernorm.weight)
@@ -115,4 +115,4 @@ def convert_hf2mcore(hf_model, mg_model):
         mg_model.output_layer.weight.data.copy_(hf_model.lm_head.weight)
     mg_model.decoder.final_layernorm.weight.data.copy_(hf_model.model.norm.weight)
     for layer_idx in range(args.num_layers):
-        set_layer_state(args, mg_model, hf_model, layer_idx)
+        set_layer_state(args, mg_model, hf_model.model, layer_idx)

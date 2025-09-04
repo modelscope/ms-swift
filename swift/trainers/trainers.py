@@ -4,7 +4,7 @@ import inspect
 import os
 from contextlib import contextmanager, nullcontext
 from functools import wraps, partial
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from peft import PeftModel
@@ -299,22 +299,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             from swift.trainers.sequence_parallel import sequence_parallel
             sequence_parallel.pad_and_split_extra_inputs(inputs)
 
-        loss_kwargs = {}
-        compute_loss_func = self.compute_loss_func
-
-        sample_channels = inputs.pop('channel', None)
-        position_ids = inputs.pop('_position_ids', None)
-        if args.channels is not None:
-            assert sample_channels is not None, f'sample_channels: {sample_channels}'
-            state = self.state
-            setattr(state, 'local_step', getattr(state, 'local_step', 0))
-            setattr(state, 'ch_loss_steps', getattr(state, 'ch_loss_steps', {}))
-
-            loss_kwargs['sample_channels'] = sample_channels
-            if position_ids is None:
-                position_ids = inputs.get('position_ids')
-            if position_ids is not None:
-                loss_kwargs['position_ids'] = position_ids
 
         use_logits_to_keep = self.get_use_logits_to_keep()
         if use_logits_to_keep:
@@ -330,18 +314,23 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             logger.info_once(f'router_aux_loss_coef: {args.router_aux_loss_coef}')
             if args.router_aux_loss_coef > 0:
                 inputs['output_router_logits'] = True
-        inputs['compute_loss_func'] = compute_loss_func
-        inputs['loss_kwargs'] = loss_kwargs
+        inputs['compute_loss_func'] = self.compute_loss_func
         return inputs
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         labels = None
-        compute_loss_func = inputs.pop('compute_loss_func', None)
+        compute_loss_func: Callable = inputs.pop('compute_loss_func', None)
         loss_scale = inputs.pop('loss_scale', None)
-        loss_kwargs = inputs.pop('loss_kwargs', {})
+        position_ids = inputs.pop('_position_ids', None)
+        if position_ids is None:
+            position_ids = inputs.get('position_ids')
+        channels = inputs.pop('channel', None)
 
         if (self.label_smoother is not None or compute_loss_func is not None or loss_scale is not None
-                or self.args.enable_dft_loss or self.template.sequence_parallel_size > 1) and 'labels' in inputs:
+                or self.args.enable_dft_loss or self.args.enable_channel_loss or self.template.sequence_parallel_size > 1) and 'labels' in inputs:
+            if self.args.use_liger_kernel:
+                logger.warning_once('The cross_entropy loss function defined in Liger Kernel will not '
+                                    'take effect, potentially leading to increased GPU memory consumption.')
             labels = inputs.pop('labels')
         outputs = model(**inputs)
         if getattr(outputs, 'aux_loss', None) is not None:
@@ -367,12 +356,26 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
         else:
             outputs.loss = None
-            if self.template.sequence_parallel_size == 1 and (self.args.enable_dft_loss or loss_scale is not None):
+            if self.template.sequence_parallel_size == 1 and (self.args.enable_dft_loss or loss_scale is not None
+                                                              or self.args.enable_channel_loss):
                 outputs.loss = per_token_loss_func(outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
 
                 if loss_scale is not None:
                     loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
                     outputs.loss = outputs.loss * loss_scale
+
+                if self.args.enable_channel_loss and channels is not None:
+                    mode = 'train' if self.model.training else 'eval'
+                    metrics = self.custom_metrics[mode]
+                    masks = torch.roll(labels, shifts=-1, dims=-1).view(-1) != -100
+                    if self.template.padding_free:
+                        cu_seqlens = self.get_cu_seqlens(position_ids, inputs.get('logits_to_keep'))
+                    else:
+                        cu_seqlens = torch.arange(0, labels.shape[0] + 1) * labels.shape[1]
+                    for i in range(cu_seqlens.shape[0] - 1):
+                        channel = channels[i]
+                        slice_ = slice(cu_seqlens[i], cu_seqlens[i + 1])
+                        metrics[f'loss_{channel}'].update(outputs.loss[slice_][masks[slice_]])
 
             unwrapped_model = self.accelerator.unwrap_model(model)
             if is_peft_available() and isinstance(unwrapped_model, PeftModel):
@@ -381,8 +384,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 model_name = unwrapped_model._get_name()
             # User-defined compute_loss function
             if compute_loss_func is not None:
-                loss = compute_loss_func(
-                    outputs, labels, num_items_in_batch=num_items_in_batch, trainer=self, **loss_kwargs)
+                loss = compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, trainer=self)
             elif self.label_smoother is None:
                 # Handle the outputs.loss generated by loss_scale.
                 if num_items_in_batch is None:

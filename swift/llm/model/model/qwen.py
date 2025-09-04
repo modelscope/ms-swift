@@ -529,10 +529,6 @@ register_model(
                 # swift
                 Model('swift/Qwen3-32B-AWQ'),
             ]),
-            ModelGroup([
-                Model('Qwen/Qwen3-4B-Instruct-2507', 'Qwen/Qwen3-4B-Instruct-2507'),
-                Model('Qwen/Qwen3-4B-Instruct-2507-FP8', 'Qwen/Qwen3-4B-Instruct-2507-FP8'),
-            ])
         ],
         TemplateType.qwen3,
         get_model_tokenizer_with_flash_attn,
@@ -556,22 +552,6 @@ register_model(
                 Model('swift/Qwen3-30B-A3B-AWQ', 'cognitivecomputations/Qwen3-30B-A3B-AWQ'),
                 Model('swift/Qwen3-235B-A22B-AWQ', 'cognitivecomputations/Qwen3-235B-A22B-AWQ'),
             ]),
-            ModelGroup([
-                Model('Qwen/Qwen3-30B-A3B-Instruct-2507', 'Qwen/Qwen3-30B-A3B-Instruct-2507'),
-                Model('Qwen/Qwen3-30B-A3B-Instruct-2507-FP8', 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8'),
-                Model('Qwen/Qwen3-235B-A22B-Instruct-2507', 'Qwen/Qwen3-235B-A22B-Instruct-2507'),
-                Model('Qwen/Qwen3-235B-A22B-Instruct-2507-FP8', 'Qwen/Qwen3-235B-A22B-Instruct-2507-FP8'),
-                # awq
-                Model('swift/Qwen3-235B-A22B-Instruct-2507-AWQ'),
-            ]),
-            ModelGroup([
-                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct', 'Qwen/Qwen3-Coder-30B-A3B-Instruct'),
-                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8'),
-                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct', 'Qwen/Qwen3-Coder-480B-A35B-Instruct'),
-                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8', 'Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8'),
-                Model('swift/Qwen3-Coder-480B-A35B-Instruct-AWQ'),
-            ],
-                       tags=['coding']),
         ],
         TemplateType.qwen3,
         get_model_tokenizer_with_flash_attn,
@@ -591,6 +571,37 @@ register_model(
         TemplateType.qwen3_thinking,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3ForCausalLM'],
+        requires=['transformers>=4.51'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_nothinking,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-30B-A3B-Instruct-2507', 'Qwen/Qwen3-30B-A3B-Instruct-2507'),
+                Model('Qwen/Qwen3-30B-A3B-Instruct-2507-FP8', 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8'),
+                Model('Qwen/Qwen3-235B-A22B-Instruct-2507', 'Qwen/Qwen3-235B-A22B-Instruct-2507'),
+                Model('Qwen/Qwen3-235B-A22B-Instruct-2507-FP8', 'Qwen/Qwen3-235B-A22B-Instruct-2507-FP8'),
+                # awq
+                Model('swift/Qwen3-235B-A22B-Instruct-2507-AWQ'),
+            ]),
+            ModelGroup([
+                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct', 'Qwen/Qwen3-Coder-30B-A3B-Instruct'),
+                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8'),
+                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct', 'Qwen/Qwen3-Coder-480B-A35B-Instruct'),
+                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8', 'Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8'),
+                Model('swift/Qwen3-Coder-480B-A35B-Instruct-AWQ'),
+            ],
+                       tags=['coding']),
+            ModelGroup([
+                Model('Qwen/Qwen3-4B-Instruct-2507', 'Qwen/Qwen3-4B-Instruct-2507'),
+                Model('Qwen/Qwen3-4B-Instruct-2507-FP8', 'Qwen/Qwen3-4B-Instruct-2507-FP8'),
+            ])
+        ],
+        TemplateType.qwen3_nothinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3MoeForCausalLM', 'Qwen3ForCausalLM'],
         requires=['transformers>=4.51'],
     ))
 
@@ -979,7 +990,7 @@ def get_model_tokenizer_ovis2_5(*args, **kwargs):
         use_submodel_func(model, 'llm', func_list)
         embedding = model.get_input_embeddings()
         patch_output_clone(embedding)
-        patch_get_input_embeddings(model.visual_tokenizer, 'vit.vision_model.embeddings.patch_embedding')
+        patch_get_input_embeddings(model.visual_tokenizer.vit, 'vision_model.embeddings.patch_embedding')
 
     return model, tokenizer
 
@@ -995,7 +1006,7 @@ register_model(
         ],
         TemplateType.ovis2_5,
         get_model_tokenizer_ovis2_5,
-        model_arch=ModelArch.ovis,
+        model_arch=ModelArch.ovis2_5,
         architectures=['Ovis'],
         tags=['vision'],
         requires=['transformers>=4.46.2', 'moviepy<2'],

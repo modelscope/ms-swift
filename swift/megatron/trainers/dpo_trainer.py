@@ -148,7 +148,7 @@ class MegatronDPOTrainer(MegatronTrainer):
         # fix megatron-lm bug
         # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
         loss = loss / mpu.get_context_parallel_world_size()
-        return (loss, reporting_metric)
+        return loss, reporting_metric
 
     @contextmanager
     def null_ref_context(self):
@@ -179,9 +179,7 @@ class MegatronDPOTrainer(MegatronTrainer):
         return iter(res)
 
     def forward_step(self, data_iterator, model):
-        with torch.no_grad():
-            data = next(data_iterator)
-
+        data = next(data_iterator)
         ref_logps = data.pop('logps')
         with self.stimer:
             output_tensor = model(**data)

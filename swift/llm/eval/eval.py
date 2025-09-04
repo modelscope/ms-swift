@@ -26,9 +26,8 @@ class SwiftEval(SwiftPipeline):
         deploy_context = nullcontext() if args.eval_url else run_deploy(args, return_url=True)
         with deploy_context as base_url:
             base_url = args.eval_url or base_url
-            url = f"{base_url.rstrip('/')}/chat/completions"
 
-            task_cfg = self.get_task_cfg(args.eval_dataset, args.eval_backend, url)
+            task_cfg = self.get_task_cfg(args.eval_dataset, args.eval_backend, base_url)
             result = self.get_task_result(task_cfg)
             eval_report[args.eval_backend] = result
 
@@ -107,6 +106,9 @@ class SwiftEval(SwiftPipeline):
             **args.extra_eval_args)
 
     def get_opencompass_task_cfg(self, dataset: List[str], url: str):
+        # Must use chat/completion endpoint
+        url = f"{url.rstrip('/')}/chat/completions"
+
         args = self.args
         work_dir = os.path.join(args.eval_output_dir, 'opencompass')
         return TaskConfig(
@@ -130,6 +132,9 @@ class SwiftEval(SwiftPipeline):
             work_dir=work_dir)
 
     def get_vlmeval_task_cfg(self, dataset: List[str], url: str):
+        # Must use chat/completion endpoint
+        url = f"{url.rstrip('/')}/chat/completions"
+
         args = self.args
         work_dir = os.path.join(args.eval_output_dir, 'vlmeval')
         return TaskConfig(

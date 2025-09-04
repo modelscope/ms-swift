@@ -12,6 +12,15 @@ from torch.nn import CrossEntropyLoss, MSELoss
 from transformers.utils import strtobool
 
 
+def cross_entropy_loss_func(outputs, labels, num_items_in_batch=None, **kwargs):
+    # You need to return a scalar representing the loss.
+    from swift.trainers import per_token_loss_func
+    token_loss = per_token_loss_func(outputs, labels)
+    if num_items_in_batch is None:
+        num_items_in_batch = (labels[:, 1:] != -100).sum()
+    return token_loss.sum() / num_items_in_batch
+
+
 def _parse_pair_sentence(outputs):
     if isinstance(outputs, dict):
         last_hidden_state = outputs['last_hidden_state']
@@ -425,49 +434,6 @@ def online_contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch
     return loss
 
 
-def channel_loss_func(outputs,
-                      labels,
-                      num_items_in_batch=None,
-                      sample_channels=None,
-                      trainer=None,
-                      position_ids=None,
-                      **kwargs) -> torch.Tensor:
-    from swift.trainers import per_token_loss_func
-    channels = trainer.args.channels
-    assert channels is not None, 'Please pass --channels as a hyperparameter.'
-    assert sample_channels is not None, 'Data does not have channel field.'
-
-    if outputs.loss is None:
-        from swift.trainers.utils import per_token_loss_func
-        outputs.loss = per_token_loss_func(outputs, labels)
-    token_loss = outputs.loss
-    masks = torch.roll(labels, shifts=-1, dims=-1).view(-1) != -100
-    if num_items_in_batch is None:
-        num_items_in_batch = masks.sum()
-    loss = token_loss.sum() / num_items_in_batch
-
-    if position_ids is not None and trainer.template.padding_free:
-        start_idx_mask = position_ids.view(-1).eq(0).int()
-        sample_idx = (torch.cumsum(start_idx_mask, dim=0) - 1).tolist()
-        token_channels = [sample_channels[i] for i in sample_idx]
-    else:
-        bs, seq = labels.shape
-        token_channels = []
-        for i in range(bs):
-            token_channels.extend([sample_channels[i]] * seq)
-
-    mode = 'train' if trainer.model.training else 'eval'
-    metrics = trainer.custom_metrics[mode]
-    for ch in set(sample_channels):
-        indices = [i for i, c in enumerate(token_channels) if c == ch]
-        if not indices:
-            continue
-        ch_loss = token_loss[indices][masks[indices]]
-        metrics[f'loss_{ch}'].update(ch_loss)
-
-    return loss
-
-
 def reranker_loss(outputs, labels, loss_scale=None, num_items_in_batch=None, **kwargs) -> torch.Tensor:
     logits = outputs.logits
     logits = logits.squeeze(1)
@@ -751,7 +717,7 @@ def listwise_generative_reranker_loss(outputs,
 
 
 loss_mapping = {
-    'channel_loss': channel_loss_func,
+    'cross_entropy': cross_entropy_loss_func,  # examples
     # embedding
     'cosine_similarity': cosine_similarity_func,
     'contrastive': contrastive_loss,

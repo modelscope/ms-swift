@@ -650,6 +650,32 @@ def test_interns1():
     assert response == response2
 
 
+def test_internvl3_5():
+    models = [
+        'OpenGVLab/InternVL3_5-1B', 'OpenGVLab/InternVL3_5-2B', 'OpenGVLab/InternVL3_5-4B', 'OpenGVLab/InternVL3_5-8B',
+        'OpenGVLab/InternVL3_5-14B', 'OpenGVLab/InternVL3_5-38B', 'OpenGVLab/InternVL3_5-30B-A3B',
+        'OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview'
+    ]
+    for model in models:
+        pt_engine = PtEngine(model)
+        images = ['http://images.cocodataset.org/val2017/000000039769.jpg']
+        messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
+        response = _infer_model(pt_engine, messages=messages, images=images)
+        pt_engine.default_template.template_backend = 'jinja'
+        response2 = _infer_model(pt_engine, messages=messages, images=images)
+        assert response == response2
+
+
+def test_minicpmv4_5():
+    pt_engine = PtEngine('OpenBMB/MiniCPM-V-4_5')
+    images = ['http://images.cocodataset.org/val2017/000000039769.jpg']
+    messages = [{'role': 'user', 'content': 'Please describe the image explicitly.'}]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -710,4 +736,6 @@ if __name__ == '__main__':
     # test_keye_vl()
     # test_dots_ocr()
     # test_glm4_5v()
-    test_interns1()
+    # test_interns1()
+    # test_internvl3_5()
+    test_minicpmv4_5()

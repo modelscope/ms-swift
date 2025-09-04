@@ -3,6 +3,7 @@ import ast
 import os
 from collections import Counter
 from contextlib import contextmanager
+from itertools import chain
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -18,21 +19,18 @@ DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 logger = get_logger()
 
+_pair_keys = ['messages', 'images', 'videos', 'audios', 'tools', 'objects']
+
 
 class RowPreprocessor:
-    standard_keys = [
-        'messages',
-        'rejected_response',
-        'rejected_images',
-        'label',
-        'images',
-        'videos',
-        'audios',
-        'tools',
-        'objects',
-        'channel',
-        'margin',
-    ]
+    standard_keys = _pair_keys + list(
+        chain.from_iterable([f'{prefix}_{k}' for k in _pair_keys]
+                            for prefix in ['rejected', 'positive', 'negative'])) + [
+                                'rejected_response',
+                                'label',
+                                'channel',
+                                'margin',
+                            ]
 
     def __init__(self,
                  *,
@@ -42,6 +40,7 @@ class RowPreprocessor:
                  traceback_limit: int = 10) -> None:
         self.columns = columns or {}
         self.origin_columns = self.columns.copy()  # Higher priority and raise Error
+        self._version = 'v1'
         images_keys = ['images', 'image']
         audios_keys = ['audios', 'audio']
         videos_keys = ['videos', 'video']
@@ -65,7 +64,7 @@ class RowPreprocessor:
         assert len(messages) > 0, f'messages: {messages}'
         # fix swift/SlimOrca
         for message in messages:
-            keys = set(message.keys()) - {'role', 'content'}
+            keys = set(message.keys()) - {'role', 'content', 'loss'}
             for key in keys:
                 message.pop(key)
 
@@ -100,25 +99,11 @@ class RowPreprocessor:
 
     @staticmethod
     def _check_rejected_response(row: Dict[str, Any]) -> None:
-        if 'rejected_messages' in row:
-            chosen_messages = row['messages']
-            rejected_messages = row['rejected_messages']
-            messages = []
-            rejected_response = None
-            for chosen_user, chosen_assistant, rejected_user, rejected_assistant in zip(
-                    chosen_messages[::2], chosen_messages[1::2], rejected_messages[::2], rejected_messages[1::2]):
-                assert chosen_user == rejected_user
-                messages.append(chosen_user)
-                messages.append(chosen_assistant)
-                if chosen_assistant != rejected_assistant:
-                    rejected_response = rejected_assistant['content']
-            row['messages'] = messages
-            row['rejected_response'] = rejected_response
-
         if 'rejected_response' in row:
             messages = row['messages']
             rejected_response = row['rejected_response']
-            if rejected_response is None or rejected_response == messages[-1]['content']:
+            if (rejected_response is None
+                    or isinstance(rejected_response, str) and rejected_response == messages[-1]['content']):
                 raise ValueError(f'rejected_response: {rejected_response}')
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -197,8 +182,8 @@ class RowPreprocessor:
                     row = [row]
                 for r in row:
                     self._check_objects(r)
-                    self._check_messages(r)
                     self._check_rejected_response(r)
+                    self._check_messages(r)
                     self._cast_mm_data(r)
             except Exception as e:
                 if strict:
@@ -275,7 +260,19 @@ class RowPreprocessor:
         def _new_init(self, schema=None, features=None, *args, **kwargs):
 
             if features is not None:
-                features['messages'] = [{'role': Value(dtype='string'), 'content': Value(dtype='string')}]
+                messages_feature = [{
+                    'role': Value(dtype='string'),
+                    'content': Value(dtype='string'),
+                }]
+                messages_feature_with_loss = [{
+                    'role': Value(dtype='string'),
+                    'content': Value(dtype='string'),
+                    'loss': Value(dtype='float64'),
+                }]
+                features['messages'] = messages_feature_with_loss
+                features['rejected_messages'] = messages_feature_with_loss
+                features['positive_messages'] = [messages_feature]
+                features['negative_messages'] = [messages_feature]
                 features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
                 features['objects'] = {
                     'ref': Sequence(feature=Value(dtype='string'), length=-1),
