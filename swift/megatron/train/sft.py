@@ -5,8 +5,8 @@ from typing import List, Optional, Union
 
 import torch
 
-from swift.llm.train import SwiftSft
 from swift.llm import TEMPLATE_MAPPING
+from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
 from ..trainers import MegatronTrainer
