@@ -52,6 +52,9 @@ swift sft \
     --attn_impl flash_attn
 
 CUDA_VISIBLE_DEVICES=0 \
+MAX_PIXELS=1003520 \
+VIDEO_MAX_PIXELS=50176 \
+FPS_MAX_FRAMES=12 \
 swift infer \
     --model output/Qwen2.5-Omni-7B/vx-xxx/checkpoint-xxx \
     --attn_impl flash_attn \
