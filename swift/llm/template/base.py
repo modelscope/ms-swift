@@ -1203,6 +1203,19 @@ class Template(ProcessorMixin):
             loss_mask = torch.tensor(loss_mask)[protected].tolist()
         return input_ids, labels, loss_mask
 
+    @staticmethod
+    def _get_length(encoded):
+        # input_ids might be a tensor.
+        input_ids = encoded.get('input_ids')
+        labels = encoded.get('labels')
+        lengths = [0]
+        if input_ids is not None:
+            lengths.append(len(input_ids))
+        if labels is not None:
+            lengths.append(len(labels))
+        length = max(lengths)
+        return length
+
     def _encode_truncated(self, inputs: StdTemplateInputs):
         self._preprocess_inputs(inputs)
         if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
@@ -1220,20 +1233,13 @@ class Template(ProcessorMixin):
         input_ids = encoded.get('input_ids')
         labels = encoded.get('labels')
         loss_scale = encoded.get('loss_scale')
-
-        # input_ids might be a tensor.
-        lengths = [0]
-        if input_ids is not None:
-            lengths.append(len(input_ids))
-        if labels is not None:
-            lengths.append(len(labels))
-        length = max(lengths)
+        length = self._get_length(encoded)
         encoded['length'] = length
-
         if self.max_length is not None and length > self.max_length:
             if self.truncation_strategy in {'right', 'left'}:
                 input_ids, labels, loss_scale = self._truncate(
                     input_ids, labels, loss_scale, truncation_strategy=self.truncation_strategy)
+                encoded['length'] = self._get_length(encoded)
             elif self.truncation_strategy == 'raise':
                 raise MaxLengthError(f'Current length of row({length}) is larger'
                                      f' than the max_length({self.max_length}).')
