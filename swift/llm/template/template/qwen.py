@@ -16,7 +16,7 @@ from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
-from ..template_inputs import StdTemplateInputs
+from ..template_inputs import StdTemplateInputs, TemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
 from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
@@ -71,12 +71,20 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_sys
 class Qwen3RerankerTemplate(Template):
     instruction = 'Given a web search query, retrieve relevant passages that answer the query'
 
-    def _preprocess_inputs_reranker(self, inputs: StdTemplateInputs) -> None:
+    def _preprocess_inputs_reranker(self, inputs: TemplateInputs) -> None:
         super()._preprocess_inputs_reranker(inputs)
-        query = inputs.messages[-2]['content']
-        user_message = '<Instruct>: ' + self.instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: {doc}'
-        inputs.messages[-2]['content'] = user_message
-
+        if inputs.chosen.system is not None:
+            instruction = inputs.chosen.system
+        else:
+            instruction = self.instruction
+        query = inputs.chosen.messages[-1]['content']
+        for positive in inputs.positive:
+            user_message = '<Instruct>: ' + instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: ' + positive.messages[-1]['content']
+            positive.messages = {'role': 'user', 'content': user_message}
+        for negative in inputs.negative:
+            user_message = '<Instruct>: ' + instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: ' + negative.messages[-1]['content']
+            negative.messages = {'role': 'user', 'content': user_message}
+        inputs.chosen.messages = []
 
 qwen3_reranker_system = (
     'Judge whether the Document meets the requirements based on the Query and the Instruct provided. '

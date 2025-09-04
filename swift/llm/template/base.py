@@ -441,39 +441,26 @@ class Template(ProcessorMixin):
         return _encoded
 
     def _reranker_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
-        inputs = inputs.chosen  # TODO: refactor
-        self._preprocess_inputs_reranker(inputs)
-        _encoded = {}
-        labels = []
+        from collections import defaultdict
+        inputs = self._preprocess_inputs_reranker(inputs)
+        chosen = inputs.chosen
+        
+        _encoded = defaultdict(list)
 
-        positive = deepcopy(inputs)
-        positive.rejected_response = []
-        if '{doc}' in positive.messages[-2]['content']:
-            positive.messages[-2]['content'] = positive.messages[-2]['content'].replace(
-                '{doc}', inputs.messages[-1]['content'])
-            positive.messages.pop(-1)
-        positive_encoded = self._encode_truncated(positive)
-        for key in positive_encoded:
-            _encoded[f'positive_{key}'] = positive_encoded[key]
-            _encoded[f'negative_{key}'] = []
-        labels.append(1)
+        for positive in inputs.positive:
+            positive.messages = chosen.messages + positive.messages
+            positive_encoded = self._encode_truncated(positive)
+            for key in positive_encoded:
+                _encoded[f'positive_{key}'].append(positive_encoded[key])
+                _encoded['labels'].append(1)
 
-        rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
-        for i in range(rejected_len):
-            negative = deepcopy(inputs)
-            if '{doc}' in negative.messages[-2]['content']:
-                negative.messages[-2]['content'] = negative.messages[-2]['content'].replace(
-                    '{doc}', negative.rejected_response[i])
-                negative.messages.pop(-1)
-            else:
-                negative.messages[-1]['content'] = negative.rejected_response[i]
-            negative.rejected_response = []
+        for negative in inputs.negative:
+            negative.messages = chosen.messages + negative.messages
             negative_encoded = self._encode_truncated(negative)
             for key in negative_encoded:
                 _encoded[f'negative_{key}'].append(negative_encoded[key])
-            labels.append(0)
+                _encoded['labels'].append(0)
 
-        _encoded['labels'] = labels
         return _encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
