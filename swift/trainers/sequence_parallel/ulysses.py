@@ -288,7 +288,7 @@ class SequenceParallel:
             else:
                 embed_tokens = getattr(_self, 'embed_tokens', None)
             input_ids, inputs_embeds, _, position_ids, attention_mask, _ = self.pad_and_split_inputs(
-                input_ids, inputs_embeds, None, position_ids, attention_mask, None, embed_tokens=embed_tokens)
+                input_ids, inputs_embeds, None, position_ids, attention_mask, None, embed_tokens=embed_tokens, extra_position_ids=self.extra_kwargs.get('origin_position_ids'))
             kwargs['input_ids'] = input_ids
             kwargs['inputs_embeds'] = inputs_embeds
             kwargs['position_ids'] = position_ids
@@ -360,9 +360,8 @@ class SequenceParallel:
         key = key + mask.to(key.dtype)
         return query, key, value
 
-    def _pad(self, tensor, padding_value, position_ids=None):
+    def _pad(self, tensor, padding_value, position_ids=None, dim=1):
         """Pad tensor for sequence parallel"""
-        dim = 1
         if self.rp_world_size > 1:
             world_size = self.world_size * 2
         else:
@@ -388,7 +387,11 @@ class SequenceParallel:
             cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids)
             all_tensors = []
             for i in range(len(cu_seqlens) - 1):
-                all_tensors.append(_do_pad(tensor[:, cu_seqlens[i]:cu_seqlens[i + 1]]))
+                if dim == 1:
+                    sub_tensor = tensor[:, cu_seqlens[i]:cu_seqlens[i + 1]]
+                elif dim == -1:
+                    sub_tensor = tensor[..., cu_seqlens[i]:cu_seqlens[i + 1]]
+                all_tensors.append(_do_pad(sub_tensor))
             tensor = torch.cat(all_tensors, dim=dim)
 
         return _do_pad(tensor)
@@ -465,18 +468,22 @@ class SequenceParallel:
         cu_seqlens = torch.cumsum(torch.cat([torch.tensor([0], device=position_ids.device), seq_lengths]), dim=0)
         return cu_seqlens
 
-    def _split_packed(self, value, cu_seqlens):
+    def _split_packed(self, value, cu_seqlens, dim=1):
         local_values = []
         for i in range(len(cu_seqlens) - 1):
             start, end = cu_seqlens[i], cu_seqlens[i + 1]
-            local_value = value[:, start:end].chunk(2 * self.rp_world_size, dim=1)
+            if dim == 1:
+                sub_value = value[:, start:end]
+            elif dim == -1:
+                sub_value = value[..., start:end]
+            local_value = sub_value.chunk(2 * self.rp_world_size, dim=dim)
             local_values.extend(
                 [
                     local_value[self.rp_rank].detach().clone(),
                     local_value[2 * self.rp_world_size - 1 - self.rp_rank].detach().clone(),
                 ]
             )
-        return torch.cat(local_values, dim=1).contiguous()
+        return torch.cat(local_values, dim=dim).contiguous()
 
     def _split(self, input, dim: int, position_ids=None):
         """Split tensor for sequence parallel"""
@@ -485,10 +492,10 @@ class SequenceParallel:
 
         if self.rp_world_size > 1:
             input_dim = input.dim()
-            assert input_dim >= 2 and input.shape[0] == 1
+            assert input_dim >= 2
             cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids)
             assert torch.all(cu_seqlens % (2 * self.rp_world_size) == 0)
-            value_chunks = self._split_packed(input, cu_seqlens)
+            value_chunks = self._split_packed(input, cu_seqlens, dim=dim)
             local_value = value_chunks.chunk(self.sp_world_size, dim=dim)[self.sp_rank].contiguous()
             return local_value
         else:
@@ -508,12 +515,23 @@ class SequenceParallel:
                              position_ids,
                              attention_mask,
                              loss_scale,
-                             embed_tokens=None):
-        """Common implementation for padding and splitting inputs"""
+                             embed_tokens=None,
+                             extra_position_ids=None):
+        """Common implementation for padding and splitting inputs
+        Args:
+            input_ids: input_ids
+            input_embeds: input_embeds
+            labels: labels
+            position_ids: position_ids or position_ids for mrope
+            attention_mask: attention_mask
+            loss_scale: loss_scale
+            embed_tokens: embed_tokens
+            extra_position_ids: the real position_ids to represent the seq length information
+        """
         tokenizer = self.tokenizer
-        origin_position_ids = None
-        if position_ids is not None:
-            origin_position_ids = position_ids.clone()
+        origin_position_ids = extra_position_ids if extra_position_ids is not None else position_ids
+        if origin_position_ids is not None:
+            origin_position_ids = origin_position_ids.clone()
             self.extra_kwargs['origin_position_ids'] = origin_position_ids
         if input_ids is not None:
             input_ids = self._pad(input_ids, padding_value=tokenizer.pad_token_id, position_ids=origin_position_ids)
@@ -524,13 +542,15 @@ class SequenceParallel:
         batch_size = input_ids.shape[
             0] if input_ids is not None else input_embeds.shape[0] if input_embeds is not None else 1
         if position_ids is not None:
-            position_ids = self._pad(position_ids, padding_value=-1, position_ids=origin_position_ids)
+            position_ids = self._pad(position_ids, padding_value=-1, position_ids=origin_position_ids, dim=-1)
+        if extra_position_ids is not None:
+            extra_position_ids = self._pad(extra_position_ids, padding_value=-1, position_ids=origin_position_ids)
         if (input_ids is not None or input_embeds is not None) and batch_size > 1:
             # not padding_free, so not ring-attention
             inputs = input_ids if input_ids is not None else input_embeds
             attn_shape = inputs.shape[1]  # The sequence length
             if attention_mask is None:
-                attention_mask = torch.ones_like(position_ids)
+                attention_mask = torch.ones_like(extra_position_ids)
             attention_mask = self._pad(attention_mask, padding_value=0)
             cache_position = torch.arange(0, attn_shape, device=inputs.device)
             # pad attention mask to 4d to avoid calculation errors
@@ -538,21 +558,21 @@ class SequenceParallel:
                 attention_mask = self.causal_mask_func(attention_mask, inputs.to(self.model_dtype), cache_position,
                                                        None, None)
         if input_ids is not None:
-            input_ids = self._split(input_ids, dim=1, position_ids=position_ids)
+            input_ids = self._split(input_ids, dim=1, position_ids=extra_position_ids)
         if input_embeds is not None:
-            input_embeds = self._split(input_embeds, dim=1, position_ids=position_ids)
+            input_embeds = self._split(input_embeds, dim=1, position_ids=extra_position_ids)
         if labels is not None:
             labels = self._pad(labels, padding_value=-100, position_ids=origin_position_ids)
             labels = torch.roll(labels, shifts=-1, dims=-1)
-            labels = self._split(labels, dim=-1, position_ids=position_ids)
+            labels = self._split(labels, dim=-1, position_ids=extra_position_ids)
 
         if loss_scale is not None:
             loss_scale = self._pad(loss_scale, padding_value=0., position_ids=origin_position_ids)
             loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1)
-            loss_scale = self._split(loss_scale, dim=-1, position_ids=position_ids)
+            loss_scale = self._split(loss_scale, dim=-1, position_ids=extra_position_ids)
         
         if position_ids is not None:
-            position_ids = self._split(position_ids, dim=1, position_ids=position_ids)
+            position_ids = self._split(position_ids, dim=-1, position_ids=extra_position_ids)
 
         return input_ids, input_embeds, labels, position_ids, attention_mask, loss_scale
 
@@ -611,11 +631,14 @@ class SequenceParallel:
 
     def pad_and_split_extra_inputs(self, inputs):
         """Common input preparation function"""
+        position_ids = inputs.get('_position_ids')
+        if position_ids is None:
+            position_ids = inputs.get('position_ids')
         if 'labels' in inputs:
             labels = inputs['labels']
-            _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, inputs.get('position_ids'), None, None)
+            _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, None, None, None, extra_position_ids=position_ids)
             inputs['labels'] = labels
         if 'loss_scale' in inputs:
             loss_scale = inputs['loss_scale']
-            _, _, _, _, _, loss_scale = self.pad_and_split_inputs(None, None, None, inputs.get('position_ids'), None, loss_scale)
+            _, _, _, _, _, loss_scale = self.pad_and_split_inputs(None, None, None, None, None, loss_scale, extra_position_ids=position_ids)
             inputs['loss_scale'] = loss_scale

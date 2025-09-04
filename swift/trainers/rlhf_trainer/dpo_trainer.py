@@ -165,10 +165,13 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
             from swift.trainers.sequence_parallel.utils import GatherLoss
             from swift.trainers.sequence_parallel import sequence_parallel
-            total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, 1)
-            total_mean_logits = sequence_parallel._gather(mean_logits, dim=1)
+            position_ids = sequence_parallel.extra_kwargs.get('origin_position_ids')
+            if position_ids is not None:
+                position_ids = sequence_parallel._pad(position_ids, padding_value=-1, position_ids=position_ids)
+            total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, 1, position_ids)
+            total_mean_logits = sequence_parallel._gather(mean_logits, dim=1, position_ids=position_ids)
             total_loss_mask = total_loss_mask.bool()
-            total_per_token_logps[~total_loss_mask] = 0
+            total_per_token_logps = total_per_token_logps * (~total_loss_mask)
             return total_per_token_logps, total_mean_logits, total_loss_mask
 
     def training_step(self, model, inputs, *args, **kwargs):
