@@ -1,4 +1,4 @@
-# 2 * 43GiB, 9s/it
+# 2 * 43GiB, 8s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 MAX_PIXELS=1003520 \
