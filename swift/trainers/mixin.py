@@ -761,7 +761,7 @@ class SwiftMixin:
 
             if sequence_parallel.rp_world_size > 1:
                 from swift.trainers.sequence_parallel import sequence_parallel
-                position_ids = sequence_parallel.extra_kwargs.get('origin_position_ids')
+                position_ids = sequence_parallel.extra_kwargs.get('_position_ids')
             else:
                 position_ids = None
             preds_output = sequence_parallel._gather(preds, dim=1, position_ids=position_ids)
