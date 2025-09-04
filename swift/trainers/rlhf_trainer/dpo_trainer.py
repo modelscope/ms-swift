@@ -178,6 +178,11 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
             total_loss_mask = total_loss_mask.bool()
             total_per_token_logps = total_per_token_logps * (~total_loss_mask)
+
+            if total_per_token_logps.dim() == 1:
+                total_per_token_logps = total_per_token_logps.unsqueeze(0)
+                total_mean_logits = total_mean_logits.unsqueeze(0)
+                total_loss_mask = total_loss_mask.unsqueeze(0)
             return total_per_token_logps, total_mean_logits, total_loss_mask
 
     def training_step(self, model, inputs, *args, **kwargs):
