@@ -405,3 +405,18 @@ register_model(
         architectures=['GptOssForCausalLM'],
         ignore_patterns=['metal/', 'original/'],
         requires=['transformers>=4.55']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.longchat,
+        [
+            ModelGroup([
+                Model('meituan-longcat/LongCat-Flash-Chat', 'meituan-longcat/LongCat-Flash-Chat'),
+                Model('meituan-longcat/LongCat-Flash-Chat-FP8', 'meituan-longcat/LongCat-Flash-Chat-FP8'),
+            ])
+        ],
+        TemplateType.longchat,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['LongcatFlashForCausalLM'],
+        requires=['transformers>=4.54,<4.56'],
+    ))

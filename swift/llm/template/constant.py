@@ -95,6 +95,7 @@ class LLMTemplateType:
     hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
     ernie = 'ernie'
+    longchat = 'longchat'
 
     aya = 'aya'
     c4ai = 'c4ai'
