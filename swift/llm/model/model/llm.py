@@ -418,4 +418,5 @@ register_model(
         TemplateType.longchat,
         get_model_tokenizer_with_flash_attn,
         architectures=['LongcatFlashForCausalLM'],
+        requires=['transformers>=4.54,<4.56'],
     ))
