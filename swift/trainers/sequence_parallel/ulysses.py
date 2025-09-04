@@ -393,6 +393,17 @@ class SequenceParallel:
 
         return _do_pad(tensor)
 
+    def _unpad(self, tensor, position_ids=None):
+        n_dim = tensor.dim()
+        if position_ids is None:
+            return tensor
+
+        mask = position_ids >= 0
+        tensor = tensor[mask]
+        if tensor.dim() < n_dim:
+            tensor = tensor.unsqueeze(0)
+        return tensor.contiguous()
+
     def _gather(self, local_output, dim: int, position_ids=None):
         """Gather tensor for sequence parallel - reverse of _split"""
         if self.world_size == 1:
@@ -435,10 +446,7 @@ class SequenceParallel:
                     right_idx = accumulated_length * self.rp_world_size + (2 * self.rp_world_size - idx_rp) * chunk_size
                     full_output[left_idx:right_idx] = local_tensor[:, chunk_size:]
                     accumulated_length += local_length
-            
-            mask = position_ids >= 0
-            full_output = full_output
-            full_output = full_output[mask.squeeze(0)]
+
             return full_output.unsqueeze(0).contiguous()
         else:
             gathered_sp = torch.empty((local_output.shape[0] * self.sp_world_size, local_output.shape[1]),
