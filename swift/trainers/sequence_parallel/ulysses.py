@@ -122,6 +122,7 @@ class DistributedAttention(torch.nn.Module):
         position_ids = kwargs.pop('position_ids', None)
         if position_ids is None:
             position_ids = self.sequence_parallel.extra_kwargs['_position_ids']
+            position_ids = self.sequence_parallel._pad(position_ids, padding_value=-1, position_ids=position_ids)
 
         context_layer = self.local_attn(
             query_layer, key_layer, value_layer, attention_mask, *args, position_ids=position_ids, **kwargs)
@@ -533,6 +534,8 @@ class SequenceParallel:
         """
         tokenizer = self.tokenizer
         extra_position_ids = extra_position_ids if extra_position_ids is not None else position_ids
+        if extra_position_ids is not None:
+            self.extra_kwargs['_position_ids'] = extra_position_ids.clone()
         if input_ids is not None:
             input_ids = self._pad(input_ids, padding_value=tokenizer.pad_token_id, position_ids=extra_position_ids)
         if input_embeds is not None:
@@ -549,9 +552,6 @@ class SequenceParallel:
             loss_scale = self._pad(loss_scale, padding_value=0., position_ids=extra_position_ids)
         if extra_position_ids is not None:
             extra_position_ids = self._pad(extra_position_ids, padding_value=-1, position_ids=extra_position_ids)
-            self.extra_kwargs['_position_ids'] = extra_position_ids.clone()
-            if self.extra_kwargs['_position_ids'].shape[1] == 2050:
-                print()
         if (input_ids is not None or input_embeds is not None) and batch_size > 1:
             # not padding_free, so not ring-attention
             inputs = input_ids if input_ids is not None else input_embeds

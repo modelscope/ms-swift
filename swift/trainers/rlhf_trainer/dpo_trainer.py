@@ -166,6 +166,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             from swift.trainers.sequence_parallel.utils import GatherLoss
             from swift.trainers.sequence_parallel import sequence_parallel
             position_ids = sequence_parallel.extra_kwargs.get('_position_ids')
+            if position_ids is not None:
+                position_ids = sequence_parallel._pad(position_ids, padding_value=-1, position_ids=position_ids)
             total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, 1, position_ids)
             total_mean_logits = sequence_parallel._gather(mean_logits, dim=1, position_ids=position_ids)
             if position_ids is not None and position_ids.min() == -1:
