@@ -311,11 +311,14 @@ class Qwen2VLTemplate(Template):
     def forward_context(self, model, inputs):
         if 'real_position_ids' not in inputs:
             return super().forward_context(model, inputs)
-        position_ids = inputs['position_ids']
+        text_position_ids = inputs['position_ids']
         inputs['position_ids'] = inputs.pop('real_position_ids')
-        transformers_ge_453 = version.parse(transformers.__version__) >= version.parse('4.53')
-        if transformers_ge_453:
-            inputs.update(get_packed_seq_params(position_ids))
+        transformers_version = version.parse(transformers.__version__)
+        if transformers_version >= version.parse('4.53'):
+            if transformers_version >= version.parse('4.56'):
+                inputs['position_ids'] = torch.concat([text_position_ids[None], inputs['position_ids']], dim=0)
+            else:
+                inputs.update(get_packed_seq_params(text_position_ids))
             return super().forward_context(model, inputs)
         if self.version == 'v2':
             from transformers.models.qwen2_vl import modeling_qwen2_vl as modeling_module
@@ -323,7 +326,7 @@ class Qwen2VLTemplate(Template):
             from transformers.models.qwen2_5_vl import modeling_qwen2_5_vl as modeling_module
         elif self.version == 'omni':
             from transformers.models.qwen2_5_omni import modeling_qwen2_5_omni as modeling_module
-        return self._patch_flash_attention_forward(modeling_module, position_ids)
+        return self._patch_flash_attention_forward(modeling_module, text_position_ids)
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:
