@@ -3,6 +3,7 @@
 import base64
 import concurrent.futures
 import inspect
+import math
 import os
 import re
 import time
@@ -12,12 +13,14 @@ from concurrent.futures import Future
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from dataclasses import asdict, dataclass, field
+from functools import partial
 from math import ceil
 from queue import Queue
 from threading import local
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
+import datasets
 import json
 import torch
 import torch.nn as nn
@@ -48,6 +51,7 @@ from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_logge
                          is_vllm_available, is_wandb_available, remove_response, seed_worker,
                          unwrap_model_for_generation)
 from ..mixin import SwiftMixin
+from ..utils import per_token_loss_func
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (_ForwardRedirection, load_pil_img, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
                     patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids)
@@ -194,8 +198,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.model_kwarg_keys = (
             inspect.signature(model.forward).parameters.keys() if not hasattr(model, 'get_base_model') else
             inspect.signature(model.get_base_model().forward).parameters.keys())
-
+        chord_sft_dataset = kwargs.pop('chord_sft_dataset', None)
         super().__init__(model, ref_model, *_args, **kwargs)
+        if chord_sft_dataset is not None:
+            self._make_chord_sft_dataset(chord_sft_dataset)
         if self.args.eval_strategy != 'no':
             total_eval_batch_size = self.args.per_device_eval_batch_size * \
                 self.accelerator.num_processes // self.args.num_generations
@@ -298,7 +304,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         else:
             from swift.llm import PtEngine
-            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+            self.engine = PtEngine.from_model_template(self.model, copy(self.template), max_batch_size=0)  # 0: no limit
 
         if not self.reward_funcs and not self.use_gym_env:
             raise ValueError('You must specify reward_funcs or reward_model')
@@ -530,7 +536,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
                 disable_cascade_attn=self.args.vllm_disable_cascade_attn,
                 load_format='dummy',
-                template=self.template,
+                template=copy(self.template),
                 distributed_executor_backend='external_launcher',
             )
         return engine
@@ -539,14 +545,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _template_context(self, template: Template):
         # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
         max_length = template.max_length
-        mode = template.mode
-        if mode in {'vllm', 'pt', 'lmdeploy'}:
-            template.set_mode('train')
         template.max_length = None
         try:
             yield
         finally:
-            template.set_mode(mode)
             template.max_length = max_length
 
     @patch_profiling_decorator
@@ -1483,6 +1485,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'high_clip_max': nanmax(gathered_high_clip).item(),
             'region_clip_mean': gathered_clip_ratio.nanmean().item()
         }
+        if self.chord_sft_iterator is not None:
+            loss = self._compute_chord_loss(grpo_loss=loss)
 
         return loss, metrics_data
 
@@ -1773,7 +1777,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             }
             if 'logits_to_keep' in self.model_kwarg_keys:
                 inputs['logits_to_keep'] = logits_to_keep + 1
-            with self._template_context(self.template), self.padding_free_context(model):
+            with self.padding_free_context(model):
                 logits = model(**inputs).logits
             # exclude the last logit: it corresponds to the next token pred
             logits = logits[:, -(logits_to_keep + 1):-1, :]
@@ -2810,3 +2814,101 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, rid in enumerate(request_ids):
             seen[rid] = i
         return torch.tensor(list(seen.values()), dtype=torch.long, device=self.accelerator.device)
+
+    def _make_chord_sft_dataset(self, chord_sft_dataset):
+        from torch.utils.data import RandomSampler
+        self.chord_sft_dataset = chord_sft_dataset
+        self.chord_sft_iterator = None
+        if self.chord_sft_dataset:
+
+            def cyclic_iter(iterable):
+                while True:
+                    for x in iterable:
+                        yield x
+
+            chord_sft_dataloader = self._get_chord_sft_dataloader(
+                dataset=chord_sft_dataset,
+                description='Training',
+                batch_size=self.args.chord_sft_per_device_train_batch_size,
+                sampler_fn=Trainer._get_train_sampler,
+                is_training=True,
+            )
+            self.chord_sft_iterator = cyclic_iter(chord_sft_dataloader)
+
+    def _get_chord_sft_dataloader(
+        self,
+        dataset,
+        description,
+        batch_size,
+        sampler_fn=None,
+        is_training=False,
+        dataloader_key=None,
+    ) -> DataLoader:
+        # mimic transformers.trainers._get_dataloader
+        """Create a [`~torch.utils.data.DataLoader`] from the given dataset."""
+        data_collator = identity_data_collator
+        if isinstance(dataset, datasets.Dataset):
+            dataset = self._remove_unused_columns(dataset, description=description)
+        else:
+            data_collator = self._get_collator_with_removed_columns(data_collator, description=description)
+
+        dataloader_params = {
+            'batch_size': batch_size,
+            'collate_fn': data_collator,
+            'num_workers': self.args.dataloader_num_workers,
+            'pin_memory': self.args.dataloader_pin_memory,
+            'persistent_workers': self.args.dataloader_persistent_workers,
+        }
+
+        if not isinstance(dataset, torch.utils.data.IterableDataset):
+            if sampler_fn is not None:
+                dataloader_params['sampler'] = sampler_fn(self, dataset)
+            dataloader_params['drop_last'] = self.args.dataloader_drop_last
+            dataloader_params['prefetch_factor'] = self.args.dataloader_prefetch_factor
+            if is_training:
+                dataloader_params['worker_init_fn'] = partial(
+                    seed_worker, num_workers=self.args.dataloader_num_workers, rank=self.args.process_index)
+
+        dataloader = self.accelerator.prepare(DataLoader(dataset, **dataloader_params))
+        return dataloader
+
+    def _compute_chord_loss(self, grpo_loss: torch.Tensor) -> torch.Tensor:
+
+        def mu_schedule_function(global_step: int, mu_warmup_steps: int, mu_decay_steps: int, mu_peak: float,
+                                 mu_valley: float) -> float:
+            """
+            Computes a cosine decay schedule with a warmup phase for the mu parameter.
+            """
+            # Warmup
+            if global_step < mu_warmup_steps:
+                return (global_step / mu_warmup_steps) * mu_peak
+
+            # Decay
+            if global_step >= (mu_warmup_steps + mu_decay_steps):
+                return mu_valley
+
+            adjusted_step = global_step - mu_warmup_steps
+            cosine_decay = 0.5 * (1 + math.cos(math.pi * adjusted_step / mu_decay_steps))
+            decayed_mu = (mu_peak - mu_valley) * cosine_decay + mu_valley
+            return decayed_mu
+
+        current_step = self.state.global_step
+        mu = mu_schedule_function(current_step, self.args.chord_mu_warmup_steps, self.args.chord_mu_decay_steps,
+                                  self.args.chord_mu_peak, self.args.chord_mu_valley)
+        chord_sft_loss = torch.tensor(0.0)
+        if mu > 0:
+            sft_inputs = next(self.chord_sft_iterator)
+            sft_inputs = to_device(self.template.data_collator(sft_inputs), self.accelerator.device)
+
+            labels = sft_inputs.pop('labels')
+            outputs = self.model(**sft_inputs)
+            chord_sft_loss = per_token_loss_func(outputs, labels)
+
+            if self.args.chord_enable_phi_function:
+                per_token_probs = torch.exp(-chord_sft_loss)
+                phi = per_token_probs * (1 - per_token_probs)
+                chord_sft_loss *= phi
+            num_items_in_batch = (labels[:, 1:] != -100).sum()
+            chord_sft_loss = chord_sft_loss.sum() / num_items_in_batch
+        loss = (1 - mu) * grpo_loss + mu * chord_sft_loss
+        return loss
