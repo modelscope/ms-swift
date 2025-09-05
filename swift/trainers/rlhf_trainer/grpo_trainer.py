@@ -398,7 +398,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if self.template.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
-            self.args.gradient_accumulation_steps = self.args.gradient_accumulation_steps * sequence_parallel.sp_world_size
+            self.args.gradient_accumulation_steps = self.args.gradient_accumulation_steps * sequence_parallel.world_size
 
     def _get_train_sampler(self, train_dataset=None):
         if self.template.sequence_parallel_size > 1:
@@ -407,7 +407,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 data_source=train_dataset or self.train_dataset,
                 mini_repeat_count=self.num_generations,
                 batch_size=self.args.generation_batch_size // self.num_generations,
-                repeat_count=self.num_iterations * self.args.steps_per_generation * sequence_parallel.sp_world_size,
+                repeat_count=self.num_iterations * self.args.steps_per_generation * sequence_parallel.world_size,
                 shuffle=self.shuffle_dataset,
                 seed=self.args.seed,
             )
@@ -433,15 +433,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mode = 'train' if self.model.training else 'eval'
         if mode == 'train':
             if self.template.sequence_parallel_size > 1:
-                # changes : `* sp_instance.sp_world_size`
+                # changes : `* sp_instance.world_size`
                 from swift.trainers.sequence_parallel import sequence_parallel
-                generate_every = self.args.steps_per_generation * self.num_iterations * sequence_parallel.sp_world_size
+                generate_every = self.args.steps_per_generation * self.num_iterations * sequence_parallel.world_size
                 if self._step % generate_every == 0 or self._buffered_inputs is None:
                     generation_batch = self._generate_and_score_completions(generation_batch)
                     self._buffered_inputs = generation_batch  # < this is the change
-                # changes : `* sp_instance.sp_world_size`
+                # changes : `* sp_instance.world_size`
                 inputs = self._buffered_inputs[
-                    self._step % (self.args.steps_per_generation * sequence_parallel.sp_world_size)]
+                    self._step % (self.args.steps_per_generation * sequence_parallel.world_size)]
                 self._step += 1
             else:
                 generate_every = self.args.steps_per_generation * self.num_iterations
@@ -1235,11 +1235,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             output = [None] * sequence_parallel.sp_world_size
             # gather inputs within a sp group
             dist.all_gather_object(output, inputs, group=sequence_parallel.sp_group)
+            if sequence_parallel.rp_world_size > 1:
+                output_rp = [None] * sequence_parallel.rp_world_size
+                output = [p for sublist in output for p in sublist]
+                dist.all_gather_object(output_rp, output, group=sequence_parallel.rp_group)
+                output = output_rp
             output = [p for sublist in output for p in sublist]
             inputs = output
 
             mode = 'train' if self.model.training else 'eval'
-            spg = self.args.steps_per_generation * sequence_parallel.sp_world_size if mode == 'train' else 1
+            spg = self.args.steps_per_generation * sequence_parallel.world_size if mode == 'train' else 1
 
             if mode == 'eval':
                 # TODO only take the first bs rows, because eval does not support loop
@@ -1259,6 +1264,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 spg_chunks.append(inputs[start_idx:end_idx])
                 start_idx = end_idx
 
+            spg_chunks = to_device(spg_chunks, device=self.accelerator.device)
             return spg_chunks
 
     @contextmanager
@@ -1799,6 +1805,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 kwargs['inputs_embeds'] = kwargs['inputs_embeds'][attention_mask.bool()].unsqueeze(0)
             kwargs['position_ids'] = kwargs['position_ids'][attention_mask.bool()].unsqueeze(0)
             kwargs.pop('attention_mask', None)
+            from swift.trainers.sequence_parallel import sequence_parallel
+            # no labels, but set new position_ids
+            sequence_parallel.pad_and_split_extra_inputs(kwargs)
             return args, kwargs
 
         def _padding_free_output_hook(module, args, kwargs, result):
@@ -1902,18 +1911,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # set origin length to all logits length
             origin_length = inputs['attention_mask'].sum()
         # split input_ids to labels
-        _, _, labels, _, _, _ = sequence_parallel.pad_and_split_inputs(None, None, input_ids.clone(), None, None, None)
+        position_ids = sequence_parallel.extra_kwargs.get('_position_ids')
+        _, _, labels, _, _, _ = sequence_parallel.pad_and_split_inputs(None, None, input_ids.clone(), None, None, None, extra_position_ids=position_ids)
 
         shape1 = logits.shape[1]
         labels = torch.where(labels == -100, self.processing_class.pad_token_id, labels)
         # calculate padding size for example, 9 to 10 if sp=2
-        padding_size = shape1 * sequence_parallel.sp_world_size - origin_length
+        padding_size = shape1 * sequence_parallel.world_size - origin_length
         # left shift one token to leave the last token
         logits_to_keep_padded = logits_to_keep + padding_size + 1
 
         # skip logits_to_keep
         logits_to_keep_sharded = max(
-            min(logits_to_keep_padded - (sequence_parallel.sp_world_size - sequence_parallel.sp_rank - 1) * shape1, shape1), 0)
+            min(logits_to_keep_padded - (sequence_parallel.world_size - sequence_parallel.sp_rank - 1) * shape1, shape1), 0)
         if logits_to_keep_sharded != 0:
             logits_kept = logits[:, -logits_to_keep_sharded:, :]
             logits_kept = logits_kept / self.temperature
@@ -1939,18 +1949,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         _padding_labels = torch.zeros((labels.shape[0], left_padding_len), device=labels.device, dtype=labels.dtype)
         labels_padded = torch.cat((_padding_labels, labels_kept), dim=1)
-        position_ids = sequence_parallel.extra_kwargs.get('_position_ids')
+        if position_ids is not None:
+            position_ids = sequence_parallel._pad(position_ids, padding_value=-1, position_ids=position_ids)
         per_token_logps, _ = GatherLoss.apply(per_token_logps_padded, labels_padded, 1, position_ids)
         if compute_entropy:
             entropies = entropy_from_logits(logits_kept)
             entropies_padded = torch.cat((_padding_logps, entropies), dim=1)
-            entropies, _ = GatherLoss.apply(entropies_padded, labels_padded, sequence_parallel.sp_group, 1,
-                                            position_ids)
+            entropies, _ = GatherLoss.apply(entropies_padded, labels_padded, 1, position_ids)
 
-        if position_ids is not None and position_ids.min() == -1:
-            _pos_mask = position_ids >= 0
-            per_token_logps = per_token_logps[_pos_mask].contiguous()
-            entropies = entropies[_pos_mask].contiguous()
+        #if position_ids is not None and position_ids.min() == -1:
+        #    _pos_mask = position_ids >= 0
+        #    per_token_logps = per_token_logps[_pos_mask].contiguous()
+        #    if per_token_logps.dim() == 1:
+        #        per_token_logps = per_token_logps.unsqueeze(0)
+        #    if entropies is not None:
+        #        entropies = entropies[_pos_mask].contiguous()
+        #        if entropies.dim() == 1:
+        #            entropies = entropies.unsqueeze(0)
 
         if padding_size > 0:
             per_token_logps = per_token_logps[:, :-padding_size]
@@ -2240,7 +2255,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         else:
             from swift.trainers.sequence_parallel import sequence_parallel
             return (self.num_iterations > 1 or self.args.gradient_accumulation_steps %
-                    (self.args.steps_per_generation * sequence_parallel.sp_world_size) != 0)
+                    (self.args.steps_per_generation * sequence_parallel.world_size) != 0)
 
     @property
     def _queue(self):

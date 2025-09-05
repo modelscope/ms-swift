@@ -380,7 +380,7 @@ class SequenceParallel:
         def _do_pad(tensor):
             length = tensor.shape[dim]
             pad_num = world_size - (length % world_size)
-            if pad_num == 0:
+            if pad_num == 0 or pad_num == world_size:
                 return tensor
             if not isinstance(padding_value, torch.Tensor):
                 # ids
@@ -650,6 +650,8 @@ class SequenceParallel:
             position_ids = inputs.get('_position_ids')
             if position_ids is None:
                 position_ids = inputs.get('position_ids')
+        if position_ids is not None and position_ids.shape[0] == 1:
+            self.extra_kwargs['_position_ids'] = position_ids.clone()
         if 'labels' in inputs:
             labels = inputs['labels']
             _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, None, None, None, extra_position_ids=position_ids)
