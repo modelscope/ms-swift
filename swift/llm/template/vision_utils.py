@@ -266,6 +266,68 @@ def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
     return frames
 
 
+def load_video_minicpmv_4_5(video: Union[str, bytes],
+                            max_num_frames=64,
+                            max_num_packing=3,
+                            choose_fps=3,
+                            time_scale=0.1,
+                            force_packing=None):
+
+    from decord import VideoReader, cpu  # pip install decord
+    from scipy.spatial import cKDTree
+
+    def uniform_sample(seq, n):
+        gap = len(seq) / n
+        idxs = [int(i * gap + gap / 2) for i in range(n)]
+        return [seq[i] for i in idxs]
+
+    def map_to_nearest_scale(values, scale):
+        tree = cKDTree(np.asarray(scale)[:, None])
+        _, indices = tree.query(np.asarray(values)[:, None])
+        return np.asarray(scale)[indices]
+
+    def group_array(arr, size):
+        return [arr[i:i + size] for i in range(0, len(arr), size)]
+
+    video_io = load_file(video)
+    vr = VideoReader(video_io, ctx=cpu(0))
+    fps = vr.get_avg_fps()
+    video_duration = len(vr) / fps
+
+    if choose_fps * int(video_duration) <= max_num_frames:
+        packing_nums = 1
+        choose_frames = round(min(choose_fps, round(fps)) * min(max_num_frames, video_duration))
+
+    else:
+        packing_nums = math.ceil(video_duration * choose_fps / max_num_frames)
+        if packing_nums <= max_num_packing:
+            choose_frames = round(video_duration * choose_fps)
+        else:
+            choose_frames = round(max_num_frames * max_num_packing)
+            packing_nums = max_num_packing
+
+    frame_idx = [i for i in range(0, len(vr))]
+    frame_idx = np.array(uniform_sample(frame_idx, choose_frames))
+
+    if force_packing:
+        packing_nums = min(force_packing, max_num_packing)
+
+    frames = vr.get_batch(frame_idx).asnumpy()
+
+    frame_idx_ts = frame_idx / fps
+    scale = np.arange(0, video_duration, time_scale)
+
+    frame_ts_id = map_to_nearest_scale(frame_idx_ts, scale) / time_scale
+    frame_ts_id = frame_ts_id.astype(np.int32)
+
+    assert len(frames) == len(frame_ts_id)
+
+    frames = [Image.fromarray(v.astype('uint8')).convert('RGB') for v in frames]
+    frame_ts_id_group = group_array(frame_ts_id, packing_nums)
+
+    return frames, frame_ts_id_group
+
+
 def load_audio(audio: Union[str, bytes], sampling_rate: int, return_sr: bool = False):
     import librosa
     audio_io = load_file(audio)
