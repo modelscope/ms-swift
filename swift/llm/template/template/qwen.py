@@ -315,10 +315,8 @@ class Qwen2VLTemplate(Template):
         inputs['position_ids'] = inputs.pop('real_position_ids')
         transformers_version = version.parse(transformers.__version__)
         if transformers_version >= version.parse('4.53'):
-            if transformers_version >= version.parse('4.56'):
-                inputs['position_ids'] = torch.concat([text_position_ids[None], inputs['position_ids']], dim=0)
-            else:
-                inputs.update(get_packed_seq_params(text_position_ids))
+            # https://github.com/huggingface/transformers/pull/40194
+            inputs.update(get_packed_seq_params(text_position_ids))
             return super().forward_context(model, inputs)
         if self.version == 'v2':
             from transformers.models.qwen2_vl import modeling_qwen2_vl as modeling_module

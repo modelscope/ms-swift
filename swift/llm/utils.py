@@ -327,10 +327,10 @@ def get_packed_seq_params(position_ids: torch.Tensor):
         torch.tensor(position_ids_f.shape, device=position_ids_f.device, dtype=torch.int32),
     ])
 
-    max_length = position_ids_f.max() + 1
+    max_length = cu_seqlens.diff().max()  # position_ids_f.max() + 1
     return {
-        'cumulative_seqlens_q': cu_seqlens,
-        'cumulative_seqlens_k': cu_seqlens,
+        'cu_seq_lens_q': cu_seqlens,
+        'cu_seq_lens_k': cu_seqlens,
         'max_length_q': max_length,
         'max_length_k': max_length,
     }

@@ -57,8 +57,8 @@ def get_batch_on_this_tp_rank(data_iterator):
 def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
     params = _get_packed_seq_params(position_ids)
     return PackedSeqParams(
-        cu_seqlens_q=params['cumulative_seqlens_q'],
-        cu_seqlens_kv=params['cumulative_seqlens_k'],
+        cu_seqlens_q=params['cu_seq_lens_q'],
+        cu_seqlens_kv=params['cu_seq_lens_k'],
         max_seqlen_q=params['max_length_q'],
         max_seqlen_kv=params['max_length_k'],
         qkv_format='thd')
