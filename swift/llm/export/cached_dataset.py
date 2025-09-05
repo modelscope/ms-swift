@@ -2,7 +2,9 @@
 import os
 from typing import List, Optional, Union
 
-from swift.llm import ExportArguments
+import torch
+
+from swift.llm import TEMPLATE_MAPPING, ExportArguments
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger
 
@@ -16,10 +18,14 @@ class ExportCachedDataset(SwiftSft):
     def __init__(self, args: Optional[Union[List[str], ExportArguments]] = None) -> None:
         super(SwiftSft, self).__init__(args)
         self.train_msg = {}  # dummy
-        self.processor = None
+        template_cls = TEMPLATE_MAPPING[args.template].template_cls
+        if template_cls and template_cls.use_model:
+            kwargs = {'return_dummy_model': True}
+        else:
+            kwargs = {'load_model': False}
+        with torch.device('meta'):
+            self._prepare_model_tokenizer(**kwargs)
         self._prepare_template()
-        self._prepare_model_tokenizer(load_model=self.template.use_model)
-        self.template.init_processor(self.processor)
 
     def main(self):
         train_dataset, val_dataset = self._get_dataset()
