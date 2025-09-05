@@ -266,9 +266,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'use_chat_template',
             'response_prefix',
         ]
-        if 'megatron' in self.__class__.__name__.lower():
-            force_load_keys = []
-            load_keys.remove('use_chat_template')
         data_keys = list(f.name for f in fields(DataArguments))
         for key, old_value in old_args.items():
             if old_value is None:
