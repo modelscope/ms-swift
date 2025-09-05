@@ -351,7 +351,7 @@ class Qwen2VLTemplate(Template):
             r['input_ids'] = torch.tensor(r['input_ids'])[None]
             position_ids.append(self._get_position_ids(r))
         packed = super().packing_row(row)
-        packed['real_position_ids'] = torch.concat(position_ids, dim=-1)
+        packed['position_ids'] = torch.concat(position_ids, dim=-1)
         return packed
 
     def _get_position_ids(self, inputs: Dict[str, Any]):

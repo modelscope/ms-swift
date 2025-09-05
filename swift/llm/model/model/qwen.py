@@ -654,10 +654,6 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_multimodal(*args, **kwargs)
     if model is not None:
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
-        if hasattr(base_model.model, 'embed_tokens'):
-            embed_tokens = base_model.model.embed_tokens
-        else:
-            embed_tokens = base_model.model.language_model.embed_tokens
         patch_get_input_embeddings(base_model.visual, 'patch_embed')
 
     from qwen_vl_utils import vision_process
