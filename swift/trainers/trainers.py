@@ -300,7 +300,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             sequence_parallel.pad_and_split_extra_inputs(inputs)
 
 
-        use_logits_to_keep = self.get_use_logits_to_keep()
+        use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
         if use_logits_to_keep:
             self.prepare_logits_to_keep(inputs)
             if args.tuner_backend == 'unsloth' and isinstance(inputs['logits_to_keep'], torch.Tensor):

@@ -674,67 +674,6 @@ class ZigZagRingFlashAttnVarlenFunc(torch.autograd.Function):
         return dq, dk, dv, None, None, None, None, None, None, None, None, None, None
 
 
-def zigzag_ring_flash_attn_varlen_qkvpacked_func(
-        qkv,
-        cu_seqlens,
-        max_seqlen,
-        dropout_p=0.0,
-        softmax_scale=None,
-        causal=False,
-        window_size=(-1, -1),  # -1 means infinite context window
-        alibi_slopes=None,
-        deterministic=False,
-        return_attn_probs=False,
-        group=None,
-):
-    return ZigZagRingFlashAttnVarlenFunc.apply(
-        qkv[:, 0],
-        qkv[:, 1],
-        qkv[:, 2],
-        cu_seqlens,
-        max_seqlen,
-        dropout_p,
-        softmax_scale,
-        causal,
-        window_size,
-        alibi_slopes,
-        deterministic,
-        return_attn_probs,
-        group,
-    )
-
-
-def zigzag_ring_flash_attn_varlen_kvpacked_func(
-        q,
-        kv,
-        cu_seqlens,
-        max_seqlen,
-        dropout_p=0.0,
-        softmax_scale=None,
-        causal=False,
-        window_size=(-1, -1),  # -1 means infinite context window
-        alibi_slopes=None,
-        deterministic=False,
-        return_attn_probs=False,
-        group=None,
-):
-    return ZigZagRingFlashAttnVarlenFunc.apply(
-        q,
-        kv[:, 0],
-        kv[:, 1],
-        cu_seqlens,
-        max_seqlen,
-        dropout_p,
-        softmax_scale,
-        causal,
-        window_size,
-        alibi_slopes,
-        deterministic,
-        return_attn_probs,
-        group,
-    )
-
-
 def zigzag_ring_flash_attn_varlen_func(
         q,
         k,
