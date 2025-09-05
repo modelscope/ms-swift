@@ -34,7 +34,7 @@ from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import prepare_deepspeed
 from trl.trainer import grpo_trainer
 from trl.trainer.callbacks import SyncRefModelCallback
-from trl.trainer.grpo_trainer import nanmax, nanmin, nanstd
+from trl.trainer.grpo_trainer import nanmax, nanmin, nanstd, RepeatSampler
 from trl.trainer.utils import selective_log_softmax
 
 from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInferRequest, RowPreprocessor, Template,
@@ -439,6 +439,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if self._step % generate_every == 0 or self._buffered_inputs is None:
                     generation_batch = self._generate_and_score_completions(generation_batch)
                     self._buffered_inputs = generation_batch  # < this is the change
+                # changes : `* sp_instance.sp_world_size`
                 inputs = self._buffered_inputs[
                     self._step % (self.args.steps_per_generation * sequence_parallel.sp_world_size)]
                 self._step += 1
@@ -1213,54 +1214,52 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         # Slice to keep only the local part of the data
         if self.template.sequence_parallel_size == 1:
+            mode: str = 'train' if self.model.training else 'eval'
+            spg: int = self.args.steps_per_generation if mode == 'train' else 1
 
-	        mode: str = 'train' if self.model.training else 'eval'
-	        spg: int = self.args.steps_per_generation if mode == 'train' else 1
+            chunk_size: int = len(inputs) // spg
+            remainder: int = len(inputs) % spg
+            spg_chunks: List[DataType] = []
 
-	        chunk_size: int = len(inputs) // spg
-	        remainder: int = len(inputs) % spg
-	        spg_chunks: List[DataType] = []
+            start_idx: int = 0
+            for i in range(spg):
+                current_chunk_size: int = chunk_size + (1 if i < remainder else 0)
+                end_idx: int = start_idx + current_chunk_size
+                spg_chunks.append(inputs[start_idx:end_idx])
+                start_idx = end_idx
 
-	        start_idx: int = 0
-	        for i in range(spg):
-	            current_chunk_size: int = chunk_size + (1 if i < remainder else 0)
-	            end_idx: int = start_idx + current_chunk_size
-	            spg_chunks.append(inputs[start_idx:end_idx])
-	            start_idx = end_idx
-
-	        return spg_chunks
-	    else:
+            return spg_chunks
+        else:
             from swift.trainers.sequence_parallel import sequence_parallel
             """Split by mini batches for GRPO sequence parallel training"""
-            inputs_len = len(inputs)
             output = [None] * sequence_parallel.sp_world_size
             # gather inputs within a sp group
             dist.all_gather_object(output, inputs, group=sequence_parallel.sp_group)
             output = [p for sublist in output for p in sublist]
             inputs = output
 
-            rank, local_rank, world_size, local_world_size = get_dist_setting()
-            start_rank = (rank // sequence_parallel.sp_world_size) * sequence_parallel.sp_world_size
-            process_slice = slice(
-                start_rank * inputs_len,
-                (start_rank + sequence_parallel.sp_world_size) * inputs_len,
-            )
-
-            advantages = advantages[process_slice]
-
             mode = 'train' if self.model.training else 'eval'
-            bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size
             spg = self.args.steps_per_generation * sequence_parallel.sp_world_size if mode == 'train' else 1
+
             if mode == 'eval':
                 # TODO only take the first bs rows, because eval does not support loop
+                bs = self.args.per_device_eval_batch_size
                 inputs = inputs[:bs]
-                advantages = advantages[:bs]
-            assert len(inputs) == bs * spg, f'Expected {bs * spg} inputs, got {len(inputs)}'
-            spg_chunks = [inputs[i * bs:(i + 1) * bs] for i in range(spg)]
-            # Split advantages by spg chunks
-            advantage_chunks = torch.chunk(advantages, spg)
+                spg = 1
 
-            return spg_chunks, advantage_chunks
+            # Use the new dynamic splitting logic
+            chunk_size: int = len(inputs) // spg
+            remainder: int = len(inputs) % spg
+            spg_chunks: List[DataType] = []
+
+            start_idx: int = 0
+            for i in range(spg):
+                current_chunk_size: int = chunk_size + (1 if i < remainder else 0)
+                end_idx: int = start_idx + current_chunk_size
+                spg_chunks.append(inputs[start_idx:end_idx])
+                start_idx = end_idx
+
+            return spg_chunks
 
     @contextmanager
     def null_ref_context(self):
@@ -1868,7 +1867,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _get_per_token_logps_and_entropies_sp(
             self,
             model: torch.nn.Module,
-            inputs: 'InputsType',
+            inputs: 'DataType',
             compute_entropy: bool = False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Get per token logps for GRPO sequence parallel training"""
         try:
@@ -1878,6 +1877,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         from swift.trainers.sequence_parallel.utils import GatherLoss
         from swift.trainers.sequence_parallel import sequence_parallel
+
         # original logits to keep
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
@@ -1888,7 +1888,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'truncated_mask'
             ]
         }
-
         with self._template_context(self.template), self.padding_free_context_grpo(model):
             output = model(**inputs)
             logits = output.logits
@@ -1914,8 +1913,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # skip logits_to_keep
         logits_to_keep_sharded = max(
-            min(logits_to_keep_padded - (sequence_parallel.sp_world_size -
-                                         sequence_parallel.sp_rank - 1) * shape1, shape1), 0)
+            min(logits_to_keep_padded - (sequence_parallel.sp_world_size - sequence_parallel.sp_rank - 1) * shape1, shape1), 0)
         if logits_to_keep_sharded != 0:
             logits_kept = logits[:, -logits_to_keep_sharded:, :]
             logits_kept = logits_kept / self.temperature
@@ -1946,7 +1944,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if compute_entropy:
             entropies = entropy_from_logits(logits_kept)
             entropies_padded = torch.cat((_padding_logps, entropies), dim=1)
-            entropies, _ = GatherLoss.apply(entropies_padded, labels_padded, sequence_parallel.sp_group, 1, position_ids)
+            entropies, _ = GatherLoss.apply(entropies_padded, labels_padded, sequence_parallel.sp_group, 1,
+                                            position_ids)
 
         if position_ids is not None and position_ids.min() == -1:
             _pos_mask = position_ids >= 0
@@ -1985,7 +1984,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         When rollout count is larger than expected, we process in smaller batches
         to control memory usage.
         """
-		if self.template.sequence_parallel_size > 1:
+        if self.template.sequence_parallel_size > 1:
             return self._get_per_token_logps_and_entropies_sp(model, inputs, compute_entropy=compute_entropy)
 
         batch_size = inputs['input_ids'].shape[0]
@@ -2240,8 +2239,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return self.num_iterations > 1 or self.args.gradient_accumulation_steps % self.args.steps_per_generation != 0
         else:
             from swift.trainers.sequence_parallel import sequence_parallel
-            return (self.num_iterations > 1
-                    or self.args.steps_per_generation * sequence_parallel.sp_world_size > self.args.gradient_accumulation_steps)
+            return (self.num_iterations > 1 or self.args.gradient_accumulation_steps %
+                    (self.args.steps_per_generation * sequence_parallel.sp_world_size) != 0)
 
     @property
     def _queue(self):
