@@ -1681,7 +1681,9 @@ class Template(ProcessorMixin):
             if self.padding_free:
                 cp_size = self.sequence_parallel_size
                 if cp_size > 1:
-                    for key in ['position_ids', 'text_position_ids']:
+                    for key in ['position_ids', 'real_position_ids']:
+                        if key not in res:
+                            continue
                         padding_len = padding_to - seq_lens[0]
                         position_ids = res[key][0]
                         extended_position_ids = torch.arange(cp_size * 2).repeat(padding_len // (cp_size * 2))
