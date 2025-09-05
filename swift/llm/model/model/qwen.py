@@ -11,7 +11,7 @@ from swift.llm import TemplateType
 from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone, patch_output_to_input_device
+from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal, get_model_tokenizer_reward_model,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import AttnImpl, ModelInfo, use_submodel_func
@@ -658,8 +658,6 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
             embed_tokens = base_model.model.embed_tokens
         else:
             embed_tokens = base_model.model.language_model.embed_tokens
-        patch_output_clone(embed_tokens)
-        patch_output_to_input_device(embed_tokens)
         patch_get_input_embeddings(base_model.visual, 'patch_embed')
 
     from qwen_vl_utils import vision_process

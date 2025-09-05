@@ -142,12 +142,12 @@ def get_batch(data_iterator):
     batch = get_batch_on_this_tp_rank(data_iterator)
     args = get_args()
     num_samples = batch.pop('num_samples')
-    if args.padding_free and batch.get('position_ids') is not None:
-        batch['packed_seq_params'] = get_packed_seq_params(batch['position_ids'])
+    text_position_ids = batch.pop('text_position_ids')
+    if text_position_ids is None:
+        text_position_ids = batch.get('position_ids')
+    if args.padding_free and text_position_ids is not None:
+        batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
         batch['packed_seq_params'].num_samples = num_samples
     # slice batch along sequence dimension for context parallelism
-    position_ids = batch.pop('real_position_ids', None)  # fix Qwen2.5-VL
-    if position_ids is not None:
-        batch['position_ids'] = position_ids
     batch = get_batch_on_this_cp_rank(batch)
     return batch

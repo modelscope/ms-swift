@@ -21,7 +21,8 @@ from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
-from swift.utils import get_env_args, get_logger
+from swift.llm import to_device
+from swift.utils import get_env_args, get_logger, is_deepspeed_enabled
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
@@ -1349,7 +1350,6 @@ class Template(ProcessorMixin):
         return response
 
     def pre_forward_hook(self, model: nn.Module, args, kwargs):
-        from swift.llm import to_device
         old_kwargs = to_device(kwargs, model.device)
         kwargs = to_device(self._post_encode(model, old_kwargs), model.device)
         for k, v in old_kwargs.items():
@@ -1629,7 +1629,7 @@ class Template(ProcessorMixin):
         res = {}
         if self.padding_free:
             assert len(batch) == 1, f'batch: {batch}'
-            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel', 'real_position_ids']:
+            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel', 'text_position_ids']:
                 v = batch[0].get(k)
                 if v is not None:
                     res[k] = v if k == 'channel' else [v]
@@ -1652,7 +1652,7 @@ class Template(ProcessorMixin):
 
         keys = [
             'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids',
-            'real_position_ids'
+            'text_position_ids'
         ]
         pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0, 0.]
         # Convert to tensor and remove unnecessary dimensions.
@@ -1681,7 +1681,7 @@ class Template(ProcessorMixin):
             if self.padding_free:
                 cp_size = self.sequence_parallel_size
                 if cp_size > 1:
-                    for key in ['position_ids', 'real_position_ids']:
+                    for key in ['position_ids', 'text_position_ids']:
                         padding_len = padding_to - seq_lens[0]
                         position_ids = res[key][0]
                         extended_position_ids = torch.arange(cp_size * 2).repeat(padding_len // (cp_size * 2))
@@ -1702,13 +1702,13 @@ class Template(ProcessorMixin):
                 continue
             if self.use_megatron and not self.padding_free and key == 'attention_mask':
                 continue
-            if padding_to is not None and not (self.padding_free and key in {'position_ids', 'real_position_ids'}
+            if padding_to is not None and not (self.padding_free and key in {'position_ids', 'text_position_ids'}
                                                and self.sequence_parallel_size > 1):
                 padding_len = padding_to - seq_lens[0]
                 if padding_len > 0:
                     res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
                                         'constant', pad_value)
-            if key == 'real_position_ids':
+            if key == 'text_position_ids':
                 res[key] = torch.concat(res[key], dim=-1)
             else:
                 res[key] = self._pad_sequence(res[key], pad_value)
@@ -1949,3 +1949,54 @@ class Template(ProcessorMixin):
             yield
         finally:
             modeling_module._flash_attention_forward = _origin_flash_attention_forward
+
+    @staticmethod
+    def _get_inputs_embeds_hf(inputs_embeds, inputs, visual, processor, config):
+        input_ids = inputs['input_ids']
+        pixel_values = inputs.get('pixel_values')
+        pixel_values_videos = inputs.get('pixel_values_videos')
+        image_grid_thw = inputs.get('image_grid_thw')
+        video_grid_thw = inputs.get('video_grid_thw')
+        dtype = visual.dtype
+        if pixel_values is None and pixel_values_videos is None:  # plain-text
+            if is_deepspeed_enabled():
+                images = [Image.new('RGB', (32, 32), (0, 0, 0))]
+                media_inputs = processor.image_processor(images=images, return_tensors='pt')
+                media_inputs = to_device(media_inputs, input_ids.device)
+                pixel_values = media_inputs['pixel_values'].type(dtype)
+                image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+                inputs_embeds = inputs_embeds + image_embeds.mean() * 0.
+        else:
+            if pixel_values is None:
+                pixel_values_mixed = pixel_values_videos
+                grid_thw = video_grid_thw
+            elif pixel_values_videos is None:
+                pixel_values_mixed = pixel_values
+                grid_thw = image_grid_thw
+            else:
+                pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
+                grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
+            pixel_values_mixed = pixel_values_mixed.type(dtype)
+            mixed_embeds = visual(pixel_values_mixed, grid_thw=grid_thw)
+            if pixel_values is None:
+                image_embeds = None
+                video_embeds = mixed_embeds
+            elif pixel_values_videos is None:
+                image_embeds = mixed_embeds
+                video_embeds = None
+            else:
+                merge_length = processor.image_processor.merge_size**2
+                image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
+                image_embeds = mixed_embeds[:image_tokens]
+                video_embeds = mixed_embeds[image_tokens:]
+
+            if image_embeds is not None:
+                image_mask = (input_ids == config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
+
+            if video_embeds is not None:
+                video_mask = (input_ids == config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
+        return inputs_embeds
