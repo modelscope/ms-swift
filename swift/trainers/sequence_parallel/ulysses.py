@@ -330,11 +330,9 @@ class SequenceParallel:
         base_model.register_forward_hook(moe_aux_loss_hook, with_kwargs=True)
 
     def prepare(self, sp_size: int, model: torch.nn.Module, tokenizer: PreTrainedTokenizer, padding_free: bool):
-        if self.device_mesh is not None:
-            return
-        self.sp_world_size = sp_size
         self.num_heads = model.config.num_key_value_heads
         self.padding_free = padding_free
+        self.world_size = sp_size
 
         llm_model = get_llm_model(model)
 
@@ -362,7 +360,7 @@ class SequenceParallel:
         self.model_dtype = next(model.parameters()).dtype
         self.tokenizer = tokenizer
         if self.rp_world_size > 1 and not self.padding_free:
-            raise NotImplementedError('The sp_world_size needs ulysses/ring-attention, which needs --padding_free true')
+            raise NotImplementedError(f'The world_size {self.world_size} needs ulysses/ring-attention, which needs --padding_free true')
 
     def _pad_qkv(self, query, key, value, mask):
         mask = mask.unsqueeze(2).unsqueeze(3)
@@ -596,20 +594,19 @@ class SequenceParallel:
     def _init_device_mesh(self):
         """Initialize device mesh for sequence parallel"""
         rank, local_rank, world_size, local_world_size = get_dist_setting()
-        self.dp_world_size = world_size // self.sp_world_size
-        rp_world_size = self.sp_world_size // self.num_heads
+        self.dp_world_size = world_size // self.world_size
+        rp_world_size = self.world_size // self.num_heads
         if rp_world_size <= 1:
             # Create device mesh: (dp_world_size, sp_world_size)
+            self.rp_world_size = rp_world_size
+            self.sp_world_size = self.world_size
             self.device_mesh = init_device_mesh(
                 get_device().split(':')[0],
                 mesh_shape=(self.dp_world_size, self.sp_world_size),
                 mesh_dim_names=('data', 'sequence'))
-            self.rp_world_size = rp_world_size
-            self.world_size = self.sp_world_size
         else:
             self.sp_world_size = self.num_heads
             self.rp_world_size = rp_world_size
-            self.world_size = self.rp_world_size * self.sp_world_size
             # Create device mesh: (dp_world_size, rp_world_size, sp_world_size)
             self.device_mesh = init_device_mesh(
                 get_device().split(':')[0],
