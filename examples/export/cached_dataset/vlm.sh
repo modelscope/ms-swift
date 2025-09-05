@@ -8,8 +8,8 @@ swift export \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
               'speech_asr/speech_asr_aishell1_trainsets:validation#5000' \
     --max_length 4096 \
-    --dataset_num_proc 16 \
     --split_dataset_ratio 0.01 \
+    --dataset_num_proc 16 \
     --to_cached_dataset true \
     --lazy_tokenize false \
     --output_dir ./qwen2_5_omni_cached_dataset
@@ -51,14 +51,20 @@ swift sft \
     --use_liger_kernel true \
     --attn_impl flash_attn
 
+# Use the validation set
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
+ENABLE_AUDIO_OUTPUT=0 \
 swift infer \
     --model output/Qwen2.5-Omni-7B/vx-xxx/checkpoint-xxx \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
+              'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
+              'speech_asr/speech_asr_aishell1_trainsets:validation#5000' \
+    --max_length 4096 \
+    --split_dataset_ratio 0.01 \
     --attn_impl flash_attn \
     --stream true \
-    --load_data_args true \
     --temperature 0 \
     --max_new_tokens 512
