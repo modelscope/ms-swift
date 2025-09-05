@@ -314,7 +314,7 @@ register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM
 
 class GLM4_5VTemplate(Template):
     placeholder_tokens = ['<|image|>']
-    support_padding_free = True
+    support_padding_free = True  # https://github.com/huggingface/transformers/issues/39685
     use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -361,15 +361,12 @@ class GLM4_5VTemplate(Template):
         return packed
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
-        # fix https://github.com/huggingface/transformers/pull/33487
-        kwargs = {}
         base_model = self.get_base_model(self.model)
         position_ids, _ = base_model.model.get_rope_index(
             inputs['input_ids'],
             inputs.get('image_grid_thw'),
             inputs.get('video_grid_thw'),
-            attention_mask=inputs.get('attention_mask'),
-            **kwargs)
+            attention_mask=inputs.get('attention_mask'))
         return position_ids.contiguous()
 
     def forward_context(self, model, inputs):
