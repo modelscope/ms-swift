@@ -197,10 +197,7 @@ class SwiftRLHF(SwiftSft):
         chord_sft_datasets.append(chord_sft_dataset)
         chord_sft_dataset = DatasetLoader._concat_datasets(chord_sft_datasets)
         datasets = [chord_sft_dataset, None]
-        org_mode = self.template.mode
-        self.template.set_mode('train')
         datasets = self._post_process_datasets(datasets)
-        self.template.set_mode(org_mode)
         return datasets
 
     def _get_trainer_kwargs(self):
