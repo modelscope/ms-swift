@@ -329,11 +329,12 @@ class SequenceParallel:
 
         base_model.register_forward_hook(moe_aux_loss_hook, with_kwargs=True)
 
-    def prepare(self, sp_size: int, model: torch.nn.Module, tokenizer: PreTrainedTokenizer):
+    def prepare(self, sp_size: int, model: torch.nn.Module, tokenizer: PreTrainedTokenizer, padding_free: bool):
         if self.device_mesh is not None:
             return
         self.sp_world_size = sp_size
         self.num_heads = model.config.num_key_value_heads
+        self.padding_free = padding_free
 
         llm_model = get_llm_model(model)
 
@@ -360,6 +361,8 @@ class SequenceParallel:
 
         self.model_dtype = next(model.parameters()).dtype
         self.tokenizer = tokenizer
+        if self.rp_world_size > 1 and not self.padding_free:
+            raise NotImplementedError('The sp_world_size needs ulysses/ring-attention, which needs --padding_free true')
 
     def _pad_qkv(self, query, key, value, mask):
         mask = mask.unsqueeze(2).unsqueeze(3)
@@ -543,7 +546,7 @@ class SequenceParallel:
         """
         tokenizer = self.tokenizer
         extra_position_ids = extra_position_ids if extra_position_ids is not None else position_ids
-        if extra_position_ids is not None:
+        if extra_position_ids is not None and extra_position_ids.shape[0] == 1:
             self.extra_kwargs['_position_ids'] = extra_position_ids.clone()
         if input_ids is not None:
             input_ids = self._pad(input_ids, padding_value=tokenizer.pad_token_id, position_ids=extra_position_ids)
@@ -645,9 +648,11 @@ class SequenceParallel:
 
     def pad_and_split_extra_inputs(self, inputs):
         """Common input preparation function"""
-        position_ids = inputs.get('_position_ids')
-        if position_ids is None:
-            position_ids = inputs.get('position_ids')
+        position_ids = None
+        if self.padding_free:
+            position_ids = inputs.get('_position_ids')
+            if position_ids is None:
+                position_ids = inputs.get('position_ids')
         if 'labels' in inputs:
             labels = inputs['labels']
             _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, None, None, None, extra_position_ids=position_ids)
