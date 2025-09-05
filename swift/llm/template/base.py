@@ -1708,7 +1708,7 @@ class Template(ProcessorMixin):
                 if padding_len > 0:
                     res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
                                         'constant', pad_value)
-            if key == 'text_position_ids':
+            if key == 'position_ids' and res[key][0].ndim == 3:
                 res[key] = torch.concat(res[key], dim=-1)
             else:
                 res[key] = self._pad_sequence(res[key], pad_value)
