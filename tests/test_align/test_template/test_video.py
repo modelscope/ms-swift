@@ -21,7 +21,7 @@ def _infer_model(pt_engine, system=None, messages=None, videos=None, max_tokens=
     else:
         messages = messages.copy()
     if videos is None:
-        videos = ['/mnt/nas2/hujinghan.hjh/datasets/baby.mp4']
+        videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     resp = pt_engine.infer([{'messages': messages, 'videos': videos}], request_config=request_config)
     response = resp[0].choices[0].message.content
     messages += [{'role': 'assistant', 'content': response}]
