@@ -1686,16 +1686,13 @@ class Template(ProcessorMixin):
             if self.padding_free:
                 cp_size = self.sequence_parallel_size
                 if cp_size > 1:
-                    for key in ['position_ids', 'real_position_ids']:
-                        if key not in res:
-                            continue
-                        padding_len = padding_to - seq_lens[0]
-                        position_ids = res[key][0]
-                        extended_position_ids = torch.arange(cp_size * 2).repeat(padding_len // (cp_size * 2))
-                        if position_ids.ndim == 3:  # compat mrope
-                            extended_position_ids = extended_position_ids[None,
-                                                                          None, :].expand(position_ids.shape[0], 1, -1)
-                        res[key] = [torch.concat([position_ids, extended_position_ids], dim=-1)]
+                    padding_len = padding_to - seq_lens[0]
+                    position_ids = res['position_ids'][0]
+                    extended_position_ids = torch.arange(cp_size * 2).repeat(padding_len // (cp_size * 2))
+                    if position_ids.ndim == 3:  # compat mrope
+                        extended_position_ids = extended_position_ids[None,
+                                                                        None, :].expand(position_ids.shape[0], 1, -1)
+                    res['position_ids'] = [torch.concat([position_ids, extended_position_ids], dim=-1)]
             else:
                 seq_len = max(seq_lens) if padding_to is None else padding_to
                 res['attention_mask'] = torch.tril(torch.ones(
