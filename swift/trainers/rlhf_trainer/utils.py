@@ -16,6 +16,7 @@ from peft.tuners.lora import LoraLayer
 from PIL import Image
 from torch import nn
 from torch.utils.data import DataLoader
+from transformers import Trainer
 
 from swift.utils import is_swanlab_available, is_wandb_available
 
@@ -473,7 +474,7 @@ def make_chord_sft_dataset(trainer, chord_sft_dataset):
             dataset=chord_sft_dataset,
             description='Training',
             batch_size=trainer.args.chord_sft_per_device_train_batch_size,
-            sampler_fn=trainer._get_train_sampler,
+            sampler_fn=Trainer._get_train_sampler,
             is_training=True,
         )
         return create_cyclic_iterator(chord_sft_dataloader)

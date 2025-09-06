@@ -198,7 +198,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         super().__init__(model, ref_model, *_args, **kwargs)
         self.chord_sft_iterator = None
         if chord_sft_dataset is not None:
-            make_chord_sft_dataset(self, chord_sft_dataset)
+            self.chord_sft_iterator = make_chord_sft_dataset(self, chord_sft_dataset)
         if self.args.eval_strategy != 'no':
             total_eval_batch_size = self.args.per_device_eval_batch_size * \
                 self.accelerator.num_processes // self.args.num_generations
@@ -1482,8 +1482,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'high_clip_max': nanmax(gathered_high_clip).item(),
             'region_clip_mean': gathered_clip_ratio.nanmean().item()
         }
-        if self.chord_sft_iterator is not None:
-            loss = compute_chord_loss(self, grpo_loss=loss)
+        # if self.chord_sft_iterator is not None:
+        #     loss = compute_chord_loss(self, grpo_loss=loss)
 
         return loss, metrics_data
 
