@@ -45,7 +45,7 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
     elif llm_architectures == 'Glm4MoeForCausalLM':
         res['moe_router_score_function'] = 'sigmoid'
 
-    if architectures in {'Qwen2VLForConditionalGeneration', 'Qwen2_5_VLForConditionalGeneration', 'Qwen2_5OmniModel'}:
+    if (res.get('rope_scaling') or {}).get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = res['rope_scaling']['mrope_section']
 
