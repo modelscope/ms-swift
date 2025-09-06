@@ -48,7 +48,7 @@ where:
 - When $p_t \approx 0$ or $p_t \approx 1$, φ → 0 → avoid overemphasizing tokens that are already certain or impossible.
 
 Parameter to enable φ weighting:
-- `chord_enable_phi_function: bool = False`  
+- `chord_enable_phi_function: bool = False`
   - Set to `True` to enable token-wise weight φ.
 
 Note: If using a constant μ, set `chord_mu_peak` and `chord_mu_valley` to the same value.

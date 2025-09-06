@@ -25,7 +25,7 @@ CHORD 需要在训练时指定额外的 SFT 数据集和批量大小：
 
 论文提出了两种算法变体：**CHORD-µ** 和 **CHORD-ϕ**。
 
-### CHORD-µ 
+### CHORD-µ
 通过在训练过程中逐步 **衰减 μ**，实现从模仿专家到自主探索的过渡。
 
 **参数：**
@@ -48,7 +48,7 @@ $$
 - 当 $p_t ≈ 0$ 或 $p_t ≈ 1$，φ → 0 → 避免对过于确定或完全不会的 token 过度学习。
 
 **开启 φ 加权的参数**：
-- `chord_enable_phi_function: bool = False`  
+- `chord_enable_phi_function: bool = False`
   - 设置为 `True` 即启用 token-wise 权重 φ。
 
 注：如果使用常数 μ 值 ，设置 chord_mu_peak 与 chord_mu_valley 相同
