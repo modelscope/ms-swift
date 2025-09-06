@@ -8,7 +8,7 @@ import torch.distributed as dist
 from torch.distributed import init_device_mesh
 from transformers import PreTrainedTokenizer
 
-from swift.llm import get_llm_model
+from swift.llm import HfConfigFactory, get_llm_model
 from ...utils import get_device, get_dist_setting
 from .utils import GatherLoss
 
@@ -356,7 +356,10 @@ class SequenceParallel:
         base_model.register_forward_hook(moe_aux_loss_hook, with_kwargs=True)
 
     def prepare(self, sp_size: int, model: torch.nn.Module, tokenizer: PreTrainedTokenizer, padding_free: bool):
-        self.num_heads = model.config.num_key_value_heads
+        self.num_heads = HfConfigFactory.get_config_attr(model.config, 'num_key_value_heads')
+        if self.num_heads is None:
+            self.num_heads = HfConfigFactory.get_config_attr(model.config, 'num_attention_heads')
+        assert self.num_heads is not None, 'Cannot find num_heads config in config.json'
         self.padding_free = padding_free
         self.world_size = sp_size
 
