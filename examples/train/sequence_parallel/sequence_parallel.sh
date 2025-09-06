@@ -1,6 +1,6 @@
 # Env: 8 * A100
 # Max Length: 65536
-# GPU Memory: 8 * 40GiB, Training Speed 26s/it]
+# GPU Memory: 8 * 40GiB, Training Speed 26s/it
 NPROC_PER_NODE=8 \
 CELOSS_PARALLEL_SIZE=2048 \
 swift sft \

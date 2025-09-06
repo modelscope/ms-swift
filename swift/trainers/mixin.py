@@ -779,7 +779,6 @@ class SwiftMixin:
             assert labels.shape[1] == preds.shape[1]
 
             if sequence_parallel.rp_world_size > 1:
-                from swift.trainers.sequence_parallel import sequence_parallel
                 position_ids = sequence_parallel.real_position_ids
                 position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
             else:
