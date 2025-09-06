@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional
 
 import torch
 from torch import nn
@@ -12,7 +12,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
-from ..vision_utils import load_video_minicpmv_mplug_owl3
+from ..vision_utils import load_video_minicpmv_4_5, load_video_minicpmv_mplug_owl3
 from .llama import Llama3TemplateMeta
 from .qwen import Qwen2_5TemplateMeta, Qwen3Template, QwenTemplateMeta
 from .utils import ChatmlTemplateMeta
@@ -240,6 +240,41 @@ register_template(ChatmlTemplateMeta(
 
 class MiniCPMV4_5Template(MiniCPMV2_6Template, Qwen3Template):
 
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        assert media_type in {'image', 'video'}
+        max_num_frames = get_env_args('max_num_frames', int, 64)
+        max_num_packing = get_env_args('max_num_packing', int, 3)
+        choose_fps = get_env_args('choose_fps', int, 5)
+        time_scale = get_env_args('time_scale', float, 0.1)
+        load_video = partial(
+            load_video_minicpmv_4_5,
+            max_num_frames=max_num_frames,
+            max_num_packing=max_num_packing,
+            choose_fps=choose_fps,
+            time_scale=time_scale)
+        image_context = super().replace_tag('image', index, inputs)
+        if media_type == 'image':
+            return image_context
+        elif media_type == 'video':
+            return self.replace_video2image(load_video, inputs, lambda i: image_context)
+
+    def replace_video2image(self, load_video_func, inputs, replace_tag: Callable) -> List[Context]:
+        context_list = []
+        if self.mode in {'vllm', 'lmdeploy'}:
+            video = inputs.videos.pop(inputs.video_idx)
+            inputs.video_idx -= 1
+        else:
+            video = inputs.videos[inputs.video_idx]
+        images = inputs.images
+        new_images, temporal_ids = load_video_func(video)  # change here
+        inputs.images = images[:inputs.image_idx] + new_images + images[inputs.image_idx:]
+        for i in range(len(new_images)):
+            context_list += replace_tag(i)
+        inputs.image_idx += len(new_images)
+        inputs.extra_kwargs['temporal_ids'] = temporal_ids  # change here
+        return context_list
+
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)
         images = inputs.images
@@ -256,8 +291,11 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template, Qwen3Template):
         idx_list = findall(input_ids, -100)
 
         image_processor = self.processor.image_processor
-        image_inputs = image_processor([images], return_tensors='pt',
-                                       max_slice_nums=max_slice_nums).to(self.model_info.torch_dtype)
+        processor_kwargs = {}
+        if 'temporal_ids' in inputs.extra_kwargs:
+            processor_kwargs['temporal_ids'] = inputs.extra_kwargs['temporal_ids']
+        image_inputs = image_processor([images], return_tensors='pt', max_slice_nums=max_slice_nums,
+                                       **processor_kwargs).to(self.model_info.torch_dtype)
 
         def _get_new_tokens(i):
             placeholder = image_processor.get_slice_image_placeholder(
