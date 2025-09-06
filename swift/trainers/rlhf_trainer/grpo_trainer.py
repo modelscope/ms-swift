@@ -432,24 +432,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         mode = 'train' if self.model.training else 'eval'
         if mode == 'train':
-            if self.template.sequence_parallel_size > 1:
-                # changes : `* sp_instance.world_size`
-                from swift.trainers.sequence_parallel import sequence_parallel
-                generate_every = self.args.steps_per_generation * self.num_iterations * sequence_parallel.world_size
-                if self._step % generate_every == 0 or self._buffered_inputs is None:
-                    generation_batch = self._generate_and_score_completions(generation_batch)
-                    self._buffered_inputs = generation_batch  # < this is the change
-                # changes : `* sp_instance.world_size`
-                inputs = self._buffered_inputs[self._step %
-                                               (self.args.steps_per_generation * sequence_parallel.world_size)]
-                self._step += 1
-            else:
-                generate_every = self.args.steps_per_generation * self.num_iterations
-                if self._step % generate_every == 0 or self._buffered_inputs is None:
-                    generation_batch = self._generate_and_score_completions(generation_batch)
-                    self._buffered_inputs = generation_batch  # < this is the change
-                inputs = self._buffered_inputs[self._step % self.args.steps_per_generation]
-                self._step += 1
+            num_rollout_samples = self.args.steps_per_generation * self.template.sequence_parallel_size
+            generate_every = num_rollout_samples * self.num_iterations
+            if self._step % generate_every == 0 or self._buffered_inputs is None:
+                generation_batch = self._generate_and_score_completions(generation_batch)
+                self._buffered_inputs = generation_batch  # < this is the change
+            inputs = self._buffered_inputs[self._step % num_rollout_samples]
+            self._step += 1
         else:
             inputs = self._generate_and_score_completions(generation_batch)
         return inputs
@@ -1989,9 +1978,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         When rollout count is larger than expected, we process in smaller batches
         to control memory usage.
         """
-        if self.template.sequence_parallel_size > 1:
-            return self._get_per_token_logps_and_entropies_sp(model, inputs, compute_entropy=compute_entropy)
-
         batch_size = inputs['input_ids'].shape[0]
         mode = 'train' if self.model.training else 'eval'
         expected_bs = self.args.per_device_train_batch_size if mode == 'train' else self.args.per_device_eval_batch_size  # noqa
@@ -2005,6 +1991,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                                   model,
                                                   inputs,
                                                   compute_entropy=False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        if self.template.sequence_parallel_size > 1:
+            return self._get_per_token_logps_and_entropies_sp(model, inputs, compute_entropy=compute_entropy)
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
         unwrapped_model = self.accelerator.unwrap_model(model)
