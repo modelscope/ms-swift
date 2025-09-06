@@ -2003,3 +2003,9 @@ class Template(ProcessorMixin):
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
         return inputs_embeds
+
+    @staticmethod
+    def _concat_text_position_ids(position_ids):
+        seq_len = position_ids.shape[-1]
+        text_position_ids = torch.arange(seq_len, device=position_ids.device).expand(1, *position_ids.shape[1:])
+        return torch.concat([text_position_ids, position_ids], dim=0)

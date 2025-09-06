@@ -317,17 +317,15 @@ class GLM4_5VTemplate(GLM4_5Template):
             inputs.get('image_grid_thw'),
             inputs.get('video_grid_thw'),
             attention_mask=inputs.get('attention_mask'))
-        text_position_ids = torch.arange(
-            inputs['input_ids'].shape[-1], device=position_ids.device).expand(1, *position_ids.shape[1:])
-        return torch.concat([text_position_ids, position_ids], dim=0)
+        return self._concat_text_position_ids(position_ids)
 
     def forward_context(self, model, inputs):
         position_ids = inputs['position_ids']
         inputs['position_ids'] = position_ids[1:]
-        inputs['text_position_ids'] = position_ids[0]
+        inputs['text_position_ids'] = text_position_ids = position_ids[0]
         # https://github.com/huggingface/transformers/pull/40194
         if text_position_ids.shape[0] == 1:
-            inputs.update(get_packed_seq_params(inputs['text_position_ids']))
+            inputs.update(get_packed_seq_params(text_position_ids))
         return super().forward_context(model, inputs)
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
