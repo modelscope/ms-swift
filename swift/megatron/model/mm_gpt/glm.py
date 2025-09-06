@@ -35,7 +35,7 @@ def convert_mcore2hf_glm4_5v(hf_model, mg_model):
     hf_model.model.visual.load_state_dict(mg_model.visual.visual.state_dict())
 
 
-class Glm4_5v_Vit(HuggingFaceModule):
+class Glm4_5vVit(HuggingFaceModule):
     module_mapping = {'model.visual': 'visual'}
     vision_tower = ['visual']
     aligner = ['visual.merger']
@@ -55,4 +55,4 @@ register_megatron_model(
         ],
         convert_hf2mcore=convert_hf2mcore_glm4_5v,
         convert_mcore2hf=convert_mcore2hf_glm4_5v,
-        visual_cls=Glm4_5v_Vit))
+        visual_cls=Glm4_5vVit))
