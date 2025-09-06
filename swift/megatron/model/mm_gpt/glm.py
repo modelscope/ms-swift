@@ -1,7 +1,6 @@
-import torch
 from megatron.training import get_args
 
-from swift.llm import ModelType, to_device
+from swift.llm import ModelType, Template
 from ..constant import MegatronModelType
 from ..gpt.hf2mcore import set_layer_state as set_layer_state_hf2mcore
 from ..gpt.mcore2hf import set_layer_state as set_layer_state_mcore2hf
