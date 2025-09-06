@@ -1807,7 +1807,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             kwargs.pop('attention_mask', None)
             from swift.trainers.sequence_parallel import sequence_parallel
             # no labels, but set new position_ids
-            sequence_parallel.pad_and_split_extra_inputs(kwargs)
+            sequence_parallel.prepare_inputs(kwargs)
             return args, kwargs
 
         def _padding_free_output_hook(module, args, kwargs, result):
@@ -1911,8 +1911,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # set origin length to all logits length
             origin_length = inputs['attention_mask'].sum()
         # split input_ids to labels
-        position_ids = sequence_parallel.extra_kwargs.get('_position_ids')
-        _, _, labels, _, _, _ = sequence_parallel.pad_and_split_inputs(None, None, input_ids.clone(), None, None, None, extra_position_ids=position_ids)
+        position_ids = sequence_parallel.real_position_ids
+        _, _, labels, _, _, _ = sequence_parallel.pad_and_split_inputs(None, None, input_ids.clone(), None, None, None, real_position_ids=position_ids)
 
         shape1 = logits.shape[1]
         labels = torch.where(labels == -100, self.processing_class.pad_token_id, labels)
@@ -1949,8 +1949,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         _padding_labels = torch.zeros((labels.shape[0], left_padding_len), device=labels.device, dtype=labels.dtype)
         labels_padded = torch.cat((_padding_labels, labels_kept), dim=1)
-        if position_ids is not None:
-            position_ids = sequence_parallel._pad(position_ids, padding_value=-1, position_ids=position_ids)
         per_token_logps, _ = GatherLoss.apply(per_token_logps_padded, labels_padded, 1, position_ids)
         if compute_entropy:
             entropies = entropy_from_logits(logits_kept)

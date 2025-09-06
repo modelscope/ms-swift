@@ -297,7 +297,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         inputs = super()._prepare_inputs(inputs)
         if self.template.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
-            sequence_parallel.pad_and_split_extra_inputs(inputs)
+            sequence_parallel.prepare_inputs(inputs)
 
 
         use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)

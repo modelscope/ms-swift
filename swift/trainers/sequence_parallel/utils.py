@@ -47,9 +47,11 @@ class GatherLoss(torch.autograd.Function):
         ctx.gather_idx = gather_idx or 0
         ctx.position_ids = position_ids
         from swift.trainers.sequence_parallel import sequence_parallel
-        output = sequence_parallel._gather(loss, dim=ctx.gather_idx, position_ids=position_ids)
+        if position_ids is not None:
+            position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
+        output = sequence_parallel.gather(loss, dim=ctx.gather_idx, position_ids=position_ids)
         if labels is not None:
-            labels_output = sequence_parallel._gather(labels, dim=ctx.gather_idx, position_ids=position_ids)
+            labels_output = sequence_parallel.gather(labels, dim=ctx.gather_idx, position_ids=position_ids)
         else:
             labels_output = None
         return output, labels_output
@@ -59,7 +61,7 @@ class GatherLoss(torch.autograd.Function):
         from swift.trainers.sequence_parallel import sequence_parallel
         _grad = grad_output[0] * sequence_parallel.world_size
         if sequence_parallel.rp_world_size > 1:
-            _grad = sequence_parallel._split(_grad, dim=ctx.gather_idx, position_ids=ctx.position_ids).contiguous()
+            _grad = sequence_parallel.split(_grad, dim=ctx.gather_idx, position_ids=ctx.position_ids).contiguous()
         else:
             _grad = _grad.split(ctx.scatter_shape, dim=ctx.gather_idx)[dist.get_rank(sequence_parallel.sp_group)].contiguous()
         return _grad, None, None, None
@@ -137,9 +139,9 @@ def loss_scale_sp_func(outputs,
         loss_scale = loss_scale.flatten().to(device)
         loss = (loss_scale * loss)
     from swift.trainers.sequence_parallel import sequence_parallel
-    position_ids = sequence_parallel.extra_kwargs.get('_position_ids')
+    position_ids = sequence_parallel.real_position_ids
     if position_ids is not None:
-        position_ids = sequence_parallel._pad(position_ids, padding_value=-1, position_ids=position_ids)
+        position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
     loss, labels = GatherLoss.apply(loss.reshape(batch_size, -1), labels.reshape(batch_size, -1), 1, position_ids)
     if position_ids is not None and position_ids.min() == -1:
         _pos_mask = position_ids >= 0
