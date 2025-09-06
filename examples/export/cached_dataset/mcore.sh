@@ -1,3 +1,4 @@
+# Note: cached_dataset does not support CP temporarily.
 swift export \
     --model Qwen/Qwen3-30B-A3B-Base \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \

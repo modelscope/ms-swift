@@ -119,7 +119,8 @@ class ExportArguments(MergeArguments, BaseArguments):
         if self.quant_method in {'gptq', 'awq'} and len(self.dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, Please input the quant dataset.')
         if self.to_cached_dataset:
+            self.lazy_tokenize = False
             if self.packing:
                 raise ValueError('Packing will be handled during training; here we only perform tokenization '
                                  'in advance, so you do not need to set up packing separately.')
-            assert not self.streaming and not self.lazy_tokenize, 'not supported'
+            assert not self.streaming, 'not supported'
