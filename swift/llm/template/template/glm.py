@@ -262,7 +262,7 @@ register_template(GLM4_5TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5
 register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
 
 
-class GLM4_5VTemplate(Template):
+class GLM4_5VTemplate(GLM4_5Template):
     placeholder_tokens = ['<|image|>']
     support_padding_free = True  # https://github.com/huggingface/transformers/issues/39685
     use_model = True
