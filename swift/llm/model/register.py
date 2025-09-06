@@ -90,8 +90,7 @@ class ModelMeta:
             for model in model_group.models:
                 for key in ['ms_model_id', 'hf_model_id', 'model_path']:
                     value = getattr(model, key)
-
-                    if isinstance(value, str) and model_name == value.rsplit('/', 1)[-1].lower():
+                    if isinstance(value, str) and model_name == value.rsplit('/', 1)[-1]:
                         return model_group
 
     def check_requires(self, model_info=None):
@@ -435,7 +434,7 @@ def get_all_models() -> List[str]:
 
 
 def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
-    model_name = get_model_name(model_id_or_path).lower()
+    model_name = get_model_name(model_id_or_path)
     for model_type, model_meta in MODEL_MAPPING.items():
         model_group = ModelMeta.get_matched_model_group(model_meta, model_name)
         if model_group is not None:
