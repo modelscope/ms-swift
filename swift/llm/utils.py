@@ -319,6 +319,7 @@ def update_generation_config_eos_token(generation_config, template):
 
 
 def get_packed_seq_params(position_ids: torch.Tensor):
+    assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
     position_ids_f = position_ids.flatten()
     indices_q = torch.arange(position_ids_f.shape[0], device=position_ids_f.device, dtype=torch.int32)
 
