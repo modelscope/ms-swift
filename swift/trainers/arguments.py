@@ -137,6 +137,15 @@ class TrainArgumentsMixin:
 class RLHFArgumentsMixin:
     # gkd
     sft_alpha: float = 0
+    # chord
+    chord_sft_dataset: Optional[str] = None
+    chord_sft_per_device_train_batch_size: Optional[int] = None
+
+    chord_enable_phi_function: bool = False
+    chord_mu_warmup_steps: Optional[int] = None
+    chord_mu_decay_steps: Optional[int] = None
+    chord_mu_peak: Optional[float] = None
+    chord_mu_valley: Optional[float] = None
 
 
 @dataclass
