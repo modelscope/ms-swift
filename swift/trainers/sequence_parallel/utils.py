@@ -63,7 +63,8 @@ class GatherLoss(torch.autograd.Function):
         if sequence_parallel.rp_world_size > 1:
             _grad = sequence_parallel.split(_grad, dim=ctx.gather_idx, position_ids=ctx.position_ids).contiguous()
         else:
-            _grad = _grad.split(ctx.scatter_shape, dim=ctx.gather_idx)[dist.get_rank(sequence_parallel.sp_group)].contiguous()
+            _grad = _grad.split(
+                ctx.scatter_shape, dim=ctx.gather_idx)[dist.get_rank(sequence_parallel.sp_group)].contiguous()
         return _grad, None, None, None
 
 
@@ -177,6 +178,7 @@ class SequenceParallelDispatcher(DataLoaderDispatcher):
 
 
 class RingComm:
+
     def __init__(self, process_group: dist.ProcessGroup):
         self._process_group = process_group
         self._ops = []
@@ -191,17 +193,13 @@ class RingComm:
             self.send_rank = dist.get_global_rank(self._process_group, self.send_rank)
             self.recv_rank = dist.get_global_rank(self._process_group, self.recv_rank)
 
-    def send_recv(
-        self, to_send: torch.Tensor, recv_tensor: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    def send_recv(self, to_send: torch.Tensor, recv_tensor: Optional[torch.Tensor] = None) -> torch.Tensor:
         if recv_tensor is None:
             res = torch.empty_like(to_send)
         else:
             res = recv_tensor
 
-        send_op = dist.P2POp(
-            dist.isend, to_send, self.send_rank, group=self._process_group
-        )
+        send_op = dist.P2POp(dist.isend, to_send, self.send_rank, group=self._process_group)
         recv_op = dist.P2POp(dist.irecv, res, self.recv_rank, group=self._process_group)
         self._ops.append(send_op)
         self._ops.append(recv_op)
@@ -209,12 +207,12 @@ class RingComm:
 
     def commit(self):
         if self._reqs is not None:
-            raise RuntimeError("commit called twice")
+            raise RuntimeError('commit called twice')
         self._reqs = dist.batch_isend_irecv(self._ops)
 
     def wait(self):
         if self._reqs is None:
-            raise RuntimeError("wait called before commit")
+            raise RuntimeError('wait called before commit')
         for req in self._reqs:
             req.wait()
         self._reqs = None

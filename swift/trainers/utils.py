@@ -8,40 +8,11 @@ from typing import List, Union
 import torch
 import torch.nn.functional as F
 from peft import PeftModel
-import torch
-from torch.nn import Module, CrossEntropyLoss
-import torch.nn.functional as F
+from torch.nn import CrossEntropyLoss, Module
+
 from swift.utils import get_logger
 
 logger = get_logger()
-
-
-def per_token_loss_func(outputs, labels, enable_dft_loss: bool = False, **kwargs):
-    """Calculate the per token CE
-
-    Args:
-        outputs: The model outputs containing `logits`
-        labels: The labels
-        enable_dft_loss: Enable dft loss
-    Returns:
-        A tensor after cross_entropy
-    """
-
-    logits = outputs.logits
-    # Upcast to float if we need to compute the loss to avoid potential precision issues
-    logits = logits.float()
-    labels = torch.roll(labels, shifts=-1, dims=-1).view(-1)
-
-    # Flatten the tokens
-    logits = logits.view(-1, logits.shape[-1])
-    # Enable model parallelism
-    labels = labels.to(logits.device)
-    loss = F.cross_entropy(logits, labels, ignore_index=-100, reduction='none')
-    if enable_dft_loss:
-        with torch.no_grad():
-            target_probs = torch.exp(-loss)
-        loss *= target_probs
-    return loss
 
 
 def can_return_loss(model: Module) -> bool:
@@ -85,10 +56,7 @@ def is_instance_of_ms_model(model: Module) -> bool:
     return False
 
 
-def per_token_loss_func_sp(outputs,
-                           labels,
-                           enable_dft_loss=False,
-                           **kwargs) -> torch.Tensor:
+def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> torch.Tensor:
     """Common loss function for sequence parallel training"""
     if hasattr(outputs, 'logits'):
         logits = outputs.logits

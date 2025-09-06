@@ -3,6 +3,7 @@ import warnings
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from accelerate.utils import gather_object
 from peft import PeftModel
@@ -10,7 +11,7 @@ from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.dpo_config import DPOConfig
 from trl.trainer.utils import RunningMoments, selective_log_softmax
-import torch.distributed as dist
+
 from swift.llm import to_device
 from swift.utils import get_logger
 from ..mixin import DataLoaderMixin, SwiftMixin

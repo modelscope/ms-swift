@@ -77,7 +77,8 @@ class SwiftRLHF(SwiftSft):
         if origin_key in {'ref', 'reward', 'teacher'}:
             if self.args.sequence_parallel_size > 1:
                 from swift.trainers.sequence_parallel import sequence_parallel
-                sequence_parallel.prepare(self.args.sequence_parallel_size, model, processor, padding_free=args.padding_free)
+                sequence_parallel.prepare(
+                    self.args.sequence_parallel_size, model, processor, padding_free=args.padding_free)
             model.requires_grad_(False).eval()
         else:
             model = self.prepare_model(args, model, task_type=task_type)

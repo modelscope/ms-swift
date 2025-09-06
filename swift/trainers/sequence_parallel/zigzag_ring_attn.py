@@ -1,15 +1,12 @@
 import inspect
 from functools import cache
+
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
-from flash_attn.flash_attn_interface import (
-    _flash_attn_varlen_forward,
-    _flash_attn_varlen_backward,
-)
-from .utils import (
-    RingComm,
-)
+from flash_attn.flash_attn_interface import _flash_attn_varlen_backward, _flash_attn_varlen_forward
+
+from .utils import RingComm
 
 
 def get_half_index(cu_seqlens, *, front: bool):
@@ -29,7 +26,7 @@ def get_half_index(cu_seqlens, *, front: bool):
         else:
             return slice(cu_seqlens[-1] // 2, None)
 
-    index = torch.zeros((cu_seqlens[-1].item(),), dtype=torch.bool)
+    index = torch.zeros((cu_seqlens[-1].item(), ), dtype=torch.bool)
     for i in range(len(cu_seqlens) - 1):
         start, end = cu_seqlens[i], cu_seqlens[i + 1]
         if front:
@@ -82,7 +79,8 @@ def update_out_and_lse(out, lse, block_out, block_lse):
         block_lse: The current block lse of shape [num_heads, seqlen]
 
     Returns:
-        The updated output[seqlen, num_heads, hidden_size] and lse (shape: [seqlen, num_heads, 1]) and the intermediate value of torch.sigmoid(block_lse - lse) (shape: [seqlen, num_heads, 1])
+        The updated output[seqlen, num_heads, hidden_size] and lse (shape: [seqlen, num_heads, 1]) and
+            the intermediate value of torch.sigmoid(block_lse - lse) (shape: [seqlen, num_heads, 1])
     """
     if out is None:
         out = block_out.to(torch.float32)
@@ -104,10 +102,10 @@ def update_out_and_lse(out, lse, block_out, block_lse):
 def _get_default_args(func):
     spec = inspect.getfullargspec(func)
     defaults = spec.defaults if spec.defaults is not None else ()
-    padded_defaults = (None,) * (len(spec.args) - len(defaults)) + defaults
+    padded_defaults = (None, ) * (len(spec.args) - len(defaults)) + defaults
     args = dict(zip(spec.args, padded_defaults))
-    if "softcap" in args:
-        args["softcap"] = 0.0
+    if 'softcap' in args:
+        args['softcap'] = 0.0
     return args
 
 
@@ -152,7 +150,7 @@ def padding(tensor, cu_seqlens, padding_value, front):
         half_len = (end - start) // 2
         acc += half_len
         half_start = start // 2
-        local_tensor = tensor[half_start: half_start+half_len]
+        local_tensor = tensor[half_start:half_start + half_len]
         if front:
             output.append(local_tensor)
             output.append(torch.full_like(local_tensor, padding_value).to(local_tensor.dtype).to(local_tensor.device))
@@ -175,32 +173,28 @@ def forward(q, k, v, causal, cu_seqlens, max_seqlen, block_seq_len, dropout_p, s
     max_seqlen_kv = half_max_seqlen if seqlen_kv == block_seq_len else max_seqlen
 
     params = get_default_args(_flash_attn_varlen_forward).copy()
-    params.update(
-        {
-            "q": q,
-            "k": k,
-            "v": v,
-            # the first half and the second half are the same
-            "cu_seqlens_q": cu_seqlens_q,
-            "cu_seqlens_k": cu_seqlens_kv,
-            "max_seqlen_q": max_seqlen_q,
-            "max_seqlen_k": max_seqlen_kv,
-            "dropout_p": dropout_p,
-            "softmax_scale": softmax_scale,
-            "causal": causal,
-            "alibi_slopes": alibi_slopes,
-            "return_softmax": True and dropout_p > 0,
-        }
-    )
-    if "window_size" in params:
-        params.update({"window_size": window_size})
+    params.update({
+        'q': q,
+        'k': k,
+        'v': v,
+        # the first half and the second half are the same
+        'cu_seqlens_q': cu_seqlens_q,
+        'cu_seqlens_k': cu_seqlens_kv,
+        'max_seqlen_q': max_seqlen_q,
+        'max_seqlen_k': max_seqlen_kv,
+        'dropout_p': dropout_p,
+        'softmax_scale': softmax_scale,
+        'causal': causal,
+        'alibi_slopes': alibi_slopes,
+        'return_softmax': True and dropout_p > 0,
+    })
+    if 'window_size' in params:
+        params.update({'window_size': window_size})
     else:
-        params.update(
-            {
-                "window_size_left": window_size[0],
-                "window_size_right": window_size[1],
-            }
-        )
+        params.update({
+            'window_size_left': window_size[0],
+            'window_size_right': window_size[1],
+        })
     assert k.shape[-0] == cu_seqlens_kv[-1]
     assert q.shape[-0] == cu_seqlens_q[-1]
     assert max_seqlen_q == (cu_seqlens_q[1:] - cu_seqlens_q[:-1]).max().item()
@@ -226,29 +220,27 @@ def backward(dout, q, k, v, out, softmax_lse, causal, cu_seqlens, max_seqlen, bl
     cu_seqlens_kv = half_cu_seqlens if seqlen_kv == block_seq_len else cu_seqlens
     max_seqlen_kv = half_max_seqlen if seqlen_kv == block_seq_len else max_seqlen
     params = get_default_args(_flash_attn_varlen_backward).copy()
-    params.update(
-        {
-            "dout": dout,
-            "q": q,
-            "k": k,
-            "v": v,
-            "out": out,
-            "softmax_lse": softmax_lse,
-            "dq": dq_buffer[:seqlen_q],
-            "dk": dk_buffer[:seqlen_kv],
-            "dv": dv_buffer[:seqlen_kv],
-            # the first half and the second half are the same
-            "cu_seqlens_q": cu_seqlens_q,
-            "cu_seqlens_k": cu_seqlens_kv,
-            "max_seqlen_q": max_seqlen_q,
-            "max_seqlen_k": max_seqlen_kv,
-            "dropout_p": dropout_p,
-            "softmax_scale": softmax_scale,
-            "causal": causal,
-            "alibi_slopes": alibi_slopes,
-            "deterministic": deterministic,
-        }
-    )
+    params.update({
+        'dout': dout,
+        'q': q,
+        'k': k,
+        'v': v,
+        'out': out,
+        'softmax_lse': softmax_lse,
+        'dq': dq_buffer[:seqlen_q],
+        'dk': dk_buffer[:seqlen_kv],
+        'dv': dv_buffer[:seqlen_kv],
+        # the first half and the second half are the same
+        'cu_seqlens_q': cu_seqlens_q,
+        'cu_seqlens_k': cu_seqlens_kv,
+        'max_seqlen_q': max_seqlen_q,
+        'max_seqlen_k': max_seqlen_kv,
+        'dropout_p': dropout_p,
+        'softmax_scale': softmax_scale,
+        'causal': causal,
+        'alibi_slopes': alibi_slopes,
+        'deterministic': deterministic,
+    })
     assert dout.shape[0] == q.shape[0]
     assert dout.shape[0] == out.shape[0]
     assert softmax_lse.shape[1] == q.shape[0]
@@ -256,15 +248,13 @@ def backward(dout, q, k, v, out, softmax_lse, causal, cu_seqlens, max_seqlen, bl
     assert q.shape[0] == cu_seqlens_q[-1]
     assert max_seqlen_q == (cu_seqlens_q[1:] - cu_seqlens_q[:-1]).max().item()
     assert max_seqlen_kv == (cu_seqlens_kv[1:] - cu_seqlens_kv[:-1]).max().item()
-    if "window_size" in params:
-        params.update({"window_size": window_size})
+    if 'window_size' in params:
+        params.update({'window_size': window_size})
     else:
-        params.update(
-            {
-                "window_size_left": window_size[0],
-                "window_size_right": window_size[1],
-            }
-        )
+        params.update({
+            'window_size_left': window_size[0],
+            'window_size_right': window_size[1],
+        })
     _flash_attn_varlen_backward(**params)
 
 
@@ -311,7 +301,7 @@ def zigzag_ring_flash_attn_varlen_forward(
         alibi_slopes=None,
         deterministic=False,
 ):
-    assert causal == True, "zigzag ring is meaningless for causal=False"
+    assert causal, 'zigzag ring is meaningless for causal=False'
     comm = RingComm(process_group)
     q, k, v = squeeze_batch(q, k, v)
     q1 = q[half_index1]
@@ -328,7 +318,6 @@ def zigzag_ring_flash_attn_varlen_forward(
         # from step 0 to the last
         if step + 1 != comm.world_size:
             next_k, next_v = comm.send_recv_kv(k, v)
-
         """
         world_size = 4, total 8 parts
         0/7 is group0
@@ -367,9 +356,8 @@ def zigzag_ring_flash_attn_varlen_forward(
         else:
             block_out, block_lse = forward(q1, k, v, False, cu_seqlens, max_seqlen, block_seq_len, dropout_p,
                                            softmax_scale, alibi_slopes, window_size)
-            out[half_index1], lse[half_index1], sig_diff = update_out_and_lse(
-                out[half_index1], lse[half_index1], block_out, block_lse
-            )
+            out[half_index1], lse[half_index1], sig_diff = update_out_and_lse(out[half_index1], lse[half_index1],
+                                                                              block_out, block_lse)
 
         if step + 1 != comm.world_size:
             comm.wait()
@@ -399,7 +387,7 @@ def zigzag_ring_flash_attn_varlen_backward(
         alibi_slopes=None,
         deterministic=False,
 ):
-    assert causal == True, "zigzag ring is meaningless for causal=False"
+    assert causal, 'zigzag ring is meaningless for causal=False'
     kv_comm = RingComm(process_group)
     d_kv_comm = RingComm(process_group)
     dk_comm_buffer = dv_comm_buffer = None
@@ -444,9 +432,8 @@ def zigzag_ring_flash_attn_varlen_backward(
         else:
             block_out, block_lse = forward(q1, k, v, False, cu_seqlens, max_seqlen, block_seq_len, dropout_p,
                                            softmax_scale, alibi_slopes, window_size)
-            fout[half_index1], flse[half_index1], sig_diff = update_out_and_lse(
-                fout[half_index1], flse[half_index1], block_out, block_lse
-            )
+            fout[half_index1], flse[half_index1], sig_diff = update_out_and_lse(fout[half_index1], flse[half_index1],
+                                                                                block_out, block_lse)
 
         block_lse = block_lse.transpose(0, 1).unsqueeze(-1)
         if step > kv_comm.rank:
@@ -471,19 +458,13 @@ def zigzag_ring_flash_attn_varlen_backward(
             # the first step does not need
             continue
         stored_out, stored_lse, stored_block_out, stored_block_lse, stored_sig = out_lse[i]
-        grad_out_input, grad_lse_input, grad_block_out, grad_block_lse = lse_grad(stored_out,
-                                                                                  stored_lse,
-                                                                                  stored_block_out,
-                                                                                  stored_block_lse,
-                                                                                  stored_sig,
-                                                                                  current_dout,
+        grad_out_input, grad_lse_input, grad_block_out, grad_block_lse = lse_grad(stored_out, stored_lse,
+                                                                                  stored_block_out, stored_block_lse,
+                                                                                  stored_sig, current_dout,
                                                                                   current_dlse)
         current_dout = grad_out_input
         current_dlse = grad_lse_input
-        block_gradients[i] = {
-            'grad_block_out': grad_block_out,
-            'grad_block_lse': grad_block_lse
-        }
+        block_gradients[i] = {'grad_block_out': grad_block_out, 'grad_block_lse': grad_block_lse}
 
     q, k, v = origin_q, origin_k, origin_v
 
@@ -507,10 +488,9 @@ def zigzag_ring_flash_attn_varlen_backward(
             raise
 
         if step == 0:
-            backward(block_dout.to(dout.dtype), q, k, v, block_out, block_lse, True, cu_seqlens, max_seqlen,
-                     block_seq_len,
-                     dq_buffer, dk_buffer, dv_buffer, dropout_p, softmax_scale, alibi_slopes, deterministic,
-                     window_size)
+            backward(
+                block_dout.to(dout.dtype), q, k, v, block_out, block_lse, True, cu_seqlens, max_seqlen, block_seq_len,
+                dq_buffer, dk_buffer, dv_buffer, dropout_p, softmax_scale, alibi_slopes, deterministic, window_size)
             dq = dq_buffer.to(torch.float32)
             dk = dk_buffer.to(torch.float32)
             dv = dv_buffer.to(torch.float32)
@@ -520,17 +500,16 @@ def zigzag_ring_flash_attn_varlen_backward(
             if step <= kv_comm.rank:
                 k0 = k[half_index0]
                 v0 = v[half_index0]
-                backward(block_dout.to(dout.dtype), q, k0, v0, block_out, block_lse, False, cu_seqlens, max_seqlen,
-                         block_seq_len,
-                         dq_buffer, dk_buffer, dv_buffer, dropout_p, softmax_scale, alibi_slopes, deterministic,
-                         window_size)
+                backward(
+                    block_dout.to(dout.dtype), q, k0, v0, block_out, block_lse, False, cu_seqlens, max_seqlen,
+                    block_seq_len, dq_buffer, dk_buffer, dv_buffer, dropout_p, softmax_scale, alibi_slopes,
+                    deterministic, window_size)
                 dq += dq_buffer
             else:
                 backward(block_dout[half_index1].to(dout.dtype), q1, k, v, block_out[half_index1],
-                         get_half_lse(block_lse, cu_seqlens, front=False), False, cu_seqlens,
-                         max_seqlen, block_seq_len,
-                         dq_buffer, dk_buffer, dv_buffer, dropout_p, softmax_scale, alibi_slopes, deterministic,
-                         window_size)
+                         get_half_lse(block_lse, cu_seqlens,
+                                      front=False), False, cu_seqlens, max_seqlen, block_seq_len, dq_buffer, dk_buffer,
+                         dv_buffer, dropout_p, softmax_scale, alibi_slopes, deterministic, window_size)
                 # only need to add to the tail half, because the head half does not match the causal condition
                 dq[half_index1] += dq_buffer[:block_seq_len]
 
@@ -557,9 +536,7 @@ def zigzag_ring_flash_attn_varlen_backward(
             kv_comm.wait()
             k, v = next_k, next_v
 
-        next_dk, next_dv = d_kv_comm.send_recv_kv(
-            dk, dv, dk_comm_buffer, dv_comm_buffer
-        )
+        next_dk, next_dv = d_kv_comm.send_recv_kv(dk, dv, dk_comm_buffer, dv_comm_buffer)
 
     d_kv_comm.wait()
 
@@ -567,25 +544,26 @@ def zigzag_ring_flash_attn_varlen_backward(
 
 
 class ZigZagRingFlashAttnVarlenFunc(torch.autograd.Function):
+
     @staticmethod
     def forward(
-            ctx,
-            q,
-            k,
-            v,
-            cu_seqlens,
-            max_seqlen,
-            dropout_p,
-            softmax_scale,
-            causal,
-            window_size,
-            alibi_slopes,
-            deterministic,
-            return_softmax,
-            group,
+        ctx,
+        q,
+        k,
+        v,
+        cu_seqlens,
+        max_seqlen,
+        dropout_p,
+        softmax_scale,
+        causal,
+        window_size,
+        alibi_slopes,
+        deterministic,
+        return_softmax,
+        group,
     ):
         if softmax_scale is None:
-            softmax_scale = q.shape[-1] ** (-0.5)
+            softmax_scale = q.shape[-1]**(-0.5)
 
         assert alibi_slopes is None
         k = k.contiguous()
@@ -619,9 +597,7 @@ class ZigZagRingFlashAttnVarlenFunc(torch.autograd.Function):
             out: [1, seqlen, num_heads, hidden_size]
             softmax_lse: [1, num_heads, seqlen]
             """
-            ctx.save_for_backward(
-                q, k, v, out, softmax_lse, cu_seqlens, half_index0, half_index1
-            )
+            ctx.save_for_backward(q, k, v, out, softmax_lse, cu_seqlens, half_index0, half_index1)
         else:
             ctx.save_for_backward(q, k, v, out, softmax_lse, cu_seqlens)
             ctx.half_index0 = half_index0
@@ -639,9 +615,7 @@ class ZigZagRingFlashAttnVarlenFunc(torch.autograd.Function):
     @staticmethod
     def backward(ctx, dout, *args):
         if ctx.is_half_index_tensor:
-            (q, k, v, out, softmax_lse, cu_seqlens, half_index0, half_index1) = (
-                ctx.saved_tensors
-            )
+            (q, k, v, out, softmax_lse, cu_seqlens, half_index0, half_index1) = (ctx.saved_tensors)
         else:
             q, k, v, out, softmax_lse, cu_seqlens = ctx.saved_tensors
             half_index0 = ctx.half_index0
@@ -669,19 +643,19 @@ class ZigZagRingFlashAttnVarlenFunc(torch.autograd.Function):
 
 
 def zigzag_ring_flash_attn_varlen_func(
-        q,
-        k,
-        v,
-        cu_seqlens,
-        max_seqlen,
-        dropout_p=0.0,
-        softmax_scale=None,
-        causal=False,
-        window_size=(-1, -1),  # -1 means infinite context window
-        alibi_slopes=None,
-        deterministic=False,
-        return_attn_probs=False,
-        group=None,
+    q,
+    k,
+    v,
+    cu_seqlens,
+    max_seqlen,
+    dropout_p=0.0,
+    softmax_scale=None,
+    causal=False,
+    window_size=(-1, -1),  # -1 means infinite context window
+    alibi_slopes=None,
+    deterministic=False,
+    return_attn_probs=False,
+    group=None,
 ):
     return ZigZagRingFlashAttnVarlenFunc.apply(
         q,

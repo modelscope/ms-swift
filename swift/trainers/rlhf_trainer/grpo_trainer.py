@@ -20,13 +20,13 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import json
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import transformers
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
 from dacite import from_dict
 from packaging import version
 from torch.nn import ModuleList
-import torch.distributed as dist
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
 from transformers.trainer import Trainer
@@ -34,7 +34,7 @@ from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import prepare_deepspeed
 from trl.trainer import grpo_trainer
 from trl.trainer.callbacks import SyncRefModelCallback
-from trl.trainer.grpo_trainer import nanmax, nanmin, nanstd, RepeatSampler
+from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
 from trl.trainer.utils import selective_log_softmax
 
 from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInferRequest, RowPreprocessor, Template,
@@ -45,9 +45,9 @@ from swift.llm.template.base import MaxLengthError
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import multi_turns, orms, rm_plugins
 from swift.plugin.multi_turn import MultiTurnScheduler
-from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_logger, is_swanlab_available,
-                         is_vllm_available, is_wandb_available, remove_response, seed_worker,
-                         unwrap_model_for_generation, get_dist_setting)
+from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_dist_setting, get_logger,
+                         is_swanlab_available, is_vllm_available, is_wandb_available, remove_response, seed_worker,
+                         unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (_ForwardRedirection, load_pil_img, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
@@ -440,8 +440,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     generation_batch = self._generate_and_score_completions(generation_batch)
                     self._buffered_inputs = generation_batch  # < this is the change
                 # changes : `* sp_instance.world_size`
-                inputs = self._buffered_inputs[
-                    self._step % (self.args.steps_per_generation * sequence_parallel.world_size)]
+                inputs = self._buffered_inputs[self._step %
+                                               (self.args.steps_per_generation * sequence_parallel.world_size)]
                 self._step += 1
             else:
                 generate_every = self.args.steps_per_generation * self.num_iterations
@@ -1840,7 +1840,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             for length in seq_lengths:
                 seq_state = logits[start:start + length]
-                padding = torch.zeros((max_length - length,), dtype=logits.dtype, device=logits.device)
+                padding = torch.zeros((max_length - length, ), dtype=logits.dtype, device=logits.device)
                 if ctx['padding_left']:
                     seq_state = torch.cat((padding, seq_state), dim=0)
                 else:
@@ -1912,7 +1912,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             origin_length = inputs['attention_mask'].sum()
         # split input_ids to labels
         position_ids = sequence_parallel.real_position_ids
-        _, _, labels, _, _, _ = sequence_parallel.pad_and_split_inputs(None, None, input_ids.clone(), None, None, None, real_position_ids=position_ids)
+        _, _, labels, _, _, _ = sequence_parallel.pad_and_split_inputs(
+            None, None, input_ids.clone(), None, None, None, real_position_ids=position_ids)
 
         shape1 = logits.shape[1]
         labels = torch.where(labels == -100, self.processing_class.pad_token_id, labels)
@@ -1923,7 +1924,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # skip logits_to_keep
         logits_to_keep_sharded = max(
-            min(logits_to_keep_padded - (sequence_parallel.world_size - sequence_parallel.sp_rank - 1) * shape1, shape1), 0)
+            min(logits_to_keep_padded - (sequence_parallel.world_size - sequence_parallel.sp_rank - 1) * shape1,
+                shape1), 0)
         if logits_to_keep_sharded != 0:
             logits_kept = logits[:, -logits_to_keep_sharded:, :]
             logits_kept = logits_kept / self.temperature
@@ -1954,16 +1956,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             entropies = entropy_from_logits(logits_kept)
             entropies_padded = torch.cat((_padding_logps, entropies), dim=1)
             entropies, _ = GatherLoss.apply(entropies_padded, labels_padded, 1, position_ids)
-
-        #if position_ids is not None and position_ids.min() == -1:
-        #    _pos_mask = position_ids >= 0
-        #    per_token_logps = per_token_logps[_pos_mask].contiguous()
-        #    if per_token_logps.dim() == 1:
-        #        per_token_logps = per_token_logps.unsqueeze(0)
-        #    if entropies is not None:
-        #        entropies = entropies[_pos_mask].contiguous()
-        #        if entropies.dim() == 1:
-        #            entropies = entropies.unsqueeze(0)
 
         if padding_size > 0:
             per_token_logps = per_token_logps[:, :-padding_size]
@@ -2249,7 +2241,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def old_policy(self):
         if self.template.sequence_parallel_size == 1:
-            return self.num_iterations > 1 or self.args.gradient_accumulation_steps % self.args.steps_per_generation != 0
+            return (self.num_iterations > 1
+                    or self.args.gradient_accumulation_steps % self.args.steps_per_generation != 0)
         else:
             from swift.trainers.sequence_parallel import sequence_parallel
             return (self.num_iterations > 1 or self.args.gradient_accumulation_steps %

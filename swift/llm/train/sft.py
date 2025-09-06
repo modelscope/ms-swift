@@ -47,7 +47,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self.model, self.processor = args.get_model_processor(load_model=load_model)
         if args.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
-            sequence_parallel.prepare(args.sequence_parallel_size, model=self.model, tokenizer=self.processor, padding_free=args.padding_free)
+            sequence_parallel.prepare(
+                args.sequence_parallel_size, model=self.model, tokenizer=self.processor, padding_free=args.padding_free)
         if self.model is None:
             return
         if hasattr(self.model, 'hf_device_map'):

@@ -42,7 +42,7 @@ from swift.llm import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, 
 from swift.llm.utils import update_generation_config_eos_token
 from swift.plugin import MeanMetric, compute_acc, extra_tuners, get_loss_func, get_metric
 from swift.tuners import SwiftModel
-from swift.utils import get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker, get_current_device
+from swift.utils import get_current_device, get_logger, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
@@ -925,8 +925,8 @@ class DataLoaderMixin:
             if dist.is_initialized() and dataloader_params['prefetch_factor']:
                 dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
             dataloader = DataLoader(dataset, batch_size=batch_size, **dataloader_params)
-            dataloader = SequenceParallelDispatcher(dataloader, sequence_parallel, self.accelerator.device,
-                                          skip_batches=skip_batches)
+            dataloader = SequenceParallelDispatcher(
+                dataloader, sequence_parallel, self.accelerator.device, skip_batches=skip_batches)
             return dataloader
 
     def get_train_dataloader(self, skip_batches=0):
