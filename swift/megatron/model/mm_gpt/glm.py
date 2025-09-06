@@ -45,25 +45,7 @@ class Glm4_5v_Vit(HuggingFaceModule):
         super().__init__(config, Glm4vMoeTextModel)
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
-        input_ids = kwargs['input_ids']
-        pixel_values = kwargs.get('pixel_values')
-        image_grid_thw = kwargs.get('image_grid_thw')
-        pixel_values_videos = kwargs.get('pixel_values_videos')
-        video_grid_thw = kwargs.get('video_grid_thw')
-        model = self._hf_model[0].model
-        if pixel_values is not None:
-            image_embeds = model.get_image_features(pixel_values, image_grid_thw)
-            image_embeds = torch.cat(image_embeds, dim=0).to(inputs_embeds.device, inputs_embeds.dtype)
-            image_mask, _ = model.get_placeholder_mask(input_ids, inputs_embeds, image_features=image_embeds)
-            inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
-
-        if pixel_values_videos is not None:
-            video_embeds = model.get_video_features(pixel_values_videos, video_grid_thw)
-            video_embeds = torch.cat(video_embeds, dim=0).to(inputs_embeds.device, inputs_embeds.dtype)
-            _, video_mask = model.get_placeholder_mask(input_ids, inputs_embeds, video_features=video_embeds)
-            inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
-
-        return inputs_embeds
+        return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
 
 
 register_megatron_model(
