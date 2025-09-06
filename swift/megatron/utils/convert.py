@@ -146,7 +146,9 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     ignore_modules = (model_arch.vision_tower + model_arch.aligner) if is_multimodal else []
 
     hf_modules = _find_modules(hf_model, ignore_modules=ignore_modules)
-    with torch.inference_mode(), _model_cpu_forward_context(hf_modules, torch_dtype, share_embedding=share_embedding):
+    with torch.inference_mode(), _model_cpu_forward_context(
+            hf_modules, torch_dtype, share_embedding=share_embedding), template.forward_context(hf_model, inputs):
+        inputs.pop('text_position_ids', None)
         hf_logits = hf_model(**inputs).logits
     hf_model.to('cpu')
 
@@ -210,7 +212,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    kwargs = megatron_model_meta.convert_hf_config(hf_model.config)
+    kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()
@@ -246,7 +248,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    kwargs = megatron_model_meta.convert_hf_config(hf_model.config)
+    kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()

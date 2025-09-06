@@ -89,9 +89,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         labels = batch.pop('labels', None)
         if self.is_encoder_decoder:
             batch['labels'] = labels
-        position_ids = batch.pop('_position_ids', None)
-        if position_ids is None:
-            position_ids = batch.get('position_ids')
+        text_position_ids = batch.pop('text_position_ids', None)
+        if text_position_ids is None:
+            text_position_ids = batch.get('position_ids')
         outputs = model(**batch, use_cache=False)
         all_logits = outputs.logits
 
@@ -114,7 +114,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         output = {}
         if self.template.padding_free:
-            cu_seqlens = self.get_cu_seqlens(position_ids, batch.get('logits_to_keep'))
+            cu_seqlens = self.get_cu_seqlens(text_position_ids, batch.get('logits_to_keep'))
             num_examples = (cu_seqlens.shape[0] - 1) // 2
             all_logps = per_token_logps.new_zeros((num_examples * 2, ))
             completion_lengths = (cu_seqlens[1:] - cu_seqlens[:-1])
@@ -152,10 +152,10 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                 public_lengths = torch.cat([public_lengths, public_lengths], dim=0)
 
                 seq_len = per_token_logps.size(1)
-                position_ids = torch.arange(seq_len, device=per_token_logps.device).expand_as(per_token_logps)
+                text_position_ids = torch.arange(seq_len, device=per_token_logps.device).expand_as(per_token_logps)
 
-                ld_mask = position_ids < public_lengths.unsqueeze(1)
-                mask = position_ids < completion_lengths.unsqueeze(1)
+                ld_mask = text_position_ids < public_lengths.unsqueeze(1)
+                mask = text_position_ids < completion_lengths.unsqueeze(1)
 
                 front_mask = (ld_mask & mask).float()
                 rear_mask = (~ld_mask & mask).float()
@@ -192,11 +192,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         return per_token_logps, logits.mean(-1), loss_mask
 
     def training_step(self, model, inputs, *args, **kwargs):
-        inputs['_position_ids'] = inputs.get('position_ids')
         with self.template.forward_context(self.model, inputs):
             return super().training_step(model, inputs, *args, **kwargs)
 
     def prediction_step(self, model, inputs, *args, **kwargs):
-        inputs['_position_ids'] = inputs.get('position_ids')
         with self.template.forward_context(self.model, inputs):
             return super().prediction_step(model, inputs, *args, **kwargs)

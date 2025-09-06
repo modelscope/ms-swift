@@ -42,10 +42,10 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
         n_shared_experts = res.pop('n_shared_experts')
     elif llm_architectures in {'Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM'}:
         res['rotary_interleaved'] = True
-    elif llm_architectures == 'Glm4MoeForCausalLM':
+    elif llm_architectures == 'Glm4MoeForCausalLM' or architectures == 'Glm4vMoeForConditionalGeneration':
         res['moe_router_score_function'] = 'sigmoid'
 
-    if architectures in {'Qwen2VLForConditionalGeneration', 'Qwen2_5_VLForConditionalGeneration', 'Qwen2_5OmniModel'}:
+    if (res.get('rope_scaling') or {}).get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = res['rope_scaling']['mrope_section']
 

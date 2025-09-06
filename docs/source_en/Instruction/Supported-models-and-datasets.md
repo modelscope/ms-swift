@@ -589,6 +589,7 @@ The table below introduces the models integrated with ms-swift:
 |[moonshotai/Moonlight-16B-A3B-Instruct](https://modelscope.cn/models/moonshotai/Moonlight-16B-A3B-Instruct)|moonlight|moonlight|transformers<4.49|&#x2714;|-|[moonshotai/Moonlight-16B-A3B-Instruct](https://huggingface.co/moonshotai/Moonlight-16B-A3B-Instruct)|
 |[moonshotai/Kimi-K2-Base](https://modelscope.cn/models/moonshotai/Kimi-K2-Base)|moonlight|moonlight|transformers<4.49|&#x2714;|-|[moonshotai/Kimi-K2-Base](https://huggingface.co/moonshotai/Kimi-K2-Base)|
 |[moonshotai/Kimi-K2-Instruct](https://modelscope.cn/models/moonshotai/Kimi-K2-Instruct)|moonlight|moonlight|transformers<4.49|&#x2714;|-|[moonshotai/Kimi-K2-Instruct](https://huggingface.co/moonshotai/Kimi-K2-Instruct)|
+|[moonshotai/Kimi-K2-Instruct-0905](https://modelscope.cn/models/moonshotai/Kimi-K2-Instruct-0905)|moonlight|moonlight|transformers<4.49|&#x2714;|-|[moonshotai/Kimi-K2-Instruct-0905](https://huggingface.co/moonshotai/Kimi-K2-Instruct-0905)|
 |[XiaomiMiMo/MiMo-7B-Base](https://modelscope.cn/models/XiaomiMiMo/MiMo-7B-Base)|mimo|qwen|transformers>=4.37|&#x2714;|-|[XiaomiMiMo/MiMo-7B-Base](https://huggingface.co/XiaomiMiMo/MiMo-7B-Base)|
 |[XiaomiMiMo/MiMo-7B-SFT](https://modelscope.cn/models/XiaomiMiMo/MiMo-7B-SFT)|mimo|qwen|transformers>=4.37|&#x2714;|-|[XiaomiMiMo/MiMo-7B-SFT](https://huggingface.co/XiaomiMiMo/MiMo-7B-SFT)|
 |[XiaomiMiMo/MiMo-7B-RL-Zero](https://modelscope.cn/models/XiaomiMiMo/MiMo-7B-RL-Zero)|mimo|qwen|transformers>=4.37|&#x2714;|-|[XiaomiMiMo/MiMo-7B-RL-Zero](https://huggingface.co/XiaomiMiMo/MiMo-7B-RL-Zero)|
@@ -709,7 +710,7 @@ The table below introduces the models integrated with ms-swift:
 |[ZhipuAI/cogagent-9b-20241220](https://modelscope.cn/models/ZhipuAI/cogagent-9b-20241220)|glm4v|glm4v|transformers>=4.42|&#x2718;|-|[zai-org/cogagent-9b-20241220](https://huggingface.co/zai-org/cogagent-9b-20241220)|
 |[ZhipuAI/GLM-4.1V-9B-Base](https://modelscope.cn/models/ZhipuAI/GLM-4.1V-9B-Base)|glm4_1v|glm4_1v|transformers>=4.53|&#x2718;|-|[zai-org/GLM-4.1V-9B-Base](https://huggingface.co/zai-org/GLM-4.1V-9B-Base)|
 |[ZhipuAI/GLM-4.1V-9B-Thinking](https://modelscope.cn/models/ZhipuAI/GLM-4.1V-9B-Thinking)|glm4_1v|glm4_1v|transformers>=4.53|&#x2718;|-|[zai-org/GLM-4.1V-9B-Thinking](https://huggingface.co/zai-org/GLM-4.1V-9B-Thinking)|
-|[ZhipuAI/GLM-4.5V](https://modelscope.cn/models/ZhipuAI/GLM-4.5V)|glm4_5v|glm4_5v|transformers>=4.56.0.dev|&#x2718;|-|[zai-org/GLM-4.5V](https://huggingface.co/zai-org/GLM-4.5V)|
+|[ZhipuAI/GLM-4.5V](https://modelscope.cn/models/ZhipuAI/GLM-4.5V)|glm4_5v|glm4_5v|transformers>=4.56.0.dev|&#x2714;|-|[zai-org/GLM-4.5V](https://huggingface.co/zai-org/GLM-4.5V)|
 |[ZhipuAI/GLM-4.5V-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.5V-FP8)|glm4_5v|glm4_5v|transformers>=4.56.0.dev|&#x2718;|-|[zai-org/GLM-4.5V-FP8](https://huggingface.co/zai-org/GLM-4.5V-FP8)|
 |[ZhipuAI/glm-edge-v-2b](https://modelscope.cn/models/ZhipuAI/glm-edge-v-2b)|glm_edge_v|glm_edge_v|transformers>=4.46|&#x2718;|vision|[zai-org/glm-edge-v-2b](https://huggingface.co/zai-org/glm-edge-v-2b)|
 |[ZhipuAI/glm-edge-4b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-4b-chat)|glm_edge_v|glm_edge_v|transformers>=4.46|&#x2718;|vision|[zai-org/glm-edge-4b-chat](https://huggingface.co/zai-org/glm-edge-4b-chat)|

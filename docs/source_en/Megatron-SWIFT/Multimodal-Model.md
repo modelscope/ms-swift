@@ -1,6 +1,6 @@
 # Multimodal Models
 
-ms-swift introduces Megatron's parallelization techniques to accelerate the training of large multimodal models. Currently, it supports CPT/SFT/DPO for models such as Qwen2.5-VL, Qwen2.5-Omni. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md).
+ms-swift introduces Megatron's parallelization techniques to accelerate the training of large multimodal models. Currently, it supports CPT/SFT/DPO for models such as Qwen2.5-VL, Qwen2.5-Omni, InternVL3.5, GLM4.5v. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md).
 
 For environment setup, please refer to the Megatron-SWIFT [Quick Start guide](./Quick-start.md).
 
@@ -167,7 +167,6 @@ The model conversion steps for MoE models are the same as those for Dense models
 # 2 * 43GiB, 8s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
-MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --load InternVL3_5-30B-A3B-mcore \
@@ -212,7 +211,6 @@ megatron sft \
 
 After training is completed, we use the generated Hugging Face format weights to perform inference on the validation set:
 ```shell
-MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --model megatron_output/InternVL3_5-30B-A3B/vx-xxx-hf \

@@ -4,8 +4,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 import torch
 
-from swift.llm import to_device
-from swift.utils import is_deepspeed_enabled
+from swift.llm import get_packed_seq_params
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -234,57 +233,8 @@ class GLM4_1VTemplate(Template):
         if not self.is_training:
             return inputs
         input_ids = inputs['input_ids']
-        pixel_values = inputs.get('pixel_values')
-        pixel_values_videos = inputs.get('pixel_values_videos')
-        image_grid_thw = inputs.get('image_grid_thw')
-        video_grid_thw = inputs.get('video_grid_thw')
-
         inputs_embeds = model.get_input_embeddings()(input_ids)
-        dtype = model.visual.dtype
-        if pixel_values is None and pixel_values_videos is None:  # plain-text
-            if is_deepspeed_enabled():
-                from PIL import Image
-                images = [Image.new('RGB', (32, 32), (0, 0, 0))]
-                media_inputs = self.processor.image_processor(images=images, return_tensors='pt')
-                device = input_ids.device
-                media_inputs = to_device(media_inputs, device)
-                pixel_values = media_inputs['pixel_values'].type(dtype)
-                image_embeds = model.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
-                inputs_embeds += image_embeds.mean() * 0.
-        else:
-            if pixel_values is None:
-                pixel_values_mixed = pixel_values_videos
-                grid_thw = video_grid_thw
-            elif pixel_values_videos is None:
-                pixel_values_mixed = pixel_values
-                grid_thw = image_grid_thw
-            else:
-                pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
-                grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
-            pixel_values_mixed = pixel_values_mixed.type(dtype)
-            mixed_embeds = model.visual(pixel_values_mixed, grid_thw=grid_thw)
-            if pixel_values is None:
-                image_embeds = None
-                video_embeds = mixed_embeds
-            elif pixel_values_videos is None:
-                image_embeds = mixed_embeds
-                video_embeds = None
-            else:
-                merge_length = self.processor.image_processor.merge_size**2
-                image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
-                image_embeds = mixed_embeds[:image_tokens]
-                video_embeds = mixed_embeds[image_tokens:]
-
-            if image_embeds is not None:
-                image_mask = (input_ids == model.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
-                image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
-                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
-
-            if video_embeds is not None:
-                video_mask = (input_ids == model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
-                video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
-                inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
-
+        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.visual, self.processor, model.config)
         return {'inputs_embeds': inputs_embeds}
 
 
@@ -312,8 +262,10 @@ register_template(GLM4_5TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5
 register_template(GLM4_1VTemplateMeta(MLLMTemplateType.glm4_1v, template_cls=GLM4_1VTemplate))
 
 
-class GLM4_5VTemplate(Template):
+class GLM4_5VTemplate(GLM4_5Template):
     placeholder_tokens = ['<|image|>']
+    support_padding_free = True  # https://github.com/huggingface/transformers/issues/39685
+    use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -347,6 +299,49 @@ class GLM4_5VTemplate(Template):
                 encoded.update(mm_inputs)
         encoded['input_ids'] = input_ids
         return encoded
+
+    def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
+        position_ids = []
+        for r in row:
+            r = r.copy()
+            r['input_ids'] = torch.tensor(r['input_ids'])[None]
+            position_ids.append(self._get_position_ids(r))
+        packed = super().packing_row(row)
+        packed['position_ids'] = torch.concat(position_ids, dim=-1)
+        return packed
+
+    def _get_position_ids(self, inputs: Dict[str, Any]):
+        base_model = self.get_base_model(self.model)
+        position_ids, _ = base_model.model.get_rope_index(
+            inputs['input_ids'],
+            inputs.get('image_grid_thw'),
+            inputs.get('video_grid_thw'),
+            attention_mask=inputs.get('attention_mask'))
+        text_position_ids = torch.arange(inputs['input_ids'].shape[-1])
+        return torch.concat([text_position_ids[None, None], position_ids], dim=0)
+
+    def forward_context(self, model, inputs):
+        position_ids = inputs['position_ids']
+        inputs['position_ids'] = position_ids[1:]
+        inputs['text_position_ids'] = position_ids[0]
+        # https://github.com/huggingface/transformers/pull/40194
+        inputs.update(get_packed_seq_params(inputs['text_position_ids']))
+        return super().forward_context(model, inputs)
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.is_training:
+            return inputs
+        input_ids = inputs['input_ids']
+        base_model = self.get_base_model(model)
+        inputs_embeds = base_model.model.language_model.embed_tokens(input_ids)
+        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.visual, self.processor, model.config)
+        return {'inputs_embeds': inputs_embeds}
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
+        if not self.padding_free and self.is_training:
+            res['position_ids'] = self._get_position_ids(res)
+        return res
 
 
 register_template(GLM4_0414TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
