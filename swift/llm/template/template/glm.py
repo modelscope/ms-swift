@@ -3,10 +3,8 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 import torch
-from PIL import Image
 
-from swift.llm import get_packed_seq_params, to_device
-from swift.utils import is_deepspeed_enabled
+from swift.llm import get_packed_seq_params
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
