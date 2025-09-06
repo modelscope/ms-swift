@@ -325,7 +325,8 @@ class GLM4_5VTemplate(GLM4_5Template):
         inputs['position_ids'] = position_ids[1:]
         inputs['text_position_ids'] = position_ids[0]
         # https://github.com/huggingface/transformers/pull/40194
-        inputs.update(get_packed_seq_params(inputs['text_position_ids']))
+        if text_position_ids.shape[0] == 1:
+            inputs.update(get_packed_seq_params(inputs['text_position_ids']))
         return super().forward_context(model, inputs)
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:

@@ -313,7 +313,7 @@ class Qwen2VLTemplate(Template):
         inputs['position_ids'] = position_ids[1:]
         inputs['text_position_ids'] = text_position_ids = position_ids[0]
         transformers_version = version.parse(transformers.__version__)
-        if transformers_version >= version.parse('4.53'):
+        if transformers_version >= version.parse('4.53') and text_position_ids.shape[0] == 1:
             # https://github.com/huggingface/transformers/pull/40194
             inputs.update(get_packed_seq_params(text_position_ids))
             return super().forward_context(model, inputs)
