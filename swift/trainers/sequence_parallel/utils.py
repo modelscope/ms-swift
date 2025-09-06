@@ -1,7 +1,7 @@
+# Some code borrowed from the awesome work: https://github.com/zhuzilin/ring-flash-attention
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import math
-import os
-from typing import TYPE_CHECKING, Any, Iterator, Optional, Tuple
+from typing import Any, Iterator, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -9,21 +9,6 @@ from torch.nn import CrossEntropyLoss
 from torch.utils.data import Sampler
 
 from swift.llm import DataLoaderDispatcher
-
-if TYPE_CHECKING:
-    try:
-        from ..rlhf_trainer import GRPOTrainer
-        from ..rlhf_trainer.grpo_trainer import InputsType
-    except ImportError:
-        pass
-# Conditional import for profiling decorator
-try:
-    from trl.extras.profiling import profiling_decorator
-except ImportError:
-    # Fallback if trl is not available
-    def profiling_decorator(func):
-        return func
-
 
 try:
     from trl.trainer.utils import entropy_from_logits

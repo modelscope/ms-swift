@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import math
 from functools import partial
 from typing import Any, Optional, Tuple

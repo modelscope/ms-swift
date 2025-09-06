@@ -1,10 +1,11 @@
+# Some code borrowed from the awesome work: https://github.com/zhuzilin/ring-flash-attention
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
 from functools import cache
 
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
-from flash_attn.flash_attn_interface import _flash_attn_varlen_backward, _flash_attn_varlen_forward
 
 from .utils import RingComm
 
@@ -171,7 +172,7 @@ def forward(q, k, v, causal, cu_seqlens, max_seqlen, block_seq_len, dropout_p, s
     max_seqlen_q = half_max_seqlen if seqlen_q == block_seq_len else max_seqlen
     cu_seqlens_kv = half_cu_seqlens if seqlen_kv == block_seq_len else cu_seqlens
     max_seqlen_kv = half_max_seqlen if seqlen_kv == block_seq_len else max_seqlen
-
+    from flash_attn.flash_attn_interface import _flash_attn_varlen_forward
     params = get_default_args(_flash_attn_varlen_forward).copy()
     params.update({
         'q': q,
@@ -219,6 +220,7 @@ def backward(dout, q, k, v, out, softmax_lse, causal, cu_seqlens, max_seqlen, bl
     max_seqlen_q = half_max_seqlen if seqlen_q == block_seq_len else max_seqlen
     cu_seqlens_kv = half_cu_seqlens if seqlen_kv == block_seq_len else cu_seqlens
     max_seqlen_kv = half_max_seqlen if seqlen_kv == block_seq_len else max_seqlen
+    from flash_attn.flash_attn_interface import _flash_attn_varlen_backward
     params = get_default_args(_flash_attn_varlen_backward).copy()
     params.update({
         'dout': dout,
