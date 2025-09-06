@@ -44,10 +44,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_model_tokenizer(self, **kwargs):
         args = self.args
+        self.model, self.processor = args.get_model_processor(**kwargs)
         if args.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
-            sequence_parallel.init_sequence_parallel(args.sequence_parallel_size)
-        self.model, self.processor = args.get_model_processor(**kwargs)
+            sequence_parallel.prepare(
+                args.sequence_parallel_size, model=self.model, tokenizer=self.processor, padding_free=args.padding_free)
         if self.model is None:
             return
         if hasattr(self.model, 'hf_device_map'):
