@@ -309,13 +309,15 @@ class Qwen2VLTemplate(Template):
         return encoded
 
     def forward_context(self, model, inputs):
-        if not self.padding_free:
-            return super().forward_context(model, inputs)
-        text_position_ids = inputs['text_position_ids']
+        position_ids = inputs['position_ids']
+        inputs['position_ids'] = position_ids[1:]
+        inputs['text_position_ids'] = text_position_ids = position_ids[0]
         transformers_version = version.parse(transformers.__version__)
         if transformers_version >= version.parse('4.53'):
             # https://github.com/huggingface/transformers/pull/40194
             inputs.update(get_packed_seq_params(text_position_ids))
+            return super().forward_context(model, inputs)
+        if not self.padding_free:
             return super().forward_context(model, inputs)
         if self.version == 'v2':
             from transformers.models.qwen2_vl import modeling_qwen2_vl as modeling_module
@@ -370,7 +372,8 @@ class Qwen2VLTemplate(Template):
             inputs.get('video_grid_thw'),
             attention_mask=inputs.get('attention_mask'),
             **kwargs)
-        return position_ids.contiguous()
+        text_position_ids = torch.arange(inputs['input_ids'].shape[-1])
+        return torch.concat([text_position_ids[None, None], position_ids], dim=0)
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)

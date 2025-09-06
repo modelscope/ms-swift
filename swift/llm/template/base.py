@@ -1629,7 +1629,7 @@ class Template(ProcessorMixin):
         res = {}
         if self.padding_free:
             assert len(batch) == 1, f'batch: {batch}'
-            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel', 'text_position_ids']:
+            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel']:
                 v = batch[0].get(k)
                 if v is not None:
                     res[k] = v if k == 'channel' else [v]
@@ -1651,10 +1651,15 @@ class Template(ProcessorMixin):
                     res[key] = val
 
         keys = [
-            'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids',
-            'text_position_ids'
+            'input_ids',
+            'inputs_embeds',
+            'attention_mask',
+            'labels',
+            'loss_scale',
+            'position_ids',
+            'token_type_ids',
         ]
-        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0, 0.]
+        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
@@ -1704,7 +1709,7 @@ class Template(ProcessorMixin):
                 continue
             if self.use_megatron and not self.padding_free and key == 'attention_mask':
                 continue
-            if padding_to is not None and not (self.padding_free and key in {'position_ids', 'text_position_ids'}
+            if padding_to is not None and not (self.padding_free and key == 'position_ids'
                                                and self.sequence_parallel_size > 1):
                 padding_len = padding_to - seq_lens[0]
                 if padding_len > 0:

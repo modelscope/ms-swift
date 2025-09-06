@@ -322,8 +322,9 @@ class GLM4_5VTemplate(Template):
         return position_ids.contiguous()
 
     def forward_context(self, model, inputs):
-        if not self.padding_free:
-            return super().forward_context(model, inputs)
+        position_ids = inputs['position_ids']
+        inputs['position_ids'] = position_ids[1:]
+        inputs['text_position_ids'] = position_ids[0]
         # https://github.com/huggingface/transformers/pull/40194
         inputs.update(get_packed_seq_params(inputs['text_position_ids']))
         return super().forward_context(model, inputs)
