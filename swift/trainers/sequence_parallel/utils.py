@@ -45,10 +45,10 @@ class GatherLoss(torch.autograd.Function):
         # change from label.shape to loss, because label may be None
         ctx.scatter_shape = loss.shape[gather_idx or 0]
         ctx.gather_idx = gather_idx or 0
-        ctx.position_ids = position_ids
         from swift.trainers.sequence_parallel import sequence_parallel
         if position_ids is not None:
             position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
+        ctx.position_ids = position_ids
         output = sequence_parallel.gather(loss, dim=ctx.gather_idx, position_ids=position_ids)
         if labels is not None:
             labels_output = sequence_parallel.gather(labels, dim=ctx.gather_idx, position_ids=position_ids)

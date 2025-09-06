@@ -352,7 +352,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
         else:
             outputs.loss = None
-            if self.args.enable_dft_loss or loss_scale is not None or self.args.enable_channel_loss:
+            if self.args.enable_dft_loss or loss_scale is not None or self.args.enable_channel_loss or self.template.sequence_parallel_size > 1:
                 if self.template.sequence_parallel_size > 1:
                     outputs.loss = per_token_loss_func_sp(outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
                 else:

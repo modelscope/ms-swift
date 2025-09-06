@@ -282,23 +282,17 @@ def lse_grad(out, lse, block_out, block_lse, sig, grad_out, grad_lse):
     Returns:
         The accumulated grad of out and lse, and the grad of out and lse of the current block
     """
-    # wrt out
     grad_out_input = grad_out * (1 - sig)
 
-    # wrt block_out
     grad_block_out = grad_out * sig
 
-    # wrt lse (注意 sum over last dim)
-    d_new_out_d_lse = (out - block_out) * (sig * (1 - sig))  # (..., D)
+    d_new_out_d_lse = (out - block_out) * (sig * (1 - sig))
     grad_lse_input = (grad_out * d_new_out_d_lse).sum(dim=-1, keepdim=True)
-    grad_lse_input = grad_lse_input + grad_lse * torch.sigmoid(lse - block_lse)
+    grad_lse_input_final = grad_lse_input + grad_lse * torch.sigmoid(lse - block_lse)
 
-    # wrt block_lse (同样 sum over last dim)
-    d_new_out_d_block_lse = -(out - block_out) * (sig * (1 - sig))  # (..., D)
-    grad_block_lse = (grad_out * d_new_out_d_block_lse).sum(dim=-1, keepdim=True)
-    grad_block_lse = grad_block_lse + grad_lse * (1 - torch.sigmoid(lse - block_lse))
+    grad_block_lse = -grad_lse_input_final + grad_lse
 
-    return grad_out_input, grad_lse_input, grad_block_out, grad_block_lse
+    return grad_out_input, grad_lse_input_final, grad_block_out, grad_block_lse
 
 
 def zigzag_ring_flash_attn_varlen_forward(

@@ -230,7 +230,7 @@ class SequenceParallel:
                     key = key.transpose(1, 2)
                     value = value.transpose(1, 2)
                     if self.rp_world_size is not None and self.rp_world_size > 1:
-                        from .zigzag_ring_flash_attn_varlen import zigzag_ring_flash_attn_varlen_func
+                        from .zigzag_ring_attn import zigzag_ring_flash_attn_varlen_func
                         position_ids = kwargs['position_ids']
                         cu_seqlens = self.get_cu_seqlens_from_position_ids(position_ids).to(torch.int32)
                         max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
@@ -412,7 +412,7 @@ class SequenceParallel:
 
         return _do_pad(tensor)
 
-    def _gather(self, local_output, dim: int, position_ids=None):
+    def gather(self, local_output, dim: int, position_ids=None):
         """Gather tensor for sequence parallel - reverse of split"""
         if self.world_size == 1:
             return local_output
