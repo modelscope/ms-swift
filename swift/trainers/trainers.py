@@ -258,7 +258,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         **gen_kwargs,
     ) -> Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
         if not self.args.predict_with_generate or prediction_loss_only:
-            inputs['_position_ids'] = inputs.get('position_ids')
             with self.template.forward_context(self.model, inputs):
                 return super().prediction_step(
                     model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys)
@@ -313,9 +312,9 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         labels = None
         compute_loss_func: Callable = inputs.pop('compute_loss_func', None)
         loss_scale = inputs.pop('loss_scale', None)
-        position_ids = inputs.pop('_position_ids', None)
-        if position_ids is None:
-            position_ids = inputs.get('position_ids')
+        text_position_ids = inputs.pop('text_position_ids', None)
+        if text_position_ids is None:
+            text_position_ids = inputs.get('position_ids')
         channels = inputs.pop('channel', None)
 
         if (self.label_smoother is not None or compute_loss_func is not None or loss_scale is not None
@@ -361,7 +360,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                     metrics = self.custom_metrics[mode]
                     masks = torch.roll(labels, shifts=-1, dims=-1).view(-1) != -100
                     if self.template.padding_free:
-                        cu_seqlens = self.get_cu_seqlens(position_ids, inputs.get('logits_to_keep'))
+                        cu_seqlens = self.get_cu_seqlens(text_position_ids, inputs.get('logits_to_keep'))
                     else:
                         cu_seqlens = torch.arange(0, labels.shape[0] + 1) * labels.shape[1]
                     for i in range(cu_seqlens.shape[0] - 1):
@@ -408,6 +407,5 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         return (loss, outputs) if return_outputs else loss
 
     def training_step(self, model, inputs, *args, **kwargs):
-        inputs['_position_ids'] = inputs.get('position_ids')
         with self.template.forward_context(self.model, inputs):
             return super().training_step(model, inputs, *args, **kwargs)
