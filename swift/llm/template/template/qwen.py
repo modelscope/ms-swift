@@ -372,8 +372,8 @@ class Qwen2VLTemplate(Template):
             inputs.get('video_grid_thw'),
             attention_mask=inputs.get('attention_mask'),
             **kwargs)
-        text_position_ids = torch.arange(inputs['input_ids'].shape[-1])
-        return torch.concat([text_position_ids[None, None], position_ids], dim=0)
+        text_position_ids = torch.arange(inputs['input_ids'].shape[-1]).expand(1, *position_ids.shape[1:])
+        return torch.concat([text_position_ids, position_ids], dim=0)
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
@@ -591,8 +591,8 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             audio_feature_lengths,
             video_second_per_grid,
         )
-        text_position_ids = torch.arange(inputs['input_ids'].shape[-1])
-        return torch.concat([text_position_ids[None, None], position_ids], dim=0)
+        text_position_ids = torch.arange(inputs['input_ids'].shape[-1]).expand(1, *position_ids.shape[1:])
+        return torch.concat([text_position_ids, position_ids], dim=0)
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         res = super()._data_collator_mm_data(batch)

@@ -317,8 +317,8 @@ class GLM4_5VTemplate(GLM4_5Template):
             inputs.get('image_grid_thw'),
             inputs.get('video_grid_thw'),
             attention_mask=inputs.get('attention_mask'))
-        text_position_ids = torch.arange(inputs['input_ids'].shape[-1])
-        return torch.concat([text_position_ids[None, None], position_ids], dim=0)
+        text_position_ids = torch.arange(inputs['input_ids'].shape[-1]).expand(1, *position_ids.shape[1:])
+        return torch.concat([text_position_ids, position_ids], dim=0)
 
     def forward_context(self, model, inputs):
         position_ids = inputs['position_ids']
