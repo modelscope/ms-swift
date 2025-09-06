@@ -1691,7 +1691,7 @@ class Template(ProcessorMixin):
                     extended_position_ids = torch.arange(cp_size * 2).repeat(padding_len // (cp_size * 2))
                     if position_ids.ndim == 3:  # compat mrope
                         extended_position_ids = extended_position_ids[None,
-                                                                        None, :].expand(position_ids.shape[0], 1, -1)
+                                                                      None, :].expand(position_ids.shape[0], 1, -1)
                     res['position_ids'] = [torch.concat([position_ids, extended_position_ids], dim=-1)]
             else:
                 seq_len = max(seq_lens) if padding_to is None else padding_to

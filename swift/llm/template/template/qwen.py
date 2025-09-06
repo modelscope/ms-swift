@@ -554,6 +554,8 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         base_model = self.get_base_model(model)
         inputs_embeds = base_model.thinker.model.embed_tokens(input_ids)
         thinker_config = model.config.thinker_config
+        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.thinker.visual, self.processor,
+                                                   thinker_config)
         if input_features is None:
             if is_deepspeed_enabled() and not is_deepspeed_zero3_enabled():
                 # Note: ZeRO-3 still results in hangs; for audio training, please use ZeRO-2.
