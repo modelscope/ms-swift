@@ -313,7 +313,7 @@ class Qwen2VLTemplate(Template):
         inputs['position_ids'] = position_ids[1:]
         inputs['text_position_ids'] = text_position_ids = position_ids[0]
         transformers_version = version.parse(transformers.__version__)
-        if transformers_version >= version.parse('4.53'):
+        if transformers_version >= version.parse('4.53') and text_position_ids.shape[0] == 1:
             # https://github.com/huggingface/transformers/pull/40194
             inputs.update(get_packed_seq_params(text_position_ids))
             return super().forward_context(model, inputs)
@@ -372,8 +372,7 @@ class Qwen2VLTemplate(Template):
             inputs.get('video_grid_thw'),
             attention_mask=inputs.get('attention_mask'),
             **kwargs)
-        text_position_ids = torch.arange(inputs['input_ids'].shape[-1])
-        return torch.concat([text_position_ids[None, None], position_ids], dim=0)
+        return self._concat_text_position_ids(position_ids)
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
@@ -591,8 +590,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             audio_feature_lengths,
             video_second_per_grid,
         )
-        text_position_ids = torch.arange(inputs['input_ids'].shape[-1])
-        return torch.concat([text_position_ids[None, None], position_ids], dim=0)
+        return self._concat_text_position_ids(position_ids)
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         res = super()._data_collator_mm_data(batch)
