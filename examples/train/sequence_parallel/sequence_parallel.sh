@@ -1,7 +1,8 @@
-# Env: 4 * A100
+# Env: 8 * A100
 # Max Length: 65536
-# GPU Memory: 8 * 48GiB, Training Speed 21.84s/it]
+# GPU Memory: 8 * 40GiB, Training Speed 26s/it]
 NPROC_PER_NODE=8 \
+CELOSS_PARALLEL_SIZE=2048 \
 swift sft \
     --model Qwen/Qwen2.5-3B-Instruct \
     --dataset 'AI-ModelScope/LongAlpaca-12k' \
