@@ -167,7 +167,7 @@ class SequenceParallel:
     @property
     def real_position_ids(self) -> torch.Tensor:
         """The real position ids, this is different from the position_ids in mrope"""
-        return self.extra_kwargs.get('_position_ids')
+        return self.extra_kwargs.get('text_position_ids')
 
     def _prepare_flash_attn(self, base_model: torch.nn.Module):
         try:
@@ -581,7 +581,7 @@ class SequenceParallel:
         real_position_ids = real_position_ids if real_position_ids is not None else position_ids
         if real_position_ids is not None and real_position_ids.shape[0] == 1:
             # TODO clone everytime, but the position_ids is a small tensor
-            self.extra_kwargs['_position_ids'] = real_position_ids.clone()
+            self.extra_kwargs['text_position_ids'] = real_position_ids.clone()
         if input_ids is not None:
             input_ids = self.pad(input_ids, padding_value=tokenizer.pad_token_id, position_ids=real_position_ids)
         if input_embeds is not None:
@@ -690,16 +690,16 @@ class SequenceParallel:
     def prepare_inputs(self, inputs):
         """Prepare inputs
 
-        1. set extra_kwargs['_position_ids']
+        1. set extra_kwargs['text_position_ids']
         2. split labels
         """
         position_ids = None
         if self.padding_free:
-            position_ids = inputs.get('_position_ids')
+            position_ids = inputs.get('text_position_ids')
             if position_ids is None:
                 position_ids = inputs.get('position_ids')
         if position_ids is not None and position_ids.shape[0] == 1:
-            self.extra_kwargs['_position_ids'] = position_ids.clone()
+            self.extra_kwargs['text_position_ids'] = position_ids.clone()
         if 'labels' in inputs:
             labels = inputs['labels']
             _, _, labels, _, _, _ = self.pad_and_split_inputs(
