@@ -109,53 +109,6 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
         return logits, None, None
 
 
-def loss_scale_sp_func(outputs,
-                       labels,
-                       loss_scale=None,
-                       num_items_in_batch=None,
-                       enable_dft_loss=False,
-                       **kwargs) -> torch.Tensor:
-    """Common loss function for sequence parallel training"""
-    if hasattr(outputs, 'logits'):
-        logits = outputs.logits
-    else:
-        logits = outputs
-    device = logits.device
-
-    batch_size = logits.shape[0]
-    logits = logits.view(-1, logits.shape[-1])
-    labels = labels.flatten().to(device)
-    sploss_parallel_size = int(os.environ.get('CELOSS_PARALLEL_SIZE', '0'))
-    if sploss_parallel_size > 0:
-        loss = ChunkedCrossEntropyLoss.apply(logits, labels, sploss_parallel_size)
-    else:
-        loss_fct = CrossEntropyLoss(reduction='none')
-        loss = loss_fct(logits, labels)
-    if enable_dft_loss:
-        with torch.no_grad():
-            target_probs = torch.exp(-loss)
-        loss *= target_probs
-    if loss_scale is not None:
-        loss_scale = loss_scale.flatten().to(device)
-        loss = (loss_scale * loss)
-    from swift.trainers.sequence_parallel import sequence_parallel
-    position_ids = sequence_parallel.real_position_ids
-    if position_ids is not None:
-        position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
-    loss, labels = GatherLoss.apply(loss.reshape(batch_size, -1), labels.reshape(batch_size, -1), 1, position_ids)
-    if position_ids is not None and position_ids.min() == -1:
-        _pos_mask = position_ids >= 0
-        loss = loss[_pos_mask].contiguous()
-        labels = labels[_pos_mask].contiguous()
-
-    mask = (labels != -100)
-    total_loss = loss[mask].sum()
-    if num_items_in_batch is None:
-        total_loss = total_loss / mask.sum()
-    else:
-        total_loss = total_loss / num_items_in_batch
-    return total_loss
-
 class SequenceParallelSampler(Sampler):
     """Sampler for sequence parallel training"""
 

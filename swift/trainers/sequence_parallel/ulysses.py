@@ -652,7 +652,3 @@ class SequenceParallel:
             labels = inputs['labels']
             _, _, labels, _, _, _ = self.pad_and_split_inputs(None, None, labels, None, None, None, real_position_ids=position_ids)
             inputs['labels'] = labels
-        if 'loss_scale' in inputs:
-            loss_scale = inputs['loss_scale']
-            _, _, _, _, _, loss_scale = self.pad_and_split_inputs(None, None, None, None, None, loss_scale, real_position_ids=position_ids)
-            inputs['loss_scale'] = loss_scale

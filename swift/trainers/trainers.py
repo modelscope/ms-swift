@@ -19,7 +19,7 @@ from transformers.utils import is_peft_available
 from swift.utils import JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
-from .utils import per_token_loss_func
+from .utils import per_token_loss_func, per_token_loss_func_sp
 
 logger = get_logger()
 
@@ -222,10 +222,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             self.infer_engine = PtEngine.from_model_template(
                 self.model, self.template, max_batch_size=self.args.per_device_eval_batch_size)
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
-        if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            from swift.trainers.sequence_parallel.utils import loss_scale_sp_func
-            self.compute_loss_func = partial(loss_scale_sp_func, enable_dft_loss=self.args.enable_dft_loss)
 
     @staticmethod
     def _predict_data_collator(batch):
@@ -356,9 +352,11 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
         else:
             outputs.loss = None
-            if self.template.sequence_parallel_size == 1 and (self.args.enable_dft_loss or loss_scale is not None
-                                                              or self.args.enable_channel_loss):
-                outputs.loss = per_token_loss_func(outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
+            if self.args.enable_dft_loss or loss_scale is not None or self.args.enable_channel_loss:
+                if self.template.sequence_parallel_size > 1:
+                    outputs.loss = per_token_loss_func_sp(outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
+                else:
+                    outputs.loss = per_token_loss_func(outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
 
                 if loss_scale is not None:
                     loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
