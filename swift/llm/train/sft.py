@@ -42,9 +42,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                                                                  args.get_request_config(), self.tokenizer)
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
-    def _prepare_model_tokenizer(self, load_model=True):
+    def _prepare_model_tokenizer(self, **kwargs):
         args = self.args
-        self.model, self.processor = args.get_model_processor(load_model=load_model)
+        self.model, self.processor = args.get_model_processor(**kwargs)
         if args.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
             sequence_parallel.prepare(
