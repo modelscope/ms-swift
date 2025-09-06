@@ -10,7 +10,6 @@ export CHORD_SYSTEM_PROMPT="You are a helpful assistant that solves MATH problem
 You should first think about the reasoning process in mind and then provide the user with the answer.
 You should present your reasoning process using the format: <think>\n...your reasoning process here... </think>\n"
 
-echo $CHORD_SYSTEM_PROMPT
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 swift rlhf \

@@ -496,7 +496,7 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
     current_step = trainer.state.global_step
     mu = mu_schedule_function(current_step, trainer.args.chord_mu_warmup_steps, trainer.args.chord_mu_decay_steps,
                               trainer.args.chord_mu_peak, trainer.args.chord_mu_valley)
-    chord_sft_loss = torch.tensor(0.0)
+    chord_sft_loss = torch.tensor(0.0, device=grpo_loss.device, dtype=grpo_loss.dtype)
     if mu > 0:
         sft_inputs = next(trainer.chord_sft_iterator)
         sft_inputs = to_device(trainer.template.data_collator(sft_inputs), trainer.accelerator.device)
@@ -511,5 +511,8 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
             chord_sft_loss *= phi
         num_items_in_batch = (labels[:, 1:] != -100).sum()
         chord_sft_loss = chord_sft_loss.sum() / num_items_in_batch
+    else:
+        assert mu == 0
+        torch.tensor(0.0, device=grpo_loss.device, dtype=grpo_loss.dtype)
     loss = (1 - mu) * grpo_loss + mu * chord_sft_loss
     return loss
