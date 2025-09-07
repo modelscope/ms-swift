@@ -4,6 +4,7 @@ class MegatronModelType:
 
     qwen2_vl = 'qwen2_vl'
     qwen2_5_vl = 'qwen2_5_vl'
+    qwen3_vl = 'qwen3_vl'
     qwen2_5_omni = 'qwen2_5_omni'
 
     internvl3 = 'internvl3'

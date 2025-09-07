@@ -750,6 +750,24 @@ register_model(
         requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6', 'decord'],
         tags=['vision', 'video']))
 
+
+def get_model_tokenizer_qwen3_vl(*args, **kwargs):
+    from transformers import Qwen3_VLForConditionalGeneration
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3_VLForConditionalGeneration
+    return get_model_tokenizer_qwen2_vl(*args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_vl, [],
+        TemplateType.qwen3_vl,
+        get_model_tokenizer_qwen3_vl,
+        model_arch=ModelArch.qwen3_vl,
+        architectures=['Qwen3_VLForConditionalGeneration'],
+        requires=[],  # TODO
+        tags=['vision', 'video']))
+
+
 register_model(
     ModelMeta(
         MLLMModelType.mimo_vl, [
