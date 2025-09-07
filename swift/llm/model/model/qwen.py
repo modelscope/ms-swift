@@ -632,10 +632,27 @@ def patch_qwen_vl_utils(vision_process):
         # https://github.com/QwenLM/Qwen2.5-VL/issues/1120
         os.environ['VIDEO_TOTAL_PIXELS'] = str(int(128000 * 28 * 28 * 0.9))
     for key in [
-            'image_factor', 'min_pixels', 'max_pixels', 'max_ratio', 'video_min_pixels', 'video_max_pixels',
-            'video_total_pixels', 'frame_factor', 'fps', 'fps_min_frames', 'fps_max_frames'
+            'image_factor',
+            'min_pixels',
+            'max_pixels',
+            'max_ratio',
+            'video_min_pixels',
+            'video_max_pixels',
+            'video_total_pixels',
+            'frame_factor',
+            'fps',
+            'fps_min_frames',
+            'fps_max_frames',
+            # qwen3_vl
+            'image_max_token_num',
+            'image_min_token_num',
+            'spatial_merge_size',
+            'video_max_token_num',
+            'video_min_token_num'
     ]:
         type_func = float if key == 'fps' else int
+        if not hasattr(vision_process, key.upper()):
+            continue
         setattr(vision_process, key.upper(), get_env_args(key, type_func, getattr(vision_process, key.upper())))
     _read_video_decord = vision_process._read_video_decord
 
@@ -751,10 +768,13 @@ register_model(
         tags=['vision', 'video']))
 
 
-def get_model_tokenizer_qwen3_vl(*args, **kwargs):
-    from transformers import Qwen3_VLForConditionalGeneration
+def get_model_tokenizer_qwen3_vl(model_dir, *args, **kwargs):
+    from transformers import Qwen3_VLForConditionalGeneration, Qwen3_VLProcessor
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3_VLForConditionalGeneration
-    return get_model_tokenizer_qwen2_vl(*args, **kwargs)
+    processor = Qwen3_VLProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    kwargs['tokenizer'] = processor.tokenizer
+    model, _ = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
+    return model, processor
 
 
 register_model(

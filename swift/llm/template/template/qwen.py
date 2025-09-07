@@ -240,8 +240,9 @@ class Qwen2VLTemplate(Template):
                     inputs: StdTemplateInputs) -> List[Context]:
         from qwen_vl_utils import fetch_image, fetch_video
         assert media_type in {'image', 'video'}
+        kwargs = {'image_patch_size': self.processor.image_processor.patch_size} if self.version == 'v3' else {}
         if media_type == 'image':
-            inputs.images[index] = fetch_image({'image': inputs.images[index]})
+            inputs.images[index] = fetch_image({'image': inputs.images[index]}, **kwargs)
             if self.mode == 'lmdeploy':
                 return ['<|vision_start|>', [-100], '<|vision_end|>']
             else:
@@ -250,12 +251,15 @@ class Qwen2VLTemplate(Template):
             video = inputs.videos[index]
             if os.path.isdir(video):
                 video = [os.path.join(video, fname) for fname in os.listdir(video)]
-            video, video_kwargs = fetch_video({'video': video}, return_video_sample_fps=True)
+            video, video_kwargs = fetch_video({'video': video}, return_video_sample_fps=True, **kwargs)
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
             inputs.videos[index] = video
-            if self.version == 'v2_5':
+            if self.version in {'v2_5', 'v3'}:
                 inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
+                if self.version == 'v3':
+                    inputs.mm_processor_kwargs['add_timestamps'] = True
+                    return ['<|video_pad|>']
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
@@ -408,6 +412,49 @@ register_template(
 
 class Qwen3VLTemplate(Qwen2VLTemplate):
     version = 'v3'
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = Template._encode(self, inputs)
+        processor = self.processor
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
+        for media_type in ['images', 'videos']:
+            mm_data = getattr(inputs, media_type)
+            if mm_data:
+                if media_type == 'images':
+                    media_token = self.image_token_id
+                    media_inputs = processor.image_processor(images=mm_data, return_tensors='pt', do_resize=False)
+                    media_grid_thw = media_inputs['image_grid_thw']
+                else:
+                    split_token = self._tokenize('\n')[0]
+                    media_inputs = processor(
+                        text=['\n'.join(['<|vision_start|><|video_pad|><|vision_end|>'] * len(mm_data))],
+                        videos=mm_data,
+                        return_tensors='pt',
+                        do_resize=False,
+                        **inputs.mm_processor_kwargs)
+                    splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
+                    media_grid_thw = media_inputs['video_grid_thw']
+                    media_token = self.video_token_id
+                idx_list = findall(input_ids, media_token)
+                merge_length = processor.image_processor.merge_size**2
+
+                def _get_new_tokens(i):
+                    if media_type == 'image':
+                        token_len = (media_grid_thw[i].prod() // merge_length)
+                        return [media_token] * token_len
+                    else:
+                        return splited_tokens[0]
+
+                input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                    _get_new_tokens)
+                encoded.update(media_inputs)
+
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+        encoded['loss_scale'] = loss_scale
+        return encoded
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate))
