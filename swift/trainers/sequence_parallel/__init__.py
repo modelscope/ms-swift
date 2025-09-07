@@ -1,12 +1,5 @@
-import os
+# Copyright (c) Alibaba, Inc. and its affiliates.
 
-sequence_parallel = os.environ.get('SEQUENCE_PARALLEL_IMPL', 'ulysses')
+from .ulysses import SequenceParallel
 
-if sequence_parallel == 'ulysses':
-    from .ulysses import Ulysses
-    sequence_parallel = Ulysses()
-elif sequence_parallel == 'ring_attention':
-    from .ring_attention import RingAttention
-    sequence_parallel = RingAttention()
-else:
-    raise ValueError(f'Invalid sequence parallel implementation: {sequence_parallel}')
+sequence_parallel = SequenceParallel()

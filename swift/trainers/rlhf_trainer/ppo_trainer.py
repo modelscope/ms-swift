@@ -39,7 +39,7 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
             new_kwargs = {
                 k: v
                 for k, v in kwargs.items()
-                if k in ['train_dataset', 'data_collator', 'reward_model', 'value_model', 'eval_dataset']
+                if k in ['train_dataset', 'data_collator', 'reward_model', 'value_model', 'eval_dataset', 'callbacks']
             }
             parameters = inspect.signature(ppo_trainer_init).parameters
             if 'config' in parameters:
@@ -62,10 +62,7 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
         super().train()
 
     def _save_checkpoint(self, *args, **kwargs):
-        if version.parse(transformers.__version__) >= version.parse('4.47'):
-            metrics = kwargs.pop('metrics', None)
-            trial = kwargs.get('trial')
-            self._determine_best_metric(metrics=metrics, trial=trial)
+        kwargs.pop('metrics', None)
         return super()._save_checkpoint(*args, **kwargs)
 
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):

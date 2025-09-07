@@ -18,6 +18,9 @@ register_model(
                 Model('moonshotai/Kimi-K2-Base', 'moonshotai/Kimi-K2-Base'),
                 Model('moonshotai/Kimi-K2-Instruct', 'moonshotai/Kimi-K2-Instruct'),
             ]),
+            ModelGroup([
+                Model('moonshotai/Kimi-K2-Instruct-0905', 'moonshotai/Kimi-K2-Instruct-0905'),
+            ]),
         ],
         TemplateType.moonlight,
         get_model_tokenizer_with_flash_attn,

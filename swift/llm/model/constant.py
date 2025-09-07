@@ -130,6 +130,7 @@ class LLMModelType:
     hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
     ernie = 'ernie'
+    longchat = 'longchat'
 
 
 class BertModelType:

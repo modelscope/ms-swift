@@ -89,6 +89,7 @@ class SglangEngine(InferEngine):
             disable_custom_all_reduce=disable_custom_all_reduce,
             log_level=log_level,
             skip_tokenizer_init=True,
+            trust_remote_code=True,
             **engine_kwargs,
         )
         self.task_type = task_type
