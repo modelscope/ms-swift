@@ -1535,7 +1535,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'high_clip_max': nanmax(gathered_high_clip).item(),
             'region_clip_mean': gathered_clip_ratio.nanmean().item()
         }
-        if self.chord_sft_iterator is not None:
+        if mode == 'train' and self.chord_sft_iterator is not None:
             loss = compute_chord_loss(self, grpo_loss=loss)
 
         return loss, metrics_data
