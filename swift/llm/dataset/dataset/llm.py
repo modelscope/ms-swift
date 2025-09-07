@@ -386,8 +386,8 @@ class MTEBRerankPreprocessor(ResponsePreprocessor):
         negatives = row['negative'] if isinstance(row['negative'], list) else [row['negative']]
 
         messages = [{"role": "user", "content": query}]
-        positive_messages = [[{"role": "user", "content": positive}] for positive in positives]
-        negative_messages = [[{"role": "user", "content": negative}] for negative in negatives]
+        positive_messages = [[{"role": "assistant", "content": positive}] for positive in positives]
+        negative_messages = [[{"role": "assistant", "content": negative}] for negative in negatives]
 
         return {"messages": messages, "positive_messages": positive_messages, "negative_messages": negative_messages}
 

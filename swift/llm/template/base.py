@@ -451,14 +451,14 @@ class Template(ProcessorMixin):
             positive.messages = chosen.messages + positive.messages
             positive_encoded = self._encode_truncated(positive)
             for key in positive_encoded:
-                _encoded[f'positive_{key}'].append(positive_encoded[key])
+                _encoded[key].append(positive_encoded[key])
                 _encoded['labels'].append(1)
 
         for negative in inputs.negative:
             negative.messages = chosen.messages + negative.messages
             negative_encoded = self._encode_truncated(negative)
             for key in negative_encoded:
-                _encoded[f'negative_{key}'].append(negative_encoded[key])
+                _encoded[key].append(negative_encoded[key])
                 _encoded['labels'].append(0)
 
         return _encoded
@@ -1546,30 +1546,32 @@ class Template(ProcessorMixin):
                                 *,
                                 padding_to: Optional[int] = None) -> Dict[str, Any]:
         import os
+        import random
         max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
-        labels = []
+        labels_list = []
         new_batch = []
         for b in batch:
-            keys = [key for key in b.keys() if 'negative' in key]
-            max_neg = None
-            for key in keys:
-                value_list = b[key]
-                suffix = key[len('negative_'):]
-                max_neg = min(max_negative_samples, len(value_list))
-                for i, value in enumerate(value_list):
-                    b[f'negative{i}_{suffix}'] = value
-                b.pop(key)
+            labels = b.pop('labels')
+            positive_num = sum(labels)
+            negative_num = len(labels) - positive_num
+            for i in range(positive_num):
+                for key in b.keys():
+                    new_batch.append({key: b[key][i]})
+                    labels_list.append(1)
+                    if negative_num > max_negative_samples:
+                        for j in random.sample(range(negative_num), max_negative_samples):
+                            for key in b.keys():
+                                new_batch.append({key: b[key][j+positive_num]})
+                                labels_list.append(0)
+                    else:
+                        for j in range(negative_num):
+                            for key in b.keys():
+                                new_batch.append({key: b[key][j+positive_num]})
+                                labels_list.append(0)
 
-            indexes = ['positive_']
-            if max_neg is not None:
-                for i in range(0, max_neg):
-                    indexes.append(f'negative{i}_')
-            for prefix in indexes:
-                new_batch += self._fetch_inputs_startswith([b], prefix)
-            labels.extend(b.get('labels', None)[:max_negative_samples + 1])
         res = self._data_collator(new_batch, padding_to=padding_to)
-        if labels:
-            res['labels'] = torch.tensor(labels, dtype=torch.long)
+        if labels_list:
+            res['labels'] = torch.tensor(labels_list, dtype=torch.long)
         return res
 
     def _seq_cls_data_collator(self,

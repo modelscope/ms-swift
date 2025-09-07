@@ -80,11 +80,12 @@ class Qwen3RerankerTemplate(Template):
         query = inputs.chosen.messages[-1]['content']
         for positive in inputs.positive:
             user_message = '<Instruct>: ' + instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: ' + positive.messages[-1]['content']
-            positive.messages = {'role': 'user', 'content': user_message}
+            positive.messages = [{'role': 'user', 'content': user_message}]
         for negative in inputs.negative:
             user_message = '<Instruct>: ' + instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: ' + negative.messages[-1]['content']
-            negative.messages = {'role': 'user', 'content': user_message}
+            negative.messages = [{'role': 'user', 'content': user_message}]
         inputs.chosen.messages = []
+        return inputs
 
 qwen3_reranker_system = (
     'Judge whether the Document meets the requirements based on the Query and the Instruct provided. '
