@@ -514,6 +514,6 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
         chord_sft_loss = chord_sft_loss.sum() / num_items_in_batch
     else:
         assert mu == 0
-        torch.tensor(0.0, device=grpo_loss.device, dtype=grpo_loss.dtype)
+        chord_sft_loss = torch.tensor(0.0, device=grpo_loss.device, dtype=grpo_loss.dtype)
     loss = (1 - mu) * grpo_loss + mu * chord_sft_loss
     return loss
