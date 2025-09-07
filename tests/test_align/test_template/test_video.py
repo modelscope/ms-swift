@@ -226,6 +226,19 @@ def test_minicpmv4_5():
     assert response == response2
 
 
+def test_qwen3_vl():
+    pt_engine = PtEngine('Qwen3-VL/Qwen3-VL-32B-Preview-0813')
+    videos = ['baby.mp4']
+    messages = [{'role': 'user', 'content': 'describe this video.'}]
+    response = _infer_model(pt_engine, messages=messages, videos=videos)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, videos=videos)
+    assert response[:200] == response2[:200] == (
+        'The video shows a young child, likely a toddler, sitting on a bed in a cozy, '
+        'lived-in bedroom. The child is wearing a light blue sleeveless top, pink pants, '
+        'and oversized black-framed glasses, which a')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -246,4 +259,5 @@ if __name__ == '__main__':
     # test_ovis2_5()
     # test_interns1()
     # test_internvl3_5()
-    test_minicpmv4_5()
+    # test_minicpmv4_5()
+    test_qwen3_vl()

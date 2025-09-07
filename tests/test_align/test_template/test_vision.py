@@ -676,6 +676,19 @@ def test_minicpmv4_5():
     assert response == response2
 
 
+def test_qwen3_vl():
+    pt_engine = PtEngine('Qwen3-VL/Qwen3-VL-32B-Preview-0813')
+    images = ['cat.png']
+    messages = [{'role': 'user', 'content': 'describe this image.'}]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response[:200] == response2[:200] == (
+        'This image features an extremely close-up, highly detailed portrait of a '
+        'young kitten. The kitten has a soft, fluffy coat with a mix of white, gray, '
+        'and black fur, marked with delicate tabby stripes a')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -738,4 +751,5 @@ if __name__ == '__main__':
     # test_glm4_5v()
     # test_interns1()
     # test_internvl3_5()
-    test_minicpmv4_5()
+    # test_minicpmv4_5()
+    test_qwen3_vl()
