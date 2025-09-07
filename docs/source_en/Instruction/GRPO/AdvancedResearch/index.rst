@@ -7,3 +7,4 @@ Advanced Research
    DAPO.md
    deepeyes.md
    GSPO.md
+   CHORD.md
