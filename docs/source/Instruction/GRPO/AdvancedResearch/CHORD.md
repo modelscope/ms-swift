@@ -1,5 +1,7 @@
 # On-Policy RL Meets Off-Policy Experts: Harmonizing SFT and RL via Dynamic Weighting (CHORD)
 
+**版本依赖**：ms-swift>=3.9
+
 本文档介绍论文 [On-Policy RL Meets Off-Policy Experts: Harmonizing SFT and RL via Dynamic Weighting](https://arxiv.org/abs/2508.11408) 中提出的 **CHORD** 算法。CHORD 的核心思想是在 **on-policy 强化学习**（如 GRPO/PPO）过程中，**动态融合 off-policy 专家数据（SFT）**，通过 **全局权重 μ + token 级别权重 φ** 的双重控制机制，在模仿与探索之间实现平衡。
 
 ## 算法概述
