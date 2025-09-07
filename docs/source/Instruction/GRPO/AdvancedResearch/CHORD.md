@@ -17,6 +17,8 @@ $$
 - $\mu \in [0, 1]$：全局平衡系数，控制 SFT 信号在总梯度中的贡献。
 
 ### 参数配置（数据与批量大小）
+我们可以基于 GRPO 训练实现 CHORD 训练。
+
 CHORD 需要在训练时指定额外的 SFT 数据集和批量大小：
 - `chord_sft_dataset`: 用于提供专家数据的 SFT 数据集。
 - `chord_sft_per_device_train_batch_size`: 每个设备的 SFT mini-batch 大小。

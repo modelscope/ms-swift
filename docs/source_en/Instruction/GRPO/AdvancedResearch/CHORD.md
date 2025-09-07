@@ -17,6 +17,8 @@ where:
 - $\mu \in [0, 1]$: global balancing coefficient that controls the contribution of the SFT signal to the overall gradient.
 
 ### Configuration (data and batch sizes)
+We can implement CHORD training based on GRPO training.
+
 CHORD requires specifying an additional SFT dataset and batch size at training time:
 - `chord_sft_dataset`: the SFT dataset that provides expert data.
 - `chord_sft_per_device_train_batch_size`: SFT mini-batch size per device.
