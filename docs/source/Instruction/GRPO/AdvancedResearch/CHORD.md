@@ -60,4 +60,4 @@ $$
 请参考`GRPOTrainer`的`_compute_chord_loss`方法：
 </details>
 
-训练参考该[脚本](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/colocate/chord.sh)
+训练参考该[脚本](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/internal/chord.sh)

@@ -60,4 +60,4 @@ Note: If using a constant μ, set `chord_mu_peak` and `chord_mu_valley` to the s
 See the `GRPOTrainer` method `_compute_chord_loss`.
 </details>
 
-Training reference script: https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/colocate/chord.sh
+Training reference script: https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/internal/chord.sh
