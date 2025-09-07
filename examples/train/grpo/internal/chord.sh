@@ -15,7 +15,7 @@ NPROC_PER_NODE=8 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --dataset AI-MO/NuminaMath-TIR#1000 \
+    --dataset AI-MO/NuminaMath-TIR \
     --torch_dtype bfloat16 \
     --beta 0.0 \
     --steps_per_generation 4 \
@@ -23,7 +23,7 @@ swift rlhf \
     --per_device_train_batch_size 4 \
     --gradient_accumulation_steps 8 \
     --chord_sft_per_device_train_batch_size 1 \
-    --chord_sft_dataset AI-MO/NuminaMath-TIR#2000 \
+    --chord_sft_dataset AI-MO/NuminaMath-TIR \
     --chord_enable_phi_function false \
     --chord_mu_warmup_steps 0 \
     --chord_mu_decay_steps 200 \
@@ -31,7 +31,7 @@ swift rlhf \
     --chord_mu_valley 0.05 \
     --num_generations 8 \
     --train_type full \
-    --reward_funcs accuracy format\
+    --reward_funcs accuracy \
     --system "$CHORD_SYSTEM_PROMPT" \
     --use_vllm true \
     --vllm_mode colocate \
@@ -45,8 +45,9 @@ swift rlhf \
     --save_steps 1000 \
     --learning_rate 1e-6 \
     --save_total_limit 2 \
-    --logging_steps 5 \
+    --logging_steps 1 \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --deepspeed zero3 \
-    --log_completions true
+    --log_completions true \
+    --report_to tensorboard swanlab
