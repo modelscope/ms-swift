@@ -406,6 +406,13 @@ register_template(
         default_system='You are MiMo, an AI assistant developed by Xiaomi.'))
 
 
+class Qwen3VLTemplate(Qwen2VLTemplate):
+    version = 'v3'
+
+
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate))
+
+
 class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
     version = 'omni'
     placeholder_tokens = ['<|IMAGE|>', '<|AUDIO|>', '<|VIDEO|>']

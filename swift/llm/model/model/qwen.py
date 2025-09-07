@@ -759,14 +759,14 @@ def get_model_tokenizer_qwen3_vl(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.qwen3_vl, [],
+        MLLMModelType.qwen3_vl,
+        [],
         TemplateType.qwen3_vl,
         get_model_tokenizer_qwen3_vl,
         model_arch=ModelArch.qwen3_vl,
         architectures=['Qwen3_VLForConditionalGeneration'],
         requires=[],  # TODO
         tags=['vision', 'video']))
-
 
 register_model(
     ModelMeta(
