@@ -119,9 +119,13 @@ class DistributedAttention(torch.nn.Module):
     def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, attention_mask: torch.Tensor,
                 *args: Any, **kwargs) -> torch.Tensor:
         # gather ulysses first, ring-attention next
-        query_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, query, self.scatter_idx, self.gather_idx)
-        key_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, key, self.scatter_idx, self.gather_idx)
-        value_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, value, self.scatter_idx, self.gather_idx)
+        if self.sequence_parallel.sp_world_size > 1:
+            query_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, query, self.scatter_idx, self.gather_idx)
+            key_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, key, self.scatter_idx, self.gather_idx)
+            value_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, value, self.scatter_idx, self.gather_idx)
+        else:
+            query_layer, key_layer, value_layer = query, key, value
+
         if self.sequence_parallel.rp_world_size > 1:
             # if need ring-attention
             kwargs.pop('position_ids', None)
@@ -144,7 +148,13 @@ class DistributedAttention(torch.nn.Module):
 
         context_layer = self.local_attn(
             query_layer, key_layer, value_layer, attention_mask, *args, position_ids=position_ids, **kwargs)
-        output = _SeqAllToAll.apply(self.sequence_parallel.sp_group, context_layer, self.gather_idx, self.scatter_idx)
+
+        if self.sequence_parallel.sp_world_size > 1:
+            output = _SeqAllToAll.apply(self.sequence_parallel.sp_group, context_layer, self.gather_idx,
+                                        self.scatter_idx)
+        else:
+            output = context_layer
+
         return output
 
 
@@ -647,7 +657,7 @@ class SequenceParallel:
         # This ensures all GPUs in the model parallel group are used.
         rp_world_size = self.world_size // self.sp_world_size
         self.rp_world_size = rp_world_size
-        
+
         if self.rp_world_size > 1:
             self.device_mesh = init_device_mesh(
                 get_device().split(':')[0],
