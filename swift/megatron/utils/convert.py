@@ -281,8 +281,26 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         peft_model = prepare_mcore_model(mg_model)
         with adapter_state_dict_context():
             load_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
-        logger.info('Merge LoRA...')
-        mg_model = peft_model.merge_and_unload()
+        if args.to_hf_adapter:
+            from peft import LoraConfig, get_peft_model
+            logger.info('Creating empty HF LoRA adapter...')
+            lora_cfg = LoraConfig(
+                r=128,
+                lora_alpha=128,
+                lora_dropout=0.0,
+                bias="none",
+                task_type="CAUSAL_LM",
+                target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+            )
+            hf_peft_model = get_peft_model(hf_model, lora_cfg)
+
+            logger.info('Converting LoRA adapter only...')
+            megatron_model_meta.convert_mcore2hf(hf_peft_model, peft_model, is_lora=True)
+            hf_peft_model.save_pretrained(args.output_dir)
+            logger.info('Successfully converted Megatron LoRA to HF LoRA')
+        else:
+            logger.info('Merge LoRA...')
+            mg_model = peft_model.merge_and_unload()
     logger.info('Megatron model created successfully.')
     if args.to_hf:
         megatron_model_meta.convert_mcore2hf(hf_model, mg_model)

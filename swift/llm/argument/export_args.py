@@ -50,6 +50,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     # megatron
     to_mcore: bool = False
     to_hf: bool = False
+    to_hf_adapters: bool = False
     mcore_model: Optional[str] = None
     mcore_adapters: List[str] = field(default_factory=list)
     thread_count: Optional[int] = None

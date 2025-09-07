@@ -4,7 +4,7 @@ from typing import Optional
 from megatron.training import get_args
 
 
-def set_mla_attn_state(args, mg_attn, hf_attn):
+def set_mla_attn_state(args, mg_attn, hf_attn, is_lora):
     hf_attn.o_proj.weight.data.copy_(mg_attn.linear_proj.weight)
     if args.q_lora_rank is None:
         hf_attn.q_proj.weight.data.copy_(mg_attn.linear_q_proj.weight)
@@ -13,11 +13,11 @@ def set_mla_attn_state(args, mg_attn, hf_attn):
         hf_attn.q_b_proj.weight.data.copy_(mg_attn.linear_q_up_proj.weight)
     hf_attn.kv_a_proj_with_mqa.weight.data.copy_(mg_attn.linear_kv_down_proj.weight)
     hf_attn.kv_b_proj.weight.data.copy_(mg_attn.linear_kv_up_proj.weight)
-    if args.qk_layernorm:
+    if args.qk_layernorm and not is_lora:
         hf_attn.kv_a_layernorm.weight.data.copy_(mg_attn.linear_kv_up_proj.layer_norm_weight)
 
 
-def set_attn_state(args, mg_attn, hf_attn):
+def set_attn_state(args, mg_attn, hf_attn, is_lora):
     num_query_groups = (args.num_query_groups if args.group_query_attention else args.num_attention_heads)
     # Copy weights
     mg_attn_weight = mg_attn.linear_qkv.weight.reshape((num_query_groups, -1, args.hidden_size))
@@ -35,7 +35,7 @@ def set_attn_state(args, mg_attn, hf_attn):
         hf_attn.k_proj.bias.data.copy_(mg_attn_bias[:, q_dim:-kv_dim].reshape(-1))
         hf_attn.v_proj.bias.data.copy_(mg_attn_bias[:, -kv_dim:].reshape(-1))
 
-    if args.qk_layernorm:
+    if args.qk_layernorm and not is_lora:
         q_norm = hf_attn.query_layernorm if hasattr(hf_attn, 'query_layernorm') else hf_attn.q_norm
         k_norm = hf_attn.key_layernorm if hasattr(hf_attn, 'key_layernorm') else hf_attn.k_norm
         q_norm.weight.data.copy_(mg_attn.q_layernorm.weight)
@@ -86,31 +86,36 @@ def set_mlp_state(args, mg_mlp, hf_mlp):
         _set_mlp_state(mg_mlp, hf_mlp)
 
 
-def set_layer_state(args, mg_model, hf_model, layer_idx):
+def set_layer_state(args, mg_model, hf_model, layer_idx, is_lora):
     mg_layer = mg_model.decoder.layers[layer_idx]
     hf_layer = hf_model.layers[layer_idx]
 
     if args.multi_latent_attention:
-        set_mla_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
-        hf_layer.input_layernorm.weight.data.copy_(mg_layer.input_layernorm.weight)
+        set_mla_attn_state(args, mg_layer.self_attention, hf_layer.self_attn, is_lora)
+        if not is_lora:
+            hf_layer.input_layernorm.weight.data.copy_(mg_layer.input_layernorm.weight)
     else:
-        set_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
-        hf_layer.input_layernorm.weight.data.copy_(mg_layer.self_attention.linear_qkv.layer_norm_weight)
+        set_attn_state(args, mg_layer.self_attention, hf_layer.self_attn, is_lora)
+        if not is_lora:
+            hf_layer.input_layernorm.weight.data.copy_(mg_layer.self_attention.linear_qkv.layer_norm_weight)
 
     set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
 
-    post_attention_layernorm_weight = hf_layer.post_attention_layernorm.weight
-    if 'moe' in mg_layer.mlp.__class__.__name__.lower():
-        post_attention_layernorm_weight.data.copy_(mg_layer.pre_mlp_layernorm.weight)
-    else:
-        post_attention_layernorm_weight.data.copy_(mg_layer.mlp.linear_fc1.layer_norm_weight)
+    if not is_lora:
+        post_attention_layernorm_weight = hf_layer.post_attention_layernorm.weight
+        if 'moe' in mg_layer.mlp.__class__.__name__.lower():
+            post_attention_layernorm_weight.data.copy_(mg_layer.pre_mlp_layernorm.weight)
+        else:
+            post_attention_layernorm_weight.data.copy_(mg_layer.mlp.linear_fc1.layer_norm_weight)
 
 
-def convert_mcore2hf(hf_model, mg_model):
+def convert_mcore2hf(hf_model, mg_model, is_lora=False):
     args = get_args()
+    if is_lora:
+        hf_model = hf_model.model
     hf_model.model.embed_tokens.weight.data.copy_(mg_model.embedding.word_embeddings.weight)
     if args.untie_embeddings_and_output_weights:
         hf_model.lm_head.weight.data.copy_(mg_model.output_layer.weight)
     hf_model.model.norm.weight.data.copy_(mg_model.decoder.final_layernorm.weight)
     for layer_idx in range(args.num_layers):
-        set_layer_state(args, mg_model, hf_model.model, layer_idx)
+        set_layer_state(args, mg_model, hf_model.model, layer_idx, is_lora)
