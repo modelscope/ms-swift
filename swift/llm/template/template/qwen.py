@@ -722,7 +722,7 @@ class Ovis2_5Template(ThinkingTemplate):
     skip_prompt = False
     support_padding_free = True
 
-    def init_processor(self, processor: Processor) -> None:
+    def init_processor(self, processor) -> None:
         super().init_processor(processor)
         self.min_pixels = get_env_args('min_pixels', int, 448 * 448)
         self.max_pixels = get_env_args('max_pixels', int, 1344 * 1792)
