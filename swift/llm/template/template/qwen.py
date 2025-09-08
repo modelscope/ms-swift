@@ -8,10 +8,11 @@ import torch
 import torch.nn.functional as F
 import transformers
 from packaging import version
+from PIL import Image
 from torch import nn
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from swift.llm import get_packed_seq_params, to_float_dtype
+from swift.llm import get_packed_seq_params, to_device, to_float_dtype
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
@@ -717,10 +718,16 @@ register_template(QwenTemplateMeta(
 
 
 class Ovis2_5Template(ThinkingTemplate):
-    num_frames = 8
     use_model = True
     skip_prompt = False
     support_padding_free = True
+
+    def init_processor(self, processor) -> None:
+        super().init_processor(processor)
+        self.min_pixels = get_env_args('min_pixels', int, 448 * 448)
+        self.max_pixels = get_env_args('max_pixels', int, 1344 * 1792)
+        self.video_max_pixels = get_env_args('video_max_pixels', int, 896 * 896)
+        self.num_frames = get_env_args('num_frames', int, 8)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -733,14 +740,10 @@ class Ovis2_5Template(ThinkingTemplate):
             if self.mode == 'vllm':
                 return ['<video>']
             else:
-                num_frames = get_env_args('num_frames', int, self.num_frames)
-                inputs.images = load_video_ovis2_5(inputs.videos[index], num_frames)
+                inputs.images = load_video_ovis2_5(inputs.videos[index], self.num_frames)
                 return [[-200], '\n']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        min_pixels = get_env_args('min_pixels', int, 448 * 448)
-        max_pixels = get_env_args('max_pixels', int, 1344 * 1792)
-        video_max_pixels = get_env_args('video_max_pixels', int, 896 * 896)
         encoded = super()._encode(inputs)
         images = inputs.images
         input_ids = encoded['input_ids']
@@ -749,7 +752,7 @@ class Ovis2_5Template(ThinkingTemplate):
         if inputs.videos:
             assert len(inputs.videos) == 1, 'only support single video'
             encoded['pixel_values'], encoded['grid_thws'] = visual_tokenizer.preprocess(
-                video=inputs.images, min_pixels=min_pixels, max_pixels=video_max_pixels)
+                video=inputs.images, min_pixels=self.min_pixels, max_pixels=self.video_max_pixels)
             num_video_tokens = encoded['grid_thws'].prod(dim=-1)
             num_video_tokens //= visual_tokenizer.vit.config.hidden_stride**2
             num_video_tokens //= visual_tokenizer.vit.config.temporal_patch_size
@@ -762,7 +765,7 @@ class Ovis2_5Template(ThinkingTemplate):
                 input_ids, encoded['labels'], encoded['loss_scale'], idx_list, _get_new_tokens)
         elif images:
             pixel_values, grid_thws = zip(
-                *(visual_tokenizer.preprocess(image=image, min_pixels=min_pixels, max_pixels=max_pixels)
+                *(visual_tokenizer.preprocess(image=image, min_pixels=self.min_pixels, max_pixels=self.max_pixels)
                   for image in images))
             encoded['pixel_values'] = torch.cat(pixel_values, dim=0)
             encoded['grid_thws'] = torch.cat(grid_thws, dim=0)
@@ -782,10 +785,32 @@ class Ovis2_5Template(ThinkingTemplate):
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        inputs_embeds = model.merge_multimodal(
-            input_ids=inputs['input_ids'],
-            pixel_values=inputs.pop('pixel_values', None),
-            grid_thws=inputs.pop('grid_thws', None))
+        input_ids = inputs['input_ids']
+        pixel_values = inputs.get('pixel_values', None)
+        grid_thws = inputs.get('grid_thws')
+        INDICATOR_IDS = [-301, -302, -303, -304]
+        VISUAL_ATOM_ID = -300
+        placeholder_token_mask = torch.lt(input_ids, 0)
+        inputs_embeds = model.get_wte()(torch.masked_fill(input_ids, placeholder_token_mask, 0))
+
+        if pixel_values is not None or is_deepspeed_enabled():
+            visual_indicator_embeds = model.vte(model.indicator_token_indices).to(
+                dtype=inputs_embeds.dtype, device=inputs_embeds.device)
+            for i, indicator_id in enumerate(INDICATOR_IDS):
+                inputs_embeds[input_ids == indicator_id] = visual_indicator_embeds[i]
+        if pixel_values is not None:
+            visual_tokens = model.visual_tokenizer(pixel_values, grid_thws)
+            visual_embeds = model.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
+            inputs_embeds[input_ids == VISUAL_ATOM_ID] = visual_embeds
+        elif is_deepspeed_enabled():
+            media_inputs = model.visual_tokenizer.preprocess(
+                Image.new('RGB', (32, 32), (0, 0, 0)), min_pixels=self.min_pixels, max_pixels=self.max_pixels)
+            media_inputs = to_device(media_inputs, input_ids.device)
+            pixel_values = media_inputs['pixel_values'].type(inputs_embeds.dtype)
+            visual_tokens = model.visual_tokenizer(pixel_values, media_inputs['grid_thws'])
+            visual_embeds = model.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
+            inputs_embeds = inputs_embeds + visual_embeds.mean() * 0.
+
         return {'inputs_embeds': inputs_embeds}
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
