@@ -319,7 +319,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
 
         result = result.to(previous_dtype)
         if self.sequence_parallel and self.base_layer.parallel_mode == 'row':
-            x = scatter_to_sequence_parallel_region(x)
+            result = scatter_to_sequence_parallel_region(result)
         return result, bias
 
     def sharded_state_dict(
