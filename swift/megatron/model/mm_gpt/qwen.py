@@ -199,6 +199,7 @@ class Ovis2_5Vit(HuggingFaceModule):
         device = inputs_embeds.device
         visual_indicator_embeds = self.vte(model.indicator_token_indices.to(device=device)).to(
             dtype=inputs_embeds.dtype, device=device)
+        inputs_embeds = inputs_embeds.clone()
         for i, indicator_id in enumerate(INDICATOR_IDS):
             inputs_embeds[input_ids == indicator_id] = visual_indicator_embeds[i]
         if pixel_values is None:
@@ -207,7 +208,7 @@ class Ovis2_5Vit(HuggingFaceModule):
             pixel_values = media_inputs['pixel_values'].type(inputs_embeds.dtype)
             visual_tokens = self.visual_tokenizer(pixel_values, media_inputs['grid_thws'])
             visual_embeds = self.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
-            inputs_embeds = inputs_embeds + visual_embeds.mean() * 0.
+            inputs_embeds += visual_embeds.mean() * 0.
         else:
             visual_tokens = self.visual_tokenizer(pixel_values, grid_thws)
             visual_embeds = self.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
