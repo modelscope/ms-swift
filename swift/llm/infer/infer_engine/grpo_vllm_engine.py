@@ -98,7 +98,7 @@ class GRPOVllmEngine(VllmEngine):
         *,
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-        adapter_request: Optional[AdapterRequest] = None,
+        adapter_request: Optional[Union[AdapterRequest, TensorLoRARequest]] = None,
     ) -> List[RolloutOutput]:
         if not adapter_request and self.enable_lora:
             # TODO: check if get the latest lora

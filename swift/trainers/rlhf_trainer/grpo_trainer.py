@@ -8,6 +8,7 @@ import re
 import time
 import uuid
 from collections import OrderedDict, defaultdict, deque
+from collections import OrderedDict, defaultdict, deque
 from concurrent.futures import Future
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
@@ -25,6 +26,7 @@ import transformers
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
 from dacite import from_dict
 from packaging import version
+from peft.utils.save_and_load import get_peft_model_state_dict
 from peft.utils.save_and_load import get_peft_model_state_dict
 from torch.nn import ModuleList
 from torch.utils.data import DataLoader
@@ -544,6 +546,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'max_lora_rank': self.args.lora_rank,
             }
             patch_vllm_load_adapter()
+        lora_kwargs = {}
+        if self.args.train_type == 'lora':
+            lora_kwargs = {
+                'enable_lora': True,
+                'max_loras': 1,
+                'max_lora_rank': self.args.lora_rank,
+            }
+            patch_vllm_load_adapter()
         with Swift.grpo_context(model, self.template.processor):
             engine = GRPOVllmEngine(
                 model.model_dir,
@@ -563,6 +573,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 load_format='dummy',
                 template=copy(self.template),
                 distributed_executor_backend='external_launcher',
+                **lora_kwargs,
                 **lora_kwargs,
             )
         return engine

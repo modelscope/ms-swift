@@ -32,12 +32,10 @@ if TYPE_CHECKING:
 
 TensorLoRARequest = None
 if is_vllm_available():
-    from vllm.lora.request import LoRARequest as vLLMLoRARequest
-
-    class LoRARequest(vLLMLoRARequest):
-        peft_config: dict = field(default=None)
+    from vllm.lora.request import LoRARequest
 
     class TensorLoRARequest(LoRARequest):
+        peft_config: dict = field(default=None)
         lora_tensors: dict = field(default=None)
 
 
@@ -377,6 +375,98 @@ def patch_save_last_checkpoint():
 
         RepeatSampler.__len__ = patched_len
         RepeatSampler.old_len_func = origin_len_func
+
+
+def get_gather_if_zero3_context(trainer):
+    deepspeed_plugin = trainer.accelerator.state.deepspeed_plugin
+    zero_stage_3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
+    if zero_stage_3:
+        import deepspeed
+        gather_if_zero3 = deepspeed.zero.GatheredParameters
+    else:
+        gather_if_zero3 = nullcontext
+    return gather_if_zero3
+
+
+def patch_vllm_load_adapter():
+    # from vllm.lora.worker_manager import WorkerLoRAManager
+    from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
+    from vllm.lora.models import LoRAModel
+    from vllm.lora.utils import get_adapter_absolute_path
+
+    def patched_load_adapter(self: LRUCacheWorkerLoRAManager, lora_request: TensorLoRARequest) -> LoRAModel:
+        """
+        code borrowed from verl.utils.vllm.utils.py
+        based on vllm.lora.worker_manager.WorkerLoRAManager._load_adapter, support load adapter with lora tensors
+        Reason:
+        VLLM does not support adding LoRA from tensors directly. It only supports adding LoRA via file paths.
+        To synchronize the LoRA tensors of the actor model, we need to find a workaround to enable VLLM to
+        load memory-based LoRA tensors.
+        """
+        try:
+            supported_lora_modules = self._adapter_manager.supported_lora_modules
+            packed_modules_mapping = self._adapter_manager.packed_modules_mapping
+            expected_lora_modules: list[str] = []
+            for module in supported_lora_modules:
+                if module in packed_modules_mapping:
+                    expected_lora_modules.extend(packed_modules_mapping[module])
+                else:
+                    expected_lora_modules.append(module)
+            expected_lora_modules = list(set(expected_lora_modules))
+            # this is the patch
+            lora_tensors = None
+            from vllm.lora.peft_helper import PEFTHelper
+            if isinstance(lora_request, TensorLoRARequest):
+                peft_config = lora_request.peft_config
+                lora_tensors = lora_request.lora_tensors
+                peft_helper = PEFTHelper.from_dict(peft_config)
+            else:
+                lora_path = get_adapter_absolute_path(lora_request.lora_path)
+                peft_helper = PEFTHelper.from_local_dir(lora_path, self.max_position_embeddings)
+            # Validates the LoRA configuration against requirements before
+            # loading weights, throwing an exception if validation fails.
+            peft_helper.validate_legal(self.lora_config)
+            # For some models like Qwen2VL, we need to use hf_to_vllm_mapper
+            # to ensure correct loading of lora weights.
+            model = self._adapter_manager.model
+            hf_to_vllm_mapper = getattr(model, 'hf_to_vllm_mapper', None)
+            if isinstance(lora_request, TensorLoRARequest):  # this is the patch
+                lora = self._lora_model_cls.from_lora_tensors(
+                    lora_model_id=lora_request.lora_int_id,
+                    tensors=lora_tensors,
+                    peft_helper=peft_helper,
+                    device='cpu',
+                    dtype=self.lora_config.lora_dtype,
+                    embeddings=None,
+                    target_embedding_padding=self.vocab_size + self.lora_config.lora_extra_vocab_size,
+                    embedding_modules=self.embedding_modules,
+                    embedding_padding_modules=self.embedding_padding_modules,
+                    weights_mapper=hf_to_vllm_mapper,
+                )
+            else:
+                lora = self._lora_model_cls.from_local_checkpoint(
+                    lora_path,
+                    expected_lora_modules,
+                    peft_helper=peft_helper,
+                    lora_model_id=lora_request.lora_int_id,
+                    device='cpu',
+                    dtype=self.lora_config.lora_dtype,
+                    target_embedding_padding=self.vocab_size + self.lora_config.lora_extra_vocab_size,
+                    embedding_modules=self.embedding_modules,
+                    embedding_padding_modules=self.embedding_padding_modules,
+                    weights_mapper=hf_to_vllm_mapper,
+                )
+        except Exception as e:
+            raise e
+        if lora.extra_vocab_size > self.lora_config.lora_extra_vocab_size:
+            raise ValueError(f'LoRA added vocab size {lora.extra_vocab_size} is greater than '
+                             f'lora_extra_vocab_size {self.lora_config.lora_extra_vocab_size}.')
+        return lora
+
+    if not hasattr(LRUCacheWorkerLoRAManager, '_old_load_adapter'):
+        _old_load_adapter = LRUCacheWorkerLoRAManager._load_adapter
+        LRUCacheWorkerLoRAManager._load_adapter = patched_load_adapter
+        LRUCacheWorkerLoRAManager._old_load_adapter = _old_load_adapter
 
 
 def get_gather_if_zero3_context(trainer):
