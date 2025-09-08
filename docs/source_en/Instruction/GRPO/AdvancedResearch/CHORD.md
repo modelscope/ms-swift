@@ -2,7 +2,7 @@
 
 **Version Requirement**: ms-swift>=3.9
 
-This document describes the CHORD algorithm proposed in the paper "On-Policy RL Meets Off-Policy Experts: Harmonizing SFT and RL via Dynamic Weighting" (https://arxiv.org/abs/2508.11408). The core idea of CHORD is to dynamically integrate off-policy expert data (SFT) into on-policy reinforcement learning (e.g., GRPO/PPO) by a dual control mechanism: a global weight μ plus a token-level weight φ, thereby balancing imitation and exploration.
+This document describes the CHORD algorithm proposed in the paper [On-Policy RL Meets Off-Policy Experts: Harmonizing SFT and RL via Dynamic Weighting](https://arxiv.org/abs/2508.11408). The core idea of CHORD is to dynamically integrate expert data (SFT) into reinforcement learning by a dual control mechanism: a global weight μ plus a token-level weight φ, thereby balancing imitation and exploration.
 
 ## Algorithm Overview
 CHORD mixes training by introducing the SFT loss into the GRPO loss. The overall objective is:
@@ -39,7 +39,7 @@ Parameters:
 - `chord_mu_decay_steps`: number of training steps to decay μ from peak to valley.
 
 ### CHORD-φ (Token-level weighting)
-CHORD-φ does not rely on μ scheduling; instead it keeps μ fixed to a small constant (recommended 0.05–0.2) and uses a token-wise weighting function φ to dynamically control each expert token's gradient contribution.
+CHORD-φ uses a token-wise weighting function φ to dynamically control each expert token's gradient contribution.
 
 Definition of φ:
 $$
