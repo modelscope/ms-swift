@@ -3,6 +3,7 @@ from megatron.training import get_args, get_tokenizer
 from PIL import Image
 
 from swift.llm import ModelType, Template, to_device
+from swift.utils import get_env_args
 from ..constant import MegatronModelType
 from ..gpt.hf2mcore import convert_hf2mcore
 from ..gpt.hf2mcore import set_layer_state as set_layer_state_hf2mcore
