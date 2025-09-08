@@ -188,6 +188,8 @@ class Ovis2_5Vit(HuggingFaceModule):
     def __init__(self, config):
         from transformers.models import Qwen3ForCausalLM
         super().__init__(config, Qwen3ForCausalLM)
+        self.min_pixels = get_env_args('min_pixels', int, 448 * 448)
+        self.max_pixels = get_env_args('max_pixels', int, 1344 * 1792)
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
         model = self._hf_model[0]
@@ -203,7 +205,8 @@ class Ovis2_5Vit(HuggingFaceModule):
         for i, indicator_id in enumerate(INDICATOR_IDS):
             inputs_embeds[input_ids == indicator_id] = visual_indicator_embeds[i]
         if pixel_values is None:
-            media_inputs = self.visual_tokenizer.preprocess(Image.new('RGB', (32, 32), (0, 0, 0)))
+            media_inputs = self.visual_tokenizer.preprocess(
+                Image.new('RGB', (32, 32), (0, 0, 0)), min_pixels=self.min_pixels, max_pixels=self.max_pixels)
             media_inputs = to_device(media_inputs, input_ids.device)
             pixel_values = media_inputs['pixel_values'].type(inputs_embeds.dtype)
             visual_tokens = self.visual_tokenizer(pixel_values, media_inputs['grid_thws'])
