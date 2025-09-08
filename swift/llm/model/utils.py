@@ -324,10 +324,10 @@ def git_clone_github(github_url: str,
         local_repo_name = github_url.rsplit('/', 1)[1]
     github_url = f'{github_url}.git'
     local_repo_path = os.path.join(git_cache_dir, local_repo_name)
-    with safe_ddp_context(None, use_barrier=True):
-        if not is_local_master():
-            return local_repo_path
+    with safe_ddp_context('git_clone', use_barrier=True):
         repo_existed = os.path.exists(local_repo_path)
+        if not is_local_master() and repo_existed:
+            return local_repo_path
         if repo_existed:
             command = ['git', '-C', local_repo_path, 'fetch']
             subprocess_run(command)
