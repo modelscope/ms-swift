@@ -9,7 +9,6 @@ For environment setup, please refer to the Megatron-SWIFT [Quick Start guide](./
 This section demonstrates fine-tuning the Qwen2.5-VL-7B-Instruct model on the LaTeX-OCR task using two 80GiB A100 GPUs, with both full-parameter fine-tuning and LoRA. The best practices described below can be completed within 10 minutes.
 
 First, we need to convert the model weights from Hugging Face format to Megatron format:
-- Note: For multimodal model training in Megatron-SWIFT, the LLM part is implemented using Megatron, while components such as ViT are implemented using Transformers. When setting `--test_convert_precision true`, some multimodal models may throw the following exception: `RuntimeError: FlashAttention only supports fp16 and bf16 data types`. This occurs because the ViT part defaults to using FlashAttention as the attention implementation, while the precision conversion test runs in fp32. This issue can be resolved by either removing the `--test_convert_precision` flag or modifying the Transformers source code.
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
