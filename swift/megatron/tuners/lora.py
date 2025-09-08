@@ -61,7 +61,6 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         self._active_adapter = adapter_name
         self.is_expert = getattr(base_layer, 'is_expert', False)
         self.sequence_parallel = getattr(base_layer, 'sequence_parallel', False)
-        base_layer.sequence_parallel = False
         if self.is_expert:
             self.tp_size = get_expert_tensor_parallel_world_size()
         else:
@@ -278,8 +277,6 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         if self.disable_adapters and self.merged:
             self.unmerge()
 
-        if self.sequence_parallel and self.base_layer.parallel_mode == 'column':
-            x = gather_from_sequence_parallel_region(x)
         if isinstance(self.base_layer, TELayerNormColumnParallelLinear):
             if self.disable_adapters or self.merged:
                 self.base_layer.return_layernorm_output = False
@@ -295,6 +292,8 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         else:
             raise ValueError(f'Unsupported base layer type: {type(self.base_layer)}')
         if not isinstance(self.base_layer, TopKRouter) and not self.disable_adapters and not self.merged:
+            if self.sequence_parallel and self.base_layer.parallel_mode == 'column':
+                x = gather_from_sequence_parallel_region(x)
             for active_adapter in self.active_adapters:
                 if active_adapter not in self.lora_A.keys():
                     continue
@@ -314,12 +313,11 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 if isinstance(lora_result, tuple):
                     lora_result = lora_result[0]
                 lora_result = lora_result * scaling
-
+                if self.sequence_parallel and self.base_layer.parallel_mode == 'row':
+                    lora_result = scatter_to_sequence_parallel_region(lora_result)
                 result = result + lora_result
 
         result = result.to(previous_dtype)
-        if self.sequence_parallel and self.base_layer.parallel_mode == 'row':
-            result = scatter_to_sequence_parallel_region(result)
         return result, bias
 
     def sharded_state_dict(
