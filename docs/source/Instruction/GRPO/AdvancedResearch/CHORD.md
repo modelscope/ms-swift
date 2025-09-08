@@ -2,10 +2,10 @@
 
 **版本依赖**：ms-swift>=3.9
 
-本文档介绍论文 [On-Policy RL Meets Off-Policy Experts: Harmonizing SFT and RL via Dynamic Weighting](https://arxiv.org/abs/2508.11408) 中提出的 **CHORD** 算法。CHORD 的核心思想是在 **on-policy 强化学习**（如 GRPO/PPO）过程中，**动态融合 off-policy 专家数据（SFT）**，通过 **全局权重 μ + token 级别权重 φ** 的双重控制机制，在模仿与探索之间实现平衡。
+本文档介绍论文 [On-Policy RL Meets Off-Policy Experts: Harmonizing SFT and RL via Dynamic Weighting](https://arxiv.org/abs/2508.11408) 中提出的 CHORD 算法。CHORD 的核心思想是在强化学习过程中，动态融合专家数据（SFT），通过 全局权重 μ + token 级别权重 φ 的双重控制机制，在模仿与探索之间实现平衡。
 
 ## 算法概述
-CHORD 算法通过在 **GRPO loss** 中引入 **SFT loss**，实现动态混合训练。总体目标函数为：
+CHORD 算法通过在 GRPO loss 中引入 **SFT loss**，实现动态混合训练。总体目标函数为：
 
 $$
     \mathcal{L}_{\text{CHORD}} = (1 - \mu) \cdot \mathcal{L}_{\text{GRPO}} + \mu \cdot \mathcal{L}_{\text{SFT}}
@@ -39,7 +39,7 @@ CHORD 需要在训练时指定额外的 SFT 数据集和批量大小：
 - `chord_mu_decay_steps` μ 从峰值衰减到谷值的训练步数。
 
 ### CHORD-ϕ（Token 级加权）
-**CHORD-ϕ** 不依赖 μ 的动态衰减，而是固定 μ 为一个较小的常数（推荐 **0.05 ~ 0.2**），再通过 **token-wise 权重函数 φ** 动态控制每个专家 token 的梯度贡献。
+**CHORD-ϕ** 通过 **token-wise 权重函数 φ** 动态控制每个专家 token 的梯度贡献。
 
 **φ 定义：**
 $$
