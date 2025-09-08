@@ -60,7 +60,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         self.fan_in_fan_out = fan_in_fan_out
         self._active_adapter = adapter_name
         self.is_expert = getattr(base_layer, 'is_expert', False)
-        self.sequence_parallel = base_layer.sequence_parallel
+        self.sequence_parallel = getattr(base_layer, 'sequence_parallel', False)
         base_layer.sequence_parallel = False
         if self.is_expert:
             self.tp_size = get_expert_tensor_parallel_world_size()
