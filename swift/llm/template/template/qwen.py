@@ -8,10 +8,11 @@ import torch
 import torch.nn.functional as F
 import transformers
 from packaging import version
+from PIL import Image
 from torch import nn
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from swift.llm import get_packed_seq_params, to_float_dtype
+from swift.llm import get_packed_seq_params, to_device, to_float_dtype
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
@@ -782,10 +783,30 @@ class Ovis2_5Template(ThinkingTemplate):
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        inputs_embeds = model.merge_multimodal(
-            input_ids=inputs['input_ids'],
-            pixel_values=inputs.pop('pixel_values', None),
-            grid_thws=inputs.pop('grid_thws', None))
+        input_ids = inputs['input_ids']
+        pixel_values = inputs.get('pixel_values', None)
+        grid_thws = inputs.get('grid_thws')
+        INDICATOR_IDS = [-301, -302, -303, -304]
+        VISUAL_ATOM_ID = -300
+        placeholder_token_mask = torch.lt(input_ids, 0)
+        inputs_embeds = model.get_wte()(torch.masked_fill(input_ids, placeholder_token_mask, 0))
+
+        visual_indicator_embeds = model.vte(model.indicator_token_indices).to(
+            dtype=inputs_embeds.dtype, device=inputs_embeds.device)
+        for i, indicator_id in enumerate(INDICATOR_IDS):
+            inputs_embeds[input_ids == indicator_id] = visual_indicator_embeds[i]
+        if pixel_values is None:
+            media_inputs = model.visual_tokenizer.preprocess(Image.new('RGB', (32, 32), (0, 0, 0)))
+            media_inputs = to_device(media_inputs, input_ids.device)
+            pixel_values = media_inputs['pixel_values'].type(inputs_embeds.dtype)
+            visual_tokens = model.visual_tokenizer(pixel_values, media_inputs['grid_thws'])
+            visual_embeds = model.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
+            inputs_embeds = inputs_embeds + image_embeds.mean() * 0.
+        else:
+            visual_tokens = model.visual_tokenizer(pixel_values, grid_thws)
+            visual_embeds = model.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
+            inputs_embeds[input_ids == VISUAL_ATOM_ID] = visual_embeds
+
         return {'inputs_embeds': inputs_embeds}
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
