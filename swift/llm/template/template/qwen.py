@@ -793,10 +793,11 @@ class Ovis2_5Template(ThinkingTemplate):
         placeholder_token_mask = torch.lt(input_ids, 0)
         inputs_embeds = model.get_wte()(torch.masked_fill(input_ids, placeholder_token_mask, 0))
 
-        visual_indicator_embeds = model.vte(model.indicator_token_indices).to(
-            dtype=inputs_embeds.dtype, device=inputs_embeds.device)
-        for i, indicator_id in enumerate(INDICATOR_IDS):
-            inputs_embeds[input_ids == indicator_id] = visual_indicator_embeds[i]
+        if pixel_values is not None or is_deepspeed_enabled():
+            visual_indicator_embeds = model.vte(model.indicator_token_indices).to(
+                dtype=inputs_embeds.dtype, device=inputs_embeds.device)
+            for i, indicator_id in enumerate(INDICATOR_IDS):
+                inputs_embeds[input_ids == indicator_id] = visual_indicator_embeds[i]
         if pixel_values is not None:
             visual_tokens = model.visual_tokenizer(pixel_values, grid_thws)
             visual_embeds = model.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
