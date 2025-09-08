@@ -1,9 +1,12 @@
 import torch
 from megatron.training import get_args, get_tokenizer
+from PIL import Image
 
-from swift.llm import ModelType, Template
+from swift.llm import ModelType, Template, to_device
 from ..constant import MegatronModelType
+from ..gpt.hf2mcore import convert_hf2mcore
 from ..gpt.hf2mcore import set_layer_state as set_layer_state_hf2mcore
+from ..gpt.mcore2hf import convert_mcore2hf
 from ..gpt.mcore2hf import set_layer_state as set_layer_state_mcore2hf
 from ..register import register_megatron_model
 from .utils import HuggingFaceModule, MMGPTMegatronModelMeta
@@ -163,3 +166,60 @@ register_megatron_model(
         convert_hf2mcore=convert_hf2mcore_qwen2_5_omni,
         convert_mcore2hf=convert_mcore2hf_qwen2_5_omni,
         visual_cls=Qwen2_5Omni_Vit))
+
+
+def convert_hf2mcore_ovis2_5(hf_model, mg_model):
+    convert_hf2mcore(hf_model.llm, mg_model.language_model)
+    mg_model.visual.visual_tokenizer.load_state_dict(hf_model.visual_tokenizer.state_dict())
+    mg_model.visual.vte.load_state_dict(hf_model.vte.state_dict())
+
+
+def convert_mcore2hf_ovis2_5(hf_model, mg_model):
+    convert_mcore2hf(hf_model.llm, mg_model.language_model)
+    hf_model.visual_tokenizer.load_state_dict(mg_model.visual.visual_tokenizer.state_dict())
+    hf_model.vte.load_state_dict(mg_model.visual.vte.state_dict())
+
+
+class Ovis2_5Vit(HuggingFaceModule):
+    module_mapping = {'visual_tokenizer': 'visual_tokenizer', 'vte': 'vte'}
+    vision_tower = ['visual_tokenizer.vit', 'vte']
+    aligner = ['visual_tokenizer.head']
+
+    def __init__(self, config):
+        from transformers.models import Qwen3ForCausalLM
+        super().__init__(config, Qwen3ForCausalLM)
+
+    def get_inputs_embeds(self, inputs_embeds, **kwargs):
+        model = self._hf_model[0]
+        input_ids = kwargs['input_ids']
+        pixel_values = kwargs.get('pixel_values', None)
+        grid_thws = kwargs.get('grid_thws')
+        INDICATOR_IDS = [-301, -302, -303, -304]
+        VISUAL_ATOM_ID = -300
+        device = inputs_embeds.device
+        visual_indicator_embeds = self.vte(model.indicator_token_indices.to(device=device)).to(
+            dtype=inputs_embeds.dtype, device=device)
+        for i, indicator_id in enumerate(INDICATOR_IDS):
+            inputs_embeds[input_ids == indicator_id] = visual_indicator_embeds[i]
+        if pixel_values is None:
+            media_inputs = self.visual_tokenizer.preprocess(Image.new('RGB', (32, 32), (0, 0, 0)))
+            media_inputs = to_device(media_inputs, input_ids.device)
+            pixel_values = media_inputs['pixel_values'].type(inputs_embeds.dtype)
+            visual_tokens = self.visual_tokenizer(pixel_values, media_inputs['grid_thws'])
+            visual_embeds = self.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
+            inputs_embeds = inputs_embeds + visual_embeds.mean() * 0.
+        else:
+            visual_tokens = self.visual_tokenizer(pixel_values, grid_thws)
+            visual_embeds = self.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
+            inputs_embeds[input_ids == VISUAL_ATOM_ID] = visual_embeds
+        return inputs_embeds
+
+
+register_megatron_model(
+    MMGPTMegatronModelMeta(
+        MegatronModelType.ovis2_5, [
+            ModelType.ovis2_5,
+        ],
+        convert_hf2mcore=convert_hf2mcore_ovis2_5,
+        convert_mcore2hf=convert_mcore2hf_ovis2_5,
+        visual_cls=Ovis2_5Vit))

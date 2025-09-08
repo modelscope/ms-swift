@@ -801,7 +801,7 @@ class Ovis2_5Template(ThinkingTemplate):
             pixel_values = media_inputs['pixel_values'].type(inputs_embeds.dtype)
             visual_tokens = model.visual_tokenizer(pixel_values, media_inputs['grid_thws'])
             visual_embeds = model.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
-            inputs_embeds = inputs_embeds + image_embeds.mean() * 0.
+            inputs_embeds = inputs_embeds + visual_embeds.mean() * 0.
         else:
             visual_tokens = model.visual_tokenizer(pixel_values, grid_thws)
             visual_embeds = model.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
