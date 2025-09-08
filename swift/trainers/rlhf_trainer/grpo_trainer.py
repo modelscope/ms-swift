@@ -260,7 +260,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                   'Please install vLLM with `pip install vllm -U` to use it.')
-            self.args.train_type = 'full'
             self.base_sync_done = False  # tag for lora weights sync
 
             if self.vllm_mode == 'server':
@@ -603,9 +602,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 peft_config = self.model.peft_config.get('default', None)
                 self.model.merge_adapter()
                 cur_lora_params = get_peft_model_state_dict(self.model)
-                cur_lora_params = {
+                cur_lora_params = {  # base_model.model.model.language_model.layers.0.self_attn.q_proj.lora_A.weight
                     name: param.full_tensor().detach().cpu() if hasattr(param, 'full_tensor') else param.detach().cpu()
-                    for name, param in lora_params.items()
+                    for name, param in cur_lora_params.items()
                 }
                 lora_params.update(cur_lora_params)
                 self.model.unmerge_adapter()
@@ -621,7 +620,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
             self.vllm_client.add_lora(lora_reqest)  # TODO
         elif self.vllm_mode == 'colocate':
-            self.engine.llm_engine.add_lora(lora_reqest)
+            self.engine.engine.add_lora(lora_reqest)
         del lora_params
 
     def _move_full_model_to_vllm(self):
@@ -636,10 +635,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
                     self.model.merge_adapter()
                     state_dict = self.model.state_dict()
-                    state_dict = {
-                        k.removeprefix('base_model.model.').replace('.base_layer', ''): v
-                        for k, v in state_dict.items()
-                    }
+                    state_dict = {k.removeprefix('base_model.model.'): v for k, v in state_dict.items()}
                     state_dict = {k: v for k, v in state_dict.items() if self.model.prefix not in k}
                     # When module to save, remove its prefix and discard the original module
                     state_dict = {

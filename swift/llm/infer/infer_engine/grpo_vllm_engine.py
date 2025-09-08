@@ -101,12 +101,12 @@ class GRPOVllmEngine(VllmEngine):
     ) -> List[RolloutOutput]:
         if not adapter_request and self.enable_lora:
             # TODO: check if get the latest lora
-            lora_int_ids = list(self.llm_engine.list_loras())
+            lora_int_ids = list(self.engine.list_loras())
             if lora_int_ids:
                 adapter_request = TensorLoRARequest(
                     lora_name=f'lora_{lora_int_ids[0]}',
                     lora_int_id=lora_int_ids[0],
-                    path='dummy_lora_path',
+                    lora_path='dummy_lora_path',
                 )
 
         res = super().infer(
@@ -210,7 +210,3 @@ class GRPOVllmEngine(VllmEngine):
             return adapter_request
         else:
             raise ValueError(f'Invalid adapter request: {adapter_request}')
-
-    @property
-    def llm_engine(self):
-        return self.engine.llm_engine
