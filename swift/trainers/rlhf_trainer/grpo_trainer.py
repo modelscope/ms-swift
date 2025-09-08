@@ -7,7 +7,7 @@ import os
 import re
 import time
 import uuid
-from collections import defaultdict, deque
+from collections import OrderedDict, defaultdict, deque
 from concurrent.futures import Future
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
@@ -25,6 +25,7 @@ import transformers
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
 from dacite import from_dict
 from packaging import version
+from peft.utils.save_and_load import get_peft_model_state_dict
 from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
@@ -49,9 +50,10 @@ from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_dist_
                          unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import (_ForwardRedirection, compute_chord_loss, identity_data_collator, load_pil_img,
-                    make_chord_sft_dataset, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
-                    patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids)
+from .utils import (TensorLoRARequest, _ForwardRedirection, compute_chord_loss, get_gather_if_zero3_context,
+                    identity_data_collator, load_pil_img, make_chord_sft_dataset, patch_lora_merge, patch_lora_unmerge,
+                    patch_profiling_context, patch_profiling_decorator, patch_save_last_checkpoint,
+                    patch_vllm_load_adapter, replace_assistant_response_with_ids)
 from .vllm_client import VLLMClient
 
 try:
@@ -258,6 +260,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                   'Please install vLLM with `pip install vllm -U` to use it.')
+            self.args.train_type = 'full'
+            self.base_sync_done = False  # tag for lora weights sync
+
             if self.vllm_mode == 'server':
                 self.vllm_client: VLLMClient = vllm_client
                 if self.accelerator.is_main_process:
@@ -532,6 +537,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         max_num_seqs = (
             self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size * self.args.steps_per_generation)
+        lora_kwargs = {}
+        if self.args.train_type == 'lora':
+            lora_kwargs = {
+                'enable_lora': True,
+                'max_loras': 1,
+                'max_lora_rank': self.args.lora_rank,
+            }
+            patch_vllm_load_adapter()
         with Swift.grpo_context(model, self.template.processor):
             engine = GRPOVllmEngine(
                 model.model_dir,
@@ -551,6 +564,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 load_format='dummy',
                 template=copy(self.template),
                 distributed_executor_backend='external_launcher',
+                **lora_kwargs,
             )
         return engine
 
@@ -566,18 +580,52 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @patch_profiling_decorator
     def _move_model_to_vllm(self, skip_async_check=False):
-        deepspeed_plugin = self.accelerator.state.deepspeed_plugin
-        zero_stage_3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
-        if zero_stage_3:
-            import deepspeed
-            gather_if_zero3 = deepspeed.zero.GatheredParameters
-        else:
-            gather_if_zero3 = nullcontext
-
         if self.args.async_generate and not skip_async_check:
             # before sync weight, we should wait async generate finish
             self._wait_queue()
 
+        train_type = self.args.train_type
+
+        if train_type == 'full' or (train_type == 'lora' and not self.base_sync_done):
+            self._move_full_model_to_vllm()
+        else:
+            self._move_adapter_to_vllm()
+
+    def _move_adapter_to_vllm(self):
+        lora_params = OrderedDict()
+        for i, parameter_group in enumerate(self.parameter_groups):  # < this is the change
+            parameters = [
+                parameter for name, parameter in self.model.named_parameters()
+                if not parameter_group or name in parameter_group
+            ]
+            gather_if_zero3 = get_gather_if_zero3_context(self)
+            with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
+                peft_config = self.model.peft_config.get('default', None)
+                self.model.merge_adapter()
+                cur_lora_params = get_peft_model_state_dict(self.model)
+                cur_lora_params = {
+                    name: param.full_tensor().detach().cpu() if hasattr(param, 'full_tensor') else param.detach().cpu()
+                    for name, param in lora_params.items()
+                }
+                lora_params.update(cur_lora_params)
+                self.model.unmerge_adapter()
+                del cur_lora_params
+        lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
+        lora_reqest = TensorLoRARequest(
+            lora_name=f'{lora_int_id}',
+            lora_int_id=lora_int_id,
+            lora_path='dummy_lora_path',
+            peft_config=asdict(peft_config),
+            lora_tensors=lora_params,
+        )
+        if self.vllm_mode == 'server' and self.accelerator.is_main_process:
+            self.vllm_client.add_lora(lora_reqest)  # TODO
+        elif self.vllm_mode == 'colocate':
+            self.engine.llm_engine.add_lora(lora_reqest)
+        del lora_params
+
+    def _move_full_model_to_vllm(self):
+        gather_if_zero3 = get_gather_if_zero3_context(self)
         if is_peft_model(self.model):
             for i, parameter_group in enumerate(self.parameter_groups):  # < this is the change
                 parameter_group_no_lora = self.parameter_groups_no_lora[i]
@@ -613,6 +661,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     with patch_lora_unmerge(self.model):
                         self.model.unmerge_adapter()
                     del state_dict
+            self.base_sync_done = True
         else:
             for name, param in self.model.named_parameters():
                 with gather_if_zero3([param]):

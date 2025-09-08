@@ -14,6 +14,7 @@ from .utils import AdapterRequest
 try:
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '86400'
+    from swift.trainers.rlhf_trainer.utils import TensorLoRARequest
 except Exception:
     raise
 
@@ -96,8 +97,18 @@ class GRPOVllmEngine(VllmEngine):
         *,
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-        adapter_request: Optional[AdapterRequest] = None,
+        adapter_request: Optional[Union[AdapterRequest, TensorLoRARequest]] = None,
     ) -> List[RolloutOutput]:
+        if not adapter_request and self.enable_lora:
+            # TODO: check if get the latest lora
+            lora_int_ids = list(self.llm_engine.list_loras())
+            if lora_int_ids:
+                adapter_request = TensorLoRARequest(
+                    lora_name=f'lora_{lora_int_ids[0]}',
+                    lora_int_id=lora_int_ids[0],
+                    path='dummy_lora_path',
+                )
+
         res = super().infer(
             infer_requests,
             request_config,
@@ -189,3 +200,17 @@ class GRPOVllmEngine(VllmEngine):
             id=request_id,
             prompt_token_ids=prompt_token_ids,
             images_size=images_size)
+
+    def _add_adapter(self, adapter_request: Optional[Union[AdapterRequest, TensorLoRARequest]] = None):
+        assert self.enable_lora, f'adapter_request: {adapter_request}, self.enable_lora: {self.enable_lora}'
+        from vllm.lora.request import LoRARequest
+        if isinstance(adapter_request, AdapterRequest):
+            return super()._add_adapter(adapter_request)
+        elif isinstance(adapter_request, TensorLoRARequest):
+            return adapter_request
+        else:
+            raise ValueError(f'Invalid adapter request: {adapter_request}')
+
+    @property
+    def llm_engine(self):
+        return self.engine.llm_engine
