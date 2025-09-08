@@ -275,7 +275,8 @@ class BaseMegatronTrainer(ABC):
                     module.gradient_checkpointing_enable(**(args.gradient_checkpointing_kwargs or {}))
                     module.enable_input_require_grads()
                 except AttributeError:
-                        pass
+                    pass
+
     @staticmethod
     def _initialize_embedding(model):
         # compat new_special_tokens
