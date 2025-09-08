@@ -119,9 +119,13 @@ class DistributedAttention(torch.nn.Module):
     def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, attention_mask: torch.Tensor,
                 *args: Any, **kwargs) -> torch.Tensor:
         # gather ulysses first, ring-attention next
-        query_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, query, self.scatter_idx, self.gather_idx)
-        key_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, key, self.scatter_idx, self.gather_idx)
-        value_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, value, self.scatter_idx, self.gather_idx)
+        if self.sequence_parallel.sp_world_size > 1:
+            query_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, query, self.scatter_idx, self.gather_idx)
+            key_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, key, self.scatter_idx, self.gather_idx)
+            value_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, value, self.scatter_idx, self.gather_idx)
+        else:
+            query_layer, key_layer, value_layer = query, key, value
+
         if self.sequence_parallel.rp_world_size > 1:
             # if need ring-attention
             kwargs.pop('position_ids', None)
@@ -144,7 +148,13 @@ class DistributedAttention(torch.nn.Module):
 
         context_layer = self.local_attn(
             query_layer, key_layer, value_layer, attention_mask, *args, position_ids=position_ids, **kwargs)
-        output = _SeqAllToAll.apply(self.sequence_parallel.sp_group, context_layer, self.gather_idx, self.scatter_idx)
+
+        if self.sequence_parallel.sp_world_size > 1:
+            output = _SeqAllToAll.apply(self.sequence_parallel.sp_group, context_layer, self.gather_idx,
+                                        self.scatter_idx)
+        else:
+            output = context_layer
+
         return output
 
 
@@ -629,31 +639,35 @@ class SequenceParallel:
         return input_ids, input_embeds, labels, position_ids, attention_mask, loss_scale
 
     def _init_device_mesh(self):
-        """Initialize device mesh for sequence parallel
+        """Initialize device mesh for sequence and ring parallel.
 
-        The workflow is:
-        1. split ring-attention firstly
-        2. split ulysses secondly
+        The logic is unified:
+        1. Determine the Sequence Parallel (SP) size first based on GCD to satisfy constraints.
+        2. Allocate all remaining model parallelism to Ring Parallel (RP).
         """
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         self.dp_world_size = world_size // self.world_size
-        rp_world_size = self.world_size // self.num_heads
-        if rp_world_size <= 1:
-            # Create device mesh: (dp_world_size, sp_world_size)
-            self.rp_world_size = rp_world_size
-            self.sp_world_size = self.world_size
-            self.device_mesh = init_device_mesh(
-                get_device().split(':')[0],
-                mesh_shape=(self.dp_world_size, self.sp_world_size),
-                mesh_dim_names=('data', 'sequence'))
-        else:
-            self.sp_world_size = self.num_heads
-            self.rp_world_size = rp_world_size
-            # Create device mesh: (dp_world_size, rp_world_size, sp_world_size)
+
+        # 1. SP size is the greatest common divisor of num_heads and world_size.
+        # This guarantees it divides both, satisfying all constraints.
+        sp_world_size = math.gcd(self.num_heads, self.world_size)
+        self.sp_world_size = sp_world_size
+
+        # 2. RP size is the remaining factor of the model parallel world size.
+        # This ensures all GPUs in the model parallel group are used.
+        rp_world_size = self.world_size // self.sp_world_size
+        self.rp_world_size = rp_world_size
+
+        if self.rp_world_size > 1:
             self.device_mesh = init_device_mesh(
                 get_device().split(':')[0],
                 mesh_shape=(self.dp_world_size, self.rp_world_size, self.sp_world_size),
                 mesh_dim_names=('data', 'ring', 'sequence'))
+        else:
+            self.device_mesh = init_device_mesh(
+                get_device().split(':')[0],
+                mesh_shape=(self.dp_world_size, self.sp_world_size),
+                mesh_dim_names=('data', 'sequence'))
 
     @property
     def sp_group(self):
