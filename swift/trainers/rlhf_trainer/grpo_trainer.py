@@ -600,17 +600,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             gather_if_zero3 = get_gather_if_zero3_context(self)
             with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
                 assert len(parameters) == len(parameter_group)
-                state_dict = {name: p.detach().clone().cpu() for p, name in zip(parameters, parameter_group)}
+                state_dict = {name: p for p, name in zip(parameters, parameter_group)}
                 peft_config = self.model.peft_config.get('default', None)
                 self.model.merge_adapter()
                 cur_lora_params = get_peft_model_state_dict(self.model, state_dict)
                 cur_lora_params = {  # base_model.model.model.language_model.layers.0.self_attn.q_proj.lora_A.weight
                     name: param.full_tensor().detach().cpu() if hasattr(param, 'full_tensor') else param.detach().cpu()
-                    for name, param in parameter_group.items()
+                    for name, param in cur_lora_params.items()
                 }
                 lora_params.update(cur_lora_params)
                 self.model.unmerge_adapter()
                 del cur_lora_params
+
         lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
         lora_reqest = TensorLoRARequest(
             lora_name=f'{lora_int_id}',
