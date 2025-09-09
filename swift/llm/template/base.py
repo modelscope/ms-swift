@@ -133,6 +133,12 @@ class Template(ProcessorMixin):
         if processor is not None:
             self.init_processor(processor)
 
+    def init_env_args(self):
+        if self.model_meta.is_multimodal:
+            self.root_image_dir = get_env_args('ROOT_IMAGE_DIR', str, None)
+        else:
+            self.root_image_dir = None
+
     def init_processor(self, processor: Processor) -> None:
         if processor is None or self._processor_inited:
             return
@@ -157,6 +163,7 @@ class Template(ProcessorMixin):
             if isinstance(token, str):
                 self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
         self.template_meta.init(tokenizer)
+        self.init_env_args()
 
     def _get_model(self):
         if self.model is not None:
@@ -2003,3 +2010,9 @@ class Template(ProcessorMixin):
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
         return inputs_embeds
+
+    @staticmethod
+    def _concat_text_position_ids(position_ids):
+        seq_len = position_ids.shape[-1]
+        text_position_ids = torch.arange(seq_len, device=position_ids.device).expand(1, *position_ids.shape[1:])
+        return torch.concat([text_position_ids, position_ids], dim=0)

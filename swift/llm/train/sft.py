@@ -44,10 +44,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_model_tokenizer(self, **kwargs):
         args = self.args
+        self.model, self.processor = args.get_model_processor(**kwargs)
         if args.sequence_parallel_size > 1:
             from swift.trainers.sequence_parallel import sequence_parallel
-            sequence_parallel.init_sequence_parallel(args.sequence_parallel_size)
-        self.model, self.processor = args.get_model_processor(**kwargs)
+            sequence_parallel.prepare(
+                args.sequence_parallel_size, model=self.model, tokenizer=self.processor, padding_free=args.padding_free)
         if self.model is None:
             return
         if hasattr(self.model, 'hf_device_map'):
@@ -112,22 +113,29 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_dataset(self):
         args = self.args
+        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
         if args.cached_dataset:
             train_datasets, val_datasets = self._get_cached_dataset()
         else:
             train_datasets, val_datasets = [], []
         if args.dataset:
             train_dataset, val_dataset = self._get_dataset()
-            train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
+            train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset, pre_process=not is_grpo)
             train_datasets.append(train_dataset)
             val_datasets.append(val_dataset)
         train_dataset = DatasetLoader._concat_datasets(train_datasets)
         val_dataset = DatasetLoader._concat_datasets(val_datasets)
-        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
-        predict_with_generate = getattr(args, 'predict_with_generate', False)
         datasets = [train_dataset, val_dataset]
         if is_grpo:
             return datasets
+        datasets = self._post_process_datasets(datasets)
+
+        return datasets
+
+    def _post_process_datasets(self, datasets: List) -> List:
+        args = self.args
+        predict_with_generate = getattr(args, 'predict_with_generate', False)
+
         template = self.template
         for i, dataset in enumerate(datasets):
             if dataset is None:
@@ -293,15 +301,14 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             if val_dataset is not None and not predict_with_generate:
                 self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
 
-    def _encode_dataset(self, train_dataset, val_dataset):
+    def _encode_dataset(self, train_dataset, val_dataset, pre_process=True):
         template = self.template
         args = self.args
         self._save_val_dataset(val_dataset)
 
-        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
         predict_with_generate = getattr(args, 'predict_with_generate', False)
         datasets = [train_dataset, val_dataset]
-        if is_grpo:
+        if not pre_process:
             return datasets
 
         origin_template_model = template.model

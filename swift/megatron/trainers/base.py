@@ -271,8 +271,11 @@ class BaseMegatronTrainer(ABC):
         for vision_tower in visual.vision_tower:
             module = deep_getattr(visual, vision_tower)
             if args.vit_gradient_checkpointing:
-                module.gradient_checkpointing_enable(**(args.gradient_checkpointing_kwargs or {}))
-                module.enable_input_require_grads()
+                try:
+                    module.gradient_checkpointing_enable(**(args.gradient_checkpointing_kwargs or {}))
+                    module.enable_input_require_grads()
+                except AttributeError:
+                    pass
 
     @staticmethod
     def _initialize_embedding(model):

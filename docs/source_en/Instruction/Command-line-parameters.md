@@ -174,7 +174,6 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - enable_dft_loss: Whether to use [DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss in SFT training, default is False.
 - enable_channel_loss: Enable channel loss, default is `false`. You need to prepare a "channel" field in your dataset; ms-swift will compute and aggregate the loss grouped by this field. For dataset format, please refer to [channel loss](../Customization/Custom-dataset.md#channel-loss). Channel loss is compatible with techniques such as packing, padding-free, and loss scaling.
   - Note: This parameter is newly added in "ms-swift>=3.8". If you want to use channel loss in "ms-swift<3.8", please refer to the v3.7 documentation.
-  - Note: This feature is currently not compatible with sequence parallelism and will be fixed later.
 - logging_dir: The path for TensorBoard logs. Defaults to None, which means it is set to `f'{self.output_dir}/runs'`.
 - predict_with_generate: Whether to use generative method during validation, default is False.
 - metric_for_best_model: Default is None, which means that when predict_with_generate is set to False, it is set to 'loss'; otherwise, it is set to 'rouge-l' (during PPO training, the default value is not set; in GRPO training, it is set to 'reward').

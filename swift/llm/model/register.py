@@ -225,7 +225,7 @@ def get_model_tokenizer_from_local(model_dir: str,
         model_config.keys_to_ignore_at_inference.append('past_key_values')
 
     torch_dtype = model_info.torch_dtype
-    model_config.torch_dtype = torch_dtype
+    HfConfigFactory.set_config_attr(model_config, 'torch_dtype', torch_dtype, include_vit=True)
     HfConfigFactory.compat_zero3(model_config)
     rope_scaling = kwargs.get('rope_scaling')
     max_model_len = kwargs.get('max_model_len')

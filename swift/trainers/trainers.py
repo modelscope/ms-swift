@@ -3,7 +3,7 @@
 import inspect
 import os
 from contextlib import contextmanager, nullcontext
-from functools import wraps
+from functools import partial, wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -19,7 +19,7 @@ from transformers.utils import is_peft_available
 from swift.utils import JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
-from .utils import per_token_loss_func
+from .utils import per_token_loss_func, per_token_loss_func_sp
 
 logger = get_logger()
 
@@ -290,6 +290,9 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         from swift.llm import HfConfigFactory
         args = self.args
         inputs = super()._prepare_inputs(inputs)
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            sequence_parallel.prepare_inputs(inputs)
 
         use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
         if use_logits_to_keep:
@@ -318,7 +321,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         channels = inputs.pop('channel', None)
 
         if (self.label_smoother is not None or compute_loss_func is not None or loss_scale is not None
-                or self.args.enable_dft_loss or self.args.enable_channel_loss) and 'labels' in inputs:
+                or self.args.enable_dft_loss or self.args.enable_channel_loss
+                or self.template.sequence_parallel_size > 1) and 'labels' in inputs:
             if self.args.use_liger_kernel:
                 logger.warning_once('The cross_entropy loss function defined in Liger Kernel will not '
                                     'take effect, potentially leading to increased GPU memory consumption.')
@@ -347,9 +351,12 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
         else:
             outputs.loss = None
-            if self.template.sequence_parallel_size == 1 and (self.args.enable_dft_loss or loss_scale is not None
-                                                              or self.args.enable_channel_loss):
-                outputs.loss = per_token_loss_func(outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
+            if (self.args.enable_dft_loss or loss_scale is not None or self.args.enable_channel_loss
+                    or self.template.sequence_parallel_size > 1):
+                if self.template.sequence_parallel_size > 1:
+                    outputs.loss = per_token_loss_func_sp(outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
+                else:
+                    outputs.loss = per_token_loss_func(outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
 
                 if loss_scale is not None:
                     loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
@@ -391,10 +398,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 aux_loss = outputs.get('aux_loss')
                 if aux_loss is not None:
                     loss = loss + self.args.router_aux_loss_coef * aux_loss.to(loss.device)
-
-        if self.template.sequence_parallel_size > 1:
-            from swift.trainers.sequence_parallel import sequence_parallel
-            loss = sequence_parallel.reduce_outputs(loss, labels)
 
         if getattr(self.args, 'average_tokens_across_devices',
                    False) and self.model_accepts_loss_kwargs and num_items_in_batch is not None:
