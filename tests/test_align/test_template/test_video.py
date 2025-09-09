@@ -239,6 +239,17 @@ def test_qwen3_vl():
         'and oversized black-framed glasses, which a')
 
 
+def test_qwen3_moe_vl():
+    pt_engine = PtEngine('Qwen3-VL/Qwen3-VL-30B-A3B-Preview-0716')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response[:200] == response2[:200] == (
+        'The video shows a young child, likely a toddler, sitting on a bed in a cozy, '
+        'lived-in bedroom. The child is wearing a light blue sleeveless top, pink pants, '
+        'and oversized black-framed glasses, which a')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -260,4 +271,5 @@ if __name__ == '__main__':
     # test_interns1()
     # test_internvl3_5()
     # test_minicpmv4_5()
-    test_qwen3_vl()
+    # test_qwen3_vl()
+    test_qwen3_moe_vl()
