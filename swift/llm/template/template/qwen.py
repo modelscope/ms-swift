@@ -717,7 +717,7 @@ class Ovis2Template(Ovis1_6Template):
             return [[-200], '\n']
         elif media_type == 'video':
             inputs.images = load_video_ovis2(inputs.videos[index], self.nframes)
-            return [[-200] * nframes, '\n']
+            return [[-200] * self.nframes, '\n']
 
 
 register_template(QwenTemplateMeta(

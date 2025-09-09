@@ -47,7 +47,7 @@ class InternvlTemplate(Template):
             labels = encoded.get('labels')
             if self.num_image_token is None:
                 self.num_image_token = int((self.input_size // 14)**2 * (0.5**2))
-            pixel_values_images = [transform_image(image, self.input_size, max_num) for image in images]
+            pixel_values_images = [transform_image(image, self.input_size, self.max_num) for image in images]
             pixel_values = torch.cat(pixel_values_images, dim=0).to(self.model_info.torch_dtype)
             image_bs = pixel_values.shape[0]
 
@@ -140,7 +140,7 @@ class Internvl2Template(InternvlTemplate):
             max_num = self.max_num
             if has_video:
                 max_num = self.video_max_num
-            pixel_values = [transform_image(image, input_size, max_num) for image in images]
+            pixel_values = [transform_image(image, self.input_size, max_num) for image in images]
             num_patches = [pv.shape[0] for pv in pixel_values]
             pixel_values = torch.cat(pixel_values).to(self.model_info.torch_dtype)
         else:
