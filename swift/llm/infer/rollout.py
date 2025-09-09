@@ -6,6 +6,7 @@ import inspect
 import multiprocessing
 import os
 import time
+import traceback
 from collections.abc import Sequence
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import asdict
@@ -158,7 +159,11 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
             method = getattr(rollout_engine, method_name, None) or getattr(rollout_engine.engine, method_name, None)
-            result = method(*args, **kwargs)
+            try:
+                result = method(*args, **kwargs)
+            except Exception:
+                logger.error(f'Method execution failed: {method_name}\n{traceback.format_exc()}')
+                result = None
             if command['type'] == 'call':
                 connection.send(result)
         elif command['type'] == 'shutdown':
@@ -186,7 +191,6 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
 
         # Handle commands
         if command['type'] in ['call', 'fire_and_forget']:
-            import traceback
             method_name = command['method']
             args, kwargs = command.get('args', ()), command.get('kwargs', {})
             method = getattr(rollout_engine, method_name, None) or getattr(rollout_engine.engine, method_name, None)
