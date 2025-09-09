@@ -88,7 +88,7 @@ register_model(
         get_model_tokenizer_step_audio2_mini,
         model_arch=ModelArch.step_audio2_mini,
         architectures=['StepAudio2ForCausalLM'],
-        requires=['transformers>=4.52', 'soundfile', 'librosa'],
+        requires=['transformers>=4.52', 'torchaudio', 'librosa'],
         tags=['audio'],
     ))
 
