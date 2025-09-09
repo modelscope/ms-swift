@@ -159,7 +159,7 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
         for tool_message in tool_messages:
             tool_content = tool_message['content']
             res_tool.append(f'<tool_response>\n{tool_content}\n</tool_response>')
-        return '\n'.join(res_tool)
+        return '\n'.join(res_tool) + '\n'
 
     def _format_tool_responses(
         self,
