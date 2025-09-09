@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 TensorLoRARequest = None
 if is_vllm_available():
-    from vllm.lora.request import LoRARequest as VLLMLoRARequest
+    from vllm.lora.request import LoRARequest as vLLMLoRARequest
 
     class LoRARequest(vLLMLoRARequest):
         peft_config: dict = field(default=None)

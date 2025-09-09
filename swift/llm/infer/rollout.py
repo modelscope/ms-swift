@@ -6,13 +6,14 @@ import inspect
 import multiprocessing
 import os
 import time
+from collections.abc import Sequence
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import asdict
 from functools import wraps
 from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
-from typing import Dict, List, Optional, Union, get_type_hints
+from typing import Dict, List, Optional, Union
 
 import torch
 import uvicorn
@@ -496,22 +497,3 @@ def run_rollout(args: RolloutArguments, return_url: bool = False):
     finally:
         process.terminate()
         logger.info('The deployment process has been terminated.')
-
-
-# https://github.com/huggingface/trl/pull/3690
-# This patch handles backward compatibility for dtype parameter type changes in TRL:
-# - For TRL <= 0.19: dtype_annotation is torch.dtype (needs patching)
-# - For TRL > 0.19: dtype_annotation is str (no patching needed)
-old_update_named_param = WeightSyncWorkerExtension.update_named_param
-dtype_annotation = get_type_hints(old_update_named_param).get('dtype')
-
-if not hasattr(WeightSyncWorkerExtension, 'old_update_named_param') and dtype_annotation == torch.dtype:
-
-    @wraps(old_update_named_param)
-    def patched_update_named_param(self, name, dtype, shape) -> None:
-        if isinstance(dtype, str):
-            dtype = getattr(torch, dtype.split('.')[-1])
-        return old_update_named_param(self, name, dtype, shape)
-
-    WeightSyncWorkerExtension.update_named_param = patched_update_named_param
-    WeightSyncWorkerExtension.old_update_named_param = old_update_named_param
