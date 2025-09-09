@@ -84,7 +84,7 @@ def test_midashenglm():
     assert response == response2 == "The audio contains a male voice speaking the phrase '今天天气真好呀' in Mandarin."
 
 def test_step_audio2_mini():
-    pt_engine = PtEngine('/nfs/volume-377-6/llm/models/Step-Audio-2-mini')
+    pt_engine = PtEngine('stepfun-ai/Step-Audio-2-mini')
     messages = [{'role': 'user', 'content': '<audio>Caption the audio.'}]
     response = _infer_model(pt_engine, messages=messages)
     assert response == "A man is speaking."
