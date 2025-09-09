@@ -19,7 +19,7 @@ agent_templates = {
     'qwen_zh': QwenZhAgentTemplate,
     'qwen_en_parallel': QwenEnParallelAgentTemplate,
     'qwen_zh_parallel': QwenZhParallelAgentTemplate,
-    'qwen3_coder': QWEN3CODER_AgentTemplate,
+    'qwen3_coder': Qwen3CoderAgentTemplate,
     'hermes': HermesAgentTemplate,
     'hunyuan_hermes': HunyuanHermesAgentTemplate,
     'toolbench': ToolBenchAgentTemplate,  # ref: https://modelscope.cn/datasets/swift/ToolBench
