@@ -13,15 +13,16 @@ if TYPE_CHECKING:
 
 def render_extra_keys(obj, handled_keys):
     """Helper function to render extra keys not explicitly handled"""
-    result = ""
+    result = ''
     if isinstance(obj, dict):
         for key, value in obj.items():
             if key not in handled_keys:
-                result += f"\n<{key}>{value}</{key}>"
+                result += f'\n<{key}>{value}</{key}>'
     return result
 
 
 class Qwen3CoderAgentTemplate(BaseAgentTemplate):
+
     @staticmethod
     def _find_function_call(single_content: str) -> Optional['Function']:
         from swift.llm.infer import Function
@@ -64,12 +65,9 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
         return functions
 
     def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
-        tool_descs = [
-            'You have access to the following functions:\n\n'
-            '<tools>'
-        ]
+        tool_descs = ['You have access to the following functions:\n\n' '<tools>']
         for tool in tools:
-            tool_desc = ""
+            tool_desc = ''
 
             # Check function key
             if isinstance(tool, dict) and 'function' in tool:
@@ -83,15 +81,15 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
                 tool_desc += f"\n<description>{tool['description'].strip()}</description>"
 
             # Add parameters section
-            tool_desc += "\n<parameters>"
+            tool_desc += '\n<parameters>'
 
             # Process parameters if they exist in the expected structure
-            if ('parameters' in tool and isinstance(tool['parameters'], dict) and
-                    'properties' in tool['parameters'] and isinstance(tool['parameters']['properties'], dict)):
+            if ('parameters' in tool and isinstance(tool['parameters'], dict) and 'properties' in tool['parameters']
+                    and isinstance(tool['parameters']['properties'], dict)):
 
                 for param_name, param_fields in tool['parameters']['properties'].items():
-                    tool_desc += "\n<parameter>"
-                    tool_desc += f"\n<name>{param_name}</name>"
+                    tool_desc += '\n<parameter>'
+                    tool_desc += f'\n<name>{param_name}</name>'
 
                     if 'type' in param_fields:
                         tool_desc += f"\n<type>{str(param_fields['type'])}</type>"
@@ -103,31 +101,33 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
                     handled_param_keys = ['name', 'type', 'description']
                     tool_desc += render_extra_keys(param_fields, handled_param_keys)
 
-                    tool_desc += "\n</parameter>"
+                    tool_desc += '\n</parameter>'
             # Add any extra parameter section fields
             handled_keys = ['type', 'properties']
             if 'parameters' in tool:
                 tool_desc += render_extra_keys(tool['parameters'], handled_keys)
 
-            tool_desc += "\n</parameters>"
+            tool_desc += '\n</parameters>'
 
             # Add any extra function fields
             handled_keys = ['type', 'name', 'description', 'parameters']
             tool_desc += render_extra_keys(tool, handled_keys)
 
-            tool_desc += "\n</function>"
+            tool_desc += '\n</function>'
 
             tool_descs.append(tool_desc)
 
-        tool_descs.append('</tools>\n\nIf you choose to call a function ONLY reply in the following format with '
-                          'NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\n'
-                          'value_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\n'
-                          'that can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\n'
-                          'Reminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> '
-                          'block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n'
-                          '- You may provide optional reasoning for your function call in natural language BEFORE the function call, '
-                          'but NOT after\n- If there is no function call available, answer the question like normal with your current '
-                          'knowledge and do not tell the user about function calls\n</IMPORTANT>')
+        tool_descs.append(
+            '</tools>\n\nIf you choose to call a function ONLY reply in the following format with '
+            'NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\n'
+            'value_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\n'
+            'that can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\n'
+            'Reminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> '
+            'block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n'
+            '- You may provide optional reasoning for your function call in natural language BEFORE the function call, '
+            'but NOT after\n- If there is no function call available, '
+            'answer the question like normal with your current '
+            'knowledge and do not tell the user about function calls\n</IMPORTANT>')
         tool_descs = '\n'.join(tool_descs)
         if system.strip():
             tool_descs = '<|system|>\n' + system.strip() + '\n\n' + tool_descs
@@ -149,10 +149,10 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
                     else:
                         # For other types, convert to strings
                         args_value = str(args_value)
-                    result_parts.append(f"{args_value}\n</parameter>\n")
+                    result_parts.append(f'{args_value}\n</parameter>\n')
             # 关闭标签
-            result_parts.append("</function>\n</tool_call>")
-        return "".join(result_parts)
+            result_parts.append('</function>\n</tool_call>')
+        return ''.join(result_parts)
 
     def _get_tool_responses(self, tool_messages):
         res_tool = []
