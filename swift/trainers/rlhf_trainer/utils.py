@@ -395,6 +395,7 @@ def patch_vllm_load_adapter():
     from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
     from vllm.lora.models import LoRAModel
     from vllm.lora.utils import get_adapter_absolute_path
+    from vllm.transformers_utils.tokenizer_group import TokenizerGroup
 
     def patched_load_adapter(self: LRUCacheWorkerLoRAManager, lora_request: TensorLoRARequest) -> LoRAModel:
         """
@@ -465,10 +466,16 @@ def patch_vllm_load_adapter():
                              f'lora_extra_vocab_size {self.lora_config.lora_extra_vocab_size}.')
         return lora
 
+    def patched_get_lora_tokenizer(self: TokenizerGroup, lora_request: LoRARequest):
+        # since we pass dummy path, skip get tokenizer from path
+        return self.tokenizer
+
     if not hasattr(LRUCacheWorkerLoRAManager, '_old_load_adapter'):
         _old_load_adapter = LRUCacheWorkerLoRAManager._load_adapter
         LRUCacheWorkerLoRAManager._load_adapter = patched_load_adapter
         LRUCacheWorkerLoRAManager._old_load_adapter = _old_load_adapter
+        TokenizerGroup._old_get_lora_tokenizer = TokenizerGroup.get_lora_tokenizer
+        TokenizerGroup.get_lora_tokenizer = patched_get_lora_tokenizer
 
 
 # FlattenedTensor, code borrowed from sglang/srt/weight_sync/tensor_bucket.py

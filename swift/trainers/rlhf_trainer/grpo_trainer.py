@@ -260,7 +260,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                   'Please install vLLM with `pip install vllm -U` to use it.')
-            self.args.train_type = 'full'
             self.base_sync_done = False  # tag for lora weights sync
 
             if self.vllm_mode == 'server':
@@ -600,16 +599,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             ]
             gather_if_zero3 = get_gather_if_zero3_context(self)
             with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
+                assert len(parameters) == len(parameter_group)
+                state_dict = {name: p for p, name in zip(parameters, parameter_group)}
                 peft_config = self.model.peft_config.get('default', None)
                 self.model.merge_adapter()
-                cur_lora_params = get_peft_model_state_dict(self.model)
-                cur_lora_params = {
+                cur_lora_params = get_peft_model_state_dict(self.model, state_dict)
+                cur_lora_params = {  # base_model.model.model.language_model.layers.0.self_attn.q_proj.lora_A.weight
                     name: param.full_tensor().detach().cpu() if hasattr(param, 'full_tensor') else param.detach().cpu()
-                    for name, param in lora_params.items()
+                    for name, param in cur_lora_params.items()
                 }
                 lora_params.update(cur_lora_params)
                 self.model.unmerge_adapter()
                 del cur_lora_params
+
         lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
 
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
@@ -646,10 +648,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
                     self.model.merge_adapter()
                     state_dict = self.model.state_dict()
-                    state_dict = {
-                        k.removeprefix('base_model.model.').replace('.base_layer', ''): v
-                        for k, v in state_dict.items()
-                    }
+                    state_dict = {k.removeprefix('base_model.model.'): v for k, v in state_dict.items()}
                     state_dict = {k: v for k, v in state_dict.items() if self.model.prefix not in k}
                     # When module to save, remove its prefix and discard the original module
                     state_dict = {
