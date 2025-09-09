@@ -24,6 +24,11 @@ class InternvlTemplate(Template):
     placeholder_tokens = ['<IMG_CONTEXT>']
     support_padding_free = True
 
+    def init_env_args(self):
+        super().init_env_args()
+        self.input_size = get_env_args('input_size', int, 448)
+        self.max_num = get_env_args('max_num', int, 12)
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if self.mode == 'vllm':
@@ -40,11 +45,9 @@ class InternvlTemplate(Template):
         images = inputs.images
         if images:
             labels = encoded.get('labels')
-            input_size = get_env_args('input_size', int, 448)
             if self.num_image_token is None:
-                self.num_image_token = int((input_size // 14)**2 * (0.5**2))
-            max_num = get_env_args('max_num', int, 12)
-            pixel_values_images = [transform_image(image, input_size, max_num) for image in images]
+                self.num_image_token = int((self.input_size // 14)**2 * (0.5**2))
+            pixel_values_images = [transform_image(image, self.input_size, max_num) for image in images]
             pixel_values = torch.cat(pixel_values_images, dim=0).to(self.model_info.torch_dtype)
             image_bs = pixel_values.shape[0]
 
@@ -101,7 +104,12 @@ register_template(
 
 
 class Internvl2Template(InternvlTemplate):
-    video_segments = 8
+    VIDEO_SEGMENTS = 8
+
+    def init_env_args(self):
+        super().init_env_args()
+        self.video_max_num = get_env_args('video_max_num', int, 1)
+        self.video_segments = get_env_args('video_segments', int, self.VIDEO_SEGMENTS)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -109,8 +117,7 @@ class Internvl2Template(InternvlTemplate):
         if media_type == 'image':
             return image_context
         elif media_type == 'video':
-            video_segments = get_env_args('video_segments', int, self.video_segments)
-            load_video = partial(load_video_internvl, num_segments=video_segments)
+            load_video = partial(load_video_internvl, num_segments=self.video_segments)
             return self.replace_video2image(load_video, inputs, lambda i: [f'Frame{i + 1}: '] + image_context)
 
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
@@ -128,13 +135,11 @@ class Internvl2Template(InternvlTemplate):
         images = inputs.images
         if images:
             has_video = bool(inputs.videos)
-            input_size = get_env_args('input_size', int, 448)
             if self.num_image_token is None:
-                self.num_image_token = int((input_size // 14)**2 * (0.5**2))
-            max_num = get_env_args('max_num', int, 12)
-            video_max_num = get_env_args('video_max_num', int, 1)
+                self.num_image_token = int((self.input_size // 14)**2 * (0.5**2))
+            max_num = self.max_num
             if has_video:
-                max_num = video_max_num
+                max_num = self.video_max_num
             pixel_values = [transform_image(image, input_size, max_num) for image in images]
             num_patches = [pv.shape[0] for pv in pixel_values]
             pixel_values = torch.cat(pixel_values).to(self.model_info.torch_dtype)

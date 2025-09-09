@@ -631,6 +631,7 @@ def patch_qwen_vl_utils(vision_process):
     if os.getenv('VIDEO_MAX_PIXELS') and not os.getenv('VIDEO_TOTAL_PIXELS'):
         # https://github.com/QwenLM/Qwen2.5-VL/issues/1120
         os.environ['VIDEO_TOTAL_PIXELS'] = str(int(128000 * 28 * 28 * 0.9))
+    res = {}
     for key in [
             'image_factor',
             'min_pixels',
@@ -653,7 +654,9 @@ def patch_qwen_vl_utils(vision_process):
         type_func = float if key == 'fps' else int
         if not hasattr(vision_process, key.upper()):
             continue
-        setattr(vision_process, key.upper(), get_env_args(key, type_func, getattr(vision_process, key.upper())))
+        val = get_env_args(key, type_func, getattr(vision_process, key.upper()))
+        setattr(vision_process, key.upper(), val)
+        res[key] = val
     _read_video_decord = vision_process._read_video_decord
 
     def _new_read_video_decord(ele: dict):
@@ -663,6 +666,7 @@ def patch_qwen_vl_utils(vision_process):
 
     vision_process.VIDEO_READER_BACKENDS['decord'] = _new_read_video_decord
     vision_process._patch = True
+    return res
 
 
 def get_model_tokenizer_qwen2_vl(*args, **kwargs):
@@ -674,7 +678,8 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
         patch_get_input_embeddings(base_model.visual, 'patch_embed')
 
     from qwen_vl_utils import vision_process
-    patch_qwen_vl_utils(vision_process)
+    global_vars = patch_qwen_vl_utils(vision_process)
+    tokenizer.global_vars = global_vars  # In order to have different hashes for the template.
     return model, tokenizer
 
 
@@ -788,6 +793,27 @@ register_model(
         requires=[],  # TODO
         tags=['vision', 'video']))
 
+
+def get_model_tokenizer_qwen3_moe_vl(model_dir, *args, **kwargs):
+    from transformers import Qwen3_VL_MOEForConditionalGeneration, Qwen3_VL_MoeProcessor
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen3_VL_MOEForConditionalGeneration
+    processor = Qwen3_VL_MoeProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    kwargs['tokenizer'] = processor.tokenizer
+    model, _ = get_model_tokenizer_qwen2_vl(model_dir, *args, **kwargs)
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_moe_vl,
+        [],
+        TemplateType.qwen3_vl,
+        get_model_tokenizer_qwen3_moe_vl,
+        model_arch=ModelArch.qwen3_vl,
+        architectures=['Qwen3_VL_MOEForConditionalGeneration'],
+        requires=[],  # TODO
+        tags=['vision', 'video']))
+
 register_model(
     ModelMeta(
         MLLMModelType.mimo_vl, [
@@ -811,7 +837,8 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['tokenizer'] = processor.tokenizer
     kwargs['model_config'] = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
-    patch_qwen_vl_utils(vision_process)
+    global_vars = patch_qwen_vl_utils(vision_process)
+    processor.global_vars = global_vars
     kwargs['model_config'].enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, True)
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     if model:

@@ -195,6 +195,10 @@ register_template(QwenTemplateMeta(MLLMTemplateType.qwen_audio, template_cls=Qwe
 
 class Qwen2AudioTemplate(Template):
 
+    def init_env_args(self) -> None:
+        super().init_env_args()
+        self.sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'audio'
@@ -206,10 +210,9 @@ class Qwen2AudioTemplate(Template):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         if inputs.audios:
-            sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
-            audios = load_batch(inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate))
+            audios = load_batch(inputs.audios, load_func=partial(load_audio, sampling_rate=self.sampling_rate))
             audio_inputs = self.processor.feature_extractor(
-                audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt')
+                audios, sampling_rate=self.sampling_rate, return_attention_mask=True, return_tensors='pt')
             audio_inputs['feature_attention_mask'] = audio_inputs.pop('attention_mask')
             encoded.update(audio_inputs)
         return encoded
@@ -674,6 +677,10 @@ class Ovis1_6Template(Template):
     skip_prompt = False
     use_model = True
 
+    def init_env_args(self):
+        super().init_env_args()
+        self.max_partition = get_env_args('max_partition', int, 9)
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
@@ -688,9 +695,8 @@ class Ovis1_6Template(Template):
         added_tokens_len = 0
         pixel_values = []
         for i, idx in enumerate(idx_list):
-            max_partition = get_env_args('max_partition', int, 9)
             raw_pixel_values, image_placeholders = self.model.visual_tokenizer.preprocess_image(
-                images[i], max_partition=max_partition)
+                images[i], max_partition=self.max_partition)
             input_ids = input_ids[:idx] + image_placeholders + input_ids[idx + 1:]
             if labels is not None:
                 labels = labels[:idx] + [-100] * len(image_placeholders) + labels[idx + 1:]
@@ -751,7 +757,11 @@ register_template(
 
 class Ovis2Template(Ovis1_6Template):
     placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
-    nframes = 12
+    NFRAMES = 12
+
+    def init_env_args(self):
+        super().init_env_args()
+        self.nframes = get_env_args('nframes', int, self.NFRAMES)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -760,8 +770,7 @@ class Ovis2Template(Ovis1_6Template):
                 return ['<image>\n']
             return [[-200], '\n']
         elif media_type == 'video':
-            nframes = get_env_args('nframes', int, self.nframes)
-            inputs.images = load_video_ovis2(inputs.videos[index], nframes)
+            inputs.images = load_video_ovis2(inputs.videos[index], self.nframes)
             return [[-200] * nframes, '\n']
 
 
@@ -776,8 +785,8 @@ class Ovis2_5Template(ThinkingTemplate):
     skip_prompt = False
     support_padding_free = True
 
-    def init_processor(self, processor) -> None:
-        super().init_processor(processor)
+    def init_env_args(self) -> None:
+        super().init_env_args()
         self.min_pixels = get_env_args('min_pixels', int, 448 * 448)
         self.max_pixels = get_env_args('max_pixels', int, 1344 * 1792)
         self.video_max_pixels = get_env_args('video_max_pixels', int, 896 * 896)

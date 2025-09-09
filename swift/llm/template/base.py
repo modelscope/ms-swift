@@ -133,6 +133,12 @@ class Template(ProcessorMixin):
         if processor is not None:
             self.init_processor(processor)
 
+    def init_env_args(self):
+        if self.model_meta.is_multimodal:
+            self.root_image_dir = get_env_args('ROOT_IMAGE_DIR', str, None)
+        else:
+            self.root_image_dir = None
+
     def init_processor(self, processor: Processor) -> None:
         if processor is None or self._processor_inited:
             return
@@ -157,6 +163,7 @@ class Template(ProcessorMixin):
             if isinstance(token, str):
                 self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
         self.template_meta.init(tokenizer)
+        self.init_env_args()
 
     def _get_model(self):
         if self.model is not None:
