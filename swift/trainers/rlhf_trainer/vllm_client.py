@@ -242,6 +242,44 @@ class VLLMClient:
         if all_errors:
             raise RuntimeError(f'Multiple errors: {all_errors}')
 
+    def update_adapter_flattened_param(self, lora_request, metadatas, flattened_tensor):
+        """
+        Adds a LoRA adapter to the model on all servers.
+
+        Args:
+            lora_request: TensorLoRARequest object containing LoRA adapter information.
+        """
+        errors = [None] * self.num_servers
+
+        def _update_single_server(i):
+            try:
+                # Convert lora_request to dict for JSON serialization
+                data = {
+                    'lora_request': lora_request,
+                    'metadatas': metadatas,
+                }
+
+                response = self.sessions[i].post(
+                    f'{self.base_urls[i]}/update_adapter_flattened_param/',
+                    json=data,
+                )
+                if response.status_code != 200:
+                    raise Exception(f'Server {i} update adapter failed: {response.text}')
+
+                self.pynccl_comms[i].broadcast(flattened_tensor, src=self.pynccl_comms[i].rank)
+                self.pynccl_comms[i].group.barrier()
+            except Exception as e:
+                errors[i] = e
+
+        with ThreadPoolExecutor(max_workers=self.num_servers) as executor:
+            futures = [executor.submit(_update_single_server, i) for i in range(self.num_servers)]
+            for future in futures:
+                future.result()
+
+        all_errors = [e for e in errors if e is not None]
+        if all_errors:
+            raise RuntimeError(f'Multiple errors: {all_errors}')
+
     def update_model_params(self, model: nn.Module):
         for name, param in model.named_parameters():
             self.update_named_param(name, param.data)

@@ -18,11 +18,13 @@ import torch
 import uvicorn
 from aiohttp import ClientConnectorError
 from fastapi import FastAPI
-from trl.scripts.vllm_serve import WeightSyncWorkerExtension
+from trl.scripts.vllm_serve import WeightSyncWorkerExtension as HFWeightSyncWorkerExtension
 
 from swift.llm import RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.plugin.multi_turn import RolloutScheduler, multi_turns
+from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, FlattenedTensorMetadata, LoRARequest,
+                                               TensorLoRARequest)
 from swift.utils import get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
@@ -49,6 +51,53 @@ Note:
 - Rollout is intended solely for GRPO training sampling.
 - For inference or deployment, please use the `swift infer` or `swift deploy` commands.
 """
+
+
+class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
+
+    def update_named_param(self, name: str, dtype: str, shape: Sequence[int]) -> None:
+        """
+        Receives updated weights from the client process and updates the named parameter in the model.
+
+        Args:
+            name (`str`):
+                Name of the weight tensor being updated.
+            dtype (`str`):
+                Data type of the weight tensor as a string (e.g., `"torch.float32"`).
+            shape (`Sequence[int]`):
+                Shape of the weight tensor.
+        """
+        if self.pynccl_comm is None:
+            raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
+
+        dtype = getattr(torch, dtype.split('.')[-1])
+        # Allocate memory for the incoming weight tensor on the correct device.
+        weight = torch.empty(shape, dtype=dtype, device=self.device)
+
+        # Use NCCL to broadcast the updated weights from the client (src) to all workers.
+        self.pynccl_comm.broadcast(weight, src=self.client_rank)
+        self.pynccl_comm.group.barrier()
+
+        # Load the received weights into the model.
+        self.model_runner.model.load_weights(weights=[(name, weight)])
+
+    def update_adapter_flattened_param(self, lora_request: LoRARequest,
+                                       metadatas: list[FlattenedTensorMetadata]) -> None:
+        """
+        Receives updated weights from the client process and updates the named parameter in the model.
+        """
+        if self.pynccl_comm is None:
+            raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
+        flatten_tensor_length = max(metadata.end_idx for metadata in metadatas)
+        flatten_tensor = torch.empty(flatten_tensor_length, dtype=torch.float32, device=self.device)
+        self.pynccl_comm.broadcast(flatten_tensor, src=self.client_rank)
+        self.pynccl_comm.group.barrier()
+        flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
+        named_params = flattened_tensor_bucket.reconstruct_tensors()
+
+        # TODO: Check
+        self.add_lora(TensorLoRARequest(lora_request=lora_request, lora_tensors=named_params))
+
 
 logger = get_logger()
 
@@ -165,6 +214,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.get('/get_world_size/')(self.get_world_size)
         self.app.post('/init_communicator/')(self.init_communicator)
         self.app.post('/update_named_param/')(self.update_named_param)
+        self.app.post('/update_adapter_flattened_param/')(self.update_adapter_flattened_param)
         self.app.post('/reset_prefix_cache/')(self.reset_prefix_cache)
         self.app.post('/close_communicator/')(self.close_communicator)
         self.app.post('/infer/', response_model=None)(self.infer)
@@ -310,6 +360,23 @@ class SwiftRolloutDeploy(SwiftPipeline):
             connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 
         return {'message': 'Request received, updating named parameter'}
+
+    async def update_adapter_flattened_param(self, lora_request, metadatas):
+        # Create a LoRA request object, or pass request directly
+        # from swift.trainers.rlhf_trainer.utils import TensorLoRARequest
+        # lora_request = TensorLoRARequest(
+        #     lora_name=request.lora_name,
+        #     lora_int_id=request.lora_int_id,
+        #     lora_path=request.lora_path,
+        #     peft_config=request.peft_config,
+        #     lora_tensors=request.lora_tensors
+        # )
+
+        kwargs = {'method': 'update_adapter_flattened_param', 'args': (lora_request, metadatas)}
+        for connection in self.connections:
+            connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
+
+        return {'message': 'Request received, updating adapter parameter'}
 
     async def reset_prefix_cache(self):
         """
