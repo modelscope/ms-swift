@@ -24,9 +24,12 @@ class SeedTemplate(Template):
                     if '<think>' in m['content'] and '</think>' in m['content']:
                         _, think = m['content'].split('<think>', maxsplit=1)
                         think, _ = think.split('</think>', maxsplit=1)
-                        thinking_token_len = len(self.tokenizer(think)['input_ids'])
-                        if thinking_token_len > max_length:
-                            max_length = thinking_token_len
+                        if len(think.strip()) == 0:
+                            max_length = 0
+                        else:
+                            thinking_token_len = len(self.tokenizer(think)['input_ids'])
+                            if thinking_token_len > max_length:
+                                max_length = thinking_token_len
 
         def convert_integer_v2(n):
             if n is None:
