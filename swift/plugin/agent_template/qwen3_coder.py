@@ -134,14 +134,14 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
         return tool_descs
 
     def _format_tool_calls(self, tool_call_messages):
-        result = ''
+        result_parts = []
         for message in tool_call_messages:
             tool_call = self._parse_tool_call(message['content'])
-            result += f"<tool_call>\n<function={tool_call['name']}>\n"
+            result_parts.append(f"<tool_call>\n<function={tool_call['name']}>\n")
             # 处理参数（如果存在）
             if 'arguments' in tool_call and tool_call['arguments']:
                 for args_name, args_value in tool_call['arguments'].items():
-                    result += f"<parameter={args_name}>\n"
+                    result_parts.append(f"<parameter={args_name}>\n")
                     # 处理不同类型的参数值
                     if isinstance(args_value, (dict, list)):
                         # 对于字典或列表，使用json格式化
@@ -149,10 +149,10 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
                     else:
                         # 对于其他类型，转换为字符串
                         args_value = str(args_value)
-                    result += f"{args_value}\n</parameter>\n"
+                    result_parts.append(f"{args_value}\n</parameter>\n")
             # 关闭标签
-            result += "</function>\n</tool_call>"
-        return result
+            result_parts.append("</function>\n</tool_call>")
+        return "".join(result_parts)
 
     def _get_tool_responses(self, tool_messages):
         res_tool = []
