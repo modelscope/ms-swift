@@ -26,11 +26,11 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
     def _find_function_call(single_content: str) -> Optional['Function']:
         from swift.llm.infer import Function
         single_content = single_content.strip()
-        # 检查是否包含完整的function标签
+        # Check whether the complete function tag is included
         if not single_content.startswith('<function=') or not single_content.endswith('</function>'):
             return None
 
-        # 提取函数名
+        # Extract function name
         func_name_match = re.search(r'<function=([^>]+)>', single_content)
         if not func_name_match:
             return None
@@ -38,20 +38,20 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
         func_name = func_name_match.group(1).strip()
         parameters = {}
 
-        # 使用更精确的正则表达式匹配参数
-        # 匹配 <parameter=name>任意内容</parameter>
+        # Use regular expressions to match parameters
+        # Match any content of <parameter=name>content</parameter>
         param_pattern = r'<parameter=([^>]+)>\s*(.*?)\s*</parameter>'
         param_matches = re.findall(param_pattern, single_content, re.DOTALL)
 
         for param_name, param_value in param_matches:
-            # 清理参数值，移除可能的额外空白
+            # Clear the parameter values and remove any possible additional whitespace
             clean_value = param_value.strip()
             parameters[param_name.strip()] = clean_value
 
         return Function(name=func_name, arguments=json.dumps(parameters, ensure_ascii=False))
 
     def get_toolcall(self, response: str) -> List['Function']:
-        # 如何从模型的回答中提取工具的调用（入参）
+        # Extract the tool call parameters from the model's response
         toolcall_list = re.findall(r'<tool_call>(.*?)</tool_call>', response, re.DOTALL)
         functions = []
         for toolcall in toolcall_list:
@@ -59,7 +59,7 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
             if function:
                 functions.append(function)
         if len(functions) == 0:
-            # compat react_en
+            # Compat react_en
             return super().get_toolcall(response)
         return functions
 
@@ -71,7 +71,7 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
         for tool in tools:
             tool_desc = ""
 
-            # 判断是否有function字段
+            # Check function key
             if isinstance(tool, dict) and 'function' in tool:
                 tool = tool['function']
 
@@ -138,16 +138,16 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
         for message in tool_call_messages:
             tool_call = self._parse_tool_call(message['content'])
             result_parts.append(f"<tool_call>\n<function={tool_call['name']}>\n")
-            # 处理参数（如果存在）
+            # Processing parameters (if present)
             if 'arguments' in tool_call and tool_call['arguments']:
                 for args_name, args_value in tool_call['arguments'].items():
-                    result_parts.append(f"<parameter={args_name}>\n")
-                    # 处理不同类型的参数值
+                    result_parts.append(f'<parameter={args_name}>\n')
+                    # Handle different types of parameter values
                     if isinstance(args_value, (dict, list)):
-                        # 对于字典或列表，使用json格式化
+                        # For dictionaries or lists, use json formatting
                         args_value = json.dumps(args_value)
                     else:
-                        # 对于其他类型，转换为字符串
+                        # For other types, convert to strings
                         args_value = str(args_value)
                     result_parts.append(f"{args_value}\n</parameter>\n")
             # 关闭标签
