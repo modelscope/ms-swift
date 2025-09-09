@@ -83,6 +83,13 @@ def test_midashenglm():
     response2 = _infer_model(pt_engine, messages=messages)
     assert response == response2 == "The audio contains a male voice speaking the phrase '今天天气真好呀' in Mandarin."
 
+def test_step_audio2_mini():
+    pt_engine = PtEngine('/mnt/nfs/models/Step-Audio-2-mini')
+    messages = [{'role': 'user', 'content': '<audio>Caption the audio.'}]
+    response = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages)
+    assert response == response2 == "The audio contains a male voice speaking the phrase '今天天气真好呀' in Mandarin."
 
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
@@ -94,4 +101,4 @@ if __name__ == '__main__':
     # test_step_audio_chat()
     # test_qwen2_5_omni()
     # test_gemma3n()
-    test_midashenglm()
+    test_step_audio2_mini()

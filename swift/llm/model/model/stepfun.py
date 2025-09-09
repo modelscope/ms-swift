@@ -11,6 +11,7 @@ from ..model_arch import ModelArch
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import git_clone_github, safe_snapshot_download
+from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone, patch_output_to_input_device
 
 
 def get_model_tokenizer_got_ocr2(*args, **kwargs):
@@ -70,6 +71,26 @@ def get_model_tokenizer_step_audio(*args, **kwargs):
         # decoder_path = safe_snapshot_download('stepfun-ai/Step-Audio-TTS-3B', check_local=True)
         # model.decoder = StepAudioTTS(decoder_path, model.encoder)
     return model, tokenizer
+
+def get_model_tokenizer_step_audio2_mini(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
+    if model is not None:
+        patch_output_clone(model.model.embed_tokens)
+    return model, tokenizer
+
+register_model(
+    ModelMeta(
+        MLLMModelType.step_audio2_mini,
+        [ModelGroup([
+            Model('stepfun-ai/Step-Audio-2-mini', 'stepfun-ai/Step-Audio-2-mini'),
+        ])],
+        TemplateType.step_audio2_mini,
+        get_model_tokenizer_step_audio2_mini,
+        model_arch=ModelArch.step_audio2_mini,
+        architectures=['StepAudio2ForCausalLM'],
+        requires=['transformers>=4.52', 'soundfile'],
+        tags=['audio'],
+    ))
 
 
 register_model(
