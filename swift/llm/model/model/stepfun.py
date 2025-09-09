@@ -11,7 +11,7 @@ from ..model_arch import ModelArch
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import git_clone_github, safe_snapshot_download
-from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone, patch_output_to_input_device
+from ..patcher import patch_output_clone
 
 
 def get_model_tokenizer_got_ocr2(*args, **kwargs):
