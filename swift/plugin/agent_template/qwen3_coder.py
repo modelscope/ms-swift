@@ -21,7 +21,7 @@ def render_extra_keys(obj, handled_keys):
     return result
 
 
-class QWEN3CODER_AgentTemplate(BaseAgentTemplate):
+class Qwen3CoderAgentTemplate(BaseAgentTemplate):
     @staticmethod
     def _find_function_call(single_content: str) -> Optional['Function']:
         from swift.llm.infer import Function
