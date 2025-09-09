@@ -3,7 +3,7 @@ from .base import BaseAgentTemplate
 from .extra import ReactGRPOAgentTemplate
 from .glm4 import GLM4_5AgentTemplate, GLM4_0414AgentTemplate, GLM4AgentTemplate
 from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate
-from .qwen3_coder import QWEN3CODER_AgentTemplate
+from .qwen3_coder import Qwen3CoderAgentTemplate
 from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .mistral import MistralAgentTemplate
 from .qwen import QwenEnAgentTemplate, QwenEnParallelAgentTemplate, QwenZhAgentTemplate, QwenZhParallelAgentTemplate
