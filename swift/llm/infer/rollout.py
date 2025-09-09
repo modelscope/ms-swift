@@ -284,7 +284,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         # used for RL external rollout backend
         engine_kwargs = kwargs.get('engine_kwargs', {})
         # for RL rollout model weight sync
-        engine_kwargs.update({'worker_extension_cls': 'trl.scripts.vllm_serve.WeightSyncWorkerExtension'})
+        engine_kwargs.update({'worker_extension_cls': 'swift.llm.infer.rollout.WeightSyncWorkerExtension'})
         engine_kwargs['load_format'] = 'dummy'
         if args.vllm_use_async_engine and args.vllm_data_parallel_size > 1:
             engine_kwargs['data_parallel_size'] = args.vllm_data_parallel_size
