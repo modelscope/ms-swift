@@ -45,7 +45,7 @@ class QWEN3CODER_AgentTemplate(BaseAgentTemplate):
 
         for param_name, param_value in param_matches:
             # 清理参数值，移除可能的额外空白
-            clean_value = re.sub(r'\s+', ' ', param_value).strip()
+            clean_value = param_value.strip()
             parameters[param_name.strip()] = clean_value
 
         return Function(name=func_name, arguments=json.dumps(parameters, ensure_ascii=False))
