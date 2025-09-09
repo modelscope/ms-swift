@@ -157,11 +157,16 @@ register_template(Llama3TemplateMeta(
 
 class MiniCPMV2_6Template(MiniCPMVTemplate):
 
+    def init_env_args(self):
+        super().init_env_args()
+        self.max_num_frames = get_env_args('max_num_frames', int, 64)
+        self.max_slice_nums = get_env_args('max_slice_nums', int, None)
+        self.video_max_slice_nums = get_env_args('video_max_slice_nums', int, 1)  # or 2
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type in {'image', 'video'}
-        max_num_frames = get_env_args('max_num_frames', int, 64)
-        load_video = partial(load_video_minicpmv_mplug_owl3, max_num_frames=max_num_frames)
+        load_video = partial(load_video_minicpmv_mplug_owl3, max_num_frames=self.max_num_frames)
         image_context = super().replace_tag('image', index, inputs)
         if media_type == 'image':
             return image_context
@@ -173,10 +178,9 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         images = inputs.images
         use_video = bool(inputs.videos)
         use_image_id = True
-        max_slice_nums = get_env_args('max_slice_nums', int, None)
-        video_max_slice_nums = get_env_args('video_max_slice_nums', int, 1)  # or 2
+        max_slice_nums = self.max_slice_nums
         if use_video:
-            max_slice_nums = video_max_slice_nums
+            max_slice_nums = self.video_max_slice_nums
             use_image_id = False
         input_ids = encoded['input_ids']
         labels = encoded['labels']
@@ -245,10 +249,9 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template, Qwen3Template):
         images = inputs.images
         use_video = bool(inputs.videos)
         use_image_id = True
-        max_slice_nums = get_env_args('max_slice_nums', int, None)
-        video_max_slice_nums = get_env_args('video_max_slice_nums', int, 1)  # or 2
+        max_slice_nums = self.max_slice_nums
         if use_video:
-            max_slice_nums = video_max_slice_nums
+            max_slice_nums = self.video_max_slice_nums
             use_image_id = False
         input_ids = encoded['input_ids']
         labels = encoded['labels']
