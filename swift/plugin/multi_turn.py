@@ -287,7 +287,9 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                     total_response_loss_mask.append(ret['response_loss_mask'])
 
             if 'rollout_infos' in ret:
-                rollout_infos = {**rollout_infos, **ret['rollout_infos']}
+                # Always overwrite the rollout info for this step.
+                # If you need to keep all step-wise details, switch to append or merge instead.
+                rollout_infos.update(ret['rollout_infos'])
 
             if current_request.messages[-1]['role'] == 'assistant':
                 # Add a dummy response to allow engine to continue generating

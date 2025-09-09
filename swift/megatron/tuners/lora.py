@@ -15,6 +15,7 @@ from megatron.core.extensions.transformer_engine import (TEColumnParallelGrouped
                                                          TERowParallelGroupedLinear, TERowParallelLinear)
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.parallel_state import get_expert_tensor_parallel_world_size, get_tensor_model_parallel_world_size
+from megatron.core.tensor_parallel import gather_from_sequence_parallel_region, scatter_to_sequence_parallel_region
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.router import TopKRouter
@@ -58,6 +59,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         self.fan_in_fan_out = fan_in_fan_out
         self._active_adapter = adapter_name
         self.is_expert = getattr(base_layer, 'is_expert', False)
+        self.sequence_parallel = getattr(base_layer, 'sequence_parallel', False)
         if self.is_expert:
             self.tp_size = get_expert_tensor_parallel_world_size()
         else:
@@ -182,12 +184,15 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                     **kwargs,
                 )
                 lora_b.parallel_mode = self.base_layer.parallel_mode  # fix moe_shared_expert_overlap
+        # https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/core/transformer/moe/shared_experts.py#L93
         for lora in [lora_a, lora_b]:
             if isinstance(lora, (TERowParallelLinear, TEColumnParallelLinear)) and lora.parallel_mode is None:
                 lora.ub_overlap_rs_fprop = False
                 lora.ub_overlap_ag_dgrad = False
                 lora.ub_overlap_ag_fprop = False
                 lora.ub_overlap_rs_dgrad = False
+        lora_a.sequence_parallel = False
+        lora_b.sequence_parallel = False
         self.lora_A[adapter_name] = lora_a
         self.lora_B[adapter_name] = lora_b
         if hasattr(self, 'lora_bias'):
@@ -286,6 +291,8 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         else:
             raise ValueError(f'Unsupported base layer type: {type(self.base_layer)}')
         if not isinstance(self.base_layer, TopKRouter) and not self.disable_adapters and not self.merged:
+            if self.sequence_parallel and self.base_layer.parallel_mode == 'column':
+                x = gather_from_sequence_parallel_region(x)
             for active_adapter in self.active_adapters:
                 if active_adapter not in self.lora_A.keys():
                     continue
@@ -305,7 +312,8 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 if isinstance(lora_result, tuple):
                     lora_result = lora_result[0]
                 lora_result = lora_result * scaling
-
+                if self.sequence_parallel and self.base_layer.parallel_mode == 'row':
+                    lora_result = scatter_to_sequence_parallel_region(lora_result)
                 result = result + lora_result
 
         result = result.to(previous_dtype)

@@ -347,3 +347,13 @@ class GptOssTemplateMeta(TemplateMeta):
 
 
 register_template(GptOssTemplateMeta(LLMTemplateType.gpt_oss, template_cls=GptTemplate))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.longchat,
+        prefix=[],
+        system_prefix=['SYSTEM:{{SYSTEM}}'],
+        prompt=[' [Round {{ROUND0}}] USER:{{QUERY}} ASSISTANT:'],
+        chat_sep=['</longcat_s>'],
+        suffix=['</longcat_s>'],
+    ))

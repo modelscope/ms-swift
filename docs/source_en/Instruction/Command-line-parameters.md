@@ -150,7 +150,8 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - 🔥vit_gradient_checkpointing: Whether to enable gradient_checkpointing for the vit part during multi-modal model training. Defaults to None, meaning it is set to `gradient_checkpointing`. For an example, please refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/vit_gradient_checkpointing.sh).
   - Note: For multimodal models using LoRA training, when `--freeze_vit false` is set and the following warning appears in the command line: `UserWarning: None of the inputs have requires_grad=True. Gradients will be None`, please set `--vit_gradient_checkpointing false`, or raise a related issue. This problem does not occur during full-parameter training.
 - 🔥deepspeed: Defaults to None. It can be set to 'zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload' to use the built-in deepspeed configuration file of ms-swift. You can also provide a path to a custom DeepSpeed configuration file.
-- zero_hpz_partition_size: Default is `None`. This parameter is a feature of `ZeRO++`, which implements model sharding within nodes and data sharding between nodes. If you encounter grad_norm `NaN` issues, please try using `--torch_dtype float16`
+- zero_hpz_partition_size: Default is `None`. This parameter is a feature of `ZeRO++`, which implements model sharding within nodes and data sharding between nodes. If you encounter grad_norm `NaN` issues, please try using `--torch_dtype float16`.
+- deepspeed_autotp_size: DeepSpeed tensor parallelism size, default is 1. When using DeepSpeed AutoTP, the argument `--deepspeed` must be set to 'zero0', 'zero1', or 'zero2'. (Note: This feature only supports full-parameter training.)
 - 🔥per_device_train_batch_size: Default is 1.
 - 🔥per_device_eval_batch_size: Default is 1.
 - 🔥gradient_accumulation_steps: Gradient accumulation, default is None, meaning set gradient_accumulation_steps such that total_batch_size >= 16. The total_batch_size equals `per_device_train_batch_size * gradient_accumulation_steps * world_size`. In GRPO Training, the default is 1.
@@ -173,7 +174,6 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - enable_dft_loss: Whether to use [DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss in SFT training, default is False.
 - enable_channel_loss: Enable channel loss, default is `false`. You need to prepare a "channel" field in your dataset; ms-swift will compute and aggregate the loss grouped by this field. For dataset format, please refer to [channel loss](../Customization/Custom-dataset.md#channel-loss). Channel loss is compatible with techniques such as packing, padding-free, and loss scaling.
   - Note: This parameter is newly added in "ms-swift>=3.8". If you want to use channel loss in "ms-swift<3.8", please refer to the v3.7 documentation.
-  - Note: This feature is currently not compatible with sequence parallelism and will be fixed later.
 - logging_dir: The path for TensorBoard logs. Defaults to None, which means it is set to `f'{self.output_dir}/runs'`.
 - predict_with_generate: Whether to use generative method during validation, default is False.
 - metric_for_best_model: Default is None, which means that when predict_with_generate is set to False, it is set to 'loss'; otherwise, it is set to 'rouge-l' (during PPO training, the default value is not set; in GRPO training, it is set to 'reward').

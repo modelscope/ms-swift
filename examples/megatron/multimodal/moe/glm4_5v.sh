@@ -1,50 +1,45 @@
-# Note: cached_dataset does not support CP temporarily.
-swift export \
-    --model Qwen/Qwen3-30B-A3B-Base \
-    --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \
-    --max_length 8192 \
-    --split_dataset_ratio 0.01 \
-    --dataset_num_proc 64 \
-    --to_cached_dataset true \
-    --output_dir ./qwen3_cached_dataset
-
-
-# 4 * 48GiB; 17s/it
+# 4 * 66GiB, 6.4s/it
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
-    --load Qwen3-30B-A3B-Base-mcore \
-    --cached_dataset './qwen3_cached_dataset' \
+    --load GLM-4.5V-mcore \
+    --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --train_type lora \
-    --lora_rank 32 \
-    --lora_alpha 64 \
+    --lora_rank 8 \
+    --lora_alpha 32 \
     --target_modules all-linear \
+    --sequence_parallel true \
+    --freeze_llm false \
+    --freeze_vit true \
+    --freeze_aligner true \
+    --packing true \
     --split_dataset_ratio 0.01 \
-    --moe_permute_fusion true \
+    --tensor_model_parallel_size 4 \
+    --expert_tensor_parallel_size 1 \
     --expert_model_parallel_size 4 \
+    --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
     --moe_aux_loss_coeff 1e-3 \
     --micro_batch_size 1 \
-    --global_batch_size 16 \
+    --global_batch_size 2 \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
-    --max_epochs 3 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --save megatron_output/Qwen3-30B-A3B-Base \
+    --max_epochs 1 \
+    --save megatron_output/GLM-4.5V-mcore \
     --eval_interval 200 \
     --save_interval 200 \
-    --packing true \
-    --max_length 8192 \
+    --vit_gradient_checkpointing true \
+    --max_length 2048 \
     --num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \
-    --sequence_parallel true \
     --attention_backend flash

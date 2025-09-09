@@ -127,6 +127,8 @@ def get_examples(is_multimodal: bool) -> Dict[str, Any]:
 
 
 def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float32):
+    hf_model.eval()
+    mg_model.eval()
     _test_params_sum(hf_model)
     _test_params_sum(mg_model)
 
@@ -144,7 +146,9 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     ignore_modules = (model_arch.vision_tower + model_arch.aligner) if is_multimodal else []
 
     hf_modules = _find_modules(hf_model, ignore_modules=ignore_modules)
-    with torch.inference_mode(), _model_cpu_forward_context(hf_modules, torch_dtype, share_embedding=share_embedding):
+    with torch.inference_mode(), _model_cpu_forward_context(
+            hf_modules, torch_dtype, share_embedding=share_embedding), template.forward_context(hf_model, inputs):
+        inputs.pop('text_position_ids', None)
         hf_logits = hf_model(**inputs).logits
     hf_model.to('cpu')
 
@@ -176,6 +180,8 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     mg_tokens = mg_logits.argmax(-1)
     print(f'hf_tokens: {hf_tokens[0].tolist()}\nmg_tokens: {mg_tokens[0].tolist()}')
     print(f'token_diff: {(hf_tokens != mg_tokens).sum().item()}')
+    loss_mask = (torch.roll(inputs['labels'], -1) != -100)
+    print(f'token_diff (with loss): {(hf_tokens[loss_mask] != mg_tokens[loss_mask]).sum().item()}')
 
 
 convert_kwargs = {
@@ -206,10 +212,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    config = processor.model_info.config
-    if args.model_meta.is_multimodal and hasattr(config, 'text_config'):
-        config = config.text_config
-    kwargs = megatron_model_meta.convert_hf_config(config)
+    kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()
@@ -229,7 +232,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     logger.info('Megatron model created successfully.')
     megatron_model_meta.convert_hf2mcore(hf_model, mg_model)
     if args.test_convert_precision:
-        test_convert_precision(hf_model, mg_model, template)
+        test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
     del hf_model
     logger.info('Successfully transferred HF model weights to MG model.')
     args.save_args()
@@ -245,10 +248,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    config = processor.model_info.config
-    if args.model_meta.is_multimodal and hasattr(config, 'text_config'):
-        config = config.text_config
-    kwargs = megatron_model_meta.convert_hf_config(config)
+    kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()
@@ -287,7 +287,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     if args.to_hf:
         megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
         if args.test_convert_precision:
-            test_convert_precision(hf_model, mg_model, template)
+            test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
         del mg_model
         logger.info('Successfully transferred MG model weights to HF model.')
         ckpt_dir = megatron_args.load if megatron_args.adapter_load is None else megatron_args.adapter_load

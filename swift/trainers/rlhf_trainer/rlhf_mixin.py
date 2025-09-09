@@ -54,6 +54,13 @@ class RLHFTrainerMixin:
     def create_loss_and_metric(self, args):
         return {}
 
+    def _prepare_inputs(self, inputs):
+        inputs = super()._prepare_inputs(inputs)
+        if self.template.sequence_parallel_size > 1:
+            from swift.trainers.sequence_parallel import sequence_parallel
+            sequence_parallel.prepare_inputs(inputs)
+        return inputs
+
     def get_train_dataloader(self, *args, **kwargs):
         train_dataloader = super().get_train_dataloader(*args, **kwargs)
         base_dataloader = train_dataloader.base_dataloader if hasattr(

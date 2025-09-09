@@ -1,1 +1,1 @@
-from . import qwen2_5_vl
+from . import glm, internvl, qwen
