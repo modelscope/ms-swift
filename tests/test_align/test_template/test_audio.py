@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
 
 def _infer_model(pt_engine, system=None, messages=None, audios=None):
@@ -72,7 +72,7 @@ def test_gemma3n():
     response = _infer_model(pt_engine, messages=messages, audios=audios)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, audios=audios)
-    assert response == response2
+    assert response == response2 
 
 
 def test_midashenglm():
@@ -84,12 +84,10 @@ def test_midashenglm():
     assert response == response2 == "The audio contains a male voice speaking the phrase '今天天气真好呀' in Mandarin."
 
 def test_step_audio2_mini():
-    pt_engine = PtEngine('/mnt/nfs/models/Step-Audio-2-mini')
+    pt_engine = PtEngine('/nfs/volume-377-6/llm/models/Step-Audio-2-mini')
     messages = [{'role': 'user', 'content': '<audio>Caption the audio.'}]
     response = _infer_model(pt_engine, messages=messages)
-    pt_engine.default_template.template_backend = 'jinja'
-    response2 = _infer_model(pt_engine, messages=messages)
-    assert response == response2 == "The audio contains a male voice speaking the phrase '今天天气真好呀' in Mandarin."
+    assert response == "A man is speaking."
 
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig

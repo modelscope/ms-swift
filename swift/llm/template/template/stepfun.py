@@ -232,7 +232,7 @@ class StepAudio2MiniTemplate(Template):
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
         sampling_rate = get_env_args('sampling_rate', int, 16000)
-        inputs.audios = load_batch(inputs.audios, partial(self.load_audio, sampling_rate=sampling_rate))
+        inputs.audios = load_batch(inputs.audios, partial(self.load_audio, target_rate=sampling_rate))
         
         audio_token = self._tokenize('<audio_patch>')[0]
         idx_list = findall(input_ids, audio_token)
