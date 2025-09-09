@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, List, Literal, Optional
 from functools import partial
+import itertools
+
 import torch
 import torchaudio
 from torch.nn.utils.rnn import pad_sequence
@@ -248,10 +250,11 @@ class StepAudio2MiniTemplate(Template):
             def _get_new_audio_tokens(i):
                 return audio_inputs[i]
             
-            input_ids, labels,loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list, _get_new_audio_tokens)
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list, _get_new_audio_tokens)
+            encoded["input_ids"] = input_ids  # Add labels to the batch
             encoded["labels"] = labels  # Add labels to the batch
             encoded['loss_scale'] = loss_scale
-            
+            encoded['mels'] = mels
             wavs, wav_lens = self.padding_mels(mels)
             # audio_tokens = [151688, 151690, 151689]
             # for audio_token_id in audio_tokens:
@@ -266,20 +269,13 @@ class StepAudio2MiniTemplate(Template):
         
         return encoded
 
-    # def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-    #     res = super()._data_collator(batch, padding_to=padding_to)
-
-    #     input_values = [b['input_values'] for b in batch if b.get('input_values') is not None]
-    #     audio_lengths = [b['audio_length'] for b in batch if b.get('audio_length') is not None]
-
-    #     if input_values:
-    #         res['audio_length'] = torch.concat(audio_lengths)
-    #         for i in range(len(input_values)):
-    #             pad_len = (res['audio_length'].max() - input_values[i].shape[1]).item()
-    #             input_values[i] = F.pad(input_values[i], (0, pad_len), 'constant', 0)
-    #         res['input_values'] = torch.concat(input_values)
-
-    #     return res
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        batch_wavs, batch_wav_lens = self.padding_mels(list(itertools.chain.from_iterable([e['mels'] for e in batch])))
+        res = super()._data_collator(batch, padding_to=padding_to)
+        res['wav_lens'] = batch_wav_lens
+        res['wavs'] = batch_wavs
+        
+        return res
 
 register_template(
     TemplateMeta(

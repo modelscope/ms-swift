@@ -87,7 +87,7 @@ def test_step_audio2_mini():
     pt_engine = PtEngine('stepfun-ai/Step-Audio-2-mini')
     messages = [{'role': 'user', 'content': '<audio>Caption the audio.'}]
     response = _infer_model(pt_engine, messages=messages)
-    assert response == "A man is speaking."
+    assert response == "<中文>今天天气真好呀。"
 
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
