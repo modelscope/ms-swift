@@ -273,7 +273,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
             'torch_dtype': args.torch_dtype,
             'template': template,
             'use_async_engine': args.vllm_use_async_engine,
-            'enable_lora': args.vllm_enable_lora,
             'max_lora_rank': args.vllm_max_lora_rank,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
@@ -281,6 +280,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
             infer_backend = 'vllm'
             logger.info('Currently, rollout only supports the vLLM backend. Set vLLM backend')
         kwargs.update(args.get_vllm_engine_kwargs())
+        kwargs.update({'enable_lora': args.vllm_enable_lora})  # override
         # used for RL external rollout backend
         engine_kwargs = kwargs.get('engine_kwargs', {})
         # for RL rollout model weight sync
