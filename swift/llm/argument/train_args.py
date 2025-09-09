@@ -133,7 +133,7 @@ class TrainArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTra
         if self.padding_free or self.packing:
             if self.packing:
                 feature = 'packing'
-                self.padding_free = False
+                self.padding_free = True
             else:
                 feature = 'padding_free'
             if self.attn_impl not in {'flash_attn', 'flash_attention_2', 'flash_attention_3'}:

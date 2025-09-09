@@ -11,10 +11,9 @@ from collections import defaultdict, deque
 from concurrent.futures import Future
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from math import ceil
 from queue import Queue
-from threading import local
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
@@ -50,7 +49,8 @@ from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_dist_
                          unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import (_ForwardRedirection, load_pil_img, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
+from .utils import (_ForwardRedirection, compute_chord_loss, identity_data_collator, load_pil_img,
+                    make_chord_sft_dataset, patch_lora_merge, patch_lora_unmerge, patch_profiling_context,
                     patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids)
 from .vllm_client import VLLMClient
 
@@ -88,10 +88,6 @@ class AsyncGenerateCallback(TrainerCallback):
 @dataclass
 class DataCache:
     results: DataType
-
-
-def identity_data_collator(features):
-    return features
 
 
 class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
@@ -195,8 +191,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.model_kwarg_keys = (
             inspect.signature(model.forward).parameters.keys() if not hasattr(model, 'get_base_model') else
             inspect.signature(model.get_base_model().forward).parameters.keys())
-
+        chord_sft_dataset = kwargs.pop('chord_sft_dataset', None)
         super().__init__(model, ref_model, *_args, **kwargs)
+        self.chord_sft_iterator = None
+        if chord_sft_dataset is not None:
+            self.chord_sft_iterator = make_chord_sft_dataset(self, chord_sft_dataset)
         if self.args.eval_strategy != 'no':
             total_eval_batch_size = self.args.per_device_eval_batch_size * \
                 self.accelerator.num_processes // self.args.num_generations
@@ -299,7 +298,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         else:
             from swift.llm import PtEngine
-            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+            self.engine = PtEngine.from_model_template(self.model, copy(self.template), max_batch_size=0)  # 0: no limit
 
         if not self.reward_funcs and not self.use_gym_env:
             raise ValueError('You must specify reward_funcs or reward_model')
@@ -550,7 +549,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
                 disable_cascade_attn=self.args.vllm_disable_cascade_attn,
                 load_format='dummy',
-                template=self.template,
+                template=copy(self.template),
                 distributed_executor_backend='external_launcher',
             )
         return engine
@@ -559,14 +558,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _template_context(self, template: Template):
         # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
         max_length = template.max_length
-        mode = template.mode
-        if mode in {'vllm', 'pt', 'lmdeploy'}:
-            template.set_mode('train')
         template.max_length = None
         try:
             yield
         finally:
-            template.set_mode(mode)
             template.max_length = max_length
 
     @patch_profiling_decorator
@@ -1540,6 +1535,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'high_clip_max': nanmax(gathered_high_clip).item(),
             'region_clip_mean': gathered_clip_ratio.nanmean().item()
         }
+        if mode == 'train' and self.chord_sft_iterator is not None:
+            loss = compute_chord_loss(self, grpo_loss=loss)
 
         return loss, metrics_data
 
@@ -2023,7 +2020,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             }
             if 'logits_to_keep' in self.model_kwarg_keys:
                 inputs['logits_to_keep'] = logits_to_keep + 1
-            with self._template_context(self.template), self.padding_free_context(model):
+            with self.padding_free_context(model):
                 logits = model(**inputs).logits
             # exclude the last logit: it corresponds to the next token pred
             logits = logits[:, -(logits_to_keep + 1):-1, :]

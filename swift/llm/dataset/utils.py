@@ -141,7 +141,7 @@ class PackingDataset(Dataset):
         **kwargs,
     ):
         template.packing = True
-        template.padding_free = True
+        template.padding_free = True  # TODO: remove
         self.template = template
         self.dataset = dataset
         self.num_proc = num_proc
@@ -200,7 +200,7 @@ class IterablePackingDataset(IterableDataset):
         **kwargs,
     ):
         template.packing = True
-        template.padding_free = True
+        template.padding_free = True  # TODO: remove
         self.template = template
         self.dataset = dataset
         self.num_proc = num_proc
