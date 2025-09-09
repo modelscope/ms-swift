@@ -41,7 +41,7 @@ class ThinkingTemplate(Template):
         super()._swift_prepare_inputs(inputs)
         messages = inputs.messages
 
-        if self.no_think_prefix:
+        if self.no_think_prefix and self.use_chat_template:
             for i, message in enumerate(messages):
                 if message['role'] == 'assistant' and isinstance(message['content'], str):
                     # During multi-turn SFT training/validation:
