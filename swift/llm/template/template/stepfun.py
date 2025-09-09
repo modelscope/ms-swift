@@ -158,9 +158,9 @@ class StepAudio2MiniTemplate(Template):
         """
         Compute the log-Mel spectrogram with specific padding for StepAudio
         """
-        if not torch.is_tensor(audio):
-            if isinstance(audio, str):
-                audio = self.load_audio(audio)
+        if isinstance(audio, str):
+            audio = self.load_audio(audio)
+        elif not torch.is_tensor(audio):
             audio = torch.from_numpy(audio)
         if padding > 0:
             audio = F.pad(audio, (0, padding))
