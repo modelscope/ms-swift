@@ -1877,7 +1877,7 @@ class Template(ProcessorMixin):
         Returns:
             A tensor after padding
         """
-        padding_side = self.padding_side if self.is_training else 'left'
+        padding_side = self.padding_side if self.is_training and self.task_type != 'generative_reranker' else 'left'
         padding_right = padding_side == 'right'
         if padding_right:
             return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
