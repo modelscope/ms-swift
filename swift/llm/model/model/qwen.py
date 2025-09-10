@@ -625,31 +625,6 @@ register_model(
     ))
 
 
-def get_model_tokenizer_qwen3_next(model_dir, *args, **kwargs):
-    print()
-
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen3_next,
-        [ModelGroup([Model('Qwen3-Next-80B-A3B-Instruct')])],
-        TemplateType.qwen3_nothinking,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3NextForCausalLM'],
-        requires=['transformers>=4.57.0.dev'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen3_next_thinking,
-        [],
-        TemplateType.qwen3_thinking,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Qwen3NextForCausalLM'],
-        requires=['transformers>=4.57.0.dev'],
-    ))
-
-
 def patch_qwen_vl_utils(vision_process):
     if hasattr(vision_process, '_patch'):
         return
