@@ -375,27 +375,22 @@ class SequenceParallel:
 
         llm_model = get_llm_model(model)
 
-        if hasattr(llm_model, 'thinker'):
-            base_model = llm_model.thinker.model
+        if hasattr(llm_model, 'language_model'):
+            if hasattr(llm_model.language_model, '_update_causal_mask'):
+                self.causal_mask_func = llm_model.language_model._update_causal_mask
         else:
-            base_model = llm_model.model
-
-        if hasattr(base_model, 'language_model'):
-            if hasattr(base_model.language_model, '_update_causal_mask'):
-                self.causal_mask_func = base_model.language_model._update_causal_mask
-        else:
-            if hasattr(base_model, '_update_causal_mask'):
-                self.causal_mask_func = base_model._update_causal_mask
+            if hasattr(llm_model, '_update_causal_mask'):
+                self.causal_mask_func = llm_model._update_causal_mask
 
         if not SequenceParallel._global_inited:
             # these operations are global initializations and patches
             self._init_device_mesh()
-            self._prepare_flash_attn(base_model)
+            self._prepare_flash_attn(llm_model)
             SequenceParallel._global_inited = True
 
-        self._prepare_forward_hook(base_model)
+        self._prepare_forward_hook(llm_model)
         if model.model_info.is_moe_model:
-            self._prepare_moe_aux_loss(base_model)
+            self._prepare_moe_aux_loss(llm_model)
 
         self.model_dtype = next(model.parameters()).dtype
         self.tokenizer = tokenizer

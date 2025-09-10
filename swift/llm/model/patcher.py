@@ -20,7 +20,7 @@ from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 from swift.llm import deep_getattr, to_device, to_float_dtype
 from swift.utils import get_dist_setting, get_logger, is_mp, is_mp_ddp, safe_ddp_context
 from swift.utils.torch_utils import _get_max_memory, _sync_max_memory, get_device_count
-from .utils import HfConfigFactory, get_llm_model
+from .utils import HfConfigFactory
 
 logger = get_logger()
 
@@ -74,7 +74,7 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
         return hidden_states
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
-    llm_model = get_llm_model(module, model_meta=model_meta)
+    llm_model = get_lm_head_model(module, model_meta=model_meta)
 
     found = False
     for lm_head in lm_heads:
