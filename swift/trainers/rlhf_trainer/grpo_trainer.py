@@ -615,16 +615,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
 
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-            lora_reqest = LoRARequest(
-                lora_name=f'{lora_int_id}',
-                lora_int_id=lora_int_id,
-                lora_path='dummy_lora_path',
-                peft_config=asdict(peft_config),
-            )
-            bucked = FlattenedTensorBucket(list(named_tensors=lora_params.items()))
+            bucked = FlattenedTensorBucket(named_tensors=list(lora_params.items()))
             metadatas = bucked.get_metadata()
             flattened_tensor = bucked.get_flattened_tensor()
-            self.vllm_client.update_adapter_flattened_param(lora_reqest, metadatas, flattened_tensor)  # TODO
+            self.vllm_client.update_adapter_flattened_param(peft_config, metadatas, flattened_tensor)  # TODO
         elif self.vllm_mode == 'colocate':
             lora_reqest = TensorLoRARequest(
                 lora_name=f'{lora_int_id}',

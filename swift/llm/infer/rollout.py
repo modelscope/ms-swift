@@ -27,6 +27,7 @@ from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.plugin.multi_turn import RolloutScheduler, multi_turns
 from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, FlattenedTensorMetadata, LoRARequest,
                                                TensorLoRARequest)
+from swift.tuners.lora import LoraConfig
 from swift.utils import get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
 from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
@@ -83,11 +84,11 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
         # Load the received weights into the model.
         self.model_runner.model.load_weights(weights=[(name, weight)])
 
-    def update_adapter_flattened_param(self, lora_request: LoRARequest,
-                                       metadatas: list[FlattenedTensorMetadata]) -> None:
+    def update_adapter_flattened_param(self, peft_config: Dict, metadatas: list[FlattenedTensorMetadata]) -> None:
         """
         Receives updated weights from the client process and updates the named parameter in the model.
         """
+        peft_config = LoraConfig(**peft_config)
         if self.pynccl_comm is None:
             raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
         flatten_tensor_length = max(metadata.end_idx for metadata in metadatas)
@@ -96,7 +97,13 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
         self.pynccl_comm.group.barrier()
         flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
         named_params = flattened_tensor_bucket.reconstruct_tensors()
-
+        lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
+        lora_request = TensorLoRARequest(
+            lora_name=f'{lora_int_id}',
+            lora_int_id=lora_int_id,
+            lora_path='dummy_lora_path',
+            peft_config=peft_config,
+            lora_tensors=named_params)
         # TODO: Check
         self.add_lora(TensorLoRARequest(lora_request=lora_request, lora_tensors=named_params))
 
