@@ -356,7 +356,17 @@ def git_clone_github(github_url: str,
     return local_repo_path
 
 
-def get_llm_model(model: torch.nn.Module, model_meta=None):
+def get_llm_model(model: torch.nn.Module, model_meta=None, inner_backbone=True):
+    """Get LLM model, this function can be used to get the llm module from a multi-modal model.
+
+    Args:
+        model: The model instance
+        model_meta: The model_meta information
+        inner_backbone: Get inner backbone model, like `QwenModel` or `LlamaModel`
+
+    Returns:
+
+    """
     from swift.tuners import SwiftModel
     from peft import PeftModel
     from accelerate.utils import extract_model_from_parallel
@@ -375,6 +385,12 @@ def get_llm_model(model: torch.nn.Module, model_meta=None):
 
     if 'CausalLM' not in llm_model.__class__.__name__:
         llm_model = model
+
+    if inner_backbone:
+        if hasattr(llm_model, 'thinker'):
+            llm_model = llm_model.thinker.model
+        else:
+            llm_model = llm_model.model
     return llm_model
 
 
