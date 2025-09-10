@@ -3,6 +3,7 @@ import warnings
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from accelerate.utils import gather_object
 from peft import PeftModel
@@ -89,9 +90,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         labels = batch.pop('labels', None)
         if self.is_encoder_decoder:
             batch['labels'] = labels
-        position_ids = batch.pop('_position_ids', None)
-        if position_ids is None:
-            position_ids = batch.get('position_ids')
+        text_position_ids = batch.pop('text_position_ids', None)
+        if text_position_ids is None:
+            text_position_ids = batch.get('position_ids')
         outputs = model(**batch, use_cache=False)
         all_logits = outputs.logits
 
@@ -114,7 +115,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         output = {}
         if self.template.padding_free:
-            cu_seqlens = self.get_cu_seqlens(position_ids, batch.get('logits_to_keep'))
+            cu_seqlens = self.get_cu_seqlens(text_position_ids, batch.get('logits_to_keep'))
             num_examples = (cu_seqlens.shape[0] - 1) // 2
             all_logps = per_token_logps.new_zeros((num_examples * 2, ))
             completion_lengths = (cu_seqlens[1:] - cu_seqlens[:-1])
@@ -152,10 +153,10 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                 public_lengths = torch.cat([public_lengths, public_lengths], dim=0)
 
                 seq_len = per_token_logps.size(1)
-                position_ids = torch.arange(seq_len, device=per_token_logps.device).expand_as(per_token_logps)
+                text_position_ids = torch.arange(seq_len, device=per_token_logps.device).expand_as(per_token_logps)
 
-                ld_mask = position_ids < public_lengths.unsqueeze(1)
-                mask = position_ids < completion_lengths.unsqueeze(1)
+                ld_mask = text_position_ids < public_lengths.unsqueeze(1)
+                mask = text_position_ids < completion_lengths.unsqueeze(1)
 
                 front_mask = (ld_mask & mask).float()
                 rear_mask = (~ld_mask & mask).float()
@@ -173,8 +174,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['aux_loss'] = outputs.aux_loss
         return output
 
-    @staticmethod
     def get_per_token_logps(
+        self,
         logits: torch.FloatTensor,
         labels: torch.LongTensor,
         label_pad_token_id=-100,
@@ -185,18 +186,41 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         loss_mask = labels != label_pad_token_id
         labels = labels.clone()
         labels[~loss_mask] = 0
-        # https://github.com/huggingface/trl/pull/2799
-        # Reduce peak vram consumption with efficient selective log_softmax
-        per_token_logps = selective_log_softmax(logits, labels)
-        per_token_logps[~loss_mask] = 0
-        return per_token_logps, logits.mean(-1), loss_mask
+        if self.template.sequence_parallel_size == 1:
+            # https://github.com/huggingface/trl/pull/2799
+            # Reduce peak vram consumption with efficient selective log_softmax
+            per_token_logps = selective_log_softmax(logits, labels)
+            per_token_logps[~loss_mask] = 0
+            return per_token_logps, logits.mean(-1), loss_mask
+        else:
+            labels = labels.to(logits.device)
+            loss_mask = loss_mask.to(logits.device)
+            mean_logits = logits.mean(-1)
+            per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
+            from swift.trainers.sequence_parallel.utils import GatherLoss
+            from swift.trainers.sequence_parallel import sequence_parallel
+            position_ids = sequence_parallel.real_position_ids
+            total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, 1, position_ids)
+            total_mean_logits = sequence_parallel.gather(mean_logits, dim=1, position_ids=position_ids)
+            if position_ids is not None and position_ids.min() == -1:
+                _pos_mask = position_ids >= 0
+                total_per_token_logps = total_per_token_logps[_pos_mask].contiguous()
+                total_mean_logits = total_mean_logits[_pos_mask].contiguous()
+                total_loss_mask = total_loss_mask[_pos_mask].contiguous()
+
+            total_loss_mask = total_loss_mask.bool()
+            total_per_token_logps = total_per_token_logps * (total_loss_mask)
+
+            if total_per_token_logps.dim() == 1:
+                total_per_token_logps = total_per_token_logps.unsqueeze(0)
+                total_mean_logits = total_mean_logits.unsqueeze(0)
+                total_loss_mask = total_loss_mask.unsqueeze(0)
+            return total_per_token_logps, total_mean_logits, total_loss_mask
 
     def training_step(self, model, inputs, *args, **kwargs):
-        inputs['_position_ids'] = inputs.get('position_ids')
         with self.template.forward_context(self.model, inputs):
             return super().training_step(model, inputs, *args, **kwargs)
 
     def prediction_step(self, model, inputs, *args, **kwargs):
-        inputs['_position_ids'] = inputs.get('position_ids')
         with self.template.forward_context(self.model, inputs):
             return super().prediction_step(model, inputs, *args, **kwargs)

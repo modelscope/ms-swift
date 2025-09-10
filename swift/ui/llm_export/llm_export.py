@@ -146,20 +146,20 @@ class LLMExport(BaseUI):
         for e in kwargs:
             if isinstance(kwargs[e], list):
                 params += f'--{e} {cls.quote}{sep.join(kwargs[e])}{cls.quote} '
-                command.extend([f'--{e}', f'{" ".join(kwargs[e])}'])
+                command.extend([f'--{e}'] + kwargs[e])
             elif e in kwargs_is_list and kwargs_is_list[e]:
                 all_args = [arg for arg in kwargs[e].split(' ') if arg.strip()]
                 params += f'--{e} {cls.quote}{sep.join(all_args)}{cls.quote} '
-                command.extend([f'--{e}', f'{" ".join(all_args)}'])
+                command.extend([f'--{e}'] + all_args)
             else:
                 params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
                 command.extend([f'--{e}', f'{kwargs[e]}'])
         if more_params_cmd != '':
             params += f'{more_params_cmd.strip()} '
-            more_params_cmd = more_params_cmd.split('--')
+            more_params_cmd = [param.strip() for param in more_params_cmd.split('--')]
             more_params_cmd = [param.split(' ') for param in more_params_cmd if param]
             for param in more_params_cmd:
-                command.extend([f'--{param[0]}', ' '.join(param[1:])])
+                command.extend([f'--{param[0]}'] + param[1:])
         all_envs = {}
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]

@@ -91,6 +91,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     dataloader_prefetch_factor: int = 10
 
     architectures: Optional[str] = None
+    llm_architectures: Optional[str] = None
     max_epochs: Optional[int] = None
     enable_dft_loss: bool = False
     enable_channel_loss: bool = False

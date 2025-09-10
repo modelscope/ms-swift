@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 import transformers
 from packaging import version
+from PIL import Image
 from torch import nn
 from transformers.integrations import is_deepspeed_zero3_enabled
 
@@ -203,6 +204,10 @@ register_template(QwenTemplateMeta(MLLMTemplateType.qwen_audio, template_cls=Qwe
 
 class Qwen2AudioTemplate(Template):
 
+    def init_env_args(self) -> None:
+        super().init_env_args()
+        self.sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'audio'
@@ -214,10 +219,9 @@ class Qwen2AudioTemplate(Template):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         if inputs.audios:
-            sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
-            audios = load_batch(inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate))
+            audios = load_batch(inputs.audios, load_func=partial(load_audio, sampling_rate=self.sampling_rate))
             audio_inputs = self.processor.feature_extractor(
-                audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt')
+                audios, sampling_rate=self.sampling_rate, return_attention_mask=True, return_tensors='pt')
             audio_inputs['feature_attention_mask'] = audio_inputs.pop('attention_mask')
             encoded.update(audio_inputs)
         return encoded
@@ -318,13 +322,15 @@ class Qwen2VLTemplate(Template):
         return encoded
 
     def forward_context(self, model, inputs):
-        if 'real_position_ids' not in inputs:
-            return super().forward_context(model, inputs)
         position_ids = inputs['position_ids']
-        inputs['position_ids'] = inputs.pop('real_position_ids')
-        transformers_ge_453 = version.parse(transformers.__version__) >= version.parse('4.53')
-        if transformers_ge_453:
-            inputs.update(get_packed_seq_params(position_ids))
+        inputs['position_ids'] = position_ids[1:]
+        inputs['text_position_ids'] = text_position_ids = position_ids[0]
+        transformers_version = version.parse(transformers.__version__)
+        if transformers_version >= version.parse('4.53.0.dev') and text_position_ids.shape[0] == 1:
+            # https://github.com/huggingface/transformers/pull/40194
+            inputs.update(get_packed_seq_params(text_position_ids))
+            return super().forward_context(model, inputs)
+        if not self.padding_free:
             return super().forward_context(model, inputs)
         if self.version == 'v2':
             from transformers.models.qwen2_vl import modeling_qwen2_vl as modeling_module
@@ -332,68 +338,18 @@ class Qwen2VLTemplate(Template):
             from transformers.models.qwen2_5_vl import modeling_qwen2_5_vl as modeling_module
         elif self.version == 'omni':
             from transformers.models.qwen2_5_omni import modeling_qwen2_5_omni as modeling_module
-        return self._patch_flash_attention_forward(modeling_module, position_ids)
+        return self._patch_flash_attention_forward(modeling_module, text_position_ids)
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:
             return inputs
         input_ids = inputs['input_ids']
-        pixel_values = inputs.get('pixel_values')
-        pixel_values_videos = inputs.get('pixel_values_videos')
-        image_grid_thw = inputs.get('image_grid_thw')
-        video_grid_thw = inputs.get('video_grid_thw')
-
         base_model = self.get_base_model(model)
         if hasattr(base_model.model, 'embed_tokens'):
             inputs_embeds = base_model.model.embed_tokens(input_ids)
         else:
             inputs_embeds = base_model.model.language_model.embed_tokens(input_ids)
-
-        dtype = model.visual.get_dtype() if self.version == 'v2' else model.visual.dtype
-        if pixel_values is None and pixel_values_videos is None:  # plain-text
-            if is_deepspeed_enabled():
-                from PIL import Image
-                images = [Image.new('RGB', (32, 32), (0, 0, 0))]
-                media_inputs = self.processor.image_processor(images=images, return_tensors='pt')
-                device = input_ids.device
-                media_inputs = to_device(media_inputs, device)
-                pixel_values = media_inputs['pixel_values'].type(dtype)
-                image_embeds = model.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
-                inputs_embeds += image_embeds.mean() * 0.
-        else:
-            if pixel_values is None:
-                pixel_values_mixed = pixel_values_videos
-                grid_thw = video_grid_thw
-            elif pixel_values_videos is None:
-                pixel_values_mixed = pixel_values
-                grid_thw = image_grid_thw
-            else:
-                pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
-                grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
-            pixel_values_mixed = pixel_values_mixed.type(dtype)
-            mixed_embeds = model.visual(pixel_values_mixed, grid_thw=grid_thw)
-            if pixel_values is None:
-                image_embeds = None
-                video_embeds = mixed_embeds
-            elif pixel_values_videos is None:
-                image_embeds = mixed_embeds
-                video_embeds = None
-            else:
-                merge_length = self.processor.image_processor.merge_size**2
-                image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
-                image_embeds = mixed_embeds[:image_tokens]
-                video_embeds = mixed_embeds[image_tokens:]
-
-            if image_embeds is not None:
-                image_mask = (input_ids == model.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
-                image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
-                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
-
-            if video_embeds is not None:
-                video_mask = (input_ids == model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
-                video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
-                inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
-
+        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.visual, self.processor, model.config)
         return {'inputs_embeds': inputs_embeds}
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -410,7 +366,7 @@ class Qwen2VLTemplate(Template):
             r['input_ids'] = torch.tensor(r['input_ids'])[None]
             position_ids.append(self._get_position_ids(r))
         packed = super().packing_row(row)
-        packed['real_position_ids'] = torch.concat(position_ids, dim=-1)
+        packed['position_ids'] = torch.concat(position_ids, dim=-1)
         return packed
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
@@ -429,7 +385,7 @@ class Qwen2VLTemplate(Template):
             inputs.get('video_grid_thw'),
             attention_mask=inputs.get('attention_mask'),
             **kwargs)
-        return position_ids.contiguous()
+        return self._concat_text_position_ids(position_ids)
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
@@ -604,66 +560,18 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             return inputs
 
         input_ids = inputs['input_ids']
-        pixel_values = inputs.get('pixel_values')
-        pixel_values_videos = inputs.get('pixel_values_videos')
-        image_grid_thw = inputs.get('image_grid_thw')
-        video_grid_thw = inputs.get('video_grid_thw')
         input_features = inputs.get('input_features')
         feature_attention_mask = inputs.get('feature_attention_mask')
 
         base_model = self.get_base_model(model)
         inputs_embeds = base_model.thinker.model.embed_tokens(input_ids)
-        visual = model.thinker.visual
-        dtype = visual.dtype
         thinker_config = model.config.thinker_config
-        if pixel_values is None and pixel_values_videos is None:  # plain-text
-            if is_deepspeed_enabled():
-                from PIL import Image
-                images = [Image.new('RGB', (32, 32), (0, 0, 0))]
-                media_inputs = self.processor.image_processor(images=images, return_tensors='pt')
-                device = input_ids.device
-                media_inputs = to_device(media_inputs, device)
-                pixel_values = media_inputs['pixel_values'].type(dtype)
-                image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
-                inputs_embeds = inputs_embeds + image_embeds.mean() * 0.
-        else:
-            if pixel_values is None:
-                pixel_values_mixed = pixel_values_videos
-                grid_thw = video_grid_thw
-            elif pixel_values_videos is None:
-                pixel_values_mixed = pixel_values
-                grid_thw = image_grid_thw
-            else:
-                pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
-                grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
-            pixel_values_mixed = pixel_values_mixed.type(dtype)
-            mixed_embeds = visual(pixel_values_mixed, grid_thw=grid_thw)
-            if pixel_values is None:
-                image_embeds = None
-                video_embeds = mixed_embeds
-            elif pixel_values_videos is None:
-                image_embeds = mixed_embeds
-                video_embeds = None
-            else:
-                merge_length = self.processor.image_processor.merge_size**2
-                image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
-                image_embeds = mixed_embeds[:image_tokens]
-                video_embeds = mixed_embeds[image_tokens:]
-
-            if image_embeds is not None:
-                image_mask = (input_ids == thinker_config.image_token_index).unsqueeze(-1).expand_as(inputs_embeds)
-                image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
-                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
-
-            if video_embeds is not None:
-                video_mask = (input_ids == thinker_config.video_token_index).unsqueeze(-1).expand_as(inputs_embeds)
-                video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
-                inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
-
+        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.thinker.visual, self.processor,
+                                                   thinker_config)
         if input_features is None:
             if is_deepspeed_enabled() and not is_deepspeed_zero3_enabled():
                 # Note: ZeRO-3 still results in hangs; for audio training, please use ZeRO-2.
-                input_features = input_ids.new_zeros([1, 128, 128], dtype=dtype)
+                input_features = input_ids.new_zeros([1, 128, 128], dtype=model.thinker.audio_tower.dtype)
                 feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
                 audio_embeds = model.thinker.get_audio_features(input_features, feature_attention_mask)
                 inputs_embeds = inputs_embeds + audio_embeds.mean() * 0.
@@ -695,7 +603,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             audio_feature_lengths,
             video_second_per_grid,
         )
-        return position_ids.contiguous()
+        return self._concat_text_position_ids(position_ids)
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         res = super()._data_collator_mm_data(batch)
@@ -724,6 +632,10 @@ class Ovis1_6Template(Template):
     skip_prompt = False
     use_model = True
 
+    def init_env_args(self):
+        super().init_env_args()
+        self.max_partition = get_env_args('max_partition', int, 9)
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
@@ -738,9 +650,8 @@ class Ovis1_6Template(Template):
         added_tokens_len = 0
         pixel_values = []
         for i, idx in enumerate(idx_list):
-            max_partition = get_env_args('max_partition', int, 9)
             raw_pixel_values, image_placeholders = self.model.visual_tokenizer.preprocess_image(
-                images[i], max_partition=max_partition)
+                images[i], max_partition=self.max_partition)
             input_ids = input_ids[:idx] + image_placeholders + input_ids[idx + 1:]
             if labels is not None:
                 labels = labels[:idx] + [-100] * len(image_placeholders) + labels[idx + 1:]
@@ -801,7 +712,11 @@ register_template(
 
 class Ovis2Template(Ovis1_6Template):
     placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
-    nframes = 12
+    NFRAMES = 12
+
+    def init_env_args(self):
+        super().init_env_args()
+        self.nframes = get_env_args('nframes', int, self.NFRAMES)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -810,9 +725,8 @@ class Ovis2Template(Ovis1_6Template):
                 return ['<image>\n']
             return [[-200], '\n']
         elif media_type == 'video':
-            nframes = get_env_args('nframes', int, self.nframes)
-            inputs.images = load_video_ovis2(inputs.videos[index], nframes)
-            return [[-200] * nframes, '\n']
+            inputs.images = load_video_ovis2(inputs.videos[index], self.nframes)
+            return [[-200] * self.nframes, '\n']
 
 
 register_template(QwenTemplateMeta(
@@ -822,10 +736,16 @@ register_template(QwenTemplateMeta(
 
 
 class Ovis2_5Template(ThinkingTemplate):
-    num_frames = 8
     use_model = True
     skip_prompt = False
     support_padding_free = True
+
+    def init_env_args(self) -> None:
+        super().init_env_args()
+        self.min_pixels = get_env_args('min_pixels', int, 448 * 448)
+        self.max_pixels = get_env_args('max_pixels', int, 1344 * 1792)
+        self.video_max_pixels = get_env_args('video_max_pixels', int, 896 * 896)
+        self.num_frames = get_env_args('num_frames', int, 8)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -838,14 +758,10 @@ class Ovis2_5Template(ThinkingTemplate):
             if self.mode == 'vllm':
                 return ['<video>']
             else:
-                num_frames = get_env_args('num_frames', int, self.num_frames)
-                inputs.images = load_video_ovis2_5(inputs.videos[index], num_frames)
+                inputs.images = load_video_ovis2_5(inputs.videos[index], self.num_frames)
                 return [[-200], '\n']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        min_pixels = get_env_args('min_pixels', int, 448 * 448)
-        max_pixels = get_env_args('max_pixels', int, 1344 * 1792)
-        video_max_pixels = get_env_args('video_max_pixels', int, 896 * 896)
         encoded = super()._encode(inputs)
         images = inputs.images
         input_ids = encoded['input_ids']
@@ -854,7 +770,7 @@ class Ovis2_5Template(ThinkingTemplate):
         if inputs.videos:
             assert len(inputs.videos) == 1, 'only support single video'
             encoded['pixel_values'], encoded['grid_thws'] = visual_tokenizer.preprocess(
-                video=inputs.images, min_pixels=min_pixels, max_pixels=video_max_pixels)
+                video=inputs.images, min_pixels=self.min_pixels, max_pixels=self.video_max_pixels)
             num_video_tokens = encoded['grid_thws'].prod(dim=-1)
             num_video_tokens //= visual_tokenizer.vit.config.hidden_stride**2
             num_video_tokens //= visual_tokenizer.vit.config.temporal_patch_size
@@ -867,7 +783,7 @@ class Ovis2_5Template(ThinkingTemplate):
                 input_ids, encoded['labels'], encoded['loss_scale'], idx_list, _get_new_tokens)
         elif images:
             pixel_values, grid_thws = zip(
-                *(visual_tokenizer.preprocess(image=image, min_pixels=min_pixels, max_pixels=max_pixels)
+                *(visual_tokenizer.preprocess(image=image, min_pixels=self.min_pixels, max_pixels=self.max_pixels)
                   for image in images))
             encoded['pixel_values'] = torch.cat(pixel_values, dim=0)
             encoded['grid_thws'] = torch.cat(grid_thws, dim=0)
@@ -887,10 +803,32 @@ class Ovis2_5Template(ThinkingTemplate):
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        inputs_embeds = model.merge_multimodal(
-            input_ids=inputs['input_ids'],
-            pixel_values=inputs.pop('pixel_values', None),
-            grid_thws=inputs.pop('grid_thws', None))
+        input_ids = inputs['input_ids']
+        pixel_values = inputs.get('pixel_values', None)
+        grid_thws = inputs.get('grid_thws')
+        INDICATOR_IDS = [-301, -302, -303, -304]
+        VISUAL_ATOM_ID = -300
+        placeholder_token_mask = torch.lt(input_ids, 0)
+        inputs_embeds = model.get_wte()(torch.masked_fill(input_ids, placeholder_token_mask, 0))
+
+        if pixel_values is not None or is_deepspeed_enabled():
+            visual_indicator_embeds = model.vte(model.indicator_token_indices).to(
+                dtype=inputs_embeds.dtype, device=inputs_embeds.device)
+            for i, indicator_id in enumerate(INDICATOR_IDS):
+                inputs_embeds[input_ids == indicator_id] = visual_indicator_embeds[i]
+        if pixel_values is not None:
+            visual_tokens = model.visual_tokenizer(pixel_values, grid_thws)
+            visual_embeds = model.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
+            inputs_embeds[input_ids == VISUAL_ATOM_ID] = visual_embeds
+        elif is_deepspeed_enabled():
+            media_inputs = model.visual_tokenizer.preprocess(
+                Image.new('RGB', (32, 32), (0, 0, 0)), min_pixels=self.min_pixels, max_pixels=self.max_pixels)
+            media_inputs = to_device(media_inputs, input_ids.device)
+            pixel_values = media_inputs['pixel_values'].type(inputs_embeds.dtype)
+            visual_tokens = model.visual_tokenizer(pixel_values, media_inputs['grid_thws'])
+            visual_embeds = model.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
+            inputs_embeds = inputs_embeds + visual_embeds.mean() * 0.
+
         return {'inputs_embeds': inputs_embeds}
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:

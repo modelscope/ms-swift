@@ -3,6 +3,8 @@ import math
 import os
 from dataclasses import dataclass
 
+import json
+
 from swift.llm import BaseArguments
 from swift.llm.argument.base_args import to_abspath
 from swift.utils import add_version_to_work_dir, get_logger, init_process_group, is_master
@@ -15,6 +17,7 @@ logger = get_logger()
 @dataclass
 class MegatronTrainArguments(MegatronArguments, BaseArguments):
     add_version: bool = True
+    load_args: bool = False
 
     def init_model_args(self, tokenizer, config):
         kwargs = self.megatron_model_meta.convert_hf_config(config)
@@ -41,6 +44,16 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
             logger.info(f'args.save: {self.save}')
         if is_master():
             os.makedirs(self.save, exist_ok=True)
+
+    def _init_ckpt_dir(self, adapters=None):
+        super()._init_ckpt_dir(adapters)
+        if self.ckpt_dir and self.model is None:
+            args_path = os.path.join(self.ckpt_dir, 'args.json')
+            if not os.path.exists(args_path):
+                return
+            with open(args_path, 'r', encoding='utf-8') as f:
+                old_args = json.load(f)
+            self.model = old_args.get('model')
 
     def __post_init__(self):
         self.sequence_parallel_size = self.context_parallel_size

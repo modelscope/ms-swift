@@ -21,6 +21,7 @@ from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
+from swift.llm import to_device
 from swift.utils import get_env_args, get_logger
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
@@ -132,6 +133,12 @@ class Template(ProcessorMixin):
         if processor is not None:
             self.init_processor(processor)
 
+    def init_env_args(self):
+        if self.model_meta.is_multimodal:
+            self.root_image_dir = get_env_args('ROOT_IMAGE_DIR', str, None)
+        else:
+            self.root_image_dir = None
+
     def init_processor(self, processor: Processor) -> None:
         if processor is None or self._processor_inited:
             return
@@ -156,6 +163,7 @@ class Template(ProcessorMixin):
             if isinstance(token, str):
                 self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
         self.template_meta.init(tokenizer)
+        self.init_env_args()
 
     def _get_model(self):
         if self.model is not None:
@@ -1190,6 +1198,17 @@ class Template(ProcessorMixin):
             loss_mask = torch.tensor(loss_mask)[protected].tolist()
         return input_ids, labels, loss_mask
 
+    @staticmethod
+    def _get_length(input_ids, labels):
+        # input_ids might be a tensor.
+        lengths = [0]
+        if input_ids is not None:
+            lengths.append(len(input_ids))
+        if labels is not None:
+            lengths.append(len(labels))
+        length = max(lengths)
+        return length
+
     def _encode_truncated(self, inputs: StdTemplateInputs):
         self._preprocess_inputs(inputs)
         if self.mode in {'vllm', 'lmdeploy', 'sglang'}:
@@ -1207,23 +1226,16 @@ class Template(ProcessorMixin):
         input_ids = encoded.get('input_ids')
         labels = encoded.get('labels')
         loss_scale = encoded.get('loss_scale')
-
-        # input_ids might be a tensor.
-        lengths = [0]
-        if input_ids is not None:
-            lengths.append(len(input_ids))
-        if labels is not None:
-            lengths.append(len(labels))
-        length = max(lengths)
-        encoded['length'] = length
-
+        length = self._get_length(input_ids, labels)
         if self.max_length is not None and length > self.max_length:
             if self.truncation_strategy in {'right', 'left'}:
                 input_ids, labels, loss_scale = self._truncate(
                     input_ids, labels, loss_scale, truncation_strategy=self.truncation_strategy)
+                length = self._get_length(input_ids, labels)
             elif self.truncation_strategy == 'raise':
                 raise MaxLengthError(f'Current length of row({length}) is larger'
                                      f' than the max_length({self.max_length}).')
+        encoded['length'] = length
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
@@ -1332,13 +1344,12 @@ class Template(ProcessorMixin):
         return response
 
     def pre_forward_hook(self, model: nn.Module, args, kwargs):
-        from swift.llm import to_device
         old_kwargs = to_device(kwargs, model.device)
         kwargs = to_device(self._post_encode(model, old_kwargs), model.device)
         for k, v in old_kwargs.items():
             if k in {
                     'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep',
-                    'cumulative_seqlens_q', 'cumulative_seqlens_k', 'max_length_q', 'max_length_k'
+                    'max_length_q', 'max_length_k', 'cu_seq_lens_q', 'cu_seq_lens_k'
             } and k not in kwargs:
                 kwargs[k] = v
         if 'inputs_embeds' in kwargs:
@@ -1614,7 +1625,7 @@ class Template(ProcessorMixin):
         res = {}
         if self.padding_free:
             assert len(batch) == 1, f'batch: {batch}'
-            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel', 'real_position_ids']:
+            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel']:
                 v = batch[0].get(k)
                 if v is not None:
                     res[k] = v if k == 'channel' else [v]
@@ -1636,10 +1647,15 @@ class Template(ProcessorMixin):
                     res[key] = val
 
         keys = [
-            'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids',
-            'real_position_ids'
+            'input_ids',
+            'inputs_embeds',
+            'attention_mask',
+            'labels',
+            'loss_scale',
+            'position_ids',
+            'token_type_ids',
         ]
-        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0, 0.]
+        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
@@ -1666,14 +1682,13 @@ class Template(ProcessorMixin):
             if self.padding_free:
                 cp_size = self.sequence_parallel_size
                 if cp_size > 1:
-                    for key in ['position_ids', 'real_position_ids']:
-                        padding_len = padding_to - seq_lens[0]
-                        position_ids = res[key][0]
-                        extended_position_ids = torch.arange(cp_size * 2).repeat(padding_len // (cp_size * 2))
-                        if position_ids.ndim == 3:  # compat mrope
-                            extended_position_ids = extended_position_ids[None,
-                                                                          None, :].expand(position_ids.shape[0], 1, -1)
-                        res[key] = [torch.concat([position_ids, extended_position_ids], dim=-1)]
+                    padding_len = padding_to - seq_lens[0]
+                    position_ids = res['position_ids'][0]
+                    extended_position_ids = torch.arange(cp_size * 2).repeat(padding_len // (cp_size * 2))
+                    if position_ids.ndim == 3:  # compat mrope
+                        extended_position_ids = extended_position_ids[None,
+                                                                      None, :].expand(position_ids.shape[0], 1, -1)
+                    res['position_ids'] = [torch.concat([position_ids, extended_position_ids], dim=-1)]
             else:
                 seq_len = max(seq_lens) if padding_to is None else padding_to
                 res['attention_mask'] = torch.tril(torch.ones(
@@ -1687,13 +1702,13 @@ class Template(ProcessorMixin):
                 continue
             if self.use_megatron and not self.padding_free and key == 'attention_mask':
                 continue
-            if padding_to is not None and not (self.padding_free and key in {'position_ids', 'real_position_ids'}
+            if padding_to is not None and not (self.padding_free and key == 'position_ids'
                                                and self.sequence_parallel_size > 1):
                 padding_len = padding_to - seq_lens[0]
                 if padding_len > 0:
                     res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
                                         'constant', pad_value)
-            if key == 'real_position_ids':
+            if key == 'position_ids' and res[key][0].ndim == 3:
                 res[key] = torch.concat(res[key], dim=-1)
             else:
                 res[key] = self._pad_sequence(res[key], pad_value)
@@ -1858,7 +1873,7 @@ class Template(ProcessorMixin):
         Returns:
             A tensor after padding
         """
-        padding_side = self.padding_side if self.is_training else 'left'
+        padding_side = self.padding_side if self.is_training and self.task_type != 'generative_reranker' else 'left'
         padding_right = padding_side == 'right'
         if padding_right:
             return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
@@ -1934,3 +1949,59 @@ class Template(ProcessorMixin):
             yield
         finally:
             modeling_module._flash_attention_forward = _origin_flash_attention_forward
+
+    @staticmethod
+    def _get_inputs_embeds_hf(inputs_embeds, inputs, visual, processor, config):
+        input_ids = inputs['input_ids']
+        pixel_values = inputs.get('pixel_values')
+        pixel_values_videos = inputs.get('pixel_values_videos')
+        image_grid_thw = inputs.get('image_grid_thw')
+        video_grid_thw = inputs.get('video_grid_thw')
+        dtype = visual.dtype
+        if pixel_values is None and pixel_values_videos is None:  # plain-text
+            images = [Image.new('RGB', (32, 32), (0, 0, 0))]
+            media_inputs = processor.image_processor(images=images, return_tensors='pt')
+            media_inputs = to_device(media_inputs, input_ids.device)
+            pixel_values = media_inputs['pixel_values'].type(dtype)
+            image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+            inputs_embeds = inputs_embeds + image_embeds.mean() * 0.
+        else:
+            if pixel_values is None:
+                pixel_values_mixed = pixel_values_videos
+                grid_thw = video_grid_thw
+            elif pixel_values_videos is None:
+                pixel_values_mixed = pixel_values
+                grid_thw = image_grid_thw
+            else:
+                pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
+                grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
+            pixel_values_mixed = pixel_values_mixed.type(dtype)
+            mixed_embeds = visual(pixel_values_mixed, grid_thw=grid_thw)
+            if pixel_values is None:
+                image_embeds = None
+                video_embeds = mixed_embeds
+            elif pixel_values_videos is None:
+                image_embeds = mixed_embeds
+                video_embeds = None
+            else:
+                merge_length = processor.image_processor.merge_size**2
+                image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
+                image_embeds = mixed_embeds[:image_tokens]
+                video_embeds = mixed_embeds[image_tokens:]
+
+            if image_embeds is not None:
+                image_mask = (input_ids == config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
+
+            if video_embeds is not None:
+                video_mask = (input_ids == config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
+        return inputs_embeds
+
+    @staticmethod
+    def _concat_text_position_ids(position_ids):
+        seq_len = position_ids.shape[-1]
+        text_position_ids = torch.arange(seq_len, device=position_ids.device).expand(1, *position_ids.shape[1:])
+        return torch.concat([text_position_ids, position_ids], dim=0)
