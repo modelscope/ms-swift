@@ -40,12 +40,11 @@ from swift.llm import (InferRequest, MultiModelKeys, RequestConfig, RolloutInfer
                        to_device)
 from swift.llm.infer.protocol import ChatCompletionResponse, RolloutOutput
 from swift.llm.model.utils import get_llm_model
-from swift.llm.template.base import MaxLengthError
 from swift.llm.template.template_inputs import TemplateInputs
 from swift.plugin import multi_turns, orms, rm_plugins
 from swift.plugin.multi_turn import MultiTurnScheduler
-from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_dist_setting, get_logger,
-                         is_swanlab_available, is_vllm_available, is_wandb_available, remove_response, seed_worker,
+from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_logger, is_swanlab_available,
+                         is_vllm_available, is_wandb_available, remove_response, seed_worker,
                          unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
@@ -254,6 +253,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.enable_server_multi_turn = False
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
         self.dynamic_num_samples = False
+        self.padding_free = self.template.padding_free
+        self.template.padding_free = False
+        self.template.packing = False
         if self.use_vllm:
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
@@ -327,9 +329,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
         # self.model_accepts_loss_kwargs to False to enable scaling.
         self.model_accepts_loss_kwargs = False
-        self.padding_free = self.template.padding_free
-        self.template.padding_free = False
-        self.template.packing = False
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 if self.is_deepspeed_enabled:
@@ -1761,13 +1760,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if self.padding_free:
             llm_model = get_llm_model(model)
-            if hasattr(llm_model, 'thinker'):
-                base_model = llm_model.thinker.model
-            else:
-                base_model = llm_model.model
-            remove_handle1 = base_model.register_forward_pre_hook(
+            remove_handle1 = llm_model.register_forward_pre_hook(
                 _padding_free_input_hook, with_kwargs=True, prepend=True)
-            remove_handle2 = base_model.register_forward_hook(_padding_free_output_hook, with_kwargs=True, prepend=True)
+            remove_handle2 = llm_model.register_forward_hook(_padding_free_output_hook, with_kwargs=True, prepend=True)
         yield
         if self.padding_free:
             remove_handle1.remove()
@@ -1848,9 +1843,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return result
 
         llm_model = get_llm_model(model)
-
         if self.padding_free:
-            remove_handle1 = llm_model.model.register_forward_pre_hook(
+            remove_handle1 = llm_model.register_forward_pre_hook(
                 _padding_free_input_hook, with_kwargs=True, prepend=True)
             # cannot unpack here
             llm_model._unpack_output = _padding_free_output_hook
