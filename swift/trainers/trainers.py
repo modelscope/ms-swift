@@ -121,7 +121,8 @@ class RerankerTrainer(Trainer):
     def _preprocess_generative_reranker_logits(self, logits, labels):
         """
         Preprocess logits for generative reranker to reduce memory usage.
-        Extract only the yes/no token logits instead of keeping the full vocab logits.
+        Extract only the yes/no token logits at the last valid (non -100) timestep
+        for each sample, avoiding padded timesteps created by multi-GPU gather.
         """
         import torch
         import os
@@ -142,13 +143,24 @@ class RerankerTrainer(Trainer):
             # Fallback: return full logits if token conversion fails
             return logits
 
-        # Extract only the yes/no token logits from the last position
-        # This dramatically reduces memory usage
+        # Extract only the yes/no token logits from the last non -100 position per sample
+        # Shapes: logits [batch, seq_len, vocab]
         if len(logits.shape) == 3:
-            # Extract directly from last position: [batch_size, seq_len, vocab_size] -> [batch_size, 2]
-            positive_logits = logits[:, -1, positive_token_id]  # [batch_size]
-            negative_logits = logits[:, -1, negative_token_id]  # [batch_size]
-            # Return as [batch_size, 2] tensor instead of full [batch_size, seq_len, vocab_size]
+            batch_size, _, vocab_size = logits.shape
+
+            # Identify padded rows whose entire vocab logits are -100
+            row_is_pad = (logits == -100).all(dim=-1)  # [batch, seq_len]
+            valid_mask = ~row_is_pad
+            lengths = valid_mask.long().sum(dim=1) - 1
+            lengths = torch.clamp(lengths, min=0)
+            last_indices = lengths.to(device=logits.device)
+
+            # Gather the logits at the last valid index for each sample: [batch, vocab]
+            gather_index = last_indices.view(batch_size, 1, 1).expand(batch_size, 1, vocab_size)
+            last_step_logits = torch.gather(logits, dim=1, index=gather_index).squeeze(1)
+
+            positive_logits = last_step_logits[:, positive_token_id]
+            negative_logits = last_step_logits[:, negative_token_id]
             logits = torch.stack([negative_logits, positive_logits], dim=1)
             return logits
         else:
