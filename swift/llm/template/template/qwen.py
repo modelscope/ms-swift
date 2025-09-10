@@ -240,8 +240,8 @@ class Qwen2VLTemplate(Template):
     use_model = True
     support_padding_free = True
 
-    def get_env_args(self):
-        super().get_env_args()
+    def init_env_args(self):
+        super().init_env_args()
         self.transformers_version = version.parse(transformers.__version__)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
