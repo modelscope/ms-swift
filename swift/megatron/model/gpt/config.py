@@ -47,7 +47,10 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
     elif llm_architectures == 'Qwen3NextForCausalLM':
         full_attention_interval = res.pop('full_attention_interval')
         num_layers = res['num_layers']
-        res['layer_types'] = ['full_attention' if (i + 1) % full_attention_interval == 0 else 'linear_attention' for i in range(num_layers)]
+        res['layer_types'] = [
+            'full_attention' if (i + 1) % full_attention_interval == 0 else 'linear_attention'
+            for i in range(num_layers)
+        ]
     if (res.get('rope_scaling') or {}).get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = res['rope_scaling']['mrope_section']

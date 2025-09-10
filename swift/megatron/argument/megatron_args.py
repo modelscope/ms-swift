@@ -111,6 +111,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     linear_conv_kernel_dim: Optional[int] = None
     layer_types: Optional[List[str]] = None
 
+
 @dataclass
 class MegatronArguments(ExtraMegatronArguments):
     # training
