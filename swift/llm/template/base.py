@@ -454,21 +454,24 @@ class Template(ProcessorMixin):
         chosen = inputs.chosen
         
         _encoded = defaultdict(list)
+        labels = []
 
         for positive in inputs.positive:
             positive.messages = chosen.messages + positive.messages
             positive_encoded = self._encode_truncated(positive)
+            labels.append(1)
             for key in positive_encoded:
                 _encoded[key].append(positive_encoded[key])
-                _encoded['labels'].append(1)
 
         for negative in inputs.negative:
             negative.messages = chosen.messages + negative.messages
             negative_encoded = self._encode_truncated(negative)
+            labels.append(0)
             for key in negative_encoded:
                 _encoded[key].append(negative_encoded[key])
-                _encoded['labels'].append(0)
 
+        _encoded['labels'] = labels
+        _encoded['length'] = len(labels)
         return _encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -1566,19 +1569,16 @@ class Template(ProcessorMixin):
             positive_num = sum(labels)
             negative_num = len(labels) - positive_num
             for i in range(positive_num):
-                for key in b.keys():
-                    new_batch.append({key: b[key][i]})
-                    labels_list.append(1)
-                    if negative_num > max_negative_samples:
-                        for j in random.sample(range(negative_num), max_negative_samples):
-                            for key in b.keys():
-                                new_batch.append({key: b[key][j+positive_num]})
-                                labels_list.append(0)
-                    else:
-                        for j in range(negative_num):
-                            for key in b.keys():
-                                new_batch.append({key: b[key][j+positive_num]})
-                                labels_list.append(0)
+                new_batch.append({'input_ids': b['input_ids'][i]})
+                labels_list.append(1)
+                if negative_num > max_negative_samples:
+                    for j in random.sample(range(negative_num), max_negative_samples):
+                        new_batch.append({'input_ids': b['input_ids'][j+positive_num]})
+                        labels_list.append(0)
+                else:
+                    for j in range(negative_num):
+                        new_batch.append({'input_ids': b['input_ids'][j+positive_num]})
+                        labels_list.append(0)
 
         res = self._data_collator(new_batch, padding_to=padding_to)
         if labels_list:

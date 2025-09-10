@@ -378,7 +378,7 @@ register_dataset(
         tags=['similarity', '🔥']))
 
 
-class MTEBRerankPreprocessor(ResponsePreprocessor):
+class MTEBRerankPreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
         query = row['query']
