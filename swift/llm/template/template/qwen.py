@@ -379,12 +379,13 @@ class Qwen2VLTemplate(Template):
         res = super()._data_collator(batch, padding_to=padding_to)
         if not self.padding_free and self.is_training:
             res['position_ids'] = self._get_position_ids(res)
-        position_ids = res['position_ids']
-        res['position_ids'] = position_ids[1:]
-        res['text_position_ids'] = text_position_ids = position_ids[0]
-        if self.transformers_version >= version.parse('4.53.0.dev') and text_position_ids.shape[0] == 1:
-            # https://github.com/huggingface/transformers/pull/40194
-            res.update(get_packed_seq_params(text_position_ids))
+        if 'position_ids' in res:
+            position_ids = res['position_ids']
+            res['position_ids'] = position_ids[1:]
+            res['text_position_ids'] = text_position_ids = position_ids[0]
+            if self.transformers_version >= version.parse('4.53.0.dev') and text_position_ids.shape[0] == 1:
+                # https://github.com/huggingface/transformers/pull/40194
+                res.update(get_packed_seq_params(text_position_ids))
         return res
 
 
