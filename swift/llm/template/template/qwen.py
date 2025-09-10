@@ -240,6 +240,10 @@ class Qwen2VLTemplate(Template):
     use_model = True
     support_padding_free = True
 
+    def init_env_args(self):
+        super().init_env_args()
+        self.transformers_version = version.parse(transformers.__version__)
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         from qwen_vl_utils import fetch_image, fetch_video
@@ -313,16 +317,9 @@ class Qwen2VLTemplate(Template):
         return encoded
 
     def forward_context(self, model, inputs):
-        position_ids = inputs['position_ids']
-        inputs['position_ids'] = position_ids[1:]
-        inputs['text_position_ids'] = text_position_ids = position_ids[0]
-        transformers_version = version.parse(transformers.__version__)
-        if transformers_version >= version.parse('4.53.0.dev') and text_position_ids.shape[0] == 1:
-            # https://github.com/huggingface/transformers/pull/40194
-            inputs.update(get_packed_seq_params(text_position_ids))
+        if not self.padding_free or self.transformers_version >= version.parse('4.53.0.dev'):
             return super().forward_context(model, inputs)
-        if not self.padding_free:
-            return super().forward_context(model, inputs)
+        text_position_ids = inputs['text_position_ids']
         if self.version == 'v2':
             from transformers.models.qwen2_vl import modeling_qwen2_vl as modeling_module
         elif self.version == 'v2_5':
@@ -382,6 +379,13 @@ class Qwen2VLTemplate(Template):
         res = super()._data_collator(batch, padding_to=padding_to)
         if not self.padding_free and self.is_training:
             res['position_ids'] = self._get_position_ids(res)
+        if 'position_ids' in res:
+            position_ids = res['position_ids']
+            res['position_ids'] = position_ids[1:]
+            res['text_position_ids'] = text_position_ids = position_ids[0]
+            if self.transformers_version >= version.parse('4.53.0.dev') and text_position_ids.shape[0] == 1:
+                # https://github.com/huggingface/transformers/pull/40194
+                res.update(get_packed_seq_params(text_position_ids))
         return res
 
 

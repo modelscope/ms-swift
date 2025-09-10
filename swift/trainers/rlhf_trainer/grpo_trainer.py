@@ -253,6 +253,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.enable_server_multi_turn = False
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
         self.dynamic_num_samples = False
+        self.padding_free = self.template.padding_free
+        self.template.padding_free = False
+        self.template.packing = False
         if self.use_vllm:
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
@@ -326,9 +329,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
         # self.model_accepts_loss_kwargs to False to enable scaling.
         self.model_accepts_loss_kwargs = False
-        self.padding_free = self.template.padding_free
-        self.template.padding_free = False
-        self.template.packing = False
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 if self.is_deepspeed_enabled:

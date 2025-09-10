@@ -146,8 +146,7 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     ignore_modules = (model_arch.vision_tower + model_arch.aligner) if is_multimodal else []
 
     hf_modules = _find_modules(hf_model, ignore_modules=ignore_modules)
-    with torch.inference_mode(), _model_cpu_forward_context(
-            hf_modules, torch_dtype, share_embedding=share_embedding), template.forward_context(hf_model, inputs):
+    with torch.inference_mode(), _model_cpu_forward_context(hf_modules, torch_dtype, share_embedding=share_embedding):
         inputs.pop('text_position_ids', None)
         hf_logits = hf_model(**inputs).logits
     hf_model.to('cpu')
