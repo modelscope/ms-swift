@@ -1848,13 +1848,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return result
 
         llm_model = get_llm_model(model)
-
+        if hasattr(llm_model, 'thinker'):
+            base_model = llm_model.thinker.model
+        else:
+            base_model = llm_model.model
         if self.padding_free:
-            remove_handle1 = llm_model.model.register_forward_pre_hook(
+            remove_handle1 = base_model.register_forward_pre_hook(
                 _padding_free_input_hook, with_kwargs=True, prepend=True)
             # cannot unpack here
-            llm_model._unpack_output = _padding_free_output_hook
-            llm_model._pack_input = _padding_free_input_hook
+            base_model._unpack_output = _padding_free_output_hook
+            base_model._pack_input = _padding_free_input_hook
         yield
         if self.padding_free:
             remove_handle1.remove()
@@ -1948,15 +1951,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             entropies = entropies[:, :-padding_size] if entropies is not None else None
         if self.padding_free:
             llm_model = get_llm_model(model)
+            if hasattr(llm_model, 'thinker'):
+                base_model = llm_model.thinker.model
+            else:
+                base_model = llm_model.model
             output.logits = per_token_logps
             output.entropies = entropies
             # unpack output after sp logps have been calculated
-            _, inputs = llm_model._pack_input(None, None, inputs)
-            output = llm_model._unpack_output(None, None, inputs, output)
+            _, inputs = base_model._pack_input(None, None, inputs)
+            output = base_model._unpack_output(None, None, inputs, output)
             per_token_logps = output.logits
             entropies = output.entropies
-            delattr(llm_model, '_unpack_output')
-            delattr(llm_model, '_pack_input')
+            delattr(base_model, '_unpack_output')
+            delattr(base_model, '_pack_input')
             logits_to_keep = _origin_logits_to_keep
         per_token_logps = per_token_logps[:, -logits_to_keep - 1:-1]
         if compute_entropy:
