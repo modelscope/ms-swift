@@ -629,7 +629,7 @@ register_model(
         LLMModelType.qwen3_next,
         [ModelGroup([Model('Qwen3-Next-80B-A3B-Instruct')])],
         TemplateType.qwen3_nothinking,
-        get_model_tokenizer_qwen3_next,
+        get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3NextForCausalLM'],
         requires=['transformers>=4.57.0.dev'],
     ))
@@ -639,7 +639,7 @@ register_model(
         LLMModelType.qwen3_next_thinking,
         [ModelGroup([Model('Qwen3-Next-80B-A3B-Thinking')])],
         TemplateType.qwen3_thinking,
-        get_model_tokenizer_qwen3_next,
+        get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3NextForCausalLM'],
         requires=['transformers>=4.57.0.dev'],
     ))

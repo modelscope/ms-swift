@@ -35,6 +35,13 @@ config_mapping = {
     'qk_pos_emb_head_dim': ['qk_rope_head_dim'],
     'moe_router_topk_scaling_factor': ['routed_scaling_factor'],
     'qk_layernorm': ['use_qk_norm'],
+    # qwen3_next
+    'linear_num_value_heads': ['linear_num_value_heads'],
+    'linear_num_key_heads': ['linear_num_key_heads'],
+    'linear_key_head_dim': ['linear_key_head_dim'],
+    'linear_value_head_dim': ['linear_value_head_dim'],
+    'linear_conv_kernel_dim': ['linear_conv_kernel_dim'],
+    'full_attention_interval': ['full_attention_interval'],
     # other
     'original_max_position_embeddings': ['original_max_position_embeddings'],
     'partial_rotary_factor': ['partial_rotary_factor'],
