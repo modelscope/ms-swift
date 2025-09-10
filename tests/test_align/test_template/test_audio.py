@@ -72,7 +72,7 @@ def test_gemma3n():
     response = _infer_model(pt_engine, messages=messages, audios=audios)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, audios=audios)
-    assert response == response2 
+    assert response == response2
 
 
 def test_midashenglm():
@@ -83,11 +83,13 @@ def test_midashenglm():
     response2 = _infer_model(pt_engine, messages=messages)
     assert response == response2 == "The audio contains a male voice speaking the phrase '今天天气真好呀' in Mandarin."
 
+
 def test_step_audio2_mini():
     pt_engine = PtEngine('stepfun-ai/Step-Audio-2-mini')
     messages = [{'role': 'user', 'content': '<audio>Caption the audio.'}]
     response = _infer_model(pt_engine, messages=messages)
-    assert response == "<中文>今天天气真好呀。"
+    assert response == '<中文>今天天气真好呀。'
+
 
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
