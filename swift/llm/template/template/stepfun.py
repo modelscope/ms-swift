@@ -3,12 +3,6 @@ from typing import Any, Dict, List, Literal, Optional
 from functools import partial
 import itertools
 
-import torch
-import torchaudio
-from torch.nn.utils.rnn import pad_sequence
-import torch.nn.functional as F
-import librosa
-
 from swift.utils import get_env_args
 from ..base import Template
 from ..constant import MLLMTemplateType
@@ -130,10 +124,11 @@ class StepAudio2MiniTemplate(Template):
     use_model = True
 
     def load_audio(self, file_path, target_rate=16000, max_length=None):
-        """
+        '''
         Open an audio file and read as mono waveform, resampling as necessary
         If max_length is provided, truncate the audio to that length
-        """
+        '''
+        import torchaudio
         waveform, sample_rate = torchaudio.load(file_path)
         if sample_rate != target_rate:
             waveform = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_rate)(waveform)
@@ -145,9 +140,11 @@ class StepAudio2MiniTemplate(Template):
 
         return audio
     
-    def _mel_filters(self, n_mels: int) -> torch.Tensor:
-        """Load the mel filterbank matrix for projecting STFT into a Mel spectrogram."""
-        assert n_mels in {80, 128}, f"Unsupported n_mels: {n_mels}"
+    def _mel_filters(self, n_mels: int) -> 'torch.Tensor':
+        '''Load the mel filterbank matrix for projecting STFT into a Mel spectrogram.'''
+        import librosa
+        import torch
+        assert n_mels in {80, 128}, f'Unsupported n_mels: {n_mels}'
         if n_mels == 128:
             return torch.from_numpy(librosa.filters.mel(sr=16000, n_fft=400, n_mels=128))
         else:
@@ -155,9 +152,11 @@ class StepAudio2MiniTemplate(Template):
 
 
     def log_mel_spectrogram(self, audio, n_mels=128, padding=479):
-        """
+        '''
         Compute the log-Mel spectrogram with specific padding for StepAudio
-        """
+        '''
+        import torch
+        import torch.nn.functional as F
         if isinstance(audio, str):
             audio = self.load_audio(audio)
         elif not torch.is_tensor(audio):
@@ -190,8 +189,8 @@ class StepAudio2MiniTemplate(Template):
         adapter_output_dim = (encoder_output_dim + 2 * padding - kernel_size) // stride + 1
         return adapter_output_dim
 
-    def padding_mels(self,data: List[torch.Tensor]):
-        """ Padding the data into batch data
+    def padding_mels(self,data: List['torch.Tensor']):
+        ''' Padding the data into batch data
 
         Parameters
         ----------
@@ -200,7 +199,9 @@ class StepAudio2MiniTemplate(Template):
         Returns:
         -------
             feats, feats lengths
-        """
+        '''
+        import torch
+        from torch.nn.utils.rnn import pad_sequence
         sample = data
         assert isinstance(sample, list)
         feats_lengths = torch.tensor([s.size(1)-2 for s in sample],
@@ -218,9 +219,9 @@ class StepAudio2MiniTemplate(Template):
         for i in range(0, audio.shape[0], 16000 * 25):
             mel = self.log_mel_spectrogram(audio[i:i+16000*25], n_mels=128, padding=479)
             mels.append(mel)
-            audio_tokens = "<audio_patch>" * self.compute_token_num(mel.shape[1])
-            results.append(f"<audio_start>{audio_tokens}<audio_end>")
-        audio_ids = self._tokenize("".join(results))
+            audio_tokens = '<audio_patch>' * self.compute_token_num(mel.shape[1])
+            results.append(f'<audio_start>{audio_tokens}<audio_end>')
+        audio_ids = self._tokenize(''.join(results))
         return audio_ids, mels
         
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -251,8 +252,8 @@ class StepAudio2MiniTemplate(Template):
                 return audio_inputs[i]
             
             input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list, _get_new_audio_tokens)
-            encoded["input_ids"] = input_ids  # Add labels to the batch
-            encoded["labels"] = labels  # Add labels to the batch
+            encoded['input_ids'] = input_ids  # Add labels to the batch
+            encoded['labels'] = labels  # Add labels to the batch
             encoded['loss_scale'] = loss_scale
             encoded['mels'] = mels
             wavs, wav_lens = self.padding_mels(mels)
@@ -264,7 +265,7 @@ class StepAudio2MiniTemplate(Template):
             wavs = None
             wav_lens = None
         
-        encoded["wavs"] = wavs
+        encoded['wavs'] = wavs
         encoded['wav_lens'] = wav_lens
         
         return encoded

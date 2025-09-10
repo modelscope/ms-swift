@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 
 
 def _infer_model(pt_engine, system=None, messages=None, audios=None):
@@ -99,4 +99,5 @@ if __name__ == '__main__':
     # test_step_audio_chat()
     # test_qwen2_5_omni()
     # test_gemma3n()
+    # test_midashenglm()
     test_step_audio2_mini()
