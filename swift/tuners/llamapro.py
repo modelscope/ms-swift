@@ -82,14 +82,21 @@ class LLaMAPro(SwiftAdapter):
 
         new_module_list = nn.ModuleList()
         new_module_idx = []
+        layer_types = getattr(model.config, 'layer_types', None)
+        _new_layer_type = []
         for idx, module in enumerate(module_list):
             new_module_list.append(module)
+            _layer_type = layer_types[idx] if layer_types else None
+            _new_layer_type.append(_layer_type)
             if (idx + 1) % num_stride == 0:
                 new_module = deepcopy(module)
                 ActivationMixin.mark_all_sub_modules_as_plugin(new_module)
                 new_module_list.append(new_module)
                 new_module_idx.append(idx + 1 + len(new_module_idx))
+                _new_layer_type.append(_layer_type)
 
+        if layer_types is not None:
+            model.config.layer_types = _new_layer_type
         LLaMAPro._update_module_weight(config, new_module_list, new_module_idx)
         LLaMAPro._update_module_attr(config, new_module_list)
         model.config.num_hidden_layers = len(new_module_list)

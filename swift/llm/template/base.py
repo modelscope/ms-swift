@@ -347,6 +347,8 @@ class Template(ProcessorMixin):
         return input_ids, labels, loss_scale
 
     def forward_context(self, model, inputs):
+        # This function is only used to handle scenarios where the model needs
+        # to be patched during the forward pass.
         return nullcontext()
 
     @staticmethod
