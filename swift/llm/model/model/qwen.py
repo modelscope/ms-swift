@@ -625,6 +625,43 @@ register_model(
     ))
 
 
+def _patch_causal_conv1d_update(gated_delta_net):
+    # GatedDeltaNet
+
+    origin_causal_conv1d_update = gated_delta_net.causal_conv1d_update
+
+    def _causal_conv1d_update(hidden_states, conv_state, *args, **kwargs):
+        return origin_causal_conv1d_update(hidden_states, conv_state, *args, **kwargs)
+
+    gated_delta_net.causal_conv1d_update = _causal_conv1d_update
+
+
+def get_model_tokenizer_qwen3_next(model_dir, *args, **kwargs):
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_next,
+        [ModelGroup([Model('Qwen3-Next-80B-A3B-Instruct')])],
+        TemplateType.qwen3_nothinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3NextForCausalLM'],
+        requires=['transformers>=4.57.0.dev'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_next_thinking,
+        [],
+        TemplateType.qwen3_thinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3NextForCausalLM'],
+        requires=['transformers>=4.57.0.dev'],
+    ))
+
+
 def patch_qwen_vl_utils(vision_process):
     if hasattr(vision_process, '_patch'):
         return

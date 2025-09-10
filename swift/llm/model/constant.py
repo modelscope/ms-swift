@@ -17,6 +17,8 @@ class LLMModelType:
     qwen3_nothinking = 'qwen3_nothinking'
     qwen3_moe = 'qwen3_moe'
     qwen3_moe_thinking = 'qwen3_moe_thinking'
+    qwen3_next = 'qwen3_next'
+    qwen3_next_thinking = 'qwen3_next_thinking'
     qwen3_emb = 'qwen3_emb'
     qwen3_reranker = 'qwen3_reranker'
 
