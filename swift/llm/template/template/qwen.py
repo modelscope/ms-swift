@@ -317,6 +317,7 @@ class Qwen2VLTemplate(Template):
         return encoded
 
     def forward_context(self, model, inputs):
+        text_position_ids = inputs['text_position_ids']
         if not self.padding_free or self.transformers_version >= version.parse('4.53.0.dev'):
             return super().forward_context(model, inputs)
         if self.version == 'v2':
