@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from functools import partial
 from io import BytesIO
 from types import MethodType
-from typing import TYPE_CHECKING, Any, Iterable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import datasets
 import json
@@ -34,12 +34,10 @@ if TYPE_CHECKING:
 
 TensorLoRARequest = None
 if is_vllm_available():
-    from vllm.lora.request import LoRARequest as vLLMLoRARequest
-
-    class LoRARequest(vLLMLoRARequest):
-        peft_config: dict = field(default=None)
+    from vllm.lora.request import LoRARequest
 
     class TensorLoRARequest(LoRARequest):
+        peft_config: dict = field(default=None)
         lora_tensors: dict = field(default=None)
 
 
@@ -393,6 +391,11 @@ def get_gather_if_zero3_context(trainer):
 
 
 def patch_vllm_load_adapter():
+    """Patch vLLM's WorkerLoRAManager to support loading LoRA from tensors.
+
+    This function applies a monkey patch to WorkerLoRAManager._load_adapter method
+    to support TensorLoRARequest
+    """
     # from vllm.lora.worker_manager import WorkerLoRAManager
     from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
     from vllm.lora.models import LoRAModel
@@ -579,22 +582,22 @@ class FlattenedTensorBucket:
         """Get metadata for all tensors in the bucket"""
         return self.metadata
 
-    def reconstruct_tensors(self) -> List[Tuple[str, torch.Tensor]]:
+    def reconstruct_tensors(self) -> Dict[str, torch.Tensor]:
         """
         Reconstruct original tensors from flattened tensor with optimized performance.
         Uses memory-efficient operations to minimize allocations and copies.
         """
         # preallocate the result list
-        reconstructed = [None] * len(self.metadata)
+        reconstructed = {}
 
-        for i, meta in enumerate(self.metadata):
+        for meta in self.metadata:
             tensor = self.flattened_tensor[meta.start_idx:meta.end_idx].reshape(meta.shape)
-
+            dtype = getattr(torch, meta.dtype.split('.')[-1])
             # batch dtype conversion (if needed)
-            if tensor.dtype != meta.dtype:
-                tensor = tensor.to(meta.dtype)
+            if tensor.dtype != dtype:
+                tensor = tensor.to(dtype)
 
-            reconstructed[i] = (meta.name, tensor)
+            reconstructed[meta.name] = tensor
 
         return reconstructed
 
@@ -758,7 +761,7 @@ def serialize_peft_config(peft_config):
     if 'target_modules' in peft_config and isinstance(peft_config['target_modules'], set):
         peft_config['target_modules'] = list(peft_config['target_modules'])
 
-    return json.dumps(peft_config, ensure_ascii=False)
+    return peft_config
 
 
 def deserialize_peft_config(data: str):

@@ -25,12 +25,11 @@ from trl.scripts.vllm_serve import WeightSyncWorkerExtension as HFWeightSyncWork
 from swift.llm import RolloutArguments, SwiftPipeline
 from swift.llm.template.template_inputs import RolloutInferRequest
 from swift.plugin.multi_turn import RolloutScheduler, multi_turns
-from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, FlattenedTensorMetadata, LoRARequest,
-                                               TensorLoRARequest)
-from swift.tuners.lora import LoraConfig
+from swift.trainers.rlhf_trainer.utils import (FlattenedTensorBucket, FlattenedTensorMetadata, TensorLoRARequest,
+                                               patch_vllm_load_adapter)
 from swift.utils import get_logger
 from .infer_engine import GRPOVllmEngine, InferClient
-from .protocol import InitCommunicatorRequest, RequestConfig, UpdateWeightsRequest
+from .protocol import InitCommunicatorRequest, RequestConfig, UpdateFlattenedAdapterRequest, UpdateWeightsRequest
 
 try:
     from vllm.utils import get_open_port
@@ -54,6 +53,8 @@ Note:
 - Rollout is intended solely for GRPO training sampling.
 - For inference or deployment, please use the `swift infer` or `swift deploy` commands.
 """
+
+patch_vllm_load_adapter()
 
 
 class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
@@ -84,11 +85,13 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
         # Load the received weights into the model.
         self.model_runner.model.load_weights(weights=[(name, weight)])
 
-    def update_adapter_flattened_param(self, peft_config: Dict, metadatas: list[FlattenedTensorMetadata]) -> None:
+    def update_adapter_flattened_param(self, peft_config: Dict, metadatas: list[Dict]) -> None:
         """
         Receives updated weights from the client process and updates the named parameter in the model.
         """
-        peft_config = LoraConfig(**peft_config)
+        # peft_config = json.loads(peft_config)
+        # peft_config = LoraConfig(**peft_config)
+        metadatas = [FlattenedTensorMetadata(**metadata) for metadata in metadatas]
         if self.pynccl_comm is None:
             raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
         flatten_tensor_length = max(metadata.end_idx for metadata in metadatas)
@@ -105,7 +108,7 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
             peft_config=peft_config,
             lora_tensors=named_params)
         # TODO: Check
-        self.add_lora(TensorLoRARequest(lora_request=lora_request, lora_tensors=named_params))
+        self.add_lora(lora_request)
 
 
 logger = get_logger()
@@ -373,7 +376,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
 
         return {'message': 'Request received, updating named parameter'}
 
-    async def update_adapter_flattened_param(self, lora_request, metadatas):
+    async def update_adapter_flattened_param(self, request: UpdateFlattenedAdapterRequest):
         # Create a LoRA request object, or pass request directly
         # from swift.trainers.rlhf_trainer.utils import TensorLoRARequest
         # lora_request = TensorLoRARequest(
@@ -383,8 +386,12 @@ class SwiftRolloutDeploy(SwiftPipeline):
         #     peft_config=request.peft_config,
         #     lora_tensors=request.lora_tensors
         # )
-
-        kwargs = {'method': 'update_adapter_flattened_param', 'args': (lora_request, metadatas)}
+        peft_config = asdict(request.peft_config)
+        metadatas = [
+            metadata.model_dump() if hasattr(metadata, 'model_dump') else metadata.dict()
+            for metadata in request.metadatas
+        ]
+        kwargs = {'method': 'update_adapter_flattened_param', 'args': (peft_config, metadatas)}
         for connection in self.connections:
             connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 

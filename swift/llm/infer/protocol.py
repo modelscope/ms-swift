@@ -12,6 +12,8 @@ import json
 from PIL import Image
 from pydantic import BaseModel, Field, field_validator
 
+from swift.trainers.rlhf_trainer.utils import FlattenedTensorMetadata
+from swift.tuners.lora import LoraConfig
 from ..template import InferRequest
 from ..utils import Messages, Tool
 
@@ -459,3 +461,8 @@ class UpdateWeightsRequest(BaseModel):
     name: str
     dtype: str
     shape: list[int]
+
+
+class UpdateFlattenedAdapterRequest(BaseModel):
+    peft_config: LoraConfig
+    metadatas: List[FlattenedTensorMetadata]

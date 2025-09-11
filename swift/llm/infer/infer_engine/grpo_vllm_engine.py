@@ -14,7 +14,6 @@ from .utils import AdapterRequest
 try:
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '86400'
-    from swift.trainers.rlhf_trainer.utils import TensorLoRARequest
     from vllm.lora.request import LoRARequest
 except Exception:
     raise
