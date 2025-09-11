@@ -1284,7 +1284,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             loss_mask = data['response_loss_mask']
                         data['messages'] = replace_assistant_response_with_ids(data['messages'],
                                                                                data['response_token_ids'], loss_mask)
-                batch_encoded_inputs = [template.encode(data) for data in batch]
+                batch_encoded_inputs = [template.encode(data, return_length=True) for data in batch]
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
                 if self.dynamic_num_samples and self.is_multimodal:
                     batch_encoded_inputs['_origin_data'] = batch
@@ -1292,6 +1292,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Process labels and masks
             labels = batch_encoded_inputs.pop('labels')
             logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
+
+            if self.template.padding_free:
+                position_ids = batch_encoded_inputs.get('text_position_ids')
+                if position_ids is None:
+                    position_ids = batch_encoded_inputs.get('position_ids')
+                position_ids = position_ids.squeeze()
+                assert position_ids is not None
+                lengths = torch.diff(
+                    torch.cat([(position_ids == 0).nonzero(as_tuple=True)[0],
+                               torch.tensor([len(position_ids)]).to(position_ids.device)]))
+                all_advandages = []
+                for data, length in zip(batch, lengths):
+                    advantages = data['advantages']
+                    all_advandages.extend([advantages.unsqueeze(0)] * length)
+                all_advandages = torch.cat(all_advandages)
+            else:
+                all_advandages = torch.stack([data['advantages'] for data in batch])
 
             batch_encoded_inputs.update({
                 'completion_mask':
@@ -1301,7 +1318,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'logits_to_keep':
                 logits_to_keep,
                 'advantages':
-                torch.stack([data['advantages'] for data in batch])
+                all_advandages
             })
 
             with torch.no_grad():
@@ -1475,8 +1492,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.args.delta is not None:
             coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
-        per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-        per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+        if self.template.padding_free:
+            advantages = advantages[-coef_1.shape[1]:]
+            per_token_loss1 = coef_1 * advantages.unsqueeze(0)
+            per_token_loss2 = coef_2 * advantages.unsqueeze(0)
+        else:
+            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+            per_token_loss2 = coef_2 * advantages.unsqueeze(1)
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
         if entropy_mask is not None:
             per_token_loss = per_token_loss * entropy_mask
@@ -1722,69 +1744,24 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'truncated_mask'
             ]
         }
+        sequence_parallel.prepare_inputs(inputs)
         with self._template_context(self.template):
             output = model(**inputs)
             logits = output.logits
-        # original sequence length sharded
-        origin_length = input_ids.shape[-1]
-        if self.padding_free:
-            _origin_logits_to_keep = logits_to_keep
-            # if padding_free, calculate all logits tokens
-            logits_to_keep = inputs['attention_mask'].sum()
-            # packing again
-            input_ids = input_ids[inputs['attention_mask'].bool()].unsqueeze(0)
-            # set origin length to all logits length
-            origin_length = inputs['attention_mask'].sum()
         # split input_ids to labels
         position_ids = sequence_parallel.real_position_ids
         _, _, labels, _, _, _ = sequence_parallel.pad_and_split_inputs(
             None, None, input_ids.clone(), None, None, None, real_position_ids=position_ids)
 
-        shape1 = logits.shape[1]
         labels = torch.where(labels == -100, self.processing_class.pad_token_id, labels)
-        # calculate padding size for example, 9 to 10 if sp=2
-        padding_size = shape1 * sequence_parallel.world_size - origin_length
-        # left shift one token to leave the last token
-        logits_to_keep_padded = logits_to_keep + padding_size + 1
 
-        # skip logits_to_keep
-        logits_to_keep_sharded = max(
-            min(logits_to_keep_padded - (sequence_parallel.world_size - sequence_parallel.sp_rank - 1) * shape1,
-                shape1), 0)
-        if logits_to_keep_sharded != 0:
-            logits_kept = logits[:, -logits_to_keep_sharded:, :]
-            logits_kept = logits_kept / self.temperature
-            labels_kept = labels[:, -logits_to_keep_sharded:]
-        else:
-            logits_kept = logits[:, logits.shape[1]:, :]
-            logits_kept = logits_kept / self.temperature
-            labels_kept = labels[:, labels.shape[1]:]
-        # how many padding tokens
-        # for example:
-        # aaaa bbbb cccc dddd
-        # if logits_to_keep+padding_size+1 = 10
-        # then bb cccc dddd will calculate selective_log_softmax
-        # other tokens will be padded with 0.
-        left_padding_len = shape1 - logits_to_keep_sharded
-        per_token_logps = selective_log_softmax(logits_kept, labels_kept)
+        per_token_logps = selective_log_softmax(logits, labels)
         entropies = None
-        _padding_logps = torch.zeros((per_token_logps.shape[0], left_padding_len),
-                                     device=per_token_logps.device,
-                                     dtype=per_token_logps.dtype)
-
-        per_token_logps_padded = torch.cat((_padding_logps, per_token_logps), dim=1)
-
-        _padding_labels = torch.zeros((labels.shape[0], left_padding_len), device=labels.device, dtype=labels.dtype)
-        labels_padded = torch.cat((_padding_labels, labels_kept), dim=1)
-        per_token_logps, _ = GatherLoss.apply(per_token_logps_padded, labels_padded, 1, position_ids)
+        per_token_logps, _ = GatherLoss.apply(per_token_logps, labels, 1, position_ids)
         if compute_entropy:
             entropies = entropy_from_logits(logits_kept)
-            entropies_padded = torch.cat((_padding_logps, entropies), dim=1)
-            entropies, _ = GatherLoss.apply(entropies_padded, labels_padded, 1, position_ids)
+            entropies, _ = GatherLoss.apply(entropies, labels, 1, position_ids)
 
-        if padding_size > 0:
-            per_token_logps = per_token_logps[:, :-padding_size]
-            entropies = entropies[:, :-padding_size] if entropies is not None else None
         per_token_logps = per_token_logps[:, -logits_to_keep - 1:-1]
         if compute_entropy:
             entropies = entropies[:, -logits_to_keep - 1:-1]
