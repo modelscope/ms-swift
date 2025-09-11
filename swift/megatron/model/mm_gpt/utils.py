@@ -68,6 +68,7 @@ class HuggingFaceModule(_HuggingFaceModule, ABC):
             ignore_init_model_cls = [ignore_init_model_cls]
         context_list = [patch_device_map_meta(model_cls) for model_cls in ignore_init_model_cls]
         context_list.append(patch_hf_initialize_weight())
+        kwargs['model_type'] = args.model_info.model_type
         with ContextManagers(context_list):
             model, _ = get_model_tokenizer(model_dir, args.torch_dtype, return_dummy_model=True, **kwargs)
         self.model_config = model.config
