@@ -1567,17 +1567,14 @@ class Template(ProcessorMixin):
             labels = b.pop('labels')
             positive_num = sum(labels)
             negative_num = len(labels) - positive_num
-            for i in range(min(positive_num, max_positive_samples)):
+            max_positive = min(positive_num, max_positive_samples)
+            max_negative = min(negative_num, max_negative_samples)
+            for i in random.sample(range(positive_num), max_positive):
                 new_batch.append({'input_ids': b['input_ids'][i]})
                 labels_list.append(1)
-                if negative_num > max_negative_samples:
-                    for j in random.sample(range(negative_num), max_negative_samples):
-                        new_batch.append({'input_ids': b['input_ids'][j + positive_num]})
-                        labels_list.append(0)
-                else:
-                    for j in range(negative_num):
-                        new_batch.append({'input_ids': b['input_ids'][j + positive_num]})
-                        labels_list.append(0)
+                for j in random.sample(range(negative_num), max_negative):
+                    new_batch.append({'input_ids': b['input_ids'][j + positive_num]})
+                    labels_list.append(0)
 
         res = self._data_collator(new_batch, padding_to=padding_to)
         if labels_list:
