@@ -263,7 +263,7 @@ def find_all_linears(model, model_arch=None, extra_layers=None, sub_module=None)
 
 
 @contextmanager
-def safe_ddp_context(hash_id: Optional[str], use_barrier: bool = False):
+def safe_ddp_context(hash_id: Optional[str], use_barrier: bool = True):
     if use_barrier and dist.is_initialized():
         if is_dist():
             if not is_master():
