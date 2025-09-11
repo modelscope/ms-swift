@@ -1759,7 +1759,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         entropies = None
         per_token_logps, _ = GatherLoss.apply(per_token_logps, labels, 1, position_ids)
         if compute_entropy:
-            entropies = entropy_from_logits(logits_kept)
+            entropies = entropy_from_logits(logits)
             entropies, _ = GatherLoss.apply(entropies, labels, 1, position_ids)
 
         per_token_logps = per_token_logps[:, -logits_to_keep - 1:-1]
