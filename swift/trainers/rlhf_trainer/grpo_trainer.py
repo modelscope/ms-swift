@@ -1754,7 +1754,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             None, None, input_ids.clone(), None, None, None, real_position_ids=position_ids)
 
         labels = torch.where(labels == -100, self.processing_class.pad_token_id, labels)
-
+        logits = logits / self.temperature
         per_token_logps = selective_log_softmax(logits, labels)
         entropies = None
         per_token_logps, _ = GatherLoss.apply(per_token_logps, labels, 1, position_ids)
