@@ -1,3 +1,4 @@
 {
-    "<think>\\s*</think>\\s*": [0.0]
+    "<think>\\s*</think>\\s*": [0.0],
+    "<seed:think><seed:cot_budget_reflect>The current thinking budget is 0, so I will directly start answering the question.</seed:cot_budget_reflect>\n\n</seed:think>\\s*": [0.0]
 }
