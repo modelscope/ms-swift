@@ -380,7 +380,7 @@ register_dataset(
 
 class MTEBRerankPreprocessor(RowPreprocessor):
 
-    def preprocess(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         query = row['query']
         positives = row['positive'] if isinstance(row['positive'], list) else [row['positive']]
         negatives = row['negative'] if isinstance(row['negative'], list) else [row['negative']]
