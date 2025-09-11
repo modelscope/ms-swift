@@ -46,6 +46,15 @@ except ImportError:
     Qwen3NextDynamicCache = None
     Qwen3NextConfig = None
 
+try:
+    import transformer_engine  # pylint: disable=unused-import
+
+    HAVE_TE = True
+    from megatron.core.extensions.transformer_engine import SplitAlongDim
+except ImportError:
+    HAVE_TE = False
+    SplitAlongDim = None
+
 logger = get_logger()
 
 
@@ -173,16 +182,7 @@ class Qwen3NextSelfAttention(SelfAttention):
         # Get the query, key and value tensors based on the type of attention -
         # self or cross attn.
         nvtx_range_push(suffix='qkv')
-        # patch layer_norm
-        q_layernorm = self.q_layernorm
-        query, key, value = self.get_query_key_value_tensors(hidden_states, key_value_states)
-        input_shape = hidden_states.shape[:-1]
-        query_states, gate = torch.chunk(
-            self.q_proj(hidden_states).view(*input_shape, -1, self.head_dim * 2), 2, dim=-1)
-        gate = gate.reshape(*input_shape, -1)
-        self.q_layernorm = q_layernorm
-        if self.q_layernorm is not None:
-            query = self.q_layernorm(query)
+        query, key, value, gate = self.get_query_key_value_tensors(hidden_states, key_value_states)
         nvtx_range_pop(suffix='qkv')
 
         # ===================================================
@@ -342,12 +342,57 @@ class Qwen3NextSelfAttention(SelfAttention):
         # Output. [sq, b, h]
         # =================
 
-        core_attn_out = core_attn_out * torch.sigmoid(gate)
+        core_attn_out = core_attn_out * torch.sigmoid(gate.reshape_as(core_attn_out))
         nvtx_range_push(suffix='linear_proj')
         output, bias = self.linear_proj(core_attn_out)
         nvtx_range_pop(suffix='linear_proj')
 
         return output, bias
+
+    def get_query_key_value_tensors(self, hidden_states, key_value_states=None):
+        """
+        Derives `query`, `key` and `value` tensors from `hidden_states`.
+        """
+        # Attention heads [sq, b, h] --> [sq, b, ng * (np/ng + 2) * hn)]
+        mixed_qkv, _ = self.linear_qkv(hidden_states)
+
+        new_tensor_shape = mixed_qkv.size()[:-1] + (
+            self.num_query_groups_per_partition,
+            ((self.num_attention_heads_per_partition // self.num_query_groups_per_partition * 2 + 2)
+             * self.hidden_size_per_attention_head),
+        )
+        mixed_qkv = mixed_qkv.view(*new_tensor_shape)
+        split_arg_list = [
+            (self.num_attention_heads_per_partition // self.num_query_groups_per_partition
+             * self.hidden_size_per_attention_head * 2),
+            self.hidden_size_per_attention_head,
+            self.hidden_size_per_attention_head,
+        ]
+
+        if SplitAlongDim is not None:
+
+            # [sq, b, ng, (np/ng + 2) * hn]
+            # --> [sq, b, ng, np/ng * hn], [sq, b, ng, hn], [sq, b, ng, hn]
+            (query, key, value) = SplitAlongDim(mixed_qkv, 3, split_arg_list)
+        else:
+
+            # [sq, b, ng, (np/ng + 2) * hn]
+            # --> [sq, b, ng, np/ng * hn], [sq, b, ng, hn], [sq, b, ng, hn]
+            (query, key, value) = torch.split(mixed_qkv, split_arg_list, dim=3)
+
+        # [sq, b, ng, np/ng * hn] -> [sq, b, np, hn]
+        query = query.reshape(query.size(0), query.size(1), -1, self.hidden_size_per_attention_head)
+        query, gate = query[:, :, ::2], query[:, :, 1::2]
+        if self.q_layernorm is not None:
+            query = self.q_layernorm(query)
+
+        if self.k_layernorm is not None:
+            key = self.k_layernorm(key)
+
+        if self.config.test_mode:
+            self.run_realtime_tests()
+
+        return query, key, value, gate
 
 
 class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
@@ -461,60 +506,29 @@ class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
                 'torch implementation. To install follow https://github.com/fla-org/flash-linear-attention#installation'
                 ' and https://github.com/Dao-AILab/causal-conv1d')
 
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        cache_params: Optional[Qwen3NextDynamicCache] = None,
-        cache_position: Optional[torch.LongTensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-    ):
-        from transformers.models.qwen3_next.modeling_qwen3_next import apply_mask_to_padding_states
-        hidden_states = apply_mask_to_padding_states(hidden_states, attention_mask)
-
+    def forward(self, hidden_states: torch.Tensor, **kwargs):
         # Set up dimensions for reshapes later
+        hidden_states = hidden_states.transpose(0, 1)
         batch_size, seq_len, _ = hidden_states.shape
 
-        use_precomputed_states = (
-            cache_params is not None and cache_params.has_previous_state and seq_len == 1
-            and cache_position is not None)
-
-        # getting projected states from cache if it exists
-        if cache_params is not None:
-            conv_state = cache_params.conv_states[self.layer_idx]
-            recurrent_state = cache_params.recurrent_states[self.layer_idx]
-
-        projected_states_qkvz = self.in_proj_qkvz(hidden_states)
-        projected_states_ba = self.in_proj_ba(hidden_states)
+        projected_states_qkvz = self.in_proj_qkvz(hidden_states)[0]
+        projected_states_ba = self.in_proj_ba(hidden_states)[0]
         query, key, value, z, b, a = self.fix_query_key_value_ordering(projected_states_qkvz, projected_states_ba)
         query, key, value = (x.reshape(x.shape[0], x.shape[1], -1) for x in (query, key, value))
 
         mixed_qkv = torch.cat((query, key, value), dim=-1)
         mixed_qkv = mixed_qkv.transpose(1, 2)
 
-        if use_precomputed_states:
-            # 2. Convolution sequence transformation
-            # NOTE: the conv state is updated in `causal_conv1d_update`
-            mixed_qkv = self.causal_conv1d_update(
-                mixed_qkv,
-                conv_state,
-                self.conv1d.weight.squeeze(1),
-                self.conv1d.bias,
-                self.activation,
+        if self.causal_conv1d_fn is not None:
+            mixed_qkv = self.causal_conv1d_fn(
+                x=mixed_qkv,
+                weight=self.conv1d.weight.squeeze(1),
+                bias=self.conv1d.bias,
+                activation=self.activation,
+                seq_idx=None,
             )
         else:
-            if cache_params is not None:
-                conv_state = F.pad(mixed_qkv, (self.conv_kernel_size - mixed_qkv.shape[-1], 0))
-                cache_params.conv_states[self.layer_idx] = conv_state
-            if self.causal_conv1d_fn is not None:
-                mixed_qkv = self.causal_conv1d_fn(
-                    x=mixed_qkv,
-                    weight=self.conv1d.weight.squeeze(1),
-                    bias=self.conv1d.bias,
-                    activation=self.activation,
-                    seq_idx=None,
-                )
-            else:
-                mixed_qkv = F.silu(self.conv1d(mixed_qkv)[:, :, :seq_len])
+            mixed_qkv = F.silu(self.conv1d(mixed_qkv)[:, :, :seq_len])
 
         mixed_qkv = mixed_qkv.transpose(1, 2)
         query, key, value = torch.split(
@@ -537,33 +551,16 @@ class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
             query = query.repeat_interleave(self.num_v_heads // self.num_k_heads, dim=2)
             key = key.repeat_interleave(self.num_v_heads // self.num_k_heads, dim=2)
 
-        if not use_precomputed_states:
-            core_attn_out, last_recurrent_state = self.chunk_gated_delta_rule(
-                query,
-                key,
-                value,
-                g=g,
-                beta=beta,
-                initial_state=None,
-                output_final_state=cache_params is not None,
-                use_qk_l2norm_in_kernel=True,
-            )
-
-        else:
-            core_attn_out, last_recurrent_state = self.recurrent_gated_delta_rule(
-                query,
-                key,
-                value,
-                g=g,
-                beta=beta,
-                initial_state=recurrent_state,
-                output_final_state=cache_params is not None,
-                use_qk_l2norm_in_kernel=True,
-            )
-
-        # Update cache
-        if cache_params is not None:
-            cache_params.recurrent_states[self.layer_idx] = last_recurrent_state
+        core_attn_out, last_recurrent_state = self.chunk_gated_delta_rule(
+            query,
+            key,
+            value,
+            g=g,
+            beta=beta,
+            initial_state=None,
+            output_final_state=False,
+            use_qk_l2norm_in_kernel=True,
+        )
 
         z_shape_og = z.shape
         # reshape input data into 2D tensor
@@ -573,8 +570,9 @@ class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
         core_attn_out = core_attn_out.reshape(z_shape_og)
         core_attn_out = core_attn_out.reshape(core_attn_out.shape[0], core_attn_out.shape[1], -1)
 
-        output = self.out_proj(core_attn_out)
-        return output
+        output, bias = self.out_proj(core_attn_out)
+        output = output.transpose(0, 1)
+        return output, bias
 
 
 def get_qwen3_next_transformer_layer_spec(config):
@@ -611,26 +609,28 @@ def convert_mcore2hf_qwen3_next(hf_model, mg_model):
     hf_model.model.embed_tokens.weight.data.copy_(mg_model.embedding.word_embeddings.weight)
     if args.untie_embeddings_and_output_weights:
         hf_model.lm_head.weight.data.copy_(mg_model.output_layer.weight)
-    hf_model.model.norm.weight.data.copy_(mg_model.decoder.final_layernorm.weight)
+    hf_model.model.norm.weight.data.copy_(mg_model.decoder.final_layernorm.weight - 1)
     for layer_idx in range(args.num_layers):
         layer_type = args.layer_types[layer_idx]
         mg_layer = mg_model.decoder.layers[layer_idx]
         hf_layer = hf_model.model.layers[layer_idx]
+        mg_attn = mg_layer.self_attention
 
         if layer_type == 'linear_attention':
-            hf_layer.linear_attn.load_state_dict(mg_layer.self_attention.state_dict(), strict=False)
-            hf_layer.input_layernorm.weight.data.copy_(mg_layer.input_layernorm.weight)
+            hf_layer.linear_attn.load_state_dict(mg_attn.state_dict(), strict=False)
+            hf_layer.input_layernorm.weight.data.copy_(mg_layer.input_layernorm.weight - 1)
         elif layer_type == 'full_attention':
-            set_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
-            hf_layer.input_layernorm.weight.data.copy_(mg_layer.self_attention.linear_qkv.layer_norm_weight)
+            hf_attn = hf_layer.self_attn
+            set_attn_state(args, mg_attn, hf_attn)
+            hf_layer.input_layernorm.weight.data.copy_(mg_attn.linear_qkv.layer_norm_weight - 1)
+            if args.qk_layernorm:
+                hf_attn.q_norm.weight.data.copy_(mg_attn.q_layernorm.weight - 1)
+                hf_attn.k_norm.weight.data.copy_(mg_attn.k_layernorm.weight - 1)
 
         set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
 
         post_attention_layernorm_weight = hf_layer.post_attention_layernorm.weight
-        if 'moe' in mg_layer.mlp.__class__.__name__.lower():
-            post_attention_layernorm_weight.data.copy_(mg_layer.pre_mlp_layernorm.weight)
-        else:
-            post_attention_layernorm_weight.data.copy_(mg_layer.mlp.linear_fc1.layer_norm_weight)
+        post_attention_layernorm_weight.data.copy_(mg_layer.pre_mlp_layernorm.weight - 1)
 
 
 def convert_hf2mcore_qwen3_next(hf_model, mg_model):
@@ -639,26 +639,28 @@ def convert_hf2mcore_qwen3_next(hf_model, mg_model):
     mg_model.embedding.word_embeddings.weight.data.copy_(hf_model.model.embed_tokens.weight)
     if args.untie_embeddings_and_output_weights:
         mg_model.output_layer.weight.data.copy_(hf_model.lm_head.weight)
-    mg_model.decoder.final_layernorm.weight.data.copy_(hf_model.model.norm.weight)
+    mg_model.decoder.final_layernorm.weight.data.copy_(hf_model.model.norm.weight + 1)
     for layer_idx in range(args.num_layers):
         layer_type = args.layer_types[layer_idx]
         mg_layer = mg_model.decoder.layers[layer_idx]
         hf_layer = hf_model.model.layers[layer_idx]
+        mg_attn = mg_layer.self_attention
 
         if layer_type == 'linear_attention':
-            mg_layer.self_attention.load_state_dict(hf_layer.linear_attn.state_dict(), strict=False)
-            mg_layer.input_layernorm.weight.data.copy_(hf_layer.input_layernorm.weight)
+            mg_attn.load_state_dict(hf_layer.linear_attn.state_dict(), strict=False)
+            mg_layer.input_layernorm.weight.data.copy_(hf_layer.input_layernorm.weight + 1)
         elif layer_type == 'full_attention':
-            set_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
-            mg_layer.self_attention.linear_qkv.layer_norm_weight.data.copy_(hf_layer.input_layernorm.weight)
+            hf_attn = hf_layer.self_attn
+            set_attn_state(args, mg_attn, hf_attn)
+            mg_attn.linear_qkv.layer_norm_weight.data.copy_(hf_layer.input_layernorm.weight + 1)
+            if args.qk_layernorm:
+                mg_attn.q_layernorm.weight.data.copy_(hf_attn.q_norm.weight + 1)
+                mg_attn.k_layernorm.weight.data.copy_(hf_attn.k_norm.weight + 1)
 
         set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
 
         post_attention_layernorm_weight = hf_layer.post_attention_layernorm.weight
-        if 'moe' in mg_layer.mlp.__class__.__name__.lower():
-            mg_layer.pre_mlp_layernorm.weight.data.copy_(post_attention_layernorm_weight)
-        else:
-            mg_layer.mlp.linear_fc1.layer_norm_weight.data.copy_(post_attention_layernorm_weight)
+        mg_layer.pre_mlp_layernorm.weight.data.copy_(post_attention_layernorm_weight + 1)
 
 
 register_megatron_model(
