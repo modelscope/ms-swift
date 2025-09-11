@@ -90,7 +90,6 @@ class ModelMeta:
             for model in model_group.models:
                 for key in ['ms_model_id', 'hf_model_id', 'model_path']:
                     value = getattr(model, key)
-
                     if isinstance(value, str) and model_name == value.rsplit('/', 1)[-1]:
                         return model_group
 
