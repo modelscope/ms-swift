@@ -253,9 +253,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.enable_server_multi_turn = False
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
         self.dynamic_num_samples = False
-        self.padding_free = self.template.padding_free
-        self.template.padding_free = False
-        self.template.packing = False
         if self.use_vllm:
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. '
@@ -531,6 +528,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.llm.infer.infer_engine import GRPOVllmEngine
         max_num_seqs = (
             self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size * self.args.steps_per_generation)
+        vllm_template = copy(self.template)
+        vllm_template.padding_free = False
         with Swift.grpo_context(model, self.template.processor):
             engine = GRPOVllmEngine(
                 model.model_dir,
@@ -548,7 +547,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
                 disable_cascade_attn=self.args.vllm_disable_cascade_attn,
                 load_format='dummy',
-                template=copy(self.template),
+                template=vllm_template,
                 distributed_executor_backend='external_launcher',
             )
         return engine
@@ -1699,160 +1698,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Update metrics
         self._update_metrics(aggregated_metrics)
 
-    @contextmanager
-    def padding_free_context(self, model: torch.nn.Module):
-        ctx = {}
-
-        def _padding_free_input_hook(module, args, kwargs):
-            attention_mask = kwargs['attention_mask']
-            # used in _padding_free_output_hook
-            ctx['padding_left'] = (attention_mask[:, -1].sum() == attention_mask.shape[0])
-            if 'input_ids' in kwargs and kwargs.get('input_ids') is not None:
-                # llm models
-                kwargs['position_ids'] = torch.arange(kwargs['input_ids'].shape[1]).unsqueeze(0).repeat(
-                    kwargs['input_ids'].shape[0], 1).to(kwargs['input_ids'].dtype).to(kwargs['input_ids'].device)
-                kwargs['input_ids'] = kwargs['input_ids'][attention_mask.bool()].unsqueeze(0)
-            else:
-                # mllm models
-                kwargs['position_ids'] = torch.arange(kwargs['inputs_embeds'].shape[1]).unsqueeze(0).repeat(
-                    kwargs['inputs_embeds'].shape[0], 1).to(torch.int64).to(kwargs['inputs_embeds'].device)
-                kwargs['inputs_embeds'] = kwargs['inputs_embeds'][attention_mask.bool()].unsqueeze(0)
-            kwargs['position_ids'] = kwargs['position_ids'][attention_mask.bool()].unsqueeze(0)
-            kwargs.pop('attention_mask', None)
-            return args, kwargs
-
-        def _padding_free_output_hook(module, args, kwargs, result):
-            position_ids = kwargs['position_ids']
-            seq_lengths = []
-            pos = position_ids[0]
-            resets = torch.where(pos[1:] < pos[:-1])[0] + 1
-
-            if len(resets) == 0:
-                # Only one sequence in this batch item
-                seq_lengths = [pos.max().item() + 1]
-            else:
-                # Multiple sequences
-                start = 0
-                for end in resets:
-                    seq_lengths.append(end - start)
-                    start = end
-                seq_lengths.append(pos.shape[0] - start)
-
-            max_length = max(seq_lengths)
-            last_hidden_state = result.last_hidden_state.squeeze(0)
-            unpacked_logits = []
-
-            start = 0
-            for length in seq_lengths:
-                seq_state = last_hidden_state[start:start + length]
-                padding = torch.zeros(
-                    (max_length - length,
-                     last_hidden_state.shape[-1])).to(last_hidden_state.dtype).to(last_hidden_state.device)
-                # re-padding
-                if ctx['padding_left']:
-                    seq_state = torch.cat((padding, seq_state), dim=0)
-                else:
-                    seq_state = torch.cat((seq_state, padding), dim=0)
-                unpacked_logits.append(seq_state)
-                start += length
-            result.last_hidden_state = torch.stack(unpacked_logits, dim=0)
-            return result
-
-        if self.padding_free:
-            llm_model = get_llm_model(model)
-            remove_handle1 = llm_model.register_forward_pre_hook(
-                _padding_free_input_hook, with_kwargs=True, prepend=True)
-            remove_handle2 = llm_model.register_forward_hook(_padding_free_output_hook, with_kwargs=True, prepend=True)
-        yield
-        if self.padding_free:
-            remove_handle1.remove()
-            remove_handle2.remove()
-
-    @contextmanager
-    def padding_free_context_grpo(self, model: torch.nn.Module):
-        """Padding free context for GRPO sequence parallel training"""
-        ctx = {}
-
-        def _padding_free_input_hook(module, args, kwargs):
-            attention_mask = kwargs['attention_mask']
-            ctx['padding_left'] = (attention_mask[:, -1].sum() == attention_mask.shape[0])
-            if 'input_ids' in kwargs and kwargs.get('input_ids') is not None:
-                kwargs['position_ids'] = torch.arange(kwargs['input_ids'].shape[1]).unsqueeze(0).repeat(
-                    kwargs['input_ids'].shape[0], 1).to(kwargs['input_ids'].dtype).to(kwargs['input_ids'].device)
-                kwargs['input_ids'] = kwargs['input_ids'][attention_mask.bool()].unsqueeze(0)
-            else:
-                kwargs['position_ids'] = torch.arange(kwargs['inputs_embeds'].shape[1]).unsqueeze(0).repeat(
-                    kwargs['inputs_embeds'].shape[0], 1).to(torch.int64).to(kwargs['inputs_embeds'].device)
-                kwargs['inputs_embeds'] = kwargs['inputs_embeds'][attention_mask.bool()].unsqueeze(0)
-            kwargs['position_ids'] = kwargs['position_ids'][attention_mask.bool()].unsqueeze(0)
-            kwargs.pop('attention_mask', None)
-            from swift.trainers.sequence_parallel import sequence_parallel
-            # no labels, but set new position_ids
-            sequence_parallel.prepare_inputs(kwargs)
-            return args, kwargs
-
-        def _padding_free_output_hook(module, args, kwargs, result):
-            position_ids = kwargs['position_ids']
-            seq_lengths = []
-            pos = position_ids[0]
-            resets = torch.where(pos[1:] < pos[:-1])[0] + 1
-
-            max_length = 0
-            if len(resets) == 0:
-                # Only one sequence in this batch item
-                seq_lengths = [pos.max().item() + 1]
-            else:
-                # Multiple sequences
-                start = 0
-                for end in resets:
-                    seq_lengths.append(end - start)
-                    start = end
-                seq_lengths.append(pos.shape[0] - start)
-
-            max_length = max(seq_lengths)
-            logits = result.logits.squeeze(0)
-            has_entropies = hasattr(result, 'entropies') and result.entropies is not None
-            if has_entropies:
-                entropies = result.entropies.squeeze(0)
-
-            unpacked_logits = []
-            unpacked_entropies = [] if has_entropies else None
-            start = 0
-
-            for length in seq_lengths:
-                seq_state = logits[start:start + length]
-                padding = torch.zeros((max_length - length, ), dtype=logits.dtype, device=logits.device)
-                if ctx['padding_left']:
-                    seq_state = torch.cat((padding, seq_state), dim=0)
-                else:
-                    seq_state = torch.cat((seq_state, padding), dim=0)
-                unpacked_logits.append(seq_state)
-
-                if has_entropies:
-                    ent_state = entropies[start:start + length]
-                    if ctx['padding_left']:
-                        ent_state = torch.cat((padding, ent_state), dim=0)
-                    else:
-                        ent_state = torch.cat((ent_state, padding), dim=0)
-                    unpacked_entropies.append(ent_state)
-                start += length
-
-            result.logits = torch.stack(unpacked_logits, dim=0)
-            if has_entropies:
-                result.entropies = torch.stack(unpacked_entropies, dim=0)
-            return result
-
-        llm_model = get_llm_model(model)
-        if self.padding_free:
-            remove_handle1 = llm_model.register_forward_pre_hook(
-                _padding_free_input_hook, with_kwargs=True, prepend=True)
-            # cannot unpack here
-            llm_model._unpack_output = _padding_free_output_hook
-            llm_model._pack_input = _padding_free_input_hook
-        yield
-        if self.padding_free:
-            remove_handle1.remove()
-
     def _get_per_token_logps_and_entropies_sp(
             self,
             model: torch.nn.Module,
@@ -1877,7 +1722,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'truncated_mask'
             ]
         }
-        with self._template_context(self.template), self.padding_free_context_grpo(model):
+        with self._template_context(self.template):
             output = model(**inputs)
             logits = output.logits
         # original sequence length sharded
@@ -1940,18 +1785,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if padding_size > 0:
             per_token_logps = per_token_logps[:, :-padding_size]
             entropies = entropies[:, :-padding_size] if entropies is not None else None
-        if self.padding_free:
-            llm_model = get_llm_model(model)
-            output.logits = per_token_logps
-            output.entropies = entropies
-            # unpack output after sp logps have been calculated
-            _, inputs = llm_model._pack_input(None, None, inputs)
-            output = llm_model._unpack_output(None, None, inputs, output)
-            per_token_logps = output.logits
-            entropies = output.entropies
-            delattr(llm_model, '_unpack_output')
-            delattr(llm_model, '_pack_input')
-            logits_to_keep = _origin_logits_to_keep
         per_token_logps = per_token_logps[:, -logits_to_keep - 1:-1]
         if compute_entropy:
             entropies = entropies[:, -logits_to_keep - 1:-1]
@@ -1997,13 +1830,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if can_use_super:
             # save memory
-            with self.padding_free_context(model):
-                if hasattr(super(), '_get_per_token_logps_and_entropies'):
-                    logps, entropies = super()._get_per_token_logps_and_entropies(
-                        model, input_ids, inputs['attention_mask'], logits_to_keep, compute_entropy=compute_entropy)
-                else:
-                    logps = super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
-                    entropies = None
+            if hasattr(super(), '_get_per_token_logps_and_entropies'):
+                logps, entropies = super()._get_per_token_logps_and_entropies(
+                    model, input_ids, inputs['attention_mask'], logits_to_keep, compute_entropy=compute_entropy)
+            else:
+                logps = super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
+                entropies = None
         else:
             inputs = {
                 k: v
@@ -2014,8 +1846,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             }
             if 'logits_to_keep' in self.model_kwarg_keys:
                 inputs['logits_to_keep'] = logits_to_keep + 1
-            with self.padding_free_context(model):
-                logits = model(**inputs).logits
+            logits = model(**inputs).logits
             # exclude the last logit: it corresponds to the next token pred
             logits = logits[:, -(logits_to_keep + 1):-1, :]
             logits = logits / self.temperature
