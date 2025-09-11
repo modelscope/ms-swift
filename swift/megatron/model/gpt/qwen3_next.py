@@ -10,10 +10,12 @@ from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_e
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
+from megatron.core.transformer.enums import LayerType
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import build_module
-from megatron.core.transformer.transformer_block import TransformerBlockSubmodules
+from megatron.core.transformer.transformer_block import TransformerBlockSubmodules, get_num_layers_to_build
 from megatron.core.transformer.transformer_config import TransformerConfig
+from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 from megatron.core.utils import deprecate_inference_params, is_fa_min_version, nvtx_range_pop, nvtx_range_push
 from megatron.training import get_args
 from torch import nn
@@ -575,7 +577,22 @@ class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
         return output, bias
 
 
+def get_local_layer_specs(config, layer_specs, vp_stage=None):
+    num_layers_to_build = get_num_layers_to_build(config, vp_stage=vp_stage)
+
+    if config.pipeline_model_parallel_layout is not None:
+        local_layer_specs = [
+            layer_specs[layer_id] for layer_id in config.pipeline_model_parallel_layout.get_layer_id_list(
+                layer_type=LayerType.decoder, vp_stage=vp_stage)
+        ]
+    else:
+        offset = get_transformer_layer_offset(config, vp_stage=vp_stage)
+        local_layer_specs = layer_specs[offset:offset + num_layers_to_build]
+    return local_layer_specs
+
+
 def get_qwen3_next_transformer_layer_spec(config):
+    config.hetereogenous_dist_checkpoint = True
     args = get_args()
     layer_norm_impl = TENorm
     moe_layer_spec = get_gpt_layer_with_transformer_engine_spec(
@@ -586,7 +603,7 @@ def get_qwen3_next_transformer_layer_spec(config):
         moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
         use_kitchen=config.use_kitchen,
     )
-    local_layer_specs = []
+    layer_specs = []
     for layer_type in args.layer_types:
         layer_spec = deepcopy(moe_layer_spec)
         if layer_type == 'linear_attention':
@@ -595,7 +612,9 @@ def get_qwen3_next_transformer_layer_spec(config):
             layer_spec.submodules.self_attention.module = Qwen3NextGatedDeltaNet
         elif layer_type == 'full_attention':
             layer_spec.submodules.self_attention.module = Qwen3NextSelfAttention
-        local_layer_specs.append(layer_spec)
+        layer_specs.append(layer_spec)
+
+    local_layer_specs = get_local_layer_specs(config, layer_specs)
 
     # Block spec.
     block_spec = TransformerBlockSubmodules(layer_specs=local_layer_specs, layer_norm=layer_norm_impl)
