@@ -387,54 +387,34 @@ class Template(ProcessorMixin):
         return encoded
 
     def _embedding_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
-        inputs = inputs.chosen  # TODO: refactor
         _encoded = {}
         labels = []
-        inference = len(inputs.messages) == 1
+        inference = len(inputs.chosen.messages) == 1
         if inference:
-            inputs.messages.append({'role': 'assistant', 'content': ''})
-
-        def split_multi_medias(_inputs):
-            _content = _inputs.messages[-2]['content']
-            image_size = len(re.findall('<image>', _content))
-            video_size = len(re.findall('<video>', _content))
-            audio_size = len(re.findall('<audio>', _content))
-            _inputs.images = inputs.images[:image_size]
-            assert len(_inputs.images) == image_size
-            inputs.images = inputs.images[image_size:]
-            _inputs.videos = inputs.videos[:video_size]
-            assert len(_inputs.videos) == video_size
-            inputs.videos = inputs.videos[video_size:]
-            _inputs.audios = inputs.audios[:audio_size]
-            assert len(_inputs.audios) == audio_size
-            inputs.audios = inputs.audios[audio_size:]
+            inputs.chosen.messages.append({'role': 'assistant', 'content': ''})
 
         if not inference:
-            anchor = deepcopy(inputs)
-            anchor.messages[-1]['content'] = ''
-            anchor.rejected_response = []
-            split_multi_medias(anchor)
+            anchor = inputs.chosen
+            # print('anchor')
+            # print(anchor)
             anchor_encoded = self._encode_truncated(anchor)
             for key in anchor_encoded:
                 _encoded[f'anchor_{key}'] = anchor_encoded[key]
-            positive = deepcopy(inputs)
-            positive.messages[-2]['content'] = positive.messages[-1]['content']
-            positive.messages[-1]['content'] = ''
-            positive.rejected_response = []
-            split_multi_medias(positive)
+            positive = inputs.positive_messages
+            if isinstance(positive, list):
+                positive = positive[0]
+            # print('positive')
+            # print(positive)
             positive_encoded = self._encode_truncated(positive)
             for key in positive_encoded:
                 _encoded[f'positive_{key}'] = positive_encoded[key]
                 _encoded[f'negative_{key}'] = []
             labels.append(float(inputs.label) if inputs.label is not None else 1.0)
 
-            rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
-            for i in range(rejected_len):
-                negative = deepcopy(inputs)
-                negative.messages[-2]['content'] = negative.rejected_response[i]
-                negative.messages[-1]['content'] = ''
-                negative.rejected_response = []
-                split_multi_medias(negative)
+            # negative_len = len(inputs.negative_messages) if inputs.negative_messages else 0
+            for negative in inputs.negative_messages:
+                # print('negative')
+                # print(negative)
                 negative_encoded = self._encode_truncated(negative)
                 for key in negative_encoded:
                     _encoded[f'negative_{key}'].append(negative_encoded[key])
@@ -442,10 +422,8 @@ class Template(ProcessorMixin):
 
             _encoded['labels'] = labels
         else:
-            anchor = deepcopy(inputs)
-            anchor.messages[-1]['content'] = ''
-            anchor.rejected_response = []
-            split_multi_medias(anchor)
+            anchor = inputs.chosen
+            # anchor.messages[-1]['content'] = ''
             _encoded = self._encode_truncated(anchor)
             _encoded.pop('labels', None)
         return _encoded
