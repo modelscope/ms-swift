@@ -72,21 +72,18 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_sys
 class Qwen3RerankerTemplate(Template):
     instruction = 'Given a web search query, retrieve relevant passages that answer the query'
 
-    def _preprocess_inputs_reranker(self, inputs: TemplateInputs) -> None:
-        super()._preprocess_inputs_reranker(inputs)
-        if inputs.chosen.system is not None:
-            instruction = inputs.chosen.system
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        if inputs.system is not None:
+            instruction = inputs.system
+            inputs.system = None
         else:
             instruction = self.instruction
-        query = inputs.chosen.messages[-1]['content']
-        for positive in inputs.positive:
-            user_message = '<Instruct>: ' + instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: ' + positive.messages[-1]['content']
-            positive.messages = [{'role': 'user', 'content': user_message}]
-        for negative in inputs.negative:
-            user_message = '<Instruct>: ' + instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: ' + negative.messages[-1]['content']
-            negative.messages = [{'role': 'user', 'content': user_message}]
-        inputs.chosen.messages = []
+        query = inputs.messages[0]['content']
+        document = inputs.messages[1]['content']
+        user_message = '<Instruct>: ' + instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: ' + document
+        inputs.messages = [{'role': 'user', 'content': user_message}]
         return inputs
+
 
 qwen3_reranker_system = (
     'Judge whether the Document meets the requirements based on the Query and the Instruct provided. '

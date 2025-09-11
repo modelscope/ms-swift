@@ -250,13 +250,6 @@ class Template(ProcessorMixin):
             else:
                 i += 1
 
-    def _preprocess_inputs_reranker(
-        self,
-        inputs: StdTemplateInputs,
-    ) -> None:
-        # TODO: remove
-        return
-
     def _preprocess_inputs(
         self,
         inputs: StdTemplateInputs,
@@ -452,13 +445,15 @@ class Template(ProcessorMixin):
 
     def _reranker_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
         from collections import defaultdict
-        inputs = self._preprocess_inputs_reranker(inputs)
         chosen = inputs.chosen
-        
+        instruction = chosen.system
+
         _encoded = defaultdict(list)
         labels = []
 
         for positive in inputs.positive:
+            if instruction is not None and positive.system is None:
+                positive.system = instruction
             positive.messages = chosen.messages + positive.messages
             positive_encoded = self._encode_truncated(positive)
             labels.append(1)
@@ -466,6 +461,8 @@ class Template(ProcessorMixin):
                 _encoded[key].append(positive_encoded[key])
 
         for negative in inputs.negative:
+            if instruction is not None and negative.system is None:
+                negative.system = instruction
             negative.messages = chosen.messages + negative.messages
             negative_encoded = self._encode_truncated(negative)
             labels.append(0)
@@ -473,7 +470,6 @@ class Template(ProcessorMixin):
                 _encoded[key].append(negative_encoded[key])
 
         _encoded['labels'] = labels
-        _encoded['length'] = len(labels)
         return _encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -1563,6 +1559,7 @@ class Template(ProcessorMixin):
                                 padding_to: Optional[int] = None) -> Dict[str, Any]:
         import os
         import random
+        max_positive_samples = int(os.environ.get('MAX_POSITIVE_SAMPLES', 1))
         max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
         labels_list = []
         new_batch = []
@@ -1570,16 +1567,16 @@ class Template(ProcessorMixin):
             labels = b.pop('labels')
             positive_num = sum(labels)
             negative_num = len(labels) - positive_num
-            for i in range(positive_num):
+            for i in range(min(positive_num, max_positive_samples)):
                 new_batch.append({'input_ids': b['input_ids'][i]})
                 labels_list.append(1)
                 if negative_num > max_negative_samples:
                     for j in random.sample(range(negative_num), max_negative_samples):
-                        new_batch.append({'input_ids': b['input_ids'][j+positive_num]})
+                        new_batch.append({'input_ids': b['input_ids'][j + positive_num]})
                         labels_list.append(0)
                 else:
                     for j in range(negative_num):
-                        new_batch.append({'input_ids': b['input_ids'][j+positive_num]})
+                        new_batch.append({'input_ids': b['input_ids'][j + positive_num]})
                         labels_list.append(0)
 
         res = self._data_collator(new_batch, padding_to=padding_to)
