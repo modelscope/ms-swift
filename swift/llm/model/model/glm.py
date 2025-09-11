@@ -443,7 +443,10 @@ register_model(
 def get_model_tokenizer_glm4_5v(*args, **kwargs):
     from transformers import Glm4vMoeForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or Glm4vMoeForConditionalGeneration
-    return get_model_tokenizer_multimodal(*args, **kwargs)
+    model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
+    if model is not None:
+        patch_get_input_embeddings(model.visual, 'patch_embed')
+    return model, processor
 
 
 register_model(

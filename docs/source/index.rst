@@ -38,6 +38,7 @@ Swift DOCUMENTATION
    Megatron-SWIFT/快速开始.md
    Megatron-SWIFT/命令行参数.md
    Megatron-SWIFT/LoRA训练.md
+   Megatron-SWIFT/多模态模型.md
 
 .. toctree::
    :maxdepth: 2

@@ -99,10 +99,10 @@ class DatasetSyntax:
         dataset_meta_mapping = self._get_dataset_meta_mapping()
         dataset_type = self.dataset_type
         if dataset_type == 'path':
-            dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset.lower()))
+            dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset))
         else:
             dataset_type = 'repo' if os.path.isdir(self.dataset) else {True: 'hf', False: 'ms'}[use_hf]
-            dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset.lower()))
+            dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset))
         return dataset_meta or self._get_matched_dataset_meta(dataset_meta_mapping) or DatasetMeta()
 
     @staticmethod
@@ -114,11 +114,11 @@ class DatasetSyntax:
         for dataset_meta in DATASET_MAPPING.values():
             if dataset_meta.dataset_path is not None:
                 dataset_type = 'repo' if os.path.isdir(dataset_meta.dataset_path) else 'path'
-                _dataset_meta_mapping[(dataset_type, dataset_meta.dataset_path.lower())] = dataset_meta
+                _dataset_meta_mapping[(dataset_type, dataset_meta.dataset_path)] = dataset_meta
             if dataset_meta.ms_dataset_id is not None:
-                _dataset_meta_mapping[('ms', dataset_meta.ms_dataset_id.lower())] = dataset_meta
+                _dataset_meta_mapping[('ms', dataset_meta.ms_dataset_id)] = dataset_meta
             if dataset_meta.hf_dataset_id is not None:
-                _dataset_meta_mapping[('hf', dataset_meta.hf_dataset_id.lower())] = dataset_meta
+                _dataset_meta_mapping[('hf', dataset_meta.hf_dataset_id)] = dataset_meta
         return _dataset_meta_mapping
 
     @staticmethod
@@ -137,9 +137,9 @@ class DatasetSyntax:
     def _get_matched_dataset_meta(self, dataset_meta_mapping):
         suffix_dataset_meta_mapping = {}
         for dataset_name, dataset_meta in dataset_meta_mapping.items():
-            dataset_name = self.get_dataset_name(dataset_name[1]).lower()
+            dataset_name = self.get_dataset_name(dataset_name[1])
             suffix_dataset_meta_mapping[dataset_name] = dataset_meta
-        dataset_name = self.get_dataset_name(self.dataset).lower()
+        dataset_name = self.get_dataset_name(self.dataset)
         dataset_meta = suffix_dataset_meta_mapping.get(dataset_name)
         return dataset_meta
 
@@ -242,9 +242,10 @@ class DatasetLoader:
             use_hf = True
             dataset_str = f'Use local folder, dataset_dir: {dataset_id}'
             # The dataset downloaded from modelscope will have an additional dataset_infos.json file.
-            dataset_infos_path = os.path.join(dataset_id, 'dataset_infos.json')
-            if os.path.isfile(dataset_infos_path):
-                os.rename(dataset_infos_path, f'{dataset_infos_path}_bak')
+            with safe_ddp_context('dataset_infos_rename'):
+                dataset_infos_path = os.path.join(dataset_id, 'dataset_infos.json')
+                if os.path.isfile(dataset_infos_path):
+                    os.rename(dataset_infos_path, f'{dataset_infos_path}_bak')
         elif dataset_id.startswith('/'):
             raise ValueError(f'The local path does not exist, dataset_id: `{dataset_id}`. '
                              f'os.path.exists(dataset_id): {os.path.exists(dataset_id)}')

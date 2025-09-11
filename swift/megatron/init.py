@@ -518,6 +518,103 @@ def _patch_TELinear():
     TELinear.__repr__ = __repr__
 
 
+def _patch_mrope():
+    from megatron.core.models.common.embeddings.rotary_pos_embedding import MultimodalRotaryEmbedding
+    from megatron.core import parallel_state
+    from megatron.core.models.common.embeddings.rope_utils import (get_pos_emb_on_this_cp_rank,
+                                                                   _apply_rotary_pos_emb_bshd)
+    from megatron.core.models.common.embeddings import rope_utils
+    from megatron.training import get_args
+
+    def forward(self, position_ids, mrope_section: List[int], packed_seq: bool = False) -> torch.Tensor:
+        seq = position_ids.to(device=self.inv_freq.device, dtype=self.inv_freq.dtype)
+
+        if self.seq_len_interpolation_factor is not None:
+            seq *= 1 / self.seq_len_interpolation_factor
+
+        # shape (3, bs, dim, 1)
+        inv_freq_expanded = self.inv_freq[None, None, :, None].expand(3, seq.shape[1], -1, 1)
+        # shape (3, bs, 1, seq_length)
+        seq_expanded = seq[:, :, None, :].float()
+        # shape (3, bs, seq_length, dim)
+        freqs = (inv_freq_expanded @ seq_expanded).transpose(2, 3)
+        # first part even vector components, second part odd vector components,
+        #  2 * dim in dimension size
+        if not self.rotary_interleaved:
+            emb = torch.cat((freqs, freqs), dim=-1)  # shape (3, bs, seq_length, 2 * dim)
+        else:
+            bs = freqs.shape[1]
+            emb = torch.stack((freqs.view(3, bs, -1, 1), freqs.view(3, bs, -1, 1)),
+                              dim=-1).view(3, bs, freqs.shape[0], -1)
+
+        # generate freqs with mrope_section
+        # shape (bs, seq_length, 2 * dim)
+        mrope_section = mrope_section * 2
+        emb = torch.cat([m[i % 3] for i, m in enumerate(emb.split(mrope_section, dim=-1))], dim=-1)
+
+        # shape (seq_length, bs, 1, 2 * dim)
+        emb = emb[..., None, :].transpose(0, 1).contiguous()
+        if parallel_state.get_context_parallel_world_size() > 1 and not packed_seq:
+            # slice rotary_pos_emb along sequence dimension and select the parition of the current
+            # CP rank
+            emb = get_pos_emb_on_this_cp_rank(emb, 0, parallel_state.get_context_parallel_group())
+        return emb
+
+    MultimodalRotaryEmbedding.forward = forward
+    _origin_apply_rotary_pos_emb_thd = rope_utils._apply_rotary_pos_emb_thd
+
+    def _apply_rotary_pos_emb_thd(
+        t: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        freqs: torch.Tensor,
+        rotary_interleaved: bool = False,
+        multi_latent_attention: bool = False,
+        mscale: float = 1.0,
+        cp_group: torch.distributed.ProcessGroup = None,
+    ) -> torch.Tensor:
+        """A baseline implementation of applying RoPE for `thd` format.
+
+        Args:
+            t (Tensor): Input tensor T is of shape [t, h, d]
+            cu_seqlens(Tensor):  Cumulative sum of sequence lengths in a batch for `t`,
+            with shape [b + 1] and dtype torch.int32.
+            freqs (Tensor): Rotary Positional embedding tensor freq is of shape [max_s, 1, 1, d]
+            cp_group (torch.distributed.ProcessGroup): The context parallel group
+
+        Returns:
+            Tensor: Shape [t, h, d]. The input tensor after applying RoPE.
+        """
+        args = get_args()
+        if args.position_embedding_type != 'mrope':
+            return _origin_apply_rotary_pos_emb_thd(
+                t,
+                cu_seqlens,
+                freqs,
+                rotary_interleaved=rotary_interleaved,
+                multi_latent_attention=multi_latent_attention,
+                mscale=mscale,
+                cp_group=cp_group,
+            )
+
+        if cp_group is None:
+            raise ValueError('cp_group must be provided for THD format RoPE')
+        cp_size = cp_group.size()
+        cu_seqlens = cu_seqlens // cp_size
+        seqlens = (cu_seqlens[1:] - cu_seqlens[:-1]).tolist()
+
+        return torch.cat([
+            _apply_rotary_pos_emb_bshd(
+                x.unsqueeze(1),
+                f,
+                rotary_interleaved=rotary_interleaved,
+                multi_latent_attention=multi_latent_attention,
+                mscale=mscale,
+            ) for x, f in zip(torch.split(t, seqlens), torch.split(freqs, seqlens))
+        ]).squeeze(1)
+
+    rope_utils._apply_rotary_pos_emb_thd = _apply_rotary_pos_emb_thd
+
+
 def _patch_megatron():
     _patch_flash_attn()
     _patch_transformer_engine()
@@ -527,6 +624,7 @@ def _patch_megatron():
     _patch_TEGroupedLinear()
     _patch_TransformerLayer()
     _patch_compile_helpers()
+    _patch_mrope()
     from swift.megatron import tuners  # patch lora
     try:
         _patch_torch_FileSystemReader()
@@ -546,6 +644,8 @@ def _patch_megatron():
 
 def init_megatron_env() -> None:
     if 'MEGATRON_LM_PATH' not in os.environ:
+        # TODO: Synchronization issues may occur in DDP scenarios
+        # if the distributed environment has not been initialized.
         os.environ['MEGATRON_LM_PATH'] = git_clone_github(
             'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.13.0')
     with safe_ddp_context(hash_id='megatron-lm'):

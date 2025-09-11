@@ -1,0 +1,55 @@
+# URL重写规则 - 用于缩短readthedocs链接
+# 这个文件将被复制到readthedocs的根目录，用于URL重定向
+
+RewriteEngine On
+
+# 常见问题整理 - 缩短URL
+RewriteRule ^faq/?$ /zh-cn/latest/Instruction/常见问题整理.html [R=301,L]
+RewriteRule ^faq/(.*)$ /zh-cn/latest/Instruction/常见问题整理.html#$1 [R=301,L]
+
+# 支持的模型和数据集
+RewriteRule ^models/?$ /zh-cn/latest/Instruction/支持的模型和数据集.html [R=301,L]
+RewriteRule ^models/(.*)$ /zh-cn/latest/Instruction/支持的模型和数据集.html#$1 [R=301,L]
+
+# 命令行参数
+RewriteRule ^params/?$ /zh-cn/latest/Instruction/命令行参数.html [R=301,L]
+RewriteRule ^params/(.*)$ /zh-cn/latest/Instruction/命令行参数.html#$1 [R=301,L]
+
+# 自定义数据集
+RewriteRule ^custom-dataset/?$ /zh-cn/latest/Customization/自定义数据集.html [R=301,L]
+RewriteRule ^custom-dataset/(.*)$ /zh-cn/latest/Customization/自定义数据集.html#$1 [R=301,L]
+
+# 推理和部署
+RewriteRule ^deploy/?$ /zh-cn/latest/Instruction/推理和部署.html [R=301,L]
+RewriteRule ^deploy/(.*)$ /zh-cn/latest/Instruction/推理和部署.html#$1 [R=301,L]
+
+# 评测
+RewriteRule ^eval/?$ /zh-cn/latest/Instruction/评测.html [R=301,L]
+RewriteRule ^eval/(.*)$ /zh-cn/latest/Instruction/评测.html#$1 [R=301,L]
+
+# 预训练与微调
+RewriteRule ^training/?$ /zh-cn/latest/Instruction/预训练与微调.html [R=301,L]
+RewriteRule ^training/(.*)$ /zh-cn/latest/Instruction/预训练与微调.html#$1 [R=301,L]
+
+# SWIFT安装
+RewriteRule ^install/?$ /zh-cn/latest/GetStarted/SWIFT安装.html [R=301,L]
+RewriteRule ^install/(.*)$ /zh-cn/latest/GetStarted/SWIFT安装.html#$1 [R=301,L]
+
+# 快速开始
+RewriteRule ^quickstart/?$ /zh-cn/latest/GetStarted/快速开始.html [R=301,L]
+RewriteRule ^quickstart/(.*)$ /zh-cn/latest/GetStarted/快速开始.html#$1 [R=301,L]
+
+# 多模态
+RewriteRule ^multimodal/?$ /zh-cn/latest/Multi-Modal/index.html [R=301,L]
+RewriteRule ^multimodal/(.*)$ /zh-cn/latest/Multi-Modal/$1 [R=301,L]
+
+# 强化学习
+RewriteRule ^rl/?$ /zh-cn/latest/RLHF/index.html [R=301,L]
+RewriteRule ^rl/(.*)$ /zh-cn/latest/RLHF/$1 [R=301,L]
+
+# 自定义
+RewriteRule ^custom/?$ /zh-cn/latest/Customization/index.html [R=301,L]
+RewriteRule ^custom/(.*)$ /zh-cn/latest/Customization/$1 [R=301,L]
+
+# 如果以上规则都不匹配，则重定向到主页
+RewriteRule ^.*$ /zh-cn/latest/ [R=301,L]

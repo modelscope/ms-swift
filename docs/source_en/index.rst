@@ -38,6 +38,7 @@ Swift DOCUMENTATION
    Megatron-SWIFT/Quick-start.md
    Megatron-SWIFT/Command-line-parameters.md
    Megatron-SWIFT/LoRA-Training.md
+   Megatron-SWIFT/Multimodal-Model.md
 
 
 .. toctree::

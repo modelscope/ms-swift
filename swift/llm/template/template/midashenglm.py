@@ -20,6 +20,10 @@ class MiDashengLMTemplate(Template):
     placeholder_tokens = ['<|AUDIO|>']
     skip_prompt = False
 
+    def init_env_args(self):
+        super().init_env_args()
+        self.sampling_rate = get_env_args('sampling_rate', int, 16000)
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'audio'
@@ -29,8 +33,7 @@ class MiDashengLMTemplate(Template):
         from transformers.audio_utils import load_audio
         encoded = super()._encode(inputs)
         input_ids = encoded['input_ids']
-        sampling_rate = get_env_args('sampling_rate', int, 16000)
-        inputs.audios = load_batch(inputs.audios, partial(load_audio, sampling_rate=sampling_rate))
+        inputs.audios = load_batch(inputs.audios, partial(load_audio, sampling_rate=self.sampling_rate))
         audio_token = self._tokenize('<|AUDIO|>')[0]
         idx_list = findall(input_ids, audio_token)
         if idx_list:

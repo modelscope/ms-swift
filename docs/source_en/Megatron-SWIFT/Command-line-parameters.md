@@ -206,6 +206,10 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 **Tuner Parameters**:
 
 - train_type: Options are `'lora'` and `'full'`. Default is `'full'`.
+- 🔥freeze_llm: This parameter only takes effect for multimodal models and can be used in both full-parameter and LoRA training, but with different behaviors. In full-parameter training, setting `freeze_llm` to `True` will freeze the weights of the LLM component. In LoRA training with `target_modules` set to 'all-linear', setting `freeze_llm` to `True` will prevent LoRA modules from being added to the LLM component. The default value is `False`.
+- 🔥freeze_vit: This parameter only applies to multimodal models and can be used in both full-parameter and LoRA training, though with different effects. In full-parameter training, setting `freeze_vit` to `True` will freeze the weights of the ViT component. In LoRA training with `target_modules` set to 'all-linear', setting `freeze_vit` to `True` will prevent LoRA modules from being added to the ViT component. The default value is `True`.
+  - Note: The term "ViT" here refers not only to the vision tower but also includes the audio tower.
+- 🔥freeze_aligner: This parameter is only effective for multimodal models and can be used in both full-parameter and LoRA training, with differing outcomes. In full-parameter training, setting `freeze_aligner` to `True` will freeze the weights of the aligner (also known as the projector) component. In LoRA training with `target_modules` set to 'all-linear', setting `freeze_aligner` to `True` will prevent LoRA modules from being added to the aligner component. The default value is `True`.
 
 Full-parameter Training:
 
@@ -249,6 +253,8 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
   - If you wish to customize the attention_mask, you can set `--padding_free false`.
   - Note: The Megatron-SWIFT training feature prioritizes support for the padding-free format. Unless under special circumstances, please do not modify this value.
 - mlp_padding_free: The default is False. This is used for applying padding-free optimization to the MLP when padding_free is set to false. It allows for improved training speed and reduced memory usage while customizing the attention_mask.
+- vit_gradient_checkpointing: Whether to enable gradient checkpointing for the ViT part during multimodal model training. Default: True.
+- gradient_checkpointing_kwargs: Arguments passed to `torch.utils.checkpoint`. For example: set `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Default: None.
 - 🔥packing: Whether to use sequence packing, defaults to False. Currently supports CPT/SFT/DPO.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
 - streaming: Stream data loading and processing, default is False.

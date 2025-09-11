@@ -1,0 +1,55 @@
+# URL Rewrite Rules - For shortening readthedocs links
+# This file will be copied to the readthedocs root directory for URL redirection
+
+RewriteEngine On
+
+# Frequently Asked Questions - Shorten URL
+RewriteRule ^faq/?$ /en/latest/Instruction/Frequently-asked-questions.html [R=301,L]
+RewriteRule ^faq/(.*)$ /en/latest/Instruction/Frequently-asked-questions.html#$1 [R=301,L]
+
+# Supported Models and Datasets
+RewriteRule ^models/?$ /en/latest/Instruction/Supported-models-and-datasets.html [R=301,L]
+RewriteRule ^models/(.*)$ /en/latest/Instruction/Supported-models-and-datasets.html#$1 [R=301,L]
+
+# Command Line Parameters
+RewriteRule ^params/?$ /en/latest/Instruction/Command-line-parameters.html [R=301,L]
+RewriteRule ^params/(.*)$ /en/latest/Instruction/Command-line-parameters.html#$1 [R=301,L]
+
+# Custom Dataset
+RewriteRule ^custom-dataset/?$ /en/latest/Customization/Custom-dataset.html [R=301,L]
+RewriteRule ^custom-dataset/(.*)$ /en/latest/Customization/Custom-dataset.html#$1 [R=301,L]
+
+# Inference and Deployment
+RewriteRule ^deploy/?$ /en/latest/Instruction/Inference-and-deployment.html [R=301,L]
+RewriteRule ^deploy/(.*)$ /en/latest/Instruction/Inference-and-deployment.html#$1 [R=301,L]
+
+# Evaluation
+RewriteRule ^eval/?$ /en/latest/Instruction/Evaluation.html [R=301,L]
+RewriteRule ^eval/(.*)$ /en/latest/Instruction/Evaluation.html#$1 [R=301,L]
+
+# Pre-training and Fine-tuning
+RewriteRule ^training/?$ /en/latest/Instruction/Pre-training-and-fine-tuning.html [R=301,L]
+RewriteRule ^training/(.*)$ /en/latest/Instruction/Pre-training-and-fine-tuning.html#$1 [R=301,L]
+
+# SWIFT Installation
+RewriteRule ^install/?$ /en/latest/GetStarted/SWIFT-installation.html [R=301,L]
+RewriteRule ^install/(.*)$ /en/latest/GetStarted/SWIFT-installation.html#$1 [R=301,L]
+
+# Quick Start
+RewriteRule ^quickstart/?$ /en/latest/GetStarted/Quick-start.html [R=301,L]
+RewriteRule ^quickstart/(.*)$ /en/latest/GetStarted/Quick-start.html#$1 [R=301,L]
+
+# Multi-Modal
+RewriteRule ^multimodal/?$ /en/latest/Multi-Modal/index.html [R=301,L]
+RewriteRule ^multimodal/(.*)$ /en/latest/Multi-Modal/$1 [R=301,L]
+
+# Reinforcement Learning
+RewriteRule ^rl/?$ /en/latest/RLHF/index.html [R=301,L]
+RewriteRule ^rl/(.*)$ /en/latest/RLHF/$1 [R=301,L]
+
+# Customization
+RewriteRule ^custom/?$ /en/latest/Customization/index.html [R=301,L]
+RewriteRule ^custom/(.*)$ /en/latest/Customization/$1 [R=301,L]
+
+# If none of the above rules match, redirect to homepage
+RewriteRule ^.*$ /en/latest/ [R=301,L]

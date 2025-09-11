@@ -64,6 +64,10 @@ register_template(
 class mPlugOwl3Template(Template):
     version = None
 
+    def init_env_args(self):
+        super().init_env_args()
+        self.max_num_frames = get_env_args('max_num_frames', int, 16)
+
     def _get_image_token_list(self, cut_shape):
         text = self.processor.image_processor.cut_prompt_template(img_token='<|image|>', h=cut_shape[0], w=cut_shape[1])
         text_list = text.split('<|image|>')
@@ -77,8 +81,7 @@ class mPlugOwl3Template(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type in {'image', 'video'}
-        max_num_frames = get_env_args('max_num_frames', int, 16)
-        load_video = partial(load_video_minicpmv_mplug_owl3, max_num_frames=max_num_frames)
+        load_video = partial(load_video_minicpmv_mplug_owl3, max_num_frames=self.max_num_frames)
         if media_type == 'image':
             return [[-100], '\n']
         elif media_type == 'video':
