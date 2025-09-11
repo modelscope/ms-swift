@@ -632,7 +632,7 @@ def test_gpt_oss():
 
 
 def test_qwen3_next():
-    pt_engine = PtEngine('Qwen-SGlang/Qwen3-Next-80B-A3B-Instruct')
+    pt_engine = PtEngine('Qwen/Qwen3-Next-80B-A3B-Instruct')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
