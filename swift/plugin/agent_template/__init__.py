@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from .base import BaseAgentTemplate
+from .dsv3_1 import DeepSeekV31AgentTemplate, DeepSeekV31ThinkingAgentTemplate
 from .extra import ReactGRPOAgentTemplate
 from .glm4 import GLM4_5AgentTemplate, GLM4_0414AgentTemplate, GLM4AgentTemplate
 from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate
@@ -28,6 +29,8 @@ agent_templates = {
     'glm4_5': GLM4_5AgentTemplate,
     'llama3': Llama3AgentTemplate,
     'llama4': Llama4AgentTemplate,
+    # ref: https://huggingface.co/deepseek-ai/DeepSeek-V3.1
+    'dsv3_1': DeepSeekV31AgentTemplate,
     # extra
     'react_grpo': ReactGRPOAgentTemplate,
     'mistral': MistralAgentTemplate
