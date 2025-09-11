@@ -594,14 +594,14 @@ def get_qwen3_next_transformer_layer_spec(config):
     )
     local_layer_specs = []
     for layer_type in args.layer_types:
-        moe_layer_spec = deepcopy(moe_layer_spec)
+        layer_spec = deepcopy(moe_layer_spec)
         if layer_type == 'linear_attention':
-            moe_layer_spec.submodules.self_attention.submodules.linear_qkv = TEColumnParallelLinear
-            moe_layer_spec.submodules.input_layernorm = layer_norm_impl
-            moe_layer_spec.submodules.self_attention.module = Qwen3NextGatedDeltaNet
+            layer_spec.submodules.self_attention.submodules.linear_qkv = TEColumnParallelLinear
+            layer_spec.submodules.input_layernorm = layer_norm_impl
+            layer_spec.submodules.self_attention.module = Qwen3NextGatedDeltaNet
         elif layer_type == 'full_attention':
-            moe_layer_spec.submodules.self_attention.module = Qwen3NextSelfAttention
-        local_layer_specs.append(moe_layer_spec)
+            layer_spec.submodules.self_attention.module = Qwen3NextSelfAttention
+        local_layer_specs.append(layer_spec)
 
     # Block spec.
     block_spec = TransformerBlockSubmodules(layer_specs=local_layer_specs, layer_norm=layer_norm_impl)
@@ -610,10 +610,6 @@ def get_qwen3_next_transformer_layer_spec(config):
 
 
 def convert_mcore2hf_qwen3_next(hf_model, mg_model):
-    print()
-
-
-def convert_hf2mcore_qwen3_next(hf_model, mg_model):
     from .hf2mcore import set_mlp_state, set_attn_state
     args = get_args()
     hf_model.model.embed_tokens.weight.data.copy_(mg_model.embedding.word_embeddings.weight)
@@ -626,8 +622,8 @@ def convert_hf2mcore_qwen3_next(hf_model, mg_model):
         hf_layer = hf_model.model.layers[layer_idx]
 
         if layer_type == 'linear_attention':
+            hf_layer.linear_attn.load_state_dict(mg_layer.self_attention.state_dict(), strict=False)
             hf_layer.input_layernorm.weight.data.copy_(mg_layer.input_layernorm.weight)
-            mg_attn.load_state_dict(hf_attn.state_dict(), strict=False)
         elif layer_type == 'full_attention':
             set_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
             hf_layer.input_layernorm.weight.data.copy_(mg_layer.self_attention.linear_qkv.layer_norm_weight)
@@ -639,6 +635,34 @@ def convert_hf2mcore_qwen3_next(hf_model, mg_model):
             post_attention_layernorm_weight.data.copy_(mg_layer.pre_mlp_layernorm.weight)
         else:
             post_attention_layernorm_weight.data.copy_(mg_layer.mlp.linear_fc1.layer_norm_weight)
+
+
+def convert_hf2mcore_qwen3_next(hf_model, mg_model):
+    from .hf2mcore import set_mlp_state, set_attn_state
+    args = get_args()
+    mg_model.embedding.word_embeddings.weight.data.copy_(hf_model.model.embed_tokens.weight)
+    if args.untie_embeddings_and_output_weights:
+        mg_model.output_layer.weight.data.copy_(hf_model.lm_head.weight)
+    mg_model.decoder.final_layernorm.weight.data.copy_(hf_model.model.norm.weight)
+    for layer_idx in range(args.num_layers):
+        layer_type = args.layer_types[layer_idx]
+        mg_layer = mg_model.decoder.layers[layer_idx]
+        hf_layer = hf_model.model.layers[layer_idx]
+
+        if layer_type == 'linear_attention':
+            mg_layer.self_attention.load_state_dict(hf_layer.linear_attn.state_dict(), strict=False)
+            mg_layer.input_layernorm.weight.data.copy_(hf_layer.input_layernorm.weight)
+        elif layer_type == 'full_attention':
+            set_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
+            mg_layer.self_attention.linear_qkv.layer_norm_weight.data.copy_(hf_layer.input_layernorm.weight)
+
+        set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
+
+        post_attention_layernorm_weight = hf_layer.post_attention_layernorm.weight
+        if 'moe' in mg_layer.mlp.__class__.__name__.lower():
+            mg_layer.pre_mlp_layernorm.weight.data.copy_(post_attention_layernorm_weight)
+        else:
+            mg_layer.mlp.linear_fc1.layer_norm_weight.data.copy_(post_attention_layernorm_weight)
 
 
 register_megatron_model(
