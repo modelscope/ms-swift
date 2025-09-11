@@ -424,6 +424,7 @@ class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
 
         self.conv_kernel_size = args.linear_conv_kernel_dim
         self.layer_idx = layer_number  # not use during trainging
+        self.activation = 'silu'
         self.act = nn.SiLU()
         self.layer_norm_epsilon = config.layernorm_epsilon
 
