@@ -66,21 +66,27 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 ## 数据集格式
 
 ```json lines
-{"query": "query", "response": "relevant_doc1", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
-{"query": "query", "response": "relevant_doc2", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
-...
+{"messages": [{"role": "user", "content": "query"}], "positive_messages": [[{"role": "assistant", "content": "relevant_doc1"}],[{"role": "assistant", "content": "relevant_doc2"}]], "negative_messages": [[{"role": "assistant", "content": "irrelevant_doc1"}],[{"role": "assistant", "content": "irrelevant_doc2"}], ...]}
 ```
 
 **字段说明：**
-- `query`：查询文本
-- `response`：与查询相关的正例文档
-- `rejected_response`：与查询不相关的负例文档列表，支持多个负例
+- `messages`：查询文本
+- `positive_messages`：与查询相关的正例文档列表，支持多个正例
+- `negative_messages`：与查询不相关的负例文档列表，支持多个负例
+
+**环境变量配置：**
+- `MAX_POSITIVE_SAMPLES`：每个query的最大正例数量（默认：1）
+- `MAX_NEGATIVE_SAMPLES`：每个query的最大负例数量（默认：7）
+
+> 默认会从每条数据中取出`MAX_POSITIVE_SAMPLES`条正样本和`MAX_NEGATIVE_SAMPLES`条负样本，每条数据会扩展成`MAX_POSITIVE_SAMPLES`x`MAX_NEGATIVE_SAMPLES`条数据。
+> 如果数据中正例/负例数量不足，会取全部正例/负例，如果数据中正例和负例数量超过`MAX_POSITIVE_SAMPLES`和`MAX_NEGATIVE_SAMPLES`，会进行随机采样。
+> **IMPORTANT**：展开后的数据会放在同一个batch中，真实的per_device_batch_size会变成`per_device_batch_size`x`MAX_POSITIVE_SAMPLES`x`MAX_NEGATIVE_SAMPLES`。
 
 ## 脚手架
 
 SWIFT提供了两个脚手架训练脚本：
 
-- [Pointwise分类式Reranker](https://github.com/tastelikefeet/swift/blob/main/examples/train/reranker/train_reranker.sh)
-- [Pointwise生成式Reranker](https://github.com/tastelikefeet/swift/blob/main/examples/train/reranker/train_generative_reranker.sh)
-- [Listwise分类式Reranker](https://github.com/tastelikefeet/swift/blob/main/examples/train/reranker/train_reranker_listwise.sh)
-- [Listwise生成式Reranker](https://github.com/tastelikefeet/swift/blob/main/examples/train/reranker/train_generative_reranker_listwise.sh)
+- [Pointwise分类式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh)
+- [Pointwise生成式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker.sh)
+- [Listwise分类式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker_listwise.sh)
+- [Listwise生成式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker_listwise.sh)

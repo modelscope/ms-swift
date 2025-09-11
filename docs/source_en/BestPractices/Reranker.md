@@ -65,21 +65,27 @@ The loss function source code can be found [here](https://github.com/modelscope/
 ## Dataset Format
 
 ```json lines
-{"query": "query", "response": "relevant_doc1", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
-{"query": "query", "response": "relevant_doc2", "rejected_response": ["irrelevant_doc1", "irrelevant_doc2", ...]}
-...
+{"messages": [{"role": "user", "content": "query"}], "positive_messages": [[{"role": "assistant", "content": "relevant_doc1"}],[{"role": "assistant", "content": "relevant_doc2"}]], "negative_messages": [[{"role": "assistant", "content": "irrelevant_doc1"}],[{"role": "assistant", "content": "irrelevant_doc2"}], ...]}
 ```
 
 **Field Description:**
-- `query`: Query text
-- `response`: Positive document relevant to the query
-- `rejected_response`: List of negative documents irrelevant to the query, supports multiple negative examples
+- `messages`: Query text
+- `positive_messages`: List of positive documents relevant to the query, supports multiple positive examples
+- `negative_messages`: List of negative documents irrelevant to the query, supports multiple negative examples
+
+**Environment Variable Configuration:**
+- `MAX_POSITIVE_SAMPLES`: Maximum number of positive examples per query (default: 1)
+- `MAX_NEGATIVE_SAMPLES`: Maximum number of negative examples per query (default: 7)
+
+> By default, `MAX_POSITIVE_SAMPLES` positive examples and `MAX_NEGATIVE_SAMPLES` negative examples will be extracted from each data, and each data will be expanded into `MAX_POSITIVE_SAMPLES`x`MAX_NEGATIVE_SAMPLES` data.
+> If the number of positive/negative examples in the data is insufficient, all positive/negative examples will be used. If the number of positive and negative examples in the data exceeds `MAX_POSITIVE_SAMPLES` and `MAX_NEGATIVE_SAMPLES`, random sampling will be performed.
+> **IMPORTANT**: The expanded data will be placed in the same batch, and the real `per_device_batch_size` will become `per_device_batch_size`x`MAX_POSITIVE_SAMPLES`x`MAX_NEGATIVE_SAMPLES`.
 
 ## Training Scripts
 
 SWIFT provides four training script templates:
 
-- [Pointwise Classification Reranker](https://github.com/tastelikefeet/swift/blob/main/examples/train/reranker/train_reranker.sh)
-- [Pointwise Generative Reranker](https://github.com/tastelikefeet/swift/blob/main/examples/train/reranker/train_generative_reranker.sh)
-- [Listwise Classification Reranker](https://github.com/tastelikefeet/swift/blob/main/examples/train/reranker/train_reranker_listwise.sh)
-- [Listwise Generative Reranker](https://github.com/tastelikefeet/swift/blob/main/examples/train/reranker/train_generative_reranker_listwise.sh)
+- [Pointwise Classification Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh)
+- [Pointwise Generative Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker.sh)
+- [Listwise Classification Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker_listwise.sh)
+- [Listwise Generative Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker_listwise.sh)
