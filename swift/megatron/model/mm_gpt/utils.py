@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass

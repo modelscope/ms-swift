@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from copy import deepcopy
 from typing import Optional, Tuple, Union
 
@@ -17,7 +18,14 @@ from megatron.core.utils import deprecate_inference_params, is_fa_min_version, n
 from megatron.training import get_args
 from torch import nn
 
+from swift.llm import ModelType
 from swift.utils import get_logger
+from ..constant import MegatronModelType
+from ..gpt_model import GPTModel
+from ..register import MegatronModelMeta, register_megatron_model
+from .config import convert_gpt_hf_config
+from .hf2mcore import convert_hf2mcore
+from .mcore2hf import convert_mcore2hf
 
 try:
     from flashattn_hopper.flash_attn_interface import _flash_attn_forward
@@ -66,7 +74,7 @@ class Qwen3NextRMSNormGated(MegatronModule):
 class Qwen3NextSelfAttention(SelfAttention):
 
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, *args, **kwargs):
-        super(SelfAttention, self).__init__(config, submodules, *args, **kwargs)
+        super(SelfAttention, self).__init__(config, submodules, *args, attention_type='self', **kwargs)
         self.linear_qkv = build_module(
             submodules.linear_qkv,
             self.config.hidden_size,
@@ -361,6 +369,7 @@ class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
             is_fast_path_available,
         )
         MegatronModule.__init__(self, config)
+        self.model_comm_pgs = kwargs['model_comm_pgs']
         self.hidden_size = config.hidden_size
         self.num_v_heads = args.linear_num_value_heads
         self.num_k_heads = args.linear_num_key_heads
@@ -371,9 +380,8 @@ class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
 
         self.conv_kernel_size = args.linear_conv_kernel_dim
         self.layer_idx = layer_number  # not use during trainging
-        self.activation = config.hidden_act
-        self.act = ACT2FN[config.hidden_act]
-        self.layer_norm_epsilon = config.rms_norm_eps
+        self.act = nn.SiLU()
+        self.layer_norm_epsilon = config.layernorm_epsilon
 
         # QKV
         self.conv_dim = self.key_dim * 2 + self.value_dim
@@ -400,6 +408,7 @@ class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
             skip_bias_add=False,
             is_expert=False,
             tp_comm_buffer_name='qkvz',
+            tp_group=self.model_comm_pgs.tp,
         )
         self.in_proj_ba = build_module(
             submodules.linear_qkv,
@@ -412,6 +421,7 @@ class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
             skip_bias_add=False,
             is_expert=False,
             tp_comm_buffer_name='ba',
+            tp_group=self.model_comm_pgs.tp,
         )
 
         # time step projection (discretization)
@@ -422,8 +432,7 @@ class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
         self.A_log = nn.Parameter(torch.log(A))
 
         self.norm = (
-            Qwen3NextRMSNormGated(self.head_v_dim, eps=self.layer_norm_epsilon)
-            if FusedRMSNormGated is None else FusedRMSNormGated(
+            Qwen3NextRMSNormGated(self.config) if FusedRMSNormGated is None else FusedRMSNormGated(
                 self.head_v_dim,
                 eps=self.layer_norm_epsilon,
                 activation=self.activation,
@@ -595,3 +604,26 @@ def get_qwen3_next_transformer_layer_spec(config):
     block_spec = TransformerBlockSubmodules(layer_specs=local_layer_specs, layer_norm=layer_norm_impl)
 
     return block_spec
+
+
+def convert_mcore2hf_qwen3_next(hf_model, mg_model):
+    print()
+
+
+def convert_hf2mcore_qwen3_next(hf_model, mg_model):
+    print()
+
+
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.qwen3_next,
+        [
+            ModelType.qwen3_next,
+            ModelType.qwen3_next_thinking,
+        ],
+        model_cls=GPTModel,
+        convert_hf_config=convert_gpt_hf_config,
+        get_transformer_layer_spec=get_qwen3_next_transformer_layer_spec,
+        convert_mcore2hf=convert_mcore2hf_qwen3_next,
+        convert_hf2mcore=convert_hf2mcore_qwen3_next,
+    ))
