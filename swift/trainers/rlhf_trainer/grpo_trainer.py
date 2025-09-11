@@ -1302,11 +1302,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 lengths = torch.diff(
                     torch.cat([(position_ids == 0).nonzero(as_tuple=True)[0],
                                torch.tensor([len(position_ids)]).to(position_ids.device)]))
-                all_advandages = []
-                for data, length in zip(batch, lengths):
-                    advantages = data['advantages']
-                    all_advandages.extend([advantages.unsqueeze(0)] * length)
-                all_advandages = torch.cat(all_advandages)
+                advantages_stacked = torch.stack([data['advantages'] for data in batch])
+                all_advandages = torch.repeat_interleave(advantages_stacked, lengths)
             else:
                 all_advandages = torch.stack([data['advantages'] for data in batch])
 
