@@ -78,9 +78,9 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 - `MAX_POSITIVE_SAMPLES`：每个query的最大正例数量（默认：1）
 - `MAX_NEGATIVE_SAMPLES`：每个query的最大负例数量（默认：7）
 
-> 默认会从每条数据中取出`MAX_POSITIVE_SAMPLES`条正样本和`MAX_NEGATIVE_SAMPLES`条负样本，每条数据会扩展成`MAX_POSITIVE_SAMPLES`x`MAX_NEGATIVE_SAMPLES`条数据。
+> 默认会从每条数据中取出`MAX_POSITIVE_SAMPLES`条正样本和`MAX_NEGATIVE_SAMPLES`条负样本，每条正样本会和`MAX_NEGATIVE_SAMPLES`条负样本组成一个listwise group，因此每条数据会扩展成`MAX_POSITIVE_SAMPLES`x`(1 + MAX_NEGATIVE_SAMPLES)`条数据。
 > 如果数据中正例/负例数量不足，会取全部正例/负例，如果数据中正例和负例数量超过`MAX_POSITIVE_SAMPLES`和`MAX_NEGATIVE_SAMPLES`，会进行随机采样。
-> **IMPORTANT**：展开后的数据会放在同一个batch中，真实的per_device_batch_size会变成`per_device_batch_size`x`MAX_POSITIVE_SAMPLES`x`MAX_NEGATIVE_SAMPLES`。
+> **IMPORTANT**：展开后的数据会放在同一个batch中，真实的per_device_batch_size会变成`per_device_batch_size`x`MAX_POSITIVE_SAMPLES`x`(1 + MAX_NEGATIVE_SAMPLES)`。
 
 ## 脚手架
 

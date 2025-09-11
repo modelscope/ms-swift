@@ -77,9 +77,9 @@ The loss function source code can be found [here](https://github.com/modelscope/
 - `MAX_POSITIVE_SAMPLES`: Maximum number of positive examples per query (default: 1)
 - `MAX_NEGATIVE_SAMPLES`: Maximum number of negative examples per query (default: 7)
 
-> By default, `MAX_POSITIVE_SAMPLES` positive examples and `MAX_NEGATIVE_SAMPLES` negative examples will be extracted from each data, and each data will be expanded into `MAX_POSITIVE_SAMPLES`x`MAX_NEGATIVE_SAMPLES` data.
+> By default, `MAX_POSITIVE_SAMPLES` positive examples and `MAX_NEGATIVE_SAMPLES` negative examples will be extracted from each data item. Each positive example will be grouped with `MAX_NEGATIVE_SAMPLES` negative examples to form a listwise group. Therefore, each data item will be expanded into `MAX_POSITIVE_SAMPLES`x`(1 + MAX_NEGATIVE_SAMPLES)` data points.
 > If the number of positive/negative examples in the data is insufficient, all positive/negative examples will be used. If the number of positive and negative examples in the data exceeds `MAX_POSITIVE_SAMPLES` and `MAX_NEGATIVE_SAMPLES`, random sampling will be performed.
-> **IMPORTANT**: The expanded data will be placed in the same batch, and the real `per_device_batch_size` will become `per_device_batch_size`x`MAX_POSITIVE_SAMPLES`x`MAX_NEGATIVE_SAMPLES`.
+> **IMPORTANT**: The expanded data will be placed in the same batch, and the real `per_device_batch_size` will become `per_device_batch_size`x`MAX_POSITIVE_SAMPLES`x`(1 + MAX_NEGATIVE_SAMPLES)`.
 
 ## Training Scripts
 
