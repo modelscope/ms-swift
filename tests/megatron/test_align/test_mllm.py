@@ -63,7 +63,6 @@ def test_ovis2_5():
     _test_model('AIDC-AI/Ovis2.5-2B')
 
 
-
 if __name__ == '__main__':
     # test_qwen2_5_vl()
     # test_qwen2_vl()

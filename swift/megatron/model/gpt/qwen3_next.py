@@ -54,9 +54,10 @@ logger = get_logger()
 
 class Qwen3NextRMSNormGated(MegatronModule):
     # code borrowed from huggingface/transformers
-    def __init__(self, config, **kwargs):
+    def __init__(self, config, hidden_size, **kwargs):
         super().__init__(config)
-        self.weight = nn.Parameter(torch.ones(config.hidden_size))
+        self.hidden_size = hidden_size
+        self.weight = nn.Parameter(torch.ones(self.hidden_size))
         self.variance_epsilon = config.layernorm_epsilon
 
     def forward(self, hidden_states, gate=None):
@@ -432,7 +433,7 @@ class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
         self.A_log = nn.Parameter(torch.log(A))
 
         self.norm = (
-            Qwen3NextRMSNormGated(self.config) if FusedRMSNormGated is None else FusedRMSNormGated(
+            Qwen3NextRMSNormGated(self.config, self.head_v_dim) if FusedRMSNormGated is None else FusedRMSNormGated(
                 self.head_v_dim,
                 eps=self.layer_norm_epsilon,
                 activation=self.activation,
@@ -595,6 +596,8 @@ def get_qwen3_next_transformer_layer_spec(config):
     for layer_type in args.layer_types:
         moe_layer_spec = deepcopy(moe_layer_spec)
         if layer_type == 'linear_attention':
+            moe_layer_spec.submodules.self_attention.submodules.linear_qkv = TEColumnParallelLinear
+            moe_layer_spec.submodules.input_layernorm = layer_norm_impl
             moe_layer_spec.submodules.self_attention.module = Qwen3NextGatedDeltaNet
         elif layer_type == 'full_attention':
             moe_layer_spec.submodules.self_attention.module = Qwen3NextSelfAttention
@@ -611,7 +614,31 @@ def convert_mcore2hf_qwen3_next(hf_model, mg_model):
 
 
 def convert_hf2mcore_qwen3_next(hf_model, mg_model):
-    print()
+    from .hf2mcore import set_mlp_state, set_attn_state
+    args = get_args()
+    hf_model.model.embed_tokens.weight.data.copy_(mg_model.embedding.word_embeddings.weight)
+    if args.untie_embeddings_and_output_weights:
+        hf_model.lm_head.weight.data.copy_(mg_model.output_layer.weight)
+    hf_model.model.norm.weight.data.copy_(mg_model.decoder.final_layernorm.weight)
+    for layer_idx in range(args.num_layers):
+        layer_type = args.layer_types[layer_idx]
+        mg_layer = mg_model.decoder.layers[layer_idx]
+        hf_layer = hf_model.model.layers[layer_idx]
+
+        if layer_type == 'linear_attention':
+            hf_layer.input_layernorm.weight.data.copy_(mg_layer.input_layernorm.weight)
+            mg_attn.load_state_dict(hf_attn.state_dict(), strict=False)
+        elif layer_type == 'full_attention':
+            set_attn_state(args, mg_layer.self_attention, hf_layer.self_attn)
+            hf_layer.input_layernorm.weight.data.copy_(mg_layer.self_attention.linear_qkv.layer_norm_weight)
+
+        set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
+
+        post_attention_layernorm_weight = hf_layer.post_attention_layernorm.weight
+        if 'moe' in mg_layer.mlp.__class__.__name__.lower():
+            post_attention_layernorm_weight.data.copy_(mg_layer.pre_mlp_layernorm.weight)
+        else:
+            post_attention_layernorm_weight.data.copy_(mg_layer.mlp.linear_fc1.layer_norm_weight)
 
 
 register_megatron_model(
