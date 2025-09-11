@@ -379,7 +379,6 @@ def test_qwen3_coder():
 
 def test_dsv3_1():
     agent_template = agent_templates['dsv3_1']()
-    new_system = agent_template._format_tools(tools, system)
 
     engine = PtEngine('deepseek-ai/DeepSeek-V3.1', device_map='cpu')
     template = engine.default_template
@@ -387,6 +386,7 @@ def test_dsv3_1():
 
     dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
     data = dataset[6]
+    # To test multiple tool calls and responses, we duplicate some messages.
     data['messages'].insert(1, data['messages'][1])
     data['messages'].insert(3, data['messages'][3])
     template.template_backend = 'swift'

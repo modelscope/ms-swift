@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from .base import BaseAgentTemplate
-from .dsv3_1 import DeepSeekV31AgentTemplate, DeepSeekV31ThinkingAgentTemplate
+from .dsv3_1 import DeepSeekV31AgentTemplate
 from .extra import ReactGRPOAgentTemplate
 from .glm4 import GLM4_5AgentTemplate, GLM4_0414AgentTemplate, GLM4AgentTemplate
 from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate
