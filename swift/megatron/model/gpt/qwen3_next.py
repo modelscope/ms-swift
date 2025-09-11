@@ -4,14 +4,14 @@ from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
-from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, TENorm, TERowParallelLinear
+from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, TENorm
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_emb
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
 from megatron.core.transformer.module import MegatronModule
-from megatron.core.transformer.spec_utils import ModuleSpec, build_module
+from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.utils import deprecate_inference_params, is_fa_min_version, nvtx_range_pop, nvtx_range_push
@@ -24,13 +24,10 @@ from ..constant import MegatronModelType
 from ..gpt_model import GPTModel
 from ..register import MegatronModelMeta, register_megatron_model
 from .config import convert_gpt_hf_config
-from .hf2mcore import convert_hf2mcore
-from .mcore2hf import convert_mcore2hf
 
 try:
     from flashattn_hopper.flash_attn_interface import _flash_attn_forward
-    from flashattn_hopper.flash_attn_interface import (
-        flash_attn_with_kvcache as flash_attn3_with_kvcache, )
+    from flashattn_hopper.flash_attn_interface import flash_attn_with_kvcache as flash_attn3_with_kvcache
 
     HAVE_FA3 = True
 except Exception:
@@ -357,7 +354,6 @@ class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
     # Code borrowed from huggingface/transformers
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, layer_number: int, **kwargs):
         args = get_args()
-        from transformers.activations import ACT2FN
         from transformers.models.qwen3_next.modeling_qwen3_next import (
             FusedRMSNormGated,
             causal_conv1d_fn,
@@ -438,7 +434,7 @@ class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
                 eps=self.layer_norm_epsilon,
                 activation=self.activation,
                 device=torch.cuda.current_device(),
-                dtype=config.dtype if config.dtype is not None else torch.get_current_dtype(),
+                dtype=args.torch_dtype,
             ))
         self.out_proj = build_module(
             submodules.linear_proj,
