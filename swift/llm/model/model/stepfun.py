@@ -91,7 +91,7 @@ register_model(
         model_arch=ModelArch.step_audio2_mini,
         architectures=['StepAudio2ForCausalLM'],
         requires=[
-            'transformers==4.53.2', 'torchaudio', 'librosa', 'onnxruntime', 's3tokenizer', 'diffusers', 'hyperpyyaml'
+            'transformers==4.53.3', 'torchaudio', 'librosa'
         ],
         tags=['audio'],
     ))
