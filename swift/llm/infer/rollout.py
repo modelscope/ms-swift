@@ -85,29 +85,26 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
         # Load the received weights into the model.
         self.model_runner.model.load_weights(weights=[(name, weight)])
 
-    def update_adapter_flattened_param(self, peft_config: Dict, metadatas: list[Dict]) -> None:
+    def update_adapter_flattened_param(self, lora_int_id: int, peft_config: Dict, metadatas: list[Dict]) -> None:
         """
         Receives updated weights from the client process and updates the named parameter in the model.
         """
-        # peft_config = json.loads(peft_config)
-        # peft_config = LoraConfig(**peft_config)
         metadatas = [FlattenedTensorMetadata(**metadata) for metadata in metadatas]
         if self.pynccl_comm is None:
             raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
-        flatten_tensor_length = max(metadata.end_idx for metadata in metadatas)
-        flatten_tensor = torch.empty(flatten_tensor_length, dtype=torch.float32, device=self.device)
+        flatten_tensor_length = metadatas[-1].end_idx
+        dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
+        flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.device)
         self.pynccl_comm.broadcast(flatten_tensor, src=self.client_rank)
         self.pynccl_comm.group.barrier()
         flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
         named_params = flattened_tensor_bucket.reconstruct_tensors()
-        lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
         lora_request = TensorLoRARequest(
             lora_name=f'{lora_int_id}',
             lora_int_id=lora_int_id,
             lora_path='dummy_lora_path',
             peft_config=peft_config,
             lora_tensors=named_params)
-        # TODO: Check
         self.add_lora(lora_request)
 
 
@@ -377,21 +374,12 @@ class SwiftRolloutDeploy(SwiftPipeline):
         return {'message': 'Request received, updating named parameter'}
 
     async def update_adapter_flattened_param(self, request: UpdateFlattenedAdapterRequest):
-        # Create a LoRA request object, or pass request directly
-        # from swift.trainers.rlhf_trainer.utils import TensorLoRARequest
-        # lora_request = TensorLoRARequest(
-        #     lora_name=request.lora_name,
-        #     lora_int_id=request.lora_int_id,
-        #     lora_path=request.lora_path,
-        #     peft_config=request.peft_config,
-        #     lora_tensors=request.lora_tensors
-        # )
         peft_config = asdict(request.peft_config)
         metadatas = [
             metadata.model_dump() if hasattr(metadata, 'model_dump') else metadata.dict()
             for metadata in request.metadatas
         ]
-        kwargs = {'method': 'update_adapter_flattened_param', 'args': (peft_config, metadatas)}
+        kwargs = {'method': 'update_adapter_flattened_param', 'args': (request.lora_int_id, peft_config, metadatas)}
         for connection in self.connections:
             connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 

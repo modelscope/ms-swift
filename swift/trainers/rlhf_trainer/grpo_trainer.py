@@ -612,14 +612,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.model.unmerge_adapter()
                 del cur_lora_params
 
-        lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
-
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
             bucked = FlattenedTensorBucket(named_tensors=list(lora_params.items()))
             metadatas = bucked.get_metadata()
             flattened_tensor = bucked.get_flattened_tensor()
-            self.vllm_client.update_adapter_flattened_param(peft_config, metadatas, flattened_tensor)  # TODO
+            self.vllm_client.update_adapter_flattened_param(peft_config, metadatas, flattened_tensor)
         elif self.vllm_mode == 'colocate':
+            lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
             lora_reqest = TensorLoRARequest(
                 lora_name=f'{lora_int_id}',
                 lora_int_id=lora_int_id,

@@ -464,5 +464,6 @@ class UpdateWeightsRequest(BaseModel):
 
 
 class UpdateFlattenedAdapterRequest(BaseModel):
+    lora_int_id: int
     peft_config: LoraConfig
     metadatas: List[FlattenedTensorMetadata]
