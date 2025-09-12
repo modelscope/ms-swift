@@ -52,7 +52,7 @@ from swift.utils import (JsonlWriter, empty_cache, get_current_device, get_dist_
                          unwrap_model_for_generation)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import (FlattenedTensorBucket, LoRARequest, TensorLoRARequest, _ForwardRedirection, compute_chord_loss,
+from .utils import (FlattenedTensorBucket, TensorLoRARequest, _ForwardRedirection, compute_chord_loss,
                     get_gather_if_zero3_context, identity_data_collator, load_pil_img, make_chord_sft_dataset,
                     patch_lora_merge, patch_lora_unmerge, patch_profiling_context, patch_profiling_decorator,
                     patch_save_last_checkpoint, patch_vllm_load_adapter, replace_assistant_response_with_ids)
@@ -616,27 +616,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.model.merge_adapter()
                 cur_lora_params = get_peft_model_state_dict(self.model, state_dict)
                 cur_lora_params = {  # base_model.model.model.language_model.layers.0.self_attn.q_proj.lora_A.weight
-                    name: param.full_tensor().detach().cpu() if hasattr(param, 'full_tensor') else param.detach().cpu()
+                    name: param.full_tensor().detach() if hasattr(param, 'full_tensor') else param.detach()
                     for name, param in cur_lora_params.items()
                 }
                 lora_params.update(cur_lora_params)
                 self.model.unmerge_adapter()
                 del cur_lora_params
 
-        lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
-
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
-            lora_reqest = LoRARequest(
-                lora_name=f'{lora_int_id}',
-                lora_int_id=lora_int_id,
-                lora_path='dummy_lora_path',
-                peft_config=asdict(peft_config),
-            )
-            bucked = FlattenedTensorBucket(list(named_tensors=lora_params.items()))
+            bucked = FlattenedTensorBucket(named_tensors=list(lora_params.items()))
             metadatas = bucked.get_metadata()
             flattened_tensor = bucked.get_flattened_tensor()
-            self.vllm_client.update_adapter_flattened_param(lora_reqest, metadatas, flattened_tensor)  # TODO
+            self.vllm_client.update_adapter_flattened_param(peft_config, metadatas, flattened_tensor)
         elif self.vllm_mode == 'colocate':
+            lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
             lora_reqest = TensorLoRARequest(
                 lora_name=f'{lora_int_id}',
                 lora_int_id=lora_int_id,

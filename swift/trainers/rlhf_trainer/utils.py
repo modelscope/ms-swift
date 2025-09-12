@@ -3,19 +3,21 @@ import functools
 import math
 import time
 from contextlib import contextmanager, nullcontext
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from functools import partial
 from io import BytesIO
 from types import MethodType
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import datasets
+import json
 import torch
 import torch.nn.functional as F
 from msgspec import field
 from peft.tuners import lora
 from peft.tuners.lora import LoraLayer
 from PIL import Image
+from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader
 from transformers import Trainer
@@ -389,6 +391,11 @@ def get_gather_if_zero3_context(trainer):
 
 
 def patch_vllm_load_adapter():
+    """Patch vLLM's WorkerLoRAManager to support loading LoRA from tensors.
+
+    This function applies a monkey patch to WorkerLoRAManager._load_adapter method
+    to support TensorLoRARequest
+    """
     # from vllm.lora.worker_manager import WorkerLoRAManager
     from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
     from vllm.lora.models import LoRAModel
@@ -569,16 +576,36 @@ def patch_vllm_load_adapter():
 
 
 # FlattenedTensor, code borrowed from sglang/srt/weight_sync/tensor_bucket.py
-@dataclass
-class FlattenedTensorMetadata:
+class FlattenedTensorMetadata(BaseModel):
     """Metadata for a tensor in a flattened bucket"""
-
     name: str
-    shape: torch.Size
-    dtype: torch.dtype
+    shape: Tuple[int, ...]
+    dtype: str
     start_idx: int
     end_idx: int
     numel: int
+
+    @field_validator('shape', mode='before')
+    @classmethod
+    def ensure_shape_tuple(cls, v: Any) -> Tuple[int, ...]:
+        # accept tuple/list, torch.Size, or other iterable of ints
+        if torch is not None and isinstance(v, torch.Size):
+            return tuple(int(x) for x in v)
+        if isinstance(v, (list, tuple)):
+            return tuple(int(x) for x in v)
+        if isinstance(v, Iterable):
+            return tuple(int(x) for x in v)
+        raise ValueError('shape must be an iterable of ints (e.g. tuple/list/torch.Size)')
+
+    @field_validator('dtype', mode='before')
+    @classmethod
+    def ensure_dtype_str(cls, v: Any) -> str:
+        # accept torch.dtype or str
+        if torch is not None and isinstance(v, torch.dtype):
+            return str(v)
+        if isinstance(v, str):
+            return v
+        raise ValueError('dtype must be a torch.dtype or str')
 
 
 class FlattenedTensorBucket:
@@ -621,8 +648,8 @@ class FlattenedTensorBucket:
                 numel = flattened.numel()
                 metadata_obj = FlattenedTensorMetadata(
                     name=name,
-                    shape=tensor.shape,
-                    dtype=tensor.dtype,
+                    shape=tuple(tensor.shape),
+                    dtype=str(tensor.dtype),
                     start_idx=current_idx,
                     end_idx=current_idx + numel,
                     numel=numel,
@@ -647,22 +674,22 @@ class FlattenedTensorBucket:
         """Get metadata for all tensors in the bucket"""
         return self.metadata
 
-    def reconstruct_tensors(self) -> List[Tuple[str, torch.Tensor]]:
+    def reconstruct_tensors(self) -> Dict[str, torch.Tensor]:
         """
         Reconstruct original tensors from flattened tensor with optimized performance.
         Uses memory-efficient operations to minimize allocations and copies.
         """
         # preallocate the result list
-        reconstructed = [None] * len(self.metadata)
+        reconstructed = {}
 
-        for i, meta in enumerate(self.metadata):
+        for meta in self.metadata:
             tensor = self.flattened_tensor[meta.start_idx:meta.end_idx].reshape(meta.shape)
-
+            dtype = getattr(torch, meta.dtype.split('.')[-1])
             # batch dtype conversion (if needed)
-            if tensor.dtype != meta.dtype:
-                tensor = tensor.to(meta.dtype)
+            if tensor.dtype != dtype:
+                tensor = tensor.to(dtype)
 
-            reconstructed[i] = (meta.name, tensor)
+            reconstructed[meta.name] = tensor
 
         return reconstructed
 
@@ -817,3 +844,19 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
         chord_sft_loss = torch.tensor(0.0, device=grpo_loss.device, dtype=grpo_loss.dtype)
     loss = (1 - mu) * grpo_loss + mu * chord_sft_loss
     return loss
+
+
+def serialize_peft_config(peft_config):
+    if not isinstance(peft_config, dict):
+        peft_config = asdict(peft_config)
+    # turn set to list to serializable
+    if 'target_modules' in peft_config and isinstance(peft_config['target_modules'], set):
+        peft_config['target_modules'] = list(peft_config['target_modules'])
+
+    return peft_config
+
+
+def deserialize_peft_config(data: str):
+    data = json.loads(data)
+    from swift.tuners.lora import LoraConfig
+    return LoraConfig(**data)

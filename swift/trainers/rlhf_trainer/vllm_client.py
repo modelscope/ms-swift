@@ -4,13 +4,15 @@ import socket
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
 from typing import List, Optional, Union
 from urllib.parse import urlparse
 
+import json
 import requests
 import torch
 from packaging import version
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from requests import ConnectionError
 from torch import nn
 from transformers.utils import is_torch_cuda_available
@@ -19,6 +21,7 @@ from swift.llm import AdapterRequest, RolloutInferRequest, Template
 from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig, RolloutOutput
 from swift.plugin import Metric
 from swift.utils import is_trl_available, is_vllm_ascend_available, is_vllm_available
+from .utils import serialize_peft_config
 
 if is_vllm_available():
     from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
@@ -242,7 +245,7 @@ class VLLMClient:
         if all_errors:
             raise RuntimeError(f'Multiple errors: {all_errors}')
 
-    def update_adapter_flattened_param(self, lora_request, metadatas, flattened_tensor):
+    def update_adapter_flattened_param(self, peft_config, metadatas, flattened_tensor):
         """
         Adds a LoRA adapter to the model on all servers.
 
@@ -250,12 +253,17 @@ class VLLMClient:
             lora_request: TensorLoRARequest object containing LoRA adapter information.
         """
         errors = [None] * self.num_servers
+        peft_config = serialize_peft_config(peft_config)
+        metadatas = [m.model_dump() if hasattr(m, 'model_dump') else m.dict() for m in metadatas]
+        lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
 
         def _update_single_server(i):
             try:
-                # Convert lora_request to dict for JSON serialization
                 data = {
-                    'lora_request': lora_request,
+                    'lora_int_id': lora_int_id,
+                    'peft_config': {
+                        **peft_config
+                    },
                     'metadatas': metadatas,
                 }
 
