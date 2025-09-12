@@ -20,11 +20,15 @@ from ..argument import MegatronRLHFArguments
 from .rlhf_base import MegatronRLHFTrainer
 from .trainer import MegatronTrainer
 from .utils import get_batch
+try:
+    from mbridge import AutoBridge
+except ImportError:
+    pass
 
 logger = get_logger()
 
 
-class MegatronGRPOTrainer(MegatronRLHFTrainer, GRPOTrainer):
+class MegatronGRPOTrainer(MegatronRLHFTrainer):
 
     def __init__(self, args: MegatronRLHFArguments):
         MegatronRLHFTrainer().__init__(self, args)
@@ -59,7 +63,7 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer, GRPOTrainer):
             self.reward_func_names.append(reward_func_name)
         # TODO: reward model
         # TODO: multi turn scheduler(colocate multi turn)
-        self._prepare_rollout_engine
+        self._prepare_rollout_engine(self.unwrapped_model)
         self.num_generations = args.num_generations  # G in the GRPO paper
         self.temperature = args.temperature
         self.loss_type = args.loss_type
@@ -74,6 +78,14 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer, GRPOTrainer):
         self.global_batch_size = args.global_batch_size
         self.mini_batch_size = args.mini_batch_size
         self.micro_batch_size = args.micro_batch_size
+        self.local_path = 'Qwen/Qwen2.5-7B-Instruct' # debug
+        if args.use_mbridge:
+            # debug: use mbridge to convert mcore to hf
+            from transformers import AutoConfig
+            hf_config = AutoConfig.from_pretrained(self.local_path, trust_remote_code=True)
+            bridge = AutoBridge.from_pretrained(hf_config)
+            tf_config = bridge.config
+            self.bridge = bridge
 
     def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
         # prepare global batch data here
@@ -145,3 +157,90 @@ class MegatronGRPOTrainer(MegatronRLHFTrainer, GRPOTrainer):
             ref_logps=ref_logps,
             labels=data.get('labels'),
             packed_seq_params=data.get('packed_seq_params'))
+
+    def _prepare_rollout_engine(self, model):
+        args = self.args
+        self.vllm_mode = args.vllm_mode
+        self.vllm_gpu_memory_utilization = args.vllm_gpu_memory_utilization  # only applies to colocation mode
+        self.vllm_tensor_parallel_size = args.vllm_tensor_parallel_size  # only applies to colocation mode
+        self.use_vllm = args.use_vllm
+        self.async_generate = args.async_generate
+        vllm_client = getattr(args, 'vllm_client') or getattr(self, 'vllm_client')  # for external vllm
+        self.use_fast_infer = self.use_vllm  # whether to use the PT backend
+        self.vllm_use_async_engine = False
+        self.enable_offload = False
+        self.use_gym_env = False
+        self.enable_server_multi_turn = False
+        # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
+        self.dynamic_num_samples = False
+        if self.use_vllm:
+            if not is_vllm_available():
+                raise ImportError('vLLM is not available and `use_vllm` is set to True. '
+                                  'Please install vLLM with `pip install vllm -U` to use it.')
+            if self.vllm_mode == 'server':
+                self.vllm_client: VLLMClient = vllm_client
+                if self.accelerator.is_main_process:
+                    self.vllm_client.get_engine_type()
+                    vllm_use_async_engine = [self.vllm_client.use_async_engine]
+                    use_gym_env = [self.vllm_client.use_gym_env]
+                    enable_multi_turn = [self.vllm_client.enable_multi_turn]
+                else:
+                    vllm_use_async_engine = [False]
+                    use_gym_env = [False]
+                    enable_multi_turn = [self.enable_server_multi_turn]
+                self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
+                self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
+                self.enable_server_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
+                if self.use_gym_env:
+                    self.reward_func_names = ['gym_reward']
+
+            elif self.vllm_mode == 'colocate':
+                if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:
+                    raise ValueError(
+                        f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}) must divide world size '
+                        f'({self.accelerator.num_processes}) evenly.')
+
+                if self.vllm_tensor_parallel_size > 1:
+                    # Create subgroups of ranks for TP, each group with `vllm_tensor_parallel_size` ranks.
+                    # For example, if world_size=8 and vllm_tensor_parallel_size=2 → groups: [0,1], [2,3], [4,5], [6,7]
+                    self.tp_group, _ = torch.distributed.new_subgroups_by_enumeration([
+                        list(range(i * self.vllm_tensor_parallel_size, (i + 1) * self.vllm_tensor_parallel_size))
+                        for i in range(self.accelerator.num_processes // self.vllm_tensor_parallel_size)
+                    ])
+                self.enable_offload = self.args.offload_model or self.args.offload_optimizer
+                context = self.offload_context if self.enable_offload else nullcontext
+
+                with context():
+                    self.engine = self.prepare_vllm(model)
+                    if self.args.sleep_level > 0:
+                        self.engine.engine.sleep(self.args.sleep_level)
+
+
+    def prepare_vllm(self, model):
+        from swift.tuners import Swift
+        from swift.llm.infer.infer_engine import GRPOVllmEngine
+        max_num_seqs = (
+            self.args.per_device_train_batch_size * self.vllm_tensor_parallel_size * self.args.steps_per_generation)
+        data_parallel_rank = mpu.get_data_parallel_rank()
+
+        with Swift.grpo_context(model, self.template.processor):
+            engine = GRPOVllmEngine(
+                model.model_dir,
+                model.model_info.torch_dtype,
+                model_type=model.model_meta.model_type,
+                use_async_engine=False,  # TODO: async engine for colocate
+                tensor_parallel_size=self.vllm_tensor_parallel_size,
+                gpu_memory_utilization=self.vllm_gpu_memory_utilization,
+                enable_prefix_caching=self.args.vllm_enable_prefix_caching,
+                max_num_seqs=max_num_seqs,
+                enforce_eager=self.args.vllm_enforce_eager,
+                limit_mm_per_prompt=self.args.vllm_limit_mm_per_prompt,
+                enable_sleep_mode=self.args.sleep_level > 0,
+                max_model_len=self.args.vllm_max_model_len,
+                seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
+                disable_cascade_attn=self.args.vllm_disable_cascade_attn,
+                load_format='dummy',
+                template=copy(self.template),
+                distributed_executor_backend='external_launcher',
+            )
+        return engine
