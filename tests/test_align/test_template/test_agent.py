@@ -353,6 +353,25 @@ def test_glm4_5():
     assert encoded['input_ids'][:-1] == encoded2['input_ids']
 
 
+def test_qwen3_coder():
+    agent_template = agent_templates['qwen3_coder']()
+    engine = PtEngine('Qwen/Qwen3-Coder-30B-A3B-Instruct', model_type='qwen3_nothinking')
+    template = engine.default_template
+    template.agent_template = agent_template
+    template.template_backend = 'jinja'
+    _infer(engine, num_tools=2)
+
+    dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
+    data = dataset[6]
+    data['messages'].insert(1, data['messages'][1])
+    data['messages'].insert(3, data['messages'][3])
+    template.template_backend = 'swift'
+    template.set_mode('train')
+    encoded = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
+
+
 if __name__ == '__main__':
     from swift.plugin import agent_templates
     from swift.llm import PtEngine, InferRequest, RequestConfig, load_dataset
@@ -369,4 +388,5 @@ if __name__ == '__main__':
     # test_llama3()
     # test_llama4()
     # test_hunyuan()
-    test_glm4_5()
+    # test_glm4_5()
+    test_qwen3_coder()
