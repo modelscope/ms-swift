@@ -80,7 +80,7 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 
 > 默认会从每条数据中取出`MAX_POSITIVE_SAMPLES`条正样本和`MAX_NEGATIVE_SAMPLES`条负样本，每条正样本会和`MAX_NEGATIVE_SAMPLES`条负样本组成一个group，因此每条数据会扩展成`MAX_POSITIVE_SAMPLES`x`(1 + MAX_NEGATIVE_SAMPLES)`条数据。
 > 如果数据中正例/负例数量不足，会取全部正例/负例，如果数据中正例和负例数量超过`MAX_POSITIVE_SAMPLES`和`MAX_NEGATIVE_SAMPLES`，会进行随机采样。
-> **IMPORTANT**：展开后的数据会放在同一个batch中，真实的per_device_batch_size会变成`per_device_batch_size`x`MAX_POSITIVE_SAMPLES`x`(1 + MAX_NEGATIVE_SAMPLES)`。
+> **IMPORTANT**：展开后的数据会放在同一个batch中，因此每个设备上的实际批处理大小（effective batch size）将是 `per_device_train_batch_size` × `MAX_POSITIVE_SAMPLES` × (1 + `MAX_NEGATIVE_SAMPLES`)。请注意调整 `per_device_train_batch_size` 以避免显存不足。
 
 ## 脚手架
 
