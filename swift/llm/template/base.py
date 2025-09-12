@@ -389,32 +389,22 @@ class Template(ProcessorMixin):
     def _embedding_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
         _encoded = {}
         labels = []
-        inference = len(inputs.chosen.messages) == 1
-        if inference:
-            inputs.chosen.messages.append({'role': 'assistant', 'content': ''})
 
-        if not inference:
+        if self.is_training:
             anchor = inputs.chosen
-            # print('anchor')
-            # print(anchor)
             anchor_encoded = self._encode_truncated(anchor)
             for key in anchor_encoded:
                 _encoded[f'anchor_{key}'] = anchor_encoded[key]
-            positive = inputs.positive_messages
+            positive = inputs.positive
             if isinstance(positive, list):
                 positive = positive[0]
-            # print('positive')
-            # print(positive)
             positive_encoded = self._encode_truncated(positive)
             for key in positive_encoded:
                 _encoded[f'positive_{key}'] = positive_encoded[key]
                 _encoded[f'negative_{key}'] = []
-            labels.append(float(inputs.label) if inputs.label is not None else 1.0)
+            labels.append(float(inputs.chosen.label) if inputs.chosen.label is not None else 1.0)
 
-            # negative_len = len(inputs.negative_messages) if inputs.negative_messages else 0
-            for negative in inputs.negative_messages:
-                # print('negative')
-                # print(negative)
+            for negative in inputs.negative:
                 negative_encoded = self._encode_truncated(negative)
                 for key in negative_encoded:
                     _encoded[f'negative_{key}'].append(negative_encoded[key])
@@ -423,7 +413,6 @@ class Template(ProcessorMixin):
             _encoded['labels'] = labels
         else:
             anchor = inputs.chosen
-            # anchor.messages[-1]['content'] = ''
             _encoded = self._encode_truncated(anchor)
             _encoded.pop('labels', None)
         return _encoded

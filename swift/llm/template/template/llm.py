@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
@@ -33,9 +33,37 @@ register_template(
         default_system=DEFAULT_SYSTEM,
     ))
 
-register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_gme, template_cls=Qwen2VLTemplate, suffix=['<|endoftext|>']))
+
+class GMETemplate(Qwen2VLTemplate):
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        if inputs.messages[-1]['role'] != 'assistant':
+            inputs.messages.append({'role': 'assistant', 'content': ''})
+        return inputs
+
+
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_gme, template_cls=GMETemplate, suffix=['<|endoftext|>']))
+
+
+class Qwen3EmbTemplate(Template):
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        if inputs.system is not None:
+            inputs.messages[0]['content'] = inputs.system + ' ' + inputs.messages[0]['content']
+            inputs.system = None
+        return inputs
+
+
 register_template(
-    TemplateMeta(LLMTemplateType.qwen3_emb, suffix=['<|endoftext|>'], prefix=[], chat_sep=[], prompt=['{{QUERY}}']))
+    TemplateMeta(
+        LLMTemplateType.qwen3_emb,
+        template_cls=Qwen3EmbTemplate,
+        suffix=['<|endoftext|>'],
+        prefix=[],
+        chat_sep=[],
+        prompt=['{{QUERY}}']))
 
 register_template(
     TemplateMeta(LLMTemplateType.baichuan, prefix=['{{SYSTEM}}'], prompt=[[195], '{{QUERY}}', [196]], chat_sep=[]))
