@@ -264,7 +264,6 @@ class DeepseekV3_1Template(Template):
                         if i > 0 and messages[i - 1]['role'] not in ['tool', 'tool_call']:
                             message['content'] = self.no_think_prefix + message['content']
 
-
         # Only during inference or training, and only if the loss_scale is set to 'last_round',
         # will the previous 'think' entries be deleted.
         if not self.is_training or self.loss_scale.name in {'last_round', 'last_round_with_ignore_empty_think'}:

@@ -24,7 +24,7 @@ class DeepSeekV31AgentTemplate(BaseAgentTemplate):
             arguments = self._parse_json(arguments.strip())
             if arguments is not None:
                 functions.append(Function(name=name, arguments=arguments))
-        
+
         if len(functions) == 0:
             # compat react_en
             return super().get_toolcall(response)
@@ -38,7 +38,7 @@ class DeepSeekV31AgentTemplate(BaseAgentTemplate):
         return ''.join(res_tool)
 
     def _get_tool_calls(self, tool_calls: List[str]):
-        return f'<｜tool▁calls▁begin｜>{"".join(tool_calls)}<｜tool▁calls▁end｜>'
+        return f'<｜tool▁calls▁begin｜>{''.join(tool_calls)}<｜tool▁calls▁end｜>'
 
     def _format_tool_responses(
         self,
@@ -48,10 +48,10 @@ class DeepSeekV31AgentTemplate(BaseAgentTemplate):
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
-        
+
         prompt = ['{{QUERY}}']
         chat_sep = ['<｜end▁of▁sentence｜>']
-        
+
         res = chat_sep.copy()
         total_tool = self._get_tool_responses(tool_messages)
         for context in prompt:
@@ -67,15 +67,15 @@ class DeepSeekV31AgentTemplate(BaseAgentTemplate):
             tool_name = self._get_tool_name(tool)
             description = tool.get('description', '')
             parameters = tool.get('parameters', {})
-            
+
             tool_desc = f"""### {tool_name}
 Description: {description}
 
 Parameters: {json.dumps(parameters, ensure_ascii=False)}"""
             tool_descs.append(tool_desc)
-        
+
         tools_section = '\n\n'.join(tool_descs)
-        
+
         return f"""{system}
 
 ## Tools
@@ -99,4 +99,3 @@ Where:
             arguments = json.dumps(tool_call['arguments'], ensure_ascii=False)
             tool_calls.append(f'<｜tool▁call▁begin｜>{name}<｜tool▁sep｜>{arguments}<｜tool▁call▁end｜>')
         return self._get_tool_calls(tool_calls)
-
