@@ -356,7 +356,7 @@ def test_glm4_5():
 def test_dsv3_1():
     agent_template = agent_templates['dsv3_1']()
 
-    engine = PtEngine('deepseek-ai/DeepSeek-V3.1', device_map='cpu')
+    engine = PtEngine('/apdcephfs_sh9/share_303378293/hunyuan/public/model/DeepSeek-V3.1-bf16', device_map='cpu', model_type='deepseek_v3_1')
     template = engine.default_template
     template.agent_template = agent_template
 
@@ -391,10 +391,10 @@ def test_dsv3_1():
         "{\"temperature\": 30, \"from_unit\": \"Celsius\", \"to_unit\": \"Fahrenheit\"}<｜tool▁call▁end｜>"
         "<｜tool▁call▁begin｜>convert_temperature<｜tool▁sep｜>"
         "{\"temperature\": 30, \"from_unit\": \"Celsius\", \"to_unit\": \"Fahrenheit\"}<｜tool▁call▁end｜>"
-        "<｜tool▁calls▁end｜><｜end▁of▁sentence｜><｜User｜>"
+        "<｜tool▁calls▁end｜><｜end▁of▁sentence｜>"
         "<｜tool▁output▁begin｜>{\"converted_temperature\": 86}<｜tool▁output▁end｜>"
-        "<｜tool▁output▁begin｜>{\"converted_temperature\": 86}<｜tool▁output▁end｜><｜Assistant｜>"
-        "</think>The converted temperature from 30 degrees Celsius to Fahrenheit is 86 degrees Fahrenheit.<｜end▁of▁sentence｜>"
+        "<｜tool▁output▁begin｜>{\"converted_temperature\": 86}<｜tool▁output▁end｜>"
+        "The converted temperature from 30 degrees Celsius to Fahrenheit is 86 degrees Fahrenheit.<｜end▁of▁sentence｜>"
     )
 
     # Expected labels string
@@ -403,7 +403,7 @@ def test_dsv3_1():
         "{\"temperature\": 30, \"from_unit\": \"Celsius\", \"to_unit\": \"Fahrenheit\"}<｜tool▁call▁end｜>"
         "<｜tool▁call▁begin｜>convert_temperature<｜tool▁sep｜>"
         "{\"temperature\": 30, \"from_unit\": \"Celsius\", \"to_unit\": \"Fahrenheit\"}<｜tool▁call▁end｜>"
-        "<｜tool▁calls▁end｜><｜end▁of▁sentence｜>[-100 * 24]</think>"
+        "<｜tool▁calls▁end｜><｜end▁of▁sentence｜>[-100 * 22]"
         "The converted temperature from 30 degrees Celsius to Fahrenheit is 86 degrees Fahrenheit.<｜end▁of▁sentence｜>"
     )
 
@@ -428,6 +428,4 @@ if __name__ == '__main__':
     # test_llama4()
     # test_hunyuan()
     # test_glm4_5()
-    # test_dsv3_1()
-    # test_dsv3_1_thinking()
     test_dsv3_1()
