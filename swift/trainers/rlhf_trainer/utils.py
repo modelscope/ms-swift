@@ -749,7 +749,7 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
     return loss
 
 
-def peft_config(peft_config):
+def peft_config_to_dict(peft_config):
     if not isinstance(peft_config, dict):
         peft_config = asdict(peft_config)
     # turn set to list to serializable
