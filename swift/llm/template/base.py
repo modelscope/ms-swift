@@ -3,8 +3,10 @@ import hashlib
 import inspect
 import math
 import os
+import random
 import re
 from contextlib import contextmanager, nullcontext
+from collections import defaultdict
 from copy import deepcopy
 from dataclasses import asdict
 from functools import partial, wraps
@@ -444,7 +446,6 @@ class Template(ProcessorMixin):
         return _encoded
 
     def _reranker_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
-        from collections import defaultdict
         chosen = inputs.chosen
         instruction = chosen.system
 
@@ -1557,8 +1558,6 @@ class Template(ProcessorMixin):
                                 batch: List[Dict[str, Any]],
                                 *,
                                 padding_to: Optional[int] = None) -> Dict[str, Any]:
-        import os
-        import random
         max_positive_samples = int(os.environ.get('MAX_POSITIVE_SAMPLES', 1))
         max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
         labels_list = []
