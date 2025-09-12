@@ -49,12 +49,8 @@ class DeepSeekV31AgentTemplate(BaseAgentTemplate):
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
         
-        if hasattr(self, 'template_meta'):
-            prompt = self.template_meta.prompt
-            chat_sep = self.template_meta.chat_sep
-        else:
-            prompt = ['<｜User｜>{{QUERY}}<｜Assistant｜>']
-            chat_sep = ['<｜end▁of▁sentence｜>']
+        prompt = ['{{QUERY}}']
+        chat_sep = ['<｜end▁of▁sentence｜>']
         
         res = chat_sep.copy()
         total_tool = self._get_tool_responses(tool_messages)
