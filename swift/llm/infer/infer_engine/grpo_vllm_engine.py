@@ -8,7 +8,6 @@ from tqdm.asyncio import tqdm_asyncio
 
 from swift.llm import InferRequest, Template, VllmEngine
 from swift.plugin import Metric
-from swift.trainers.rlhf_trainer.utils import TensorLoRARequest
 from ..protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage, RequestConfig, RolloutOutput
 from .utils import AdapterRequest
 
