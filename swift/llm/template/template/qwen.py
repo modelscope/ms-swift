@@ -464,6 +464,9 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
         encoded['loss_scale'] = loss_scale
         return encoded
 
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return inputs  # TODO: Waiting for transformers to support passing deepstack_visual_embeds.
+
 
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate, default_system=None))
 
