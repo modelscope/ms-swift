@@ -384,19 +384,18 @@ register_dataset(
         tags=['similarity', '🔥']))
 
 
-class MTEBRerankPreprocessor(ResponsePreprocessor):
+class MTEBRerankPreprocessor(RowPreprocessor):
 
-    def preprocess(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         query = row['query']
         positives = row['positive'] if isinstance(row['positive'], list) else [row['positive']]
         negatives = row['negative'] if isinstance(row['negative'], list) else [row['negative']]
 
-        expanded_rows = []
-        for positive in positives:
-            expanded_row = {'query': query, 'response': positive, 'rejected_response': negatives}
-            expanded_rows.append(super().preprocess(expanded_row))
+        messages = [{'role': 'user', 'content': query}]
+        positive_messages = [[{'role': 'assistant', 'content': positive}] for positive in positives]
+        negative_messages = [[{'role': 'assistant', 'content': negative}] for negative in negatives]
 
-        return expanded_rows
+        return {'messages': messages, 'positive_messages': positive_messages, 'negative_messages': negative_messages}
 
 
 register_dataset(
