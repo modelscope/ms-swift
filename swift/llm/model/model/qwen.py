@@ -624,6 +624,26 @@ register_model(
         requires=['transformers>=4.51'],
     ))
 
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_next,
+        [ModelGroup([Model('Qwen/Qwen3-Next-80B-A3B-Instruct')])],
+        TemplateType.qwen3_nothinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3NextForCausalLM'],
+        requires=['transformers>=4.57.0.dev'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_next_thinking,
+        [ModelGroup([Model('Qwen/Qwen3-Next-80B-A3B-Thinking')])],
+        TemplateType.qwen3_thinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3NextForCausalLM'],
+        requires=['transformers>=4.57.0.dev'],
+    ))
+
 
 def patch_qwen_vl_utils(vision_process):
     if hasattr(vision_process, '_patch'):
