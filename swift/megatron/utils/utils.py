@@ -109,6 +109,8 @@ def get_modules_to_save(args, model):
     if 'all-embedding' in args.modules_to_save:
         modules_to_save.remove('all-embedding')
         modules_to_save += find_embedding(model)
+    if args.task_type == 'seq_cls':
+        modules_to_save.append('output_layer')
     return modules_to_save
 
 

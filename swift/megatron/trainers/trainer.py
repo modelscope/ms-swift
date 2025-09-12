@@ -18,6 +18,9 @@ logger = get_logger()
 
 class MegatronTrainer(BaseMegatronTrainer):
 
+    def seq_cls_loss_func(self, output_tensor, *, labels: torch.Tensor, packed_seq_params=None):
+        pass
+
     # Code borrowed from NVIDIA/Megatron-LM
     def loss_func(self,
                   output_tensor: torch.Tensor,
@@ -116,9 +119,13 @@ class MegatronTrainer(BaseMegatronTrainer):
             output_tensor = model(**data)
         labels = data.get('labels')
         packed_seq_params = data.get('packed_seq_params')
-        return output_tensor, partial(
-            self.loss_func,
-            labels=labels,
-            loss_scale=loss_scale,
-            channels=channels,
-            packed_seq_params=packed_seq_params)
+        if self.args.task_type == 'seq_cls':
+            loss_func = self.seq_cls_loss_func(output_tensor, labels=labels, packed_seq_params=packed_seq_params)
+        else:
+            loss_func = partial(
+                self.loss_func,
+                labels=labels,
+                loss_scale=loss_scale,
+                channels=channels,
+                packed_seq_params=packed_seq_params)
+        return output_tensor, loss_func
