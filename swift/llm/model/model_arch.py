@@ -81,6 +81,7 @@ class MLLMModelArch:
     keye_vl = 'keye_vl'
 
     midashenglm = 'midashenglm'
+    step_audio2_mini = 'step_audio2_mini'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -545,6 +546,14 @@ register_model_arch(
         language_model='decoder',
         aligner=['audio_projector'],
         vision_tower=['audio_encoder'],
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.step_audio2_mini,
+        language_model='model',
+        aligner=['adapter'],
+        vision_tower=['encoder'],
     ))
 
 register_model_arch(

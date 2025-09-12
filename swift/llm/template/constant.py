@@ -194,6 +194,7 @@ class MLLMTemplateType:
     got_ocr2 = 'got_ocr2'
     got_ocr2_hf = 'got_ocr2_hf'
     step_audio = 'step_audio'
+    step_audio2_mini = 'step_audio2_mini'
     kimi_vl = 'kimi_vl'
     keye_vl = 'keye_vl'
     dots_ocr = 'dots_ocr'

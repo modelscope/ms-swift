@@ -17,7 +17,7 @@ from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
-from ..template_inputs import StdTemplateInputs
+from ..template_inputs import StdTemplateInputs, TemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
 from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
@@ -72,11 +72,17 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_sys
 class Qwen3RerankerTemplate(Template):
     instruction = 'Given a web search query, retrieve relevant passages that answer the query'
 
-    def _preprocess_inputs_reranker(self, inputs: StdTemplateInputs) -> None:
-        super()._preprocess_inputs_reranker(inputs)
-        query = inputs.messages[-2]['content']
-        user_message = '<Instruct>: ' + self.instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: {doc}'
-        inputs.messages[-2]['content'] = user_message
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        if inputs.system is not None:
+            instruction = inputs.system
+            inputs.system = None
+        else:
+            instruction = self.instruction
+        query = inputs.messages[0]['content']
+        document = inputs.messages[1]['content']
+        user_message = '<Instruct>: ' + instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: ' + document
+        inputs.messages = [{'role': 'user', 'content': user_message}]
+        return inputs
 
 
 qwen3_reranker_system = (
