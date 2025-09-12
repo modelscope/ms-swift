@@ -144,7 +144,7 @@ def get_batch(data_iterator):
     num_samples = batch.pop('num_samples')
     text_position_ids = batch.pop('text_position_ids', None)
     if text_position_ids is None:
-        text_position_ids = batch['position_ids']
+        text_position_ids = batch.get('position_ids')
     if args.padding_free and text_position_ids is not None:
         batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
         batch['packed_seq_params'].num_samples = num_samples
