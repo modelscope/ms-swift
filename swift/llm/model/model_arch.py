@@ -525,9 +525,9 @@ else:
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.qwen3_vl,
-        language_model='model',
-        aligner=['visual.merger', 'visual.merger_list'],
-        vision_tower='visual',
+        language_model='model.language_model',
+        aligner=['model.visual.merger', 'model.visual.deepstack_merger_list'],
+        vision_tower='model.visual',
     ))
 
 register_model_arch(

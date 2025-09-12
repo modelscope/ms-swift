@@ -227,8 +227,9 @@ def test_minicpmv4_5():
 
 
 def test_qwen3_vl():
-    pt_engine = PtEngine('Qwen3-VL/Qwen3-VL-32B-Preview-0813')
-    videos = ['baby.mp4']
+    # TODO: fix
+    pt_engine = PtEngine('Qwen/Qwen3-VL')
+    videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     messages = [{'role': 'user', 'content': 'describe this video.'}]
     response = _infer_model(pt_engine, messages=messages, videos=videos)
     pt_engine.default_template.template_backend = 'jinja'
@@ -240,7 +241,7 @@ def test_qwen3_vl():
 
 
 def test_qwen3_moe_vl():
-    pt_engine = PtEngine('Qwen3-VL/Qwen3-VL-30B-A3B-Preview-0716')
+    pt_engine = PtEngine('Qwen/Qwen3-VL-Moe')
     response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
@@ -271,5 +272,5 @@ if __name__ == '__main__':
     # test_interns1()
     # test_internvl3_5()
     # test_minicpmv4_5()
-    # test_qwen3_vl()
-    test_qwen3_moe_vl()
+    test_qwen3_vl()
+    # test_qwen3_moe_vl()
