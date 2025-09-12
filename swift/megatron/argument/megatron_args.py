@@ -103,6 +103,13 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     # visual
     vit_gradient_checkpointing: bool = True
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
+    # qwen3_next
+    linear_num_value_heads: Optional[int] = None
+    linear_num_key_heads: Optional[int] = None
+    linear_key_head_dim: Optional[int] = None
+    linear_value_head_dim: Optional[int] = None
+    linear_conv_kernel_dim: Optional[int] = None
+    layer_types: Optional[List[str]] = None
 
 
 @dataclass

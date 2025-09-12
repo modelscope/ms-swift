@@ -2,8 +2,8 @@
 from swift.llm import ModelType
 from ..constant import MegatronModelType
 from ..gpt_model import GPTModel
-from ..model_provider import model_provider
 from ..register import MegatronModelMeta, register_megatron_model
+from . import qwen3_next
 from .config import convert_gpt_hf_config
 from .hf2mcore import convert_hf2mcore
 from .mcore2hf import convert_mcore2hf
@@ -56,7 +56,6 @@ register_megatron_model(
             ModelType.glm4_5,
             ModelType.deepseek_v3_1,
         ],
-        model_provider=model_provider,
         model_cls=GPTModel,
         convert_hf_config=convert_gpt_hf_config,
         convert_mcore2hf=convert_mcore2hf,
