@@ -7,6 +7,12 @@
 1. vLLM version 0.8.3 or higher.
 2. trl version 0.17.0 or higher
 
+For LoRA Training, set following parameters to speed up weight update
+```bash
+  --vllm_enable_lora true
+  --vllm_max_lora_rank xxx # same as lora_rank in training script
+```
+
 ## **Introduction**
 
 The GRPO (Group Relative Policy Optimization) training framework supports high-performance inference engines like vLLM to accelerate the sampling process. The **External Mode** allows you to connect to an external vLLM inference server, separating the inference service from the training process. This mode is ideal for scenarios where you want to offload inference to dedicated hardware or servers, improving resource utilization and scalability.
