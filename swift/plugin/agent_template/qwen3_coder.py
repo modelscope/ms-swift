@@ -150,7 +150,7 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
                         # For other types, convert to strings
                         args_value = str(args_value)
                     result_parts.append(f'{args_value}\n</parameter>\n')
-            # 关闭标签
+# Close tags
             result_parts.append('</function>\n</tool_call>')
         return ''.join(result_parts)
 
