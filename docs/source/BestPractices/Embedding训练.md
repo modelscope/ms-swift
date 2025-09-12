@@ -121,3 +121,83 @@ https://www.modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct
 https://www.modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct/file/view/master/gme_inference.py?status=1#L111
 
 这里的模板请修改为模型自身的template，以免最后的embedding对不上。需要额外注意的是，gme模型的template和`qwen2-vl`或`qwen2.5-vl`系列的chatml template并不相同，其推理代码最后的结束字符是`<|endoftext|>`而非`<|im_end|>`.
+
+## 高级功能
+
+- Qwen3-Embedding 自定义 Instruction：
+  - 默认无 Instruction，输入模板为：`{Query}<|endoftext|>`。
+  - 通过在 system message 中添加 Instruction，可将输入改为：`{Instruction} {Query}<|endoftext|>`。
+  - 示例：
+
+```json lines
+{"messages": [
+  {"role": "system", "content": "请用中文回答，并输出简洁要点"},
+  {"role": "user", "content": "介绍一下Qwen3-Embedding"}
+]}
+```
+
+> 说明：Qwen3-Embedding 模板会将 system 内容前置拼接到首条 user 消息中，并使用 `<|endoftext|>` 作为结束标记。
+
+### 转换前后示例
+
+- 不加 Instruction：
+
+  输入数据（messages）：
+
+  ```json lines
+  {"messages": [
+    {"role": "user", "content": "北京明天天气如何？"}
+  ]}
+  ```
+
+  模板转换后（送入模型的实际文本）：
+
+  ```text
+  北京明天天气如何？<|endoftext|>
+  ```
+
+- 加 Instruction：
+
+  输入数据（messages，包含system）：
+
+  ```json lines
+  {"messages": [
+    {"role": "system", "content": "请使用中文、精炼输出要点"},
+    {"role": "user", "content": "北京明天天气如何？"}
+  ]}
+  ```
+
+  模板转换后（送入模型的实际文本）：
+
+  ```text
+  请使用中文、精炼输出要点 北京明天天气如何？<|endoftext|>
+  ```
+
+- positive/negative 同理：
+
+  若在某个 positive/negative 的消息序列中提供 system，则会将该 system 内容前置到该序列首条 user 内容之前；未提供 system 则不前置。
+
+  输入数据（包含一个 positive 带 system，和一个 negative 无 system）：
+
+  ```json lines
+  {
+    "messages": [
+      {"role": "user", "content": "Anchor"}
+    ],
+    "positive_messages": [[
+      {"role": "system", "content": "指令"},
+      {"role": "user", "content": "Positive"}
+    ]],
+    "negative_messages": [[
+      {"role": "user", "content": "Negative"}
+    ]]
+  }
+  ```
+
+  模板转换后（送入模型的实际文本）：
+
+  ```text
+  Anchor<|endoftext|>
+  指令 Positive<|endoftext|>
+  Negative<|endoftext|>
+  ```

@@ -123,3 +123,83 @@ If you've used other models to train embedding from scratch (for example, the or
 https://www.modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct/file/view/master/gme_inference.py?status=1#L111
 
 Please modify the template here to match the model's own template to ensure the final embeddings align correctly. It's particularly important to note that the template for the gme model is different from the chatml template for the `qwen2-vl` or `qwen2.5-vl` series. In its inference code, the ending character is `<|endoftext|>` rather than `<|im_end|>`.
+
+## Advanced
+
+- Qwen3-Embedding Custom Instruction:
+  - By default, there is no instruction; the input prompt is: `{Query}<|endoftext|>`.
+  - You can add an instruction via the system message, changing the prompt to: `{Instruction} {Query}<|endoftext|>`.
+  - Example:
+
+```json lines
+{"messages": [
+  {"role": "system", "content": "Answer in English and list key points briefly."},
+  {"role": "user", "content": "Introduce Qwen3-Embedding"}
+]}
+```
+
+> Note: The Qwen3-Embedding template prepends the system content to the first user message and uses `<|endoftext|>` as the ending token.
+
+### Before/After Examples
+
+- Without Instruction:
+
+  Input data (messages):
+
+  ```json lines
+  {"messages": [
+    {"role": "user", "content": "What is Qwen3-Embedding?"}
+  ]}
+  ```
+
+  After template conversion (actual prompt sent to the model):
+
+  ```text
+  What is Qwen3-Embedding?<|endoftext|>
+  ```
+
+- With Instruction:
+
+  Input data (messages with system):
+
+  ```json lines
+  {"messages": [
+    {"role": "system", "content": "Answer in English and list key points briefly."},
+    {"role": "user", "content": "What is Qwen3-Embedding?"}
+  ]}
+  ```
+
+  After template conversion (actual prompt sent to the model):
+
+  ```text
+  Answer in English and list key points briefly. What is Qwen3-Embedding?<|endoftext|>
+  ```
+
+- Positive/Negative behave the same:
+
+  If a system message is provided within a positive/negative sequence, it is prepended to that sequence’s first user content; if no system is provided, nothing is prepended.
+
+  Input (one positive with system, one negative without):
+
+  ```json lines
+  {
+    "messages": [
+      {"role": "user", "content": "Anchor"}
+    ],
+    "positive_messages": [[
+      {"role": "system", "content": "Instruction"},
+      {"role": "user", "content": "Positive"}
+    ]],
+    "negative_messages": [[
+      {"role": "user", "content": "Negative"}
+    ]]
+  }
+  ```
+
+  After template conversion (actual prompts):
+
+  ```text
+  Anchor<|endoftext|>
+  Instruction Positive<|endoftext|>
+  Negative<|endoftext|>
+  ```
