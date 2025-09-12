@@ -90,3 +90,30 @@ SWIFT提供了两个脚手架训练脚本：
 - [Pointwise生成式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker.sh)
 - [Listwise分类式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker_listwise.sh)
 - [Listwise生成式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker_listwise.sh)
+
+## 高级功能
+
+- Qwen3-Reranker 自定义 Instruction：
+  - 默认模板如下：
+
+```text
+<|im_start|>system
+Judge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be "yes" or "no".<|im_end|>
+<|im_start|>user
+<Instruct>: {Instruction}
+<Query>: {Query}
+<Document>: {Document}<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+
+```
+
+- 默认 Instruction：
+  - `Given a web search query, retrieve relevant passages that answer the query`
+
+- Instruction 优先级（就近覆盖）：
+  - `positive_messages`/`negative_messages` 内提供的 `system` > 主 `messages` 的 `system` > 默认 Instruction。
+  - 即：若某个 positive/negative 的消息序列内包含 `system`，则优先使用该条；否则若主 `messages` 含 `system` 则使用之；两者都未提供时，使用默认 Instruction。

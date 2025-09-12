@@ -89,3 +89,30 @@ SWIFT provides four training script templates:
 - [Pointwise Generative Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker.sh)
 - [Listwise Classification Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker_listwise.sh)
 - [Listwise Generative Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker_listwise.sh)
+
+## Advanced
+
+- Qwen3-Reranker Custom Instruction:
+  - Default template:
+
+```text
+<|im_start|>system
+Judge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be "yes" or "no".<|im_end|>
+<|im_start|>user
+<Instruct>: {Instruction}
+<Query>: {Query}
+<Document>: {Document}<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+
+```
+
+- Default instruction:
+  - `Given a web search query, retrieve relevant passages that answer the query`
+
+- Instruction priority (nearest wins):
+  - `system` inside `positive_messages`/`negative_messages` > `system` in main `messages` > default instruction.
+  - That is, if a positive/negative message sequence contains a `system`, it takes precedence; otherwise, if main `messages` has a `system`, use it; if neither is provided, use the default instruction.
