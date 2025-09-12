@@ -91,7 +91,7 @@ class ModelMeta:
                 for key in ['ms_model_id', 'hf_model_id', 'model_path']:
                     value = getattr(model, key)
 
-                    if isinstance(value, str) and model_name == value.rsplit('/', 1)[-1].lower():
+                    if isinstance(value, str) and model_name == value.rsplit('/', 1)[-1]:
                         return model_group
 
     def check_requires(self, model_info=None):
@@ -226,7 +226,7 @@ def get_model_tokenizer_from_local(model_dir: str,
         model_config.keys_to_ignore_at_inference.append('past_key_values')
 
     torch_dtype = model_info.torch_dtype
-    model_config.torch_dtype = torch_dtype
+    HfConfigFactory.set_config_attr(model_config, 'torch_dtype', torch_dtype, include_vit=True)
     HfConfigFactory.compat_zero3(model_config)
     rope_scaling = kwargs.get('rope_scaling')
     max_model_len = kwargs.get('max_model_len')
@@ -435,7 +435,7 @@ def get_all_models() -> List[str]:
 
 
 def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
-    model_name = get_model_name(model_id_or_path).lower()
+    model_name = get_model_name(model_id_or_path)
     for model_type, model_meta in MODEL_MAPPING.items():
         model_group = ModelMeta.get_matched_model_group(model_meta, model_name)
         if model_group is not None:

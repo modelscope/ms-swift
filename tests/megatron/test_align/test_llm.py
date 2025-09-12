@@ -159,6 +159,10 @@ def test_glm4_5v():
     _test_model('ZhipuAI/GLM-4.5V')
 
 
+def test_ovis2_5():
+    _test_model('AIDC-AI/Ovis2.5-2B')
+
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -190,4 +194,5 @@ if __name__ == '__main__':
     # test_internvl3()
     # test_internvl3_5()
     # test_internvl3_5_moe()
-    test_glm4_5v()
+    # test_glm4_5v()
+    test_ovis2_5()

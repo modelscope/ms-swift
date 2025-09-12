@@ -624,6 +624,26 @@ register_model(
         requires=['transformers>=4.51'],
     ))
 
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_next,
+        [ModelGroup([Model('Qwen/Qwen3-Next-80B-A3B-Instruct')])],
+        TemplateType.qwen3_nothinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3NextForCausalLM'],
+        requires=['transformers>=4.57.0.dev'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_next_thinking,
+        [ModelGroup([Model('Qwen/Qwen3-Next-80B-A3B-Thinking')])],
+        TemplateType.qwen3_thinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3NextForCausalLM'],
+        requires=['transformers>=4.57.0.dev'],
+    ))
+
 
 def patch_qwen_vl_utils(vision_process):
     if hasattr(vision_process, '_patch'):
@@ -631,12 +651,26 @@ def patch_qwen_vl_utils(vision_process):
     if os.getenv('VIDEO_MAX_PIXELS') and not os.getenv('VIDEO_TOTAL_PIXELS'):
         # https://github.com/QwenLM/Qwen2.5-VL/issues/1120
         os.environ['VIDEO_TOTAL_PIXELS'] = str(int(128000 * 28 * 28 * 0.9))
+    res = {}
     for key in [
-            'image_factor', 'min_pixels', 'max_pixels', 'max_ratio', 'video_min_pixels', 'video_max_pixels',
-            'video_total_pixels', 'frame_factor', 'fps', 'fps_min_frames', 'fps_max_frames'
+            'image_factor',
+            'min_pixels',
+            'max_pixels',
+            'max_ratio',
+            'video_min_pixels',
+            'video_max_pixels',
+            'video_total_pixels',
+            'frame_factor',
+            'fps',
+            'fps_min_frames',
+            'fps_max_frames',
     ]:
         type_func = float if key == 'fps' else int
-        setattr(vision_process, key.upper(), get_env_args(key, type_func, getattr(vision_process, key.upper())))
+        if not hasattr(vision_process, key.upper()):
+            continue
+        val = get_env_args(key, type_func, getattr(vision_process, key.upper()))
+        setattr(vision_process, key.upper(), val)
+        res[key] = val
     _read_video_decord = vision_process._read_video_decord
 
     def _new_read_video_decord(ele: dict):
@@ -646,6 +680,7 @@ def patch_qwen_vl_utils(vision_process):
 
     vision_process.VIDEO_READER_BACKENDS['decord'] = _new_read_video_decord
     vision_process._patch = True
+    return res
 
 
 def get_model_tokenizer_qwen2_vl(*args, **kwargs):
@@ -657,7 +692,8 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
         patch_get_input_embeddings(base_model.visual, 'patch_embed')
 
     from qwen_vl_utils import vision_process
-    patch_qwen_vl_utils(vision_process)
+    global_vars = patch_qwen_vl_utils(vision_process)
+    tokenizer.global_vars = global_vars  # In order to have different hashes for the template.
     return model, tokenizer
 
 
@@ -773,7 +809,8 @@ def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
     processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['tokenizer'] = processor.tokenizer
     kwargs['model_config'] = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
-    patch_qwen_vl_utils(vision_process)
+    global_vars = patch_qwen_vl_utils(vision_process)
+    processor.global_vars = global_vars
     kwargs['model_config'].enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, True)
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     if model:

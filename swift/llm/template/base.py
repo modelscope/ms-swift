@@ -133,6 +133,12 @@ class Template(ProcessorMixin):
         if processor is not None:
             self.init_processor(processor)
 
+    def init_env_args(self):
+        if self.model_meta.is_multimodal:
+            self.root_image_dir = get_env_args('ROOT_IMAGE_DIR', str, None)
+        else:
+            self.root_image_dir = None
+
     def init_processor(self, processor: Processor) -> None:
         if processor is None or self._processor_inited:
             return
@@ -157,6 +163,7 @@ class Template(ProcessorMixin):
             if isinstance(token, str):
                 self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
         self.template_meta.init(tokenizer)
+        self.init_env_args()
 
     def _get_model(self):
         if self.model is not None:
@@ -340,6 +347,8 @@ class Template(ProcessorMixin):
         return input_ids, labels, loss_scale
 
     def forward_context(self, model, inputs):
+        # This function is only used to handle scenarios where the model needs
+        # to be patched during the forward pass.
         return nullcontext()
 
     @staticmethod
@@ -1877,7 +1886,7 @@ class Template(ProcessorMixin):
         Returns:
             A tensor after padding
         """
-        padding_side = self.padding_side if self.is_training else 'left'
+        padding_side = self.padding_side if self.is_training and self.task_type != 'generative_reranker' else 'left'
         padding_right = padding_side == 'right'
         if padding_right:
             return pad_sequence(sequences, batch_first=True, padding_value=padding_value)

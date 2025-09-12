@@ -184,7 +184,8 @@ register_model(
 def get_model_tokenizer_keye_vl(model_dir: str, *args, **kwargs):
     model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
     from keye_vl_utils import vision_process
-    patch_qwen_vl_utils(vision_process)
+    global_vars = patch_qwen_vl_utils(vision_process)
+    processor.global_vars = global_vars
     return model, processor
 
 

@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
 
 import torch
@@ -42,6 +43,7 @@ class MultimodalGPTModel(MegatronModule):
         def forward(_self, input_):
             reduce_scatter_embeddings = _self.reduce_scatter_embeddings
             _self.reduce_scatter_embeddings = False
+            input_ = torch.masked_fill(input_, input_ < 0, 0)
             res = origin_forward(_self, input_)
             _self.reduce_scatter_embeddings = reduce_scatter_embeddings
             if self.visual is not None:
