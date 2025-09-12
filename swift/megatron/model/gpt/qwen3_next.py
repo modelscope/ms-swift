@@ -648,9 +648,7 @@ def convert_mcore2hf_qwen3_next(hf_model, mg_model):
                 hf_attn.k_norm.weight.data.copy_(mg_attn.k_layernorm.weight - 1)
 
         set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
-
-        post_attention_layernorm_weight = hf_layer.post_attention_layernorm.weight
-        post_attention_layernorm_weight.data.copy_(mg_layer.pre_mlp_layernorm.weight - 1)
+        hf_layer.post_attention_layernorm.weight.data.copy_(mg_layer.pre_mlp_layernorm.weight - 1)
 
 
 def convert_hf2mcore_qwen3_next(hf_model, mg_model):
@@ -678,9 +676,7 @@ def convert_hf2mcore_qwen3_next(hf_model, mg_model):
                 mg_attn.k_layernorm.weight.data.copy_(hf_attn.k_norm.weight + 1)
 
         set_mlp_state(args, mg_layer.mlp, hf_layer.mlp)
-
-        post_attention_layernorm_weight = hf_layer.post_attention_layernorm.weight
-        mg_layer.pre_mlp_layernorm.weight.data.copy_(post_attention_layernorm_weight + 1)
+        mg_layer.pre_mlp_layernorm.weight.data.copy_(hf_layer.post_attention_layernorm.weight + 1)
 
 
 register_megatron_model(
