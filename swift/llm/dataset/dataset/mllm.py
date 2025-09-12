@@ -758,13 +758,22 @@ class TextCapsPreprocessor(ResponsePreprocessor):
         return super().preprocess(row)
 
 
-class TextCapsEmbPreprocessor(ResponsePreprocessor):
+class TextCapsEmbPreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        row['query'] = '<image>'
         if not os.path.exists(row['images']['path']):
             return None
-        return super().preprocess(row)
+        return {
+            'messages': [{
+                'role': 'user',
+                'content': '<image>'
+            }],
+            'positive_messages': [[{
+                'role': 'user',
+                'content': row['response'][0]
+            }]],
+            'images': row['images']
+        }
 
 
 register_dataset(

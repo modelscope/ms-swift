@@ -323,7 +323,7 @@ register_dataset(
         tags=['chat', 'coding', '🔥']))
 
 
-class StsbPreprocessor(ResponsePreprocessor):
+class StsbPreprocessor(RowPreprocessor):
 
     def __init__(self, sim_threshold: Optional[float] = None):
         self.sim_threshold = sim_threshold
@@ -331,12 +331,18 @@ class StsbPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         row = {
-            'query': row['sentence1'],
-            'response': row['sentence2'],
+            'messages': [{
+                'role': 'user',
+                'content': row['sentence1']
+            }],
+            'positive_messages': [[{
+                'role': 'user',
+                'content': row['sentence2']
+            }]],
             'label': row['score'],
         }
         if self.sim_threshold is None or float(row['label']) >= self.sim_threshold:
-            return super().preprocess(row)
+            return row
         else:
             return None
 
