@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import torch
 from megatron.training import get_args, get_tokenizer
 from PIL import Image
