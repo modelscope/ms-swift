@@ -44,7 +44,7 @@ try:
     from transformers.models.qwen3_next.modeling_qwen3_next import Qwen3NextGatedDeltaNet as _Qwen3NextGatedDeltaNet
     from transformers.models.qwen3_next.modeling_qwen3_next import Qwen3NextDynamicCache, Qwen3NextConfig
 except ImportError:
-    _Qwen3NextGatedDeltaNet = object
+    _Qwen3NextGatedDeltaNet = None
     Qwen3NextDynamicCache = None
     Qwen3NextConfig = None
 
@@ -396,187 +396,189 @@ class Qwen3NextSelfAttention(SelfAttention):
 
         return query, key, value, gate
 
+if _Qwen3NextGatedDeltaNet is None:
+    Qwen3NextGatedDeltaNet = None
+else:
 
-class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
-    # Code borrowed from huggingface/transformers
-    def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, layer_number: int, **kwargs):
-        args = get_args()
-        from transformers.models.qwen3_next.modeling_qwen3_next import (
-            FusedRMSNormGated,
-            causal_conv1d_fn,
-            causal_conv1d_update,
-            torch_causal_conv1d_update,
-            chunk_gated_delta_rule,
-            torch_chunk_gated_delta_rule,
-            fused_recurrent_gated_delta_rule,
-            torch_recurrent_gated_delta_rule,
-            is_fast_path_available,
-        )
-        MegatronModule.__init__(self, config)
-        self.model_comm_pgs = kwargs['model_comm_pgs']
-        self.hidden_size = config.hidden_size
-        self.num_v_heads = args.linear_num_value_heads
-        self.num_k_heads = args.linear_num_key_heads
-        self.head_k_dim = args.linear_key_head_dim
-        self.head_v_dim = args.linear_value_head_dim
-        self.key_dim = self.head_k_dim * self.num_k_heads
-        self.value_dim = self.head_v_dim * self.num_v_heads
-
-        self.conv_kernel_size = args.linear_conv_kernel_dim
-        self.layer_idx = layer_number  # not use during trainging
-        self.activation = 'silu'
-        self.act = nn.SiLU()
-        self.layer_norm_epsilon = config.layernorm_epsilon
-
-        # QKV
-        self.conv_dim = self.key_dim * 2 + self.value_dim
-        self.conv1d = nn.Conv1d(
-            in_channels=self.conv_dim,
-            out_channels=self.conv_dim,
-            bias=False,
-            kernel_size=self.conv_kernel_size,
-            groups=self.conv_dim,
-            padding=self.conv_kernel_size - 1,
-        )
-
-        # projection of the input hidden states
-        projection_size_qkvz = self.key_dim * 2 + self.value_dim * 2
-        projection_size_ba = self.num_v_heads * 2
-        self.in_proj_qkvz = build_module(
-            submodules.linear_qkv,
-            self.hidden_size,
-            projection_size_qkvz,
-            config=self.config,
-            init_method=self.config.init_method,
-            gather_output=False,
-            bias=self.config.add_bias_linear or self.config.add_qkv_bias,
-            skip_bias_add=False,
-            is_expert=False,
-            tp_comm_buffer_name='qkvz',
-            tp_group=self.model_comm_pgs.tp,
-        )
-        self.in_proj_ba = build_module(
-            submodules.linear_qkv,
-            self.hidden_size,
-            projection_size_ba,
-            config=self.config,
-            init_method=self.config.init_method,
-            gather_output=False,
-            bias=self.config.add_bias_linear or self.config.add_qkv_bias,
-            skip_bias_add=False,
-            is_expert=False,
-            tp_comm_buffer_name='ba',
-            tp_group=self.model_comm_pgs.tp,
-        )
-
-        # time step projection (discretization)
-        # instantiate once and copy inv_dt in init_weights of PretrainedModel
-        self.dt_bias = nn.Parameter(torch.ones(self.num_v_heads))
-
-        A = torch.empty(self.num_v_heads).uniform_(0, 16)
-        self.A_log = nn.Parameter(torch.log(A))
-
-        self.norm = (
-            Qwen3NextRMSNormGated(self.config, self.head_v_dim) if FusedRMSNormGated is None else FusedRMSNormGated(
-                self.head_v_dim,
-                eps=self.layer_norm_epsilon,
-                activation=self.activation,
-                device=torch.cuda.current_device(),
-                dtype=args.torch_dtype,
-            ))
-        self.out_proj = build_module(
-            submodules.linear_proj,
-            self.value_dim,
-            self.config.hidden_size,
-            config=self.config,
-            init_method=self.config.output_layer_init_method,
-            bias=self.config.add_bias_linear,
-            input_is_parallel=True,
-            skip_bias_add=True,
-            is_expert=False,
-            tp_comm_buffer_name='proj',
-            tp_group=self.model_comm_pgs.tp,
-        )
-
-        self.causal_conv1d_fn = causal_conv1d_fn
-        self.causal_conv1d_update = causal_conv1d_update or torch_causal_conv1d_update
-        self.chunk_gated_delta_rule = chunk_gated_delta_rule or torch_chunk_gated_delta_rule
-        self.recurrent_gated_delta_rule = fused_recurrent_gated_delta_rule or torch_recurrent_gated_delta_rule
-
-        if not is_fast_path_available:
-            logger.warning_once(
-                'The fast path is not available because one of the required library is not installed. Falling back to '
-                'torch implementation. To install follow https://github.com/fla-org/flash-linear-attention#installation'
-                ' and https://github.com/Dao-AILab/causal-conv1d')
-
-    def forward(self, hidden_states: torch.Tensor, **kwargs):
-        # Set up dimensions for reshapes later
-        hidden_states = hidden_states.transpose(0, 1)
-        batch_size, seq_len, _ = hidden_states.shape
-
-        projected_states_qkvz = self.in_proj_qkvz(hidden_states)[0]
-        projected_states_ba = self.in_proj_ba(hidden_states)[0]
-        query, key, value, z, b, a = self.fix_query_key_value_ordering(projected_states_qkvz, projected_states_ba)
-        query, key, value = (x.reshape(x.shape[0], x.shape[1], -1) for x in (query, key, value))
-
-        mixed_qkv = torch.cat((query, key, value), dim=-1)
-        mixed_qkv = mixed_qkv.transpose(1, 2)
-
-        if self.causal_conv1d_fn is not None:
-            mixed_qkv = self.causal_conv1d_fn(
-                x=mixed_qkv,
-                weight=self.conv1d.weight.squeeze(1),
-                bias=self.conv1d.bias,
-                activation=self.activation,
-                seq_idx=None,
+    class Qwen3NextGatedDeltaNet(_Qwen3NextGatedDeltaNet, MegatronModule):
+        # Code borrowed from huggingface/transformers
+        def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, layer_number: int, **kwargs):
+            args = get_args()
+            from transformers.models.qwen3_next.modeling_qwen3_next import (
+                FusedRMSNormGated,
+                causal_conv1d_fn,
+                causal_conv1d_update,
+                torch_causal_conv1d_update,
+                chunk_gated_delta_rule,
+                torch_chunk_gated_delta_rule,
+                fused_recurrent_gated_delta_rule,
+                torch_recurrent_gated_delta_rule,
+                is_fast_path_available,
             )
-        else:
-            mixed_qkv = F.silu(self.conv1d(mixed_qkv)[:, :, :seq_len])
+            MegatronModule.__init__(self, config)
+            self.model_comm_pgs = kwargs['model_comm_pgs']
+            self.hidden_size = config.hidden_size
+            self.num_v_heads = args.linear_num_value_heads
+            self.num_k_heads = args.linear_num_key_heads
+            self.head_k_dim = args.linear_key_head_dim
+            self.head_v_dim = args.linear_value_head_dim
+            self.key_dim = self.head_k_dim * self.num_k_heads
+            self.value_dim = self.head_v_dim * self.num_v_heads
 
-        mixed_qkv = mixed_qkv.transpose(1, 2)
-        query, key, value = torch.split(
-            mixed_qkv,
-            [
-                self.key_dim,
-                self.key_dim,
+            self.conv_kernel_size = args.linear_conv_kernel_dim
+            self.layer_idx = layer_number  # not use during trainging
+            self.activation = 'silu'
+            self.act = nn.SiLU()
+            self.layer_norm_epsilon = config.layernorm_epsilon
+
+            # QKV
+            self.conv_dim = self.key_dim * 2 + self.value_dim
+            self.conv1d = nn.Conv1d(
+                in_channels=self.conv_dim,
+                out_channels=self.conv_dim,
+                bias=False,
+                kernel_size=self.conv_kernel_size,
+                groups=self.conv_dim,
+                padding=self.conv_kernel_size - 1,
+            )
+
+            # projection of the input hidden states
+            projection_size_qkvz = self.key_dim * 2 + self.value_dim * 2
+            projection_size_ba = self.num_v_heads * 2
+            self.in_proj_qkvz = build_module(
+                submodules.linear_qkv,
+                self.hidden_size,
+                projection_size_qkvz,
+                config=self.config,
+                init_method=self.config.init_method,
+                gather_output=False,
+                bias=self.config.add_bias_linear or self.config.add_qkv_bias,
+                skip_bias_add=False,
+                is_expert=False,
+                tp_comm_buffer_name='qkvz',
+                tp_group=self.model_comm_pgs.tp,
+            )
+            self.in_proj_ba = build_module(
+                submodules.linear_qkv,
+                self.hidden_size,
+                projection_size_ba,
+                config=self.config,
+                init_method=self.config.init_method,
+                gather_output=False,
+                bias=self.config.add_bias_linear or self.config.add_qkv_bias,
+                skip_bias_add=False,
+                is_expert=False,
+                tp_comm_buffer_name='ba',
+                tp_group=self.model_comm_pgs.tp,
+            )
+
+            # time step projection (discretization)
+            # instantiate once and copy inv_dt in init_weights of PretrainedModel
+            self.dt_bias = nn.Parameter(torch.ones(self.num_v_heads))
+
+            A = torch.empty(self.num_v_heads).uniform_(0, 16)
+            self.A_log = nn.Parameter(torch.log(A))
+
+            self.norm = (
+                Qwen3NextRMSNormGated(self.config, self.head_v_dim) if FusedRMSNormGated is None else FusedRMSNormGated(
+                    self.head_v_dim,
+                    eps=self.layer_norm_epsilon,
+                    activation=self.activation,
+                    device=torch.cuda.current_device(),
+                    dtype=args.torch_dtype,
+                ))
+            self.out_proj = build_module(
+                submodules.linear_proj,
                 self.value_dim,
-            ],
-            dim=-1,
-        )
-        query = query.reshape(query.shape[0], query.shape[1], -1, self.head_k_dim)
-        key = key.reshape(key.shape[0], key.shape[1], -1, self.head_k_dim)
-        value = value.reshape(value.shape[0], value.shape[1], -1, self.head_v_dim)
+                self.config.hidden_size,
+                config=self.config,
+                init_method=self.config.output_layer_init_method,
+                bias=self.config.add_bias_linear,
+                input_is_parallel=True,
+                skip_bias_add=True,
+                is_expert=False,
+                tp_comm_buffer_name='proj',
+                tp_group=self.model_comm_pgs.tp,
+            )
 
-        beta = b.sigmoid()
-        # If the model is loaded in fp16, without the .float() here, A might be -inf
-        g = -self.A_log.float().exp() * F.softplus(a.float() + self.dt_bias)
-        if self.num_v_heads // self.num_k_heads > 1:
-            query = query.repeat_interleave(self.num_v_heads // self.num_k_heads, dim=2)
-            key = key.repeat_interleave(self.num_v_heads // self.num_k_heads, dim=2)
+            self.causal_conv1d_fn = causal_conv1d_fn
+            self.causal_conv1d_update = causal_conv1d_update or torch_causal_conv1d_update
+            self.chunk_gated_delta_rule = chunk_gated_delta_rule or torch_chunk_gated_delta_rule
+            self.recurrent_gated_delta_rule = fused_recurrent_gated_delta_rule or torch_recurrent_gated_delta_rule
 
-        core_attn_out, last_recurrent_state = self.chunk_gated_delta_rule(
-            query,
-            key,
-            value,
-            g=g,
-            beta=beta,
-            initial_state=None,
-            output_final_state=False,
-            use_qk_l2norm_in_kernel=True,
-        )
+            if not is_fast_path_available:
+                logger.warning_once(
+                    'The fast path is not available because one of the required library is not installed. Falling back to '
+                    'torch implementation. To install follow https://github.com/fla-org/flash-linear-attention#installation'
+                    ' and https://github.com/Dao-AILab/causal-conv1d')
 
-        z_shape_og = z.shape
-        # reshape input data into 2D tensor
-        core_attn_out = core_attn_out.reshape(-1, core_attn_out.shape[-1])
-        z = z.reshape(-1, z.shape[-1])
-        core_attn_out = self.norm(core_attn_out, z)
-        core_attn_out = core_attn_out.reshape(z_shape_og)
-        core_attn_out = core_attn_out.reshape(core_attn_out.shape[0], core_attn_out.shape[1], -1)
+        def forward(self, hidden_states: torch.Tensor, **kwargs):
+            # Set up dimensions for reshapes later
+            hidden_states = hidden_states.transpose(0, 1)
+            batch_size, seq_len, _ = hidden_states.shape
 
-        output, bias = self.out_proj(core_attn_out)
-        output = output.transpose(0, 1)
-        return output, bias
+            projected_states_qkvz = self.in_proj_qkvz(hidden_states)[0]
+            projected_states_ba = self.in_proj_ba(hidden_states)[0]
+            query, key, value, z, b, a = self.fix_query_key_value_ordering(projected_states_qkvz, projected_states_ba)
+            query, key, value = (x.reshape(x.shape[0], x.shape[1], -1) for x in (query, key, value))
 
+            mixed_qkv = torch.cat((query, key, value), dim=-1)
+            mixed_qkv = mixed_qkv.transpose(1, 2)
+
+            if self.causal_conv1d_fn is not None:
+                mixed_qkv = self.causal_conv1d_fn(
+                    x=mixed_qkv,
+                    weight=self.conv1d.weight.squeeze(1),
+                    bias=self.conv1d.bias,
+                    activation=self.activation,
+                    seq_idx=None,
+                )
+            else:
+                mixed_qkv = F.silu(self.conv1d(mixed_qkv)[:, :, :seq_len])
+
+            mixed_qkv = mixed_qkv.transpose(1, 2)
+            query, key, value = torch.split(
+                mixed_qkv,
+                [
+                    self.key_dim,
+                    self.key_dim,
+                    self.value_dim,
+                ],
+                dim=-1,
+            )
+            query = query.reshape(query.shape[0], query.shape[1], -1, self.head_k_dim)
+            key = key.reshape(key.shape[0], key.shape[1], -1, self.head_k_dim)
+            value = value.reshape(value.shape[0], value.shape[1], -1, self.head_v_dim)
+
+            beta = b.sigmoid()
+            # If the model is loaded in fp16, without the .float() here, A might be -inf
+            g = -self.A_log.float().exp() * F.softplus(a.float() + self.dt_bias)
+            if self.num_v_heads // self.num_k_heads > 1:
+                query = query.repeat_interleave(self.num_v_heads // self.num_k_heads, dim=2)
+                key = key.repeat_interleave(self.num_v_heads // self.num_k_heads, dim=2)
+
+            core_attn_out, last_recurrent_state = self.chunk_gated_delta_rule(
+                query,
+                key,
+                value,
+                g=g,
+                beta=beta,
+                initial_state=None,
+                output_final_state=False,
+                use_qk_l2norm_in_kernel=True,
+            )
+
+            z_shape_og = z.shape
+            # reshape input data into 2D tensor
+            core_attn_out = core_attn_out.reshape(-1, core_attn_out.shape[-1])
+            z = z.reshape(-1, z.shape[-1])
+            core_attn_out = self.norm(core_attn_out, z)
+            core_attn_out = core_attn_out.reshape(z_shape_og)
+            core_attn_out = core_attn_out.reshape(core_attn_out.shape[0], core_attn_out.shape[1], -1)
+
+            output, bias = self.out_proj(core_attn_out)
+            output = output.transpose(0, 1)
+            return output, bias
 
 def get_local_layer_specs(config, layer_specs, vp_stage=None):
     num_layers_to_build = get_num_layers_to_build(config, vp_stage=vp_stage)
