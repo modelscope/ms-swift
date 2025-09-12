@@ -284,7 +284,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
             'torch_dtype': args.torch_dtype,
             'template': template,
             'use_async_engine': args.vllm_use_async_engine,
-            'enable_lora': args.vllm_enable_lora,
             'max_lora_rank': args.vllm_max_lora_rank,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
@@ -417,13 +416,17 @@ class SwiftRolloutDeploy(SwiftPipeline):
         enable_multi_turn = False
         if self.args.multi_turn_scheduler:
             enable_multi_turn = True
-
-        if self.use_async_engine:
-            if self.use_gym_env:
-                return {'engine_type': 'AsyncLLMEngine', 'gym_env': True, 'enable_multi_turn': True}
-            return {'engine_type': 'AsyncLLMEngine', 'enable_multi_turn': enable_multi_turn}
-        else:
-            return {'engine_type': 'LLMEngine', 'enable_multi_turn': enable_multi_turn}
+        use_gym_env = False
+        if self.use_async_engine and self.use_gym_env:
+            use_gym_env = True
+        engine_type = 'AsyncLLMEngine' if self.use_async_engine else 'LLMEngine'
+        enable_lora = self.args.vllm_enable_lora
+        return {
+            'engine_type': engine_type,
+            'enable_multi_turn': enable_multi_turn,
+            'use_gym_env': use_gym_env,
+            'enable_lora': enable_lora,
+        }
 
     async def close_communicator(self):
         """

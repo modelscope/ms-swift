@@ -321,6 +321,7 @@ class VLLMClient:
         self.use_async_engine = result['engine_type'] == 'AsyncLLMEngine'
         self.enable_multi_turn = result.get('enable_multi_turn', False)
         self.use_gym_env = result.get('gym_env', False)
+        self.enable_lora = result.get('enable_lora', False)
         return result
 
     def close_communicator(self):

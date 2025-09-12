@@ -8,7 +8,6 @@ import re
 import time
 import uuid
 from collections import OrderedDict, defaultdict, deque
-from collections import OrderedDict, defaultdict, deque
 from concurrent.futures import Future
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
@@ -26,7 +25,6 @@ import transformers
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
 from dacite import from_dict
 from packaging import version
-from peft.utils.save_and_load import get_peft_model_state_dict
 from peft.utils.save_and_load import get_peft_model_state_dict
 from torch.nn import ModuleList
 from torch.utils.data import DataLoader
@@ -256,6 +254,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.enable_offload = False
         self.use_gym_env = False
         self.enable_server_multi_turn = False
+        self.rollout_enable_lora = False
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
         self.dynamic_num_samples = False
         if self.use_vllm:
@@ -271,13 +270,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     vllm_use_async_engine = [self.vllm_client.use_async_engine]
                     use_gym_env = [self.vllm_client.use_gym_env]
                     enable_multi_turn = [self.vllm_client.enable_multi_turn]
+                    enable_lora = [self.vllm_client.enable_lora]
                 else:
                     vllm_use_async_engine = [False]
                     use_gym_env = [False]
                     enable_multi_turn = [self.enable_server_multi_turn]
+                    enable_lora = [False]
                 self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
                 self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
                 self.enable_server_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
+                self.rollout_enable_lora = broadcast_object_list(enable_lora, from_process=0)[0]
                 if self.use_gym_env:
                     self.reward_func_names = ['gym_reward']
 
@@ -546,14 +548,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'max_lora_rank': self.args.lora_rank,
             }
             patch_vllm_load_adapter()
-        lora_kwargs = {}
-        if self.args.train_type == 'lora':
-            lora_kwargs = {
-                'enable_lora': True,
-                'max_loras': 1,
-                'max_lora_rank': self.args.lora_rank,
-            }
-            patch_vllm_load_adapter()
         with Swift.grpo_context(model, self.template.processor):
             engine = GRPOVllmEngine(
                 model.model_dir,
@@ -573,7 +567,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 load_format='dummy',
                 template=copy(self.template),
                 distributed_executor_backend='external_launcher',
-                **lora_kwargs,
                 **lora_kwargs,
             )
         return engine
@@ -596,7 +589,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         train_type = self.args.train_type
 
-        if train_type == 'full' or (train_type == 'lora' and not self.base_sync_done):
+        if train_type == 'full' or (train_type == 'lora' and not self.base_sync_done) or not self.rollout_enable_lora:
             self._move_full_model_to_vllm()
         else:
             self._move_adapter_to_vllm()
