@@ -98,12 +98,12 @@ class GRPOVllmEngine(VllmEngine):
         *,
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-        adapter_request: Optional[Union[AdapterRequest, TensorLoRARequest]] = None,
+        adapter_request: Optional[AdapterRequest] = None,
     ) -> List[RolloutOutput]:
         if not adapter_request and self.enable_lora:
-            # TODO: check if get the latest lora
             lora_int_ids = list(self.engine.list_loras())
             if lora_int_ids:
+                # since max_lora = 1, pick the first lora
                 adapter_request = LoRARequest(
                     lora_name=f'lora_{lora_int_ids[0]}',
                     lora_int_id=lora_int_ids[0],

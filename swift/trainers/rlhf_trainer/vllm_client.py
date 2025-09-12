@@ -21,7 +21,7 @@ from swift.llm import AdapterRequest, RolloutInferRequest, Template
 from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig, RolloutOutput
 from swift.plugin import Metric
 from swift.utils import is_trl_available, is_vllm_ascend_available, is_vllm_available
-from .utils import serialize_peft_config
+from .utils import peft_config_to_dict
 
 if is_vllm_available():
     from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
@@ -253,7 +253,7 @@ class VLLMClient:
             lora_request: TensorLoRARequest object containing LoRA adapter information.
         """
         errors = [None] * self.num_servers
-        peft_config = serialize_peft_config(peft_config)
+        peft_config = peft_config_to_dict(peft_config)
         metadatas = [m.model_dump() if hasattr(m, 'model_dump') else m.dict() for m in metadatas]
         lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
 

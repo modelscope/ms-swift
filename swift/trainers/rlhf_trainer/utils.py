@@ -749,7 +749,7 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
     return loss
 
 
-def serialize_peft_config(peft_config):
+def peft_config(peft_config):
     if not isinstance(peft_config, dict):
         peft_config = asdict(peft_config)
     # turn set to list to serializable
@@ -757,9 +757,3 @@ def serialize_peft_config(peft_config):
         peft_config['target_modules'] = list(peft_config['target_modules'])
 
     return peft_config
-
-
-def deserialize_peft_config(data: str):
-    data = json.loads(data)
-    from swift.tuners.lora import LoraConfig
-    return LoraConfig(**data)
