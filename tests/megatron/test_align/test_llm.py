@@ -163,6 +163,10 @@ def test_ovis2_5():
     _test_model('AIDC-AI/Ovis2.5-2B')
 
 
+def test_ernie_thinking():
+    _test_model('PaddlePaddle/ERNIE-4.5-21B-A3B-Thinking')
+
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -195,4 +199,5 @@ if __name__ == '__main__':
     # test_internvl3_5()
     # test_internvl3_5_moe()
     # test_glm4_5v()
-    test_ovis2_5()
+    # test_ovis2_5()
+    test_ernie_thinking()

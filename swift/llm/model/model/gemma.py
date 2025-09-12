@@ -2,7 +2,7 @@
 from types import MethodType
 from typing import Any, Dict
 
-from transformers import AutoTokenizer, AutoConfig
+from transformers import AutoConfig, AutoTokenizer
 
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
@@ -10,7 +10,7 @@ from ..model_arch import ModelArch
 from ..patcher import patch_output_to_input_device
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import ModelInfo, AttnImpl, HfConfigFactory
+from ..utils import AttnImpl, HfConfigFactory, ModelInfo
 
 
 def get_model_tokenizer_paligemma_vision(model_dir: str,
@@ -231,12 +231,12 @@ def get_model_tokenizer_gemma_emb(model_dir: str,
         model.config = model_config
 
         def enable_input_require_grads(self):
-        
+
             def make_inputs_require_grads(module, input, output):
                 output.requires_grad_(True)
-        
+
             self._require_grads_hook = self[0].auto_model.embed_tokens.register_forward_hook(make_inputs_require_grads)
-        
+
         model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
         tokenizer = model.tokenizer
 

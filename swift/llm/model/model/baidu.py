@@ -26,7 +26,6 @@ register_model(
         architectures=['Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.ernie_thinking,
