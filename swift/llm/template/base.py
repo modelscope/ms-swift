@@ -347,6 +347,8 @@ class Template(ProcessorMixin):
         return input_ids, labels, loss_scale
 
     def forward_context(self, model, inputs):
+        # This function is only used to handle scenarios where the model needs
+        # to be patched during the forward pass.
         return nullcontext()
 
     @staticmethod
@@ -1884,7 +1886,7 @@ class Template(ProcessorMixin):
         Returns:
             A tensor after padding
         """
-        padding_side = self.padding_side if self.is_training else 'left'
+        padding_side = self.padding_side if self.is_training and self.task_type != 'generative_reranker' else 'left'
         padding_right = padding_side == 'right'
         if padding_right:
             return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
