@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
