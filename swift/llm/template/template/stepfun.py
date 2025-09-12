@@ -279,9 +279,9 @@ register_template(
     TemplateMeta(
         MLLMTemplateType.step_audio2_mini,
         template_cls=StepAudio2MiniTemplate,
-        prefix=['<s>'],
+        prefix=[],
         prompt=['<|BOT|>human\n{{QUERY}}<|EOT|><|BOT|>assistant\n'],
-        system_prefix=['<s><|BOT|>system\n{{SYSTEM}}<|EOT|>'],
+        system_prefix=['<|BOT|>system\n{{SYSTEM}}<|EOT|>'],
         chat_sep=['<|EOT|>'],
         suffix=['<|EOT|>'],
     ))
