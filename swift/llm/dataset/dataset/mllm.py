@@ -761,7 +761,7 @@ class TextCapsPreprocessor(ResponsePreprocessor):
 class TextCapsEmbPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        row['query'] = ''
+        row['query'] = '<image>'
         if not os.path.exists(row['images']['path']):
             return None
         return super().preprocess(row)

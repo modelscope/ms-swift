@@ -230,14 +230,14 @@ def get_model_tokenizer_gemma_emb(model_dir: str,
             })
         model.config = model_config
 
-        # def enable_input_require_grads(self):
-        #
-        #     def make_inputs_require_grads(module, input, output):
-        #         output.requires_grad_(True)
-        #
-        #     self._require_grads_hook = self[0].auto_model.embed_tokens.register_forward_hook(make_inputs_require_grads)
-        #
-        # model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
+        def enable_input_require_grads(self):
+        
+            def make_inputs_require_grads(module, input, output):
+                output.requires_grad_(True)
+        
+            self._require_grads_hook = self[0].auto_model.embed_tokens.register_forward_hook(make_inputs_require_grads)
+        
+        model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
         tokenizer = model.tokenizer
 
         def forward(self, **kwargs):
@@ -255,7 +255,7 @@ def get_model_tokenizer_gemma_emb(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.gemma_emb,
+        LLMModelType.gemma_emb,
         [
             ModelGroup([
                 Model('google/embeddinggemma-300m', 'google/embeddinggemma-300m'),

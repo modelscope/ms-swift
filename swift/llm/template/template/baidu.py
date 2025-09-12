@@ -5,6 +5,7 @@ from typing import Optional
 from ..constant import LLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Prompt
+from ..base import Template
 
 
 @dataclass
@@ -18,6 +19,20 @@ class ERNIETemplateMeta(TemplateMeta):
 
 register_template(ERNIETemplateMeta(LLMTemplateType.ernie))
 
+
+class ErnieThinkingTemplate(Template):
+
+    def _preprocess_inputs(self, inputs) -> None:
+        for message in inputs.messages:
+            if message['role'] == 'assistant':
+                if '<response>' not in message['content']:
+                    if '</think>' in message['content']:
+                        message['content'] = message['content'].replace('</think>', '</think>\n\n<response>\n')
+                        message['content'] = message['content'] + '\n</response>'
+                        if '<think>\n' not in message['content']:
+                            message['content'] = message['content'].replace('<think>', '<think>\n')
+                    else:
+                        message['content'] = '<think>\n</think>\n\n<response>\n' + message['content'] + '\n</response>'
 
 @dataclass
 class ERNIEThinkingTemplateMeta(TemplateMeta):
@@ -37,4 +52,4 @@ class ERNIEThinkingTemplateMeta(TemplateMeta):
                                                                      '</system_setting>\n\n'])
 
 
-register_template(ERNIEThinkingTemplateMeta(LLMTemplateType.ernie_thinking))
+register_template(ERNIEThinkingTemplateMeta(LLMTemplateType.ernie_thinking, template_cls=ErnieThinkingTemplate))

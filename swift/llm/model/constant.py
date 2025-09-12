@@ -130,6 +130,7 @@ class LLMModelType:
     hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
     ernie = 'ernie'
+    gemma_emb = 'gemma_emb'
     ernie_thinking = 'ernie_thinking'
     longchat = 'longchat'
 
@@ -253,7 +254,7 @@ class MLLMModelType:
     megrez_omni = 'megrez_omni'
     valley = 'valley'
     gemma3_vision = 'gemma3_vision'
-    gemma_emb = 'gemma_emb'
+    gemma3n = 'gemma3n'
     mistral_2503 = 'mistral_2503'
 
 
