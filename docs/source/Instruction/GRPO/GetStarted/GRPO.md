@@ -204,7 +204,7 @@ swift 3.9对 LoRA 训练的权重同步进行了优化（相比swift3.8加速约
     --vllm_enable_lora true
     --vllm_max_lora_rank xxx # 与训练脚本lora_rank一致
 ```
-注意：对于多模态模型训练，vLLM 仅支持多模态模型的语言模型部分的adapter加载，如果需要训练多模型模型的ViT层(freeze_vit false)，请设置`vllm_enable_lora false`
+注意：对于多模态模型训练，vLLM 仅支持多模态模型的语言模型部分的adapter加载，如果需要训练多模态模型的ViT层(freeze_vit false)，请设置`vllm_enable_lora false`
 
 优化实现细节请参考该[PR](https://github.com/modelscope/ms-swift/pull/5773)
 
