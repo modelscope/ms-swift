@@ -86,7 +86,6 @@ class RolloutArguments(DeployArguments):
     # only for GRPO rollout with AsyncEngine, see details in swift/plugin/multi_turn
     multi_turn_scheduler: Optional[str] = None
     max_turns: Optional[int] = None
-    # lora, TODO: modify example script for lora
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     # GYM env
