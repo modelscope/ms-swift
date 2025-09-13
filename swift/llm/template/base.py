@@ -1667,8 +1667,9 @@ class Template(ProcessorMixin):
             'loss_scale',
             'position_ids',
             'token_type_ids',
+            'attention_mask_1d',
         ]
-        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]
+        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0, 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
@@ -1683,8 +1684,8 @@ class Template(ProcessorMixin):
             if not seq_lens:
                 seq_lens = [seq.shape[0] for seq in res[key]]
         if not self.padding_free and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
-            if not self.use_megatron:
-                res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
+            attention_mask_key = 'attention_mask_1d' if self.use_megatron else 'attention_mask'
+            res[attention_mask_key] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
             if self.is_training and self.padding_side == 'left':
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
 
