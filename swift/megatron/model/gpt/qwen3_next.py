@@ -396,6 +396,7 @@ class Qwen3NextSelfAttention(SelfAttention):
 
         return query, key, value, gate
 
+
 if _Qwen3NextGatedDeltaNet is None:
     Qwen3NextGatedDeltaNet = None
 else:
@@ -508,14 +509,31 @@ else:
 
             if not is_fast_path_available:
                 logger.warning_once(
-                    'The fast path is not available because one of the required library is not installed. Falling back to '
-                    'torch implementation. To install follow https://github.com/fla-org/flash-linear-attention#installation'
+                    'The fast path is not available because one of the required library is not installed. '
+                    'Falling back to torch implementation. To install follow '
+                    'https://github.com/fla-org/flash-linear-attention#installation'
                     ' and https://github.com/Dao-AILab/causal-conv1d')
 
         def forward(self, hidden_states: torch.Tensor, **kwargs):
             # Set up dimensions for reshapes later
-            hidden_states = hidden_states.transpose(0, 1)
-            batch_size, seq_len, _ = hidden_states.shape
+            args = get_args()
+            if args.padding_free:
+                packed_seq_params = kwargs['packed_seq_params']
+                new_hidden_states = hidden_states.new_zeros(
+                    (packed_seq_params.num_samples, packed_seq_params.max_seqlen_q.item(), hidden_states.shape[-1]))
+                attention_mask = hidden_states.new_zeros(
+                    (packed_seq_params.num_samples, packed_seq_params.max_seqlen_q.item()), dtype=torch.bool)
+                cu_seqlens_q = packed_seq_params.cu_seqlens_q
+                for i in range(packed_seq_params.num_samples):
+                    start, end = cu_seqlens_q[i], cu_seqlens_q[i + 1]
+                    attention_mask[i, :end - start] = True
+                    new_hidden_states[i, :end - start] = hidden_states[start:end, 0]
+                hidden_states = new_hidden_states
+            else:
+                hidden_states = hidden_states.transpose(0, 1)
+                from transformers.models.qwen3_next.modeling_qwen3_next import apply_mask_to_padding_states
+                attention_mask = kwargs['attention_mask'].sum(dim=(1, 3)) > 0
+                hidden_states = apply_mask_to_padding_states(hidden_states, attention_mask)
 
             projected_states_qkvz = self.in_proj_qkvz(hidden_states)[0]
             projected_states_ba = self.in_proj_ba(hidden_states)[0]
@@ -525,6 +543,7 @@ else:
             mixed_qkv = torch.cat((query, key, value), dim=-1)
             mixed_qkv = mixed_qkv.transpose(1, 2)
 
+            batch_size, seq_len, _ = hidden_states.shape
             if self.causal_conv1d_fn is not None:
                 mixed_qkv = self.causal_conv1d_fn(
                     x=mixed_qkv,
@@ -577,8 +596,12 @@ else:
             core_attn_out = core_attn_out.reshape(core_attn_out.shape[0], core_attn_out.shape[1], -1)
 
             output, bias = self.out_proj(core_attn_out)
-            output = output.transpose(0, 1)
+            if args.padding_free:
+                output = output[attention_mask][:, None]
+            else:
+                output = output.transpose(0, 1)
             return output, bias
+
 
 def get_local_layer_specs(config, layer_specs, vp_stage=None):
     num_layers_to_build = get_num_layers_to_build(config, vp_stage=vp_stage)
@@ -626,7 +649,7 @@ def get_qwen3_next_transformer_layer_spec(config):
 
 
 def convert_mcore2hf_qwen3_next(hf_model, mg_model):
-    from .hf2mcore import set_mlp_state, set_attn_state
+    from .mcore2hf import set_mlp_state, set_attn_state
     args = get_args()
     hf_model.model.embed_tokens.weight.data.copy_(mg_model.embedding.word_embeddings.weight)
     if args.untie_embeddings_and_output_weights:
