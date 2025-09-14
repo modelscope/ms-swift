@@ -161,7 +161,7 @@ class RerankerTrainer(Trainer):
 
             positive_logits = last_step_logits[:, positive_token_id]
             negative_logits = last_step_logits[:, negative_token_id]
-            logits = torch.stack([negative_logits, positive_logits], dim=1)
+            logits = positive_logits - negative_logits
             return logits
         else:
             # Unexpected shape, return as-is
@@ -174,26 +174,7 @@ class RerankerTrainer(Trainer):
 
     def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
         from swift.plugin.loss import calculate_reranker_metrics
-
-        # Check if we're using generative reranker (point-wise or list-wise)
-        if self.args.loss_type in {'generative_reranker', 'listwise_generative_reranker'}:
-            # For generative reranker, predictions are now [batch_size, 2] from preprocessing
-            # We need to handle this differently
-            predictions = eval_prediction.predictions
-            if len(predictions.shape) == 2 and predictions.shape[1] == 2:
-                # Predictions are already preprocessed [batch_size, 2] format
-                # Apply softmax to get probabilities
-                import numpy as np
-                exp_logits = np.exp(predictions - np.max(predictions, axis=1, keepdims=True))
-                probabilities = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
-                relevance_scores = probabilities[:, 1]  # Positive class probability
-                return calculate_reranker_metrics(relevance_scores, eval_prediction.label_ids)
-            else:
-                # Fallback to original method if preprocessing didn't work
-                raise ValueError('Unexpected predictions shape')
-        else:
-            # For standard reranker (point-wise or list-wise)
-            return calculate_reranker_metrics(eval_prediction.predictions, eval_prediction.label_ids)
+        return calculate_reranker_metrics(eval_prediction.predictions, eval_prediction.label_ids)
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # Check if we have a custom loss function

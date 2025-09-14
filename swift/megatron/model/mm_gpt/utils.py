@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -13,7 +14,6 @@ from transformers.utils import ContextManagers
 from swift.llm import deep_getattr, get_model_tokenizer
 from ..gpt.config import convert_gpt_hf_config
 from ..mm_gpt_model import MultimodalGPTModel
-from ..model_provider import model_provider as model_provider_func
 from ..register import MegatronModelMeta
 
 
@@ -51,7 +51,6 @@ def patch_device_map_meta(model_cls):
 @dataclass
 class MMGPTMegatronModelMeta(MegatronModelMeta):
     model_cls: Type[nn.Module] = MultimodalGPTModel
-    model_provider: Callable[[], nn.Module] = model_provider_func
     convert_hf_config: Callable[[PretrainedConfig], Dict[str, Any]] = convert_gpt_hf_config
 
 
@@ -68,6 +67,7 @@ class HuggingFaceModule(_HuggingFaceModule, ABC):
             ignore_init_model_cls = [ignore_init_model_cls]
         context_list = [patch_device_map_meta(model_cls) for model_cls in ignore_init_model_cls]
         context_list.append(patch_hf_initialize_weight())
+        kwargs['model_type'] = args.model_info.model_type
         with ContextManagers(context_list):
             model, _ = get_model_tokenizer(model_dir, args.torch_dtype, return_dummy_model=True, **kwargs)
         self.model_config = model.config
