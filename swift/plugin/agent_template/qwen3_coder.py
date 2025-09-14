@@ -1,15 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import json
 
-from .base import BaseAgentTemplate
 from .hermes import HermesAgentTemplate
 
 if TYPE_CHECKING:
     from swift.llm.infer import Function
-    from swift.llm.template import Prompt
 
 
 def render_extra_keys(obj, handled_keys):
