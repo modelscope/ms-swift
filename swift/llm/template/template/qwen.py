@@ -367,7 +367,7 @@ class Qwen2VLTemplate(Template):
             get_rope_index = base_model.get_rope_index
         else:
             get_rope_index = base_model.model.get_rope_index
-        attention_mask = inputs.get('attention_mask_1d')
+        attention_mask = inputs.get('attention_mask_2d')
         if attention_mask is None:
             attention_mask = inputs.get('attention_mask')
         position_ids, _ = get_rope_index(
