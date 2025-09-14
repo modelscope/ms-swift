@@ -127,40 +127,8 @@ def test_glm4_5():
     _test_model('ZhipuAI/GLM-4.5-Air')
 
 
-def test_qwen2_5_vl():
-    os.environ['MAX_PIXELS'] = str(1280 * 28 * 28)
-    _test_model('Qwen/Qwen2.5-VL-7B-Instruct')
-
-
-def test_qwen2_vl():
-    os.environ['MAX_PIXELS'] = str(1280 * 28 * 28)
-    _test_model('Qwen/Qwen2-VL-7B-Instruct')
-
-
-def test_qwen2_5_omni():
-    os.environ['MAX_PIXELS'] = str(1280 * 28 * 28)
-    _test_model('Qwen/Qwen2.5-Omni-7B')
-
-
-def test_internvl3():
-    _test_model('OpenGVLab/InternVL3-8B')
-    # _test_model('OpenGVLab/InternVL3-1B')
-
-
-def test_internvl3_5():
-    _test_model('OpenGVLab/InternVL3_5-1B')
-
-
-def test_internvl3_5_moe():
-    _test_model('OpenGVLab/InternVL3_5-30B-A3B')
-
-
-def test_glm4_5v():
-    _test_model('ZhipuAI/GLM-4.5V')
-
-
-def test_ovis2_5():
-    _test_model('AIDC-AI/Ovis2.5-2B')
+def test_qwen3_next():
+    _test_model('Qwen/Qwen3-Next-80B-A3B-Instruct')
 
 
 if __name__ == '__main__':
@@ -188,11 +156,4 @@ if __name__ == '__main__':
     # test_hunyuan()
     # test_ernie()
     # test_glm4_5()
-    # test_qwen2_5_vl()
-    # test_qwen2_vl()
-    # test_qwen2_5_omni()
-    # test_internvl3()
-    # test_internvl3_5()
-    # test_internvl3_5_moe()
-    # test_glm4_5v()
-    test_ovis2_5()
+    test_qwen3_next()
