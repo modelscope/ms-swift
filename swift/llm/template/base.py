@@ -1905,6 +1905,8 @@ class Template(ProcessorMixin):
             else:
                 flash_attention_forward = _origin_flash_attention_forward
             kwargs['position_ids'] = position_ids
+            if args and isinstance(args[0], torch.Tensor):
+                kwargs['position_ids'] = kwargs['position_ids'].to(args[0].device)
             return flash_attention_forward(*args, **kwargs)
 
         modeling_module._flash_attention_forward = _flash_attention_forward
@@ -1927,7 +1929,7 @@ class Template(ProcessorMixin):
             media_inputs = to_device(media_inputs, input_ids.device)
             pixel_values = media_inputs['pixel_values'].type(dtype)
             image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
-            inputs_embeds = inputs_embeds + image_embeds.mean() * 0.
+            inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
         else:
             if pixel_values is None:
                 pixel_values_mixed = pixel_values_videos
@@ -1955,11 +1957,13 @@ class Template(ProcessorMixin):
             if image_embeds is not None:
                 image_mask = (input_ids == config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                image_mask = image_mask.to(inputs_embeds.device)
                 inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
             if video_embeds is not None:
                 video_mask = (input_ids == config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                video_mask = video_mask.to(inputs_embeds.device)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
         return inputs_embeds
 
