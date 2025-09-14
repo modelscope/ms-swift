@@ -587,14 +587,6 @@ register_model(
                 Model('swift/Qwen3-235B-A22B-Instruct-2507-AWQ'),
             ]),
             ModelGroup([
-                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct', 'Qwen/Qwen3-Coder-30B-A3B-Instruct'),
-                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8'),
-                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct', 'Qwen/Qwen3-Coder-480B-A35B-Instruct'),
-                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8', 'Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8'),
-                Model('swift/Qwen3-Coder-480B-A35B-Instruct-AWQ'),
-            ],
-                       tags=['coding']),
-            ModelGroup([
                 Model('Qwen/Qwen3-4B-Instruct-2507', 'Qwen/Qwen3-4B-Instruct-2507'),
                 Model('Qwen/Qwen3-4B-Instruct-2507-FP8', 'Qwen/Qwen3-4B-Instruct-2507-FP8'),
             ])
@@ -602,6 +594,25 @@ register_model(
         TemplateType.qwen3_nothinking,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3MoeForCausalLM', 'Qwen3ForCausalLM'],
+        requires=['transformers>=4.51'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen3_coder,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct', 'Qwen/Qwen3-Coder-30B-A3B-Instruct'),
+                Model('Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8', 'Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8'),
+                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct', 'Qwen/Qwen3-Coder-480B-A35B-Instruct'),
+                Model('Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8', 'Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8'),
+                Model('swift/Qwen3-Coder-480B-A35B-Instruct-AWQ'),
+            ],
+                       tags=['coding']),
+        ],
+        TemplateType.qwen3_coder,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen3MoeForCausalLM'],
         requires=['transformers>=4.51'],
     ))
 

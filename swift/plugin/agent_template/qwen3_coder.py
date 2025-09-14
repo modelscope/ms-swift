@@ -64,8 +64,10 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
             return super().get_toolcall(response)
         return functions
 
-    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
-        tool_descs = ['You have access to the following functions:\n\n' '<tools>']
+    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
+        if system is None:
+            system = 'You are Qwen, a helpful AI assistant that can interact with a computer to solve tasks.'
+        tool_descs = [f'{system}\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>']
         for tool in tools:
             tool_desc = ''
 
@@ -150,9 +152,7 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
                         # For other types, convert to strings
                         args_value = str(args_value)
                     result_parts.append(f'{args_value}\n</parameter>\n')
-
-
-# Close tags
+            # Close tags
             result_parts.append('</function>\n</tool_call>')
         return ''.join(result_parts)
 
