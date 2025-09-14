@@ -1,4 +1,10 @@
-# 8 * 60GiB, 11s/it
+# 8 * 60GiB, 10s/it
+# Note: linear-attention does not support padding_free.
+# Therefore, if you enable padding_free (the default),
+# padding_free will be toggled off/on around the linear-attention sections.
+
+# Note: Enabling packing is not recommended, as it can easily cause OOM (out-of-memory) errors.
+
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
@@ -10,14 +16,13 @@ megatron sft \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
-    --split_dataset_ratio 0.01 \
     --expert_model_parallel_size 4 \
     --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
     --moe_aux_loss_coeff 1e-3 \
-    --micro_batch_size 1 \
-    --global_batch_size 8 \
+    --micro_batch_size 2 \
+    --global_batch_size 16 \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
@@ -30,7 +35,6 @@ megatron sft \
     --save megatron_output/Qwen3-Next-80B-A3B-Instruct \
     --eval_interval 200 \
     --save_interval 200 \
-    --packing true \
     --max_length 2048 \
     --num_workers 8 \
     --dataset_num_proc 8 \
