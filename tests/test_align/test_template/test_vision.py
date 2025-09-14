@@ -684,9 +684,8 @@ def test_qwen3_vl():
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, images=images)
     assert response[:200] == response2[:200] == (
-        'Of course, here is a detailed description of the image.\n\nThis is a highly '
-        'detailed, close-up portrait of a young kitten, rendered in a soft, painterly '
-        'style that gives it a gentle and dreamy quality.\n')
+        'Of course, here is a detailed description of the image.\n\nThis is a close-up, portrait-style photograph '
+        'of a very young kitten, likely a few weeks old. The image is characterized by a soft, painterly q')
 
 
 if __name__ == '__main__':
