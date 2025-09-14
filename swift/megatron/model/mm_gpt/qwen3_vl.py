@@ -1,25 +1,47 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import torch
+from megatron.training import get_args
 
 from swift.llm import ModelType
 from ..constant import MegatronModelType
 from ..gpt.hf2mcore import convert_hf2mcore
+from ..gpt.hf2mcore import set_layer_state as set_layer_state_hf2mcore
 from ..gpt.mcore2hf import convert_mcore2hf
+from ..gpt.mcore2hf import set_layer_state as set_layer_state_mcore2hf
 from ..register import register_megatron_model
 from .utils import HuggingFaceModule, MMGPTMegatronModelMeta
 
 
 def convert_hf2mcore_qwen3_vl(hf_model, mg_model):
-
-    convert_hf2mcore(hf_model.language_model, mg_model.language_model)
-    mg_model.visual.vision_model.load_state_dict(hf_model.vision_model.state_dict())
-    mg_model.visual.mlp1.load_state_dict(hf_model.mlp1.state_dict())
+    language_model = hf_model.model
+    if hasattr(language_model, 'language_model'):
+        language_model = language_model.language_model
+    visual = hf_model.visual if hasattr(hf_model, 'visual') else hf_model.model.visual
+    mg_language_model = mg_model.language_model
+    args = get_args()
+    mg_language_model.embedding.word_embeddings.weight.data.copy_(language_model.embed_tokens.weight)
+    if args.untie_embeddings_and_output_weights:
+        mg_language_model.output_layer.weight.data.copy_(hf_model.lm_head.weight)
+    mg_language_model.decoder.final_layernorm.weight.data.copy_(language_model.norm.weight)
+    for layer_idx in range(args.num_layers):
+        set_layer_state_hf2mcore(args, mg_language_model, language_model, layer_idx)
+    mg_model.visual.visual.load_state_dict(visual.state_dict())
 
 
 def convert_mcore2hf_qwen3_vl(hf_model, mg_model):
-    convert_mcore2hf(hf_model.language_model, mg_model.language_model)
-    hf_model.vision_model.load_state_dict(mg_model.visual.vision_model.state_dict())
-    hf_model.mlp1.load_state_dict(mg_model.visual.mlp1.state_dict())
+    language_model = hf_model.model
+    if hasattr(language_model, 'language_model'):
+        language_model = language_model.language_model
+    visual = hf_model.visual if hasattr(hf_model, 'visual') else hf_model.model.visual
+    mg_language_model = mg_model.language_model
+    args = get_args()
+    language_model.embed_tokens.weight.data.copy_(mg_language_model.embedding.word_embeddings.weight)
+    if args.untie_embeddings_and_output_weights:
+        hf_model.lm_head.weight.data.copy_(mg_language_model.output_layer.weight)
+    language_model.norm.weight.data.copy_(mg_language_model.decoder.final_layernorm.weight)
+    for layer_idx in range(args.num_layers):
+        set_layer_state_mcore2hf(args, mg_language_model, language_model, layer_idx)
+    visual.load_state_dict(mg_model.visual.visual.state_dict())
 
 
 class Qwen3VL_Vit(HuggingFaceModule):
@@ -29,7 +51,7 @@ class Qwen3VL_Vit(HuggingFaceModule):
 
     def __init__(self, config):
         from transformers.models.qwen3_vl import Qwen3VLTextModel
-        from transformers.models.qwen3_vl import Qwen3VLMoeTextModel
+        from transformers.models.qwen3_vl_moe import Qwen3VLMoeTextModel
         super().__init__(config, [Qwen3VLTextModel, Qwen3VLMoeTextModel])
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
@@ -54,6 +76,6 @@ register_megatron_model(
             ModelType.qwen3_vl,
             ModelType.qwen3_moe_vl,
         ],
-        convert_hf2mcore=convert_hf2mcore_qwen3,
-        convert_mcore2hf=convert_mcore2hf_qwen3,
+        convert_hf2mcore=convert_hf2mcore_qwen3_vl,
+        convert_mcore2hf=convert_mcore2hf_qwen3_vl,
         visual_cls=Qwen3VL_Vit))
