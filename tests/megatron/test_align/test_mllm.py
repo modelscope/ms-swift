@@ -63,6 +63,14 @@ def test_ovis2_5():
     _test_model('AIDC-AI/Ovis2.5-2B')
 
 
+def test_qwen3_vl():
+    _test_model('Qwen/Qwen3-VL')
+
+
+def test_qwen3_vl_moe():
+    _test_model('Qwen/Qwen3-VL-Moe')
+
+
 if __name__ == '__main__':
     # test_qwen2_5_vl()
     # test_qwen2_vl()
@@ -71,4 +79,6 @@ if __name__ == '__main__':
     # test_internvl3_5()
     # test_internvl3_5_moe()
     # test_glm4_5v()
-    test_ovis2_5()
+    # test_ovis2_5()
+    test_qwen3_vl()
+    # test_qwen3_vl_moe()
