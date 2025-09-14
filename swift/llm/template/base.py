@@ -1000,7 +1000,7 @@ class Template(ProcessorMixin):
             system = template_meta.default_system
 
         if tools is not None:
-            system = self.agent_template._format_tools(tools, system or '', inputs.messages[0])
+            system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
 
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):

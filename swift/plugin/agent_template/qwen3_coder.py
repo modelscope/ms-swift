@@ -1,14 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import json
 
-from .base import BaseAgentTemplate
+from .hermes import HermesAgentTemplate
 
 if TYPE_CHECKING:
     from swift.llm.infer import Function
-    from swift.llm.template import Prompt
 
 
 def render_extra_keys(obj, handled_keys):
@@ -17,11 +16,11 @@ def render_extra_keys(obj, handled_keys):
     if isinstance(obj, dict):
         for key, value in obj.items():
             if key not in handled_keys:
-                result += f'\n<{key}>{value}</{key}>'
+                result += f'\n<{key}>{json.dumps(value, ensure_ascii=False)}</{key}>'
     return result
 
 
-class Qwen3CoderAgentTemplate(BaseAgentTemplate):
+class Qwen3CoderAgentTemplate(HermesAgentTemplate):
 
     @staticmethod
     def _find_function_call(single_content: str) -> Optional['Function']:
@@ -61,11 +60,13 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
                 functions.append(function)
         if len(functions) == 0:
             # Compat react_en
-            return super().get_toolcall(response)
+            return super(HermesAgentTemplate, self).get_toolcall(response)
         return functions
 
-    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
-        tool_descs = ['You have access to the following functions:\n\n' '<tools>']
+    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
+        if system is None:
+            system = 'You are Qwen, a helpful AI assistant that can interact with a computer to solve tasks.'
+        tool_descs = [f'{system}\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>']
         for tool in tools:
             tool_desc = ''
 
@@ -129,8 +130,6 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
             'answer the question like normal with your current '
             'knowledge and do not tell the user about function calls\n</IMPORTANT>')
         tool_descs = '\n'.join(tool_descs)
-        if system.strip():
-            tool_descs = '<|system|>\n' + system.strip() + '\n\n' + tool_descs
         return tool_descs
 
     def _format_tool_calls(self, tool_call_messages):
@@ -150,9 +149,7 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
                         # For other types, convert to strings
                         args_value = str(args_value)
                     result_parts.append(f'{args_value}\n</parameter>\n')
-
-
-# Close tags
+            # Close tags
             result_parts.append('</function>\n</tool_call>')
         return ''.join(result_parts)
 
@@ -160,27 +157,5 @@ class Qwen3CoderAgentTemplate(BaseAgentTemplate):
         res_tool = []
         for tool_message in tool_messages:
             tool_content = tool_message['content']
-            res_tool.append(f'<tool_response>\n{tool_content}\n</tool_response>')
-        return '\n'.join(res_tool) + '\n'
-
-    def _format_tool_responses(
-        self,
-        assistant_content: str,
-        tool_messages,
-    ) -> Tuple[str, 'Prompt']:
-        with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
-        if with_action:
-            return super()._format_tool_responses(assistant_content, tool_messages)
-        if hasattr(self, 'template_meta'):
-            prompt = self.template_meta.prompt
-            chat_sep = self.template_meta.chat_sep
-        else:
-            prompt = ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n']
-            chat_sep = ['<|im_end|>\n']
-        res = chat_sep.copy()
-        total_tool = self._get_tool_responses(tool_messages)
-        for context in prompt:
-            if isinstance(context, str):
-                context = context.replace('{{QUERY}}', total_tool)
-            res.append(context)
-        return assistant_content, res
+            res_tool.append(f'<tool_response>\n{tool_content}\n</tool_response>\n')
+        return ''.join(res_tool)

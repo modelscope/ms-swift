@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import List, Union
+from typing import List, Optional, Union
 
 import json
 
@@ -8,7 +8,7 @@ from .base import BaseAgentTemplate
 
 class ToolBenchAgentTemplate(BaseAgentTemplate):
 
-    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         for i, tool in enumerate(tools):
             tools[i] = self.unwrap_tool(tool)
         tools = json.dumps(tools, ensure_ascii=False)

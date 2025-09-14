@@ -355,7 +355,7 @@ def test_glm4_5():
 
 def test_qwen3_coder():
     agent_template = agent_templates['qwen3_coder']()
-    engine = PtEngine('Qwen/Qwen3-Coder-30B-A3B-Instruct', model_type='qwen3_nothinking')
+    engine = PtEngine('Qwen/Qwen3-Coder-30B-A3B-Instruct')
     template = engine.default_template
     template.agent_template = agent_template
     template.template_backend = 'jinja'
@@ -370,6 +370,11 @@ def test_qwen3_coder():
     encoded = template.encode(data)
     print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
     print(f'labels: {template.safe_decode(encoded["labels"])}')
+    template.template_backend = 'jinja'
+    encoded2 = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded2["labels"])}')
+    assert encoded['input_ids'] == encoded2['input_ids'][:-1]
 
 
 if __name__ == '__main__':
