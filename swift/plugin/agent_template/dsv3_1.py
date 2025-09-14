@@ -16,7 +16,7 @@ class DeepSeekV31AgentTemplate(BaseAgentTemplate):
     def get_toolcall(self, response: str) -> List['Function']:
         from swift.llm.infer import Function
         # Parse tool calls using the DSV3.1 format: <｜tool▁calls▁begin｜><｜tool▁call▁begin｜>name<｜tool▁sep｜>args<｜tool▁call▁end｜>
-        pattern = r'<｜tool▁call▁begin｜>([^<]+)<｜tool▁sep｜>([^<]+)<｜tool▁call▁end｜>'
+        pattern = r'<｜tool▁call▁begin｜>(.*?)<｜tool▁sep｜>(.*?)<｜tool▁call▁end｜>'
         res_list = re.findall(pattern, response, re.DOTALL)
         functions = []
         for name, arguments in res_list:
@@ -31,11 +31,9 @@ class DeepSeekV31AgentTemplate(BaseAgentTemplate):
         return functions
 
     def _get_tool_responses(self, tool_messages):
-        res_tool = []
-        for tool_message in tool_messages:
-            tool_content = tool_message['content']
-            res_tool.append(f'<｜tool▁output▁begin｜>{tool_content}<｜tool▁output▁end｜>')
-        return ''.join(res_tool)
+        return ''.join(
+            f'<｜tool▁output▁begin｜>{tool_message["content"]}<｜tool▁output▁end｜>'
+            for tool_message in tool_messages)
 
     def _get_tool_calls(self, tool_calls: List[str]):
         return f'<｜tool▁calls▁begin｜>{"".join(tool_calls)}<｜tool▁calls▁end｜>'

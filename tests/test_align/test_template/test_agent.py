@@ -380,7 +380,7 @@ def test_qwen3_coder():
 def test_dsv3_1():
     agent_template = agent_templates['dsv3_1']()
 
-    engine = PtEngine('/apdcephfs_sh9/share_303378293/hunyuan/public/model/DeepSeek-V3.1-bf16', device_map='cpu', model_type='deepseek_v3_1')
+    engine = PtEngine('deepseek-ai/DeepSeek-V3.1', device_map='cpu', model_type='deepseek_v3_1')
     template = engine.default_template
     template.agent_template = agent_template
 
