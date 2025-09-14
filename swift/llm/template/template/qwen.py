@@ -464,7 +464,7 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
                         token_len = (media_grid_thw[i].prod() // merge_length)
                         return [media_token] * token_len
                     else:
-                        return splited_tokens[0]
+                        return splited_tokens[i]
 
                 input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
                                                                     _get_new_tokens)
