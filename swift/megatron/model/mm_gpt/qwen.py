@@ -207,11 +207,11 @@ class Ovis2_5Vit(HuggingFaceModule):
         for i, indicator_id in enumerate(INDICATOR_IDS):
             inputs_embeds[input_ids == indicator_id] = visual_indicator_embeds[i]
         if pixel_values is None:
-            media_inputs = self.visual_tokenizer.preprocess(
+            pixel_values, grid_thws = self.visual_tokenizer.preprocess(
                 Image.new('RGB', (32, 32), (0, 0, 0)), min_pixels=self.min_pixels, max_pixels=self.max_pixels)
-            media_inputs = to_device(media_inputs, input_ids.device)
-            pixel_values = media_inputs['pixel_values'].type(inputs_embeds.dtype)
-            visual_tokens = self.visual_tokenizer(pixel_values, media_inputs['grid_thws'])
+            pixel_values = pixel_values.to(device=inputs_embeds.device)
+            grid_thws = grid_thws.to(device=inputs_embeds.device)
+            visual_tokens = self.visual_tokenizer(pixel_values, grid_thws)
             visual_embeds = self.vte(visual_tokens).to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
             inputs_embeds += visual_embeds.mean() * 0.
         else:
