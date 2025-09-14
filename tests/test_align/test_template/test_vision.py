@@ -677,16 +677,16 @@ def test_minicpmv4_5():
 
 
 def test_qwen3_vl():
-    pt_engine = PtEngine('Qwen3-VL/Qwen3-VL-32B-Preview-0813')
-    images = ['cat.png']
+    pt_engine = PtEngine('Qwen/Qwen3-VL')
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
     messages = [{'role': 'user', 'content': 'describe this image.'}]
     response = _infer_model(pt_engine, messages=messages, images=images)
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, images=images)
     assert response[:200] == response2[:200] == (
-        'This image features an extremely close-up, highly detailed portrait of a '
-        'young kitten. The kitten has a soft, fluffy coat with a mix of white, gray, '
-        'and black fur, marked with delicate tabby stripes a')
+        'Of course, here is a detailed description of the image.\n\nThis is a highly '
+        'detailed, close-up portrait of a young kitten, rendered in a soft, painterly '
+        'style that gives it a gentle and dreamy quality.\n')
 
 
 if __name__ == '__main__':

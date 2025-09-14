@@ -452,7 +452,7 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
                         videos=mm_data,
                         return_tensors='pt',
                         do_resize=False,
-                        **inputs.mm_processor_kwargs)
+                        **inputs.mm_processor_kwargs)  # TODO: check
                     splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
@@ -460,7 +460,7 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
                 merge_length = processor.image_processor.merge_size**2
 
                 def _get_new_tokens(i):
-                    if media_type == 'image':
+                    if media_type == 'images':
                         token_len = (media_grid_thw[i].prod() // merge_length)
                         return [media_token] * token_len
                     else:
@@ -475,8 +475,11 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
         encoded['loss_scale'] = loss_scale
         return encoded
 
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return inputs  # TODO: Waiting for transformers to support passing deepstack_visual_embeds.
 
-register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate))
+
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate, default_system=None))
 
 
 class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
