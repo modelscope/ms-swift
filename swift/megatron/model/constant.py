@@ -1,7 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-class MegatronModelType:
+class LLMMegatronModelType:
     gpt = 'gpt'
+    qwen3_next = 'qwen3_next'
 
+
+class MLLMMegatronModelType:
     qwen2_vl = 'qwen2_vl'
     qwen2_5_vl = 'qwen2_5_vl'
     qwen3_vl = 'qwen3_vl'
@@ -10,3 +13,7 @@ class MegatronModelType:
 
     internvl3 = 'internvl3'
     glm4_5v = 'glm4_5v'
+
+
+class MegatronModelType(LLMMegatronModelType, MLLMMegatronModelType):
+    pass

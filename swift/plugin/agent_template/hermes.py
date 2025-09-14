@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
-from typing import TYPE_CHECKING, List, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import json
 
@@ -58,8 +58,9 @@ class HermesAgentTemplate(BaseAgentTemplate):
             res.append(context)
         return assistant_content, res
 
-    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]
+        system = system or ''
         return f"""{system}
 
 # Tools
@@ -110,8 +111,9 @@ class HunyuanHermesAgentTemplate(HermesAgentTemplate):
         tool_calls = '\n'.join(tool_calls)
         return f'<tool_calls>\n{tool_calls}\n</tool_calls>'
 
-    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]
+        system = system or ''
         if system:
             system = f'{system}\n\n'
         return f"""{system}# Tools

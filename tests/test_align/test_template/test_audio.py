@@ -84,6 +84,13 @@ def test_midashenglm():
     assert response == response2 == "The audio contains a male voice speaking the phrase '今天天气真好呀' in Mandarin."
 
 
+def test_step_audio2_mini():
+    pt_engine = PtEngine('stepfun-ai/Step-Audio-2-mini')
+    messages = [{'role': 'user', 'content': '<audio>Caption the audio'}]
+    response = _infer_model(pt_engine, messages=messages)
+    assert response == 'A woman says "今天天气真好呀" in Mandarin.'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -94,4 +101,5 @@ if __name__ == '__main__':
     # test_step_audio_chat()
     # test_qwen2_5_omni()
     # test_gemma3n()
-    test_midashenglm()
+    # test_midashenglm()
+    test_step_audio2_mini()
