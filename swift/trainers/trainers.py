@@ -390,6 +390,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             if self.model.model_info.is_moe_model and self.args.router_aux_loss_coef is not None:
                 aux_loss = outputs.get('aux_loss')
                 if aux_loss is not None:
+                    if num_items_in_batch is not None:
+                        aux_loss = aux_loss * ((labels[:, 1:] != -100).sum() / num_items_in_batch)
                     loss = loss + self.args.router_aux_loss_coef * aux_loss.to(loss.device)
 
         if getattr(self.args, 'average_tokens_across_devices',
