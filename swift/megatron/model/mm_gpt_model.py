@@ -48,6 +48,12 @@ class MultimodalGPTModel(MegatronModule):
             _self.reduce_scatter_embeddings = reduce_scatter_embeddings
             if self.visual is not None:
                 res = self.visual.get_inputs_embeds(res, **kwargs)
+                kwargs.clear()
+                if isinstance(res, dict):
+                    # compat dict
+                    inputs_embeds = res.pop('inputs_embeds')
+                    kwargs.update(res)
+                    res = inputs_embeds
             if reduce_scatter_embeddings:
                 res = res.transpose(0, 1).contiguous()
                 res = scatter_to_sequence_parallel_region(res, group=_self.tp_group)
@@ -94,6 +100,7 @@ class MultimodalGPTModel(MegatronModule):
             labels=labels,
             inference_params=inference_params,
             packed_seq_params=packed_seq_params,
+            **kwargs,
         )
 
     def set_input_tensor(self, input_tensor: torch.Tensor) -> None:

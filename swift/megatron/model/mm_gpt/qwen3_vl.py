@@ -1,12 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import torch
 from megatron.training import get_args
+from PIL import Image
 
-from swift.llm import ModelType
+from swift.llm import ModelType, to_device
 from ..constant import MegatronModelType
-from ..gpt.hf2mcore import convert_hf2mcore
 from ..gpt.hf2mcore import set_layer_state as set_layer_state_hf2mcore
-from ..gpt.mcore2hf import convert_mcore2hf
 from ..gpt.mcore2hf import set_layer_state as set_layer_state_mcore2hf
 from ..register import register_megatron_model
 from .utils import HuggingFaceModule, MMGPTMegatronModelMeta
@@ -55,19 +54,59 @@ class Qwen3VL_Vit(HuggingFaceModule):
         super().__init__(config, [Qwen3VLTextModel, Qwen3VLMoeTextModel])
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
-        model = self._hf_model[0]
         input_ids = kwargs['input_ids']
         pixel_values = kwargs.get('pixel_values')
-        if pixel_values is None:
-            dummy_pixel_values = torch.zeros((1, 3, 32, 32), dtype=self.vision_model.dtype, device=inputs_embeds.device)
-            vit_embeds = model.extract_feature(dummy_pixel_values)
-            inputs_embeds = inputs_embeds + vit_embeds.mean() * 0.
+        pixel_values_videos = kwargs.get('pixel_values_videos')
+        image_grid_thw = kwargs.get('image_grid_thw')
+        video_grid_thw = kwargs.get('video_grid_thw')
+        visual = self.visual
+        processor = self.processor
+        dtype = visual.dtype
+        config = self.model_config
+        if pixel_values is None and pixel_values_videos is None:  # plain-text
+            images = [Image.new('RGB', (32, 32), (0, 0, 0))]
+            media_inputs = processor.image_processor(images=images, return_tensors='pt')
+            media_inputs = to_device(media_inputs, input_ids.device)
+            pixel_values = media_inputs['pixel_values'].type(dtype)
+            image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+            inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
+            deepstack_visual_embeds = None
         else:
-            vit_embeds = model.extract_feature(pixel_values)
-            selected = (input_ids == self.processor.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
-            inputs_embeds = inputs_embeds.clone()
-            inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1]).to(dtype=inputs_embeds.dtype)
-        return inputs_embeds
+            if pixel_values is None:
+                pixel_values_mixed = pixel_values_videos
+                grid_thw = video_grid_thw
+            elif pixel_values_videos is None:
+                pixel_values_mixed = pixel_values
+                grid_thw = image_grid_thw
+            else:
+                pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
+                grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
+            pixel_values_mixed = pixel_values_mixed.type(dtype)
+            mixed_embeds, deepstack_visual_embeds = visual(pixel_values_mixed, grid_thw=grid_thw)
+            if pixel_values is None:
+                image_embeds = None
+                video_embeds = mixed_embeds
+            elif pixel_values_videos is None:
+                image_embeds = mixed_embeds
+                video_embeds = None
+            else:
+                merge_length = processor.image_processor.merge_size**2
+                image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
+                image_embeds = mixed_embeds[:image_tokens]
+                video_embeds = mixed_embeds[image_tokens:]
+
+            if image_embeds is not None:
+                image_mask = (input_ids == config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                image_mask = image_mask.to(inputs_embeds.device)
+                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
+
+            if video_embeds is not None:
+                video_mask = (input_ids == config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                video_mask = video_mask.to(inputs_embeds.device)
+                inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
+        return {'inputs_embeds': inputs_embeds, 'deepstack_visual_embeds': deepstack_visual_embeds}
 
 
 register_megatron_model(
