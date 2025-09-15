@@ -63,16 +63,12 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
         kwargs.pop('metrics', None)
 
         backup_model = self.model
-
-        # Unwrap model if needed
-        unwrapped_model = self.accelerator.unwrap_model(self.model)
-        self.model = unwrapped_model
-
-        res = super()._save_checkpoint(*args, **kwargs)
-
-        self.model = backup_model
-
-        return res
+        try:
+            # Unwrap model if needed
+            self.model = self.accelerator.unwrap_model(self.model)
+            return super()._save_checkpoint(*args, **kwargs)
+        finally:
+            self.model = backup_model
     
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
         # https://github.com/huggingface/trl/issues/2122
