@@ -377,10 +377,10 @@ def test_qwen3_coder():
     assert encoded['input_ids'] == encoded2['input_ids'][:-1]
 
 
-def test_dsv3_1():
-    agent_template = agent_templates['dsv3_1']()
+def test_deepseek_v3_1():
+    agent_template = agent_templates['deepseek_v3_1']()
 
-    engine = PtEngine('deepseek-ai/DeepSeek-V3.1', device_map='cpu', model_type='deepseek_v3_1')
+    engine = PtEngine('deepseek-ai/DeepSeek-V3.1', load_model=False, download_model=False)
     template = engine.default_template
     template.agent_template = agent_template
 
@@ -394,45 +394,48 @@ def test_dsv3_1():
     encoded = template.encode(data)
     print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
     print(f'labels: {template.safe_decode(encoded["labels"])}')
+    template.template_backend = 'jinja'
+    encoded2 = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded2["labels"])}')
 
     expected_input_ids = (
-        "<｜begin▁of▁sentence｜>\n\n## Tools\n"
-        "You have access to the following tools:\n\n"
-        "### convert_temperature\n"
-        "Description: Convert temperature from one unit to another\n\n"
+        '<｜begin▁of▁sentence｜>\n\n## Tools\n'
+        'You have access to the following tools:\n\n'
+        '### convert_temperature\n'
+        'Description: Convert temperature from one unit to another\n\n'
         "Parameters: {\"type\": \"object\", \"properties\": {\"temperature\": {\"type\": \"number\", \"description\": \"The temperature value\"}, \"from_unit\": {\"type\": \"string\", \"description\": \"The unit to convert from\"}, \"to_unit\": {\"type\": \"string\", \"description\": \"The unit to convert to\"}}, \"required\": [\"temperature\", \"from_unit\", \"to_unit\"]}\n\n"
-        "### get_current_date\n"
-        "Description: Get the current date\n\n"
-        "Parameters: {}\n\n"
-        "IMPORTANT: ALWAYS adhere to this exact format for tool use:\n"
-        "<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>tool_call_name<｜tool▁sep｜>tool_call_arguments<｜tool▁call▁end｜>{additional_tool_calls}<｜tool▁calls▁end｜>\n\n"
-        "Where:\n"
-        "- `tool_call_name` must be an exact match to one of the available tools\n"
+        '### get_current_date\n'
+        'Description: Get the current date\n\n'
+        'Parameters: {}\n\n'
+        'IMPORTANT: ALWAYS adhere to this exact format for tool use:\n'
+        '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>tool_call_name<｜tool▁sep｜>tool_call_arguments<｜tool▁call▁end｜>{additional_tool_calls}<｜tool▁calls▁end｜>\n\n'
+        'Where:\n'
+        '- `tool_call_name` must be an exact match to one of the available tools\n'
         "- `tool_call_arguments` must be valid JSON that strictly follows the tool's Parameters Schema\n"
-        "- For multiple tool calls, chain them directly without separators or spaces<｜User｜>"
-        "Hi, I need to convert a temperature from Celsius to Fahrenheit. The temperature is 30 degrees Celsius.<｜Assistant｜>"
-        "</think><｜tool▁calls▁begin｜><｜tool▁call▁begin｜>convert_temperature<｜tool▁sep｜>"
+        '- For multiple tool calls, chain them directly without separators or spaces<｜User｜>'
+        'Hi, I need to convert a temperature from Celsius to Fahrenheit. The temperature is 30 degrees Celsius.<｜Assistant｜>'
+        '</think><｜tool▁calls▁begin｜><｜tool▁call▁begin｜>convert_temperature<｜tool▁sep｜>'
         "{\"temperature\": 30, \"from_unit\": \"Celsius\", \"to_unit\": \"Fahrenheit\"}<｜tool▁call▁end｜>"
-        "<｜tool▁call▁begin｜>convert_temperature<｜tool▁sep｜>"
+        '<｜tool▁call▁begin｜>convert_temperature<｜tool▁sep｜>'
         "{\"temperature\": 30, \"from_unit\": \"Celsius\", \"to_unit\": \"Fahrenheit\"}<｜tool▁call▁end｜>"
-        "<｜tool▁calls▁end｜><｜end▁of▁sentence｜>"
+        '<｜tool▁calls▁end｜><｜end▁of▁sentence｜>'
         "<｜tool▁output▁begin｜>{\"converted_temperature\": 86}<｜tool▁output▁end｜>"
         "<｜tool▁output▁begin｜>{\"converted_temperature\": 86}<｜tool▁output▁end｜>"
-        "The converted temperature from 30 degrees Celsius to Fahrenheit is 86 degrees Fahrenheit.<｜end▁of▁sentence｜>"
-    )
+        'The converted temperature from 30 degrees Celsius to Fahrenheit is 86 degrees Fahrenheit.<｜end▁of▁sentence｜>')
 
     # Expected labels string
     expected_labels = (
-        "[-100 * 239]</think><｜tool▁calls▁begin｜><｜tool▁call▁begin｜>convert_temperature<｜tool▁sep｜>"
+        '[-100 * 239]</think><｜tool▁calls▁begin｜><｜tool▁call▁begin｜>convert_temperature<｜tool▁sep｜>'
         "{\"temperature\": 30, \"from_unit\": \"Celsius\", \"to_unit\": \"Fahrenheit\"}<｜tool▁call▁end｜>"
-        "<｜tool▁call▁begin｜>convert_temperature<｜tool▁sep｜>"
+        '<｜tool▁call▁begin｜>convert_temperature<｜tool▁sep｜>'
         "{\"temperature\": 30, \"from_unit\": \"Celsius\", \"to_unit\": \"Fahrenheit\"}<｜tool▁call▁end｜>"
-        "<｜tool▁calls▁end｜><｜end▁of▁sentence｜>[-100 * 22]"
-        "The converted temperature from 30 degrees Celsius to Fahrenheit is 86 degrees Fahrenheit.<｜end▁of▁sentence｜>"
-    )
+        '<｜tool▁calls▁end｜><｜end▁of▁sentence｜>[-100 * 22]'
+        'The converted temperature from 30 degrees Celsius to Fahrenheit is 86 degrees Fahrenheit.<｜end▁of▁sentence｜>')
 
-    assert template.safe_decode(encoded["input_ids"]) == expected_input_ids
-    assert template.safe_decode(encoded["labels"]) == expected_labels
+    assert template.safe_decode(encoded['input_ids']) == expected_input_ids
+    assert template.safe_decode(encoded['labels']) == expected_labels
+    assert encoded['input_ids'][-122:] == encoded2['input_ids'][1:]
 
 
 if __name__ == '__main__':
@@ -452,5 +455,5 @@ if __name__ == '__main__':
     # test_llama4()
     # test_hunyuan()
     # test_glm4_5()
-    test_qwen3_coder()
-    test_dsv3_1()
+    # test_qwen3_coder()
+    test_deepseek_v3_1()
