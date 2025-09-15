@@ -681,14 +681,18 @@ def patch_qwen_vl_utils(vision_process):
         if default_value is None:
             # Skip keys not supported by the specific vision_process implementation
             continue
-        setattr(vision_process, key.upper(), get_env_args(key, type_func, default_value))
+        val = get_env_args(key, type_func, default_value)
+        setattr(vision_process, key.upper(), val)
+        res[key] = val
     # Patch decord video reader if available
     _read_video_decord = getattr(vision_process, '_read_video_decord', None)
     if _read_video_decord is not None:
+
         def _new_read_video_decord(ele: dict):
             from swift.llm import load_file
             ele['video'] = load_file(ele['video'])
             return _read_video_decord(ele)
+
         backends = getattr(vision_process, 'VIDEO_READER_BACKENDS', None)
         if isinstance(backends, dict):
             backends['decord'] = _new_read_video_decord
