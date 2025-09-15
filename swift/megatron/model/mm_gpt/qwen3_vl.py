@@ -91,7 +91,7 @@ class Qwen3VL_Vit(HuggingFaceModule):
             media_inputs = processor.image_processor(images=images, return_tensors='pt')
             media_inputs = to_device(media_inputs, input_ids.device)
             pixel_values = media_inputs['pixel_values'].type(dtype)
-            image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+            image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])[0]
             inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
             deepstack_visual_embeds = None
             visual_pos_masks = None
@@ -107,6 +107,7 @@ class Qwen3VL_Vit(HuggingFaceModule):
                 grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
             pixel_values_mixed = pixel_values_mixed.type(dtype)
             mixed_embeds, deepstack_visual_embeds = visual(pixel_values_mixed, grid_thw=grid_thw)
+            deepstack_visual_embeds = torch.stack(deepstack_visual_embeds, dim=0)
             if pixel_values is None:
                 image_embeds = None
                 video_embeds = mixed_embeds
@@ -160,7 +161,8 @@ class Qwen3VLTransformerBlock(gpt_model.TransformerBlock):
 
         def custom(start: int, end: int):
 
-            def custom_forward(hidden_states, attention_mask, context, context_mask, rotary_pos_emb):
+            def custom_forward(hidden_states, attention_mask, context, context_mask, rotary_pos_emb, visual_pos_masks,
+                               deepstack_visual_embeds):
                 for index in range(start, end):
                     layer = self._get_layer(index)
                     inner_fp8_context = (
@@ -202,6 +204,8 @@ class Qwen3VLTransformerBlock(gpt_model.TransformerBlock):
                     context,
                     context_mask,
                     rotary_pos_emb,
+                    visual_pos_masks,
+                    deepstack_visual_embeds,
                 )
             else:
                 return tensor_parallel.checkpoint(
@@ -212,6 +216,8 @@ class Qwen3VLTransformerBlock(gpt_model.TransformerBlock):
                     context,
                     context_mask,
                     rotary_pos_emb,
+                    visual_pos_masks,
+                    deepstack_visual_embeds,
                 )
 
         if self.config.recompute_method == 'uniform':
