@@ -381,7 +381,7 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
 
     def forward(self, hidden_states: torch.Tensor, **kwargs):
         args = get_args()
-        if args.sequence_parallel:
+        if args.sequence_parallel and args.tensor_model_parallel_size > 1:
             hidden_states = gather_from_sequence_parallel_region(hidden_states)
         seq_len = hidden_states.shape[0]
         packed_seq_params = kwargs.get('packed_seq_params')
@@ -406,7 +406,7 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
             res = torch.concat([res, res.new_zeros(seq_len - res.shape[0], 1, res.shape[2])])
         else:
             res = res.transpose(0, 1)
-        if args.sequence_parallel:
+        if args.sequence_parallel and args.tensor_model_parallel_size > 1:
             res = scatter_to_sequence_parallel_region(res)
         return res, None
 

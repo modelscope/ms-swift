@@ -133,6 +133,17 @@ class Qwen3VL_Vit(HuggingFaceModule):
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
             visual_pos_masks = image_mask[..., 0] | video_mask[..., 0]
             visual_pos_masks = visual_pos_masks.transpose(0, 1)
+            # compat sp
+            args = get_args()
+            tp_world_size = parallel_state.get_tensor_model_parallel_world_size()
+            tp_rank = parallel_state.get_tensor_model_parallel_rank()
+            if args.sequence_parallel and tp_world_size > 1:
+                visual_pos_masks = visual_pos_masks.view(tp_world_size, -1, *visual_pos_masks.shape[1:])
+                mask_tokens = visual_pos_masks.sum(dim=(1, 2)).tolist()
+                visual_start = 0 if tp_rank == 0 else sum(mask_tokens[:tp_rank - 1])
+                visual_end = visual_start + mask_tokens[tp_rank]
+                visual_pos_masks = visual_pos_masks[tp_rank]
+                deepstack_visual_embeds = deepstack_visual_embeds[:, visual_start:visual_end]
         return {
             'inputs_embeds': inputs_embeds,
             'visual_pos_masks': visual_pos_masks,
