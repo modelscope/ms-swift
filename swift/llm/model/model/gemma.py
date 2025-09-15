@@ -1,16 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from types import MethodType
 from typing import Any, Dict
-
-from transformers import AutoConfig, AutoTokenizer
 
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_to_input_device
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
-                        get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import AttnImpl, HfConfigFactory, ModelInfo
+                        get_model_tokenizer_sentence_transformers, get_model_tokenizer_with_flash_attn, register_model)
+from ..utils import ModelInfo
 
 
 def get_model_tokenizer_paligemma_vision(model_dir: str,
@@ -205,54 +202,6 @@ register_model(
         requires=['transformers>=4.53.1'],
     ))
 
-
-def get_model_tokenizer_gemma_emb(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  *,
-                                  tokenizer=None,
-                                  model_config=None,
-                                  automodel_class=None,
-                                  **kwargs):
-    from sentence_transformers import SentenceTransformer
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    model_info.config = model_config
-    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
-    torch_dtype = model_info.torch_dtype
-    model_config.torch_dtype = torch_dtype
-    HfConfigFactory.compat_zero3(model_config)
-    if load_model:
-        model = SentenceTransformer(
-            model_dir, trust_remote_code=True, model_kwargs={
-                'torch_dtype': torch_dtype,
-            })
-        model.config = model_config
-
-        def enable_input_require_grads(self):
-
-            def make_inputs_require_grads(module, input, output):
-                output.requires_grad_(True)
-
-            self._require_grads_hook = self[0].auto_model.embed_tokens.register_forward_hook(make_inputs_require_grads)
-
-        model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
-        tokenizer = model.tokenizer
-
-        def forward(self, **kwargs):
-            output = self._forward_origin(input=kwargs)
-            return {'last_hidden_state': output['sentence_embedding']}
-
-        if not hasattr(model, '_forward_origin'):
-            model._forward_origin = model.forward
-            model.forward = MethodType(forward, model)
-    else:
-        model = None
-        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-    return model, tokenizer
-
-
 register_model(
     ModelMeta(
         LLMModelType.gemma_emb,
@@ -262,6 +211,6 @@ register_model(
             ], ),
         ],
         None,
-        get_model_tokenizer_gemma_emb,
+        get_model_tokenizer_sentence_transformers,
         architectures=['Gemma3TextModel'],
     ))
