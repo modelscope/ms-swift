@@ -58,6 +58,7 @@ def convert_gpt_hf_config(config) -> Dict[str, Any]:
     if (res.get('rope_scaling') or {}).get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = res['rope_scaling']['mrope_section']
+        res['mrope_interleaved'] = res['rope_scaling'].get('mrope_interleaved', False)
 
     if first_k_dense_replace is not None:
         res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res["num_layers"] - first_k_dense_replace}'
