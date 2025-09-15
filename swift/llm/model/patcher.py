@@ -260,6 +260,13 @@ def patch_automodel_for_sequence_classification(model_info, model_meta, **kwargs
 
     @classmethod
     def _new_from_pretrained(cls, *args, **kwargs):
+        # https://github.com/modelscope/ms-swift/issues/5812
+        def init_method(self, *args, **kwargs):
+            super(cls, self).__init__(*args, **kwargs)
+
+        if '__init__' not in cls.__dict__:
+            cls.__init__ = init_method
+
         __init__ = cls.__init__
 
         def __new_init__(self, *args, **kwargs):

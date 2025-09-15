@@ -1115,22 +1115,3 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen3ForCausalLM'],
         task_type='reranker'))
-
-
-def patch_qwen3_sequence_classification():
-    # https://github.com/modelscope/ms-swift/issues/5812
-    try:
-        from transformers.models.qwen3.modeling_qwen3 import Qwen3ForSequenceClassification
-        cls = Qwen3ForSequenceClassification
-        if '__init__' not in cls.__dict__:  # avoid patch twice
-
-            def init_method(self, *args, **kwargs):
-                super(cls, self).__init__(*args, **kwargs)
-
-            cls.__init__ = init_method
-
-    except ImportError:
-        return
-
-
-patch_qwen3_sequence_classification()
