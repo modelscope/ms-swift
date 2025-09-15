@@ -34,28 +34,33 @@ class ErnieThinkingTemplate(ThinkingTemplate):
                         if '<think>\n' not in message['content']:
                             message['content'] = message['content'].replace('<think>', '<think>\n')
                     else:
-                        message['content'] = '<think>\n</think>\n\n<response>\n' + message['content'] + '\n</response>'
+                        message['content'] = '<response>\n' + message['content'] + '\n</response>\n'
 
 
 @dataclass
 class ERNIEThinkingTemplateMeta(TemplateMeta):
-    prefix: Prompt = field(default_factory=lambda: ['<|im_start|>system\n'])
-    prompt: Prompt = field(default_factory=lambda: [
+    prefix: Prompt = field(
+        default_factory=lambda:
+        ['<|im_start|>system\n'
+         '<global_setting>\n'
+         'think_mode=True\n'
+         '</global_setting><|im_end|>\n\n'])
+    prompt: Prompt = field(
+        default_factory=lambda: ['<|im_start|>user\n'
+                                 '{{QUERY}}<|im_end|>\n\n'
+                                 '<|im_start|>assistant\n'])
+    response_prefix: Optional[str] = '<think>\n'
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|im_end|>\n\n'])
+    suffix: Prompt = field(default_factory=lambda: ['<|im_end|>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: [
+        '<|im_start|>system\n'
+        '<system_setting>\n'
+        '{{SYSTEM}}\n'
+        '</system_setting>\n\n'
         '<global_setting>\n'
         'think_mode=True\n'
         '</global_setting><|im_end|>\n\n'
-        '<|im_start|>user\n'
-        '{{QUERY}}<|im_end|>\n\n'
-        '<|im_start|>assistant\n'
-        '<think>\n\n'
     ])
-    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|im_end|>\n\n'])
-    suffix: Prompt = field(default_factory=lambda: ['<|im_end|>'])
-    system_prefix: Optional[Prompt] = field(
-        default_factory=lambda: ['<|im_start|>system\n'
-                                 '<system_setting>\n'
-                                 '{{SYSTEM}}\n'
-                                 '</system_setting>\n\n'])
 
 
 register_template(ERNIEThinkingTemplateMeta(LLMTemplateType.ernie_thinking, template_cls=ErnieThinkingTemplate))
