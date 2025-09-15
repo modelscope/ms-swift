@@ -1214,7 +1214,7 @@ class Template(ProcessorMixin):
         inputs.messages = deepcopy(inputs.messages)
         template_backend = self.template_backend
         if (self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training
-                and self.task_type != 'seq_cls'):
+                and self.task_type == 'causal_lm'):
             template_backend = 'jinja'
             logger.info_once(f'Setting template_backend: {template_backend}')
         res_context_list, loss_scale_list, answer_len = (

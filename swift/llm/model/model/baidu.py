@@ -25,3 +25,16 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         architectures=['Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM'],
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.ernie_thinking,
+        [
+            ModelGroup([
+                Model('PaddlePaddle/ERNIE-4.5-21B-A3B-Thinking', 'baidu/ERNIE-4.5-21B-A3B-Thinking'),
+            ]),
+        ],
+        TemplateType.ernie_thinking,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM'],
+    ))

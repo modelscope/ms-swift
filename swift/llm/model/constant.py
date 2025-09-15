@@ -133,6 +133,8 @@ class LLMModelType:
     hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
     ernie = 'ernie'
+    gemma_emb = 'gemma_emb'
+    ernie_thinking = 'ernie_thinking'
     longchat = 'longchat'
 
 

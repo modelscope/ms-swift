@@ -156,4 +156,5 @@ if __name__ == '__main__':
     # test_hunyuan()
     # test_ernie()
     # test_glm4_5()
-    test_qwen3_next()
+    # test_qwen3_next()
+    test_ernie_thinking()
