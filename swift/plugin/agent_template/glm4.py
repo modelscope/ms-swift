@@ -37,7 +37,7 @@ class GLM4AgentTemplate(BaseAgentTemplate):
             return super().get_toolcall(response)
         return functions
 
-    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = []
         for tool in tools:
             tool = self.unwrap_tool(tool)
@@ -107,7 +107,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
             return super().get_toolcall(response)
         return functions
 
-    def _format_tools(self, tools: List[Union[str, dict]], system: str, user_message=None) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = [
             '# Tools\n\nYou may call one or more functions to assist with the user query.\n\n'
             'You are provided with function signatures within <tools></tools> XML tags:\n<tools>'
@@ -119,7 +119,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
                           '<arg_value>{arg-value-1}</arg_value>\n<arg_key>{arg-key-2}</arg_key>\n'
                           '<arg_value>{arg-value-2}</arg_value>\n...\n</tool_call>')
         tool_descs = '\n'.join(tool_descs)
-        if system.strip():
+        if system is not None and system.strip():
             tool_descs += '<|system|>\n' + system.strip()
         return tool_descs
 
