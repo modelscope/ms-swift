@@ -245,9 +245,40 @@ class DeepseekV2_5TemplateMeta(TemplateMeta):
 register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))
 
 
-class DeepseekV3_1Template(ThinkingTemplate):
+class DeepseekV3_1Template(Template):
+    with_answer = False
     no_think_prefix = '</think>'
     history_think_prefix = '</think>'
+
+    def _swift_prepare_inputs(self, inputs):
+        super()._swift_prepare_inputs(inputs)
+        messages = inputs.messages
+
+        if self.no_think_prefix and self.use_chat_template:
+            for i, message in enumerate(messages):
+                if message['role'] == 'assistant' and isinstance(message['content'], str):
+                    # During multi-turn SFT training/validation:
+                    # If the message has no <think> block and does not start with the no_think_prefix,
+                    # prepend the no_think_prefix to the content.
+                    if not message['content'].startswith(('<think>', self.no_think_prefix)):
+                        if i > 0 and messages[i - 1]['role'] not in ['tool', 'tool_call']:
+                            message['content'] = self.no_think_prefix + message['content']
+
+
+        # Only during inference or training, and only if the loss_scale is set to 'last_round',
+        # will the previous 'think' entries be deleted.
+        if not self.is_training or self.loss_scale.name in {'last_round', 'last_round_with_ignore_empty_think'}:
+            for i, message in enumerate(messages):
+                # Delete the content before '</think>' in all assistant turns except the last round.
+                if message['role'] == 'assistant' and isinstance(message['content'], str) and i != len(messages) - 1:
+                    if self.with_answer:
+                        message['content'] = message['content'].split('<answer>')[-1].rstrip()
+                        if message['content'].endswith('</answer>'):
+                            message['content'] = message['content'][:-len('</answer>')]
+                        message['content'] = message['content'].strip()
+                    else:
+                        message['content'] = self.history_think_prefix + message['content'].split(
+                            '</think>')[-1].strip()
 
 
 register_template(
@@ -256,7 +287,7 @@ register_template(
 # enable thinking: response_prefix='<think>'
 register_template(
     DeepseekV2_5TemplateMeta(
-        LLMTemplateType.deepseek_v3_1, template_cls=DeepseekV3_1Template, response_prefix='</think>'))
+        LLMTemplateType.deepseek_v3_1, template_cls=DeepseekV3_1Template, response_prefix='', agent_template='dsv3_1'))
 
 
 class DeepseekVL2Template(DeepseekVLTemplate):
