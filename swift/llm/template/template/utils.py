@@ -45,12 +45,13 @@ class ThinkingTemplate(Template):
         if self.no_think_prefix and self.use_chat_template:
             pre_role = ''
             for i, message in enumerate(messages):
-                if message['role'] == 'assistant' and isinstance(
-                        message['content'], str) and (self.add_no_think_prefix_after_tool or pre_role != 'tool'):
-                    # During multi-turn SFT training/validation:
-                    # If the message has no <think> block and does not start with the no_think_prefix,
-                    # prepend the no_think_prefix to the content.
-                    if not message['content'].startswith(('<think>', self.no_think_prefix)):
+                if message['role'] == 'assistant' and isinstance(message['content'], str):
+                    if pre_role == 'tool' and not self.add_no_think_prefix_after_tool:
+                        pass
+                    elif not message['content'].startswith(('<think>', self.no_think_prefix)):
+                        # During multi-turn SFT training/validation:
+                        # If the message has no <think> block and does not start with the no_think_prefix,
+                        # prepend the no_think_prefix to the content.
                         message['content'] = self.no_think_prefix + message['content']
                 pre_role = message['role']
 

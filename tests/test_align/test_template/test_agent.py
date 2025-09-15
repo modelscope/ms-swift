@@ -404,18 +404,22 @@ def test_deepseek_v3_1():
         'You have access to the following tools:\n\n'
         '### convert_temperature\n'
         'Description: Convert temperature from one unit to another\n\n'
-        "Parameters: {\"type\": \"object\", \"properties\": {\"temperature\": {\"type\": \"number\", \"description\": \"The temperature value\"}, \"from_unit\": {\"type\": \"string\", \"description\": \"The unit to convert from\"}, \"to_unit\": {\"type\": \"string\", \"description\": \"The unit to convert to\"}}, \"required\": [\"temperature\", \"from_unit\", \"to_unit\"]}\n\n"
+        "Parameters: {\"type\": \"object\", \"properties\": {\"temperature\": {\"type\": \"number\", "
+        "\"description\": \"The temperature value\"}, \"from_unit\": {\"type\": \"string\", \"description\": "
+        "\"The unit to convert from\"}, \"to_unit\": {\"type\": \"string\", \"description\": \"The unit "
+        "to convert to\"}}, \"required\": [\"temperature\", \"from_unit\", \"to_unit\"]}\n\n"
         '### get_current_date\n'
         'Description: Get the current date\n\n'
         'Parameters: {}\n\n'
         'IMPORTANT: ALWAYS adhere to this exact format for tool use:\n'
-        '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>tool_call_name<｜tool▁sep｜>tool_call_arguments<｜tool▁call▁end｜>{additional_tool_calls}<｜tool▁calls▁end｜>\n\n'
+        '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>tool_call_name<｜tool▁sep｜>tool_call_arguments<｜tool▁call▁end｜>'
+        '{additional_tool_calls}<｜tool▁calls▁end｜>\n\n'
         'Where:\n'
         '- `tool_call_name` must be an exact match to one of the available tools\n'
         "- `tool_call_arguments` must be valid JSON that strictly follows the tool's Parameters Schema\n"
         '- For multiple tool calls, chain them directly without separators or spaces<｜User｜>'
-        'Hi, I need to convert a temperature from Celsius to Fahrenheit. The temperature is 30 degrees Celsius.<｜Assistant｜>'
-        '</think><｜tool▁calls▁begin｜><｜tool▁call▁begin｜>convert_temperature<｜tool▁sep｜>'
+        'Hi, I need to convert a temperature from Celsius to Fahrenheit. The temperature is 30 degrees Celsius.'
+        '<｜Assistant｜></think><｜tool▁calls▁begin｜><｜tool▁call▁begin｜>convert_temperature<｜tool▁sep｜>'
         "{\"temperature\": 30, \"from_unit\": \"Celsius\", \"to_unit\": \"Fahrenheit\"}<｜tool▁call▁end｜>"
         '<｜tool▁call▁begin｜>convert_temperature<｜tool▁sep｜>'
         "{\"temperature\": 30, \"from_unit\": \"Celsius\", \"to_unit\": \"Fahrenheit\"}<｜tool▁call▁end｜>"
