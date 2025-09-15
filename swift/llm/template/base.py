@@ -364,7 +364,7 @@ class Template(ProcessorMixin):
             data = locals()[f'{prefix}_encoded']
             for k, v in data.items():
                 encoded[f'{prefix}_{k}'] = v
-        if margin:
+        if margin is not None:
             encoded['margin'] = float(margin)
         return encoded
 
