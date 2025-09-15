@@ -44,7 +44,7 @@ class ThinkingTemplate(Template):
 
         if self.no_think_prefix and self.use_chat_template:
             pre_role = ''
-            for i, message in enumerate(messages):
+            for message in messages:
                 if message['role'] == 'assistant' and isinstance(message['content'], str):
                     if pre_role == 'tool' and not self.add_no_think_prefix_after_tool:
                         pass
